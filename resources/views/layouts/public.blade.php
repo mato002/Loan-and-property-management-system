@@ -87,7 +87,7 @@
             <div class="grid grid-cols-1 md:grid-cols-4 gap-12 lg:gap-8">
                 <!-- Branding -->
                 <div class="col-span-1 md:col-span-1">
-                    <a href="#" class="text-2xl font-black tracking-tighter text-white flex items-center gap-2 mb-4">
+                    <a href="{{ route('public.home') }}" class="text-2xl font-black tracking-tighter text-white flex items-center gap-2 mb-4">
                         <svg class="w-8 h-8 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
                         </svg>
