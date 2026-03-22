@@ -1,10 +1,11 @@
 @php
-    $title = $unit->property->name.' — Unit '.$unit->label;
+    $title = $pageTitle ?? $unit->property->name.' — Unit '.$unit->label;
     $addr = trim(collect([$unit->property->address_line, $unit->property->city])->filter()->implode(', ')) ?: '—';
     $rentDisplay = 'KES '.number_format((float) $unit->rent_amount, 0);
     $desc = $unit->public_listing_description;
+    $mapsUrl = 'https://www.google.com/maps/search/?api=1&query='.rawurlencode($addr !== '—' ? $addr : $unit->property->name);
 @endphp
-<x-public-layout>
+<x-public-layout :page-title="$title">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
             <div>
@@ -93,20 +94,47 @@
 
                 <div class="mb-12">
                     <h2 class="text-2xl font-black text-gray-900 mb-8">Features &amp; Amenities</h2>
-                    <div class="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8 text-gray-700 font-bold text-sm">
-                        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Professionally managed</div>
-                        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Vacant &amp; available</div>
-                        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Online applications</div>
-                    </div>
+                    @if ($unit->amenities->isNotEmpty())
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8 text-gray-700 font-bold text-sm">
+                            @foreach ($unit->amenities as $am)
+                                <div class="flex items-center gap-3">
+                                    <svg class="w-5 h-5 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    <span>{{ $am->name }}@if ($am->category)<span class="text-gray-400 font-medium"> · {{ $am->category }}</span>@endif</span>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8 text-gray-700 font-bold text-sm">
+                            <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Professionally managed</div>
+                            <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Vacant &amp; available</div>
+                            <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Online applications</div>
+                        </div>
+                    @endif
                 </div>
 
                 <div class="mb-12">
                     <h2 class="text-2xl font-black text-gray-900 mb-6">Location Map</h2>
-                    <div class="bg-gray-100 w-full h-80 rounded-3xl flex items-center justify-center text-gray-400 font-bold uppercase tracking-widest border border-gray-200 shadow-inner">
-                        <svg class="w-8 h-8 mr-3 mb-1 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
-                        Map Integration Region
+                    <div class="bg-gray-50 w-full min-h-[16rem] rounded-3xl border border-gray-200 shadow-inner flex flex-col items-center justify-center px-8 py-10 text-center">
+                        <svg class="w-10 h-10 text-indigo-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        <p class="text-gray-700 font-bold mb-1">{{ $addr }}</p>
+                        <p class="text-sm text-gray-500 mb-6 max-w-md">Open in Google Maps for directions and street view.</p>
+                        <a href="{{ $mapsUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black px-8 py-3 rounded-2xl shadow-lg shadow-indigo-600/25 transition-colors">
+                            Open in Maps
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                        </a>
                     </div>
                 </div>
+
+                @if (($similarUnits ?? collect())->isNotEmpty())
+                    <div class="mb-12">
+                        <h2 class="text-2xl font-black text-gray-900 mb-8">More in this building</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            @foreach ($similarUnits as $su)
+                                @include('public.partials.listing-card', ['unit' => $su, 'placeholderImage' => $listingPlaceholderImage, 'imageHeight' => 'h-48'])
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
             </div>
 
             <div class="w-full lg:w-1/3">

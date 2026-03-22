@@ -7,8 +7,11 @@
 @endphp
 <div class="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-300 hover:-translate-y-1.5 flex flex-col">
     <div class="relative {{ $imageHeight }} overflow-hidden">
-        <img src="{{ $thumb }}" alt="{{ $title }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+        <img src="{{ $thumb }}" alt="{{ $title }}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
         <div class="absolute top-4 left-4 bg-white/95 backdrop-blur px-3 py-1 rounded-full text-xs font-black tracking-wider text-gray-900 shadow-sm uppercase">For Rent</div>
+        @if ($unit->public_listing_published)
+            <div class="absolute top-4 right-4 bg-indigo-600/95 backdrop-blur px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-white shadow-sm uppercase">Featured</div>
+        @endif
         <div class="absolute bottom-4 left-4 bg-gray-900/85 backdrop-blur px-4 py-1.5 rounded-lg text-white font-black shadow-lg">{{ $rentLabel }}</div>
     </div>
     <div class="p-6 flex-1 flex flex-col">

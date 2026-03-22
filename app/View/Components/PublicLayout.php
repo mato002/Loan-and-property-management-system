@@ -7,11 +7,14 @@ use Illuminate\View\View;
 
 class PublicLayout extends Component
 {
-    /**
-     * Get the view / contents that represents the component.
-     */
+    public function __construct(
+        public ?string $pageTitle = null,
+    ) {}
+
     public function render(): View
     {
-        return view('layouts.public');
+        return view('layouts.public', [
+            'publicPageTitle' => $this->pageTitle,
+        ]);
     }
 }

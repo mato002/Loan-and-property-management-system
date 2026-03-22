@@ -35,10 +35,10 @@
                 </button>
             </form>
             
-            <div class="mt-8 flex gap-4 text-sm font-medium text-gray-300">
+            <div class="mt-8 flex flex-wrap gap-x-4 gap-y-2 text-sm font-medium text-gray-300">
                 <span>Popular:</span>
-                <a href="{{ route('public.properties') }}" class="hover:text-white underline underline-offset-4">Downtown Apartments</a>
-                <a href="{{ route('public.properties') }}" class="hover:text-white underline underline-offset-4">Commercial Spaces</a>
+                <a href="{{ route('public.properties', ['bedrooms' => 2, 'sort' => 'featured']) }}" class="hover:text-white underline underline-offset-4">Downtown Apartments</a>
+                <a href="{{ route('public.properties', ['sort' => 'rent_desc']) }}" class="hover:text-white underline underline-offset-4">Commercial Spaces</a>
             </div>
         </div>
     </div>

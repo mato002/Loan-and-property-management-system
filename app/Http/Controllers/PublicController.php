@@ -54,14 +54,50 @@ class PublicController extends Controller
             });
         }
 
-        $units = $query
-            ->orderByDesc('updated_at')
-            ->paginate(8)
-            ->withQueryString();
+        if ($request->filled('min_rent') && is_numeric($request->input('min_rent'))) {
+            $query->where('rent_amount', '>=', (float) $request->input('min_rent'));
+        }
+
+        if ($request->filled('max_rent') && is_numeric($request->input('max_rent'))) {
+            $query->where('rent_amount', '<=', (float) $request->input('max_rent'));
+        }
+
+        $bedrooms = $request->input('bedrooms');
+        if ($bedrooms !== null && $bedrooms !== '' && $bedrooms !== 'any') {
+            $query->where('bedrooms', (int) $bedrooms);
+        }
+
+        $sort = $request->string('sort')->toString() ?: 'updated';
+        match ($sort) {
+            'rent_asc' => $query->orderBy('rent_amount')->orderBy('property_id'),
+            'rent_desc' => $query->orderByDesc('rent_amount')->orderBy('property_id'),
+            'featured' => $query->orderByDesc('public_listing_published')->orderByDesc('updated_at'),
+            default => $query->orderByDesc('updated_at'),
+        };
+
+        $units = $query->paginate(8)->withQueryString();
+
+        $filterCities = Property::query()
+            ->whereHas('units', fn ($q) => $q->where('status', PropertyUnit::STATUS_VACANT))
+            ->whereNotNull('city')
+            ->where('city', '!=', '')
+            ->distinct()
+            ->orderBy('city')
+            ->pluck('city')
+            ->values();
+
+        $sortLabel = match ($sort) {
+            'rent_asc' => 'Rent: low to high',
+            'rent_desc' => 'Rent: high to low',
+            'featured' => 'Featured first',
+            default => 'Recently updated',
+        };
 
         return view('public.properties', [
             'units' => $units,
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
+            'filterCities' => $filterCities,
+            'sortLabel' => $sortLabel,
         ]);
     }
 
@@ -73,7 +109,7 @@ class PublicController extends Controller
         $unit = PropertyUnit::query()
             ->publiclyListed()
             ->whereKey($id)
-            ->with(['property', 'publicImages'])
+            ->with(['property', 'publicImages', 'amenities'])
             ->firstOrFail();
 
         $imageUrls = $unit->publicImages->map(fn ($img) => $img->publicUrl())->values()->all();
@@ -84,11 +120,25 @@ class PublicController extends Controller
         }
         $extraPhotoCount = max(0, count($imageUrls) - 5);
 
+        $similarUnits = PropertyUnit::query()
+            ->publiclyListed()
+            ->where('property_id', $unit->property_id)
+            ->whereKeyNot($unit->id)
+            ->with(['property', 'publicImages'])
+            ->orderByDesc('public_listing_published')
+            ->orderByDesc('updated_at')
+            ->limit(3)
+            ->get();
+
+        $pageTitle = $unit->property->name.' — Unit '.$unit->label;
+
         return view('public.property_details', [
             'unit' => $unit,
             'gallerySlots' => $gallerySlots,
             'extraPhotoCount' => $extraPhotoCount,
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
+            'similarUnits' => $similarUnits,
+            'pageTitle' => $pageTitle,
         ]);
     }
 

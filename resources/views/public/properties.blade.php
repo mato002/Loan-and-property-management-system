@@ -1,4 +1,7 @@
-<x-public-layout>
+@php
+    $currentSort = request('sort') ?: 'updated';
+@endphp
+<x-public-layout :page-title="__('Discover Properties')">
     <div class="bg-gray-50 border-b border-gray-200 shadow-inner">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
             <h1 class="text-4xl font-black text-gray-900 tracking-tight">Discover Properties</h1>
@@ -11,6 +14,13 @@
             <div class="w-full lg:w-1/4">
                 <form method="get" action="{{ route('public.properties') }}" class="bg-white border border-gray-100 p-6 rounded-2xl shadow-sm lg:sticky lg:top-28 space-y-6">
                     <h3 class="text-lg font-black text-gray-900 mb-1">Filter Search</h3>
+                    @if ($filterCities->isNotEmpty())
+                        <datalist id="filter-city-options">
+                            @foreach ($filterCities as $c)
+                                <option value="{{ $c }}"></option>
+                            @endforeach
+                        </datalist>
+                    @endif
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-2" for="city">Location</label>
                         <input
@@ -19,24 +29,65 @@
                             name="city"
                             value="{{ request('city') }}"
                             placeholder="City"
+                            @if ($filterCities->isNotEmpty()) list="filter-city-options" @endif
+                            autocomplete="address-level2"
                             class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 outline-none"
                         />
                     </div>
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Property Type</label>
-                        <select class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-700 outline-none" disabled title="Coming soon">
-                            <option>Any</option>
+                        <label class="block text-sm font-bold text-gray-700 mb-2" for="bedrooms">Bedrooms</label>
+                        <select
+                            id="bedrooms"
+                            name="bedrooms"
+                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-700 outline-none"
+                        >
+                            <option value="any" @selected(request('bedrooms', 'any') === 'any' || request('bedrooms') === '' || request('bedrooms') === null)>Any</option>
+                            @for ($b = 0; $b <= 6; $b++)
+                                <option value="{{ $b }}" @selected((string) request('bedrooms') === (string) $b)>{{ $b }} {{ Str::plural('bed', $b) }}</option>
+                            @endfor
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-2">Price Range</label>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">{{ __('Price range (KES / mo)') }}</label>
                         <div class="flex items-center gap-2">
-                            <input type="number" placeholder="Min" class="w-full rounded-xl border-gray-300 shadow-sm outline-none" disabled title="Coming soon" />
-                            <span class="text-gray-400">-</span>
-                            <input type="number" placeholder="Max" class="w-full rounded-xl border-gray-300 shadow-sm outline-none" disabled title="Coming soon" />
+                            <input
+                                type="number"
+                                name="min_rent"
+                                min="0"
+                                step="1"
+                                placeholder="Min"
+                                value="{{ request('min_rent') }}"
+                                class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 outline-none"
+                            />
+                            <span class="text-gray-400 shrink-0">–</span>
+                            <input
+                                type="number"
+                                name="max_rent"
+                                min="0"
+                                step="1"
+                                placeholder="Max"
+                                value="{{ request('max_rent') }}"
+                                class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 outline-none"
+                            />
                         </div>
                     </div>
-                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-md shadow-indigo-600/20">Apply Filters</button>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2" for="sort">Sort</label>
+                        <select
+                            id="sort"
+                            name="sort"
+                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-700 outline-none"
+                        >
+                            <option value="updated" @selected($currentSort === 'updated')>{{ __('Recently updated') }}</option>
+                            <option value="featured" @selected($currentSort === 'featured')>{{ __('Featured first') }}</option>
+                            <option value="rent_asc" @selected($currentSort === 'rent_asc')>{{ __('Rent: low to high') }}</option>
+                            <option value="rent_desc" @selected($currentSort === 'rent_desc')>{{ __('Rent: high to low') }}</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-md shadow-indigo-600/20">{{ __('Apply filters') }}</button>
+                    <p class="text-center">
+                        <a href="{{ route('public.properties') }}" class="text-sm font-bold text-indigo-600 hover:text-indigo-700">{{ __('Clear filters') }}</a>
+                    </p>
                 </form>
             </div>
 
@@ -45,7 +96,7 @@
                     <p class="text-gray-600 font-medium">
                         Showing <span class="font-bold text-gray-900">{{ $units->total() }}</span> {{ Str::plural('result', $units->total()) }}
                     </p>
-                    <span class="text-sm text-gray-500">Sorted by recently updated</span>
+                    <span class="text-sm text-gray-500">{{ __('Sorted by') }} <span class="font-semibold text-gray-700">{{ $sortLabel }}</span></span>
                 </div>
 
                 @if ($units->isEmpty())
