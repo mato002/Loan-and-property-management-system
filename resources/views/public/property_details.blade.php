@@ -1,0 +1,138 @@
+@php
+    $title = $unit->property->name.' — Unit '.$unit->label;
+    $addr = trim(collect([$unit->property->address_line, $unit->property->city])->filter()->implode(', ')) ?: '—';
+    $rentDisplay = 'KES '.number_format((float) $unit->rent_amount, 0);
+    $desc = $unit->public_listing_description;
+@endphp
+<x-public-layout>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
+            <div>
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="bg-indigo-100 text-indigo-800 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">For Rent</span>
+                    <span class="text-gray-500 font-medium text-sm">
+                        <svg class="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Updated {{ $unit->updated_at->diffForHumans() }}
+                    </span>
+                </div>
+                <h1 class="text-4xl sm:text-5xl font-black text-gray-900 tracking-tight">{{ $title }}</h1>
+                <p class="text-lg text-gray-500 mt-2 flex items-center gap-1.5 font-medium">
+                    <svg class="w-5 h-5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    {{ $addr }}
+                </p>
+            </div>
+            <div class="text-left md:text-right">
+                <p class="text-4xl font-black text-indigo-600">{{ $rentDisplay }} <span class="text-xl text-gray-500 font-medium tracking-normal">/ mo</span></p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 h-[400px] md:h-[550px]">
+            <div class="col-span-1 md:col-span-2 h-full rounded-3xl overflow-hidden cursor-pointer relative group">
+                <img src="{{ $gallerySlots[0] }}" alt="Main" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+                <div class="absolute inset-0 bg-gray-900/10 group-hover:bg-gray-900/0 transition-colors"></div>
+            </div>
+            <div class="hidden md:grid grid-rows-2 gap-4 col-span-1 h-full">
+                <div class="rounded-3xl overflow-hidden cursor-pointer relative group h-full">
+                    <img src="{{ $gallerySlots[1] }}" alt="Photo" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+                </div>
+                <div class="rounded-3xl overflow-hidden cursor-pointer relative group h-full">
+                    <img src="{{ $gallerySlots[2] }}" alt="Photo" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+                </div>
+            </div>
+            <div class="hidden md:grid grid-rows-2 gap-4 col-span-1 h-full">
+                <div class="rounded-3xl overflow-hidden cursor-pointer relative group h-full">
+                    <img src="{{ $gallerySlots[3] }}" alt="Photo" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+                </div>
+                <div class="rounded-3xl overflow-hidden cursor-pointer relative group h-full">
+                    @if ($extraPhotoCount > 0)
+                        <div class="absolute inset-0 bg-gray-900/60 z-10 flex items-center justify-center">
+                            <span class="text-white font-black text-xl tracking-wider">+{{ $extraPhotoCount }} {{ Str::plural('photo', $extraPhotoCount) }}</span>
+                        </div>
+                    @endif
+                    <img src="{{ $gallerySlots[4] }}" alt="Photo" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="flex flex-col lg:flex-row gap-12">
+            <div class="w-full lg:w-2/3">
+                <div class="bg-gray-50 border border-gray-100 rounded-3xl p-6 md:p-8 flex flex-wrap justify-between items-center mb-10 shadow-sm gap-y-6">
+                    <div class="text-center px-2 md:px-4">
+                        <p class="text-gray-500 font-bold mb-1">Bedrooms</p>
+                        <p class="text-2xl font-black text-gray-900">{{ $unit->bedrooms }} <span class="text-sm font-medium text-gray-400">{{ Str::plural('Bed', $unit->bedrooms) }}</span></p>
+                    </div>
+                    <div class="hidden sm:block w-px h-12 bg-gray-200"></div>
+                    <div class="text-center px-2 md:px-4">
+                        <p class="text-gray-500 font-bold mb-1">Unit</p>
+                        <p class="text-2xl font-black text-gray-900">{{ $unit->label }}</p>
+                    </div>
+                    <div class="hidden sm:block w-px h-12 bg-gray-200"></div>
+                    <div class="text-center px-2 md:px-4">
+                        <p class="text-gray-500 font-bold mb-1">Monthly rent</p>
+                        <p class="text-2xl font-black text-gray-900">{{ $rentDisplay }}</p>
+                    </div>
+                    <div class="hidden sm:block w-px h-12 bg-gray-200"></div>
+                    <div class="text-center px-2 md:px-4">
+                        <p class="text-gray-500 font-bold mb-1">Property</p>
+                        <p class="text-xl font-black text-gray-900 mt-2 truncate max-w-[140px]">{{ $unit->property->name }}</p>
+                    </div>
+                </div>
+
+                <div class="mb-12">
+                    <h2 class="text-2xl font-black text-gray-900 mb-6">Description</h2>
+                    <div class="prose prose-lg text-gray-600 max-w-none">
+                        @if ($desc)
+                            <div class="leading-relaxed whitespace-pre-line">{{ $desc }}</div>
+                        @else
+                            <p class="mb-4 leading-relaxed">Contact us for a full walkthrough and availability. This unit is professionally managed and move-in ready.</p>
+                        @endif
+                    </div>
+                </div>
+
+                <div class="mb-12">
+                    <h2 class="text-2xl font-black text-gray-900 mb-8">Features &amp; Amenities</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8 text-gray-700 font-bold text-sm">
+                        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Professionally managed</div>
+                        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Vacant &amp; available</div>
+                        <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Online applications</div>
+                    </div>
+                </div>
+
+                <div class="mb-12">
+                    <h2 class="text-2xl font-black text-gray-900 mb-6">Location Map</h2>
+                    <div class="bg-gray-100 w-full h-80 rounded-3xl flex items-center justify-center text-gray-400 font-bold uppercase tracking-widest border border-gray-200 shadow-inner">
+                        <svg class="w-8 h-8 mr-3 mb-1 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                        Map Integration Region
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full lg:w-1/3">
+                <div class="bg-white border border-gray-100 p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] sticky top-28">
+                    <div class="flex items-center gap-5 mb-8 pb-8 border-b border-gray-100">
+                        <div class="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-xl border border-indigo-100">PM</div>
+                        <div>
+                            <p class="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Property Management</p>
+                            <p class="text-xl font-black text-gray-900">{{ config('app.name') }}</p>
+                            <p class="text-sm font-bold text-indigo-600 mt-1">Ask about this unit</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4 mb-8">
+                        <a href="{{ route('public.contact') }}" class="flex items-center justify-center gap-3 w-full bg-gray-50 hover:bg-gray-100 text-gray-900 font-black py-4 rounded-2xl transition-colors border border-gray-200">
+                            <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                            Contact us
+                        </a>
+                    </div>
+
+                    <a href="{{ route('public.apply', ['property_unit' => $unit->id]) }}" class="flex items-center justify-center gap-2 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg py-5 rounded-2xl transition-all hover:-translate-y-1 shadow-xl shadow-indigo-600/30">
+                        Apply Online Now
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</x-public-layout>
