@@ -3,7 +3,7 @@
 
     <x-property.page
         title="Listings"
-        subtitle="Setup ties a vacant unit to photos and publish. Vacant units is the full roster; Live on website lists what is already public."
+        subtitle="Vacant units show on the public site automatically. Setup / Vacant units add photos and publish to feature listings; Live on website lists featured units only."
     >
         <x-property.module-status label="Listings" class="mb-4" />
 
@@ -24,9 +24,9 @@
         <x-property.hub-grid :items="$hubItems ?? [
             ['route' => 'property.listings.create', 'title' => 'Setup a listing', 'description' => 'Pick a vacant unit, then photos & publish.'],
             ['route' => 'property.listings.vacant', 'title' => 'Vacant units', 'description' => 'Full roster and status.'],
-            ['route' => 'property.listings.ads', 'title' => 'Live on website', 'description' => 'Published units and links.'],
+            ['route' => 'property.listings.ads', 'title' => 'Live on website', 'description' => 'Featured units (photos + publish) and links.'],
             ['route' => 'property.listings.leads', 'title' => 'Leads', 'description' => 'Optional pipeline (forms).'],
-            ['route' => 'property.listings.applications', 'title' => 'Applications', 'description' => 'Roadmap.'],
+            ['route' => 'property.listings.applications', 'title' => 'Applications', 'description' => 'Track applicants, units, and approval status.'],
         ]" />
     </x-property.page>
 </x-property-layout>

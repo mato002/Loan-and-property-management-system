@@ -30,6 +30,8 @@ function runFlash() {
     })();
 }
 
+window.__runSwalFlash = runFlash;
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', runFlash);
 } else {

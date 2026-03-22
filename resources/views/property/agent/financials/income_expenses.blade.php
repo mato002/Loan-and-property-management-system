@@ -6,7 +6,7 @@
     :columns="$columns"
     :table-rows="$tableRows"
     empty-title="No GL mapping yet"
-    empty-hint="Map rent, fees, maintenance, and utilities to your chart of accounts; export summary as CSV."
+    empty-hint="Rollups below use live invoices, maintenance quotes, and utility charges."
 >
     <x-slot name="actions">
         <a
@@ -18,7 +18,9 @@
             <option value="2025">FY 2025</option>
         </select>
     </x-slot>
-    <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 h-56 min-h-[12rem] w-full min-w-0 flex items-center justify-center text-sm text-slate-500 px-4 text-center">
-        Waterfall placeholder — income to NOI
-    </div>
+    <x-property.chart-bar
+        title="Income stack (magnitudes)"
+        value-format="kes"
+        :series="$waterfallBars ?? []"
+    />
 </x-property.workspace>

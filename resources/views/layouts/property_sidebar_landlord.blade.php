@@ -36,7 +36,7 @@
 
 <aside
     class="property-sidebar fixed inset-y-0 left-0 z-50 w-[280px] sm:w-[288px] bg-[#2f4f4f] border-r border-[#264040] text-[#d4e4e3] text-base transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col shadow-xl shadow-black/20 lg:shadow-none overflow-hidden flex-shrink-0"
-    :class="{ 'translate-x-0': sidebarOpen, '-translate-x-full': !sidebarOpen }"
+    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-lg:pointer-events-none'"
 >
     <div class="h-14 flex items-center justify-between px-4 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md lg:hidden shrink-0">
         <span class="text-sm font-semibold uppercase tracking-wide text-[#8db1af]">Menu</span>
@@ -52,10 +52,13 @@
             @php $active = $navActive($data['active']); @endphp
             <a
                 href="{{ route($data['route']) }}"
+                data-turbo-frame="property-main"
+                data-property-nav="{{ $data['active'] }}"
+                @if ($active) aria-current="page" @endif
                 @click="if (window.innerWidth < 1024) sidebarOpen = false"
-                class="group flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium border-l-[3px] transition-all duration-150 {{ $active ? 'border-emerald-300 bg-[#406866]/80 text-white font-semibold' : 'border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white' }}"
+                class="group flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium border-l-[3px] transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
             >
-                <svg class="w-6 h-6 shrink-0 {{ $active ? 'text-emerald-200' : 'text-[#8db1af] group-hover:text-white' }} transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <svg class="w-6 h-6 shrink-0 text-[#8db1af] group-hover:text-white group-aria-[current=page]:text-emerald-200 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="{{ $data['icon'] }}" />
                 </svg>
                 <span class="truncate">{{ $itemName }}</span>
@@ -76,7 +79,12 @@
     </nav>
 
     <div class="p-3 border-t border-[#264040] bg-[#243d3d]/40 shrink-0">
-        <a href="{{ route('profile.edit') }}" class="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#406866]/50 transition-colors">
+        <a
+            href="{{ route('profile.edit') }}"
+            data-turbo-frame="property-main"
+            data-property-nav="profile.edit"
+            class="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#406866]/50 transition-colors"
+        >
             <div class="w-11 h-11 rounded-full bg-emerald-500/25 border border-emerald-400/35 flex items-center justify-center text-emerald-200 font-semibold text-base shrink-0">
                 {{ Auth::check() && Auth::user()->name ? mb_substr(Auth::user()->name, 0, 1) : 'L' }}
             </div>

@@ -32,14 +32,14 @@ class AgentPublicListingController extends Controller
                 'title' => 'Vacant units',
                 'description' => $vacantCount === 0
                     ? 'No vacant inventory yet — add units under Properties.'
-                    : $vacantCount.' vacant — '.$publishedCount.' live on the website, '.$withPhotosCount.' with photos.',
+                    : $vacantCount.' vacant on the public Discover page — '.$publishedCount.' featured (photos + publish), '.$withPhotosCount.' with photos.',
             ],
             [
                 'route' => 'property.listings.ads',
                 'title' => 'Live on website',
                 'description' => $publishedCount === 0
-                    ? 'Nothing published yet — use Setup a listing or Vacant units first.'
-                    : $publishedCount.' published listing'.($publishedCount === 1 ? '' : 's').' with public URLs and edit links.',
+                    ? 'No featured listings yet — vacant units still appear on Discover with a placeholder image until you add photos and publish here.'
+                    : $publishedCount.' featured listing'.($publishedCount === 1 ? '' : 's').' with gallery + public URLs.',
             ],
             [
                 'route' => 'property.listings.leads',
@@ -57,7 +57,7 @@ class AgentPublicListingController extends Controller
             'hubItems' => $hubItems,
             'hubStats' => [
                 ['label' => 'Vacant', 'value' => (string) $vacantCount, 'hint' => 'Units'],
-                ['label' => 'Published', 'value' => (string) $publishedCount, 'hint' => 'On Discover'],
+                ['label' => 'Featured', 'value' => (string) $publishedCount, 'hint' => 'Photos + publish'],
                 ['label' => 'With photos', 'value' => (string) $withPhotosCount, 'hint' => 'Gallery ready'],
             ],
         ]);
@@ -67,8 +67,7 @@ class AgentPublicListingController extends Controller
     {
         $published = PropertyUnit::query()
             ->with(['property', 'publicImages'])
-            ->where('status', PropertyUnit::STATUS_VACANT)
-            ->where('public_listing_published', true)
+            ->publicListingPublished()
             ->orderBy('property_id')
             ->orderBy('label')
             ->get();
@@ -96,7 +95,7 @@ class AgentPublicListingController extends Controller
         $stats = [
             ['label' => 'Vacant units', 'value' => (string) $vacantUnits->count(), 'hint' => 'Can get a public listing'],
             ['label' => 'With photos', 'value' => (string) $vacantUnits->filter(fn (PropertyUnit $u) => $u->publicImages->isNotEmpty())->count(), 'hint' => 'Started or complete'],
-            ['label' => 'Published', 'value' => (string) $vacantUnits->where('public_listing_published', true)->count(), 'hint' => 'Live on Discover'],
+            ['label' => 'Featured', 'value' => (string) $vacantUnits->where('public_listing_published', true)->count(), 'hint' => 'Photos + publish'],
         ];
 
         return view('property.agent.listings.create', [
@@ -128,7 +127,7 @@ class AgentPublicListingController extends Controller
 
         $stats = [
             ['label' => 'Vacant units', 'value' => (string) $units->count(), 'hint' => 'Eligible to list'],
-            ['label' => 'Published', 'value' => (string) $units->where('public_listing_published', true)->count(), 'hint' => 'Live on website'],
+            ['label' => 'Featured', 'value' => (string) $units->where('public_listing_published', true)->count(), 'hint' => 'Photos + publish'],
             ['label' => 'With photos', 'value' => (string) $units->filter(fn (PropertyUnit $u) => $u->publicImages->isNotEmpty())->count(), 'hint' => 'Gallery'],
         ];
 

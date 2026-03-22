@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Models\PmInvoice;
+use App\Models\PmPenaltyRule;
 use App\Services\Property\PropertyDashboardStats;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\RentRollQuery;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class RevenueController extends Controller
@@ -71,16 +74,69 @@ class RevenueController extends Controller
 
     public function penalties(): View
     {
+        $rules = PmPenaltyRule::query()->orderByDesc('is_active')->orderBy('name')->get();
+        $active = $rules->where('is_active', true);
+
+        $rows = $rules->map(function (PmPenaltyRule $r) {
+            $parts = [$r->formula];
+            if ($r->percent !== null) {
+                $parts[] = (string) $r->percent.'%';
+            }
+            if ($r->amount !== null) {
+                $parts[] = PropertyMoney::kes((float) $r->amount);
+            }
+
+            return [
+                $r->name,
+                $r->scope,
+                $r->trigger_event,
+                implode(' · ', array_filter($parts)),
+                $r->cap !== null ? PropertyMoney::kes((float) $r->cap) : '—',
+                $r->effective_from?->format('Y-m-d') ?? '—',
+                $r->is_active ? 'Active' : 'Off',
+            ];
+        })->all();
+
         return view('property.agent.revenue.penalties', [
             'stats' => [
-                ['label' => 'Active rules', 'value' => '0', 'hint' => 'Table `pm_penalty_rules` not added yet'],
-                ['label' => 'Applied (MTD)', 'value' => PropertyMoney::kes(0), 'hint' => ''],
+                ['label' => 'Rules', 'value' => (string) $rules->count(), 'hint' => 'Defined'],
+                ['label' => 'Active', 'value' => (string) $active->count(), 'hint' => ''],
+                ['label' => 'Applied (MTD)', 'value' => PropertyMoney::kes(0), 'hint' => 'Posting not automated'],
                 ['label' => 'Waived (MTD)', 'value' => PropertyMoney::kes(0), 'hint' => ''],
-                ['label' => 'Pending review', 'value' => '0', 'hint' => ''],
             ],
             'columns' => ['Rule name', 'Scope', 'Trigger', 'Formula', 'Cap', 'Effective', 'Status'],
-            'tableRows' => [],
+            'tableRows' => $rows,
+            'penaltyRules' => $rules,
         ]);
+    }
+
+    public function storePenaltyRule(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:128'],
+            'scope' => ['required', 'string', 'max:64'],
+            'trigger_event' => ['required', 'string', 'max:64'],
+            'formula' => ['required', 'string', 'max:64'],
+            'amount' => ['nullable', 'numeric', 'min:0'],
+            'percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'cap' => ['nullable', 'numeric', 'min:0'],
+            'effective_from' => ['nullable', 'date'],
+            'is_active' => ['sometimes', 'boolean'],
+        ]);
+
+        PmPenaltyRule::query()->create([
+            ...$data,
+            'is_active' => $request->boolean('is_active', true),
+        ]);
+
+        return back()->with('success', __('Penalty rule saved.'));
+    }
+
+    public function destroyPenaltyRule(PmPenaltyRule $penalty_rule): RedirectResponse
+    {
+        $penalty_rule->delete();
+
+        return back()->with('success', __('Rule removed.'));
     }
 
     public function receipts(): View

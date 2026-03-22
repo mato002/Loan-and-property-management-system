@@ -3,7 +3,7 @@
 
     <x-property.page
         title="Public website listing"
-        subtitle="Photos appear on Discover Properties and the listing detail page (same design as today’s public site)."
+        subtitle="This vacant unit already appears on the public Discover page. Photos and publish turn it into a featured listing with a gallery."
     >
         <div class="flex flex-wrap items-center gap-3 mb-6">
             <a
@@ -12,16 +12,14 @@
             >
                 ← Back to vacant listings
             </a>
-            @if ($unit->public_listing_published)
-                <a
-                    href="{{ route('public.property_details', $unit->id) }}"
-                    target="_blank"
-                    rel="noopener"
-                    class="inline-flex items-center text-sm font-medium text-slate-600 dark:text-slate-300 hover:underline"
-                >
-                    View on public site ↗
-                </a>
-            @endif
+            <a
+                href="{{ route('public.property_details', $unit->id) }}"
+                target="_blank"
+                rel="noopener"
+                class="inline-flex items-center text-sm font-medium text-slate-600 dark:text-slate-300 hover:underline"
+            >
+                View on public site ↗
+            </a>
         </div>
 
         <div class="grid gap-6 lg:grid-cols-2 max-w-5xl">

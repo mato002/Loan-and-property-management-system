@@ -1,13 +1,12 @@
 <x-property.workspace
     title="Receipts (eTIMS)"
-    subtitle="Official receipts for settled amounts — download PDF when eTIMS is connected."
+    subtitle="Paid invoices shown as receipt stubs — connect eTIMS or your tax API to populate status and downloads."
     back-route="property.tenant.payments.index"
-    :stats="[
-        ['label' => 'Receipts', 'value' => '0', 'hint' => 'On file'],
-    ]"
-    :columns="['Date', 'Receipt #', 'Amount', 'Tax', 'Invoice', 'eTIMS status', 'Download']"
+    :stats="$stats"
+    :columns="$columns"
+    :table-rows="$tableRows"
     empty-title="No receipts"
-    empty-hint="Receipts generate after payment is allocated and fiscal payload succeeds."
+    empty-hint="Receipts appear when invoices are fully paid; fiscal integration can extend the eTIMS column."
 >
     <x-slot name="actions">
         <a

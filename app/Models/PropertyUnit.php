@@ -37,16 +37,28 @@ class PropertyUnit extends Model
     }
 
     /**
-     * Vacant units the agent has marked live on the public website.
+     * Vacant units eligible for the public directory (Discover, home, details).
+     * Agents can still refine copy and photos under Listings; publish only affects ordering on the home page.
      *
      * @param  Builder<PropertyUnit>  $query
      * @return Builder<PropertyUnit>
      */
     public function scopePubliclyListed(Builder $query): Builder
     {
+        return $query->where('status', self::STATUS_VACANT);
+    }
+
+    /**
+     * Vacant units the agent has explicitly marked live (photos + publish toggle satisfied).
+     *
+     * @param  Builder<PropertyUnit>  $query
+     * @return Builder<PropertyUnit>
+     */
+    public function scopePublicListingPublished(Builder $query): Builder
+    {
         return $query
-            ->where('public_listing_published', true)
-            ->where('status', self::STATUS_VACANT);
+            ->where('status', self::STATUS_VACANT)
+            ->where('public_listing_published', true);
     }
 
     public function property(): BelongsTo

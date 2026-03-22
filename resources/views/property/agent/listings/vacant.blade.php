@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Vacant unit listings"
-    subtitle="Upload photos and publish vacant units to the public website — same layout as Discover Properties."
+    subtitle="Vacant units appear on the public Discover page automatically. Add photos and publish to feature them with a gallery."
     back-route="property.listings.index"
     :stats="$stats"
     :columns="[]"
@@ -24,8 +24,8 @@
             class="w-full min-w-0 sm:w-auto rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2"
         >
             <option value="">All statuses</option>
-            <option value="live">Live</option>
-            <option value="draft">Draft</option>
+            <option value="featured">Featured</option>
+            <option value="standard">Standard (on site)</option>
         </select>
     </x-slot>
 
@@ -45,7 +45,7 @@
             <tbody>
                 @forelse ($vacantUnits as $u)
                     @php
-                        $statusWord = $u->public_listing_published ? 'live' : 'draft';
+                        $statusWord = $u->public_listing_published ? 'featured' : 'standard';
                         $filterText = mb_strtolower(
                             implode(' ', [
                                 (string) $u->label,
@@ -69,9 +69,9 @@
                         <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 tabular-nums">{{ $u->publicImages->count() }}</td>
                         <td class="px-3 sm:px-4 py-3">
                             @if ($u->public_listing_published)
-                                <span class="inline-flex rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 text-xs font-semibold">Live</span>
+                                <span class="inline-flex rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 text-xs font-semibold">Featured</span>
                             @else
-                                <span class="inline-flex rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 text-xs font-semibold">Draft</span>
+                                <span class="inline-flex rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 text-xs font-semibold">On Discover</span>
                             @endif
                         </td>
                         <td class="px-3 sm:px-4 py-3">

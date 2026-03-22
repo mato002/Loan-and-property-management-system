@@ -98,8 +98,17 @@ class PropertyPortfolioController extends Controller
             return back()->withErrors(['user_id' => __('That landlord is not linked to this property.')]);
         }
 
+        $newPct = (float) $data['ownership_percent'];
+        $others = (float) $property->landlords()
+            ->where('users.id', '!=', $data['user_id'])
+            ->sum('property_landlord.ownership_percent');
+
+        if ($others + $newPct > 100.0001) {
+            return back()->withErrors(['ownership_percent' => __('Total ownership for this property cannot exceed 100%.')]);
+        }
+
         $property->landlords()->updateExistingPivot($data['user_id'], [
-            'ownership_percent' => $data['ownership_percent'],
+            'ownership_percent' => $newPct,
         ]);
 
         return back()->with('success', __('Ownership % updated.'));
@@ -250,11 +259,19 @@ class PropertyPortfolioController extends Controller
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
             'user_id' => ['required', 'exists:users,id'],
+            'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         $property = Property::query()->findOrFail($data['property_id']);
+        $pct = (float) ($data['ownership_percent'] ?? 100);
+
+        $currentSum = (float) $property->landlords()->sum('property_landlord.ownership_percent');
+        if ($currentSum + $pct > 100.0001) {
+            return back()->withErrors(['ownership_percent' => __('Total ownership for this property would exceed 100%.')]);
+        }
+
         $property->landlords()->syncWithoutDetaching([
-            $data['user_id'] => ['ownership_percent' => 100],
+            $data['user_id'] => ['ownership_percent' => $pct],
         ]);
 
         return back()->with('success', 'Landlord linked to property.');

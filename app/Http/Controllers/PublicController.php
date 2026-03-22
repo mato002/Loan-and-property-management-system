@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PmTenant;
+use App\Models\Property;
 use App\Models\PropertyUnit;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -18,6 +21,7 @@ class PublicController extends Controller
         $featuredUnits = PropertyUnit::query()
             ->publiclyListed()
             ->with(['property', 'publicImages'])
+            ->orderByDesc('public_listing_published')
             ->orderByDesc('updated_at')
             ->limit(3)
             ->get();
@@ -25,6 +29,12 @@ class PublicController extends Controller
         return view('public.home', [
             'featuredUnits' => $featuredUnits,
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
+            'publicStats' => [
+                'properties' => Property::query()->count(),
+                'vacant_listings' => PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)->count(),
+                'landlords' => User::query()->where('property_portal_role', 'landlord')->count(),
+                'tenants' => PmTenant::query()->count(),
+            ],
         ]);
     }
 

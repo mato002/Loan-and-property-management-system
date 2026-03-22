@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\ConfigureViteHotRequests;
 use App\Http\Middleware\EnsureActivePropertySystem;
 use App\Http\Middleware\EnsurePropertyPortalRole;
 use App\Http\Middleware\LogLoanPortalAccess;
@@ -19,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prependToGroup('web', ConfigureViteHotRequests::class);
         $middleware->appendToGroup('web', LogLoanPortalAccess::class);
         $middleware->alias([
             'property.system' => EnsureActivePropertySystem::class,

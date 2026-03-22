@@ -7,6 +7,8 @@ use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmPayment;
+use App\Models\PmTenantPortalRequest;
+use App\Models\PropertyUnit;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -97,7 +99,7 @@ class TenantPortalController extends Controller
             PropertyMoney::kes((float) $i->amount),
             '—',
             $i->invoice_no,
-            'stub',
+            'Not submitted',
             '—',
         ])->all();
 
@@ -237,5 +239,68 @@ class TenantPortalController extends Controller
         return redirect()
             ->route('property.tenant.maintenance.index')
             ->with('success', 'Your maintenance request was submitted.');
+    }
+
+    public function requestsPage(Request $request): View
+    {
+        $list = $request->user()
+            ->pmTenantPortalRequests()
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get();
+
+        return view('property.tenant.requests', [
+            'requests' => $list,
+        ]);
+    }
+
+    public function storePortalRequest(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'type' => ['required', 'string', Rule::in([
+                PmTenantPortalRequest::TYPE_VACATE,
+                PmTenantPortalRequest::TYPE_EXTENSION,
+            ])],
+            'message' => ['nullable', 'string', 'max:5000'],
+            'preferred_date' => ['nullable', 'date'],
+        ]);
+
+        PmTenantPortalRequest::query()->create([
+            'user_id' => $request->user()->id,
+            'type' => $data['type'],
+            'status' => 'submitted',
+            'message' => $data['message'] ?? null,
+            'preferred_date' => $data['preferred_date'] ?? null,
+        ]);
+
+        return back()->with('success', 'Your request was submitted. Property management will follow up.');
+    }
+
+    public function explore(Request $request): View
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        $leasePropertyIds = collect();
+        if ($tenant) {
+            $lease = PmLease::query()
+                ->where('pm_tenant_id', $tenant->id)
+                ->where('status', PmLease::STATUS_ACTIVE)
+                ->with('units.property')
+                ->first();
+            if ($lease) {
+                $leasePropertyIds = $lease->units->pluck('property_id')->unique();
+            }
+        }
+
+        $units = PropertyUnit::query()
+            ->with(['property', 'publicImages'])
+            ->publicListingPublished()
+            ->orderByDesc('updated_at')
+            ->limit(24)
+            ->get();
+
+        return view('property.tenant.explore', [
+            'units' => $units,
+            'leasePropertyIds' => $leasePropertyIds,
+        ]);
     }
 }

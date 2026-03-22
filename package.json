@@ -3,6 +3,7 @@
     "private": true,
     "type": "module",
     "dependencies": {
+        "@hotwired/turbo": "^8.0.23",
         "chart.js": "^4.5.1",
         "sweetalert2": "^11.26.24"
     },

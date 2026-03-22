@@ -49,7 +49,7 @@
     $todayLabel = now()->format('D, j M');
 @endphp
 
-<header class="property-topbar flex-shrink-0 z-30 shadow-md shadow-emerald-950/10">
+<header class="property-topbar relative z-50 flex-shrink-0 shadow-md shadow-emerald-950/10">
     <div class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 text-white">
         <div class="flex items-center justify-between h-[60px] sm:h-[64px] px-3 sm:px-5 lg:px-6 gap-2 sm:gap-4">
             <div class="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
@@ -62,7 +62,12 @@
                     <i class="fa-solid fa-bars text-xl" aria-hidden="true"></i>
                 </button>
 
-                <a href="{{ route($homeRoute) }}" class="flex items-center gap-2.5 sm:gap-3 min-w-0 group shrink-0">
+                <a
+                    href="{{ route($homeRoute) }}"
+                    data-turbo-frame="property-main"
+                    data-property-nav="{{ $homeRoute }}"
+                    class="flex items-center gap-2.5 sm:gap-3 min-w-0 group shrink-0"
+                >
                     <span class="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/25 shadow-inner">
                         @if ($portalRole === 'agent')
                             <i class="fa-solid fa-building text-lg sm:text-xl text-white" aria-hidden="true"></i>
@@ -106,7 +111,9 @@
 
                 <a
                     href="{{ $notifyRoute }}"
-                    class="sm:hidden p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/10 transition-colors"
+                    data-turbo-frame="property-main"
+                    data-property-nav="{{ $notifyNavPattern }}"
+                    class="sm:hidden p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/10 transition-colors aria-[current=page]:bg-white/20 aria-[current=page]:text-white"
                     aria-label="Notifications"
                 >
                     <i class="fa-regular fa-bell text-lg" aria-hidden="true"></i>
@@ -114,7 +121,7 @@
 
                 <div class="hidden sm:block w-px h-8 bg-white/20 mx-0.5" aria-hidden="true"></div>
 
-                <div class="relative" x-data="{ userMenuOpen: false }" @click.away="userMenuOpen = false">
+                <div class="relative z-[60]" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
                     <button
                         type="button"
                         @click="userMenuOpen = !userMenuOpen"
@@ -141,7 +148,7 @@
                         x-transition:leave="transition ease-in duration-150"
                         x-transition:leave-start="opacity-100 translate-y-0"
                         x-transition:leave-end="opacity-0 translate-y-1"
-                        class="absolute right-0 mt-2 w-56 rounded-xl bg-white text-slate-800 shadow-xl border border-slate-200/80 py-1.5 z-50 overflow-hidden"
+                        class="absolute right-0 mt-2 w-56 rounded-xl bg-white text-slate-800 shadow-xl border border-slate-200/80 py-1.5 z-[100] overflow-hidden"
                         x-cloak
                     >
                         <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50/80 md:hidden">
@@ -156,7 +163,7 @@
 
                         <div class="border-t border-slate-100 my-1"></div>
 
-                        <form method="POST" action="{{ route('logout') }}">
+                        <form method="POST" action="{{ route('logout') }}" data-turbo="false">
                             @csrf
                             <button type="submit" class="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left">
                                 <i class="fa-solid fa-right-from-bracket w-4 text-center" aria-hidden="true"></i>
@@ -170,16 +177,24 @@
 
         {{-- Quick shortcuts (role-specific) --}}
         <div class="hidden md:block border-t border-white/15 bg-emerald-800/35 backdrop-blur-sm">
-            <nav class="flex items-center gap-1 px-4 py-2 overflow-x-auto custom-scrollbar" aria-label="Quick shortcuts">
+            <nav class="property-header-quick flex items-center gap-1 px-4 py-2 overflow-x-auto custom-scrollbar" aria-label="Quick shortcuts">
                 @foreach ($quickLinks as $link)
                     @php $active = $linkActive($link['patterns']); @endphp
                     <a
                         href="{{ route($link['route']) }}"
-                        @class([
-                            'shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap',
-                            'bg-white text-emerald-800 shadow-sm' => $active,
-                            'text-white/90 hover:bg-white/10' => ! $active,
-                        ])
+                        data-turbo-frame="property-main"
+                        data-property-nav="{{ implode('|', $link['patterns']) }}"
+                        @if ($active) aria-current="page" @endif
+                        class="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm"
+                    >
+                        {{ $link['label'] }}
+                    </a>
+                @endforeach
+            </nav>
+        </div>
+    </div>
+</header>
+  ])
                     >
                         {{ $link['label'] }}
                     </a>

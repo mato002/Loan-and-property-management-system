@@ -2,7 +2,7 @@
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-slate-500">
         <p class="text-center sm:text-left">
             &copy; {{ date('Y') }}
-            <a href="{{ url('/') }}" class="text-emerald-700 hover:text-emerald-800 hover:underline font-medium">{{ config('app.name', 'Property Management') }}</a>.
+            <a href="{{ url('/') }}" data-turbo="false" class="text-emerald-700 hover:text-emerald-800 hover:underline font-medium">{{ config('app.name', 'Property Management') }}</a>.
             All rights reserved.
         </p>
         <p class="text-center sm:text-right tabular-nums text-slate-400">

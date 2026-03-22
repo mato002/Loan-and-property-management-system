@@ -205,8 +205,4 @@
             </a>
         </div>
     </x-property.page>
-
-    @push('scripts')
-        @vite(['resources/js/property-dashboard.js'])
-    @endpush
 </x-property-layout>

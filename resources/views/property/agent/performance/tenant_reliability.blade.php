@@ -1,14 +1,12 @@
 <x-property.workspace
     title="Tenant reliability scoring"
-    subtitle="Later phase — transparent, consent-based behavioral signals; no hidden black-box scores in production."
+    subtitle="Directory view with risk flags from tenant profiles — extend with explicit scoring rules when you define them."
     back-route="property.performance.index"
-    :stats="[
-        ['label' => 'Model status', 'value' => 'Off', 'hint' => 'Not configured'],
-        ['label' => 'Features planned', 'value' => '0', 'hint' => 'Registered'],
-    ]"
-    :columns="['Tenant', 'Score', 'Drivers', 'Last computed', 'Human review', 'Actions']"
-    empty-title="Scoring not enabled"
-    empty-hint="When you enable this: document data sources, retention, appeal path, and landlord visibility rules (GDPR / consent)."
+    :stats="$stats"
+    :columns="$columns"
+    :table-rows="$tableRows"
+    empty-title="No tenants yet"
+    empty-hint="Add tenants from the Tenants workspace; use risk_level as a manual signal until a model is approved."
 >
     <x-slot name="footer">
         <p class="font-medium text-slate-800 dark:text-slate-200">Ethical checklist</p>

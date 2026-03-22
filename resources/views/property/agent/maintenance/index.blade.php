@@ -12,6 +12,7 @@
             ['route' => 'property.maintenance.jobs', 'title' => 'Active jobs', 'description' => 'Work orders in flight.'],
             ['route' => 'property.maintenance.history', 'title' => 'Maintenance history', 'description' => 'Done and cancelled jobs.'],
             ['route' => 'property.maintenance.costs', 'title' => 'Cost tracking', 'description' => 'Spend by unit and property.'],
+            ['route' => 'property.maintenance.frequency', 'title' => 'Issue frequency', 'description' => 'Tickets by month (12 months).'],
         ]" />
     </x-property.page>
 </x-property-layout>

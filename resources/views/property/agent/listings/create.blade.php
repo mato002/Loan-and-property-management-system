@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Setup a public listing"
-    subtitle="There is no separate “listing” record — each live page is a vacant unit with photos and publish turned on. Use this step to jump into the editor, or manage everything from Vacant units."
+    subtitle="Vacant units appear on the public Discover page as soon as they exist. Use this flow to add photos, description, and publish to feature a unit with a full gallery."
     back-route="property.listings.index"
     :stats="$stats"
     :columns="[]"
@@ -24,7 +24,7 @@
         <ol class="list-decimal list-inside space-y-2 text-sm text-slate-600 dark:text-slate-300">
             <li><span class="font-medium text-slate-800 dark:text-slate-100">Building &amp; unit</span> exist under <strong>Properties → Units</strong> (unit must be <strong>vacant</strong>).</li>
             <li><span class="font-medium text-slate-800 dark:text-slate-100">Photos &amp; description</span> on the next screen (stored only for the public website).</li>
-            <li><span class="font-medium text-slate-800 dark:text-slate-100">Publish</span> to show the unit on Discover and the public detail page.</li>
+            <li><span class="font-medium text-slate-800 dark:text-slate-100">Publish</span> (with photos) to feature the unit with a gallery; the unit is already visible on Discover while vacant.</li>
         </ol>
 
         @if ($vacantUnits->isEmpty())
@@ -57,11 +57,11 @@
                             <option value="{{ $u->id }}" @selected(old('property_unit_id') == $u->id)>
                                 {{ $u->property->name }} — {{ $u->label }}
                                 @if ($u->public_listing_published)
-                                    (live)
+                                    (featured)
                                 @elseif ($u->publicImages->isNotEmpty())
-                                    (draft · {{ $u->publicImages->count() }} photos)
+                                    (photos · {{ $u->publicImages->count() }})
                                 @else
-                                    (not started)
+                                    (on Discover · no photos yet)
                                 @endif
                             </option>
                         @endforeach

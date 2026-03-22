@@ -175,19 +175,26 @@ class LoanOrganizationController extends Controller
         $unassigned = 'Unassigned';
         $activeStatus = LoanBookLoan::STATUS_ACTIVE;
 
+        // Identical SQL fragment for SELECT and GROUP BY (required by MySQL only_full_group_by).
+        // Use PDO-quoted literals: ? bindings on groupByRaw are not always merged reliably, which
+        // produced `Unassigned` / `active` as bare identifiers in the executed SQL.
+        $pdo = DB::connection()->getPdo();
+        $unassignedSql = $pdo->quote($unassigned);
+        $activeSql = $pdo->quote($activeStatus);
+        $branchKeySql = 'COALESCE(b.name, NULLIF(TRIM(l.branch), \'\'), '.$unassignedSql.')';
+
         $rows = DB::table('loan_book_loans as l')
             ->leftJoin('loan_branches as b', 'l.loan_branch_id', '=', 'b.id')
             ->leftJoin('loan_regions as r', 'b.loan_region_id', '=', 'r.id')
             ->selectRaw(
-                'COALESCE(b.name, NULLIF(TRIM(l.branch), \'\'), ?) as branch_label, '.
-                'r.name as region_name, '.
+                $branchKeySql.' as branch_label, '.
+                'MAX(r.name) as region_name, '.
                 'COUNT(*) as loan_count, '.
                 'COALESCE(SUM(l.principal), 0) as total_principal, '.
                 'COALESCE(SUM(l.balance), 0) as total_balance, '.
-                'SUM(CASE WHEN l.status = ? THEN 1 ELSE 0 END) as active_count',
-                [$unassigned, $activeStatus]
+                'SUM(CASE WHEN l.status = '.$activeSql.' THEN 1 ELSE 0 END) as active_count'
             )
-            ->groupByRaw('COALESCE(b.name, NULLIF(TRIM(l.branch), \'\'), ?), r.name', [$unassigned])
+            ->groupByRaw($branchKeySql)
             ->orderBy('branch_label')
             ->get();
 

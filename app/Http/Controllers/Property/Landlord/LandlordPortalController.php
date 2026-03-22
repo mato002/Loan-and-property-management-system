@@ -9,6 +9,8 @@ use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PropertyUnit;
 use App\Services\Property\LandlordLedger;
+use App\Services\Property\LandlordPortalNotifications;
+use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -41,12 +43,15 @@ class LandlordPortalController extends Controller
         $totalU = (clone $occ)->count();
         $occRate = $totalU > 0 ? round(100 * (clone $occ)->where('status', PropertyUnit::STATUS_OCCUPIED)->count() / $totalU, 1) : null;
 
+        $digest = LandlordPortalNotifications::recent($user, 99);
+
         return view('property.landlord.portfolio', [
             'incomeMonth' => PropertyMoney::kes($gross),
             'occupancyDisplay' => $occRate !== null ? $occRate.'%' : '—',
             'arrearsImpact' => PropertyMoney::kes($arrears),
             'netEarnings' => PropertyMoney::kes(LandlordLedger::balance($user)),
             'propertyCount' => $properties->count(),
+            'digestCount' => count($digest),
         ]);
     }
 
@@ -89,11 +94,12 @@ class LandlordPortalController extends Controller
             return back()->withErrors(['amount' => 'Amount exceeds available balance.'])->withInput();
         }
 
+        $dest = $data['payout_destination'] ?? 'bank';
         LandlordLedger::post(
             $user,
             PmLandlordLedgerEntry::DIRECTION_DEBIT,
             (float) $data['amount'],
-            'Withdrawal request (manual ledger)',
+            'Withdrawal ('.$dest.') — manual ledger',
         );
 
         return redirect()->route('property.landlord.earnings.index')->with('success', 'Withdrawal posted to ledger.');
@@ -248,16 +254,23 @@ class LandlordPortalController extends Controller
     public function properties(Request $request): View
     {
         $user = $request->user();
-        $properties = $user->landlordProperties()->withCount('units')->get();
-        $rows = $properties->map(fn ($p) => [
-            $p->name,
-            (string) $p->units_count,
-            '—',
-            '—',
-            '—',
-            '—',
-            '—',
-        ])->all();
+        $properties = $user->landlordProperties()->with('units')->withCount('units')->get();
+        $rows = $properties->map(function ($p) {
+            $units = $p->units;
+            $occ = $units->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
+            $vac = $units->where('status', PropertyUnit::STATUS_VACANT)->count();
+            $gross = (float) $units->sum(fn ($u) => (float) $u->rent_amount);
+
+            return [
+                $p->name,
+                (string) $units->count(),
+                (string) $occ,
+                (string) $vac,
+                PropertyMoney::kes($gross),
+                '—',
+                '—',
+            ];
+        })->all();
 
         return view('property.landlord.properties', [
             'stats' => [
@@ -266,6 +279,15 @@ class LandlordPortalController extends Controller
             ],
             'columns' => ['Property', 'Units', 'Occupied', 'Vacant', 'Gross rent', 'NOI (est)', 'Actions'],
             'tableRows' => $rows,
+        ]);
+    }
+
+    public function notifications(Request $request): View
+    {
+        $items = LandlordPortalNotifications::recent($request->user());
+
+        return view('property.landlord.notifications', [
+            'notifications' => $items,
         ]);
     }
 
@@ -361,8 +383,16 @@ class LandlordPortalController extends Controller
 
     public function reportCashFlow(Request $request): View
     {
+        $user = $request->user();
+        $mtdBase = PmLandlordLedgerEntry::query()
+            ->where('user_id', $user->id)
+            ->whereYear('occurred_at', now()->year)
+            ->whereMonth('occurred_at', now()->month);
+        $cashIn = (float) (clone $mtdBase)->where('direction', PmLandlordLedgerEntry::DIRECTION_CREDIT)->sum('amount');
+        $cashOut = (float) (clone $mtdBase)->where('direction', PmLandlordLedgerEntry::DIRECTION_DEBIT)->sum('amount');
+
         $rows = PmLandlordLedgerEntry::query()
-            ->where('user_id', $request->user()->id)
+            ->where('user_id', $user->id)
             ->orderByDesc('occurred_at')
             ->limit(80)
             ->get()
@@ -375,12 +405,34 @@ class LandlordPortalController extends Controller
                 PropertyMoney::kes((float) $e->balance_after),
             ])->all();
 
+        $monthly = PropertyChartSeries::landlordLedgerMonthlyNet($user);
+        $barSeries = array_map(static fn ($m) => [
+            'label' => $m['label'],
+            'value' => $m['net'],
+        ], $monthly);
+
+        $cumul = PropertyChartSeries::landlordCumulativeCash($user);
+        $dualSeries = [];
+        foreach ($monthly as $idx => $m) {
+            $dualSeries[] = [
+                'label' => $m['label'],
+                'a' => $m['in'],
+                'b' => $m['out'],
+            ];
+        }
+
         return view('property.landlord.reports.cash_flow', [
             'stats' => [
-                ['label' => 'Balance', 'value' => PropertyMoney::kes(LandlordLedger::balance($request->user())), 'hint' => ''],
+                ['label' => 'Cash in (MTD)', 'value' => PropertyMoney::kes($cashIn), 'hint' => 'Credits'],
+                ['label' => 'Cash out (MTD)', 'value' => PropertyMoney::kes($cashOut), 'hint' => 'Debits'],
+                ['label' => 'Net (MTD)', 'value' => PropertyMoney::kes($cashIn - $cashOut), 'hint' => ''],
+                ['label' => 'Balance', 'value' => PropertyMoney::kes(LandlordLedger::balance($user)), 'hint' => 'Ledger'],
             ],
             'columns' => ['Date', 'Description', 'Property', 'In', 'Out', 'Running cash'],
             'tableRows' => $rows,
+            'cashNetBars' => $barSeries,
+            'cashCumulative' => $cumul,
+            'cashInOutDual' => $dualSeries,
         ]);
     }
 }

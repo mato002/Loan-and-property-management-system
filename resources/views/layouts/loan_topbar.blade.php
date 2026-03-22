@@ -16,7 +16,7 @@
     ];
 @endphp
 
-<header class="sticky top-0 flex-shrink-0 z-30 border-b border-slate-200/90 bg-gradient-to-b from-white via-slate-50 to-white shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/90">
+<header class="sticky top-0 z-50 flex-shrink-0 border-b border-slate-200/90 bg-gradient-to-b from-white via-slate-50 to-white shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/90">
     <div class="px-4 sm:px-6 lg:px-8">
         {{-- Primary row --}}
         <div class="flex flex-wrap items-center justify-between gap-3 py-3 sm:py-3.5 min-h-[4.25rem]">
@@ -76,7 +76,7 @@
 
                     <div class="hidden sm:block w-px h-8 bg-slate-200" aria-hidden="true"></div>
 
-                    <div class="relative" x-data="{ userMenuOpen: false }" @click.away="userMenuOpen = false">
+                    <div class="relative z-[60]" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
                         <button type="button" @click="userMenuOpen = !userMenuOpen" class="flex items-center gap-2 p-1 pr-2 sm:pr-3 rounded-full bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40">
                             <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-inner border border-white/20">
                                 @if (Auth::check() && Auth::user()->name)
@@ -96,7 +96,7 @@
                         <div
                             x-show="userMenuOpen"
                             x-transition.opacity
-                            class="absolute right-0 mt-2 w-56 rounded-xl bg-white shadow-xl border border-slate-200 py-1.5 z-50 overflow-hidden"
+                            class="absolute right-0 mt-2 w-56 rounded-xl bg-white shadow-xl border border-slate-200 py-1.5 z-[100] overflow-hidden"
                             x-cloak
                         >
                             <div class="px-4 py-2 border-b border-slate-100">

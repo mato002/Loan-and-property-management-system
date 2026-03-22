@@ -50,22 +50,38 @@ function baseOptions() {
     };
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const root = document.getElementById('property-dashboard-charts');
-    if (!root) return;
+function destroyChartOnCanvas(canvasId, root = document) {
+    const canvas = root.querySelector?.(`#${CSS.escape(canvasId)}`) ?? document.getElementById(canvasId);
+    if (!canvas) {
+        return;
+    }
+    const existing = Chart.getChart(canvas);
+    if (existing) {
+        existing.destroy();
+    }
+}
+
+function initPropertyDashboardCharts(root = document) {
+    const holder = root.querySelector?.('#property-dashboard-charts') ?? document.getElementById('property-dashboard-charts');
+    if (!holder) {
+        return;
+    }
+
+    destroyChartOnCanvas('dashboard-chart-invoices', root);
+    destroyChartOnCanvas('dashboard-chart-payments', root);
 
     let labels = [];
     let invoices = [];
     let payments = [];
     try {
-        labels = JSON.parse(root.dataset.labels || '[]');
-        invoices = JSON.parse(root.dataset.invoices || '[]');
-        payments = JSON.parse(root.dataset.payments || '[]');
+        labels = JSON.parse(holder.dataset.labels || '[]');
+        invoices = JSON.parse(holder.dataset.invoices || '[]');
+        payments = JSON.parse(holder.dataset.payments || '[]');
     } catch {
         return;
     }
 
-    const invCanvas = document.getElementById('dashboard-chart-invoices');
+    const invCanvas = root.querySelector?.('#dashboard-chart-invoices') ?? document.getElementById('dashboard-chart-invoices');
     if (invCanvas?.getContext) {
         new Chart(invCanvas.getContext('2d'), {
             type: 'line',
@@ -77,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const payCanvas = document.getElementById('dashboard-chart-payments');
+    const payCanvas = root.querySelector?.('#dashboard-chart-payments') ?? document.getElementById('dashboard-chart-payments');
     if (payCanvas?.getContext) {
         new Chart(payCanvas.getContext('2d'), {
             type: 'line',
@@ -87,5 +103,15 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             options: baseOptions(),
         });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initPropertyDashboardCharts(document);
+});
+
+document.addEventListener('turbo:frame-load', (e) => {
+    if (e.target.id === 'property-main') {
+        initPropertyDashboardCharts(e.target);
     }
 });

@@ -209,4 +209,41 @@ class PmMaintenanceWebController extends Controller
             'tableRows' => $rows,
         ]);
     }
+
+    public function frequency(): View
+    {
+        $requests = PmMaintenanceRequest::query()
+            ->where('created_at', '>=', now()->subMonths(12))
+            ->orderBy('created_at')
+            ->get();
+
+        $byMonth = $requests->groupBy(fn (PmMaintenanceRequest $r) => $r->created_at->format('Y-m'));
+        $rows = $byMonth->map(function ($group, $ym) {
+            $byCat = $group->groupBy(fn (PmMaintenanceRequest $r) => $r->category ?: 'General');
+
+            return [
+                (string) $ym,
+                (string) $group->count(),
+                (string) $byCat->count(),
+                (string) $group->where('urgency', 'emergency')->count(),
+                '—',
+                '—',
+            ];
+        })->sortKeysDesc()->values()->all();
+
+        $unitCount = PropertyUnit::query()->count();
+        $monthsWithData = $byMonth->count();
+        $emergencyTotal = $requests->where('urgency', 'emergency')->count();
+
+        return view('property.agent.maintenance.frequency', [
+            'stats' => [
+                ['label' => 'Requests (12 mo)', 'value' => (string) $requests->count(), 'hint' => ''],
+                ['label' => 'Months with data', 'value' => (string) $monthsWithData, 'hint' => ''],
+                ['label' => 'Emergency (12 mo)', 'value' => (string) $emergencyTotal, 'hint' => ''],
+                ['label' => 'Units in portfolio', 'value' => (string) $unitCount, 'hint' => ''],
+            ],
+            'columns' => ['Month', 'Tickets', 'Categories touched', 'Emergency', 'Repeat units', 'Notes'],
+            'tableRows' => $rows,
+        ]);
+    }
 }

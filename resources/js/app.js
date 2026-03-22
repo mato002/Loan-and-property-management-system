@@ -1,6 +1,8 @@
 import './bootstrap';
 import './swal-init';
 import './property-portal-ui';
+import './property-portal-turbo';
+import './property-dashboard';
 
 import Alpine from 'alpinejs';
 

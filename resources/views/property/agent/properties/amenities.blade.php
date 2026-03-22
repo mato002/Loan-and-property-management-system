@@ -9,6 +9,9 @@
     empty-hint="Add types below, then tag units."
 >
     <x-slot name="above">
+        @if ($errors->has('amenity'))
+            <p class="text-sm text-red-600 dark:text-red-400">{{ $errors->first('amenity') }}</p>
+        @endif
         <div class="grid gap-4 lg:grid-cols-2 max-w-5xl">
             <form method="post" action="{{ route('property.properties.amenities.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
                 @csrf
@@ -59,8 +62,26 @@
     </x-slot>
 
     <div class="space-y-3">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Library (unused only)</h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400">Delete removes the label from the library when it is not attached to any unit.</p>
+        <ul class="flex flex-wrap gap-2">
+            @foreach ($amenities as $a)
+                @if ($a->units_count === 0)
+                    <li>
+                        <form method="post" action="{{ route('property.properties.amenities.destroy', $a) }}" onsubmit="return confirm('Delete “{{ $a->name }}” from the library?');" class="inline">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="rounded-lg border border-red-200 dark:border-red-900/50 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30">{{ $a->name }} ×</button>
+                        </form>
+                    </li>
+                @endif
+            @endforeach
+        </ul>
+    </div>
+
+    <div class="space-y-3">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Tags by unit</h3>
-        <p class="text-xs text-slate-500 dark:text-slate-400">Remove a tag with ×. Deleting a library row is not exposed in UI yet — detach all uses first if you retire a label.</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400">Remove a tag with ×. To retire a label that is still in use, detach it from every unit first, then delete it above.</p>
         <ul class="divide-y divide-slate-100 dark:divide-slate-700 text-sm max-h-80 overflow-y-auto">
             @forelse ($units as $u)
                 <li class="py-3 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">

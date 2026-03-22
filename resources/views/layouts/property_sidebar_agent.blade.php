@@ -76,6 +76,13 @@
                     'badge' => null,
                 ],
                 [
+                    'label' => 'Penalties & rules',
+                    'sublabel' => 'Automation definitions',
+                    'route' => 'property.revenue.penalties',
+                    'active' => ['property.revenue.penalties', 'property.revenue.penalties.store', 'property.revenue.penalties.destroy'],
+                    'badge' => null,
+                ],
+                [
                     'label' => 'Receipts (eTIMS)',
                     'sublabel' => null,
                     'route' => 'property.revenue.receipts',
@@ -139,6 +146,7 @@
                         'property.properties.amenities.store',
                         'property.properties.amenities.attach',
                         'property.properties.amenities.detach',
+                        'property.properties.amenities.destroy',
                     ],
                     'badge' => null,
                 ],
@@ -181,14 +189,14 @@
                     'label' => 'Move-ins / move-outs',
                     'sublabel' => null,
                     'route' => 'property.tenants.movements',
-                    'active' => ['property.tenants.movements'],
+                    'active' => ['property.tenants.movements', 'property.tenants.movements.store'],
                     'badge' => null,
                 ],
                 [
                     'label' => 'Notices',
                     'sublabel' => 'Vacate · eviction',
                     'route' => 'property.tenants.notices',
-                    'active' => ['property.tenants.notices'],
+                    'active' => ['property.tenants.notices', 'property.tenants.notices.store'],
                     'badge' => null,
                 ],
             ],
@@ -226,6 +234,13 @@
                     'active' => ['property.maintenance.costs'],
                     'badge' => null,
                 ],
+                [
+                    'label' => 'Issue frequency',
+                    'sublabel' => null,
+                    'route' => 'property.maintenance.frequency',
+                    'active' => ['property.maintenance.frequency'],
+                    'badge' => null,
+                ],
             ],
         ],
         [
@@ -244,7 +259,11 @@
                     'label' => 'Job bidding',
                     'sublabel' => null,
                     'route' => 'property.vendors.bidding',
-                    'active' => ['property.vendors.bidding'],
+                    'active' => [
+                        'property.vendors.bidding',
+                        'property.vendors.bidding.create',
+                        'property.vendors.bidding.store',
+                    ],
                     'badge' => null,
                 ],
                 [
@@ -259,6 +278,13 @@
                     'sublabel' => null,
                     'route' => 'property.vendors.performance',
                     'active' => ['property.vendors.performance'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Work records',
+                    'sublabel' => null,
+                    'route' => 'property.vendors.work_records',
+                    'active' => ['property.vendors.work_records'],
                     'badge' => null,
                 ],
             ],
@@ -307,21 +333,25 @@
                     'label' => 'SMS / email',
                     'sublabel' => null,
                     'route' => 'property.communications.messages',
-                    'active' => ['property.communications.messages'],
+                    'active' => ['property.communications.messages', 'property.communications.messages.store'],
                     'badge' => null,
                 ],
                 [
                     'label' => 'Bulk messaging',
                     'sublabel' => null,
                     'route' => 'property.communications.bulk',
-                    'active' => ['property.communications.bulk'],
+                    'active' => ['property.communications.bulk', 'property.communications.bulk.store'],
                     'badge' => null,
                 ],
                 [
                     'label' => 'Templates',
                     'sublabel' => null,
                     'route' => 'property.communications.templates',
-                    'active' => ['property.communications.templates'],
+                    'active' => [
+                        'property.communications.templates',
+                        'property.communications.templates.store',
+                        'property.communications.templates.destroy',
+                    ],
                     'badge' => null,
                 ],
             ],
@@ -362,14 +392,18 @@
                     'label' => 'Leads',
                     'sublabel' => 'Optional early',
                     'route' => 'property.listings.leads',
-                    'active' => ['property.listings.leads'],
+                    'active' => ['property.listings.leads', 'property.listings.leads.store', 'property.listings.leads.update'],
                     'badge' => null,
                 ],
                 [
                     'label' => 'Applications',
                     'sublabel' => 'Roadmap',
                     'route' => 'property.listings.applications',
-                    'active' => ['property.listings.applications'],
+                    'active' => [
+                        'property.listings.applications',
+                        'property.listings.applications.store',
+                        'property.listings.applications.update',
+                    ],
                     'badge' => null,
                 ],
             ],
@@ -383,7 +417,7 @@
                     'label' => 'Ask anything',
                     'sublabel' => 'Suggested queries · insights',
                     'route' => 'property.advisor',
-                    'active' => ['property.advisor'],
+                    'active' => ['property.advisor', 'property.advisor.ask'],
                     'badge' => null,
                 ],
             ],
@@ -404,21 +438,21 @@
                     'label' => 'Commission settings',
                     'sublabel' => null,
                     'route' => 'property.settings.commission',
-                    'active' => ['property.settings.commission'],
+                    'active' => ['property.settings.commission', 'property.settings.commission.store'],
                     'badge' => null,
                 ],
                 [
                     'label' => 'Payment config (M-Pesa)',
                     'sublabel' => null,
                     'route' => 'property.settings.payments',
-                    'active' => ['property.settings.payments'],
+                    'active' => ['property.settings.payments', 'property.settings.payments.store'],
                     'badge' => null,
                 ],
                 [
                     'label' => 'System rules',
                     'sublabel' => null,
                     'route' => 'property.settings.rules',
-                    'active' => ['property.settings.rules'],
+                    'active' => ['property.settings.rules', 'property.settings.rules.store'],
                     'badge' => null,
                 ],
             ],
@@ -441,7 +475,7 @@
 
 <aside
     class="property-sidebar fixed inset-y-0 left-0 z-50 w-[300px] sm:w-[312px] bg-[#2f4f4f] border-r border-[#264040] text-[#d4e4e3] text-base transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col shadow-xl shadow-black/20 lg:shadow-none overflow-hidden flex-shrink-0"
-    :class="{ 'translate-x-0': sidebarOpen, '-translate-x-full': !sidebarOpen }"
+    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-lg:pointer-events-none'"
 >
     <div class="h-14 flex items-center justify-between px-4 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md lg:hidden shrink-0">
         <span class="text-sm font-semibold uppercase tracking-wide text-[#8db1af]">Menu</span>
@@ -451,7 +485,14 @@
     </div>
 
     <div class="shrink-0 px-3 py-3.5 border-b border-[#264040] bg-[#243d3d]/30">
-        <a href="{{ route('property.dashboard') }}" class="flex items-center gap-3 min-w-0 group" @click="if (window.innerWidth < 1024) sidebarOpen = false">
+        <a
+            href="{{ route('property.dashboard') }}"
+            data-turbo-frame="property-main"
+            data-property-nav="property.dashboard"
+            @if ($navActive(['property.dashboard'])) aria-current="page" @endif
+            class="flex items-center gap-3 min-w-0 group"
+            @click="if (window.innerWidth < 1024) sidebarOpen = false"
+        >
             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#406866]/60 ring-1 ring-[#5a8583]/50 shadow-inner">
                 <i class="fa-solid fa-building text-xl text-[#c5ebe8]" aria-hidden="true"></i>
             </span>
@@ -467,6 +508,7 @@
             @php
                 $secActive = $sectionAnyActive($section['items']);
                 $itemCount = count($section['items']);
+                $sectionPatterns = collect($section['items'])->pluck('active')->flatten()->unique()->values()->implode('|');
             @endphp
 
             @if ($itemCount === 1)
@@ -474,31 +516,37 @@
                 <div class="{{ $si > 0 ? 'mt-2 pt-2 border-t border-[#406866]/40' : '' }}">
                     <a
                         href="{{ route($item['route']) }}"
+                        data-turbo-frame="property-main"
+                        data-property-nav="{{ implode('|', $item['active']) }}"
+                        @if ($active) aria-current="page" @endif
                         @click="if (window.innerWidth < 1024) sidebarOpen = false"
-                        class="group flex items-start gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 {{ $active ? 'border-emerald-300 bg-[#406866]/80 text-white' : 'border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white' }}"
+                        class="group flex items-start gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white"
                     >
                         @if (! empty($section['icon']))
-                            <i class="fa-solid {{ $section['icon'] }} text-[#c5ebe8] text-base shrink-0 mt-0.5 w-6 text-center" aria-hidden="true"></i>
+                            <i class="fa-solid {{ $section['icon'] }} text-[#c5ebe8] text-base shrink-0 mt-0.5 w-6 text-center group-aria-[current=page]:text-[#c5ebe8]" aria-hidden="true"></i>
                         @endif
                         <span class="flex flex-col gap-0.5 min-w-0 flex-1">
                             @if (trim((string) ($section['heading'] ?? '')) !== '')
-                                <span class="text-xs font-semibold uppercase tracking-wide {{ $active ? 'text-[#c5ebe8]' : 'text-[#8db1af] group-hover:text-[#c5ebe8]' }}">{{ $section['heading'] }}</span>
+                                <span class="text-xs font-semibold uppercase tracking-wide text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#c5ebe8]">{{ $section['heading'] }}</span>
                             @endif
                             <span class="flex items-start justify-between gap-2">
-                                <span class="text-base font-medium leading-snug {{ $active ? 'text-white font-semibold' : 'text-[#d4e4e3] group-hover:text-white' }}">{{ $item['label'] }}</span>
+                                <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">{{ $item['label'] }}</span>
                                 @if (! empty($item['badge']))
                                     <span class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
                                 @endif
                             </span>
                             @if (! empty($item['sublabel']))
-                                <span class="text-sm leading-snug {{ $active ? 'text-[#c5ddd9]' : 'text-[#8db1af] group-hover:text-[#d4e4e3]' }}">{{ $item['sublabel'] }}</span>
+                                <span class="text-sm leading-snug text-[#8db1af] group-hover:text-[#d4e4e3] group-aria-[current=page]:text-[#c5ddd9]">{{ $item['sublabel'] }}</span>
                             @endif
                         </span>
                     </a>
                 </div>
             @else
                 <div
-                    class="{{ $si > 0 ? 'mt-2 pt-2 border-t border-[#406866]/40' : '' }}"
+                    class="{{ $si > 0 ? 'mt-2 pt-2 border-t border-[#406866]/40' : '' }} group"
+                    data-property-nav-section
+                    data-property-nav-aggregate="{{ $sectionPatterns }}"
+                    @if ($secActive) data-section-active @endif
                     x-data="{ open: {{ $secActive ? 'true' : 'false' }} }"
                 >
                     <button
@@ -512,14 +560,14 @@
                             <i class="fa-solid fa-chevron-down text-sm text-[#8db1af] transition-transform duration-200" :class="{ 'rotate-180': open }"></i>
                         </span>
                         <span class="flex-1 min-w-0">
-                            <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold uppercase tracking-wide {{ $secActive ? 'text-[#c5ebe8]' : 'text-[#8db1af]' }}">
+                            <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold uppercase tracking-wide text-[#8db1af] group-data-[section-active]:text-[#c5ebe8]">
                                 @if (! empty($section['icon']))
-                                    <i class="fa-solid {{ $section['icon'] }} text-base text-[#a8c9c7] not-uppercase normal-case" aria-hidden="true"></i>
+                                    <i class="fa-solid {{ $section['icon'] }} text-base text-[#a8c9c7] not-uppercase normal-case group-data-[section-active]:text-[#c5ebe8]" aria-hidden="true"></i>
                                 @endif
                                 <span>{{ $section['heading'] }}</span>
                             </span>
                             @if (! empty($section['kicker']))
-                                <span class="mt-0.5 block text-xs leading-snug text-[#a8c9c7]/95">{{ $section['kicker'] }}</span>
+                                <span class="mt-0.5 block text-xs leading-snug text-[#a8c9c7]/95 group-data-[section-active]:text-[#c5ebe8]/95">{{ $section['kicker'] }}</span>
                             @endif
                         </span>
                     </button>
@@ -540,17 +588,20 @@
                             @php $active = $navActive($item['active']); @endphp
                             <a
                                 href="{{ route($item['route']) }}"
+                                data-turbo-frame="property-main"
+                                data-property-nav="{{ implode('|', $item['active']) }}"
+                                @if ($active) aria-current="page" @endif
                                 @click="if (window.innerWidth < 1024) sidebarOpen = false"
-                                class="group flex flex-col gap-0.5 rounded-xl border-l-[3px] px-3 py-2.5 ml-6 text-left transition-all duration-150 {{ $active ? 'border-emerald-300 bg-[#406866]/80 text-white' : 'border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white' }}"
+                                class="group flex flex-col gap-0.5 rounded-xl border-l-[3px] px-3 py-2.5 ml-6 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white"
                             >
                                 <span class="flex items-start justify-between gap-2 w-full">
-                                    <span class="text-base font-medium leading-snug {{ $active ? 'text-white font-semibold' : 'text-[#d4e4e3] group-hover:text-white' }}">{{ $item['label'] }}</span>
+                                    <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">{{ $item['label'] }}</span>
                                     @if (! empty($item['badge']))
                                         <span class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
                                     @endif
                                 </span>
                                 @if (! empty($item['sublabel']))
-                                    <span class="text-sm leading-snug {{ $active ? 'text-[#c5ddd9]' : 'text-[#8db1af] group-hover:text-[#d4e4e3]' }}">{{ $item['sublabel'] }}</span>
+                                    <span class="text-sm leading-snug text-[#8db1af] group-hover:text-[#d4e4e3] group-aria-[current=page]:text-[#c5ddd9]">{{ $item['sublabel'] }}</span>
                                 @endif
                             </a>
                         @endforeach
@@ -560,7 +611,7 @@
         @endforeach
 
         <div class="pt-4 mt-3 border-t border-[#406866]/40">
-            <form method="POST" action="{{ route('logout') }}">
+            <form method="POST" action="{{ route('logout') }}" data-turbo="false">
                 @csrf
                 <button type="submit" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border-l-[3px] border-transparent transition-all text-left group">
                     <i class="fa-solid fa-right-from-bracket w-5 shrink-0 text-center text-[#8db1af] group-hover:text-red-400 transition-colors" aria-hidden="true"></i>
@@ -571,7 +622,12 @@
     </nav>
 
     <div class="p-3 border-t border-[#264040] bg-[#243d3d]/40 shrink-0">
-        <a href="{{ route('profile.edit') }}" class="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#406866]/50 transition-colors">
+        <a
+            href="{{ route('profile.edit') }}"
+            data-turbo-frame="property-main"
+            data-property-nav="profile.edit"
+            class="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#406866]/50 transition-colors"
+        >
             <div class="w-11 h-11 rounded-full bg-emerald-500/25 border border-emerald-400/35 flex items-center justify-center text-emerald-200 font-semibold text-base shrink-0">
                 @if (Auth::check() && Auth::user()->name)
                     {{ mb_substr(Auth::user()->name, 0, 1) }}

@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Live on website"
-    subtitle="Published vacant units only — open the public page, copy URLs, or return to photos &amp; publish for any row."
+    subtitle="Featured listings only (vacant + photos + publish). All vacant units still appear on Discover; open it from the toolbar to browse everything."
     back-route="property.listings.index"
     :stats="$stats"
     :columns="[]"

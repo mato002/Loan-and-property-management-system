@@ -2,7 +2,7 @@
 <div x-show="sidebarOpen" x-transition.opacity class="fixed inset-0 z-40 bg-gray-900/80 backdrop-blur-sm md:hidden" @click="sidebarOpen = false" x-cloak></div>
 
 <!-- Sidebar Elements -->
-<aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'" class="fixed inset-y-0 left-0 z-50 w-72 bg-[#2f4f4f] border-r border-[#264040] flex flex-col transition-transform duration-300 md:relative md:translate-x-0 overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none">
+<aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-md:pointer-events-none'" class="fixed inset-y-0 left-0 z-50 w-72 bg-[#2f4f4f] border-r border-[#264040] flex flex-col transition-transform duration-300 md:relative md:translate-x-0 overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none">
     <!-- Header -->
     <div class="h-16 flex items-center justify-between px-6 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md">
         <a href="{{ route('dashboard') }}" class="text-xl font-bold text-white flex items-center gap-3">
@@ -76,11 +76,11 @@
                 'Branches & Regions' => [
                     'icon' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>',
                     'items' => [
-                        ['label' => 'Add branch', 'route' => 'loan.branches.create', 'active_pattern' => 'loan.branches.create'],
-                        ['label' => 'Create region', 'route' => 'loan.regions.create', 'active_pattern' => 'loan.regions.create'],
+                        ['label' => 'Create region', 'route' => 'loan.regions.create', 'active_patterns' => ['loan.regions.create']],
+                        ['label' => 'View regions', 'route' => 'loan.regions.index', 'active_patterns' => ['loan.regions.index', 'loan.regions.edit', 'loan.regions.update', 'loan.regions.destroy']],
+                        ['label' => 'Add branch', 'route' => 'loan.branches.create', 'active_patterns' => ['loan.branches.create']],
+                        ['label' => 'View branches', 'route' => 'loan.branches.index', 'active_patterns' => ['loan.branches.index', 'loan.branches.edit', 'loan.branches.update', 'loan.branches.destroy']],
                         ['label' => 'Loan summary', 'route' => 'loan.branches.loan_summary', 'active_pattern' => 'loan.branches.loan_summary'],
-                        ['label' => 'View regions', 'route' => 'loan.regions.index', 'active_patterns' => ['loan.regions.index', 'loan.regions.edit']],
-                        ['label' => 'View branches', 'route' => 'loan.branches.index', 'active_patterns' => ['loan.branches.index', 'loan.branches.edit']],
                     ],
                 ],
                 'Business Analytics' => [

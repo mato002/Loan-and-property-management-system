@@ -25,12 +25,12 @@
                 @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
-                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Destination (placeholder)</label>
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Payout destination</label>
                 <select name="payout_destination" class="mt-1 w-full min-w-0 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="bank" @selected(old('payout_destination', 'bank') === 'bank')>Registered bank account · ****0000</option>
-                    <option value="mpesa" @selected(old('payout_destination') === 'mpesa')>M-Pesa · ****000</option>
+                    <option value="bank" @selected(old('payout_destination', 'bank') === 'bank')>Bank transfer</option>
+                    <option value="mpesa" @selected(old('payout_destination') === 'mpesa')>M-Pesa</option>
                 </select>
-                <p class="mt-1 text-xs text-slate-500">Wire destination selection can be added when payout integrations ship.</p>
+                <p class="mt-1 text-xs text-slate-500">Recorded on the ledger line for audit; connect your payout provider when ready.</p>
             </div>
             <div class="flex items-start gap-2">
                 <input type="checkbox" required class="mt-1 rounded border-slate-300" id="withdraw-confirm" />

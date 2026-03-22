@@ -18,6 +18,33 @@ final class PropertyDashboardStats
             ->sum('amount');
     }
 
+    public static function mtdBilled(): float
+    {
+        return (float) PmInvoice::query()
+            ->whereBetween('issue_date', [
+                Carbon::now()->startOfMonth()->toDateString(),
+                Carbon::now()->endOfMonth()->toDateString(),
+            ])
+            ->sum('amount');
+    }
+
+    /**
+     * @return array{target: float, actual: float|null, gap_kes: float}
+     */
+    public static function collectionRateMtd(float $targetPercent = 95.0): array
+    {
+        $collected = self::mtdCollected();
+        $billed = self::mtdBilled();
+        $actual = $billed > 0 ? round(min(100.0, 100.0 * $collected / $billed), 1) : null;
+        $gapKes = max(0.0, $billed - $collected);
+
+        return [
+            'target' => $targetPercent,
+            'actual' => $actual,
+            'gap_kes' => $gapKes,
+        ];
+    }
+
     public static function outstandingBalance(): float
     {
         return (float) PmInvoice::query()

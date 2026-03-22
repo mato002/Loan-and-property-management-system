@@ -64,6 +64,12 @@
                     </select>
                     @error('user_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Ownership % (this link)</label>
+                    <input type="number" name="ownership_percent" value="{{ old('ownership_percent', '100') }}" min="0" max="100" step="0.01" class="mt-1 w-full max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('ownership_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Co-owners on the same property cannot exceed 100% in total.</p>
+                </div>
                 <button type="submit" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80">Attach</button>
             </form>
         </div>
@@ -71,7 +77,7 @@
         @if (isset($landlordLinks) && $landlordLinks->isNotEmpty())
             <div class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Landlord links</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Update ownership % or detach. Co-owner totals are not validated to 100% yet.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Update ownership % or detach. New links are rejected if total ownership on a property would exceed 100%.</p>
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-sm">
                         <thead>

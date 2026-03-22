@@ -2,7 +2,7 @@
     <div class="bg-gray-50 border-b border-gray-200 shadow-inner">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
             <h1 class="text-4xl font-black text-gray-900 tracking-tight">Discover Properties</h1>
-            <p class="text-lg text-gray-500 mt-2">Browse our extensive list of available rentals and homes for sale.</p>
+            <p class="text-lg text-gray-500 mt-2">{{ __('Vacant units from your property panel. Filter by city — listings update as soon as agents mark units vacant.') }}</p>
         </div>
     </div>
 
@@ -50,8 +50,8 @@
 
                 @if ($units->isEmpty())
                     <div class="rounded-2xl border border-dashed border-gray-200 bg-white p-16 text-center text-gray-500">
-                        <p class="font-bold text-gray-800 text-lg mb-2">No published listings yet</p>
-                        <p class="text-sm">Agents can publish vacant units from <strong>Listings → Vacant unit listings</strong> in the property workspace.</p>
+                        <p class="font-bold text-gray-800 text-lg mb-2">{{ __('No vacant units to show') }}</p>
+                        <p class="text-sm">{{ __('Create properties and units under the agent workspace and set unit status to vacant. Optional: use Listings → Vacant units to upload photos and feature a listing.') }}</p>
                     </div>
                 @else
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">

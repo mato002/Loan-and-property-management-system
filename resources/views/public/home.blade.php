@@ -15,22 +15,25 @@
             </p>
             
             <!-- Search Bar -->
-            <div class="w-full max-w-4xl bg-white p-2 sm:p-3 rounded-2xl shadow-2xl flex flex-col sm:flex-row gap-2 sm:gap-0">
-                <input type="text" placeholder="Enter location, neighborhood, or ZIP" class="flex-1 border-0 focus:ring-0 px-5 font-medium text-gray-700 bg-transparent py-4 text-lg w-full sm:w-auto outline-none" />
+            <form method="get" action="{{ route('public.properties') }}" class="w-full max-w-4xl bg-white p-2 sm:p-3 rounded-2xl shadow-2xl flex flex-col sm:flex-row gap-2 sm:gap-0">
+                <label class="sr-only" for="hero-city">{{ __('City') }}</label>
+                <input
+                    type="text"
+                    id="hero-city"
+                    name="city"
+                    value="{{ request('city') }}"
+                    placeholder="{{ __('City or area') }}"
+                    class="flex-1 border-0 focus:ring-0 px-5 font-medium text-gray-700 bg-transparent py-4 text-lg w-full sm:w-auto outline-none"
+                    autocomplete="address-level2"
+                />
                 <div class="hidden sm:block w-px h-10 bg-gray-200 self-center mx-2"></div>
-                <select class="border-0 focus:ring-0 px-5 text-gray-600 bg-transparent py-4 text-lg cursor-pointer hidden md:block outline-none">
-                    <option>Property Type</option>
-                    <option>Apartment</option>
-                    <option>Commercial</option>
-                    <option>House</option>
-                </select>
-                <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-4 rounded-xl transition-colors w-full sm:w-auto text-lg flex items-center justify-center gap-2">
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-4 rounded-xl transition-colors w-full sm:w-auto text-lg flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
-                    Search
+                    {{ __('Search') }}
                 </button>
-            </div>
+            </form>
             
             <div class="mt-8 flex gap-4 text-sm font-medium text-gray-300">
                 <span>Popular:</span>
@@ -69,7 +72,7 @@
         <div class="flex justify-between items-end mb-12">
             <div>
                 <h2 class="text-3xl font-black text-gray-900 tracking-tight sm:text-4xl mb-3">Featured Properties</h2>
-                <p class="text-gray-500 text-lg">Handpicked properties available right now.</p>
+                <p class="text-gray-500 text-lg">{{ __('Vacant units from your portfolio — featured listings with photos appear first.') }}</p>
             </div>
             <a href="{{ route('public.properties') }}" class="hidden md:inline-flex items-center gap-2 text-indigo-600 font-bold hover:text-indigo-700">
                 View All Listings
@@ -81,7 +84,7 @@
             @forelse ($featuredUnits as $unit)
                 @include('public.partials.listing-card', ['unit' => $unit, 'placeholderImage' => $listingPlaceholderImage, 'imageHeight' => 'h-64'])
             @empty
-                <div class="col-span-full text-center py-12 text-gray-500 text-lg">Featured rentals will appear here once agents publish vacant units.</div>
+                <div class="col-span-full text-center py-12 text-gray-500 text-lg">{{ __('No vacant units yet. Add properties and units in the agent workspace — they will show here automatically when status is vacant.') }}</div>
             @endforelse
         </div>
     </div>

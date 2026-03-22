@@ -76,4 +76,15 @@ class PropertyAmenityController extends Controller
 
         return back()->with('success', __('Amenity removed from unit.'));
     }
+
+    public function destroy(PmAmenity $amenity): RedirectResponse
+    {
+        if ($amenity->units()->exists()) {
+            return back()->withErrors(['amenity' => __('Detach this amenity from all units before deleting it from the library.')]);
+        }
+
+        $amenity->delete();
+
+        return back()->with('success', __('Amenity removed from library.'));
+    }
 }

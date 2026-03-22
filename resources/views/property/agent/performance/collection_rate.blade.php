@@ -1,21 +1,29 @@
+@php
+    $dual = [];
+    foreach ($trend ?? [] as $t) {
+        $dual[] = [
+            'label' => $t['label'],
+            'a' => $t['collected'],
+            'b' => $t['billed'],
+        ];
+    }
+@endphp
+
 <x-property.workspace
     title="Rent collection rate"
-    subtitle="Budget vs actual collections — by portfolio, property, and month."
+    subtitle="Billed vs collected by month; MTD rate vs a 95% target (adjust in reporting rules later)."
     back-route="property.performance.index"
-    :stats="[
-        ['label' => 'Target', 'value' => '—', 'hint' => 'This month'],
-        ['label' => 'Actual', 'value' => '—', 'hint' => '% collected'],
-        ['label' => 'Gap', 'value' => 'KES 0', 'hint' => 'Value at risk'],
-    ]"
-    :columns="[]"
+    :stats="$stats"
+    :columns="$columns ?? []"
+    :table-rows="$tableRows ?? []"
 >
-    <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-6 shadow-sm">
-        <p class="text-sm font-medium text-slate-800 dark:text-slate-200">Trend</p>
-        <div class="mt-4 h-64 rounded-xl bg-slate-50 dark:bg-slate-900/50 flex items-center justify-center text-sm text-slate-500">
-            Line chart placeholder — target vs actual collection rate
-        </div>
-    </div>
+    <x-property.chart-line-dual
+        title="Six-month trend — collected vs billed"
+        label-a="Collected"
+        label-b="Billed"
+        :series="$dual"
+    />
     <x-slot name="footer">
-        <p>Drill-down: click a month (when live) to open arrears cohort for that period.</p>
+        <p>Drill into arrears from the Revenue workspace; overdue cohorts are on the arrears trends screen.</p>
     </x-slot>
 </x-property.workspace>

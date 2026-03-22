@@ -34,7 +34,6 @@
         </style>
     </head>
     <body class="font-sans antialiased h-full overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif" x-data="{ sidebarOpen: false }">
-        <x-swal-flash />
         <div class="h-full flex">
             
             <!-- Property Module Dedicated Sidebar -->
@@ -47,12 +46,16 @@
                 @include('layouts.property_header')
 
                 <!-- Main Content Area with scrollbar -->
-                <main class="flex-1 overflow-x-hidden overflow-y-auto w-full custom-scrollbar flex flex-col">
+                <main class="relative z-0 flex-1 overflow-x-hidden overflow-y-auto w-full custom-scrollbar flex flex-col">
                     <div @class([
                         'p-4 sm:p-6 lg:p-8 flex-1 w-full',
                         'max-w-lg mx-auto' => ($propertyPortal ?? 'agent') === 'tenant',
                     ])>
-                        {{ $slot }}
+                        <turbo-frame id="property-main">
+                            <div id="property-main-route" data-route-name="{{ Route::currentRouteName() ?? '' }}" hidden></div>
+                            <x-swal-flash />
+                            {{ $slot }}
+                        </turbo-frame>
                     </div>
                     
                     <!-- Dedicated Footer -->
@@ -65,6 +68,7 @@
         @if (($propertyPortal ?? 'agent') === 'agent')
             <a
                 href="{{ route('property.advisor') }}"
+                data-turbo-frame="property-main"
                 class="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 ring-2 ring-white/20 hover:bg-violet-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 transition-colors"
                 title="AI advisor"
             >
