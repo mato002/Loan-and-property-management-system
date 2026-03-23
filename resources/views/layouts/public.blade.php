@@ -15,7 +15,7 @@
 
     <!-- Sticky Header -->
     <header :class="{'bg-white shadow-md': scrolled, 'bg-white/90 backdrop-blur-md border-b border-gray-100': !scrolled}" class="fixed top-0 inset-x-0 z-50 transition-all duration-300">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
             <div class="flex justify-between items-center h-20">
                 <!-- Logo -->
                 <div class="flex items-center">
@@ -81,9 +81,31 @@
         {{ $slot }}
     </main>
 
+    <section class="bg-gradient-to-r from-indigo-50 via-white to-emerald-50 border-y border-indigo-100/70">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-10">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="rounded-2xl border border-indigo-100 bg-white/90 p-5 shadow-sm">
+                    <p class="text-xs font-extrabold uppercase tracking-wider text-indigo-600">Live Availability</p>
+                    <p class="mt-2 text-2xl font-black text-gray-900">Updated Every Hour</p>
+                    <p class="mt-1 text-sm text-gray-600">Property status and vacancy signals refresh frequently so renters see what is really available.</p>
+                </div>
+                <div class="rounded-2xl border border-indigo-100 bg-white/90 p-5 shadow-sm">
+                    <p class="text-xs font-extrabold uppercase tracking-wider text-indigo-600">Verified Listings</p>
+                    <p class="mt-2 text-2xl font-black text-gray-900">Agent-Approved Photos</p>
+                    <p class="mt-1 text-sm text-gray-600">Each listing is reviewed by our team to reduce fake inventory and increase trust at first glance.</p>
+                </div>
+                <div class="rounded-2xl border border-indigo-100 bg-white/90 p-5 shadow-sm">
+                    <p class="text-xs font-extrabold uppercase tracking-wider text-indigo-600">Fast Onboarding</p>
+                    <p class="mt-2 text-2xl font-black text-gray-900">3-Step Digital Signup</p>
+                    <p class="mt-1 text-sm text-gray-600">Applicants can discover, apply, and receive follow-up from one connected digital workflow.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Footer -->
     <footer class="bg-gray-900 pt-16 pb-8 border-t border-gray-800 mt-20">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-12 lg:gap-8">
                 <!-- Branding -->
                 <div class="col-span-1 md:col-span-1">

@@ -243,11 +243,17 @@ class PropertyPortfolioController extends Controller
             'bedrooms' => ['required', 'integer', 'min:0', 'max:20'],
             'rent_amount' => ['required', 'numeric', 'min:0'],
             'status' => ['required', 'in:vacant,occupied,notice'],
+            'public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
+
+        $desc = isset($data['public_listing_description']) && trim((string) $data['public_listing_description']) !== ''
+            ? $data['public_listing_description']
+            : null;
 
         PropertyUnit::query()->create([
             ...$data,
             'rent_amount' => $data['rent_amount'],
+            'public_listing_description' => $desc,
             'vacant_since' => $data['status'] === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
         ]);
 

@@ -131,6 +131,9 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
         Route::get('/listings/vacant/{property_unit}/public', [AgentPublicListingController::class, 'edit'])->name('listings.vacant.public.edit');
         Route::patch('/listings/vacant/{property_unit}/public', [AgentPublicListingController::class, 'update'])->name('listings.vacant.public.update');
         Route::post('/listings/vacant/{property_unit}/public/photos', [AgentPublicListingController::class, 'storePhotos'])->name('listings.vacant.public.photos.store');
+        Route::post('/listings/vacant/{property_unit}/public/photos/{public_image}/main', [AgentPublicListingController::class, 'makePrimaryPhoto'])
+            ->whereNumber('public_image')
+            ->name('listings.vacant.public.photos.main');
         Route::delete('/listings/vacant/{property_unit}/public/photos/{public_image}', [AgentPublicListingController::class, 'destroyPhoto'])
             ->whereNumber('public_image')
             ->name('listings.vacant.public.photos.destroy');

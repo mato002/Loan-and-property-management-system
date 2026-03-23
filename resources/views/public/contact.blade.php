@@ -1,14 +1,14 @@
 <x-public-layout>
     <!-- Header -->
     <div class="bg-gray-50 border-b border-gray-200">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-20 text-center">
             <h1 class="text-5xl md:text-6xl font-black text-gray-900 tracking-tight mb-6">Get in Touch</h1>
             <p class="text-xl text-gray-500 max-w-2xl mx-auto font-medium">Have questions about our properties or management services? Our dedicated account managers are here to help.</p>
         </div>
     </div>
 
     <!-- Main Section -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+    <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-24">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-20">
             <!-- Details -->
             <div>

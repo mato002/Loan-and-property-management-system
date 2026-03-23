@@ -3,13 +3,13 @@
 @endphp
 <x-public-layout :page-title="__('Discover Properties')">
     <div class="bg-gray-50 border-b border-gray-200 shadow-inner">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-10">
             <h1 class="text-4xl font-black text-gray-900 tracking-tight">Discover Properties</h1>
             <p class="text-lg text-gray-500 mt-2">{{ __('Vacant units from your property panel. Filter by city — listings update as soon as agents mark units vacant.') }}</p>
         </div>
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-12">
         <div class="flex flex-col lg:flex-row gap-8">
             <div class="w-full lg:w-1/4">
                 <form method="get" action="{{ route('public.properties') }}" class="bg-white border border-gray-100 p-6 rounded-2xl shadow-sm lg:sticky lg:top-28 space-y-6">

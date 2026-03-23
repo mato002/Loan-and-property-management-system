@@ -7,6 +7,7 @@ use App\Models\PropertyUnit;
 use App\Models\PropertyUnitPublicImage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
@@ -220,5 +221,32 @@ class AgentPublicListingController extends Controller
         }
 
         return back()->with('success', __('Photo removed.'));
+    }
+
+    public function makePrimaryPhoto(PropertyUnit $property_unit, int $public_image): RedirectResponse
+    {
+        abort_unless($property_unit->status === PropertyUnit::STATUS_VACANT, 404);
+
+        $images = PropertyUnitPublicImage::query()
+            ->where('property_unit_id', $property_unit->id)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $selected = $images->firstWhere('id', $public_image);
+        abort_unless($selected !== null, 404);
+
+        $ordered = $images
+            ->reject(fn (PropertyUnitPublicImage $img) => $img->id === $selected->id)
+            ->prepend($selected)
+            ->values();
+
+        DB::transaction(function () use ($ordered): void {
+            foreach ($ordered as $index => $img) {
+                $img->update(['sort_order' => $index + 1]);
+            }
+        });
+
+        return back()->with('success', __('Main photo updated.'));
     }
 }

@@ -6,7 +6,7 @@
             <div class="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/60 to-transparent"></div>
         </div>
         
-        <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-32 lg:py-48 flex flex-col items-center text-center">
+        <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-32 lg:py-48 flex flex-col items-center text-center">
             <h1 class="text-4xl md:text-6xl font-black text-white tracking-tight mb-6 max-w-4xl">
                 Find Your Perfect Space With <span class="text-indigo-400">PrimeEstate</span>
             </h1>
@@ -45,7 +45,7 @@
 
     <!-- Stats Section -->
     <div class="bg-white border-b border-gray-100">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-16">
             <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x divide-gray-100">
                 <div>
                     <p class="text-4xl font-black text-indigo-600 mb-2">1,200+</p>
@@ -68,7 +68,7 @@
     </div>
 
     <!-- Featured Properties -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+    <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-24">
         <div class="flex justify-between items-end mb-12">
             <div>
                 <h2 class="text-3xl font-black text-gray-900 tracking-tight sm:text-4xl mb-3">Featured Properties</h2>

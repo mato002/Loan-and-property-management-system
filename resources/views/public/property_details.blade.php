@@ -6,7 +6,7 @@
     $mapsUrl = 'https://www.google.com/maps/search/?api=1&query='.rawurlencode($addr !== '—' ? $addr : $unit->property->name);
 @endphp
 <x-public-layout :page-title="$title">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-8">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
             <div>
                 <div class="flex items-center gap-3 mb-2">
@@ -56,7 +56,7 @@
         </div>
     </div>
 
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-12">
         <div class="flex flex-col lg:flex-row gap-12">
             <div class="w-full lg:w-2/3">
                 <div class="bg-gray-50 border border-gray-100 rounded-3xl p-6 md:p-8 flex flex-wrap justify-between items-center mb-10 shadow-sm gap-y-6">

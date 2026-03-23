@@ -2,14 +2,14 @@
     <!-- Hero Statement -->
     <div class="bg-indigo-600 py-24 sm:py-32 relative overflow-hidden">
         <div class="absolute inset-0 bg-indigo-900/20"></div>
-        <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 text-center">
             <h1 class="text-5xl md:text-7xl font-black text-white tracking-tight mb-8">About PrimeEstate</h1>
             <p class="text-xl md:text-2xl text-indigo-100 max-w-4xl mx-auto font-medium leading-normal">We are revolutionizing the property management industry by bringing absolute transparency, speed, and design to the real estate market.</p>
         </div>
     </div>
 
     <!-- Content Story -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+    <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-24">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             <div>
                 <h2 class="text-4xl font-black text-gray-900 tracking-tight mb-8">Our Mission</h2>

@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Unit status"
-    subtitle="Occupied, vacant, notice — linked to leases and rent roll. Photos for the public website are uploaded under Listings → Vacant units → Photos &amp; publish (per unit), not here."
+    subtitle="Occupied, vacant, notice — linked to leases and rent roll. Add listing description here, then manage photos, main image, and publish under Listings → Vacant units."
     back-route="property.properties.index"
     :stats="$stats"
     :columns="$columns"
@@ -46,6 +46,17 @@
                         <option value="notice" @selected(old('status') === 'notice')>Notice</option>
                     </select>
                     @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Public listing description</label>
+                    <textarea
+                        name="public_listing_description"
+                        rows="4"
+                        class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
+                        placeholder="Describe highlights seen on the public property page."
+                    >{{ old('public_listing_description') }}</textarea>
+                    @error('public_listing_description')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Photos and main image are managed in Listings for each vacant unit.</p>
                 </div>
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save unit</button>

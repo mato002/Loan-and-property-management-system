@@ -45,6 +45,18 @@
                         @foreach ($unit->publicImages as $img)
                             <li class="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 aspect-[4/3]">
                                 <img src="{{ $img->publicUrl() }}" alt="" class="w-full h-full object-cover" />
+                                @if ($loop->first)
+                                    <span class="absolute top-1 left-1 rounded-md bg-emerald-600 text-white text-[10px] px-2 py-1 font-semibold">Main image</span>
+                                @else
+                                    <form
+                                        method="post"
+                                        action="{{ route('property.listings.vacant.public.photos.main', [$unit, $img]) }}"
+                                        class="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                        @csrf
+                                        <button type="submit" class="rounded-md bg-indigo-600 text-white text-xs px-2 py-1 font-medium hover:bg-indigo-700">Set main</button>
+                                    </form>
+                                @endif
                                 <form
                                     method="post"
                                     action="{{ route('property.listings.vacant.public.photos.destroy', [$unit, $img]) }}"
