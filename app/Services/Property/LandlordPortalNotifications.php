@@ -17,7 +17,7 @@ final class LandlordPortalNotifications
      */
     public static function recent(User $user, int $limit = 25): array
     {
-        $propIds = $user->landlordProperties()->pluck('id');
+        $propIds = $user->landlordProperties()->pluck('properties.id');
         if ($propIds->isEmpty()) {
             return [];
         }

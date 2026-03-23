@@ -3,7 +3,11 @@
     'subtitle' => null,
 ])
 
-<div {{ $attributes->merge(['class' => 'max-w-[1600px] mx-auto w-full space-y-6']) }}>
+@php
+    $currentPortalRole = auth()->user()?->property_portal_role ?? 'agent';
+@endphp
+
+<div {{ $attributes->merge(['class' => ($currentPortalRole === 'tenant' ? 'w-full space-y-6' : 'max-w-[1600px] mx-auto w-full space-y-6')]) }}>
     <header class="space-y-4">
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
             <div class="min-w-0 flex-1">

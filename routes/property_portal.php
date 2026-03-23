@@ -12,6 +12,7 @@ use App\Http\Controllers\Property\Agent\PmPaymentController;
 use App\Http\Controllers\Property\Agent\PmTenantDirectoryController;
 use App\Http\Controllers\Property\Agent\PmVendorWebController;
 use App\Http\Controllers\Property\Agent\PropertyAdvisorWebController;
+use App\Http\Controllers\Property\Agent\PropertyAccountingController;
 use App\Http\Controllers\Property\Agent\PropertyAmenityController;
 use App\Http\Controllers\Property\Agent\PropertyCommunicationsWebController;
 use App\Http\Controllers\Property\Agent\PropertyDataExportController;
@@ -49,6 +50,7 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
         Route::delete('/revenue/penalties/{penalty_rule}', [RevenueController::class, 'destroyPenaltyRule'])->name('revenue.penalties.destroy');
         Route::get('/revenue/payments', [PmPaymentController::class, 'payments'])->name('revenue.payments');
         Route::post('/revenue/payments', [PmPaymentController::class, 'store'])->name('payments.store');
+        Route::patch('/revenue/payments/{payment}/settle', [PmPaymentController::class, 'settle'])->name('payments.settle');
         Route::get('/revenue/receipts', [RevenueController::class, 'receipts'])->name('revenue.receipts');
         Route::get('/revenue/utilities-charges', [PropertyUtilityChargeController::class, 'index'])->name('revenue.utilities');
         Route::post('/revenue/utilities-charges', [PropertyUtilityChargeController::class, 'store'])->name('revenue.utilities.store');
@@ -108,6 +110,25 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
         Route::get('/financials/owner-balances', [FinancialsController::class, 'ownerBalances'])->name('financials.owner_balances');
         Route::get('/financials/commission', [FinancialsController::class, 'commission'])->name('financials.commission');
         Route::view('/financials', 'property.agent.financials.index')->name('financials.index');
+
+        Route::get('/accounting', [PropertyAccountingController::class, 'index'])->name('accounting.index');
+        Route::get('/accounting/entries', [PropertyAccountingController::class, 'entries'])->name('accounting.entries');
+        Route::get('/accounting/entries/export', [PropertyAccountingController::class, 'exportEntriesCsv'])->name('accounting.entries.export');
+        Route::post('/accounting/entries', [PropertyAccountingController::class, 'storeEntry'])->name('accounting.entries.store');
+        Route::post('/accounting/entries/{entry}/reverse', [PropertyAccountingController::class, 'reverseEntry'])->name('accounting.entries.reverse');
+        Route::post('/accounting/settings/account-map', [PropertyAccountingController::class, 'saveAccountMap'])->name('accounting.settings.account_map.save');
+        Route::get('/accounting/audit-trail', [PropertyAccountingController::class, 'auditTrail'])->name('accounting.audit_trail');
+        Route::get('/accounting/audit-trail/export', [PropertyAccountingController::class, 'exportAuditTrailCsv'])->name('accounting.audit_trail.export');
+        Route::get('/accounting/payroll', [PropertyAccountingController::class, 'payroll'])->name('accounting.payroll');
+        Route::post('/accounting/payroll', [PropertyAccountingController::class, 'payrollStore'])->name('accounting.payroll.store');
+        Route::post('/accounting/payroll/employee', [PropertyAccountingController::class, 'payrollEmployeeStore'])->name('accounting.payroll.employee.store');
+        Route::get('/accounting/payroll/payslips', [PropertyAccountingController::class, 'payrollPayslips'])->name('accounting.payroll.payslips');
+        Route::get('/accounting/payroll/payslips/{reference}', [PropertyAccountingController::class, 'payrollPayslipShow'])->name('accounting.payroll.payslips.show');
+        Route::get('/accounting/payroll/settings', [PropertyAccountingController::class, 'payrollSettings'])->name('accounting.payroll.settings');
+        Route::post('/accounting/payroll/settings', [PropertyAccountingController::class, 'payrollSettingsSave'])->name('accounting.payroll.settings.save');
+        Route::get('/accounting/reports/trial-balance', [PropertyAccountingController::class, 'trialBalance'])->name('accounting.reports.trial_balance');
+        Route::get('/accounting/reports/income-statement', [PropertyAccountingController::class, 'incomeStatement'])->name('accounting.reports.income_statement');
+        Route::get('/accounting/reports/cash-book', [PropertyAccountingController::class, 'cashBook'])->name('accounting.reports.cash_book');
 
         Route::get('/performance/collection-rate', [PerformanceWorkspaceController::class, 'collectionRate'])->name('performance.collection_rate');
         Route::get('/performance/vacancy', [PerformanceWorkspaceController::class, 'vacancy'])->name('performance.vacancy');
@@ -174,6 +195,8 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
         Route::get('/earnings', [LandlordPortalController::class, 'earnings'])->name('earnings.index');
         Route::get('/earnings/withdraw', [LandlordPortalController::class, 'withdraw'])->name('earnings.withdraw');
         Route::post('/earnings/withdraw', [LandlordPortalController::class, 'withdrawStore'])->name('earnings.withdraw.store');
+        Route::get('/earnings/settings', [LandlordPortalController::class, 'payoutSettings'])->name('earnings.settings');
+        Route::post('/earnings/settings', [LandlordPortalController::class, 'savePayoutSettings'])->name('earnings.settings.store');
         Route::get('/earnings/history', [LandlordPortalController::class, 'history'])->name('earnings.history');
         Route::get('/earnings/history/export', [LandlordPortalController::class, 'exportHistoryCsv'])->name('earnings.history.export');
         Route::get('/properties', [LandlordPortalController::class, 'properties'])->name('properties');
@@ -183,9 +206,17 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
         Route::get('/reports/expenses', [LandlordPortalController::class, 'reportExpenses'])->name('reports.expenses');
         Route::get('/reports/expenses/export', [LandlordPortalController::class, 'exportExpensesReportCsv'])->name('reports.expenses.export');
         Route::get('/reports/cash-flow', [LandlordPortalController::class, 'reportCashFlow'])->name('reports.cash_flow');
+        Route::get('/reports/statement', [LandlordPortalController::class, 'statement'])->name('reports.statement');
+        Route::get('/reports/statement/export', [LandlordPortalController::class, 'exportStatementCsv'])->name('reports.statement.export');
         Route::view('/reports', 'property.landlord.reports.index')->name('reports.index');
         Route::get('/maintenance', [LandlordPortalController::class, 'maintenance'])->name('maintenance');
+        Route::post('/maintenance/threshold', [LandlordPortalController::class, 'saveMaintenanceThreshold'])->name('maintenance.threshold.store');
+        Route::post('/maintenance/jobs/{job}/approval', [LandlordPortalController::class, 'approveMaintenanceJob'])->name('maintenance.jobs.approval');
         Route::get('/notifications', [LandlordPortalController::class, 'notifications'])->name('notifications');
+        Route::post('/notifications/preferences', [LandlordPortalController::class, 'saveNotificationPreferences'])->name('notifications.preferences.store');
+        Route::get('/documents', [LandlordPortalController::class, 'documents'])->name('documents');
+        Route::get('/audit-trail', [LandlordPortalController::class, 'auditTrail'])->name('audit_trail');
+        Route::get('/audit-trail/export', [LandlordPortalController::class, 'exportAuditTrailCsv'])->name('audit_trail.export');
         Route::view('/opportunities', 'property.landlord.opportunities')->name('opportunities');
 
         Route::get('/quick-action', function () {
@@ -199,9 +230,12 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
     Route::middleware(['property.portal:tenant'])->prefix('property/tenant')->name('property.tenant.')->group(function () {
         Route::get('/home', [TenantPortalController::class, 'home'])->name('home');
         Route::get('/payments/pay', [TenantPortalController::class, 'pay'])->name('payments.pay');
+        Route::post('/payments/pay', [TenantPortalController::class, 'paymentStore'])->name('payments.store');
         Route::post('/payments/stk', [TenantPortalController::class, 'stkIntentStore'])->name('payments.stk.store');
         Route::get('/payments/history', [TenantPortalController::class, 'paymentsHistory'])->name('payments.history');
         Route::get('/payments/receipts', [TenantPortalController::class, 'receipts'])->name('payments.receipts');
+        Route::get('/payments/receipts/{payment}', [TenantPortalController::class, 'showReceipt'])->name('payments.receipts.show');
+        Route::get('/payments/receipts/{payment}/download', [TenantPortalController::class, 'downloadReceipt'])->name('payments.receipts.download');
         Route::view('/payments', 'property.tenant.payments.index')->name('payments.index');
 
         Route::get('/workspace/forms/{form}', [TenantWorkspaceFormController::class, 'show'])

@@ -17,15 +17,28 @@
             <!-- Search Bar -->
             <form method="get" action="{{ route('public.properties') }}" class="w-full max-w-4xl bg-white p-2 sm:p-3 rounded-2xl shadow-2xl flex flex-col sm:flex-row gap-2 sm:gap-0">
                 <label class="sr-only" for="hero-city">{{ __('City') }}</label>
-                <input
-                    type="text"
+                <select
                     id="hero-city"
                     name="city"
-                    value="{{ request('city') }}"
-                    placeholder="{{ __('City or area') }}"
                     class="flex-1 border-0 focus:ring-0 px-5 font-medium text-gray-700 bg-transparent py-4 text-lg w-full sm:w-auto outline-none"
-                    autocomplete="address-level2"
-                />
+                >
+                    <option value="">{{ __('Select city') }}</option>
+                    @foreach (($availableCities ?? collect()) as $city)
+                        <option value="{{ $city }}" @selected(request('city') === $city)>{{ $city }}</option>
+                    @endforeach
+                </select>
+                <div class="hidden sm:block w-px h-10 bg-gray-200 self-center mx-2"></div>
+                <label class="sr-only" for="hero-unit-type">{{ __('House type') }}</label>
+                <select
+                    id="hero-unit-type"
+                    name="unit_type"
+                    class="flex-1 border-0 focus:ring-0 px-5 font-medium text-gray-700 bg-transparent py-4 text-lg w-full sm:w-auto outline-none"
+                >
+                    <option value="">{{ __('All house types') }}</option>
+                    @foreach (($availableUnitTypes ?? []) as $typeValue => $typeLabel)
+                        <option value="{{ $typeValue }}" @selected(request('unit_type') === $typeValue)>{{ $typeLabel }}</option>
+                    @endforeach
+                </select>
                 <div class="hidden sm:block w-px h-10 bg-gray-200 self-center mx-2"></div>
                 <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-8 py-4 rounded-xl transition-colors w-full sm:w-auto text-lg flex items-center justify-center gap-2">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -34,6 +47,20 @@
                     {{ __('Search') }}
                 </button>
             </form>
+
+            @if (! empty($availableUnitTypes))
+                <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
+                    <span class="text-xs font-bold uppercase tracking-wider text-gray-300 mr-1">House types:</span>
+                    @foreach ($availableUnitTypes as $typeValue => $typeLabel)
+                        <a
+                            href="{{ route('public.properties', ['unit_type' => $typeValue, 'sort' => 'featured']) }}"
+                            class="inline-flex items-center rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white hover:text-indigo-700 transition-colors"
+                        >
+                            {{ $typeLabel }}
+                        </a>
+                    @endforeach
+                </div>
+            @endif
             
             <div class="mt-8 flex flex-wrap gap-x-4 gap-y-2 text-sm font-medium text-gray-300">
                 <span>Popular:</span>
@@ -89,12 +116,12 @@
         </div>
     </div>
 
-    <!-- CTA Area -->
+    <!-- Tenant CTA Area -->
     <div class="bg-indigo-600 py-20">
         <div class="max-w-4xl mx-auto px-4 text-center">
-            <h2 class="text-3xl font-black text-white sm:text-4xl mb-6 tracking-tight">Are you a Landlord?</h2>
-            <p class="text-xl text-indigo-100 mb-10">We provide state-of-the-art property management capabilities. Hand your properties over to the best firm in the industry.</p>
-            <a href="{{ route('public.signup') }}" class="inline-block bg-white hover:bg-gray-50 text-indigo-600 font-bold px-10 py-4 rounded-xl shadow-xl transition-transform hover:-translate-y-1">Start Managing Today</a>
+            <h2 class="text-3xl font-black text-white sm:text-4xl mb-6 tracking-tight">Ready to Find Your Next Home?</h2>
+            <p class="text-xl text-indigo-100 mb-10">Browse verified listings, compare options, and book a viewing in minutes.</p>
+            <a href="{{ route('public.properties') }}" class="inline-block bg-white hover:bg-gray-50 text-indigo-600 font-bold px-10 py-4 rounded-xl shadow-xl transition-transform hover:-translate-y-1">Browse Available Homes</a>
         </div>
     </div>
 </x-public-layout>

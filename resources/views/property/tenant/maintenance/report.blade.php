@@ -8,7 +8,7 @@
         <form
             method="post"
             action="{{ route('property.tenant.maintenance.report.store') }}"
-            class="space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm w-full max-w-2xl min-w-0"
+            class="space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm w-full min-w-0"
             enctype="multipart/form-data"
         >
             @csrf

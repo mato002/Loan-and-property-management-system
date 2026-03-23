@@ -93,42 +93,42 @@ class PropertyModuleDemoSeeder extends Seeder
 
         $unit1A = PropertyUnit::query()->updateOrCreate(
             ['property_id' => $property->id, 'label' => '1A'],
-            [
+            $this->withUnitType([
                 'bedrooms' => 2,
                 'rent_amount' => 52000,
                 'status' => PropertyUnit::STATUS_OCCUPIED,
                 'vacant_since' => null,
                 'public_listing_published' => false,
                 'public_listing_description' => null,
-            ],
+            ], PropertyUnit::TYPE_APARTMENT),
         );
 
         $unit2B = PropertyUnit::query()->updateOrCreate(
             ['property_id' => $property->id, 'label' => '2B'],
-            [
-                'bedrooms' => 1,
+            $this->withUnitType([
+                'bedrooms' => 0,
                 'rent_amount' => 33500,
                 'status' => PropertyUnit::STATUS_VACANT,
                 'vacant_since' => now()->subDays(38)->toDateString(),
                 'public_listing_published' => true,
                 'public_listing_description' => <<<'TXT'
-Bright north-facing 1-bedroom with a separate kitchen, built-in wardrobes, and a small balcony. Water is included in the service charge; power is prepaid. Ideal for a single professional — quiet block, biometric access, and backup generator for common areas.
+Well-planned bedsitter with a kitchenette, built-in storage, and a bright window line. Water is included in the service charge; power is prepaid. Ideal for a single professional — quiet block, biometric access, and backup generator for common areas.
 
 Viewings: weekdays 9am–5pm by appointment.
 TXT,
-            ],
+            ], PropertyUnit::TYPE_BEDSITTER),
         );
 
         $unit3C = PropertyUnit::query()->updateOrCreate(
             ['property_id' => $property->id, 'label' => '3C'],
-            [
+            $this->withUnitType([
                 'bedrooms' => 3,
                 'rent_amount' => 78500,
                 'status' => PropertyUnit::STATUS_NOTICE,
                 'vacant_since' => null,
                 'public_listing_published' => false,
                 'public_listing_description' => null,
-            ],
+            ], PropertyUnit::TYPE_MAISONETTE),
         );
 
         $png = self::tinyPng();
@@ -372,5 +372,66 @@ TXT,
                 $property,
             );
         }
+
+        $this->seedPublicListings();
+    }
+
+    private function seedPublicListings(): void
+    {
+        $properties = [
+            ['code' => 'PUB-NAI-001', 'name' => 'Skyline Heights', 'address' => '12 Riverside Lane', 'city' => 'Nairobi'],
+            ['code' => 'PUB-NAK-001', 'name' => 'Nakuru Grove Apartments', 'address' => '8 Lakeview Road', 'city' => 'Nakuru'],
+            ['code' => 'PUB-MSA-001', 'name' => 'Ocean Crest Residences', 'address' => '45 Nyali Avenue', 'city' => 'Mombasa'],
+            ['code' => 'PUB-KSM-001', 'name' => 'Sunset Bay Homes', 'address' => '2 Milimani Drive', 'city' => 'Kisumu'],
+            ['code' => 'PUB-ELD-001', 'name' => 'Greenfield Court', 'address' => '17 Pioneer Street', 'city' => 'Eldoret'],
+        ];
+
+        $units = [
+            ['label' => 'A1', 'bedrooms' => 0, 'unit_type' => PropertyUnit::TYPE_STUDIO, 'copy' => 'Modern studio'],
+            ['label' => 'A2', 'bedrooms' => 1, 'unit_type' => PropertyUnit::TYPE_APARTMENT, 'copy' => 'Modern 1-bedroom'],
+            ['label' => 'A3', 'bedrooms' => 0, 'unit_type' => PropertyUnit::TYPE_SINGLE_ROOM, 'copy' => 'Single room'],
+        ];
+        $rents = [28000, 36000, 44000, 52000, 61000];
+
+        foreach ($properties as $index => $row) {
+            $property = Property::query()->updateOrCreate(
+                ['code' => $row['code']],
+                [
+                    'name' => $row['name'],
+                    'address_line' => $row['address'],
+                    'city' => $row['city'],
+                ],
+            );
+
+            foreach ($units as $labelIndex => $unit) {
+                $rent = $rents[min($index + $labelIndex, count($rents) - 1)] + ($labelIndex * 2500);
+                $beds = $unit['bedrooms'];
+
+                PropertyUnit::query()->updateOrCreate(
+                    ['property_id' => $property->id, 'label' => $unit['label']],
+                    $this->withUnitType([
+                        'bedrooms' => $beds,
+                        'rent_amount' => $rent,
+                        'status' => PropertyUnit::STATUS_VACANT,
+                        'vacant_since' => now()->subDays(10 + ($index * 3) + $labelIndex)->toDateString(),
+                        'public_listing_published' => true,
+                        'public_listing_description' => sprintf(
+                            '%s unit in %s with secure access, reliable utilities, and easy transport links. Book a site visit for immediate move-in.',
+                            $unit['copy'],
+                            $row['city']
+                        ),
+                    ], $unit['unit_type']),
+                );
+            }
+        }
+    }
+
+    private function withUnitType(array $attributes, string $unitType): array
+    {
+        if (Schema::hasColumn('property_units', 'unit_type')) {
+            $attributes['unit_type'] = $unitType;
+        }
+
+        return $attributes;
     }
 }

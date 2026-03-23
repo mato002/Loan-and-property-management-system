@@ -15,10 +15,20 @@ class PropertyUnit extends Model
     public const STATUS_OCCUPIED = 'occupied';
 
     public const STATUS_NOTICE = 'notice';
+    public const TYPE_APARTMENT = 'apartment';
+    public const TYPE_SINGLE_ROOM = 'single_room';
+    public const TYPE_BEDSITTER = 'bedsitter';
+    public const TYPE_STUDIO = 'studio';
+    public const TYPE_BUNGALOW = 'bungalow';
+    public const TYPE_MAISONETTE = 'maisonette';
+    public const TYPE_VILLA = 'villa';
+    public const TYPE_TOWNHOUSE = 'townhouse';
+    public const TYPE_COMMERCIAL = 'commercial';
 
     protected $fillable = [
         'property_id',
         'label',
+        'unit_type',
         'bedrooms',
         'rent_amount',
         'status',
@@ -113,5 +123,43 @@ class PropertyUnit extends Model
             : $this->publicImages()->first();
 
         return $first?->publicUrl();
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    public static function typeOptions(): array
+    {
+        return [
+            self::TYPE_APARTMENT => 'Apartment',
+            self::TYPE_SINGLE_ROOM => 'Single room',
+            self::TYPE_BEDSITTER => 'Bedsitter',
+            self::TYPE_STUDIO => 'Studio',
+            self::TYPE_BUNGALOW => 'Bungalow',
+            self::TYPE_MAISONETTE => 'Maisonette',
+            self::TYPE_VILLA => 'Villa',
+            self::TYPE_TOWNHOUSE => 'Townhouse',
+            self::TYPE_COMMERCIAL => 'Commercial',
+        ];
+    }
+
+    public function unitTypeLabel(): string
+    {
+        return self::typeOptions()[$this->unit_type] ?? ucfirst((string) $this->unit_type);
+    }
+
+    public function bedroomsLabel(): string
+    {
+        $count = (int) $this->bedrooms;
+        if ($count <= 0) {
+            return match ($this->unit_type) {
+                self::TYPE_SINGLE_ROOM => 'Single room',
+                self::TYPE_BEDSITTER => 'Bedsitter',
+                self::TYPE_STUDIO => 'Studio',
+                default => 'No separate bedroom',
+            };
+        }
+
+        return $count.' '.\Illuminate\Support\Str::plural('bedroom', $count);
     }
 }

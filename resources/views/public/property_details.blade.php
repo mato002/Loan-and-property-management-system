@@ -3,6 +3,8 @@
     $addr = trim(collect([$unit->property->address_line, $unit->property->city])->filter()->implode(', ')) ?: '—';
     $rentDisplay = 'KES '.number_format((float) $unit->rent_amount, 0);
     $desc = $unit->public_listing_description;
+    $unitTypeLabel = $unit->unitTypeLabel();
+    $bedroomsLabel = $unit->bedroomsLabel();
     $mapsUrl = 'https://www.google.com/maps/search/?api=1&query='.rawurlencode($addr !== '—' ? $addr : $unit->property->name);
 @endphp
 <x-public-layout :page-title="$title">
@@ -61,8 +63,13 @@
             <div class="w-full lg:w-2/3">
                 <div class="bg-gray-50 border border-gray-100 rounded-3xl p-6 md:p-8 flex flex-wrap justify-between items-center mb-10 shadow-sm gap-y-6">
                     <div class="text-center px-2 md:px-4">
-                        <p class="text-gray-500 font-bold mb-1">Bedrooms</p>
-                        <p class="text-2xl font-black text-gray-900">{{ $unit->bedrooms }} <span class="text-sm font-medium text-gray-400">{{ Str::plural('Bed', $unit->bedrooms) }}</span></p>
+                        <p class="text-gray-500 font-bold mb-1">Type</p>
+                        <p class="text-2xl font-black text-gray-900">{{ $unitTypeLabel }}</p>
+                    </div>
+                    <div class="hidden sm:block w-px h-12 bg-gray-200"></div>
+                    <div class="text-center px-2 md:px-4">
+                        <p class="text-gray-500 font-bold mb-1">Room setup</p>
+                        <p class="text-2xl font-black text-gray-900">{{ $bedroomsLabel }}</p>
                     </div>
                     <div class="hidden sm:block w-px h-12 bg-gray-200"></div>
                     <div class="text-center px-2 md:px-4">
@@ -149,9 +156,15 @@
                     </div>
 
                     <div class="space-y-4 mb-8">
+                        <a href="{{ route('public.contact') }}" class="flex items-center justify-center gap-3 w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl transition-colors shadow-lg shadow-emerald-500/25">
+                            Book Site Visit
+                        </a>
                         <a href="{{ route('public.contact') }}" class="flex items-center justify-center gap-3 w-full bg-gray-50 hover:bg-gray-100 text-gray-900 font-black py-4 rounded-2xl transition-colors border border-gray-200">
                             <svg class="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                            Contact us
+                            Talk to Agent
+                        </a>
+                        <a href="https://wa.me/18005550199" target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-3 w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-black py-4 rounded-2xl transition-colors border border-emerald-200">
+                            WhatsApp Agent
                         </a>
                     </div>
 

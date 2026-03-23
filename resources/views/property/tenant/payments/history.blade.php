@@ -2,11 +2,9 @@
     title="Payment history"
     subtitle="Every attempt, success, and allocation — same data agents see, filtered to you."
     back-route="property.tenant.payments.index"
-    :stats="[
-        ['label' => 'Successful', 'value' => '0', 'hint' => 'All time'],
-        ['label' => 'Last payment', 'value' => '—', 'hint' => 'Date'],
-    ]"
-    :columns="['Date', 'Channel', 'Amount', 'Reference', 'Invoice', 'Status', 'Receipt']"
+    :stats="$stats"
+    :columns="$columns"
+    :table-rows="$tableRows"
     empty-title="No payments yet"
     empty-hint="STK and bank entries will list here with downloadable confirmations."
 >

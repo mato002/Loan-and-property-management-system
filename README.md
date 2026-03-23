@@ -7,6 +7,60 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Property STK Webhook Testing
+
+The property STK callback endpoint is:
+
+- `POST /webhooks/property/payments/stk-callback`
+- Header: `X-Property-Webhook-Secret: <PROPERTY_WEBHOOK_SECRET>`
+
+Set your env value first:
+
+```env
+PROPERTY_WEBHOOK_SECRET=replace-with-a-long-random-secret
+```
+
+Then clear config cache if needed:
+
+```bash
+php artisan config:clear
+```
+
+### Example: success callback
+
+```bash
+curl -X POST "http://127.0.0.1:8000/webhooks/property/payments/stk-callback" \
+  -H "Content-Type: application/json" \
+  -H "X-Property-Webhook-Secret: replace-with-a-long-random-secret" \
+  -d '{
+    "payment_id": 123,
+    "status": "success",
+    "external_ref": "QKJ8S92M",
+    "paid_at": "2026-03-23 14:22:00",
+    "message": "STK paid"
+  }'
+```
+
+### Example: failed callback
+
+```bash
+curl -X POST "http://127.0.0.1:8000/webhooks/property/payments/stk-callback" \
+  -H "Content-Type: application/json" \
+  -H "X-Property-Webhook-Secret: replace-with-a-long-random-secret" \
+  -d '{
+    "payment_id": 123,
+    "status": "failed",
+    "external_ref": "QKJ8S92M",
+    "message": "Customer canceled STK prompt"
+  }'
+```
+
+### Notes
+
+- Callback processing is idempotent for already-settled payments.
+- `success` marks payment completed, allocates to open invoices (oldest first), and posts accounting entries.
+- `failed` marks payment failed and stores callback metadata.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

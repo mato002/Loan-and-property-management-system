@@ -7,6 +7,7 @@ use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmVendor;
 use App\Models\PropertyUnit;
+use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -117,10 +118,11 @@ class PmMaintenanceWebController extends Controller
 
         $completedAt = $data['status'] === 'done' ? now() : null;
 
-        PmMaintenanceJob::query()->create([
+        $job = PmMaintenanceJob::query()->create([
             ...$data,
             'completed_at' => $completedAt,
         ]);
+        PropertyAccountingPostingService::postMaintenanceExpense($job, $request->user());
 
         return back()->with('success', 'Job saved.');
     }

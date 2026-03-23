@@ -11,6 +11,8 @@
             ['route' => 'property.landlord.reports.income', 'title' => 'Income statements', 'description' => 'Period revenue and adjustments.'],
             ['route' => 'property.landlord.reports.expenses', 'title' => 'Expense reports', 'description' => 'Fees, maintenance, and capex.'],
             ['route' => 'property.landlord.reports.cash_flow', 'title' => 'Cash flow', 'description' => 'What moved in and out.'],
+            ['route' => 'property.landlord.reports.statement', 'title' => 'Monthly statement', 'description' => 'Owner statement pack with opening/closing balances.'],
+            ['route' => 'property.landlord.documents', 'title' => 'Document center', 'description' => 'Invoices, maintenance records, and export links.'],
         ]" />
     </x-property.page>
 </x-property-layout>

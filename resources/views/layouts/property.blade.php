@@ -47,10 +47,7 @@
 
                 <!-- Main Content Area with scrollbar -->
                 <main class="relative z-0 flex-1 overflow-x-hidden overflow-y-auto w-full custom-scrollbar flex flex-col">
-                    <div @class([
-                        'p-4 sm:p-6 lg:p-8 flex-1 w-full',
-                        'max-w-lg mx-auto' => ($propertyPortal ?? 'agent') === 'tenant',
-                    ])>
+                    <div class="p-4 sm:p-6 lg:p-8 flex-1 w-full">
                         <turbo-frame id="property-main">
                             <div id="property-main-route" data-route-name="{{ Route::currentRouteName() ?? '' }}" hidden></div>
                             <x-swal-flash />

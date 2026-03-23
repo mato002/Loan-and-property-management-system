@@ -53,7 +53,11 @@ return new class extends Migration
             Schema::create('accounting_journal_lines', function (Blueprint $table) {
                 $table->id();
                 $table->foreignId('accounting_journal_entry_id')->constrained('accounting_journal_entries')->cascadeOnDelete();
-                $table->foreignId('accounting_chart_account_id')->constrained('accounting_chart_accounts')->restrictOnDelete();
+                $table->unsignedBigInteger('accounting_chart_account_id');
+                $table->foreign('accounting_chart_account_id', 'acct_br_chart_fk_r')
+                    ->references('id')
+                    ->on('accounting_chart_accounts')
+                    ->restrictOnDelete();
                 $table->decimal('debit', 14, 2)->default(0);
                 $table->decimal('credit', 14, 2)->default(0);
                 $table->string('memo', 500)->nullable();

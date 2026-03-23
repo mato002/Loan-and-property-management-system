@@ -7,11 +7,14 @@ use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmPayment;
+use App\Models\PmPaymentAllocation;
 use App\Models\PmTenantPortalRequest;
 use App\Models\PropertyUnit;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\HtmlString;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -63,7 +66,12 @@ class TenantPortalController extends Controller
     {
         $tenant = $request->user()->pmTenantProfile;
         $payments = $tenant
-            ? PmPayment::query()->where('pm_tenant_id', $tenant->id)->orderByDesc('paid_at')->limit(100)->get()
+            ? PmPayment::query()
+                ->with(['allocations.invoice'])
+                ->where('pm_tenant_id', $tenant->id)
+                ->orderByDesc('paid_at')
+                ->limit(100)
+                ->get()
             : collect();
 
         $rows = $payments->map(fn (PmPayment $p) => [
@@ -71,9 +79,15 @@ class TenantPortalController extends Controller
             $p->channel,
             PropertyMoney::kes((float) $p->amount),
             $p->external_ref ?? '—',
-            '—',
+            $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ') ?: '—',
             ucfirst($p->status),
-            '—',
+            $p->status === PmPayment::STATUS_COMPLETED
+                ? new HtmlString(
+                    '<a href="'.route('property.tenant.payments.receipts.show', $p).'" class="text-blue-600 hover:text-blue-700 font-medium">View</a> '.
+                    '<span class="text-slate-400">|</span> '.
+                    '<a href="'.route('property.tenant.payments.receipts.download', $p).'" class="text-blue-600 hover:text-blue-700 font-medium">Download</a>'
+                )
+                : '—',
         ])->all();
 
         return view('property.tenant.payments.history', [
@@ -90,18 +104,40 @@ class TenantPortalController extends Controller
     {
         $tenant = $request->user()->pmTenantProfile;
         $invoices = $tenant
-            ? PmInvoice::query()->where('pm_tenant_id', $tenant->id)->where('status', PmInvoice::STATUS_PAID)->orderByDesc('updated_at')->limit(50)->get()
+            ? PmInvoice::query()
+                ->with(['allocations.payment'])
+                ->where('pm_tenant_id', $tenant->id)
+                ->where('status', PmInvoice::STATUS_PAID)
+                ->orderByDesc('updated_at')
+                ->limit(50)
+                ->get()
             : collect();
 
-        $rows = $invoices->map(fn (PmInvoice $i) => [
-            $i->updated_at->format('Y-m-d'),
-            'RCP-'.$i->id,
-            PropertyMoney::kes((float) $i->amount),
-            '—',
-            $i->invoice_no,
-            'Not submitted',
-            '—',
-        ])->all();
+        $rows = $invoices->map(function (PmInvoice $i) {
+            $payment = $i->allocations
+                ->pluck('payment')
+                ->filter(fn ($p) => $p && $p->status === PmPayment::STATUS_COMPLETED)
+                ->sortByDesc('paid_at')
+                ->first();
+
+            $receiptNo = $payment ? 'RCP-PAY-'.$payment->id : 'RCP-'.$i->id;
+
+            return [
+                $i->updated_at->format('Y-m-d'),
+                $receiptNo,
+                PropertyMoney::kes((float) $i->amount),
+                '—',
+                $i->invoice_no,
+                'Not submitted',
+                $payment
+                    ? new HtmlString(
+                        '<a href="'.route('property.tenant.payments.receipts.show', $payment).'" class="text-blue-600 hover:text-blue-700 font-medium">View</a> '.
+                        '<span class="text-slate-400">|</span> '.
+                        '<a href="'.route('property.tenant.payments.receipts.download', $payment).'" class="text-blue-600 hover:text-blue-700 font-medium">Download</a>'
+                    )
+                    : '—',
+            ];
+        })->all();
 
         return view('property.tenant.payments.receipts', [
             'stats' => [['label' => 'Receipts', 'value' => (string) $invoices->count(), 'hint' => 'Paid invoices']],
@@ -113,12 +149,16 @@ class TenantPortalController extends Controller
     public function pay(Request $request): View
     {
         $tenant = $request->user()->pmTenantProfile;
-        $balance = $tenant
-            ? (float) PmInvoice::query()->where('pm_tenant_id', $tenant->id)->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')->value('t')
-            : 0.0;
+        $balance = $tenant ? $this->openBalanceForTenant((int) $tenant->id) : 0.0;
 
         return view('property.tenant.payments.pay', [
             'amountDue' => PropertyMoney::kes($balance),
+            'paymentMethods' => [
+                'mpesa_stk' => 'M-Pesa STK Push',
+                'bank_transfer' => 'Bank Transfer',
+                'card' => 'Card Payment',
+                'cash' => 'Cash',
+            ],
         ]);
     }
 
@@ -129,10 +169,7 @@ class TenantPortalController extends Controller
             return back()->withErrors(['tenant' => 'No tenant profile is linked to your account.']);
         }
 
-        $balance = (float) PmInvoice::query()
-            ->where('pm_tenant_id', $tenant->id)
-            ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
-            ->value('t');
+        $balance = $this->openBalanceForTenant((int) $tenant->id);
 
         if ($balance <= 0) {
             return back()->with('success', 'Nothing due right now — no payment request was created.');
@@ -169,6 +206,127 @@ class TenantPortalController extends Controller
             'success',
             'Payment request recorded for '.PropertyMoney::kes($amount).'. Complete the STK prompt on your phone when Daraja is connected; this row appears in agent payment tracking as pending.',
         );
+    }
+
+    public function paymentStore(Request $request): RedirectResponse
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        if (! $tenant) {
+            return back()->withErrors(['tenant' => 'No tenant profile is linked to your account.']);
+        }
+
+        $balance = $this->openBalanceForTenant((int) $tenant->id);
+        if ($balance <= 0) {
+            return back()->with('success', 'Nothing due right now — no payment was recorded.');
+        }
+
+        $data = $request->validate([
+            'payment_method' => ['required', 'string', Rule::in(['mpesa_stk', 'bank_transfer', 'card', 'cash'])],
+            'payer_phone' => ['nullable', 'string', 'max:32'],
+            'external_ref' => ['nullable', 'string', 'max:128'],
+            'custom_amount' => ['nullable', 'string', 'max:32'],
+        ]);
+
+        $amount = $balance;
+        if (! empty($data['custom_amount'])) {
+            $parsed = (float) preg_replace('/[^\d.]/', '', $data['custom_amount']);
+            if ($parsed > 0) {
+                $amount = min($parsed, $balance);
+            }
+        }
+
+        if ($amount <= 0) {
+            return back()->withErrors(['custom_amount' => 'Enter a valid amount greater than zero.'])->withInput();
+        }
+
+        if ($data['payment_method'] === 'mpesa_stk' && empty($data['payer_phone'])) {
+            return back()->withErrors(['payer_phone' => 'Phone number is required for M-Pesa STK.'])->withInput();
+        }
+
+        if ($data['payment_method'] !== 'mpesa_stk' && empty($data['external_ref'])) {
+            return back()->withErrors(['external_ref' => 'Reference is required for this payment method.'])->withInput();
+        }
+
+        $isPending = $data['payment_method'] === 'mpesa_stk';
+
+        $payment = DB::transaction(function () use ($tenant, $data, $amount, $isPending) {
+            $payment = PmPayment::query()->create([
+                'pm_tenant_id' => $tenant->id,
+                'channel' => $data['payment_method'],
+                'amount' => $amount,
+                'external_ref' => $data['external_ref'] ?? null,
+                'paid_at' => $isPending ? null : now(),
+                'status' => $isPending ? PmPayment::STATUS_PENDING : PmPayment::STATUS_COMPLETED,
+                'meta' => [
+                    'phone' => $data['payer_phone'] ?? null,
+                    'submitted_at' => now()->toIso8601String(),
+                ],
+            ]);
+
+            if (! $isPending) {
+                $this->allocatePaymentToOpenInvoices($payment);
+            }
+
+            return $payment;
+        });
+
+        if ($isPending) {
+            return back()->with('success', 'STK request queued for '.PropertyMoney::kes($amount).'. Complete prompt on phone to finalize.');
+        }
+
+        return back()->with('success', 'Payment recorded as completed and allocated across open invoices.');
+    }
+
+    private function openBalanceForTenant(int $tenantId): float
+    {
+        return (float) PmInvoice::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
+            ->value('t');
+    }
+
+    private function allocatePaymentToOpenInvoices(PmPayment $payment): void
+    {
+        $remaining = (float) $payment->amount;
+        if ($remaining <= 0) {
+            return;
+        }
+
+        $openInvoices = PmInvoice::query()
+            ->where('pm_tenant_id', $payment->pm_tenant_id)
+            ->whereColumn('amount_paid', '<', 'amount')
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($openInvoices as $invoice) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $invoiceRemaining = max(0.0, (float) $invoice->amount - (float) $invoice->amount_paid);
+            if ($invoiceRemaining <= 0) {
+                continue;
+            }
+
+            $allocation = min($remaining, $invoiceRemaining);
+            if ($allocation <= 0) {
+                continue;
+            }
+
+            PmPaymentAllocation::query()->create([
+                'pm_payment_id' => $payment->id,
+                'pm_invoice_id' => $invoice->id,
+                'amount' => $allocation,
+            ]);
+
+            $invoice->amount_paid = (float) $invoice->amount_paid + $allocation;
+            $invoice->save();
+            $invoice->refreshComputedStatus();
+
+            $remaining -= $allocation;
+        }
     }
 
     public function maintenanceReport(Request $request): View
@@ -301,6 +459,42 @@ class TenantPortalController extends Controller
         return view('property.tenant.explore', [
             'units' => $units,
             'leasePropertyIds' => $leasePropertyIds,
+        ]);
+    }
+
+    public function showReceipt(Request $request, PmPayment $payment): View
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        abort_unless($tenant, 403);
+        abort_unless((int) $payment->pm_tenant_id === (int) $tenant->id, 403);
+        abort_unless($payment->status === PmPayment::STATUS_COMPLETED, 404);
+
+        $payment->loadMissing(['tenant', 'allocations.invoice']);
+
+        return view('property.tenant.payments.receipt', [
+            'payment' => $payment,
+        ]);
+    }
+
+    public function downloadReceipt(Request $request, PmPayment $payment)
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        abort_unless($tenant, 403);
+        abort_unless((int) $payment->pm_tenant_id === (int) $tenant->id, 403);
+        abort_unless($payment->status === PmPayment::STATUS_COMPLETED, 404);
+
+        $payment->loadMissing(['tenant', 'allocations.invoice']);
+
+        $html = view('property.tenant.payments.receipt_download', [
+            'payment' => $payment,
+        ])->render();
+
+        $fileName = 'receipt-RCP-PAY-'.$payment->id.'.html';
+
+        return response()->streamDownload(function () use ($html) {
+            echo $html;
+        }, $fileName, [
+            'Content-Type' => 'text/html; charset=UTF-8',
         ]);
     }
 }

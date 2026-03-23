@@ -15,7 +15,9 @@
         'Earnings & wallet' => ['route' => 'property.landlord.earnings.index', 'active' => 'property.landlord.earnings.*', 'icon' => 'M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-1a2 2 0 00-2-2H9a2 2 0 00-2 2v1a2 2 0 002 2z'],
         'Properties' => ['route' => 'property.landlord.properties', 'active' => 'property.landlord.properties', 'icon' => 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'],
         'Reports' => ['route' => 'property.landlord.reports.index', 'active' => 'property.landlord.reports.*', 'icon' => 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
+        'Documents' => ['route' => 'property.landlord.documents', 'active' => 'property.landlord.documents', 'icon' => 'M7 7V3h7l5 5v13a1 1 0 01-1 1H7a2 2 0 01-2-2V7a1 1 0 011-1h1zm8 1V4.5L17.5 8H15z'],
         'Maintenance' => ['route' => 'property.landlord.maintenance', 'active' => 'property.landlord.maintenance', 'icon' => 'M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z'],
+        'Audit trail' => ['route' => 'property.landlord.audit_trail', 'active' => 'property.landlord.audit_trail', 'icon' => 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z'],
         'Notifications' => ['route' => 'property.landlord.notifications', 'active' => 'property.landlord.notifications', 'icon' => 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9'],
         'Opportunities' => ['route' => 'property.landlord.opportunities', 'active' => 'property.landlord.opportunities', 'icon' => 'M13 10V3L4 14h7v7l9-11h-7z'],
     ];

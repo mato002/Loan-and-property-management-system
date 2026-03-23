@@ -12,6 +12,22 @@ class PropertyPortalSetting extends Model
         'key',
         'value',
     ];
+}
+
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class PropertyPortalSetting extends Model
+{
+    protected $table = 'property_portal_settings';
+
+    protected $fillable = [
+        'key',
+        'value',
+    ];
 
     public static function getValue(string $key, ?string $default = null): ?string
     {

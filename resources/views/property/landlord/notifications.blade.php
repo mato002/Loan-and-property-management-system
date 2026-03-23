@@ -5,6 +5,18 @@
         title="Notifications"
         subtitle="Derived from maintenance, leases, payments, and overdue invoices on your properties."
     >
+        <form method="post" action="{{ route('property.landlord.notifications.preferences.store') }}" class="mb-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-4">
+            @csrf
+            <p class="text-sm font-semibold text-slate-900 dark:text-white mb-3">Alert preferences</p>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="notify_rent_collected" value="1" class="rounded border-slate-300" @checked($notificationPrefs['notify_rent_collected'] ?? true)> Rent collected</label>
+                <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="notify_overdue" value="1" class="rounded border-slate-300" @checked($notificationPrefs['notify_overdue'] ?? true)> Overdue invoices</label>
+                <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="notify_maintenance" value="1" class="rounded border-slate-300" @checked($notificationPrefs['notify_maintenance'] ?? true)> Maintenance updates</label>
+                <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="notify_lease_expiry" value="1" class="rounded border-slate-300" @checked($notificationPrefs['notify_lease_expiry'] ?? true)> Lease expiry</label>
+            </div>
+            <button type="submit" class="mt-3 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700">Save preferences</button>
+        </form>
+
         @if (count($notifications ?? []) === 0)
             <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-8 text-center text-sm text-slate-600 dark:text-slate-300">
                 <p>Nothing to show yet — when rent posts, work orders move, or leases approach expiry, they will appear here.</p>

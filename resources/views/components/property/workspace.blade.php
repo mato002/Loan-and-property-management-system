@@ -101,7 +101,13 @@
                                                 data-filter-text="{{ e($__filterText) }}"
                                             >
                                                 @foreach ($row as $cell)
-                                                    <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 whitespace-normal sm:whitespace-nowrap sm:max-w-xs sm:truncate align-top">{{ $cell }}</td>
+                                                    <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 whitespace-normal sm:whitespace-nowrap sm:max-w-xs sm:truncate align-top">
+                                                        @if ($cell instanceof \Illuminate\Support\HtmlString)
+                                                            {!! $cell !!}
+                                                        @else
+                                                            {{ $cell }}
+                                                        @endif
+                                                    </td>
                                                 @endforeach
                                             </tr>
                                         @endforeach

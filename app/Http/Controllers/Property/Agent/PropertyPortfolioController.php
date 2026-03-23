@@ -219,7 +219,8 @@ class PropertyPortfolioController extends Controller
         $rows = $units->map(fn (PropertyUnit $u) => [
             $u->label,
             $u->property->name,
-            (string) $u->bedrooms,
+            $u->unitTypeLabel(),
+            $u->bedroomsLabel(),
             PropertyMoney::kes((float) $u->rent_amount),
             ucfirst($u->status),
             '—',
@@ -229,9 +230,10 @@ class PropertyPortfolioController extends Controller
 
         return view('property.agent.properties.units', [
             'stats' => $stats,
-            'columns' => ['Unit', 'Property', 'Beds', 'Rent', 'Status', 'Tenant', 'Vacant since', 'Actions'],
+            'columns' => ['Unit', 'Property', 'Type', 'Beds', 'Rent', 'Status', 'Tenant', 'Vacant since', 'Actions'],
             'tableRows' => $rows,
             'properties' => Property::query()->orderBy('name')->get(),
+            'unitTypes' => PropertyUnit::typeOptions(),
         ]);
     }
 
@@ -240,6 +242,7 @@ class PropertyPortfolioController extends Controller
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
             'label' => ['required', 'string', 'max:64'],
+            'unit_type' => ['required', 'string', 'in:'.implode(',', array_keys(PropertyUnit::typeOptions()))],
             'bedrooms' => ['required', 'integer', 'min:0', 'max:20'],
             'rent_amount' => ['required', 'numeric', 'min:0'],
             'status' => ['required', 'in:vacant,occupied,notice'],
@@ -249,6 +252,9 @@ class PropertyPortfolioController extends Controller
         $desc = isset($data['public_listing_description']) && trim((string) $data['public_listing_description']) !== ''
             ? $data['public_listing_description']
             : null;
+        if (in_array($data['unit_type'], [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO], true)) {
+            $data['bedrooms'] = 0;
+        }
 
         PropertyUnit::query()->create([
             ...$data,

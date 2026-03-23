@@ -9,6 +9,7 @@ use App\Models\LoanRegion;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class LoanOrganizationController extends Controller
@@ -195,7 +196,6 @@ class LoanOrganizationController extends Controller
                 'SUM(CASE WHEN l.status = '.$activeSql.' THEN 1 ELSE 0 END) as active_count'
             )
             ->groupByRaw($branchKeySql)
-            ->orderBy('branch_label')
             ->get();
 
         $totals = [
@@ -214,14 +214,14 @@ class LoanOrganizationController extends Controller
 
     private function validatedBranch(Request $request, ?int $ignoreId = null): array
     {
-        $uniqueCode = 'nullable|string|max:40|unique:loan_branches,code';
+        $codeRules = ['nullable', 'string', 'max:40', Rule::unique('loan_branches', 'code')];
         if ($ignoreId !== null) {
-            $uniqueCode .= ','.$ignoreId;
+            $codeRules[3] = Rule::unique('loan_branches', 'code')->ignore($ignoreId);
         }
 
         $validated = $request->validate([
             'loan_region_id' => ['required', 'exists:loan_regions,id'],
-            'code' => [$uniqueCode],
+            'code' => $codeRules,
             'name' => ['required', 'string', 'max:160'],
             'address' => ['nullable', 'string', 'max:500'],
             'phone' => ['nullable', 'string', 'max:60'],

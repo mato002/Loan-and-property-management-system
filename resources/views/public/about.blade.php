@@ -29,4 +29,27 @@
             </div>
         </div>
     </div>
+
+    <div class="bg-gray-50 border-y border-gray-200">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-20">
+            <h2 class="text-3xl font-black text-gray-900 tracking-tight text-center mb-12">Meet Our Team</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-sm">
+                    <img src="https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&q=80" alt="Managing director" class="w-20 h-20 rounded-full mx-auto object-cover mb-4">
+                    <p class="text-lg font-black text-gray-900">James Otieno</p>
+                    <p class="text-sm text-indigo-600 font-bold">Managing Director</p>
+                </div>
+                <div class="bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-sm">
+                    <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80" alt="Head of lettings" class="w-20 h-20 rounded-full mx-auto object-cover mb-4">
+                    <p class="text-lg font-black text-gray-900">Ann Wanjiku</p>
+                    <p class="text-sm text-indigo-600 font-bold">Head of Lettings</p>
+                </div>
+                <div class="bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-sm">
+                    <img src="https://images.unsplash.com/photo-1568602471122-7832951cc4c5?auto=format&fit=crop&w=400&q=80" alt="Client success lead" class="w-20 h-20 rounded-full mx-auto object-cover mb-4">
+                    <p class="text-lg font-black text-gray-900">David Kimani</p>
+                    <p class="text-sm text-indigo-600 font-bold">Client Success Lead</p>
+                </div>
+            </div>
+        </div>
+    </div>
 </x-public-layout>

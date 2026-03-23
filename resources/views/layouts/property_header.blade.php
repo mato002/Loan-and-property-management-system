@@ -12,12 +12,19 @@
         default => route('property.communications.messages'),
     };
 
+    $notifyNavPattern = match ($portalRole) {
+        'landlord' => 'property.landlord.notifications',
+        'tenant' => 'property.tenant.notifications',
+        default => 'property.communications.messages',
+    };
+
     $quickLinks = match ($portalRole) {
         'landlord' => [
             ['label' => 'Portfolio', 'route' => 'property.landlord.portfolio', 'patterns' => ['property.landlord.portfolio']],
             ['label' => 'Earnings', 'route' => 'property.landlord.earnings.index', 'patterns' => ['property.landlord.earnings.*']],
             ['label' => 'Reports', 'route' => 'property.landlord.reports.index', 'patterns' => ['property.landlord.reports.*']],
             ['label' => 'Maintenance', 'route' => 'property.landlord.maintenance', 'patterns' => ['property.landlord.maintenance']],
+            ['label' => 'Audit trail', 'route' => 'property.landlord.audit_trail', 'patterns' => ['property.landlord.audit_trail']],
         ],
         'tenant' => [
             ['label' => 'Home', 'route' => 'property.tenant.home', 'patterns' => ['property.tenant.home']],
@@ -33,6 +40,7 @@
             ['label' => 'Maintenance', 'route' => 'property.maintenance.requests', 'patterns' => ['property.maintenance.requests', 'property.maintenance.jobs']],
             ['label' => 'Properties', 'route' => 'property.properties.list', 'patterns' => ['property.properties.*']],
             ['label' => 'Financials', 'route' => 'property.financials.index', 'patterns' => ['property.financials.*']],
+            ['label' => 'Accounting', 'route' => 'property.accounting.index', 'patterns' => ['property.accounting.*']],
         ],
     };
 
@@ -186,15 +194,6 @@
                         data-property-nav="{{ implode('|', $link['patterns']) }}"
                         @if ($active) aria-current="page" @endif
                         class="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm"
-                    >
-                        {{ $link['label'] }}
-                    </a>
-                @endforeach
-            </nav>
-        </div>
-    </div>
-</header>
-  ])
                     >
                         {{ $link['label'] }}
                     </a>

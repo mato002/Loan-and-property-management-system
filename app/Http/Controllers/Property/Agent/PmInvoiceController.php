@@ -7,6 +7,7 @@ use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmTenant;
 use App\Models\PropertyUnit;
+use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,6 +38,8 @@ class PmInvoiceController extends Controller
         ]);
 
         $invoice->refreshComputedStatus();
+        $invoice->loadMissing('unit');
+        PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
 
         return back()->with('success', 'Invoice '.$invoice->invoice_no.' created.');
     }

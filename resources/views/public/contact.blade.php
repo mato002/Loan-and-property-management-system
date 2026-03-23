@@ -43,6 +43,15 @@
                             <p class="leading-relaxed">1-800-555-0199</p>
                         </div>
                     </div>
+                    <div class="flex items-start gap-6">
+                        <div class="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0 text-emerald-600">
+                            <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24"><path d="M20.52 3.48A11.86 11.86 0 0 0 12.06 0C5.5 0 .16 5.34.16 11.9c0 2.1.55 4.14 1.6 5.95L0 24l6.32-1.66a11.84 11.84 0 0 0 5.73 1.47h.01c6.56 0 11.9-5.34 11.9-11.9 0-3.18-1.24-6.16-3.44-8.43Z"/></svg>
+                        </div>
+                        <div>
+                            <p class="text-gray-900 font-black tracking-wide uppercase text-sm mb-2 text-emerald-600">WhatsApp</p>
+                            <a href="https://wa.me/18005550199" target="_blank" rel="noopener noreferrer" class="leading-relaxed text-emerald-600 hover:text-emerald-700">+1 (800) 555-0199</a>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -73,6 +82,17 @@
                     </button>
                 </form>
             </div>
+        </div>
+    </div>
+    <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 pb-24">
+        <div class="rounded-3xl overflow-hidden border border-gray-200 shadow-sm">
+            <iframe
+                title="PrimeEstate office location"
+                src="https://maps.google.com/maps?q=123%20Estate%20Blvd%20Suite%20400%20Metropolis%20NY%2010012&t=&z=13&ie=UTF8&iwloc=&output=embed"
+                class="w-full h-80"
+                loading="lazy"
+                referrerpolicy="no-referrer-when-downgrade"
+            ></iframe>
         </div>
     </div>
 </x-public-layout>

@@ -33,7 +33,11 @@
                 </div>
                 <div>
                     <label for="channel" class="block text-xs font-semibold text-slate-600 mb-1">Channel</label>
-                    <input id="channel" name="channel" value="{{ old('channel', $payment->channel) }}" required maxlength="40" class="w-full rounded-lg border-slate-200 text-sm" />
+                    <select id="channel" name="channel" required class="w-full rounded-lg border-slate-200 text-sm">
+                        @foreach (['cash' => 'Cash', 'mpesa' => 'M-Pesa', 'bank' => 'Bank / EFT', 'cheque' => 'Cheque', 'card' => 'Card'] as $v => $lab)
+                            <option value="{{ $v }}" @selected(old('channel', $payment->channel) === $v)>{{ $lab }}</option>
+                        @endforeach
+                    </select>
                     @error('channel')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>

@@ -7,6 +7,7 @@ use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class PublicController extends Controller
@@ -28,6 +29,8 @@ class PublicController extends Controller
 
         return view('public.home', [
             'featuredUnits' => $featuredUnits,
+            'availableCities' => $this->availableCities(),
+            'availableUnitTypes' => PropertyUnit::typeOptions(),
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
             'publicStats' => [
                 'properties' => Property::query()->count(),
@@ -67,6 +70,15 @@ class PublicController extends Controller
             $query->where('bedrooms', (int) $bedrooms);
         }
 
+        $unitType = strtolower(trim($request->string('unit_type')->toString()));
+        if (
+            $unitType !== ''
+            && Schema::hasColumn('property_units', 'unit_type')
+            && array_key_exists($unitType, PropertyUnit::typeOptions())
+        ) {
+            $query->where('unit_type', $unitType);
+        }
+
         $sort = $request->string('sort')->toString() ?: 'updated';
         match ($sort) {
             'rent_asc' => $query->orderBy('rent_amount')->orderBy('property_id'),
@@ -76,15 +88,7 @@ class PublicController extends Controller
         };
 
         $units = $query->paginate(8)->withQueryString();
-
-        $filterCities = Property::query()
-            ->whereHas('units', fn ($q) => $q->where('status', PropertyUnit::STATUS_VACANT))
-            ->whereNotNull('city')
-            ->where('city', '!=', '')
-            ->distinct()
-            ->orderBy('city')
-            ->pluck('city')
-            ->values();
+        $filterCities = $this->availableCities();
 
         $sortLabel = match ($sort) {
             'rent_asc' => 'Rent: low to high',
@@ -97,8 +101,24 @@ class PublicController extends Controller
             'units' => $units,
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
             'filterCities' => $filterCities,
+            'filterUnitTypes' => PropertyUnit::typeOptions(),
             'sortLabel' => $sortLabel,
         ]);
+    }
+
+    /**
+     * Get selectable city options from currently listed properties.
+     */
+    private function availableCities()
+    {
+        return Property::query()
+            ->whereHas('units', fn ($q) => $q->where('status', PropertyUnit::STATUS_VACANT))
+            ->whereNotNull('city')
+            ->where('city', '!=', '')
+            ->distinct()
+            ->orderBy('city')
+            ->pluck('city')
+            ->values();
     }
 
     /**

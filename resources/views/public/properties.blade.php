@@ -14,25 +14,31 @@
             <div class="w-full lg:w-1/4">
                 <form method="get" action="{{ route('public.properties') }}" class="bg-white border border-gray-100 p-6 rounded-2xl shadow-sm lg:sticky lg:top-28 space-y-6">
                     <h3 class="text-lg font-black text-gray-900 mb-1">Filter Search</h3>
-                    @if ($filterCities->isNotEmpty())
-                        <datalist id="filter-city-options">
-                            @foreach ($filterCities as $c)
-                                <option value="{{ $c }}"></option>
-                            @endforeach
-                        </datalist>
-                    @endif
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-2" for="city">Location</label>
-                        <input
-                            type="text"
+                        <select
                             id="city"
                             name="city"
-                            value="{{ request('city') }}"
-                            placeholder="City"
-                            @if ($filterCities->isNotEmpty()) list="filter-city-options" @endif
-                            autocomplete="address-level2"
                             class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 outline-none"
-                        />
+                        >
+                            <option value="">{{ __('All cities') }}</option>
+                            @foreach ($filterCities as $c)
+                                <option value="{{ $c }}" @selected(request('city') === $c)>{{ $c }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2" for="unit_type">House type</label>
+                        <select
+                            id="unit_type"
+                            name="unit_type"
+                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-700 outline-none"
+                        >
+                            <option value="">{{ __('All house types') }}</option>
+                            @foreach ($filterUnitTypes as $typeValue => $typeLabel)
+                                <option value="{{ $typeValue }}" @selected(request('unit_type') === $typeValue)>{{ $typeLabel }}</option>
+                            @endforeach
+                        </select>
                     </div>
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-2" for="bedrooms">Bedrooms</label>
@@ -43,7 +49,7 @@
                         >
                             <option value="any" @selected(request('bedrooms', 'any') === 'any' || request('bedrooms') === '' || request('bedrooms') === null)>Any</option>
                             @for ($b = 0; $b <= 6; $b++)
-                                <option value="{{ $b }}" @selected((string) request('bedrooms') === (string) $b)>{{ $b }} {{ Str::plural('bed', $b) }}</option>
+                                <option value="{{ $b }}" @selected((string) request('bedrooms') === (string) $b)>{{ $b === 0 ? 'No separate bedroom' : $b.' '.Str::plural('bedroom', $b) }}</option>
                             @endfor
                         </select>
                     </div>

@@ -310,13 +310,22 @@ class LoanPaymentsController extends Controller
             'loan_book_loan_id' => ['nullable', 'exists:loan_book_loans,id'],
             'amount' => ['required', 'numeric', 'not_in:0'],
             'currency' => ['nullable', 'string', 'max:8'],
-            'channel' => ['required', 'string', 'max:40'],
+            'channel' => ['required', 'in:cash,mpesa,bank,cheque,card'],
             'payment_kind' => ['required', 'in:normal,prepayment,overpayment'],
             'mpesa_receipt_number' => ['nullable', 'string', 'max:80'],
             'payer_msisdn' => ['nullable', 'string', 'max:40'],
             'transaction_at' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        if ($validated['channel'] === 'mpesa') {
+            if (blank($validated['mpesa_receipt_number'] ?? null)) {
+                return back()->withErrors(['mpesa_receipt_number' => 'M-Pesa receipt is required for M-Pesa channel.'])->withInput();
+            }
+            if (blank($validated['payer_msisdn'] ?? null)) {
+                return back()->withErrors(['payer_msisdn' => 'Payer MSISDN is required for M-Pesa channel.'])->withInput();
+            }
+        }
 
         $payment = LoanBookPayment::create([
             'reference' => null,
@@ -412,13 +421,22 @@ class LoanPaymentsController extends Controller
             'loan_book_loan_id' => ['nullable', 'exists:loan_book_loans,id'],
             'amount' => ['required', 'numeric', 'not_in:0'],
             'currency' => ['nullable', 'string', 'max:8'],
-            'channel' => ['required', 'string', 'max:40'],
+            'channel' => ['required', 'in:cash,mpesa,bank,cheque,card'],
             'payment_kind' => ['required', 'in:normal,prepayment,overpayment,c2b_reversal'],
             'mpesa_receipt_number' => ['nullable', 'string', 'max:80'],
             'payer_msisdn' => ['nullable', 'string', 'max:40'],
             'transaction_at' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        if ($validated['channel'] === 'mpesa') {
+            if (blank($validated['mpesa_receipt_number'] ?? null)) {
+                return back()->withErrors(['mpesa_receipt_number' => 'M-Pesa receipt is required for M-Pesa channel.'])->withInput();
+            }
+            if (blank($validated['payer_msisdn'] ?? null)) {
+                return back()->withErrors(['payer_msisdn' => 'Payer MSISDN is required for M-Pesa channel.'])->withInput();
+            }
+        }
 
         $loan_book_payment->update($validated);
 
