@@ -118,11 +118,11 @@
     </div>
 
     <!-- Tenant CTA Area -->
-    <div class="bg-indigo-600 py-20">
+    <div class="bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 py-20">
         <div class="max-w-4xl mx-auto px-4 text-center">
             <h2 class="text-3xl font-black text-white sm:text-4xl mb-6 tracking-tight">Ready to Find Your Next Home?</h2>
-            <p class="text-xl text-indigo-100 mb-10">Browse verified listings, compare options, and book a viewing in minutes.</p>
-            <a href="{{ route('public.properties') }}" class="inline-block bg-white hover:bg-gray-50 text-indigo-600 font-bold px-10 py-4 rounded-xl shadow-xl transition-transform hover:-translate-y-1">Browse Available Homes</a>
+            <p class="text-xl text-slate-200 mb-10">Browse verified listings, compare options, and book a viewing in minutes.</p>
+            <a href="{{ route('public.properties') }}" class="inline-block bg-indigo-500 hover:bg-indigo-400 text-white font-bold px-10 py-4 rounded-xl shadow-xl shadow-indigo-900/30 transition-transform hover:-translate-y-1">Browse Available Homes</a>
         </div>
     </div>
 </x-public-layout>

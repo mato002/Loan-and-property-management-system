@@ -32,7 +32,7 @@
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 h-[400px] md:h-[550px]">
             <div class="col-span-1 md:col-span-2 h-full rounded-3xl overflow-hidden cursor-pointer relative group">
                 @if (! empty($gallerySlots[0]))
-                    <img src="{{ $gallerySlots[0] }}" alt="Main" class="absolute inset-0 block w-full h-full object-cover object-center bg-slate-100 group-hover:scale-105 transition-transform duration-700">
+                    <img src="{{ $gallerySlots[0] }}" alt="Main" class="absolute inset-0 block w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700">
                     <div class="absolute inset-0 bg-gray-900/10 group-hover:bg-gray-900/0 transition-colors"></div>
                 @else
                     <div class="w-full h-full bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-semibold">
@@ -43,7 +43,7 @@
             <div class="hidden md:grid grid-rows-2 gap-4 col-span-1 h-full">
                 <div class="rounded-3xl overflow-hidden cursor-pointer relative group h-full">
                     @if (! empty($gallerySlots[1]))
-                        <img src="{{ $gallerySlots[1] }}" alt="Photo" class="absolute inset-0 block w-full h-full object-cover object-center bg-slate-100 group-hover:scale-105 transition-transform duration-700">
+                        <img src="{{ $gallerySlots[1] }}" alt="Photo" class="absolute inset-0 block w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700">
                     @else
                         <div class="w-full h-full bg-slate-100 text-slate-500 flex items-center justify-center text-xs font-semibold">
                             No photo
@@ -52,7 +52,7 @@
                 </div>
                 <div class="rounded-3xl overflow-hidden cursor-pointer relative group h-full">
                     @if (! empty($gallerySlots[2]))
-                        <img src="{{ $gallerySlots[2] }}" alt="Photo" class="absolute inset-0 block w-full h-full object-cover object-center bg-slate-100 group-hover:scale-105 transition-transform duration-700">
+                        <img src="{{ $gallerySlots[2] }}" alt="Photo" class="absolute inset-0 block w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700">
                     @else
                         <div class="w-full h-full bg-slate-100 text-slate-500 flex items-center justify-center text-xs font-semibold">
                             No photo
@@ -63,7 +63,7 @@
             <div class="hidden md:grid grid-rows-2 gap-4 col-span-1 h-full">
                 <div class="rounded-3xl overflow-hidden cursor-pointer relative group h-full">
                     @if (! empty($gallerySlots[3]))
-                        <img src="{{ $gallerySlots[3] }}" alt="Photo" class="absolute inset-0 block w-full h-full object-cover object-center bg-slate-100 group-hover:scale-105 transition-transform duration-700">
+                        <img src="{{ $gallerySlots[3] }}" alt="Photo" class="absolute inset-0 block w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700">
                     @else
                         <div class="w-full h-full bg-slate-100 text-slate-500 flex items-center justify-center text-xs font-semibold">
                             No photo
@@ -77,7 +77,7 @@
                         </div>
                     @endif
                     @if (! empty($gallerySlots[4]))
-                        <img src="{{ $gallerySlots[4] }}" alt="Photo" class="absolute inset-0 block w-full h-full object-cover object-center bg-slate-100 group-hover:scale-105 transition-transform duration-700">
+                        <img src="{{ $gallerySlots[4] }}" alt="Photo" class="absolute inset-0 block w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700">
                     @else
                         <div class="w-full h-full bg-slate-100 text-slate-500 flex items-center justify-center text-xs font-semibold">
                             No photo

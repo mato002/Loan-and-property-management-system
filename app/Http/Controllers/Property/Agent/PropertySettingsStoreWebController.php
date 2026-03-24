@@ -568,9 +568,7 @@ class PropertySettingsStoreWebController extends Controller
         if ($request->hasFile('company_logo')) {
             $path = $request->file('company_logo')->store('property/branding', 'public');
             PropertyPortalSetting::setValue('company_logo_url', Storage::url($path));
-        }
-
-        if (array_key_exists('company_logo_url', $data)) {
+        } elseif (array_key_exists('company_logo_url', $data)) {
             PropertyPortalSetting::setValue('company_logo_url', $data['company_logo_url'] ?? '');
         }
 

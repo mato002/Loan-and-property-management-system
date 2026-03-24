@@ -8,10 +8,21 @@
     @php($contactMapEmbedUrl = \App\Models\PropertyPortalSetting::getValue('contact_map_embed_url', '') ?: 'https://maps.google.com/maps?q=123%20Estate%20Blvd%20Suite%20400%20Metropolis%20NY%2010012&t=&z=13&ie=UTF8&iwloc=&output=embed')
     @php($whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp) ?: '18005550199')
     <!-- Header -->
-    <div class="bg-gray-50 border-b border-gray-200">
-        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-20 text-center">
-            <h1 class="text-5xl md:text-6xl font-black text-gray-900 tracking-tight mb-6">Get in Touch</h1>
-            <p class="text-xl text-gray-500 max-w-2xl mx-auto font-medium">Have questions about our properties or management services? Our dedicated account managers are here to help.</p>
+    <div class="relative border-b border-gray-200">
+        <div class="absolute inset-0 overflow-hidden">
+            <img
+                src="https://images.unsplash.com/photo-1467269204594-9661b134dd2b?auto=format&fit=crop&w=2200&q=80"
+                alt="Modern property skyline"
+                class="w-full h-full object-cover brightness-[0.5]"
+            >
+            <div class="absolute inset-0 bg-gradient-to-b from-slate-950/90 via-slate-900/85 to-slate-950/90"></div>
+        </div>
+        <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-24 text-center">
+            <div class="inline-block max-w-3xl rounded-2xl bg-slate-950/45 px-6 py-5 sm:px-8 sm:py-6 ring-1 ring-white/15 backdrop-blur-[1px]">
+                <p class="text-sm font-bold uppercase tracking-[0.2em] text-indigo-200 mb-4">Contact {{ $brandName }}</p>
+                <h1 class="text-5xl md:text-6xl font-black text-white tracking-tight mb-6 drop-shadow-[0_4px_14px_rgba(15,23,42,0.95)]">Get in Touch</h1>
+                <p class="text-xl text-slate-100 max-w-2xl mx-auto font-medium drop-shadow-[0_2px_8px_rgba(15,23,42,0.9)]">Have questions about our properties or management services? Our dedicated account managers are here to help.</p>
+            </div>
         </div>
     </div>
 

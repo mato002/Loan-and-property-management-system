@@ -42,9 +42,11 @@
             <div class="h-20 flex items-center justify-between md:grid md:grid-cols-[1fr_auto_1fr] md:items-center md:gap-8">
                 <!-- Logo -->
                 <div class="flex items-center md:justify-self-start">
-                    <a href="{{ route('public.home') }}" class="text-2xl font-black tracking-tighter text-indigo-600 flex items-center gap-2">
+                    <a href="{{ route('public.home') }}" class="text-xl sm:text-2xl font-black tracking-tight text-indigo-600 flex items-center gap-3">
                         @if ($companyLogoUrl)
-                            <img src="{{ $companyLogoUrl }}" alt="{{ $companyName }} logo" class="w-8 h-8 object-contain rounded-md bg-white p-0.5 ring-1 ring-indigo-100" />
+                            <span class="inline-flex items-center justify-center rounded-xl bg-white px-2 py-1 ring-1 ring-indigo-200 shadow-sm">
+                                <img src="{{ $companyLogoUrl }}" alt="{{ $companyName }} logo" class="h-12 w-auto max-w-[9rem] sm:h-16 sm:max-w-[13rem] object-contain" />
+                            </span>
                         @else
                             <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
@@ -129,9 +131,11 @@
             <div class="grid grid-cols-1 md:grid-cols-4 gap-12 lg:gap-8">
                 <!-- Branding -->
                 <div class="col-span-1 md:col-span-1">
-                    <a href="{{ route('public.home') }}" class="text-2xl font-black tracking-tighter text-white flex items-center gap-2 mb-4">
+                    <a href="{{ route('public.home') }}" class="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-3 mb-4">
                         @if ($companyLogoUrl)
-                            <img src="{{ $companyLogoUrl }}" alt="{{ $companyName }} logo" class="w-8 h-8 object-contain rounded-md bg-white p-0.5 ring-1 ring-white/20" />
+                            <span class="inline-flex items-center justify-center rounded-xl bg-white px-2 py-1 ring-1 ring-white/25 shadow-sm">
+                                <img src="{{ $companyLogoUrl }}" alt="{{ $companyName }} logo" class="h-12 w-auto max-w-[9rem] sm:h-16 sm:max-w-[13rem] object-contain" />
+                            </span>
                         @else
                             <svg class="w-8 h-8 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>

@@ -1,56 +1,95 @@
 <x-public-layout>
-    @php($brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name'))
-    <!-- Hero Statement -->
-    <div class="bg-indigo-600 py-24 sm:py-32 relative overflow-hidden">
-        <div class="absolute inset-0 bg-indigo-900/20"></div>
-        <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 text-center">
-            <h1 class="text-5xl md:text-7xl font-black text-white tracking-tight mb-8">About {{ $brandName }}</h1>
-            <p class="text-xl md:text-2xl text-indigo-100 max-w-4xl mx-auto font-medium leading-normal">We are revolutionizing the property management industry by bringing absolute transparency, speed, and design to the real estate market.</p>
-        </div>
-    </div>
+    @php
+        $brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: 'Gaitho Property Agency';
+        $contactEmail = \App\Models\PropertyPortalSetting::getValue('contact_email_primary', '') ?: 'gaithoarthur17@gmail.com';
+        $contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '0717018779';
+    @endphp
 
-    <!-- Content Story -->
-    <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-24">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            <div>
-                <h2 class="text-4xl font-black text-gray-900 tracking-tight mb-8">Our Mission</h2>
-                <div class="prose prose-lg text-gray-600">
-                    <p class="mb-6 leading-relaxed">Founded in 2026, {{ $brandName }} was built on a simple premise: managing properties shouldn't be a nightmare. We observed landlords drowning in paperwork and tenants frustrated by slow maintenance responses.</p>
-                    <p class="mb-6 leading-relaxed">We built a digital-first platform bridging the gap between property owners and renters, replacing outdated ledgers with stunning dashboards, automated flows, and complete visibility.</p>
-                    <p class="leading-relaxed">Whether you are finding your next dream home, or bringing your entire portfolio loop under our management system, we guarantee an enterprise-grade experience without the traditional overhead friction.</p>
-                </div>
-                <div class="mt-10 flex gap-4">
-                    <a href="{{ route('public.contact') }}" class="bg-indigo-600 text-white font-bold py-3.5 px-8 rounded-xl hover:bg-indigo-700 transition">Get In Touch</a>
-                    <a href="{{ route('public.properties') }}" class="bg-white border border-gray-200 text-gray-700 font-bold py-3.5 px-8 rounded-xl hover:bg-gray-50 transition">View Listings</a>
-                </div>
-            </div>
-            <div class="rounded-3xl overflow-hidden shadow-2xl relative">
-                <div class="absolute inset-0 bg-indigo-600/10 mix-blend-multiply z-10"></div>
-                <img src="https://images.unsplash.com/photo-1573164713988-8665fc963095?auto=format&fit=crop&w=1200&q=80" alt="Office team" class="w-full h-full object-cover">
+    <section class="relative border-b border-gray-200 py-20 sm:py-24 overflow-hidden">
+        <div class="absolute inset-0">
+            <img
+                src="https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=2400&q=80"
+                alt="Modern apartment exterior"
+                class="w-full h-full object-cover"
+            >
+            <div class="absolute inset-0 bg-slate-900/70"></div>
+        </div>
+        <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
+            <div class="max-w-4xl">
+                <p class="text-indigo-300 text-sm font-semibold uppercase tracking-[0.16em]">About us</p>
+                <h1 class="mt-3 text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white">{{ $brandName }}</h1>
+                <p class="mt-4 text-lg sm:text-xl text-slate-200 font-medium">Relax, we got you.</p>
+                <p class="mt-5 text-base sm:text-lg leading-relaxed text-slate-100/95 max-w-3xl">
+                    We specialize in hands-free rental management for busy landlords. From rent collection to tenant follow-ups,
+                    our team ensures your property works for you with less stress and consistent reporting.
+                </p>
             </div>
         </div>
-    </div>
+    </section>
 
-    <div class="bg-gray-50 border-y border-gray-200">
-        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-20">
-            <h2 class="text-3xl font-black text-gray-900 tracking-tight text-center mb-12">Meet Our Team</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div class="bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-sm">
-                    <img src="https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=400&q=80" alt="Managing director" class="w-20 h-20 rounded-full mx-auto object-cover mb-4">
-                    <p class="text-lg font-black text-gray-900">James Otieno</p>
-                    <p class="text-sm text-indigo-600 font-bold">Managing Director</p>
+    <section class="py-16 sm:py-20 bg-white">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 sm:p-8">
+                    <h2 class="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">Why partner with {{ $brandName }}?</h2>
+                    <p class="mt-4 text-slate-700 leading-relaxed">
+                        We run day-to-day rental operations with accountability, timely updates, and practical support.
+                        Landlords get transparency on performance while tenants receive faster communication and service.
+                    </p>
                 </div>
-                <div class="bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-sm">
-                    <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80" alt="Head of lettings" class="w-20 h-20 rounded-full mx-auto object-cover mb-4">
-                    <p class="text-lg font-black text-gray-900">Ann Wanjiku</p>
-                    <p class="text-sm text-indigo-600 font-bold">Head of Lettings</p>
-                </div>
-                <div class="bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-sm">
-                    <img src="https://images.unsplash.com/photo-1568602471122-7832951cc4c5?auto=format&fit=crop&w=400&q=80" alt="Client success lead" class="w-20 h-20 rounded-full mx-auto object-cover mb-4">
-                    <p class="text-lg font-black text-gray-900">David Kimani</p>
-                    <p class="text-sm text-indigo-600 font-bold">Client Success Lead</p>
+                <div class="rounded-2xl border border-indigo-200 bg-indigo-50 p-6 sm:p-8">
+                    <h3 class="text-xl font-black text-indigo-900">What makes us different</h3>
+                    <ul class="mt-4 space-y-2 text-indigo-900">
+                        <li>Personalized landlord service</li>
+                        <li>Transparent earnings breakdown</li>
+                        <li>Available on both mobile and laptop</li>
+                        <li>Simple setup and no hidden charges</li>
+                        <li>Timely payouts and local office support</li>
+                    </ul>
                 </div>
             </div>
         </div>
-    </div>
+    </section>
+
+    <section class="py-14 sm:py-16 bg-slate-50 border-y border-slate-200">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
+            <h2 class="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">What we offer landlords</h2>
+            <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div class="rounded-xl border border-slate-200 bg-white p-5">
+                    <h3 class="text-lg font-extrabold text-slate-900">Full rent collection and tracking</h3>
+                    <p class="mt-2 text-sm text-slate-600">Stop chasing rent manually. We follow up and keep a clear record of inflows.</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white p-5">
+                    <h3 class="text-lg font-extrabold text-slate-900">SMS and WhatsApp alerts</h3>
+                    <p class="mt-2 text-sm text-slate-600">Tenants receive reminders and you stay updated from one connected workflow.</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white p-5">
+                    <h3 class="text-lg font-extrabold text-slate-900">Monthly reports and statements</h3>
+                    <p class="mt-2 text-sm text-slate-600">Review collections, expenses, balances, and overall performance at a glance.</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white p-5">
+                    <h3 class="text-lg font-extrabold text-slate-900">Online landlord portal access</h3>
+                    <p class="mt-2 text-sm text-slate-600">View property status, statements, and collection trends anywhere.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="py-16 bg-white">
+        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
+            <div class="rounded-3xl border border-indigo-200 bg-indigo-50 p-8 sm:p-10 text-center shadow-sm">
+                <h2 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">Let your property earn. We will do the work.</h2>
+                <p class="mt-4 text-gray-700 text-base sm:text-lg">
+                    Call or WhatsApp: <span class="font-bold text-gray-900">{{ $contactPhone }}</span>
+                    <span class="hidden sm:inline"> · </span>
+                    <br class="sm:hidden">
+                    Email: <span class="font-bold text-gray-900">{{ $contactEmail }}</span>
+                </p>
+                <div class="mt-6 flex flex-wrap justify-center gap-3">
+                    <a href="{{ route('public.contact') }}" class="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-extrabold text-white hover:bg-indigo-700 transition">Contact us</a>
+                    <a href="{{ route('public.properties') }}" class="rounded-xl border border-indigo-300 px-6 py-3 text-sm font-extrabold text-indigo-700 hover:bg-indigo-100 transition">View listings</a>
+                </div>
+            </div>
+        </div>
+    </section>
 </x-public-layout>
