@@ -66,7 +66,7 @@ class PropertyAccountingController extends Controller
             $action = '—';
             if (! $isReverseRow && ! $isReversed) {
                 $action = new HtmlString(
-                    '<form method="POST" action="'.route('property.accounting.entries.reverse', $e).'" onsubmit="return confirm(\'Post reversal for this entry?\');">'.
+                    '<form method="POST" action="'.route('property.accounting.entries.reverse', $e).'" data-swal-title="Post reversal?" data-swal-confirm="Post reversal for this entry?" data-swal-confirm-text="Yes, reverse">'.
                     csrf_field().
                     '<button type="submit" class="text-rose-600 hover:text-rose-700 font-medium">Reverse</button>'.
                     '</form>'
@@ -153,6 +153,15 @@ class PropertyAccountingController extends Controller
         if ($request->filled('source_key')) {
             $query->where('source_key', $request->string('source_key')->toString());
         }
+        $q = trim($request->string('q')->toString());
+        if ($q !== '') {
+            $query->where(function ($sub) use ($q) {
+                $sub->where('account_name', 'like', '%'.$q.'%')
+                    ->orWhere('reference', 'like', '%'.$q.'%')
+                    ->orWhere('description', 'like', '%'.$q.'%')
+                    ->orWhere('source_key', 'like', '%'.$q.'%');
+            });
+        }
 
         $rowsData = $query->limit(500)->get();
 
@@ -184,6 +193,7 @@ class PropertyAccountingController extends Controller
                 'from' => $request->input('from'),
                 'to' => $request->input('to'),
                 'source_key' => $request->input('source_key'),
+                'q' => $request->input('q'),
             ],
         ]);
     }
@@ -203,6 +213,15 @@ class PropertyAccountingController extends Controller
         }
         if ($request->filled('source_key')) {
             $query->where('source_key', $request->string('source_key')->toString());
+        }
+        $q = trim($request->string('q')->toString());
+        if ($q !== '') {
+            $query->where(function ($sub) use ($q) {
+                $sub->where('account_name', 'like', '%'.$q.'%')
+                    ->orWhere('reference', 'like', '%'.$q.'%')
+                    ->orWhere('description', 'like', '%'.$q.'%')
+                    ->orWhere('source_key', 'like', '%'.$q.'%');
+            });
         }
 
         $rows = $query->limit(5000)->get()->map(fn (PmAccountingEntry $e) => [
@@ -262,6 +281,15 @@ class PropertyAccountingController extends Controller
         $sourceFilter = $request->string('source_key')->toString();
         if ($sourceFilter !== '') {
             $query->where('source_key', $sourceFilter);
+        }
+        $q = trim($request->string('q')->toString());
+        if ($q !== '') {
+            $query->where(function ($sub) use ($q) {
+                $sub->where('account_name', 'like', '%'.$q.'%')
+                    ->orWhere('reference', 'like', '%'.$q.'%')
+                    ->orWhere('description', 'like', '%'.$q.'%')
+                    ->orWhere('source_key', 'like', '%'.$q.'%');
+            });
         }
 
         return $query;
@@ -338,9 +366,14 @@ class PropertyAccountingController extends Controller
         return back()->with('success', 'Account mapping saved.');
     }
 
-    public function trialBalance(): View
+    public function trialBalance(Request $request): View
     {
-        $entries = PmAccountingEntry::query()->get();
+        $entries = PmAccountingEntry::query();
+        $q = trim($request->string('q')->toString());
+        if ($q !== '') {
+            $entries->where('account_name', 'like', '%'.$q.'%');
+        }
+        $entries = $entries->get();
         $accounts = $entries->groupBy('account_name')->map(function ($group, $accountName) {
             $debits = (float) $group->where('entry_type', PmAccountingEntry::TYPE_DEBIT)->sum('amount');
             $credits = (float) $group->where('entry_type', PmAccountingEntry::TYPE_CREDIT)->sum('amount');
@@ -365,16 +398,24 @@ class PropertyAccountingController extends Controller
             ],
             'columns' => ['Account', 'Debit', 'Credit'],
             'tableRows' => $rows,
+            'filters' => ['q' => $q],
         ]);
     }
 
-    public function incomeStatement(): View
+    public function incomeStatement(Request $request): View
     {
-        $income = (float) PmAccountingEntry::query()
+        $queryBase = PmAccountingEntry::query();
+        if ($request->filled('from')) {
+            $queryBase->whereDate('entry_date', '>=', $request->date('from'));
+        }
+        if ($request->filled('to')) {
+            $queryBase->whereDate('entry_date', '<=', $request->date('to'));
+        }
+        $income = (float) (clone $queryBase)
             ->where('category', PmAccountingEntry::CATEGORY_INCOME)
             ->where('entry_type', PmAccountingEntry::TYPE_CREDIT)
             ->sum('amount');
-        $expenses = (float) PmAccountingEntry::query()
+        $expenses = (float) (clone $queryBase)
             ->where('category', PmAccountingEntry::CATEGORY_EXPENSE)
             ->where('entry_type', PmAccountingEntry::TYPE_DEBIT)
             ->sum('amount');
@@ -383,14 +424,25 @@ class PropertyAccountingController extends Controller
             'income' => PropertyMoney::kes($income),
             'expenses' => PropertyMoney::kes($expenses),
             'net' => PropertyMoney::kes($income - $expenses),
+            'filters' => ['from' => $request->input('from'), 'to' => $request->input('to')],
         ]);
     }
 
-    public function cashBook(): View
+    public function cashBook(Request $request): View
     {
         $rowsRaw = PmAccountingEntry::query()
             ->where('account_name', 'like', '%cash%')
             ->orWhere('account_name', 'like', '%bank%')
+            ->when($request->filled('from'), fn ($q) => $q->whereDate('entry_date', '>=', $request->date('from')))
+            ->when($request->filled('to'), fn ($q) => $q->whereDate('entry_date', '<=', $request->date('to')))
+            ->when(trim($request->string('q')->toString()) !== '', function ($q) use ($request) {
+                $s = trim($request->string('q')->toString());
+                $q->where(function ($sub) use ($s) {
+                    $sub->where('account_name', 'like', '%'.$s.'%')
+                        ->orWhere('description', 'like', '%'.$s.'%')
+                        ->orWhere('reference', 'like', '%'.$s.'%');
+                });
+            })
             ->orderBy('entry_date')
             ->orderBy('id')
             ->get();
@@ -417,6 +469,7 @@ class PropertyAccountingController extends Controller
             'stats' => [
                 ['label' => 'Rows', 'value' => (string) count($rows), 'hint' => 'Cash/Bank records'],
             ],
+            'filters' => ['from' => $request->input('from'), 'to' => $request->input('to'), 'q' => $request->input('q')],
         ]);
     }
 
@@ -502,10 +555,20 @@ class PropertyAccountingController extends Controller
         return redirect()->route('property.accounting.payroll')->with('success', 'Payroll batch posted.');
     }
 
-    public function payrollPayslips(): View
+    public function payrollPayslips(Request $request): View
     {
         $items = PmAccountingEntry::query()
             ->where('source_key', 'like', 'payroll%')
+            ->when($request->filled('from'), fn ($q) => $q->whereDate('entry_date', '>=', $request->date('from')))
+            ->when($request->filled('to'), fn ($q) => $q->whereDate('entry_date', '<=', $request->date('to')))
+            ->when(trim($request->string('q')->toString()) !== '', function ($q) use ($request) {
+                $s = trim($request->string('q')->toString());
+                $q->where(function ($sub) use ($s) {
+                    $sub->where('reference', 'like', '%'.$s.'%')
+                        ->orWhere('account_name', 'like', '%'.$s.'%')
+                        ->orWhere('description', 'like', '%'.$s.'%');
+                });
+            })
             ->orderByDesc('entry_date')
             ->orderByDesc('id')
             ->limit(200)
@@ -536,7 +599,112 @@ class PropertyAccountingController extends Controller
             ],
             'columns' => ['Entry', 'Date', 'Reference', 'Account', 'Type', 'Amount', 'Payslip'],
             'tableRows' => $rows,
+            'filters' => ['from' => $request->input('from'), 'to' => $request->input('to'), 'q' => $request->input('q')],
         ]);
+    }
+
+    public function exportTrialBalanceCsv(Request $request): StreamedResponse
+    {
+        $entries = PmAccountingEntry::query();
+        $q = trim($request->string('q')->toString());
+        if ($q !== '') {
+            $entries->where('account_name', 'like', '%'.$q.'%');
+        }
+        $accounts = $entries->get()->groupBy('account_name')->map(function ($group, $accountName) {
+            return [
+                (string) $accountName,
+                (string) ((float) $group->where('entry_type', PmAccountingEntry::TYPE_DEBIT)->sum('amount')),
+                (string) ((float) $group->where('entry_type', PmAccountingEntry::TYPE_CREDIT)->sum('amount')),
+            ];
+        })->values()->all();
+
+        return $this->streamCsv('property-accounting-trial-balance.csv', ['Account', 'Debit', 'Credit'], $accounts);
+    }
+
+    public function exportIncomeStatementCsv(Request $request): StreamedResponse
+    {
+        $queryBase = PmAccountingEntry::query();
+        if ($request->filled('from')) {
+            $queryBase->whereDate('entry_date', '>=', $request->date('from'));
+        }
+        if ($request->filled('to')) {
+            $queryBase->whereDate('entry_date', '<=', $request->date('to'));
+        }
+        $income = (float) (clone $queryBase)->where('category', PmAccountingEntry::CATEGORY_INCOME)->where('entry_type', PmAccountingEntry::TYPE_CREDIT)->sum('amount');
+        $expenses = (float) (clone $queryBase)->where('category', PmAccountingEntry::CATEGORY_EXPENSE)->where('entry_type', PmAccountingEntry::TYPE_DEBIT)->sum('amount');
+        $rows = [
+            ['Income', (string) $income],
+            ['Expenses', (string) $expenses],
+            ['Net', (string) ($income - $expenses)],
+        ];
+
+        return $this->streamCsv('property-accounting-income-statement.csv', ['Line', 'Amount'], $rows);
+    }
+
+    public function exportCashBookCsv(Request $request): StreamedResponse
+    {
+        $rowsRaw = PmAccountingEntry::query()
+            ->where('account_name', 'like', '%cash%')
+            ->orWhere('account_name', 'like', '%bank%')
+            ->when($request->filled('from'), fn ($q) => $q->whereDate('entry_date', '>=', $request->date('from')))
+            ->when($request->filled('to'), fn ($q) => $q->whereDate('entry_date', '<=', $request->date('to')))
+            ->when(trim($request->string('q')->toString()) !== '', function ($q) use ($request) {
+                $s = trim($request->string('q')->toString());
+                $q->where(function ($sub) use ($s) {
+                    $sub->where('account_name', 'like', '%'.$s.'%')
+                        ->orWhere('description', 'like', '%'.$s.'%')
+                        ->orWhere('reference', 'like', '%'.$s.'%');
+                });
+            })
+            ->orderBy('entry_date')
+            ->orderBy('id')
+            ->get();
+        $running = 0.0;
+        $rows = $rowsRaw->map(function (PmAccountingEntry $e) use (&$running) {
+            $debit = $e->entry_type === PmAccountingEntry::TYPE_DEBIT ? (float) $e->amount : 0.0;
+            $credit = $e->entry_type === PmAccountingEntry::TYPE_CREDIT ? (float) $e->amount : 0.0;
+            $running += $debit - $credit;
+            return [
+                $e->entry_date?->format('Y-m-d') ?? '',
+                $e->account_name,
+                $e->description ?? '',
+                (string) $debit,
+                (string) $credit,
+                (string) $running,
+            ];
+        })->all();
+
+        return $this->streamCsv('property-accounting-cash-book.csv', ['Date', 'Account', 'Description', 'Debit', 'Credit', 'Running balance'], $rows);
+    }
+
+    public function exportPayrollPayslipsCsv(Request $request): StreamedResponse
+    {
+        $items = PmAccountingEntry::query()
+            ->where('source_key', 'like', 'payroll%')
+            ->when($request->filled('from'), fn ($q) => $q->whereDate('entry_date', '>=', $request->date('from')))
+            ->when($request->filled('to'), fn ($q) => $q->whereDate('entry_date', '<=', $request->date('to')))
+            ->when(trim($request->string('q')->toString()) !== '', function ($q) use ($request) {
+                $s = trim($request->string('q')->toString());
+                $q->where(function ($sub) use ($s) {
+                    $sub->where('reference', 'like', '%'.$s.'%')
+                        ->orWhere('account_name', 'like', '%'.$s.'%')
+                        ->orWhere('description', 'like', '%'.$s.'%');
+                });
+            })
+            ->orderByDesc('entry_date')
+            ->orderByDesc('id')
+            ->limit(5000)
+            ->get();
+        $rows = $items->map(fn (PmAccountingEntry $e) => [
+            (string) $e->id,
+            $e->entry_date?->format('Y-m-d') ?? '',
+            $e->reference ?? '',
+            $e->account_name,
+            $e->entry_type,
+            (string) $e->amount,
+        ])->all();
+
+        return $this->streamCsv('property-accounting-payroll-ledger.csv', ['Entry', 'Date', 'Reference', 'Account', 'Type', 'Amount'], $rows);
     }
 
     public function payrollSettings(): View
@@ -670,11 +838,23 @@ class PropertyAccountingController extends Controller
             ->sum('amount');
         $deductions = max(0.0, $credits - (float) ($meta['net_pay'] ?? 0));
         $net = (float) ($meta['net_pay'] ?? ($gross - $deductions));
+        $companyName = PropertyPortalSetting::getValue('company_name', 'Property Management');
+        $logoRaw = trim((string) PropertyPortalSetting::getValue('company_logo_url', ''));
+        $logoUrl = null;
+        if ($logoRaw !== '') {
+            $logoUrl = str_starts_with($logoRaw, 'http://')
+                || str_starts_with($logoRaw, 'https://')
+                || str_starts_with($logoRaw, '/')
+                ? $logoRaw
+                : asset($logoRaw);
+        }
 
         return view('property.agent.accounting.payroll.payslip', [
             'reference' => $reference,
             'entryDate' => $first?->entry_date?->format('Y-m-d') ?? now()->format('Y-m-d'),
             'employeeName' => (string) ($meta['employee_name'] ?? 'Employee'),
+            'companyName' => $companyName,
+            'companyLogoUrl' => $logoUrl,
             'basicPay' => (float) ($meta['basic_pay'] ?? 0),
             'allowances' => (float) ($meta['allowances'] ?? 0),
             'grossPay' => $gross,

@@ -6,12 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmVendor;
+use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -19,6 +21,8 @@ class PmMaintenanceWebController extends Controller
 {
     public function requests(): View
     {
+        $maintenanceEnabled = PropertyPortalSetting::getValue('form_maintenance_enabled', '1') === '1';
+        $workflowAutoAssignTickets = PropertyPortalSetting::getValue('workflow_auto_assign_tickets', '0') === '1';
         $requests = PmMaintenanceRequest::query()->with(['unit.property', 'reportedBy'])->orderByDesc('id')->limit(200)->get();
 
         $stats = [
@@ -28,27 +32,56 @@ class PmMaintenanceWebController extends Controller
             ['label' => 'Total', 'value' => (string) $requests->count(), 'hint' => 'Listed'],
         ];
 
-        $rows = $requests->map(fn (PmMaintenanceRequest $r) => [
-            '#'.$r->id,
-            $r->unit->property->name.'/'.$r->unit->label,
-            $r->category,
-            Str::limit($r->description, 40),
-            $r->created_at->format('Y-m-d'),
-            ucfirst($r->urgency),
-            ucfirst(str_replace('_', ' ', $r->status)),
-            $r->reportedBy?->name ?? '—',
-        ])->all();
+        $rows = $requests->map(function (PmMaintenanceRequest $r) {
+            $actions = new HtmlString(
+                '<a href="'.route('property.maintenance.requests.edit', $r).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'
+            );
+            if (! in_array($r->status, ['done', 'closed'], true)) {
+                $actions = new HtmlString(
+                    '<div class="flex flex-wrap items-center gap-1">'.
+                    '<a href="'.route('property.maintenance.requests.edit', $r).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
+                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="inline-flex">'.csrf_field().
+                    '<input type="hidden" name="status" value="in_progress" />'.
+                    '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Triage</button>'.
+                    '</form>'.
+                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="inline-flex">'.csrf_field().
+                    '<input type="hidden" name="status" value="done" />'.
+                    '<button type="submit" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Resolve</button>'.
+                    '</form>'.
+                    '</div>'
+                );
+            }
+
+            return [
+                '#'.$r->id,
+                $r->unit->property->name.'/'.$r->unit->label,
+                $r->category,
+                Str::limit($r->description, 40),
+                $r->created_at->format('Y-m-d'),
+                ucfirst($r->urgency),
+                ucfirst(str_replace('_', ' ', $r->status)),
+                $r->reportedBy?->name ?? '—',
+                $actions,
+            ];
+        })->all();
 
         return view('property.agent.maintenance.requests', [
             'stats' => $stats,
-            'columns' => ['ID', 'Unit', 'Category', 'Summary', 'Reported', 'Priority', 'Status', 'Assignee'],
+            'columns' => ['ID', 'Unit', 'Category', 'Summary', 'Reported', 'Priority', 'Status', 'Assignee', 'Actions'],
             'tableRows' => $rows,
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
+            'maintenanceEnabled' => $maintenanceEnabled,
+            'workflowAutoAssignTickets' => $workflowAutoAssignTickets,
         ]);
     }
 
     public function storeRequest(Request $request): RedirectResponse
     {
+        if (PropertyPortalSetting::getValue('form_maintenance_enabled', '1') !== '1') {
+            return back()->with('error', __('Maintenance request form is disabled in System setup.'));
+        }
+        $workflowAutoAssignTickets = PropertyPortalSetting::getValue('workflow_auto_assign_tickets', '0') === '1';
+
         $data = $request->validate([
             'property_unit_id' => ['required', 'exists:property_units,id'],
             'category' => ['required', 'string', 'max:64'],
@@ -59,15 +92,63 @@ class PmMaintenanceWebController extends Controller
         PmMaintenanceRequest::query()->create([
             ...$data,
             'reported_by_user_id' => $request->user()->id,
-            'status' => 'open',
+            // Auto-assign behavior is represented by moving new tickets into triage immediately.
+            'status' => $workflowAutoAssignTickets ? 'in_progress' : 'open',
         ]);
 
-        return back()->with('success', 'Maintenance request logged.');
+        return back()->with(
+            'success',
+            $workflowAutoAssignTickets
+                ? 'Maintenance request logged and auto-routed to triage.'
+                : 'Maintenance request logged.'
+        );
+    }
+
+    public function updateRequestStatus(Request $request, PmMaintenanceRequest $requestItem): RedirectResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', 'in:open,in_progress,done,closed'],
+        ]);
+
+        $requestItem->update([
+            'status' => $data['status'],
+        ]);
+
+        return back()->with('success', 'Request status updated.');
+    }
+
+    public function editRequest(PmMaintenanceRequest $requestItem): View
+    {
+        $requestItem->load(['unit.property', 'reportedBy']);
+
+        return view('property.agent.maintenance.request_edit', [
+            'requestItem' => $requestItem,
+            'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get(),
+        ]);
+    }
+
+    public function updateRequest(Request $request, PmMaintenanceRequest $requestItem): RedirectResponse
+    {
+        $data = $request->validate([
+            'property_unit_id' => ['required', 'exists:property_units,id'],
+            'category' => ['required', 'string', 'max:64'],
+            'description' => ['required', 'string', 'max:5000'],
+            'urgency' => ['required', 'in:normal,urgent,emergency'],
+            'status' => ['required', 'in:open,in_progress,done,closed'],
+        ]);
+
+        $requestItem->update($data);
+
+        return back()->with('success', 'Maintenance request updated.');
     }
 
     public function jobs(): View
     {
-        $jobs = PmMaintenanceJob::query()->with(['request.unit.property', 'vendor'])->orderByDesc('id')->limit(200)->get();
+        $jobs = PmMaintenanceJob::query()
+            ->with(['request.unit.property', 'vendor'])
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get();
 
         $mtdCompletedCount = PmMaintenanceJob::query()
             ->whereNotNull('completed_at')
@@ -86,16 +167,63 @@ class PmMaintenanceWebController extends Controller
             ['label' => 'Spend (MTD)', 'value' => PropertyMoney::kes($mtdSpend), 'hint' => 'Quoted'],
         ];
 
-        $rows = $jobs->map(fn (PmMaintenanceJob $j) => [
-            '#'.$j->id,
-            $j->request->unit->property->name.'/'.$j->request->unit->label,
-            $j->vendor?->name ?? '—',
-            $j->quote_amount !== null ? number_format((float) $j->quote_amount, 2) : '—',
-            '—',
-            '—',
-            ucfirst(str_replace('_', ' ', $j->status)),
-            '—',
-        ])->all();
+        $rows = $jobs->map(function (PmMaintenanceJob $j) {
+            $approved = in_array($j->status, ['approved', 'in_progress', 'done'], true) ? 'Yes' : 'No';
+            $schedule = $j->completed_at?->format('Y-m-d') ?? ($j->updated_at?->format('Y-m-d') ?? '—');
+
+            $actions = new HtmlString(
+                '<div class="flex flex-wrap items-center gap-1">'.
+                '<a href="'.route('property.maintenance.jobs.edit', $j).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
+                '<form method="POST" action="'.route('property.maintenance.jobs.destroy', $j).'" class="inline-flex" data-swal-title="Delete job?" data-swal-confirm="Delete this job permanently?" data-swal-confirm-text="Yes, delete">'.csrf_field().method_field('DELETE').
+                '<button type="submit" class="rounded border border-rose-400 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
+                '</form>'.
+                '<a href="'.route('property.maintenance.history').'" class="text-indigo-600 hover:text-indigo-700 font-medium text-xs px-1">History</a>'.
+                '</div>'
+            );
+            if (! in_array($j->status, ['done', 'cancelled'], true)) {
+                $approveButton = '';
+                if ($j->status === 'quoted') {
+                    $approveButton =
+                        '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="inline-flex">'.csrf_field().
+                        '<input type="hidden" name="status" value="approved" />'.
+                        '<button type="submit" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Approve</button>'.
+                        '</form>';
+                }
+
+                $actions = new HtmlString(
+                    '<div class="flex flex-wrap items-center gap-1">'.
+                    '<a href="'.route('property.maintenance.jobs.edit', $j).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
+                    $approveButton.
+                    '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="inline-flex">'.csrf_field().
+                    '<input type="hidden" name="status" value="in_progress" />'.
+                    '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Start</button>'.
+                    '</form>'.
+                    '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="inline-flex">'.csrf_field().
+                    '<input type="hidden" name="status" value="done" />'.
+                    '<button type="submit" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Mark done</button>'.
+                    '</form>'.
+                    '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="inline-flex" data-swal-title="Cancel job?" data-swal-confirm="Cancel this job?" data-swal-confirm-text="Yes, cancel">'.csrf_field().
+                    '<input type="hidden" name="status" value="cancelled" />'.
+                    '<button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Cancel</button>'.
+                    '</form>'.
+                    '<form method="POST" action="'.route('property.maintenance.jobs.destroy', $j).'" class="inline-flex" data-swal-title="Delete job?" data-swal-confirm="Delete this job permanently?" data-swal-confirm-text="Yes, delete">'.csrf_field().method_field('DELETE').
+                    '<button type="submit" class="rounded border border-rose-400 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
+                    '</form>'.
+                    '</div>'
+                );
+            }
+
+            return [
+                '#'.$j->id,
+                $j->request->unit->property->name.'/'.$j->request->unit->label,
+                $j->vendor?->name ?? '—',
+                $j->quote_amount !== null ? number_format((float) $j->quote_amount, 2) : '—',
+                $approved,
+                $schedule,
+                ucfirst(str_replace('_', ' ', $j->status)),
+                $actions,
+            ];
+        })->all();
 
         return view('property.agent.maintenance.jobs', [
             'stats' => $stats,
@@ -125,6 +253,66 @@ class PmMaintenanceWebController extends Controller
         PropertyAccountingPostingService::postMaintenanceExpense($job, $request->user());
 
         return back()->with('success', 'Job saved.');
+    }
+
+    public function editJob(PmMaintenanceJob $job): View
+    {
+        $job->load(['request.unit.property', 'vendor']);
+
+        return view('property.agent.maintenance.job_edit', [
+            'job' => $job,
+            'requests' => PmMaintenanceRequest::query()->with('unit.property')->orderByDesc('id')->limit(200)->get(),
+            'vendors' => PmVendor::query()->where('status', 'active')->orderBy('name')->get(),
+        ]);
+    }
+
+    public function updateJob(Request $request, PmMaintenanceJob $job): RedirectResponse
+    {
+        $data = $request->validate([
+            'pm_maintenance_request_id' => ['required', 'exists:pm_maintenance_requests,id'],
+            'pm_vendor_id' => ['nullable', 'exists:pm_vendors,id'],
+            'quote_amount' => ['nullable', 'numeric', 'min:0'],
+            'status' => ['required', 'in:quoted,approved,in_progress,done,cancelled'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $status = $data['status'];
+        $job->update([
+            ...$data,
+            'completed_at' => $status === 'done' ? now() : null,
+        ]);
+
+        if ($status === 'done') {
+            PropertyAccountingPostingService::postMaintenanceExpense($job, $request->user());
+        }
+
+        return redirect()->route('property.maintenance.jobs')->with('success', 'Job updated.');
+    }
+
+    public function destroyJob(PmMaintenanceJob $job): RedirectResponse
+    {
+        $job->delete();
+
+        return back()->with('success', 'Job deleted.');
+    }
+
+    public function updateJobStatus(Request $request, PmMaintenanceJob $job): RedirectResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', 'in:quoted,approved,in_progress,done,cancelled'],
+        ]);
+
+        $status = $data['status'];
+        $job->update([
+            'status' => $status,
+            'completed_at' => $status === 'done' ? now() : null,
+        ]);
+
+        if ($status === 'done') {
+            PropertyAccountingPostingService::postMaintenanceExpense($job, $request->user());
+        }
+
+        return back()->with('success', 'Job status updated.');
     }
 
     public function history(): View
@@ -181,6 +369,7 @@ class PmMaintenanceWebController extends Controller
             /** @var Collection<int, PmMaintenanceJob> $group */
             $sum = (float) $group->sum(fn (PmMaintenanceJob $j) => (float) $j->quote_amount);
             $done = $group->where('status', 'done')->count();
+            $avg = $group->count() > 0 ? $sum / $group->count() : 0.0;
 
             return [
                 (string) $category,
@@ -188,7 +377,7 @@ class PmMaintenanceWebController extends Controller
                 now()->format('Y'),
                 PropertyMoney::kes($sum),
                 (string) $group->count(),
-                '—',
+                'Avg '.PropertyMoney::kes($avg),
                 $done.' completed',
             ];
         })->values()->all();
@@ -222,14 +411,19 @@ class PmMaintenanceWebController extends Controller
         $byMonth = $requests->groupBy(fn (PmMaintenanceRequest $r) => $r->created_at->format('Y-m'));
         $rows = $byMonth->map(function ($group, $ym) {
             $byCat = $group->groupBy(fn (PmMaintenanceRequest $r) => $r->category ?: 'General');
+            $repeatUnits = $group
+                ->groupBy('property_unit_id')
+                ->filter(fn ($g) => $g->count() > 1)
+                ->count();
+            $note = $group->where('urgency', 'emergency')->count() > 0 ? 'Emergency activity' : 'Routine';
 
             return [
                 (string) $ym,
                 (string) $group->count(),
                 (string) $byCat->count(),
                 (string) $group->where('urgency', 'emergency')->count(),
-                '—',
-                '—',
+                (string) $repeatUnits,
+                $note,
             ];
         })->sortKeysDesc()->values()->all();
 

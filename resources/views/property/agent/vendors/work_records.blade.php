@@ -2,13 +2,11 @@
     title="Before / after work records"
     subtitle="Photo timelines, measurements, and sign-off — evidence for landlords and warranty claims."
     back-route="property.vendors.index"
-    :stats="[
-        ['label' => 'Jobs with media', 'value' => '0', 'hint' => 'This month'],
-        ['label' => 'Missing sign-off', 'value' => '0', 'hint' => 'Complete work'],
-    ]"
-    :columns="['Job #', 'Unit', 'Vendor', 'Before', 'After', 'Signed by', 'Date', 'Actions']"
+    :stats="$stats"
+    :columns="$columns"
+    :table-rows="$tableRows"
     empty-title="No work records"
-    empty-hint="Mobile capture with GPS optional; compress images server-side for storage."
+    empty-hint="Mark maintenance jobs as done and assign vendors to populate completed work records."
 >
     <x-slot name="actions">
         <a

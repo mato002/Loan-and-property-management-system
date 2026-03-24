@@ -10,6 +10,7 @@ use App\Services\Property\PropertyMoney;
 use App\Services\Property\RentRollQuery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
 
 class RevenueController extends Controller
@@ -52,6 +53,9 @@ class RevenueController extends Controller
         $rows = $invoices->map(function (PmInvoice $i) {
             $bal = max(0, (float) $i->amount - (float) $i->amount_paid);
             $days = now()->diffInDays($i->due_date);
+            $workflow = $days >= 30 ? 'Escalated' : ($days >= 14 ? 'Follow-up' : 'Reminder');
+            $owner = new HtmlString('<a href="'.route('property.tenants.notices').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Open notices</a>');
+            $lastContact = $i->updated_at?->format('Y-m-d') ?? '—';
 
             return [
                 $i->tenant->name,
@@ -59,9 +63,9 @@ class RevenueController extends Controller
                 $i->due_date->format('Y-m-d'),
                 (string) $days,
                 PropertyMoney::kes($bal),
-                '—',
-                '—',
-                '—',
+                $lastContact,
+                $workflow,
+                $owner,
             ];
         })->all();
 
@@ -159,10 +163,10 @@ class RevenueController extends Controller
             $i->invoice_no,
             $i->tenant->name,
             PropertyMoney::kes((float) $i->amount),
-            '—',
+            'KES 0.00',
             $i->updated_at->format('Y-m-d'),
-            'stub',
-            '—',
+            'Stub',
+            new HtmlString('<a href="'.route('property.revenue.receipts').'" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'),
         ])->all();
 
         return view('property.agent.revenue.receipts', [

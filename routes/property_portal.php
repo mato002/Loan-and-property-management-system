@@ -60,17 +60,26 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
         Route::get('/tenants/directory', [PmTenantDirectoryController::class, 'directory'])->name('tenants.directory');
         Route::get('/tenants/profiles', [PmTenantDirectoryController::class, 'profiles'])->name('tenants.profiles');
         Route::post('/tenants', [PmTenantDirectoryController::class, 'store'])->name('tenants.store');
+        Route::get('/tenants/{tenant}/edit', [PmTenantDirectoryController::class, 'edit'])->name('tenants.edit');
+        Route::put('/tenants/{tenant}', [PmTenantDirectoryController::class, 'update'])->name('tenants.update');
         Route::get('/tenants/leases', [PmLeaseWebController::class, 'leases'])->name('tenants.leases');
         Route::post('/leases', [PmLeaseWebController::class, 'store'])->name('leases.store');
+        Route::get('/leases/{lease}/edit', [PmLeaseWebController::class, 'edit'])->name('leases.edit');
+        Route::put('/leases/{lease}', [PmLeaseWebController::class, 'update'])->name('leases.update');
         Route::get('/tenants/movements', [PropertyTenantsOpsWebController::class, 'movements'])->name('tenants.movements');
         Route::post('/tenants/movements', [PropertyTenantsOpsWebController::class, 'storeMovement'])->name('tenants.movements.store');
+        Route::post('/tenants/movements/{movement}/status', [PropertyTenantsOpsWebController::class, 'updateMovementStatus'])->name('tenants.movements.status');
         Route::get('/tenants/expiry', [PmLeaseWebController::class, 'expiry'])->name('tenants.expiry');
         Route::get('/tenants/notices', [PropertyTenantsOpsWebController::class, 'notices'])->name('tenants.notices');
         Route::post('/tenants/notices', [PropertyTenantsOpsWebController::class, 'storeNotice'])->name('tenants.notices.store');
+        Route::post('/tenants/notices/{notice}/status', [PropertyTenantsOpsWebController::class, 'updateNoticeStatus'])->name('tenants.notices.status');
         Route::view('/tenants', 'property.agent.tenants.index')->name('tenants.index');
 
         Route::get('/properties/list', [PropertyPortfolioController::class, 'propertyList'])->name('properties.list');
         Route::post('/properties', [PropertyPortfolioController::class, 'storeProperty'])->name('properties.store');
+        Route::get('/properties/{property}/edit', [PropertyPortfolioController::class, 'editProperty'])->name('properties.edit');
+        Route::patch('/properties/{property}', [PropertyPortfolioController::class, 'updateProperty'])->name('properties.update');
+        Route::post('/landlords/onboard', [PropertyPortfolioController::class, 'onboardLandlord'])->name('landlords.onboard');
         Route::post('/properties/landlords', [PropertyPortfolioController::class, 'attachLandlord'])->name('properties.landlords.attach');
         Route::post('/properties/landlords/detach', [PropertyPortfolioController::class, 'detachLandlord'])->name('properties.landlords.detach');
         Route::post('/properties/landlords/ownership', [PropertyPortfolioController::class, 'updateLandlordOwnership'])->name('properties.landlords.ownership');
@@ -88,8 +97,15 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
 
         Route::get('/maintenance/requests', [PmMaintenanceWebController::class, 'requests'])->name('maintenance.requests');
         Route::post('/maintenance/requests', [PmMaintenanceWebController::class, 'storeRequest'])->name('maintenance.requests.store');
+        Route::get('/maintenance/requests/{requestItem}/edit', [PmMaintenanceWebController::class, 'editRequest'])->name('maintenance.requests.edit');
+        Route::put('/maintenance/requests/{requestItem}', [PmMaintenanceWebController::class, 'updateRequest'])->name('maintenance.requests.update');
+        Route::post('/maintenance/requests/{requestItem}/status', [PmMaintenanceWebController::class, 'updateRequestStatus'])->name('maintenance.requests.status');
         Route::get('/maintenance/jobs', [PmMaintenanceWebController::class, 'jobs'])->name('maintenance.jobs');
         Route::post('/maintenance/jobs', [PmMaintenanceWebController::class, 'storeJob'])->name('maintenance.jobs.store');
+        Route::get('/maintenance/jobs/{job}/edit', [PmMaintenanceWebController::class, 'editJob'])->name('maintenance.jobs.edit');
+        Route::put('/maintenance/jobs/{job}', [PmMaintenanceWebController::class, 'updateJob'])->name('maintenance.jobs.update');
+        Route::delete('/maintenance/jobs/{job}', [PmMaintenanceWebController::class, 'destroyJob'])->name('maintenance.jobs.destroy');
+        Route::post('/maintenance/jobs/{job}/status', [PmMaintenanceWebController::class, 'updateJobStatus'])->name('maintenance.jobs.status');
         Route::get('/maintenance/history', [PmMaintenanceWebController::class, 'history'])->name('maintenance.history');
         Route::get('/maintenance/costs', [PmMaintenanceWebController::class, 'costs'])->name('maintenance.costs');
         Route::get('/maintenance/frequency', [PmMaintenanceWebController::class, 'frequency'])->name('maintenance.frequency');
@@ -97,10 +113,14 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
 
         Route::get('/vendors/directory', [PmVendorWebController::class, 'directory'])->name('vendors.directory');
         Route::post('/vendors', [PmVendorWebController::class, 'store'])->name('vendors.store');
+        Route::get('/vendors/{vendor}/edit', [PmVendorWebController::class, 'edit'])->name('vendors.edit');
+        Route::put('/vendors/{vendor}', [PmVendorWebController::class, 'update'])->name('vendors.update');
+        Route::post('/vendors/{vendor}/status', [PmVendorWebController::class, 'updateStatus'])->name('vendors.status');
         Route::get('/vendors/bidding/create', [PmVendorWebController::class, 'createBiddingRfqForm'])->name('vendors.bidding.create');
         Route::post('/vendors/bidding/rfq', [PmVendorWebController::class, 'storeBiddingRfq'])->name('vendors.bidding.store');
         Route::get('/vendors/bidding', [PmVendorWebController::class, 'bidding'])->name('vendors.bidding');
         Route::get('/vendors/quotes', [PmVendorWebController::class, 'quotes'])->name('vendors.quotes');
+        Route::post('/vendors/quotes/{job}/award', [PmVendorWebController::class, 'awardQuote'])->name('vendors.quotes.award');
         Route::get('/vendors/performance', [PmVendorWebController::class, 'performance'])->name('vendors.performance');
         Route::get('/vendors/work-records', [PmVendorWebController::class, 'workRecords'])->name('vendors.work_records');
         Route::view('/vendors', 'property.agent.vendors.index')->name('vendors.index');
@@ -123,12 +143,16 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
         Route::post('/accounting/payroll', [PropertyAccountingController::class, 'payrollStore'])->name('accounting.payroll.store');
         Route::post('/accounting/payroll/employee', [PropertyAccountingController::class, 'payrollEmployeeStore'])->name('accounting.payroll.employee.store');
         Route::get('/accounting/payroll/payslips', [PropertyAccountingController::class, 'payrollPayslips'])->name('accounting.payroll.payslips');
+        Route::get('/accounting/payroll/payslips/export', [PropertyAccountingController::class, 'exportPayrollPayslipsCsv'])->name('accounting.payroll.payslips.export');
         Route::get('/accounting/payroll/payslips/{reference}', [PropertyAccountingController::class, 'payrollPayslipShow'])->name('accounting.payroll.payslips.show');
         Route::get('/accounting/payroll/settings', [PropertyAccountingController::class, 'payrollSettings'])->name('accounting.payroll.settings');
         Route::post('/accounting/payroll/settings', [PropertyAccountingController::class, 'payrollSettingsSave'])->name('accounting.payroll.settings.save');
         Route::get('/accounting/reports/trial-balance', [PropertyAccountingController::class, 'trialBalance'])->name('accounting.reports.trial_balance');
+        Route::get('/accounting/reports/trial-balance/export', [PropertyAccountingController::class, 'exportTrialBalanceCsv'])->name('accounting.reports.trial_balance.export');
         Route::get('/accounting/reports/income-statement', [PropertyAccountingController::class, 'incomeStatement'])->name('accounting.reports.income_statement');
+        Route::get('/accounting/reports/income-statement/export', [PropertyAccountingController::class, 'exportIncomeStatementCsv'])->name('accounting.reports.income_statement.export');
         Route::get('/accounting/reports/cash-book', [PropertyAccountingController::class, 'cashBook'])->name('accounting.reports.cash_book');
+        Route::get('/accounting/reports/cash-book/export', [PropertyAccountingController::class, 'exportCashBookCsv'])->name('accounting.reports.cash_book.export');
 
         Route::get('/performance/collection-rate', [PerformanceWorkspaceController::class, 'collectionRate'])->name('performance.collection_rate');
         Route::get('/performance/vacancy', [PerformanceWorkspaceController::class, 'vacancy'])->name('performance.vacancy');
@@ -172,8 +196,17 @@ Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
         Route::post('/settings/commission', [PropertySettingsStoreWebController::class, 'storeCommission'])->name('settings.commission.store');
         Route::get('/settings/payments', [PropertySettingsStoreWebController::class, 'payments'])->name('settings.payments');
         Route::post('/settings/payments', [PropertySettingsStoreWebController::class, 'storePayments'])->name('settings.payments.store');
+        Route::get('/settings/branding', [PropertySettingsStoreWebController::class, 'branding'])->name('settings.branding');
+        Route::post('/settings/branding', [PropertySettingsStoreWebController::class, 'storeBranding'])->name('settings.branding.store');
         Route::get('/settings/rules', [PropertySettingsStoreWebController::class, 'rules'])->name('settings.rules');
         Route::post('/settings/rules', [PropertySettingsStoreWebController::class, 'storeRules'])->name('settings.rules.store');
+        Route::get('/settings/system-setup', [PropertySettingsStoreWebController::class, 'systemSetup'])->name('settings.system_setup');
+        Route::get('/settings/system-setup/forms', [PropertySettingsStoreWebController::class, 'systemSetupForms'])->name('settings.system_setup.forms');
+        Route::post('/settings/system-setup/forms', [PropertySettingsStoreWebController::class, 'storeSystemSetupForms'])->name('settings.system_setup.forms.store');
+        Route::get('/settings/system-setup/workflows', [PropertySettingsStoreWebController::class, 'systemSetupWorkflows'])->name('settings.system_setup.workflows');
+        Route::post('/settings/system-setup/workflows', [PropertySettingsStoreWebController::class, 'storeSystemSetupWorkflows'])->name('settings.system_setup.workflows.store');
+        Route::get('/settings/system-setup/templates', [PropertySettingsStoreWebController::class, 'systemSetupTemplates'])->name('settings.system_setup.templates');
+        Route::post('/settings/system-setup/templates', [PropertySettingsStoreWebController::class, 'storeSystemSetupTemplates'])->name('settings.system_setup.templates.store');
         Route::view('/settings', 'property.agent.settings.index')->name('settings.index');
 
         Route::get('/advisor', [PropertyAdvisorWebController::class, 'show'])->name('advisor');

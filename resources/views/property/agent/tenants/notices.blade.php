@@ -12,6 +12,14 @@
         @if (session('success'))
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif
+        @if (session('error'))
+            <p class="text-sm text-rose-700 dark:text-rose-400">{{ session('error') }}</p>
+        @endif
+        @if ($workflowAutoReminders)
+            <p class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200 max-w-3xl">
+                Workflow automation is ON: when "Due / response by" is blank, a default reminder due date (today + {{ $reminderLeadDays }} day{{ (int) $reminderLeadDays === 1 ? '' : 's' }}) is applied.
+            </p>
+        @endif
 
         <form method="post" action="{{ route('property.tenants.notices.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
@@ -58,7 +66,7 @@
                 </div>
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
-                    <textarea name="notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('notes') }}</textarea>
+                    <textarea name="notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('notes', $noticeTemplate ?? '') }}</textarea>
                     @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
             </div>

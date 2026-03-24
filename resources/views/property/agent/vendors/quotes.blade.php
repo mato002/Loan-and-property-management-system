@@ -2,13 +2,11 @@
     title="Quote comparison"
     subtitle="Normalize line items, warranty, and schedule — side-by-side decision support."
     back-route="property.vendors.index"
-    :stats="[
-        ['label' => 'Open comparisons', 'value' => '0', 'hint' => 'Need decision'],
-        ['label' => 'Median spread', 'value' => '—', 'hint' => 'High vs low quote'],
-    ]"
-    :columns="['RFQ', 'Vendor', 'Total', 'Line items', 'Lead time', 'Warranty', 'Score', 'Select']"
-    empty-title="No quote sets"
-    empty-hint="Scoring can weight price, SLA history, and landlord preference flags."
+    :stats="$stats"
+    :columns="$columns"
+    :table-rows="$tableRows"
+    empty-title="No quotes"
+    empty-hint="Add a quote amount to maintenance jobs to populate this page."
 >
     <x-slot name="actions">
         <a

@@ -11,6 +11,7 @@ use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
 
 class PmInvoiceController extends Controller
@@ -55,21 +56,29 @@ class PmInvoiceController extends Controller
             ['label' => 'Outstanding', 'value' => PropertyMoney::kes((float) $invoices->sum(fn ($i) => max(0, (float) $i->amount - (float) $i->amount_paid))), 'hint' => 'Open balance'],
         ];
 
-        $rows = $invoices->map(fn (PmInvoice $i) => [
-            $i->invoice_no,
-            $i->tenant->name,
-            $i->unit->property->name.'/'.$i->unit->label,
-            $i->issue_date->format('Y-m'),
-            number_format((float) $i->amount, 2),
-            $i->issue_date->format('Y-m-d'),
-            $i->due_date->format('Y-m-d'),
-            '—',
-            ucfirst($i->status),
-        ])->all();
+        $rows = $invoices->map(function (PmInvoice $i) {
+            $channel = $i->status === PmInvoice::STATUS_PAID ? 'Settled' : 'Open';
+            $actions = new HtmlString(
+                '<a href="'.route('property.revenue.payments').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Apply payment</a>'
+            );
+
+            return [
+                $i->invoice_no,
+                $i->tenant->name,
+                $i->unit->property->name.'/'.$i->unit->label,
+                $i->issue_date->format('Y-m'),
+                number_format((float) $i->amount, 2),
+                $i->issue_date->format('Y-m-d'),
+                $i->due_date->format('Y-m-d'),
+                $channel,
+                ucfirst($i->status),
+                $actions,
+            ];
+        })->all();
 
         return view('property.agent.revenue.invoices', [
             'stats' => $stats,
-            'columns' => ['Invoice #', 'Tenant', 'Unit', 'Period', 'Amount', 'Issued', 'Due', 'Channel', 'Status'],
+            'columns' => ['Invoice #', 'Tenant', 'Unit', 'Period', 'Amount', 'Issued', 'Due', 'Channel', 'Status', 'Actions'],
             'tableRows' => $rows,
             'leases' => PmLease::query()->with('pmTenant')->orderByDesc('start_date')->get(),
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),

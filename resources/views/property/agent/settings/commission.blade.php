@@ -5,6 +5,28 @@
         title="Commission settings"
         subtitle="Default percentage and internal notes. Detailed fee schedules can live in your contracts until you model them in the database."
     >
+        <div class="mb-4 flex flex-wrap gap-2">
+            <a href="{{ route('property.settings.roles') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Users & roles</a>
+            <a href="{{ route('property.settings.commission') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Commission</a>
+            <a href="{{ route('property.settings.payments') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment config</a>
+            <a href="{{ route('property.settings.branding') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Branding</a>
+            <a href="{{ route('property.settings.rules') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System rules</a>
+            <a href="{{ route('property.settings.system_setup') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System setup</a>
+        </div>
+
+        <div class="mb-4 grid gap-3 sm:grid-cols-2">
+            <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Default commission</p>
+                <p class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ $defaultPercent !== '' ? $defaultPercent.'%' : 'Not set' }}</p>
+                <p class="mt-1 text-xs text-slate-500">Used as the fallback rate when a property-level override is not configured.</p>
+            </div>
+            <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Notes length</p>
+                <p class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ mb_strlen((string) $notes) }}</p>
+                <p class="mt-1 text-xs text-slate-500">Internal memo characters currently saved.</p>
+            </div>
+        </div>
+
         @if (session('success'))
             <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif

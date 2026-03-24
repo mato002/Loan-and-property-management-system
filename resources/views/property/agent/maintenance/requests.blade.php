@@ -9,6 +9,23 @@
     empty-hint="Log a request below; create a job from the Jobs screen once scoped."
 >
     <x-slot name="above">
+        @if (session('success'))
+            <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
+        @endif
+        @if (session('error'))
+            <p class="text-sm text-rose-700 dark:text-rose-400">{{ session('error') }}</p>
+        @endif
+        @if ($workflowAutoAssignTickets)
+            <p class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200 max-w-2xl">
+                Workflow automation is ON: new requests are auto-routed to triage.
+            </p>
+        @endif
+
+        @if (! $maintenanceEnabled)
+            <div class="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200 max-w-2xl">
+                Maintenance request form is currently disabled in System setup.
+            </div>
+        @else
         <form method="post" action="{{ route('property.maintenance.requests.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New request</h3>
@@ -43,6 +60,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Submit request</button>
         </form>
+        @endif
     </x-slot>
 
     <x-slot name="toolbar">

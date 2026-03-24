@@ -1,4 +1,6 @@
 @php
+    $companyLogoUrl = \App\Models\PropertyPortalSetting::getValue('company_logo_url', '');
+    $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '');
     $navActive = function ($patterns): bool {
         $patterns = is_array($patterns) ? $patterns : [$patterns];
         foreach ($patterns as $p) {
@@ -325,6 +327,112 @@
             ],
         ],
         [
+            'heading' => 'Financials',
+            'icon' => 'fa-coins',
+            'kicker' => 'Owner-facing money views',
+            'items' => [
+                [
+                    'label' => 'Overview',
+                    'sublabel' => null,
+                    'route' => 'property.financials.index',
+                    'active' => ['property.financials.index'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Income & expenses',
+                    'sublabel' => null,
+                    'route' => 'property.financials.income_expenses',
+                    'active' => ['property.financials.income_expenses'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Cash flow',
+                    'sublabel' => null,
+                    'route' => 'property.financials.cash_flow',
+                    'active' => ['property.financials.cash_flow'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Owner balances',
+                    'sublabel' => null,
+                    'route' => 'property.financials.owner_balances',
+                    'active' => ['property.financials.owner_balances'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Commission',
+                    'sublabel' => null,
+                    'route' => 'property.financials.commission',
+                    'active' => ['property.financials.commission'],
+                    'badge' => null,
+                ],
+            ],
+        ],
+        [
+            'heading' => 'Accounting',
+            'icon' => 'fa-book',
+            'kicker' => 'Books of accounts',
+            'items' => [
+                [
+                    'label' => 'Accounting hub',
+                    'sublabel' => null,
+                    'route' => 'property.accounting.index',
+                    'active' => ['property.accounting.index'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Journal entries',
+                    'sublabel' => null,
+                    'route' => 'property.accounting.entries',
+                    'active' => ['property.accounting.entries', 'property.accounting.entries.store', 'property.accounting.entries.reverse', 'property.accounting.entries.export'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Payroll',
+                    'sublabel' => 'Employee payroll module',
+                    'route' => 'property.accounting.payroll',
+                    'active' => [
+                        'property.accounting.payroll',
+                        'property.accounting.payroll.store',
+                        'property.accounting.payroll.employee.store',
+                        'property.accounting.payroll.payslips',
+                        'property.accounting.payroll.payslips.show',
+                        'property.accounting.payroll.settings',
+                        'property.accounting.payroll.settings.save',
+                    ],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Audit trail',
+                    'sublabel' => null,
+                    'route' => 'property.accounting.audit_trail',
+                    'active' => ['property.accounting.audit_trail', 'property.accounting.audit_trail.export'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Trial balance',
+                    'sublabel' => null,
+                    'route' => 'property.accounting.reports.trial_balance',
+                    'active' => ['property.accounting.reports.trial_balance'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Income statement',
+                    'sublabel' => null,
+                    'route' => 'property.accounting.reports.income_statement',
+                    'active' => ['property.accounting.reports.income_statement'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Cash book',
+                    'sublabel' => null,
+                    'route' => 'property.accounting.reports.cash_book',
+                    'active' => ['property.accounting.reports.cash_book'],
+                    'badge' => null,
+                ],
+            ],
+        ],
+        [
             'heading' => 'Communications',
             'icon' => 'fa-comments',
             'kicker' => null,
@@ -428,6 +536,13 @@
             'kicker' => null,
             'items' => [
                 [
+                    'label' => 'Settings hub',
+                    'sublabel' => null,
+                    'route' => 'property.settings.index',
+                    'active' => ['property.settings.index'],
+                    'badge' => null,
+                ],
+                [
                     'label' => 'Users & roles',
                     'sublabel' => null,
                     'route' => 'property.settings.roles',
@@ -453,6 +568,21 @@
                     'sublabel' => null,
                     'route' => 'property.settings.rules',
                     'active' => ['property.settings.rules', 'property.settings.rules.store'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'System setup',
+                    'sublabel' => 'Forms · workflows · templates',
+                    'route' => 'property.settings.system_setup',
+                    'active' => [
+                        'property.settings.system_setup',
+                        'property.settings.system_setup.forms',
+                        'property.settings.system_setup.forms.store',
+                        'property.settings.system_setup.workflows',
+                        'property.settings.system_setup.workflows.store',
+                        'property.settings.system_setup.templates',
+                        'property.settings.system_setup.templates.store',
+                    ],
                     'badge' => null,
                 ],
             ],
@@ -494,10 +624,14 @@
             @click="if (window.innerWidth < 1024) sidebarOpen = false"
         >
             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#406866]/60 ring-1 ring-[#5a8583]/50 shadow-inner">
-                <i class="fa-solid fa-building text-xl text-[#c5ebe8]" aria-hidden="true"></i>
+                @if ($companyLogoUrl)
+                    <img src="{{ $companyLogoUrl }}" alt="{{ $companyName !== '' ? $companyName : 'Company logo' }}" class="h-8 w-8 object-contain rounded-md bg-white/95 p-0.5" />
+                @else
+                    <i class="fa-solid fa-building text-xl text-[#c5ebe8]" aria-hidden="true"></i>
+                @endif
             </span>
             <span class="flex flex-col min-w-0 leading-tight text-left">
-                <span class="text-base font-bold tracking-tight text-white truncate">Agent workspace</span>
+                <span class="text-base font-bold tracking-tight text-white truncate">{{ $companyName !== '' ? $companyName : 'Agent workspace' }}</span>
                 <span class="text-sm font-medium text-[#8db1af] truncate">Property operations</span>
             </span>
         </a>

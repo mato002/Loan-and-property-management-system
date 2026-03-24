@@ -12,10 +12,18 @@
         @if (session('success'))
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif
+        @if (session('error'))
+            <p class="text-sm text-rose-700 dark:text-rose-400">{{ session('error') }}</p>
+        @endif
 
         <form method="post" action="{{ route('property.tenants.movements.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Log movement</h3>
+            @if (! $tenantMoveInEnabled)
+                <p class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                    Move-in form is disabled in System setup. You can still log move-out events.
+                </p>
+            @endif
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>

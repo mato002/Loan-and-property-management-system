@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Mail\LandlordPortalCredentialsMail;
 use App\Models\PmLease;
 use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Services\Property\PropertyMoney;
+use Illuminate\Support\HtmlString;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
+use Throwable;
 
 class PropertyPortfolioController extends Controller
 {
@@ -34,6 +38,9 @@ class PropertyPortfolioController extends Controller
             $landlordCell = $p->landlords->isEmpty()
                 ? '—'
                 : $p->landlords->pluck('name')->join(', ');
+            $action = new HtmlString(
+                '<a href="'.route('property.properties.edit', $p).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit</a>'
+            );
 
             return [
                 $p->name,
@@ -43,6 +50,7 @@ class PropertyPortfolioController extends Controller
                 $p->city ?? '—',
                 $landlordCell,
                 'Active',
+                $action,
             ];
         })->all();
 
@@ -64,12 +72,36 @@ class PropertyPortfolioController extends Controller
 
         return view('property.agent.properties.list', [
             'stats' => $stats,
-            'columns' => ['Name', 'Code', 'Address', 'Units', 'City', 'Landlord(s)', 'Status'],
+            'columns' => ['Name', 'Code', 'Address', 'Units', 'City', 'Landlord(s)', 'Status', 'Actions'],
             'tableRows' => $rows,
             'landlordUsers' => User::query()->where('property_portal_role', 'landlord')->orderBy('name')->get(),
             'properties' => $portfolio,
             'landlordLinks' => $landlordLinks,
         ]);
+    }
+
+    public function editProperty(Property $property): View
+    {
+        $property->load(['landlords' => fn ($q) => $q->orderBy('name')]);
+
+        return view('property.agent.properties.edit', [
+            'property' => $property,
+            'landlordUsers' => User::query()->where('property_portal_role', 'landlord')->orderBy('name')->get(),
+        ]);
+    }
+
+    public function updateProperty(Request $request, Property $property): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'code' => ['nullable', 'string', 'max:64', 'unique:properties,code,'.$property->id],
+            'address_line' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:128'],
+        ]);
+
+        $property->update($data);
+
+        return back()->with('success', 'Property updated.');
     }
 
     public function detachLandlord(Request $request): RedirectResponse
@@ -188,7 +220,62 @@ class PropertyPortfolioController extends Controller
         return view('property.agent.landlords.index', [
             'stats' => $stats,
             'landlords' => $landlords,
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
         ]);
+    }
+
+    public function onboardLandlord(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8', 'max:255'],
+            'property_id' => ['nullable', 'exists:properties,id'],
+            'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ]);
+
+        $plainPassword = $data['password'];
+        $landlord = User::query()->create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => $plainPassword,
+            'property_portal_role' => 'landlord',
+        ]);
+
+        if (! empty($data['property_id'])) {
+            $property = Property::query()->findOrFail((int) $data['property_id']);
+            $pct = (float) ($data['ownership_percent'] ?? 100);
+
+            $currentSum = (float) $property->landlords()->sum('property_landlord.ownership_percent');
+            if ($currentSum + $pct > 100.0001) {
+                $landlord->delete();
+
+                return back()->withErrors([
+                    'ownership_percent' => __('Total ownership for this property would exceed 100%.'),
+                ])->withInput();
+            }
+
+            $property->landlords()->attach($landlord->id, ['ownership_percent' => $pct]);
+        }
+
+        $mailWarning = null;
+        try {
+            Mail::to($landlord->email)->send(new LandlordPortalCredentialsMail(
+                landlordName: $landlord->name,
+                email: $landlord->email,
+                plainPassword: $plainPassword,
+                loginUrl: route('login'),
+                landlordHomeUrl: route('property.landlord.portfolio'),
+            ));
+        } catch (Throwable) {
+            $mailWarning = ' Landlord account created, but credential email was not sent (check mail settings).';
+        }
+
+        $message = $mailWarning === null
+            ? 'Landlord onboarded successfully. Credentials email sent.'
+            : 'Landlord onboarded successfully.'.$mailWarning;
+
+        return back()->with('success', $message);
     }
 
     public function storeProperty(Request $request): RedirectResponse
@@ -216,17 +303,29 @@ class PropertyPortfolioController extends Controller
             ['label' => 'Listed rent (avg)', 'value' => $units->count() ? PropertyMoney::kes($units->avg('rent_amount')) : PropertyMoney::kes(0), 'hint' => 'Asking'],
         ];
 
-        $rows = $units->map(fn (PropertyUnit $u) => [
-            $u->label,
-            $u->property->name,
-            $u->unitTypeLabel(),
-            $u->bedroomsLabel(),
-            PropertyMoney::kes((float) $u->rent_amount),
-            ucfirst($u->status),
-            '—',
-            $u->vacant_since?->format('Y-m-d') ?? '—',
-            'Edit in DB',
-        ])->all();
+        $rows = $units->map(function (PropertyUnit $u) {
+            $action = new HtmlString(
+                '<a href="'.route('property.properties.units').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Manage unit</a>'
+            );
+
+            if ($u->status === PropertyUnit::STATUS_VACANT) {
+                $action = new HtmlString(
+                    '<a href="'.route('property.listings.vacant.public.edit', $u).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit listing</a>'
+                );
+            }
+
+            return [
+                $u->label,
+                $u->property->name,
+                $u->unitTypeLabel(),
+                $u->bedroomsLabel(),
+                PropertyMoney::kes((float) $u->rent_amount),
+                ucfirst($u->status),
+                '—',
+                $u->vacant_since?->format('Y-m-d') ?? '—',
+                $action,
+            ];
+        })->all();
 
         return view('property.agent.properties.units', [
             'stats' => $stats,

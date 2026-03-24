@@ -1,4 +1,6 @@
 @php
+    $companyLogoUrl = \App\Models\PropertyPortalSetting::getValue('company_logo_url', '');
+    $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '');
     $portalRole = $propertyPortal ?? 'agent';
     $homeRoute = match ($portalRole) {
         'landlord' => 'property.landlord.portfolio',
@@ -37,10 +39,13 @@
             ['label' => 'Dashboard', 'route' => 'property.dashboard', 'patterns' => ['property.dashboard']],
             ['label' => 'Rent roll', 'route' => 'property.revenue.rent_roll', 'patterns' => ['property.revenue.rent_roll']],
             ['label' => 'Arrears', 'route' => 'property.revenue.arrears', 'patterns' => ['property.revenue.arrears']],
-            ['label' => 'Maintenance', 'route' => 'property.maintenance.requests', 'patterns' => ['property.maintenance.requests', 'property.maintenance.jobs']],
-            ['label' => 'Properties', 'route' => 'property.properties.list', 'patterns' => ['property.properties.*']],
+            ['label' => 'Properties', 'route' => 'property.properties.list', 'patterns' => ['property.properties.*', 'property.landlords.index', 'property.units.store']],
+            ['label' => 'Tenants', 'route' => 'property.tenants.directory', 'patterns' => ['property.tenants.*', 'property.leases.store']],
+            ['label' => 'Maintenance', 'route' => 'property.maintenance.requests', 'patterns' => ['property.maintenance.*']],
+            ['label' => 'Listings', 'route' => 'property.listings.vacant', 'patterns' => ['property.listings.*']],
             ['label' => 'Financials', 'route' => 'property.financials.index', 'patterns' => ['property.financials.*']],
             ['label' => 'Accounting', 'route' => 'property.accounting.index', 'patterns' => ['property.accounting.*']],
+            ['label' => 'Settings', 'route' => 'property.settings.index', 'patterns' => ['property.settings.*']],
         ],
     };
 
@@ -77,16 +82,22 @@
                     class="flex items-center gap-2.5 sm:gap-3 min-w-0 group shrink-0"
                 >
                     <span class="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/25 shadow-inner">
-                        @if ($portalRole === 'agent')
-                            <i class="fa-solid fa-building text-lg sm:text-xl text-white" aria-hidden="true"></i>
-                        @elseif ($portalRole === 'landlord')
-                            <i class="fa-solid fa-hand-holding-dollar text-lg sm:text-xl text-white" aria-hidden="true"></i>
+                        @if ($companyLogoUrl)
+                            <img src="{{ $companyLogoUrl }}" alt="{{ $companyName !== '' ? $companyName : 'Company logo' }}" class="h-7 w-7 sm:h-8 sm:w-8 object-contain rounded-md bg-white/95 p-0.5" />
                         @else
-                            <i class="fa-solid fa-house-user text-lg sm:text-xl text-white" aria-hidden="true"></i>
+                            @if ($portalRole === 'agent')
+                                <i class="fa-solid fa-building text-lg sm:text-xl text-white" aria-hidden="true"></i>
+                            @elseif ($portalRole === 'landlord')
+                                <i class="fa-solid fa-hand-holding-dollar text-lg sm:text-xl text-white" aria-hidden="true"></i>
+                            @else
+                                <i class="fa-solid fa-house-user text-lg sm:text-xl text-white" aria-hidden="true"></i>
+                            @endif
                         @endif
                     </span>
                     <span class="min-w-0 leading-tight hidden sm:block">
-                        @if ($portalRole === 'agent')
+                        @if ($companyName !== '')
+                            <span class="block text-[15px] sm:text-lg font-bold tracking-tight text-white truncate">{{ $companyName }}</span>
+                        @elseif ($portalRole === 'agent')
                             <span class="block text-[15px] sm:text-lg font-bold tracking-tight text-white truncate">Agent workspace</span>
                         @elseif ($portalRole === 'landlord')
                             <span class="block text-[15px] sm:text-lg font-bold tracking-tight text-white truncate">Landlord portal</span>

@@ -2,14 +2,11 @@
     title="Job bidding"
     subtitle="Issue scoped RFQs to shortlisted vendors — attach photos, access window, and deadline."
     back-route="property.vendors.index"
-    :stats="[
-        ['label' => 'Open RFQs', 'value' => '0', 'hint' => 'Collecting quotes'],
-        ['label' => 'Awaiting award', 'value' => '0', 'hint' => 'Quotes in'],
-        ['label' => 'Awarded (MTD)', 'value' => '0', 'hint' => 'Jobs created'],
-    ]"
-    :columns="['RFQ #', 'Property / unit', 'Scope', 'Deadline', 'Invited', 'Quotes', 'Status']"
+    :stats="$stats"
+    :columns="$columns"
+    :table-rows="$tableRows"
     empty-title="No bidding events"
-    empty-hint="Keep a fair audit: who was invited, when, and why a vendor won or lost."
+    empty-hint="Create an RFQ draft to start collecting and tracking vendor quotes."
 >
     <x-slot name="actions">
         <a

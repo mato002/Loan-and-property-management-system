@@ -1,4 +1,6 @@
 @php
+    $companyLogoUrl = \App\Models\PropertyPortalSetting::getValue('company_logo_url', '');
+    $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '');
     $navActive = function ($patterns): bool {
         $patterns = is_array($patterns) ? $patterns : [$patterns];
         foreach ($patterns as $p) {
@@ -48,6 +50,22 @@
     </div>
 
     <nav class="flex-1 overflow-y-auto py-4 px-2.5 space-y-1 custom-scrollbar">
+        <a
+            href="{{ route('property.tenant.home') }}"
+            data-turbo-frame="property-main"
+            data-property-nav="property.tenant.home"
+            class="mb-3 flex items-center gap-3 rounded-xl border border-[#406866]/60 bg-[#243d3d]/35 px-3 py-2.5"
+        >
+            <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-[#406866]/60 ring-1 ring-[#5a8583]/50">
+                @if ($companyLogoUrl)
+                    <img src="{{ $companyLogoUrl }}" alt="{{ $companyName !== '' ? $companyName : 'Company logo' }}" class="h-7 w-7 object-contain rounded bg-white/95 p-0.5" />
+                @else
+                    <svg class="h-5 w-5 text-[#c5ebe8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l9-8 9 8M5 10v10h14V10" /></svg>
+                @endif
+            </span>
+            <span class="min-w-0 text-sm font-semibold text-white truncate">{{ $companyName !== '' ? $companyName : 'Tenant portal' }}</span>
+        </a>
+
         @foreach ($menu as $itemName => $data)
             @php $active = $navActive($data['active']); @endphp
             <a

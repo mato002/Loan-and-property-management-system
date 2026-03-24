@@ -45,7 +45,14 @@ document.addEventListener(
         if (!(form instanceof HTMLFormElement)) {
             return;
         }
-        const msg = form.getAttribute('data-swal-confirm');
+        let msg = form.getAttribute('data-swal-confirm');
+        if (!msg) {
+            const onsubmitRaw = form.getAttribute('onsubmit') || '';
+            const match = onsubmitRaw.match(/confirm\((['"])(.*?)\1\)/);
+            if (match && match[2]) {
+                msg = match[2];
+            }
+        }
         if (!msg) {
             return;
         }

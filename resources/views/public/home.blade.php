@@ -1,4 +1,5 @@
 <x-public-layout>
+    @php($brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name'))
     <!-- Hero Section -->
     <div class="relative bg-gray-900 border-b border-gray-800">
         <div class="absolute inset-0 overflow-hidden">
@@ -8,7 +9,7 @@
         
         <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-32 lg:py-48 flex flex-col items-center text-center">
             <h1 class="text-4xl md:text-6xl font-black text-white tracking-tight mb-6 max-w-4xl">
-                Find Your Perfect Space With <span class="text-indigo-400">PrimeEstate</span>
+                Find Your Perfect Space With <span class="text-indigo-400">{{ $brandName }}</span>
             </h1>
             <p class="text-xl text-gray-300 max-w-2xl mb-12">
                 Discover the best residential and commercial properties curated just for you. Seamlessly search, apply, and manage your properties entirely online.

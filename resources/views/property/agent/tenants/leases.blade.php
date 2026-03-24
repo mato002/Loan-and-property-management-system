@@ -69,7 +69,7 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Terms summary</label>
-                <textarea name="terms_summary" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('terms_summary') }}</textarea>
+                <textarea name="terms_summary" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('terms_summary', $leaseTemplate ?? '') }}</textarea>
                 @error('terms_summary')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save lease</button>

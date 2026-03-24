@@ -113,7 +113,7 @@
                                         </form>
                                     </td>
                                     <td class="py-2">
-                                        <form method="post" action="{{ route('property.properties.landlords.detach') }}" onsubmit="return confirm('Unlink this landlord from this property?');">
+                                        <form method="post" action="{{ route('property.properties.landlords.detach') }}" data-swal-title="Detach landlord?" data-swal-confirm="Unlink this landlord from this property?" data-swal-confirm-text="Yes, detach">
                                             @csrf
                                             <input type="hidden" name="property_id" value="{{ $link->property_id }}" />
                                             <input type="hidden" name="user_id" value="{{ $link->user_id }}" />

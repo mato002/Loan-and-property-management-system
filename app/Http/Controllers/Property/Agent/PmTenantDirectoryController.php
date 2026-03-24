@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -39,7 +40,11 @@ class PmTenantDirectoryController extends Controller
      */
     private function tenantListPayload(string $pageTitle, string $pageSubtitle, bool $showTenantForm): array
     {
-        $tenants = PmTenant::query()->withCount(['leases', 'invoices'])->orderBy('name')->get();
+        $tenants = PmTenant::query()
+            ->withCount(['leases', 'invoices'])
+            ->withMax('leases', 'end_date')
+            ->orderBy('name')
+            ->get();
 
         $stats = [
             ['label' => 'Tenants', 'value' => (string) $tenants->count(), 'hint' => 'Records'],
@@ -48,16 +53,32 @@ class PmTenantDirectoryController extends Controller
             ['label' => 'Total leases', 'value' => (string) $tenants->sum('leases_count'), 'hint' => 'Linked'],
         ];
 
-        $rows = $tenants->map(fn (PmTenant $t) => [
-            $t->name,
-            $t->phone ?? '—',
-            $t->email ?? '—',
-            $t->national_id ?? '—',
-            (string) $t->leases_count,
-            '—',
-            ucfirst($t->risk_level),
-            '—',
-        ])->all();
+        $rows = $tenants->map(function (PmTenant $t) {
+            $leaseEnd = $t->leases_max_end_date
+                ? (string) \Illuminate\Support\Carbon::parse((string) $t->leases_max_end_date)->format('Y-m-d')
+                : '—';
+
+            $actions = new HtmlString(
+                '<div class="flex flex-wrap gap-1">'.
+                '<a href="'.route('property.tenants.edit', $t).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit</a>'.
+                '<span class="text-slate-300">|</span>'.
+                '<a href="'.route('property.tenants.leases').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Leases</a>'.
+                '<span class="text-slate-300">|</span>'.
+                '<a href="'.route('property.tenants.notices').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Notices</a>'.
+                '</div>'
+            );
+
+            return [
+                $t->name,
+                $t->phone ?? '—',
+                $t->email ?? '—',
+                $t->national_id ?? '—',
+                (string) $t->leases_count,
+                $leaseEnd,
+                ucfirst($t->risk_level),
+                $actions,
+            ];
+        })->all();
 
         return [
             'pageTitle' => $pageTitle,
@@ -133,5 +154,28 @@ class PmTenantDirectoryController extends Controller
         }
 
         return back()->with('success', 'Tenant saved.');
+    }
+
+    public function edit(PmTenant $tenant): View
+    {
+        return view('property.agent.tenants.edit', [
+            'tenant' => $tenant,
+        ]);
+    }
+
+    public function update(Request $request, PmTenant $tenant): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:64'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'national_id' => ['nullable', 'string', 'max:64'],
+            'risk_level' => ['required', 'in:normal,medium,high'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $tenant->update($data);
+
+        return back()->with('success', 'Tenant updated.');
     }
 }

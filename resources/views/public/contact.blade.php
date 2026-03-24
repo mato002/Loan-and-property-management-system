@@ -1,4 +1,12 @@
 <x-public-layout>
+    @php($brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name'))
+    @php($contactEmailPrimary = \App\Models\PropertyPortalSetting::getValue('contact_email_primary', '') ?: 'hello@primeestate.com')
+    @php($contactEmailSupport = \App\Models\PropertyPortalSetting::getValue('contact_email_support', '') ?: 'support@primeestate.com')
+    @php($contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '1-800-555-0199')
+    @php($contactWhatsapp = \App\Models\PropertyPortalSetting::getValue('contact_whatsapp', '') ?: '+18005550199')
+    @php($contactAddress = \App\Models\PropertyPortalSetting::getValue('contact_address', '') ?: "123 Estate Blvd, Suite 400\nMetropolis, NY 10012")
+    @php($contactMapEmbedUrl = \App\Models\PropertyPortalSetting::getValue('contact_map_embed_url', '') ?: 'https://maps.google.com/maps?q=123%20Estate%20Blvd%20Suite%20400%20Metropolis%20NY%2010012&t=&z=13&ie=UTF8&iwloc=&output=embed')
+    @php($whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp) ?: '18005550199')
     <!-- Header -->
     <div class="bg-gray-50 border-b border-gray-200">
         <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-20 text-center">
@@ -20,7 +28,7 @@
                         </div>
                         <div>
                             <p class="text-gray-900 font-black tracking-wide uppercase text-sm mb-2 text-indigo-600">Headquarters</p>
-                            <p class="leading-relaxed">123 Estate Blvd, Suite 400<br>Metropolis, NY 10012</p>
+                            <p class="leading-relaxed">{!! nl2br(e($contactAddress)) !!}</p>
                         </div>
                     </div>
                     
@@ -30,7 +38,7 @@
                         </div>
                         <div>
                             <p class="text-gray-900 font-black tracking-wide uppercase text-sm mb-2 text-indigo-600">Email Address</p>
-                            <p class="leading-relaxed">hello@primeestate.com<br>support@primeestate.com</p>
+                            <p class="leading-relaxed">{{ $contactEmailPrimary }}<br>{{ $contactEmailSupport }}</p>
                         </div>
                     </div>
 
@@ -40,7 +48,7 @@
                         </div>
                         <div>
                             <p class="text-gray-900 font-black tracking-wide uppercase text-sm mb-2 text-indigo-600">Phone</p>
-                            <p class="leading-relaxed">1-800-555-0199</p>
+                            <p class="leading-relaxed">{{ $contactPhone }}</p>
                         </div>
                     </div>
                     <div class="flex items-start gap-6">
@@ -49,7 +57,7 @@
                         </div>
                         <div>
                             <p class="text-gray-900 font-black tracking-wide uppercase text-sm mb-2 text-emerald-600">WhatsApp</p>
-                            <a href="https://wa.me/18005550199" target="_blank" rel="noopener noreferrer" class="leading-relaxed text-emerald-600 hover:text-emerald-700">+1 (800) 555-0199</a>
+                            <a href="https://wa.me/{{ $whatsAppDigits }}" target="_blank" rel="noopener noreferrer" class="leading-relaxed text-emerald-600 hover:text-emerald-700">{{ $contactWhatsapp }}</a>
                         </div>
                     </div>
                 </div>
@@ -87,8 +95,8 @@
     <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 pb-24">
         <div class="rounded-3xl overflow-hidden border border-gray-200 shadow-sm">
             <iframe
-                title="PrimeEstate office location"
-                src="https://maps.google.com/maps?q=123%20Estate%20Blvd%20Suite%20400%20Metropolis%20NY%2010012&t=&z=13&ie=UTF8&iwloc=&output=embed"
+                title="{{ $brandName }} office location"
+                src="{{ $contactMapEmbedUrl }}"
                 class="w-full h-80"
                 loading="lazy"
                 referrerpolicy="no-referrer-when-downgrade"

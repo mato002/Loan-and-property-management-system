@@ -5,6 +5,48 @@
     :stats="$stats"
     :columns="[]"
 >
+    <x-slot name="above">
+        <form method="post" action="{{ route('property.landlords.onboard') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+            @csrf
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Onboard landlord</h3>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Full name</label>
+                    <input type="text" name="name" value="{{ old('name') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
+                    <input type="email" name="email" value="{{ old('email') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('email')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Temporary password</label>
+                    <input type="text" name="password" value="{{ old('password') }}" required minlength="8" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('password')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Link to property (optional)</label>
+                    <select name="property_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">Not now</option>
+                        @foreach ($properties as $p)
+                            <option value="{{ $p->id }}" @selected((string) old('property_id') === (string) $p->id)>{{ $p->name }}</option>
+                        @endforeach
+                    </select>
+                    @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Ownership % (if property selected)</label>
+                <input type="number" name="ownership_percent" value="{{ old('ownership_percent', '100') }}" min="0" max="100" step="0.01" class="mt-1 w-full max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                @error('ownership_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create landlord account</button>
+        </form>
+    </x-slot>
+
     <x-slot name="toolbar">
         <input
             type="search"

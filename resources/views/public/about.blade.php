@@ -1,9 +1,10 @@
 <x-public-layout>
+    @php($brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name'))
     <!-- Hero Statement -->
     <div class="bg-indigo-600 py-24 sm:py-32 relative overflow-hidden">
         <div class="absolute inset-0 bg-indigo-900/20"></div>
         <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 text-center">
-            <h1 class="text-5xl md:text-7xl font-black text-white tracking-tight mb-8">About PrimeEstate</h1>
+            <h1 class="text-5xl md:text-7xl font-black text-white tracking-tight mb-8">About {{ $brandName }}</h1>
             <p class="text-xl md:text-2xl text-indigo-100 max-w-4xl mx-auto font-medium leading-normal">We are revolutionizing the property management industry by bringing absolute transparency, speed, and design to the real estate market.</p>
         </div>
     </div>
@@ -14,7 +15,7 @@
             <div>
                 <h2 class="text-4xl font-black text-gray-900 tracking-tight mb-8">Our Mission</h2>
                 <div class="prose prose-lg text-gray-600">
-                    <p class="mb-6 leading-relaxed">Founded in 2026, PrimeEstate was built on a simple premise: managing properties shouldn't be a nightmare. We observed landlords drowning in paperwork and tenants frustrated by slow maintenance responses.</p>
+                    <p class="mb-6 leading-relaxed">Founded in 2026, {{ $brandName }} was built on a simple premise: managing properties shouldn't be a nightmare. We observed landlords drowning in paperwork and tenants frustrated by slow maintenance responses.</p>
                     <p class="mb-6 leading-relaxed">We built a digital-first platform bridging the gap between property owners and renters, replacing outdated ledgers with stunning dashboards, automated flows, and complete visibility.</p>
                     <p class="leading-relaxed">Whether you are finding your next dream home, or bringing your entire portfolio loop under our management system, we guarantee an enterprise-grade experience without the traditional overhead friction.</p>
                 </div>

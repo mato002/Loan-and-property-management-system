@@ -11,6 +11,7 @@ use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -26,19 +27,36 @@ class PmVendorWebController extends Controller
             ['label' => 'Inactive', 'value' => (string) $vendors->where('status', '!=', 'active')->count(), 'hint' => ''],
         ];
 
-        $rows = $vendors->map(fn (PmVendor $v) => [
-            $v->name,
-            $v->category ?? '—',
-            $v->phone ?? '—',
-            $v->email ?? '—',
-            '—',
-            $v->rating !== null ? number_format((float) $v->rating, 1) : '—',
-            ucfirst($v->status),
-        ])->all();
+        $rows = $vendors->map(function (PmVendor $v) {
+            $nextStatus = $v->status === 'active' ? 'inactive' : 'active';
+            $statusBtn = $nextStatus === 'active' ? 'Activate' : 'Deactivate';
+
+            $actions = new HtmlString(
+                '<div class="flex flex-wrap gap-1">'.
+                '<a href="'.route('property.vendors.edit', $v).'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
+                '<form method="POST" action="'.route('property.vendors.status', $v).'" class="inline-flex">'.csrf_field().
+                '<input type="hidden" name="status" value="'.$nextStatus.'" />'.
+                '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">'.$statusBtn.'</button>'.
+                '</form>'.
+                '<a href="'.route('property.vendors.quotes').'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Quotes</a>'.
+                '</div>'
+            );
+
+            return [
+                $v->name,
+                $v->category ?? '—',
+                $v->phone ?? '—',
+                $v->email ?? '—',
+                'On-file',
+                $v->rating !== null ? number_format((float) $v->rating, 1) : '—',
+                ucfirst($v->status),
+                $actions,
+            ];
+        })->all();
 
         return view('property.agent.vendors.directory', [
             'stats' => $stats,
-            'columns' => ['Vendor', 'Category', 'Contact', 'Payment terms', 'Insurance until', 'Rating', 'Status'],
+            'columns' => ['Vendor', 'Category', 'Contact', 'Payment terms', 'Insurance until', 'Rating', 'Status', 'Actions'],
             'tableRows' => $rows,
         ]);
     }
@@ -57,6 +75,41 @@ class PmVendorWebController extends Controller
         PmVendor::query()->create($data);
 
         return back()->with('success', 'Vendor saved.');
+    }
+
+    public function edit(PmVendor $vendor): View
+    {
+        return view('property.agent.vendors.edit', [
+            'vendor' => $vendor,
+        ]);
+    }
+
+    public function update(Request $request, PmVendor $vendor): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'category' => ['nullable', 'string', 'max:128'],
+            'phone' => ['nullable', 'string', 'max:64'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'status' => ['required', 'in:active,inactive'],
+            'rating' => ['nullable', 'numeric', 'between:0,5'],
+        ]);
+
+        $vendor->update($data);
+
+        return back()->with('success', 'Vendor updated.');
+    }
+
+    public function updateStatus(Request $request, PmVendor $vendor): RedirectResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', 'in:active,inactive'],
+        ]);
+        $vendor->update([
+            'status' => $data['status'],
+        ]);
+
+        return back()->with('success', 'Vendor status updated.');
     }
 
     public function createBiddingRfqForm(): View
@@ -111,14 +164,15 @@ class PmVendorWebController extends Controller
             $a->context['property_unit'] ?? '—',
             Str::limit($a->notes, 48),
             ($a->context['deadline'] ?? '—'),
-            '—',
-            '—',
+            'Pending invites',
+            'Pending quotes',
             'Draft',
+            new HtmlString('<a href="'.route('property.vendors.quotes').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Open quotes</a>'),
         ])->all();
 
         return view('property.agent.vendors.bidding', [
             'stats' => $stats,
-            'columns' => ['RFQ #', 'Property / unit', 'Scope', 'Deadline', 'Invited', 'Quotes', 'Status'],
+            'columns' => ['RFQ #', 'Property / unit', 'Scope', 'Deadline', 'Invited', 'Quotes', 'Status', 'Actions'],
             'tableRows' => $rows,
         ]);
     }
@@ -127,32 +181,63 @@ class PmVendorWebController extends Controller
     {
         $jobs = PmMaintenanceJob::query()
             ->with(['request.unit.property', 'vendor'])
-            ->where('status', 'quoted')
+            ->whereNotNull('quote_amount')
             ->orderByDesc('id')
             ->limit(200)
             ->get();
 
         $stats = [
-            ['label' => 'Quoted jobs', 'value' => (string) $jobs->count(), 'hint' => ''],
+            ['label' => 'Jobs with quote', 'value' => (string) $jobs->count(), 'hint' => 'Any status'],
             ['label' => 'With vendor', 'value' => (string) $jobs->filter(fn ($j) => $j->pm_vendor_id)->count(), 'hint' => ''],
         ];
 
-        $rows = $jobs->map(fn (PmMaintenanceJob $j) => [
-            '#'.$j->id,
-            $j->vendor?->name ?? '—',
-            $j->request->unit->property->name.'/'.$j->request->unit->label,
-            $j->quote_amount !== null ? PropertyMoney::kes((float) $j->quote_amount) : '—',
-            $j->created_at->format('Y-m-d'),
-            ucfirst(str_replace('_', ' ', $j->status)),
-            '—',
-            '—',
-        ])->all();
+        $rows = $jobs->map(function (PmMaintenanceJob $j) {
+            $action = '—';
+            if ($j->status === 'quoted' && $j->pm_vendor_id) {
+                $action = new HtmlString(
+                    '<form method="POST" action="'.route('property.vendors.quotes.award', $j).'" data-swal-title="Award quote?" data-swal-confirm="Award this quote and move job to Approved?" data-swal-confirm-text="Yes, award">'.
+                    csrf_field().
+                    '<button type="submit" class="rounded border border-blue-300 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50">Award</button>'.
+                    '</form>'
+                );
+            } elseif (in_array($j->status, ['approved', 'in_progress', 'done'], true)) {
+                $action = 'Awarded';
+            }
+
+            return [
+                '#'.$j->id,
+                $j->vendor?->name ?? '—',
+                $j->request->unit->property->name.'/'.$j->request->unit->label,
+                $j->quote_amount !== null ? PropertyMoney::kes((float) $j->quote_amount) : '—',
+                $j->created_at->format('Y-m-d'),
+                ucfirst(str_replace('_', ' ', $j->status)),
+                ((int) $j->created_at->diffInDays(now())).' days',
+                $action,
+            ];
+        })->all();
 
         return view('property.agent.vendors.quotes', [
             'stats' => $stats,
             'columns' => ['Job', 'Vendor', 'Unit', 'Quote', 'Date', 'Status', 'Lead time', 'Select'],
             'tableRows' => $rows,
         ]);
+    }
+
+    public function awardQuote(PmMaintenanceJob $job): RedirectResponse
+    {
+        if (! $job->pm_vendor_id) {
+            return back()->with('error', 'Assign a vendor before awarding a quote.');
+        }
+        if ($job->quote_amount === null) {
+            return back()->with('error', 'Add a quote amount before awarding.');
+        }
+        if (in_array($job->status, ['cancelled', 'done'], true)) {
+            return back()->with('error', 'This job cannot be awarded in its current status.');
+        }
+
+        $job->update(['status' => 'approved']);
+
+        return back()->with('success', 'Quote awarded and job moved to Approved.');
     }
 
     public function performance(): View
@@ -177,7 +262,7 @@ class PmVendorWebController extends Controller
                 (string) $done,
                 PropertyMoney::kes($sum),
                 $v?->rating !== null ? number_format((float) $v->rating, 1) : '—',
-                '—',
+                $group->count() > 0 ? (string) round(($done / $group->count()) * 100, 1).'%' : '—',
             ];
         })->values()->all();
 
@@ -215,13 +300,14 @@ class PmVendorWebController extends Controller
             $j->request->unit->property->name.'/'.$j->request->unit->label,
             $j->quote_amount !== null ? PropertyMoney::kes((float) $j->quote_amount) : '—',
             Str::limit((string) $j->notes, 40),
+            new HtmlString('<a href="'.route('property.maintenance.history').'" class="text-indigo-600 hover:text-indigo-700 font-medium">History</a>'),
         ])->all();
 
         return view('property.agent.vendors.work_records', [
             'stats' => [
                 ['label' => 'Records', 'value' => (string) $jobs->count(), 'hint' => 'Completed'],
             ],
-            'columns' => ['Date', 'Job', 'Vendor', 'Unit', 'Amount', 'Notes'],
+            'columns' => ['Date', 'Job', 'Vendor', 'Unit', 'Amount', 'Notes', 'Actions'],
             'tableRows' => $rows,
         ]);
     }

@@ -10,7 +10,7 @@
 >
     <x-slot name="actions">
         <a
-            href="{{ route('property.accounting.entries.export', ['reversal' => $reversalFilter ?? null, 'source_key' => $sourceFilter ?? null]) }}"
+            href="{{ route('property.accounting.entries.export', ['reversal' => $reversalFilter ?? null, 'source_key' => $sourceFilter ?? null, 'q' => request('q')]) }}"
             class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto"
         >Export CSV</a>
     </x-slot>
@@ -27,6 +27,12 @@
                 <option value="{{ route('property.accounting.entries', array_merge(request()->query(), ['source_key' => $source])) }}" @selected(($sourceFilter ?? '') === $source)>{{ $source }}</option>
             @endforeach
         </select>
+        <form method="get" action="{{ route('property.accounting.entries') }}" class="flex gap-2 w-full sm:w-auto">
+            <input type="hidden" name="reversal" value="{{ request('reversal') }}">
+            <input type="hidden" name="source_key" value="{{ request('source_key') }}">
+            <input type="search" name="q" value="{{ request('q') }}" placeholder="Search account/ref/description…" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-72" />
+            <button type="submit" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Search</button>
+        </form>
     </x-slot>
 
     <x-slot name="above">
