@@ -41,6 +41,7 @@
             ['label' => 'Arrears', 'route' => 'property.revenue.arrears', 'patterns' => ['property.revenue.arrears']],
             ['label' => 'Properties', 'route' => 'property.properties.list', 'patterns' => ['property.properties.*', 'property.landlords.index', 'property.units.store']],
             ['label' => 'Tenants', 'route' => 'property.tenants.directory', 'patterns' => ['property.tenants.*', 'property.leases.store']],
+            ['label' => 'Property users', 'route' => 'property.settings.roles', 'patterns' => ['property.settings.roles']],
             ['label' => 'Maintenance', 'route' => 'property.maintenance.requests', 'patterns' => ['property.maintenance.*']],
             ['label' => 'Listings', 'route' => 'property.listings.vacant', 'patterns' => ['property.listings.*']],
             ['label' => 'Financials', 'route' => 'property.financials.index', 'patterns' => ['property.financials.*']],

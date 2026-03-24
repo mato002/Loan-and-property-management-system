@@ -1,5 +1,6 @@
 @php
-    $imageHeight = $imageHeight ?? 'h-60';
+    // Keep a single image size across all public listing cards for visual consistency.
+    $imageHeight = 'h-64';
     $thumb = $unit->primaryPublicImageUrl() ?? $placeholderImage;
     $title = $unit->property->name.' — Unit '.$unit->label;
     $addr = trim(collect([$unit->property->address_line, $unit->property->city])->filter()->implode(', ')) ?: '—';

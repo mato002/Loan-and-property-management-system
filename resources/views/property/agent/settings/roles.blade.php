@@ -1,5 +1,5 @@
 <x-property.workspace
-    title="User roles"
+    title="Property users"
     subtitle="RBAC for staff — modules, portfolios, and sensitive actions (refunds, notices, payouts)."
     back-route="property.settings.index"
     :stats="$stats"
@@ -9,7 +9,8 @@
     empty-hint="No users with a property portal role were found."
 >
     <x-slot name="toolbar">
-        <a href="{{ route('property.settings.roles') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Users & roles</a>
+        <a href="{{ route('property.settings.roles') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Property users</a>
+        <a href="{{ route('property.settings.permissions') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Permissions</a>
         <a href="{{ route('property.settings.commission') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Commission</a>
         <a href="{{ route('property.settings.payments') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment config</a>
         <a href="{{ route('property.settings.branding') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Branding</a>
@@ -30,3 +31,4 @@
         </p>
     </x-slot>
 </x-property.workspace>
+

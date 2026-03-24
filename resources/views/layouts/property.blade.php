@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full">
     <head>
+        @php
+            $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');
+            $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
+            $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
+        @endphp
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -15,6 +20,9 @@
 
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
+        <link rel="icon" href="{{ $faviconVersioned }}" />
+        <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
+        <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
         
         <style>
             [x-cloak] { display: none !important; }

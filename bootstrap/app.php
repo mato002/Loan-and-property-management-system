@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\ConfigureViteHotRequests;
 use App\Http\Middleware\EnsureActivePropertySystem;
+use App\Http\Middleware\EnsurePropertyPermission;
 use App\Http\Middleware\EnsurePropertyPortalRole;
 use App\Http\Middleware\LogLoanPortalAccess;
 use Illuminate\Foundation\Application;
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'property.system' => EnsureActivePropertySystem::class,
             'property.portal' => EnsurePropertyPortalRole::class,
+            'property.permission' => EnsurePropertyPermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

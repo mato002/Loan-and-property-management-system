@@ -113,7 +113,7 @@
                 @else
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                         @foreach ($units as $unit)
-                            @include('public.partials.listing-card', ['unit' => $unit, 'placeholderImage' => $listingPlaceholderImage, 'imageHeight' => 'h-60'])
+                            @include('public.partials.listing-card', ['unit' => $unit, 'placeholderImage' => $listingPlaceholderImage])
                         @endforeach
                     </div>
 

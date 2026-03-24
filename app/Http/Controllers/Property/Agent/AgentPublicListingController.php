@@ -7,9 +7,11 @@ use App\Models\PropertyUnit;
 use App\Models\PropertyUnitPublicImage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Throwable;
 
 class AgentPublicListingController extends Controller
 {
@@ -182,23 +184,88 @@ class AgentPublicListingController extends Controller
     {
         abort_unless($property_unit->status === PropertyUnit::STATUS_VACANT, 404);
 
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'photos' => ['required', 'array', 'max:12'],
-            'photos.*' => ['file', 'image', 'max:5120', 'mimes:jpeg,jpg,png,webp'],
+            'photos.*' => ['required', 'file', 'image', 'mimes:jpeg,jpg,png,webp'],
+        ], [
+            'photos.required' => 'Select at least one image to upload.',
+            'photos.array' => 'Upload failed: photos input was not sent correctly.',
+            'photos.max' => 'Upload at most 12 files per batch.',
+            'photos.*.required' => 'One of the selected files is empty or missing.',
+            'photos.*.file' => 'One of the selected items is not a valid file.',
+            'photos.*.image' => 'Only image files are allowed.',
+            'photos.*.mimes' => 'Allowed image types: JPEG, JPG, PNG, WEBP.',
         ]);
 
-        $next = (int) $property_unit->publicImages()->max('sort_order') + 1;
+        if ($validator->fails()) {
+            return back()->withErrors($validator)->withInput();
+        }
 
-        foreach ($request->file('photos', []) as $file) {
+        $files = $request->file('photos', []);
+        if (empty($files)) {
+            $contentLength = (int) ($request->server('CONTENT_LENGTH') ?? 0);
+            $postMax = (string) ini_get('post_max_size');
+            $postMaxBytes = $this->iniBytes($postMax);
+            $postMaxHint = $postMax !== '' ? $postMax : 'unknown';
+
+            $message = 'No files reached the server.';
+            if ($contentLength > 0 && $postMaxBytes > 0 && $contentLength > $postMaxBytes) {
+                $message = 'Upload rejected by server: request body size ('.number_format($contentLength).' bytes) is larger than post_max_size='.$postMaxHint.'.';
+            }
+
+            return back()->withErrors([
+                'photos' => $message,
+            ]);
+        }
+
+        $next = (int) $property_unit->publicImages()->max('sort_order') + 1;
+        $newImageIds = [];
+
+        foreach ($files as $file) {
             if (! $file) {
                 continue;
             }
-            $path = $file->store('public-listings/'.$property_unit->id, 'public');
-            PropertyUnitPublicImage::query()->create([
+            $original = $file->getClientOriginalName() ?: 'selected file';
+
+            if (! $file->isValid()) {
+                return back()->withErrors([
+                    'photos' => 'Upload failed for "'.$original.'": '.$file->getErrorMessage().' (PHP upload error code '.$file->getError().').',
+                ]);
+            }
+
+            try {
+                $path = $file->store('public-listings/'.$property_unit->id, 'public');
+            } catch (Throwable $e) {
+                return back()->withErrors([
+                    'photos' => 'Upload failed for "'.$original.'": '.$e->getMessage(),
+                ]);
+            }
+
+            $created = PropertyUnitPublicImage::query()->create([
                 'property_unit_id' => $property_unit->id,
                 'path' => $path,
                 'sort_order' => $next++,
             ]);
+            $newImageIds[] = $created->id;
+        }
+
+        // Make newly uploaded images appear first so the public listing reflects the latest upload immediately.
+        if ($newImageIds !== []) {
+            $images = PropertyUnitPublicImage::query()
+                ->where('property_unit_id', $property_unit->id)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get();
+
+            $newOnes = $images->filter(fn (PropertyUnitPublicImage $img) => in_array($img->id, $newImageIds, true))->values();
+            $existing = $images->reject(fn (PropertyUnitPublicImage $img) => in_array($img->id, $newImageIds, true))->values();
+            $ordered = $newOnes->concat($existing)->values();
+
+            DB::transaction(function () use ($ordered): void {
+                foreach ($ordered as $index => $img) {
+                    $img->update(['sort_order' => $index + 1]);
+                }
+            });
         }
 
         return back()->with('success', __('Photos uploaded.'));
@@ -248,5 +315,23 @@ class AgentPublicListingController extends Controller
         });
 
         return back()->with('success', __('Main photo updated.'));
+    }
+
+    private function iniBytes(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return 0;
+        }
+
+        $number = (float) $value;
+        $unit = strtolower(substr($value, -1));
+
+        return match ($unit) {
+            'g' => (int) ($number * 1024 * 1024 * 1024),
+            'm' => (int) ($number * 1024 * 1024),
+            'k' => (int) ($number * 1024),
+            default => (int) $number,
+        };
     }
 }

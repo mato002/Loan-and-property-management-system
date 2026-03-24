@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Storage;
 
 class PropertyUnitPublicImage extends Model
 {
@@ -23,6 +22,6 @@ class PropertyUnitPublicImage extends Model
 
     public function publicUrl(): string
     {
-        return Storage::disk('public')->url($this->path);
+        return url('storage/'.ltrim((string) $this->path, '/'));
     }
 }

@@ -12,6 +12,8 @@
         $contactRegNo = \App\Models\PropertyPortalSetting::getValue('contact_reg_no', '') ?: 'PRE-2026-00412';
         $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp) ?: '18005550199';
         $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone) ?: '+18005550199';
+        $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
+        $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
     @endphp
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -22,9 +24,9 @@
     <meta property="og:description" content="Browse verified listings, connect with agents, and apply online with {{ $companyName }}.">
     <meta property="og:type" content="website">
     <meta name="robots" content="index,follow">
-    @if ($siteFaviconUrl)
-        <link rel="icon" href="{{ $siteFaviconUrl }}" />
-    @endif
+    <link rel="icon" href="{{ $faviconVersioned }}" />
+    <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
+    <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800&display=swap" rel="stylesheet" />

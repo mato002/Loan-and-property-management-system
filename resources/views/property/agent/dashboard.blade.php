@@ -195,6 +195,10 @@
                 <i class="fa-solid fa-coins" aria-hidden="true"></i>
                 Revenue
             </a>
+            <a href="{{ route('property.settings.roles') }}" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 transition-colors">
+                <i class="fa-solid fa-user-gear" aria-hidden="true"></i>
+                Property users
+            </a>
             <a href="{{ route('property.tenants.directory') }}" class="inline-flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 transition-colors">
                 <i class="fa-solid fa-users" aria-hidden="true"></i>
                 Tenants

@@ -39,4 +39,31 @@ return [
         'secret' => env('PROPERTY_WEBHOOK_SECRET'),
     ],
 
+    'property_banks' => [
+        'timeout_seconds' => (int) env('PROPERTY_BANK_TIMEOUT', 20),
+        'providers' => [
+            'kcb' => [
+                'base_url' => env('PROPERTY_BANK_KCB_BASE_URL'),
+                'api_key' => env('PROPERTY_BANK_KCB_API_KEY'),
+                'api_secret' => env('PROPERTY_BANK_KCB_API_SECRET'),
+                'merchant_code' => env('PROPERTY_BANK_KCB_MERCHANT_CODE'),
+                'webhook_secret' => env('PROPERTY_BANK_KCB_WEBHOOK_SECRET'),
+            ],
+            'equity' => [
+                'base_url' => env('PROPERTY_BANK_EQUITY_BASE_URL'),
+                'api_key' => env('PROPERTY_BANK_EQUITY_API_KEY'),
+                'api_secret' => env('PROPERTY_BANK_EQUITY_API_SECRET'),
+                'merchant_code' => env('PROPERTY_BANK_EQUITY_MERCHANT_CODE'),
+                'webhook_secret' => env('PROPERTY_BANK_EQUITY_WEBHOOK_SECRET'),
+            ],
+            'coop' => [
+                'base_url' => env('PROPERTY_BANK_COOP_BASE_URL'),
+                'api_key' => env('PROPERTY_BANK_COOP_API_KEY'),
+                'api_secret' => env('PROPERTY_BANK_COOP_API_SECRET'),
+                'merchant_code' => env('PROPERTY_BANK_COOP_MERCHANT_CODE'),
+                'webhook_secret' => env('PROPERTY_BANK_COOP_WEBHOOK_SECRET'),
+            ],
+        ],
+    ],
+
 ];

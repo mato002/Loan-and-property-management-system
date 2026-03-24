@@ -26,7 +26,7 @@
                     <input type="tel" name="payer_phone" value="{{ old('payer_phone') }}" autocomplete="tel" class="mt-1 w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-sm px-4 py-3" placeholder="07XX XXX XXX" />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">External reference (bank/card/cash)</label>
+                    <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">External reference (bank/card/cash/custom)</label>
                     <input type="text" name="external_ref" value="{{ old('external_ref') }}" class="mt-1 w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-sm px-4 py-3" placeholder="Transaction reference / receipt no." />
                 </div>
                 <div>
@@ -34,8 +34,31 @@
                     <input type="text" name="custom_amount" value="{{ old('custom_amount') }}" inputmode="decimal" class="mt-1 w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-sm px-4 py-3" placeholder="Optional partial pay" />
                 </div>
                 <button type="submit" class="w-full rounded-xl bg-teal-600 py-3.5 text-sm font-semibold text-white hover:bg-teal-700">Submit payment</button>
-                <p class="text-xs text-center text-slate-500">STK submissions are saved as pending. Bank/card/cash submissions are marked completed and allocated to open invoices.</p>
+                <p class="text-xs text-center text-slate-500">STK and integrated bank submissions are saved as pending until gateway/webhook confirmation. Manual channels are marked completed and auto-allocated to open invoices.</p>
             </form>
+
+            @if (! empty($paymentMethodDetails))
+                <div class="pt-4 border-t border-slate-200 dark:border-slate-700">
+                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white mb-3">Available payment channels</h3>
+                    <div class="space-y-2">
+                        @foreach ($paymentMethodDetails as $method)
+                            <div class="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+                                <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ $method['label'] ?? 'Payment method' }}</p>
+                                @if (! empty($method['provider']) || ! empty($method['account']))
+                                    <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                                        @if (! empty($method['provider']))<span>{{ $method['provider'] }}</span>@endif
+                                        @if (! empty($method['provider']) && ! empty($method['account']))<span class="text-slate-400"> · </span>@endif
+                                        @if (! empty($method['account']))<span>{{ $method['account'] }}</span>@endif
+                                    </p>
+                                @endif
+                                @if (! empty($method['instructions']))
+                                    <p class="mt-1 text-xs text-slate-500">{{ $method['instructions'] }}</p>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
         </div>
         <a href="{{ route('property.tenant.payments.index') }}" class="inline-block text-sm font-medium text-teal-700 dark:text-teal-400 hover:underline">← Back to payments</a>
     </x-property.page>

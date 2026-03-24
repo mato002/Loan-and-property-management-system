@@ -136,7 +136,7 @@ class PublicController extends Controller
 
         $gallerySlots = [];
         for ($i = 0; $i < 5; $i++) {
-            $gallerySlots[] = $imageUrls[$i] ?? self::LISTING_PLACEHOLDER_IMAGE;
+            $gallerySlots[] = $imageUrls[$i] ?? null;
         }
         $extraPhotoCount = max(0, count($imageUrls) - 5);
 

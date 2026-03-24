@@ -30,12 +30,15 @@ Route::get('/about', [PublicController::class, 'about'])->name('public.about');
 Route::get('/contact', [PublicController::class, 'contact'])->name('public.contact');
 Route::get('/apply', [PublicController::class, 'apply'])->name('public.apply');
 Route::get('/thank-you', [PublicController::class, 'thankYou'])->name('public.thank_you');
-Route::get('/signup', [PublicController::class, 'signup'])->name('public.signup');
 Route::view('/privacy-policy', 'public.privacy')->name('public.privacy');
 Route::view('/terms-of-service', 'public.terms')->name('public.terms');
 Route::post('/webhooks/property/payments/stk-callback', [PropertyPaymentWebhookController::class, 'stkCallback'])
     ->withoutMiddleware([ValidateCsrfToken::class])
     ->name('webhooks.property.payments.stk_callback');
+Route::post('/webhooks/property/payments/bank/{provider}', [PropertyPaymentWebhookController::class, 'bankCallback'])
+    ->whereIn('provider', ['kcb', 'equity', 'coop'])
+    ->withoutMiddleware([ValidateCsrfToken::class])
+    ->name('webhooks.property.payments.bank_callback');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', function () {

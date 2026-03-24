@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Schema;
 
 #[Fillable(['name', 'email', 'password', 'property_portal_role'])]
 #[Hidden(['password', 'remember_token'])]
@@ -44,6 +45,46 @@ class User extends Authenticatable
     public function pmTenantPortalRequests(): HasMany
     {
         return $this->hasMany(PmTenantPortalRequest::class);
+    }
+
+    /**
+     * @return BelongsToMany<PmRole, $this>
+     */
+    public function pmRoles(): BelongsToMany
+    {
+        return $this->belongsToMany(PmRole::class, 'pm_user_role', 'user_id', 'pm_role_id')
+            ->withTimestamps();
+    }
+
+    /**
+     * @return BelongsToMany<PmPermission, $this>
+     */
+    public function pmPermissions(): BelongsToMany
+    {
+        return $this->belongsToMany(PmPermission::class, 'pm_user_permission', 'user_id', 'pm_permission_id')
+            ->withTimestamps();
+    }
+
+    public function hasPmPermission(string $permissionKey): bool
+    {
+        if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_permissions') || ! Schema::hasTable('pm_user_role')) {
+            return true; // Legacy-safe until RBAC tables are migrated.
+        }
+
+        $roles = $this->pmRoles()->with('permissions:id,key')->get();
+        if ($roles->isEmpty()) {
+            return true; // Keep existing behavior until roles are assigned.
+        }
+
+        $roleHas = $roles
+            ->flatMap(fn (PmRole $role) => $role->permissions->pluck('key'))
+            ->contains($permissionKey);
+
+        if ($roleHas) {
+            return true;
+        }
+
+        return $this->pmPermissions()->where('key', $permissionKey)->exists();
     }
 
     /**

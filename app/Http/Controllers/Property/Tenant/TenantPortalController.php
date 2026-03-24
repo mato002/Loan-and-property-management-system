@@ -9,10 +9,13 @@ use App\Models\PmMaintenanceRequest;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenantPortalRequest;
+use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\Rule;
@@ -150,15 +153,12 @@ class TenantPortalController extends Controller
     {
         $tenant = $request->user()->pmTenantProfile;
         $balance = $tenant ? $this->openBalanceForTenant((int) $tenant->id) : 0.0;
+        $methodConfig = $this->tenantPaymentMethods();
 
         return view('property.tenant.payments.pay', [
             'amountDue' => PropertyMoney::kes($balance),
-            'paymentMethods' => [
-                'mpesa_stk' => 'M-Pesa STK Push',
-                'bank_transfer' => 'Bank Transfer',
-                'card' => 'Card Payment',
-                'cash' => 'Cash',
-            ],
+            'paymentMethods' => $methodConfig['select'],
+            'paymentMethodDetails' => $methodConfig['details'],
         ]);
     }
 
@@ -221,7 +221,7 @@ class TenantPortalController extends Controller
         }
 
         $data = $request->validate([
-            'payment_method' => ['required', 'string', Rule::in(['mpesa_stk', 'bank_transfer', 'card', 'cash'])],
+            'payment_method' => ['required', 'string', Rule::in(array_keys($this->tenantPaymentMethods()['select']))],
             'payer_phone' => ['nullable', 'string', 'max:32'],
             'external_ref' => ['nullable', 'string', 'max:128'],
             'custom_amount' => ['nullable', 'string', 'max:32'],
@@ -247,7 +247,8 @@ class TenantPortalController extends Controller
             return back()->withErrors(['external_ref' => 'Reference is required for this payment method.'])->withInput();
         }
 
-        $isPending = $data['payment_method'] === 'mpesa_stk';
+        $bankMethods = ['kcb_bank', 'equity_bank', 'coop_bank'];
+        $isPending = $data['payment_method'] === 'mpesa_stk' || in_array($data['payment_method'], $bankMethods, true);
 
         $payment = DB::transaction(function () use ($tenant, $data, $amount, $isPending) {
             $payment = PmPayment::query()->create([
@@ -270,6 +271,40 @@ class TenantPortalController extends Controller
             return $payment;
         });
 
+        if (in_array($data['payment_method'], $bankMethods, true)) {
+            $provider = match ($data['payment_method']) {
+                'kcb_bank' => 'kcb',
+                'equity_bank' => 'equity',
+                default => 'coop',
+            };
+
+            $init = $this->initiateBankCollection(
+                $provider,
+                $payment,
+                (string) ($data['payer_phone'] ?? ''),
+                (string) ($data['external_ref'] ?? '')
+            );
+
+            $payment->update([
+                'meta' => array_merge(is_array($payment->meta) ? $payment->meta : [], [
+                    'bank_init' => $init,
+                ]),
+            ]);
+
+            if (($init['ok'] ?? false) !== true) {
+                $payment->update(['status' => PmPayment::STATUS_FAILED]);
+
+                return back()->withErrors([
+                    'payment_method' => 'Bank initiation failed: '.((string) ($init['message'] ?? 'Unknown error')),
+                ])->withInput();
+            }
+
+            return back()->with(
+                'success',
+                (($init['message'] ?? null) ?: 'Bank payment request initiated. Complete authorization with your bank.')
+            );
+        }
+
         if ($isPending) {
             return back()->with('success', 'STK request queued for '.PropertyMoney::kes($amount).'. Complete prompt on phone to finalize.');
         }
@@ -283,6 +318,149 @@ class TenantPortalController extends Controller
             ->where('pm_tenant_id', $tenantId)
             ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
             ->value('t');
+    }
+
+    /**
+     * @return array{
+     *   select: array<string,string>,
+     *   details: array<int,array{label:string,provider:string,account:string,instructions:string}>
+     * }
+     */
+    private function tenantPaymentMethods(): array
+    {
+        $select = [
+            'mpesa_stk' => 'M-Pesa STK Push',
+            'kcb_bank' => 'KCB Bank',
+            'equity_bank' => 'Equity Bank',
+            'coop_bank' => 'Co-op Bank',
+            'bank_transfer' => 'Bank Transfer',
+            'card' => 'Card Payment',
+            'cash' => 'Cash',
+        ];
+
+        $details = [
+            [
+                'label' => 'M-Pesa STK Push',
+                'provider' => 'Safaricom M-Pesa',
+                'account' => '',
+                'instructions' => 'Choose this for prompt-to-phone checkout.',
+            ],
+            [
+                'label' => 'KCB Bank',
+                'provider' => 'KCB',
+                'account' => '',
+                'instructions' => 'Integrated bank checkout (requires active KCB API credentials).',
+            ],
+            [
+                'label' => 'Equity Bank',
+                'provider' => 'Equity',
+                'account' => '',
+                'instructions' => 'Integrated bank checkout (requires active Equity API credentials).',
+            ],
+            [
+                'label' => 'Co-op Bank',
+                'provider' => 'Co-operative Bank',
+                'account' => '',
+                'instructions' => 'Integrated bank checkout (requires active Co-op API credentials).',
+            ],
+        ];
+
+        $raw = PropertyPortalSetting::getValue('custom_payment_methods_json', '[]');
+        $decoded = is_string($raw) ? json_decode($raw, true) : [];
+        $customMethods = is_array($decoded) ? $decoded : [];
+
+        foreach ($customMethods as $idx => $method) {
+            if (! is_array($method)) {
+                continue;
+            }
+
+            $name = trim((string) ($method['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $provider = trim((string) ($method['provider'] ?? ''));
+            $account = trim((string) ($method['account'] ?? ''));
+            $instructions = trim((string) ($method['instructions'] ?? ''));
+            $key = 'custom_'.$idx;
+
+            $select[$key] = $name;
+            $details[] = [
+                'label' => $name,
+                'provider' => $provider,
+                'account' => $account,
+                'instructions' => $instructions,
+            ];
+        }
+
+        return [
+            'select' => $select,
+            'details' => $details,
+        ];
+    }
+
+    /**
+     * @return array{ok:bool,message?:string,provider_ref?:string,raw?:array}
+     */
+    private function initiateBankCollection(string $provider, PmPayment $payment, string $phone, string $externalRef): array
+    {
+        $config = (array) config('services.property_banks.providers.'.$provider, []);
+        $baseUrl = rtrim((string) ($config['base_url'] ?? ''), '/');
+        $apiKey = (string) ($config['api_key'] ?? '');
+        $apiSecret = (string) ($config['api_secret'] ?? '');
+        $merchantCode = (string) ($config['merchant_code'] ?? '');
+
+        if ($baseUrl === '' || $apiKey === '' || $apiSecret === '' || $merchantCode === '') {
+            return ['ok' => false, 'message' => strtoupper($provider).' credentials not configured.'];
+        }
+
+        $callbackUrl = route('webhooks.property.payments.bank_callback', ['provider' => $provider]);
+        $payload = [
+            'merchant_code' => $merchantCode,
+            'payment_id' => $payment->id,
+            'amount' => (float) $payment->amount,
+            'currency' => 'KES',
+            'phone' => $phone !== '' ? $phone : null,
+            'external_ref' => $externalRef !== '' ? $externalRef : ('PAY-'.$payment->id),
+            'callback_url' => $callbackUrl,
+        ];
+
+        try {
+            $response = Http::timeout((int) config('services.property_banks.timeout_seconds', 20))
+                ->acceptJson()
+                ->withHeaders([
+                    'X-Api-Key' => $apiKey,
+                    'X-Api-Secret' => $apiSecret,
+                ])
+                ->post($baseUrl.'/payments/collect', $payload);
+
+            $json = $response->json();
+            if (! $response->successful()) {
+                return [
+                    'ok' => false,
+                    'message' => (string) (($json['message'] ?? null) ?: ('HTTP '.$response->status())),
+                    'raw' => is_array($json) ? $json : [],
+                ];
+            }
+
+            return [
+                'ok' => true,
+                'message' => (string) ($json['message'] ?? 'Request sent to bank gateway.'),
+                'provider_ref' => (string) ($json['provider_ref'] ?? ''),
+                'raw' => is_array($json) ? $json : [],
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('Property bank initiation failed', [
+                'provider' => $provider,
+                'payment_id' => $payment->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'ok' => false,
+                'message' => 'Gateway request failed: '.$e->getMessage(),
+            ];
+        }
     }
 
     private function allocatePaymentToOpenInvoices(PmPayment $payment): void

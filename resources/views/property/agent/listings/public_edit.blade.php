@@ -25,7 +25,7 @@
         <div class="grid gap-6 lg:grid-cols-2 max-w-5xl">
             <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Upload photos</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">JPEG, PNG, or WebP — up to 5 MB each, 12 files per batch. Run <code class="text-xs bg-slate-100 dark:bg-slate-900 px-1 rounded">php artisan storage:link</code> if images 404 locally.</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">JPEG, PNG, or WebP — up to 12 files per batch. If upload fails, exact errors appear below. Run <code class="text-xs bg-slate-100 dark:bg-slate-900 px-1 rounded">php artisan storage:link</code> if images 404 locally.</p>
                 <form
                     method="post"
                     action="{{ route('property.listings.vacant.public.photos.store', $unit) }}"
@@ -34,8 +34,18 @@
                 >
                     @csrf
                     <input type="file" name="photos[]" accept="image/jpeg,image/png,image/webp" multiple required class="block w-full text-sm text-slate-600 dark:text-slate-300" />
-                    @error('photos')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
-                    @error('photos.*')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
+                    @if ($errors->has('photos') || $errors->has('photos.*'))
+                        <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+                            @foreach ($errors->get('photos') as $msg)
+                                <p>{{ $msg }}</p>
+                            @endforeach
+                            @foreach ($errors->get('photos.*') as $messages)
+                                @foreach ((array) $messages as $msg)
+                                    <p>{{ $msg }}</p>
+                                @endforeach
+                            @endforeach
+                        </div>
+                    @endif
                     <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Upload</button>
                 </form>
 

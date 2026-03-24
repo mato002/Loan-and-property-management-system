@@ -110,7 +110,7 @@
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             @forelse ($featuredUnits as $unit)
-                @include('public.partials.listing-card', ['unit' => $unit, 'placeholderImage' => $listingPlaceholderImage, 'imageHeight' => 'h-64'])
+                @include('public.partials.listing-card', ['unit' => $unit, 'placeholderImage' => $listingPlaceholderImage])
             @empty
                 <div class="col-span-full text-center py-12 text-gray-500 text-lg">{{ __('No vacant units yet. Add properties and units in the agent workspace — they will show here automatically when status is vacant.') }}</div>
             @endforelse

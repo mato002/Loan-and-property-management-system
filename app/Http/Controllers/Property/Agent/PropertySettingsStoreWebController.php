@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\PmPermission;
+use App\Models\PmRole;
 use App\Models\PropertyPortalSetting;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
@@ -17,6 +21,7 @@ class PropertySettingsStoreWebController extends Controller
             'formsCount' => (int) PropertyPortalSetting::getValue('system_setup_forms_count', '0'),
             'workflowsCount' => (int) PropertyPortalSetting::getValue('system_setup_workflows_count', '0'),
             'templatesCount' => (int) PropertyPortalSetting::getValue('system_setup_templates_count', '0'),
+            'accessCount' => Schema::hasTable('pm_roles') ? (int) PmRole::query()->count() : 0,
         ]);
     }
 
@@ -95,6 +100,267 @@ class PropertySettingsStoreWebController extends Controller
         return back()->with('success', __('Template setup saved.'));
     }
 
+    public function systemSetupAccess(): View
+    {
+        if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_permissions')) {
+            return view('property.agent.settings.system_setup.access', [
+                'roles' => collect(),
+                'permissionsByGroup' => collect(),
+                'portalUsers' => collect(),
+                'tablesReady' => false,
+            ]);
+        }
+
+        $this->ensureAccessControlDefaults();
+
+        $roles = PmRole::query()->with('permissions:id')->orderBy('portal_scope')->orderBy('name')->get();
+        $permissionsByGroup = PmPermission::query()->orderBy('group')->orderBy('name')->get()->groupBy('group');
+        $portalUsers = User::query()
+            ->whereNotNull('property_portal_role')
+            ->with('pmRoles:id,name', 'pmPermissions:id,name')
+            ->orderBy('name')
+            ->limit(200)
+            ->get(['id', 'name', 'email', 'property_portal_role']);
+
+        return view('property.agent.settings.system_setup.access', [
+            'roles' => $roles,
+            'permissionsByGroup' => $permissionsByGroup,
+            'portalUsers' => $portalUsers,
+            'tablesReady' => true,
+        ]);
+    }
+
+    public function storeSystemSetupRole(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'slug' => ['required', 'string', 'max:100', 'alpha_dash', 'unique:pm_roles,slug'],
+            'portal_scope' => ['required', 'in:agent,landlord,tenant,any'],
+            'description' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        PmRole::query()->create($data);
+        PropertyPortalSetting::setValue('system_setup_access_count', (string) PmRole::query()->count());
+
+        return back()->with('success', __('Role created.'));
+    }
+
+    public function storeSystemSetupRoleClone(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'source_role_id' => ['required', 'integer', 'exists:pm_roles,id'],
+            'name' => ['required', 'string', 'max:100'],
+            'slug' => ['required', 'string', 'max:100', 'alpha_dash', 'unique:pm_roles,slug'],
+            'portal_scope' => ['required', 'in:agent,landlord,tenant,any'],
+            'description' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $sourceRole = PmRole::query()->with('permissions:id')->findOrFail((int) $data['source_role_id']);
+        $newRole = PmRole::query()->create([
+            'name' => $data['name'],
+            'slug' => $data['slug'],
+            'portal_scope' => $data['portal_scope'],
+            'description' => $data['description'] ?? '',
+        ]);
+        $newRole->permissions()->sync($sourceRole->permissions->pluck('id')->all());
+
+        PropertyPortalSetting::setValue('system_setup_access_count', (string) PmRole::query()->count());
+
+        return back()->with('success', __('Role cloned with permissions.'));
+    }
+
+    public function storeSystemSetupPermission(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'key' => ['required', 'string', 'max:120', 'regex:/^[a-z0-9._-]+$/', 'unique:pm_permissions,key'],
+            'group' => ['nullable', 'string', 'max:60'],
+            'description' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        PmPermission::query()->create([
+            ...$data,
+            'group' => $data['group'] !== '' ? $data['group'] : 'general',
+        ]);
+
+        return back()->with('success', __('Permission created.'));
+    }
+
+    public function updateSystemSetupPermission(Request $request, PmPermission $pmPermission): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'key' => ['required', 'string', 'max:120', 'regex:/^[a-z0-9._-]+$/', 'unique:pm_permissions,key,'.$pmPermission->id],
+            'group' => ['nullable', 'string', 'max:60'],
+            'description' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $pmPermission->update([
+            ...$data,
+            'group' => $data['group'] !== '' ? $data['group'] : 'general',
+        ]);
+
+        return back()->with('success', __('Permission updated.'));
+    }
+
+    public function destroySystemSetupPermission(PmPermission $pmPermission): RedirectResponse
+    {
+        $pmPermission->delete();
+
+        return back()->with('success', __('Permission deleted.'));
+    }
+
+    public function storeSystemSetupRolePermissions(Request $request, PmRole $pmRole): RedirectResponse
+    {
+        $data = $request->validate([
+            'permission_ids' => ['nullable', 'array'],
+            'permission_ids.*' => ['integer', 'exists:pm_permissions,id'],
+        ]);
+
+        $pmRole->permissions()->sync($data['permission_ids'] ?? []);
+
+        return back()->with('success', __('Role permissions updated.'));
+    }
+
+    public function storeSystemSetupUserRoles(Request $request, User $user): RedirectResponse
+    {
+        $data = $request->validate([
+            'role_ids' => ['nullable', 'array'],
+            'role_ids.*' => ['integer', 'exists:pm_roles,id'],
+        ]);
+
+        $user->pmRoles()->sync($data['role_ids'] ?? []);
+
+        return back()->with('success', __('User role assignments updated.'));
+    }
+
+    public function storeSystemSetupUserPermissions(Request $request, User $user): RedirectResponse
+    {
+        $data = $request->validate([
+            'permission_ids' => ['nullable', 'array'],
+            'permission_ids.*' => ['integer', 'exists:pm_permissions,id'],
+        ]);
+
+        $user->pmPermissions()->sync($data['permission_ids'] ?? []);
+
+        return back()->with('success', __('User direct permissions updated.'));
+    }
+
+    private function ensureAccessControlDefaults(): void
+    {
+        $defaultPermissions = [
+            ['name' => 'Manage properties', 'key' => 'properties.manage', 'group' => 'properties'],
+            ['name' => 'Manage tenants', 'key' => 'tenants.manage', 'group' => 'tenants'],
+            ['name' => 'Manage leases', 'key' => 'leases.manage', 'group' => 'tenants'],
+            ['name' => 'Manage maintenance', 'key' => 'maintenance.manage', 'group' => 'maintenance'],
+            ['name' => 'Manage vendors', 'key' => 'vendors.manage', 'group' => 'vendors'],
+            ['name' => 'Record payments', 'key' => 'payments.record', 'group' => 'payments'],
+            ['name' => 'Settle payments', 'key' => 'payments.settle', 'group' => 'payments'],
+            ['name' => 'Manage penalties', 'key' => 'revenue.penalties.manage', 'group' => 'revenue'],
+            ['name' => 'Manage utilities', 'key' => 'revenue.utilities.manage', 'group' => 'revenue'],
+            ['name' => 'Manage accounting entries', 'key' => 'accounting.entries.manage', 'group' => 'accounting'],
+            ['name' => 'Manage payroll', 'key' => 'accounting.payroll.manage', 'group' => 'accounting'],
+            ['name' => 'Manage communications', 'key' => 'communications.manage', 'group' => 'communications'],
+            ['name' => 'Manage listings', 'key' => 'listings.manage', 'group' => 'listings'],
+            ['name' => 'Manage settings', 'key' => 'settings.manage', 'group' => 'settings'],
+            ['name' => 'Manage access control', 'key' => 'settings.access.manage', 'group' => 'settings'],
+        ];
+
+        foreach ($defaultPermissions as $perm) {
+            PmPermission::query()->firstOrCreate(
+                ['key' => $perm['key']],
+                [
+                    'name' => $perm['name'],
+                    'group' => $perm['group'],
+                    'description' => 'Auto-created default permission.',
+                ]
+            );
+        }
+
+        $rolesWithPermissions = [
+            'property_manager' => [
+                'name' => 'Property Manager',
+                'portal_scope' => 'agent',
+                'description' => 'Full operational access across property modules.',
+                'permissions' => [
+                    'properties.manage', 'tenants.manage', 'leases.manage', 'maintenance.manage', 'vendors.manage',
+                    'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
+                    'accounting.entries.manage', 'accounting.payroll.manage', 'communications.manage',
+                    'listings.manage', 'settings.manage', 'settings.access.manage',
+                ],
+            ],
+            'accountant' => [
+                'name' => 'Accountant',
+                'portal_scope' => 'agent',
+                'description' => 'Finance and accounting operations.',
+                'permissions' => [
+                    'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
+                    'accounting.entries.manage', 'accounting.payroll.manage',
+                ],
+            ],
+            'leasing_officer' => [
+                'name' => 'Leasing Officer',
+                'portal_scope' => 'agent',
+                'description' => 'Tenant onboarding, leases, and listings.',
+                'permissions' => [
+                    'tenants.manage', 'leases.manage', 'listings.manage', 'communications.manage',
+                ],
+            ],
+            'maintenance_officer' => [
+                'name' => 'Maintenance Officer',
+                'portal_scope' => 'agent',
+                'description' => 'Maintenance requests, jobs, and vendors.',
+                'permissions' => [
+                    'maintenance.manage', 'vendors.manage', 'communications.manage',
+                ],
+            ],
+            'finance_clerk' => [
+                'name' => 'Finance Clerk',
+                'portal_scope' => 'agent',
+                'description' => 'Record collections without settlement/admin scope.',
+                'permissions' => [
+                    'payments.record',
+                ],
+            ],
+            'settings_admin' => [
+                'name' => 'Settings Admin',
+                'portal_scope' => 'agent',
+                'description' => 'Configuration and access-control management.',
+                'permissions' => [
+                    'settings.manage', 'settings.access.manage',
+                ],
+            ],
+            'landlord_portal_user' => [
+                'name' => 'Landlord Portal User',
+                'portal_scope' => 'landlord',
+                'description' => 'Base landlord portal role mapping.',
+                'permissions' => [],
+            ],
+            'tenant_portal_user' => [
+                'name' => 'Tenant Portal User',
+                'portal_scope' => 'tenant',
+                'description' => 'Base tenant portal role mapping.',
+                'permissions' => [],
+            ],
+        ];
+
+        foreach ($rolesWithPermissions as $slug => $roleDef) {
+            $role = PmRole::query()->firstOrCreate(
+                ['slug' => $slug],
+                [
+                    'name' => $roleDef['name'],
+                    'portal_scope' => $roleDef['portal_scope'],
+                    'description' => $roleDef['description'],
+                ]
+            );
+
+            if ($role->permissions()->count() === 0 && ! empty($roleDef['permissions'])) {
+                $permIds = PmPermission::query()->whereIn('key', $roleDef['permissions'])->pluck('id')->all();
+                $role->permissions()->sync($permIds);
+            }
+        }
+    }
+
     public function commission(): View
     {
         return view('property.agent.settings.commission', [
@@ -118,6 +384,15 @@ class PropertySettingsStoreWebController extends Controller
 
     public function payments(): View
     {
+        $rawCustomMethods = PropertyPortalSetting::getValue('custom_payment_methods_json', '[]');
+        $customPaymentMethods = [];
+        if (is_string($rawCustomMethods) && $rawCustomMethods !== '') {
+            $decoded = json_decode($rawCustomMethods, true);
+            if (is_array($decoded)) {
+                $customPaymentMethods = array_values(array_filter($decoded, fn ($row) => is_array($row)));
+            }
+        }
+
         return view('property.agent.settings.payments', [
             'shortcode' => PropertyPortalSetting::getValue('mpesa_shortcode', ''),
             'consumerKey' => PropertyPortalSetting::getValue('mpesa_consumer_key', ''),
@@ -128,6 +403,7 @@ class PropertySettingsStoreWebController extends Controller
             'trustBankName' => PropertyPortalSetting::getValue('trust_bank_name', ''),
             'hasConsumerSecret' => (bool) strlen((string) PropertyPortalSetting::getValue('mpesa_consumer_secret', '')),
             'hasPasskey' => (bool) strlen((string) PropertyPortalSetting::getValue('mpesa_passkey', '')),
+            'customPaymentMethods' => $customPaymentMethods,
         ]);
     }
 
@@ -145,6 +421,48 @@ class PropertySettingsStoreWebController extends Controller
             PropertyPortalSetting::setValue('trust_bank_name', $data['trust_bank_name'] ?? '');
 
             return back()->with('success', __('Trust account details saved.'));
+        }
+
+        if ($request->boolean('save_custom_methods')) {
+            $data = $request->validate([
+                'custom_methods' => ['nullable', 'array', 'max:10'],
+                'custom_methods.*.name' => ['nullable', 'string', 'max:80'],
+                'custom_methods.*.provider' => ['nullable', 'string', 'max:120'],
+                'custom_methods.*.provider_other' => ['nullable', 'string', 'max:120'],
+                'custom_methods.*.account' => ['nullable', 'string', 'max:120'],
+                'custom_methods.*.instructions' => ['nullable', 'string', 'max:400'],
+            ]);
+
+            $methods = collect($data['custom_methods'] ?? [])
+                ->map(function ($row) {
+                    $name = trim((string) ($row['name'] ?? ''));
+                    $provider = trim((string) ($row['provider'] ?? ''));
+                    $providerOther = trim((string) ($row['provider_other'] ?? ''));
+                    $account = trim((string) ($row['account'] ?? ''));
+                    $instructions = trim((string) ($row['instructions'] ?? ''));
+
+                    if (strcasecmp($provider, 'Other') === 0 && $providerOther !== '') {
+                        $provider = $providerOther;
+                    }
+
+                    if ($name === '' && $provider === '' && $account === '' && $instructions === '') {
+                        return null;
+                    }
+
+                    return [
+                        'name' => $name,
+                        'provider' => $provider,
+                        'account' => $account,
+                        'instructions' => $instructions,
+                    ];
+                })
+                ->filter()
+                ->values()
+                ->all();
+
+            PropertyPortalSetting::setValue('custom_payment_methods_json', json_encode($methods, JSON_UNESCAPED_UNICODE));
+
+            return back()->with('success', __('Custom payment methods saved.'));
         }
 
         $data = $request->validate([
@@ -217,9 +535,9 @@ class PropertySettingsStoreWebController extends Controller
     {
         $data = $request->validate([
             'company_name' => ['nullable', 'string', 'max:255'],
-            'company_logo_url' => ['nullable', 'url', 'max:2048'],
+            'company_logo_url' => ['nullable', 'string', 'max:2048'],
             'company_logo' => ['nullable', 'image', 'max:4096'],
-            'site_favicon_url' => ['nullable', 'url', 'max:2048'],
+            'site_favicon_url' => ['nullable', 'string', 'max:2048'],
             'site_favicon' => ['nullable', 'image', 'max:2048'],
             'contact_email_primary' => ['nullable', 'email', 'max:255'],
             'contact_email_support' => ['nullable', 'email', 'max:255'],

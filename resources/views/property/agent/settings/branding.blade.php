@@ -6,7 +6,7 @@
         subtitle="Set company identity, favicon, and public contact details."
     >
         <div class="mb-4 flex flex-wrap gap-2">
-            <a href="{{ route('property.settings.roles') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Users & roles</a>
+            <a href="{{ route('property.settings.roles') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Property users</a>
             <a href="{{ route('property.settings.commission') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Commission</a>
             <a href="{{ route('property.settings.payments') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment config</a>
             <a href="{{ route('property.settings.branding') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Branding</a>
@@ -36,7 +36,7 @@
 
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Logo URL (optional)</label>
-                    <input type="url" name="company_logo_url" value="{{ old('company_logo_url', $companyLogoUrl) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="https://example.com/logo.png" />
+                    <input type="text" name="company_logo_url" value="{{ old('company_logo_url', $companyLogoUrl) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="https://example.com/logo.png or /storage/property/branding/logo.png" />
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Used only if no new file is uploaded in this save.</p>
                     @error('company_logo_url')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
@@ -55,7 +55,7 @@
 
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Favicon URL (optional)</label>
-                    <input type="url" name="site_favicon_url" value="{{ old('site_favicon_url', $siteFaviconUrl) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="https://example.com/favicon.ico" />
+                    <input type="text" name="site_favicon_url" value="{{ old('site_favicon_url', $siteFaviconUrl) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="https://example.com/favicon.ico or /storage/property/branding/favicon.png" />
                     @error('site_favicon_url')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
 
@@ -134,3 +134,4 @@
         </div>
     </x-property.page>
 </x-property-layout>
+

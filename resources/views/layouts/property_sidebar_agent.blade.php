@@ -119,6 +119,13 @@
                     'badge' => null,
                 ],
                 [
+                    'label' => 'Property users',
+                    'sublabel' => 'Team users (not tenants)',
+                    'route' => 'property.settings.roles',
+                    'active' => ['property.settings.roles'],
+                    'badge' => null,
+                ],
+                [
                     'label' => 'Units',
                     'sublabel' => null,
                     'route' => 'property.properties.units',
@@ -543,7 +550,7 @@
                     'badge' => null,
                 ],
                 [
-                    'label' => 'Users & roles',
+                    'label' => 'Property users',
                     'sublabel' => null,
                     'route' => 'property.settings.roles',
                     'active' => ['property.settings.roles'],
@@ -776,3 +783,4 @@
         </a>
     </div>
 </aside>
+
