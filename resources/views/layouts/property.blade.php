@@ -44,34 +44,36 @@
             .custom-scrollbar {
                 scrollbar-width: auto;
                 scrollbar-color: #b8c2ce transparent;
+                scrollbar-gutter: stable;
             }
         </style>
     </head>
-    <body class="font-sans antialiased h-full overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif" x-data="{ sidebarOpen: false }">
+    <body class="font-sans antialiased h-screen overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif" x-data="{ sidebarOpen: false }">
         <div class="h-full flex">
             
             <!-- Property Module Dedicated Sidebar -->
             @include('layouts.property_sidebar')
 
             <!-- Main view container (Header, Content, Footer) -->
-            <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+            <div class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
                 
                 <!-- Dedicated Header -->
                 @include('layouts.property_header')
 
-                <!-- Main Content Area with scrollbar -->
-                <main class="relative z-0 flex-1 overflow-x-hidden overflow-y-auto w-full custom-scrollbar flex flex-col">
-                    <div class="p-4 sm:p-6 lg:p-8 flex-1 w-full">
+                <!-- Scrollable Content Area (Header/Footer remain constant) -->
+                <main class="relative z-0 flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar">
+                    <div class="p-4 sm:p-6 lg:p-8 w-full">
                         <turbo-frame id="property-main" data-turbo-action="advance">
                             <div id="property-main-route" data-route-name="{{ Route::currentRouteName() ?? '' }}" hidden></div>
+                            <x-property.next-steps-modal />
                             <x-swal-flash />
                             {{ $slot }}
                         </turbo-frame>
                     </div>
-                    
-                    <!-- Dedicated Footer -->
-                    @include('layouts.property_footer')
                 </main>
+
+                <!-- Dedicated Footer (constant) -->
+                @include('layouts.property_footer')
 
             </div>
         </div>

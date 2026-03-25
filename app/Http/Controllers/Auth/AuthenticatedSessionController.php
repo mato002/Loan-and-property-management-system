@@ -27,14 +27,11 @@ class AuthenticatedSessionController extends Controller
         $request->authenticate();
         $user = $request->user();
 
-        if (($user->is_super_admin ?? false) === true) {
-            $request->session()->forget(['active_system', 'url.intended']);
-            $request->session()->regenerate();
-
-            return redirect()->route('superadmin.users.index');
-        }
-
-        $approvedModules = $user?->approvedModules() ?? [];
+        // Super admins should still choose which module (Property / Loan) to enter.
+        // They can access the Super Admin console from the navigation.
+        $approvedModules = (($user->is_super_admin ?? false) === true)
+            ? ['property', 'loan']
+            : ($user?->approvedModules() ?? []);
 
         // Ensure users don't keep a previous module selection or stale intended redirects.
         $request->session()->forget(['active_system', 'url.intended']);

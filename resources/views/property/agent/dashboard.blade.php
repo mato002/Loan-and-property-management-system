@@ -5,6 +5,37 @@
         title="Dashboard"
         subtitle="Portfolio snapshot — counts, cash movement, maintenance intake, and year-to-date billing vs collections ({{ $chartYear }})."
     >
+        <div class="mb-6 rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">
+            <p class="text-lg font-semibold text-slate-900">Quick start checklist</p>
+            <p class="mt-1 text-sm text-slate-600">If you’re new here: setup portfolio → onboard tenant → allocate unit → bill rent → collect payment.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.properties.list') }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Properties
+                    <i class="fa-solid fa-building" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.properties.units') }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Units
+                    <i class="fa-solid fa-door-open" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.tenants.directory') }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Tenants
+                    <i class="fa-solid fa-users" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.tenants.leases') }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                    Lease (allocate)
+                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.revenue.invoices') }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Invoices
+                    <i class="fa-solid fa-file-invoice" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.revenue.payments') }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Payments
+                    <i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+
         <div
             id="property-dashboard-charts"
             class="hidden"

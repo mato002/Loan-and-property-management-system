@@ -11,6 +11,7 @@ use App\Models\PmPaymentAllocation;
 use App\Models\PmTenantPortalRequest;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
+use App\Services\Integrations\MpesaDarajaService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -188,7 +189,11 @@ class TenantPortalController extends Controller
             }
         }
 
-        PmPayment::query()->create([
+        $daraja = app(MpesaDarajaService::class);
+        $msisdn = $daraja->normalizeMsisdn((string) $data['mpesa_phone']);
+
+        /** @var PmPayment $payment */
+        $payment = PmPayment::query()->create([
             'pm_tenant_id' => $tenant->id,
             'channel' => 'mpesa_stk',
             'amount' => $amount,
@@ -197,15 +202,66 @@ class TenantPortalController extends Controller
             'status' => PmPayment::STATUS_PENDING,
             'meta' => [
                 'intent' => 'stk_push',
-                'phone' => $data['mpesa_phone'],
+                'phone' => $msisdn,
                 'requested_at' => now()->toIso8601String(),
             ],
         ]);
 
-        return back()->with(
-            'success',
-            'Payment request recorded for '.PropertyMoney::kes($amount).'. Complete the STK prompt on your phone when Daraja is connected; this row appears in agent payment tracking as pending.',
-        );
+        if (! $daraja->isConfigured()) {
+            $missing = implode(', ', $daraja->missingConfigKeys());
+
+            return back()->withErrors([
+                'mpesa_phone' => 'Daraja is not configured (missing: '.$missing.'). Update .env then run: php artisan config:clear',
+            ])->withInput();
+        }
+
+        $init = $daraja->stkPush([
+            'TransactionType' => 'CustomerPayBillOnline',
+            'Amount' => (int) round($amount),
+            'PartyA' => $msisdn,
+            'PartyB' => (string) config('services.mpesa.stk_shortcode'),
+            'PhoneNumber' => $msisdn,
+            'AccountReference' => 'PM-'.$payment->id,
+            'TransactionDesc' => 'Property payment',
+        ]);
+
+        if (($init['ok'] ?? false) === true) {
+            $checkout = (string) (($init['body']['CheckoutRequestID'] ?? '') ?: '');
+            $merchant = (string) (($init['body']['MerchantRequestID'] ?? '') ?: '');
+
+            $meta = is_array($payment->meta) ? $payment->meta : [];
+            $meta['daraja'] = array_merge(is_array($meta['daraja'] ?? null) ? $meta['daraja'] : [], [
+                'checkout_request_id' => $checkout,
+                'merchant_request_id' => $merchant,
+                'initiated_at' => now()->toIso8601String(),
+                'response' => $init['body'],
+            ]);
+            $payment->update(['meta' => $meta]);
+
+            return redirect()
+                ->route('property.tenant.payments.pending', $payment)
+                ->with('success', 'STK prompt sent to '.$msisdn.'. Check your phone to complete payment.');
+        }
+
+        $meta = is_array($payment->meta) ? $payment->meta : [];
+        $meta['daraja'] = array_merge(is_array($meta['daraja'] ?? null) ? $meta['daraja'] : [], [
+            'initiated_at' => now()->toIso8601String(),
+            'error' => $init,
+        ]);
+        $payment->update(['meta' => $meta]);
+
+        return back()->withErrors([
+            'mpesa_phone' => 'Daraja STK initiation failed: '.((string) ($init['message'] ?? 'Unknown error')),
+        ])->withInput();
+    }
+
+    public function pendingPayment(PmPayment $payment): View
+    {
+        abort_unless($payment->pm_tenant_id === (auth()->user()?->pmTenantProfile?->id), 403);
+
+        return view('property.tenant.payments.pending', [
+            'payment' => $payment->fresh(),
+        ]);
     }
 
     public function paymentStore(Request $request): RedirectResponse
@@ -306,6 +362,59 @@ class TenantPortalController extends Controller
         }
 
         if ($isPending) {
+            if ($data['payment_method'] === 'mpesa_stk') {
+                $daraja = app(MpesaDarajaService::class);
+                $msisdn = $daraja->normalizeMsisdn((string) ($data['payer_phone'] ?? ''));
+
+                if ($daraja->isConfigured()) {
+                    $init = $daraja->stkPush([
+                        'TransactionType' => 'CustomerPayBillOnline',
+                        'Amount' => (int) round($amount),
+                        'PartyA' => $msisdn,
+                        'PartyB' => (string) config('services.mpesa.stk_shortcode'),
+                        'PhoneNumber' => $msisdn,
+                        'AccountReference' => 'PM-'.$payment->id,
+                        'TransactionDesc' => 'Property payment',
+                    ]);
+
+                    if (($init['ok'] ?? false) === true) {
+                        $checkout = (string) (($init['body']['CheckoutRequestID'] ?? '') ?: '');
+                        $merchant = (string) (($init['body']['MerchantRequestID'] ?? '') ?: '');
+
+                        $meta = is_array($payment->meta) ? $payment->meta : [];
+                        $meta['phone'] = $msisdn;
+                        $meta['daraja'] = array_merge(is_array($meta['daraja'] ?? null) ? $meta['daraja'] : [], [
+                            'checkout_request_id' => $checkout,
+                            'merchant_request_id' => $merchant,
+                            'initiated_at' => now()->toIso8601String(),
+                            'response' => $init['body'],
+                        ]);
+                        $payment->update(['meta' => $meta]);
+
+                        return redirect()
+                            ->route('property.tenant.payments.pending', $payment)
+                            ->with('success', 'STK prompt sent to '.$msisdn.'. Check your phone to complete payment.');
+                    }
+
+                    $meta = is_array($payment->meta) ? $payment->meta : [];
+                    $meta['phone'] = $msisdn;
+                    $meta['daraja'] = array_merge(is_array($meta['daraja'] ?? null) ? $meta['daraja'] : [], [
+                        'initiated_at' => now()->toIso8601String(),
+                        'error' => $init,
+                    ]);
+                    $payment->update(['meta' => $meta]);
+
+                    return back()->withErrors([
+                        'payer_phone' => 'Daraja STK initiation failed: '.((string) ($init['message'] ?? 'Unknown error')),
+                    ])->withInput();
+                }
+
+                $missing = implode(', ', $daraja->missingConfigKeys());
+                return back()->withErrors([
+                    'payer_phone' => 'Daraja is not configured (missing: '.$missing.'). Update .env then run: php artisan config:clear',
+                ])->withInput();
+            }
+
             return back()->with('success', 'STK request queued for '.PropertyMoney::kes($amount).'. Complete prompt on phone to finalize.');
         }
 

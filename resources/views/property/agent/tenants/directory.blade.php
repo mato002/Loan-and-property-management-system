@@ -9,6 +9,25 @@
     empty-hint="Create tenants here, then add leases and invoices against them."
 >
     <x-slot name="above">
+        <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
+            <p class="text-lg font-semibold text-slate-900">Tenant onboarding flow</p>
+            <p class="mt-1 text-sm text-slate-600">Step 1: Add tenant → Step 2: Allocate unit (Lease) → Step 3: Create rent bill (Invoice) → Step 4: Collect payment.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                    Allocate unit (Lease)
+                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Create rent bill
+                    <i class="fa-solid fa-file-invoice" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.revenue.payments', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Collect payment
+                    <i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+
         @if ($showTenantForm ?? true)
         <form method="post" action="{{ route('property.tenants.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
             @csrf

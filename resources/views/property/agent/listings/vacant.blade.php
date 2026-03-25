@@ -5,6 +5,23 @@
     :stats="$stats"
     :columns="[]"
 >
+    <x-slot name="above">
+        <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
+            <p class="text-lg font-semibold text-slate-900">Vacancy publishing flow</p>
+            <p class="mt-1 text-sm text-slate-600">Vacant units appear on Discover automatically. Add photos and publish to feature them on the website (gallery + main image).</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.properties.units', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Unit status
+                    <i class="fa-solid fa-building" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.listings.ads', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                    Live on website
+                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+    </x-slot>
+
     <x-slot name="toolbar">
         <a
             href="{{ route('property.listings.create') }}"

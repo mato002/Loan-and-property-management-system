@@ -448,7 +448,14 @@
                 };
             }
 
-            const colVals = toNumbers(charts.collections.values);
+            let colLabels = charts.collections.labels || [];
+            let colVals = toNumbers(charts.collections.values);
+            let colPlaceholder = false;
+            if (!colLabels.length) {
+                colLabels = ['No collections yet'];
+                colVals = [1];
+                colPlaceholder = true;
+            }
             const colMax = colVals.length ? Math.max.apply(null, colVals) : 0;
             const colEl = document.getElementById('chartCollections');
             if (colEl) {
@@ -457,20 +464,20 @@
                 const barBorder = '#15803d';
                 const lineBright = '#f97316';
                 const lineFill = 'rgba(249, 115, 22, 0.18)';
-                const barColors = colVals.map(function (v) {
-                    return Number(v) > 0 ? barHi : barLo;
-                });
+                const barColors = colPlaceholder
+                    ? ['#cbd5e1']
+                    : colVals.map(function (v) { return Number(v) > 0 ? barHi : barLo; });
                 new Chart(colEl, {
                     type: 'bar',
                     data: {
-                        labels: charts.collections.labels || [],
+                        labels: colLabels,
                         datasets: [
                             {
                                 type: 'bar',
                                 label: 'Monthly total',
                                 data: colVals,
                                 backgroundColor: barColors,
-                                borderColor: barBorder,
+                                borderColor: colPlaceholder ? '#94a3b8' : barBorder,
                                 borderWidth: 2,
                                 borderRadius: 8,
                                 minBarLength: 8,
@@ -480,14 +487,14 @@
                                 type: 'line',
                                 label: 'Trend line',
                                 data: colVals,
-                                borderColor: lineBright,
-                                backgroundColor: lineFill,
+                                borderColor: colPlaceholder ? '#94a3b8' : lineBright,
+                                backgroundColor: colPlaceholder ? 'rgba(148, 163, 184, 0.18)' : lineFill,
                                 tension: 0.35,
                                 pointRadius: 6,
                                 pointHoverRadius: 9,
                                 pointBackgroundColor: '#fff',
                                 pointBorderWidth: 3,
-                                pointBorderColor: lineBright,
+                                pointBorderColor: colPlaceholder ? '#94a3b8' : lineBright,
                                 borderWidth: 3,
                                 fill: true,
                                 order: 1,
@@ -512,6 +519,7 @@
                                 },
                             },
                             tooltip: {
+                                enabled: !colPlaceholder,
                                 filter: function (item) {
                                     return item.datasetIndex === 0;
                                 },
@@ -530,22 +538,31 @@
                 });
             }
 
-            const disVals = toNumbers(charts.disbursements.values);
+            let disLabels = charts.disbursements.labels || [];
+            let disVals = toNumbers(charts.disbursements.values);
+            let disPlaceholder = false;
+            if (!disLabels.length) {
+                disLabels = ['No disbursements yet'];
+                disVals = [1];
+                disPlaceholder = true;
+            }
             const disMax = disVals.length ? Math.max.apply(null, disVals) : 0;
-            const disBarColors = disVals.map(function (v) {
-                return Number(v) > 0 ? 'rgba(79, 70, 229, 0.55)' : 'rgba(165, 180, 252, 0.45)';
-            });
+            const disBarColors = disPlaceholder
+                ? ['#cbd5e1']
+                : disVals.map(function (v) {
+                    return Number(v) > 0 ? 'rgba(79, 70, 229, 0.55)' : 'rgba(165, 180, 252, 0.45)';
+                });
             const disEl = document.getElementById('chartDisbursements');
             if (disEl) {
                 new Chart(disEl, {
                     type: 'bar',
                     data: {
-                        labels: charts.disbursements.labels || [],
+                        labels: disLabels,
                         datasets: [{
                             label: 'Disbursed',
                             data: disVals,
                             backgroundColor: disBarColors,
-                            borderColor: 'rgb(79, 70, 229)',
+                            borderColor: disPlaceholder ? '#94a3b8' : 'rgb(79, 70, 229)',
                             borderWidth: 1,
                             borderRadius: 8,
                             minBarLength: 6,
@@ -555,7 +572,7 @@
                         responsive: true,
                         maintainAspectRatio: false,
                         interaction: { intersect: false, mode: 'index' },
-                        plugins: { legend: { display: false }, tooltip: moneyTooltip },
+                        plugins: { legend: { display: false }, tooltip: disPlaceholder ? { enabled: false } : moneyTooltip },
                         scales: {
                             y: yScaleMoney(disMax),
                             x: { grid: { display: false }, ticks: { maxRotation: 45, minRotation: 0 } },

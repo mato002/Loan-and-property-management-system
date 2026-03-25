@@ -25,11 +25,14 @@ use App\Http\Controllers\Property\Agent\PropertyUtilityChargeController;
 use App\Http\Controllers\Property\Agent\RevenueController;
 use App\Http\Controllers\Property\Landlord\LandlordPortalController;
 use App\Http\Controllers\Property\PropertyPortalQuickActionController;
+use App\Http\Controllers\Property\PropertyGeoController;
 use App\Http\Controllers\Property\Tenant\TenantPortalController;
 use App\Http\Controllers\Property\Tenant\TenantWorkspaceFormController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'verified', 'module.access:property', 'property.system'])->group(function () {
+// Property portal is used by tenants/landlords who may not have verified emails.
+// Keep auth + module access + active system checks, but do not block by `verified`.
+Route::middleware(['auth', 'module.access:property', 'property.system'])->group(function () {
 
     Route::middleware(['property.portal:agent'])->prefix('property')->name('property.')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'commandCenter'])->name('dashboard');
@@ -59,6 +62,15 @@ Route::middleware(['auth', 'verified', 'module.access:property', 'property.syste
 
         Route::get('/tenants/directory', [PmTenantDirectoryController::class, 'directory'])->name('tenants.directory');
         Route::get('/tenants/profiles', [PmTenantDirectoryController::class, 'profiles'])->name('tenants.profiles');
+        Route::get('/tenants/import', [PmTenantDirectoryController::class, 'importForm'])
+            ->middleware('property.permission:tenants.manage')
+            ->name('tenants.import');
+        Route::get('/tenants/import/template.csv', [PmTenantDirectoryController::class, 'importTemplate'])
+            ->middleware('property.permission:tenants.manage')
+            ->name('tenants.import.template');
+        Route::post('/tenants/import', [PmTenantDirectoryController::class, 'importStore'])
+            ->middleware('property.permission:tenants.manage')
+            ->name('tenants.import.store');
         Route::post('/tenants', [PmTenantDirectoryController::class, 'store'])->middleware('property.permission:tenants.manage')->name('tenants.store');
         Route::get('/tenants/{tenant}/edit', [PmTenantDirectoryController::class, 'edit'])->name('tenants.edit');
         Route::put('/tenants/{tenant}', [PmTenantDirectoryController::class, 'update'])->middleware('property.permission:tenants.manage')->name('tenants.update');
@@ -230,6 +242,9 @@ Route::middleware(['auth', 'verified', 'module.access:property', 'property.syste
                 ->with('success', 'That address is for form submissions only. Use an action button on the page you came from.');
         });
         Route::post('/quick-action', [PropertyPortalQuickActionController::class, 'storeAgent'])->name('quick_action.store');
+
+        Route::get('/geo/kenya-addresses', [PropertyGeoController::class, 'suggestKenyaAddresses'])
+            ->name('geo.kenya_addresses');
         Route::get('/exports/maintenance-costs', [PropertyDataExportController::class, 'maintenanceCosts'])->name('exports.maintenance_costs');
         Route::get('/exports/performance-snapshot', [PropertyDataExportController::class, 'performanceSnapshot'])->name('exports.performance_snapshot');
         Route::get('/exports/income-expenses-summary', [PropertyDataExportController::class, 'incomeExpensesSummary'])->name('exports.income_expenses_summary');
@@ -277,6 +292,7 @@ Route::middleware(['auth', 'verified', 'module.access:property', 'property.syste
         Route::get('/payments/pay', [TenantPortalController::class, 'pay'])->name('payments.pay');
         Route::post('/payments/pay', [TenantPortalController::class, 'paymentStore'])->name('payments.store');
         Route::post('/payments/stk', [TenantPortalController::class, 'stkIntentStore'])->name('payments.stk.store');
+        Route::get('/payments/pending/{payment}', [TenantPortalController::class, 'pendingPayment'])->name('payments.pending');
         Route::get('/payments/history', [TenantPortalController::class, 'paymentsHistory'])->name('payments.history');
         Route::get('/payments/receipts', [TenantPortalController::class, 'receipts'])->name('payments.receipts');
         Route::get('/payments/receipts/{payment}', [TenantPortalController::class, 'showReceipt'])->name('payments.receipts.show');

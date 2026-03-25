@@ -9,6 +9,25 @@
     empty-hint="Add units per property; vacant units can be attached when creating a lease."
 >
     <x-slot name="above">
+        <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
+            <p class="text-lg font-semibold text-slate-900">Setup flow: Units → Tenants → Rent</p>
+            <p class="mt-1 text-sm text-slate-600">Add units (doors) here. Then allocate a vacant unit to a tenant using a Lease, then bill rent using an Invoice.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.tenants.directory', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Add tenant
+                    <i class="fa-solid fa-users" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                    Allocate unit (Lease)
+                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.listings.vacant', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Publish vacancy
+                    <i class="fa-solid fa-bullhorn" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+
         <form method="post" action="{{ route('property.units.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add unit</h3>
@@ -18,7 +37,7 @@
                     <select name="property_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="">Select…</option>
                         @foreach ($properties as $p)
-                            <option value="{{ $p->id }}" @selected(old('property_id') == $p->id)>{{ $p->name }}</option>
+                            <option value="{{ $p->id }}" @selected(old('property_id', request('property_id')) == $p->id)>{{ $p->name }}</option>
                         @endforeach
                     </select>
                     @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

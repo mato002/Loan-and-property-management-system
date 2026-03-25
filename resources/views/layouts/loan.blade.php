@@ -29,9 +29,15 @@
             .custom-scrollbar::-webkit-scrollbar-thumb:hover {
                 background: #64748b;
             }
+            /* Firefox + stable gutter */
+            .custom-scrollbar {
+                scrollbar-width: auto;
+                scrollbar-color: #475569 transparent;
+                scrollbar-gutter: stable;
+            }
         </style>
     </head>
-    <body class="font-sans antialiased h-full overflow-hidden text-slate-900 dark:text-slate-100 selection:bg-indigo-500/30" x-data="{ sidebarOpen: false }">
+    <body class="font-sans antialiased h-screen overflow-hidden text-slate-900 dark:text-slate-100 selection:bg-indigo-500/30" x-data="{ sidebarOpen: false }">
         <x-swal-flash />
         <div class="h-full flex bg-slate-50 dark:bg-slate-900">
             
@@ -39,20 +45,20 @@
             @include('layouts.loan_sidebar')
 
             <!-- Main view container (Header, Content, Footer) -->
-            <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-[#f4f7fa]">
+            <div class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-[#f4f7fa]">
                 
                 <!-- Dedicated Clean Topbar -->
                 @include('layouts.loan_topbar')
 
-                <!-- Main Content Area with scrollbar -->
-                <main class="flex-1 overflow-x-hidden overflow-y-auto w-full custom-scrollbar flex flex-col">
-                    <div class="p-4 sm:p-6 lg:p-8 flex-1">
+                <!-- Scrollable Content Area (Topbar/Footer remain constant) -->
+                <main class="flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar">
+                    <div class="p-4 sm:p-6 lg:p-8">
                         {{ $slot }}
                     </div>
-                    
-                    <!-- Dedicated Footer -->
-                    @include('layouts.loan_footer')
                 </main>
+
+                <!-- Dedicated Footer (constant) -->
+                @include('layouts.loan_footer')
 
             </div>
         </div>

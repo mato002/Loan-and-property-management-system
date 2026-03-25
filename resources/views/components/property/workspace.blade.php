@@ -11,6 +11,7 @@
     'tableRows' => [],
     /** @var list<string>|null $tableRowFilters Optional per-row filter text (same length as tableRows) for client-side search */
     'tableRowFilters' => null,
+    'showSearch' => true,
     'emptyTitle' => 'No records yet',
     'emptyHint' => 'Data will load here once this module is connected to your database.',
 ])
@@ -21,6 +22,7 @@
     $slotHasContent = isset($slot) && ! $slot->isEmpty();
     $customRowFilters = is_array($tableRowFilters ?? null)
         && count($tableRowFilters) === count($tableRows);
+    $canShowDefaultSearch = (bool) $showSearch && $hasTable;
 @endphp
 
 <x-property-layout>
@@ -67,11 +69,20 @@
 
         @if ($hasToolbar || $hasTable || ($slotHasContent && ! $hasTable))
             <div class="property-ws-wrap w-full min-w-0 space-y-3">
-                @if ($hasToolbar)
+                @if ($hasToolbar || $canShowDefaultSearch)
                     <div
                         class="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center w-full min-w-0 [&_input[type=search]]:w-full [&_input[type=search]]:min-w-0 [&_input[type=search]]:sm:max-w-md [&_input[type=month]]:w-full [&_input[type=month]]:min-w-0 [&_input[type=month]]:sm:w-auto [&_select]:w-full [&_select]:min-w-0 [&_select]:sm:w-auto [&_.flex-1]:min-w-0"
                     >
-                        {{ $toolbar }}
+                        @if ($canShowDefaultSearch)
+                            <input
+                                type="search"
+                                data-table-filter="parent"
+                                autocomplete="off"
+                                placeholder="Search…"
+                                class="w-full min-w-0 sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2"
+                            />
+                        @endif
+                        {{ $toolbar ?? '' }}
                     </div>
                 @endif
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\PmLease;
 use App\Models\PmTenant;
 use App\Models\PmTenantNotice;
 use App\Models\PmUnitMovement;
@@ -15,8 +16,79 @@ use Illuminate\View\View;
 
 class PropertyTenantsOpsWebController extends Controller
 {
+    private function backfillMovementsFromLeases(): void
+    {
+        // Populate movement rows for existing leases so the page isn't empty.
+        // This is idempotent-ish via notes "Lease #ID" checks.
+        $leases = PmLease::query()
+            ->with(['pmTenant:id,name', 'units:id'])
+            ->whereIn('status', [PmLease::STATUS_ACTIVE, PmLease::STATUS_EXPIRED, PmLease::STATUS_TERMINATED])
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get();
+
+        foreach ($leases as $lease) {
+            $unitIds = $lease->units->pluck('id')->map(fn ($v) => (int) $v)->all();
+            if ($unitIds === []) {
+                continue;
+            }
+
+            $needle = 'Lease #'.$lease->id;
+            $tenantName = $lease->pmTenant?->name ?? '—';
+            $notes = 'Auto: '.$needle.' (Tenant: '.$tenantName.')';
+
+            if ($lease->status === PmLease::STATUS_ACTIVE) {
+                $date = $lease->start_date?->format('Y-m-d');
+                foreach ($unitIds as $unitId) {
+                    $exists = PmUnitMovement::query()
+                        ->where('property_unit_id', $unitId)
+                        ->where('movement_type', 'move_in')
+                        ->where('notes', 'like', '%'.$needle.'%')
+                        ->exists();
+                    if ($exists) {
+                        continue;
+                    }
+                    PmUnitMovement::query()->create([
+                        'property_unit_id' => $unitId,
+                        'movement_type' => 'move_in',
+                        'status' => 'done',
+                        'scheduled_on' => $date,
+                        'completed_on' => $date,
+                        'notes' => $notes,
+                        'user_id' => null,
+                    ]);
+                }
+            }
+
+            if (in_array($lease->status, [PmLease::STATUS_EXPIRED, PmLease::STATUS_TERMINATED], true)) {
+                $date = $lease->end_date?->format('Y-m-d') ?? now()->toDateString();
+                foreach ($unitIds as $unitId) {
+                    $exists = PmUnitMovement::query()
+                        ->where('property_unit_id', $unitId)
+                        ->where('movement_type', 'move_out')
+                        ->where('notes', 'like', '%'.$needle.'%')
+                        ->exists();
+                    if ($exists) {
+                        continue;
+                    }
+                    PmUnitMovement::query()->create([
+                        'property_unit_id' => $unitId,
+                        'movement_type' => 'move_out',
+                        'status' => 'done',
+                        'scheduled_on' => $date,
+                        'completed_on' => $date,
+                        'notes' => $notes,
+                        'user_id' => null,
+                    ]);
+                }
+            }
+        }
+    }
+
     public function movements(): View
     {
+        $this->backfillMovementsFromLeases();
+
         $tenantMoveInEnabled = PropertyPortalSetting::getValue('form_tenant_move_in_enabled', '1') === '1';
         $movements = PmUnitMovement::query()->with(['unit.property', 'agent'])->orderByDesc('id')->limit(200)->get();
 

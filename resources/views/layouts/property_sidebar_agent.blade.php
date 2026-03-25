@@ -181,6 +181,13 @@
                     'badge' => null,
                 ],
                 [
+                    'label' => 'Import tenants',
+                    'sublabel' => 'CSV upload',
+                    'route' => 'property.tenants.import',
+                    'active' => ['property.tenants.import', 'property.tenants.import.store'],
+                    'badge' => null,
+                ],
+                [
                     'label' => 'Lease agreements',
                     'sublabel' => null,
                     'route' => 'property.tenants.leases',
@@ -611,7 +618,7 @@
 </div>
 
 <aside
-    class="property-sidebar fixed inset-y-0 left-0 z-50 w-[300px] sm:w-[312px] bg-[#2f4f4f] border-r border-[#264040] text-[#d4e4e3] text-base transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col shadow-xl shadow-black/20 lg:shadow-none overflow-hidden flex-shrink-0"
+    class="property-sidebar fixed inset-y-0 left-0 z-50 w-[300px] sm:w-[312px] bg-[#2f4f4f] border-r border-[#264040] text-[#d4e4e3] text-base transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col min-h-0 shadow-xl shadow-black/20 lg:shadow-none overflow-hidden flex-shrink-0"
     :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-lg:pointer-events-none'"
 >
     <div class="h-14 flex items-center justify-between px-4 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md lg:hidden shrink-0">
@@ -644,7 +651,7 @@
         </a>
     </div>
 
-    <nav class="flex-1 overflow-y-auto min-h-0 py-2 px-2 custom-scrollbar">
+    <nav class="flex-1 overflow-y-scroll min-h-0 py-2 px-2 custom-scrollbar">
         @if (auth()->check() && (auth()->user()->is_super_admin ?? false))
             <div class="px-2 pt-2 pb-3">
                 <a

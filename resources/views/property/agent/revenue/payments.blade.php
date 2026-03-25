@@ -9,6 +9,21 @@
     empty-hint="Record a payment for the paying tenant and choose an invoice with an open balance."
 >
     <x-slot name="above">
+        <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm">
+            <p class="text-lg font-semibold text-slate-900">Rent flow (Step 3 of 3): Collect payment</p>
+            <p class="mt-1 text-sm text-slate-600">Record the tenant payment and select the invoice with an open balance. The invoice updates automatically (Partial / Paid).</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                    Back: Create rent bill
+                </a>
+                <a href="{{ route('property.revenue.receipts', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    View receipts
+                    <i class="fa-solid fa-receipt" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+
         <form method="post" action="{{ route('property.payments.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Record payment</h3>

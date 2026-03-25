@@ -9,6 +9,21 @@
     empty-hint="Log a planned move-in or move-out below."
 >
     <x-slot name="above">
+        <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
+            <p class="text-lg font-semibold text-slate-900">Handover flow: Move-ins &amp; Move-outs</p>
+            <p class="mt-1 text-sm text-slate-600">Use this page for checklists and handover notes. Leases can auto-log move-ins/move-outs; you can also log manual events here.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Go to Leases
+                    <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.properties.units', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Unit status
+                    <i class="fa-solid fa-building" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+
         @if (session('success'))
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif

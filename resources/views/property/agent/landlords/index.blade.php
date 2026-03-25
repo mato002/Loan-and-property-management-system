@@ -6,6 +6,21 @@
     :columns="[]"
 >
     <x-slot name="above">
+        <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
+            <p class="text-lg font-semibold text-slate-900">Landlord setup</p>
+            <p class="mt-1 text-sm text-slate-600">Create landlord accounts here, then link them to properties (ownership %) so they can access landlord portal reports and earnings.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.properties.list', absolute: false) }}#link-landlord-form" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                    Link landlord to property
+                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.properties.list', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Properties
+                    <i class="fa-solid fa-building" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+
         <form method="post" action="{{ route('property.landlords.onboard') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Onboard landlord</h3>

@@ -2,7 +2,7 @@
 <div x-show="sidebarOpen" x-transition.opacity class="fixed inset-0 z-40 bg-gray-900/80 backdrop-blur-sm md:hidden" @click="sidebarOpen = false" x-cloak></div>
 
 <!-- Sidebar Elements -->
-<aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-md:pointer-events-none'" class="fixed inset-y-0 left-0 z-50 w-72 bg-[#2f4f4f] border-r border-[#264040] flex flex-col transition-transform duration-300 md:relative md:translate-x-0 overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none">
+<aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-md:pointer-events-none'" class="fixed inset-y-0 left-0 z-50 w-72 bg-[#2f4f4f] border-r border-[#264040] flex flex-col min-h-0 transition-transform duration-300 md:relative md:translate-x-0 overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none">
     <!-- Header -->
     <div class="h-16 flex items-center justify-between px-6 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md">
         <a href="{{ route('dashboard') }}" class="text-xl font-bold text-white flex items-center gap-3">
@@ -21,7 +21,7 @@
     </div>
 
     <!-- Navigation List -->
-    <nav class="flex-1 overflow-y-auto py-6 px-4 space-y-6 custom-scrollbar">
+    <nav class="flex-1 min-h-0 overflow-y-scroll py-6 px-4 space-y-6 custom-scrollbar">
 
         <!-- Dashboard Link -->
         <div>
@@ -203,7 +203,20 @@
 
         <div class="space-y-3">
             @foreach($menu as $groupName => $data)
-            <div x-data="{ open: {{ ($groupName === 'Payments' && request()->routeIs('loan.payments.*')) || ($groupName === 'Accounting' && request()->routeIs('loan.accounting.*')) || ($groupName === 'Asset Financing' && request()->routeIs('loan.assets.*')) || ($groupName === 'Branches & Regions' && (request()->routeIs('loan.regions.*') || request()->routeIs('loan.branches.*'))) || ($groupName === 'System & Help' && request()->routeIs('loan.system.*')) ? 'true' : 'false' }} }">
+            <div x-data="{ open: {{ (
+                ($groupName === 'Employees' && request()->routeIs('loan.employees.*')) ||
+                ($groupName === 'Accounting' && request()->routeIs('loan.accounting.*')) ||
+                ($groupName === 'Branches & Regions' && (request()->routeIs('loan.regions.*') || request()->routeIs('loan.branches.*'))) ||
+                ($groupName === 'Business Analytics' && request()->routeIs('loan.analytics.*')) ||
+                ($groupName === 'Clients' && request()->routeIs('loan.clients.*')) ||
+                ($groupName === 'LoanBook' && request()->routeIs('loan.book.*')) ||
+                ($groupName === 'Payments' && request()->routeIs('loan.payments.*')) ||
+                ($groupName === 'Bulk SMS' && request()->routeIs('loan.bulksms.*')) ||
+                ($groupName === 'Financial' && request()->routeIs('loan.financial.*')) ||
+                ($groupName === 'Asset Financing' && request()->routeIs('loan.assets.*')) ||
+                ($groupName === 'My Account' && (request()->routeIs('loan.account.*') || request()->routeIs('profile.*'))) ||
+                ($groupName === 'System & Help' && request()->routeIs('loan.system.*'))
+            ) ? 'true' : 'false' }} }">
                 <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white transition-all group">
                     <div class="flex items-center gap-3 w-4/5">
                         <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">

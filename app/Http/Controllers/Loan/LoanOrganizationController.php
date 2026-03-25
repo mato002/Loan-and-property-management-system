@@ -195,7 +195,10 @@ class LoanOrganizationController extends Controller
                 'COALESCE(SUM(l.balance), 0) as total_balance, '.
                 'SUM(CASE WHEN l.status = '.$activeSql.' THEN 1 ELSE 0 END) as active_count'
             )
-            ->groupByRaw($branchKeySql)
+            // MySQL ONLY_FULL_GROUP_BY can still reject grouping by a computed alias expression
+            // when the expression references non-aggregated columns. Group by the underlying
+            // columns instead to keep it portable across MySQL modes/versions.
+            ->groupBy('b.name', 'l.branch')
             ->get();
 
         $totals = [

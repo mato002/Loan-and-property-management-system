@@ -79,3 +79,20 @@ document.addEventListener('turbo:frame-load', (event) => {
         window.__runSwalFlash();
     }
 });
+
+// Some navigations / redirects can resolve as full Turbo visits instead of a frame-load.
+// Ensure Alpine and flash handlers are re-initialized in that case too.
+document.addEventListener('turbo:load', () => {
+    const frame = document.getElementById(PROPERTY_MAIN_FRAME_ID);
+    if (!(frame instanceof HTMLElement)) {
+        return;
+    }
+    syncPropertyPortalNav(frame);
+    scrollPropertyMainToTop(frame);
+    if (window.Alpine?.initTree) {
+        window.Alpine.initTree(frame);
+    }
+    if (typeof window.__runSwalFlash === 'function') {
+        window.__runSwalFlash();
+    }
+});

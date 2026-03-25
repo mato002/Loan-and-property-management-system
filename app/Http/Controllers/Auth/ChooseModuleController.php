@@ -13,11 +13,10 @@ class ChooseModuleController extends Controller
     {
         $user = $request->user();
 
-        if (($user->is_super_admin ?? false) === true) {
-            return redirect()->route('superadmin.users.index');
-        }
-
-        $approvedModules = $user?->approvedModules() ?? [];
+        $isSuperAdmin = (($user->is_super_admin ?? false) === true);
+        $approvedModules = $isSuperAdmin
+            ? ['property', 'loan']
+            : ($user?->approvedModules() ?? []);
 
         if (count($approvedModules) === 0) {
             return redirect()->route('login')->withErrors([
@@ -33,8 +32,8 @@ class ChooseModuleController extends Controller
         }
 
         // If more than 1 module is approved, show chooser.
-        $propertyApproved = $user->isModuleApproved('property');
-        $loanApproved = $user->isModuleApproved('loan');
+        $propertyApproved = $isSuperAdmin ? true : $user->isModuleApproved('property');
+        $loanApproved = $isSuperAdmin ? true : $user->isModuleApproved('loan');
 
         return view('auth.choose_module', [
             'propertyApproved' => $propertyApproved,
@@ -47,7 +46,8 @@ class ChooseModuleController extends Controller
         abort_unless(in_array($module, ['property', 'loan'], true), 404);
 
         $user = $request->user();
-        if (! $user || ! $user->isModuleApproved($module)) {
+        $isSuperAdmin = (($user->is_super_admin ?? false) === true);
+        if (! $user || (! $isSuperAdmin && ! $user->isModuleApproved($module))) {
             $request->session()->forget(['active_system', 'url.intended']);
 
             return redirect()->route('login')->withErrors([

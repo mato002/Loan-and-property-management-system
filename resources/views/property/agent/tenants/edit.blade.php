@@ -8,6 +8,25 @@
     ]"
     :columns="[]"
 >
+    @if ((int) ($tenant->leases_count ?? 0) === 0)
+        <div class="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <p class="text-sm font-semibold">Not allocated yet</p>
+                    <p class="mt-0.5 text-sm text-amber-800/90">This tenant has no lease/unit allocation. Allocate a vacant unit by creating a lease.</p>
+                </div>
+                <a
+                    href="{{ route('property.tenants.leases', ['pm_tenant_id' => $tenant->id], absolute: false) }}"
+                    data-turbo-frame="property-main"
+                    class="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                    <i class="fa-solid fa-key" aria-hidden="true"></i>
+                    <span>Allocate vacant unit</span>
+                </a>
+            </div>
+        </div>
+    @endif
+
     <form method="post" action="{{ route('property.tenants.update', $tenant) }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
         @csrf
         @method('PUT')

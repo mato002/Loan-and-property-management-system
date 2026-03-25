@@ -14,11 +14,30 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
 
 class PropertyPortfolioController extends Controller
 {
+    private function generateUniquePropertyCode(string $name): string
+    {
+        $base = strtoupper(Str::of($name)->slug('')->substr(0, 6)->toString());
+        $base = $base !== '' ? $base : 'PROP';
+
+        // Try a few times; code is unique in DB, so we must avoid collisions.
+        for ($i = 0; $i < 25; $i++) {
+            $suffix = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+            $candidate = $base.'-'.$suffix; // e.g. "GREENH-0421"
+            if (!Property::query()->where('code', $candidate)->exists()) {
+                return $candidate;
+            }
+        }
+
+        // Extremely unlikely fallback.
+        return 'PROP-'.strtoupper(Str::random(8));
+    }
+
     public function propertyList(): View
     {
         $portfolio = Property::query()
@@ -287,9 +306,41 @@ class PropertyPortfolioController extends Controller
             'city' => ['nullable', 'string', 'max:128'],
         ]);
 
-        Property::query()->create($data);
+        if (!isset($data['code']) || trim((string) $data['code']) === '') {
+            $data['code'] = $this->generateUniquePropertyCode($data['name']);
+        }
 
-        return back()->with('success', 'Property saved.');
+        $property = Property::query()->create($data);
+
+        return back()
+            ->with('success', 'Property saved.')
+            ->with('next_steps', [
+                'title' => 'Property saved',
+                'message' => 'Next, add units (doors), then link the landlord user, then publish vacant units under Listings.',
+                'actions' => [
+                    [
+                        'label' => 'Add units',
+                        'href' => route('property.properties.units', ['property_id' => $property->id], absolute: false),
+                        'kind' => 'primary',
+                        'icon' => 'fa-solid fa-building',
+                        'turbo_frame' => 'property-main',
+                    ],
+                    [
+                        'label' => 'Link landlord user',
+                        'href' => route('property.properties.list', ['property_id' => $property->id], absolute: false).'#link-landlord-form',
+                        'kind' => 'secondary',
+                        'icon' => 'fa-solid fa-user-tie',
+                        'turbo_frame' => 'property-main',
+                    ],
+                    [
+                        'label' => 'Go to Listings',
+                        'href' => route('property.listings.index', absolute: false),
+                        'kind' => 'ghost',
+                        'icon' => 'fa-solid fa-bullhorn',
+                        'turbo_frame' => 'property-main',
+                    ],
+                ],
+            ]);
     }
 
     public function unitList(): View
@@ -342,7 +393,8 @@ class PropertyPortfolioController extends Controller
             'property_id' => ['required', 'exists:properties,id'],
             'label' => ['required', 'string', 'max:64'],
             'unit_type' => ['required', 'string', 'in:'.implode(',', array_keys(PropertyUnit::typeOptions()))],
-            'bedrooms' => ['required', 'integer', 'min:0', 'max:20'],
+            // Bedrooms is conditional: some unit types have no separate bedroom and the UI disables the field.
+            'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'rent_amount' => ['required', 'numeric', 'min:0'],
             'status' => ['required', 'in:vacant,occupied,notice'],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
@@ -351,18 +403,66 @@ class PropertyPortfolioController extends Controller
         $desc = isset($data['public_listing_description']) && trim((string) $data['public_listing_description']) !== ''
             ? $data['public_listing_description']
             : null;
-        if (in_array($data['unit_type'], [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO], true)) {
+        $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
+        $requiresNoBedroom = in_array($data['unit_type'], $noBedroomTypes, true);
+        if ($requiresNoBedroom) {
             $data['bedrooms'] = 0;
+        } elseif (!isset($data['bedrooms'])) {
+            return back()
+                ->withErrors(['bedrooms' => __('The bedrooms field is required.')])
+                ->withInput();
         }
 
-        PropertyUnit::query()->create([
+        $unit = PropertyUnit::query()->create([
             ...$data,
             'rent_amount' => $data['rent_amount'],
             'public_listing_description' => $desc,
             'vacant_since' => $data['status'] === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
         ]);
 
-        return back()->with('success', 'Unit saved.');
+        $actions = [
+            [
+                'label' => 'Add another unit',
+                'href' => route('property.properties.units', ['property_id' => $unit->property_id], absolute: false),
+                'kind' => 'primary',
+                'icon' => 'fa-solid fa-plus',
+                'turbo_frame' => 'property-main',
+            ],
+            [
+                'label' => 'Link landlord user',
+                'href' => route('property.properties.list', ['property_id' => $unit->property_id], absolute: false).'#link-landlord-form',
+                'kind' => 'secondary',
+                'icon' => 'fa-solid fa-user-tie',
+                'turbo_frame' => 'property-main',
+            ],
+            [
+                'label' => 'Go to Listings',
+                'href' => route('property.listings.index', absolute: false),
+                'kind' => 'ghost',
+                'icon' => 'fa-solid fa-bullhorn',
+                'turbo_frame' => 'property-main',
+            ],
+        ];
+
+        if ($unit->status === PropertyUnit::STATUS_VACANT) {
+            array_unshift($actions, [
+                'label' => 'Edit listing (vacant unit)',
+                'href' => route('property.listings.vacant.public.edit', $unit, absolute: false),
+                'kind' => 'primary',
+                'icon' => 'fa-solid fa-pen-to-square',
+                'turbo_frame' => 'property-main',
+            ]);
+        }
+
+        return back()
+            ->with('success', 'Unit saved.')
+            ->with('next_steps', [
+                'title' => 'Unit saved',
+                'message' => $unit->status === PropertyUnit::STATUS_VACANT
+                    ? 'This unit is vacant. You can now add photos and publish it under Listings.'
+                    : 'Next, add more units, link the landlord, or manage listings for vacant units.',
+                'actions' => $actions,
+            ]);
     }
 
     public function attachLandlord(Request $request): RedirectResponse
@@ -385,7 +485,35 @@ class PropertyPortfolioController extends Controller
             $data['user_id'] => ['ownership_percent' => $pct],
         ]);
 
-        return back()->with('success', 'Landlord linked to property.');
+        return back()
+            ->with('success', 'Landlord linked to property.')
+            ->with('next_steps', [
+                'title' => 'Landlord linked',
+                'message' => 'Next, add units for this property, then publish vacant units under Listings.',
+                'actions' => [
+                    [
+                        'label' => 'Add units',
+                        'href' => route('property.properties.units', ['property_id' => $property->id], absolute: false),
+                        'kind' => 'primary',
+                        'icon' => 'fa-solid fa-building',
+                        'turbo_frame' => 'property-main',
+                    ],
+                    [
+                        'label' => 'View properties list',
+                        'href' => route('property.properties.list', ['property_id' => $property->id], absolute: false),
+                        'kind' => 'secondary',
+                        'icon' => 'fa-solid fa-list',
+                        'turbo_frame' => 'property-main',
+                    ],
+                    [
+                        'label' => 'Go to Listings',
+                        'href' => route('property.listings.index', absolute: false),
+                        'kind' => 'ghost',
+                        'icon' => 'fa-solid fa-bullhorn',
+                        'turbo_frame' => 'property-main',
+                    ],
+                ],
+            ]);
     }
 
     public function occupancy(): View

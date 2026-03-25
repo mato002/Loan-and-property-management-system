@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\PmLease;
 use App\Models\PmTenant;
+use App\Models\PmUnitMovement;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Services\Property\PropertyMoney;
@@ -16,6 +17,69 @@ use Illuminate\View\View;
 
 class PmLeaseWebController extends Controller
 {
+    private function ensureMovementLogged(PmLease $lease, array $unitIds, string $movementType, ?string $date): void
+    {
+        $unitIds = array_values(array_unique(array_map('intval', $unitIds)));
+        if ($unitIds === [] || !$date) {
+            return;
+        }
+
+        $tenantName = $lease->pmTenant?->name ?? '—';
+        $needle = 'Lease #'.$lease->id;
+        $notes = 'Auto: '.$needle.' (Tenant: '.$tenantName.')';
+
+        foreach ($unitIds as $unitId) {
+            $exists = PmUnitMovement::query()
+                ->where('property_unit_id', $unitId)
+                ->where('movement_type', $movementType)
+                ->where('notes', 'like', '%'.$needle.'%')
+                ->exists();
+            if ($exists) {
+                continue;
+            }
+
+            PmUnitMovement::query()->create([
+                'property_unit_id' => $unitId,
+                'movement_type' => $movementType,
+                'status' => 'done',
+                'scheduled_on' => $date,
+                'completed_on' => $date,
+                'notes' => $notes,
+                'user_id' => null,
+            ]);
+        }
+    }
+
+    private function vacateUnitsIfNotInAnotherActiveLease(array $unitIds, ?int $excludeLeaseId = null): void
+    {
+        $unitIds = array_values(array_unique(array_map('intval', $unitIds)));
+        if ($unitIds === []) {
+            return;
+        }
+
+        // Only vacate units that are NOT linked to any other active lease.
+        $stillOccupiedUnitIds = PmLease::query()
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->when($excludeLeaseId !== null, fn ($q) => $q->where('id', '!=', $excludeLeaseId))
+            ->whereHas('units', fn ($q) => $q->whereIn('property_units.id', $unitIds))
+            ->with('units:id')
+            ->get()
+            ->flatMap(fn (PmLease $l) => $l->units->pluck('id'))
+            ->unique()
+            ->values()
+            ->all();
+
+        $toVacate = array_values(array_diff($unitIds, $stillOccupiedUnitIds));
+        if ($toVacate === []) {
+            return;
+        }
+
+        PropertyUnit::query()->whereIn('id', $toVacate)->update([
+            'status' => PropertyUnit::STATUS_VACANT,
+            'vacant_since' => now()->toDateString(),
+        ]);
+    }
+
     public function leases(): View
     {
         $leaseTemplate = PropertyPortalSetting::getValue('template_lease_text', '');
@@ -86,6 +150,7 @@ class PmLeaseWebController extends Controller
                     : PropertyPortalSetting::getValue('template_lease_text', null),
             ]);
 
+            $lease->load('pmTenant');
             $unitIds = $data['property_unit_ids'] ?? [];
             if ($unitIds !== []) {
                 $lease->units()->sync($unitIds);
@@ -94,6 +159,10 @@ class PmLeaseWebController extends Controller
                         'status' => PropertyUnit::STATUS_OCCUPIED,
                         'vacant_since' => null,
                     ]);
+                    $this->ensureMovementLogged($lease, $unitIds, 'move_in', $data['start_date'] ?? null);
+                } elseif (in_array($data['status'], [PmLease::STATUS_EXPIRED, PmLease::STATUS_TERMINATED], true)) {
+                    $this->vacateUnitsIfNotInAnotherActiveLease($unitIds, excludeLeaseId: $lease->id);
+                    $this->ensureMovementLogged($lease, $unitIds, 'move_out', $data['end_date'] ?? null);
                 }
             }
         });
@@ -115,6 +184,8 @@ class PmLeaseWebController extends Controller
 
     public function update(Request $request, PmLease $lease): RedirectResponse
     {
+        $lease->load(['units:id', 'pmTenant']);
+
         $data = $request->validate([
             'pm_tenant_id' => ['required', 'exists:pm_tenants,id'],
             'start_date' => ['required', 'date'],
@@ -128,6 +199,9 @@ class PmLeaseWebController extends Controller
         ]);
 
         DB::transaction(function () use ($data, $lease) {
+            $prevStatus = $lease->status;
+            $prevUnitIds = $lease->units->pluck('id')->map(fn ($v) => (int) $v)->all();
+
             $lease->update([
                 'pm_tenant_id' => $data['pm_tenant_id'],
                 'start_date' => $data['start_date'],
@@ -143,11 +217,29 @@ class PmLeaseWebController extends Controller
             $unitIds = $data['property_unit_ids'] ?? [];
             $lease->units()->sync($unitIds);
 
+            // If lease is active, mark linked units occupied.
             if ($data['status'] === PmLease::STATUS_ACTIVE && $unitIds !== []) {
                 PropertyUnit::query()->whereIn('id', $unitIds)->update([
                     'status' => PropertyUnit::STATUS_OCCUPIED,
                     'vacant_since' => null,
                 ]);
+                // Log move-in if we just activated or attached units.
+                $this->ensureMovementLogged($lease, $unitIds, 'move_in', $data['start_date'] ?? null);
+            }
+
+            // If lease is ended, vacate its units (unless another active lease also owns them).
+            if (in_array($data['status'], [PmLease::STATUS_EXPIRED, PmLease::STATUS_TERMINATED], true) && $unitIds !== []) {
+                $this->vacateUnitsIfNotInAnotherActiveLease($unitIds, excludeLeaseId: $lease->id);
+                $this->ensureMovementLogged($lease, $unitIds, 'move_out', $data['end_date'] ?? null);
+            }
+
+            // If an active lease had units removed, vacate those removed units (unless another active lease owns them).
+            if ($prevStatus === PmLease::STATUS_ACTIVE) {
+                $removed = array_values(array_diff($prevUnitIds, array_map('intval', $unitIds)));
+                if ($removed !== []) {
+                    $this->vacateUnitsIfNotInAnotherActiveLease($removed, excludeLeaseId: $lease->id);
+                    $this->ensureMovementLogged($lease, $removed, 'move_out', now()->toDateString());
+                }
             }
         });
 

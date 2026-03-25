@@ -17,6 +17,7 @@ use App\Http\Controllers\Loan\LoanFormSetupController;
 use App\Http\Controllers\Loan\LoanOrganizationController;
 use App\Http\Controllers\Loan\LoanPaymentsController;
 use App\Http\Controllers\Loan\LoanSystemHelpController;
+use App\Http\Controllers\Integrations\MpesaDarajaWebhookController;
 use App\Http\Controllers\Property\PropertyPaymentWebhookController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicController;
@@ -37,6 +38,11 @@ Route::view('/terms-of-service', 'public.terms')->name('public.terms');
 Route::post('/webhooks/property/payments/stk-callback', [PropertyPaymentWebhookController::class, 'stkCallback'])
     ->withoutMiddleware([ValidateCsrfToken::class])
     ->name('webhooks.property.payments.stk_callback');
+
+// Safaricom Daraja STK callback (raw Daraja format)
+Route::post('/webhooks/mpesa/stk-callback', [MpesaDarajaWebhookController::class, 'stkCallback'])
+    ->withoutMiddleware([ValidateCsrfToken::class])
+    ->name('webhooks.mpesa.stk_callback');
 Route::post('/webhooks/property/payments/bank/{provider}', [PropertyPaymentWebhookController::class, 'bankCallback'])
     ->whereIn('provider', ['kcb', 'equity', 'coop'])
     ->withoutMiddleware([ValidateCsrfToken::class])

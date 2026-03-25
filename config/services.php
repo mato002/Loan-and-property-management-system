@@ -66,4 +66,23 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | M-Pesa Daraja (STK Push)
+    |--------------------------------------------------------------------------
+    |
+    | Used for initiating STK prompts and handling callbacks.
+    |
+    */
+    'mpesa' => [
+        'env' => env('MPESA_ENV', 'sandbox'), // sandbox|production
+        'consumer_key' => env('MPESA_CONSUMER_KEY'),
+        'consumer_secret' => env('MPESA_CONSUMER_SECRET'),
+        'shortcode' => env('MPESA_SHORTCODE'),
+        'passkey' => env('MPESA_PASSKEY'),
+        'stk_callback_url' => env('MPESA_STK_CALLBACK_URL'),
+        // Optional: some setups use different shortcodes for STK (Till/Paybill vs. organization shortcode)
+        'stk_shortcode' => env('MPESA_STK_SHORTCODE', env('MPESA_SHORTCODE')),
+    ],
+
 ];

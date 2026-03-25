@@ -23,16 +23,33 @@
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Code</label>
                         <input type="text" name="code" value="{{ old('code') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                         @error('code')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Leave blank to auto-generate.</p>
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">City</label>
-                        <input type="text" name="city" value="{{ old('city') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        <select name="city" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                            <option value="">Select…</option>
+                            @foreach (config('kenya.cities', []) as $city)
+                                <option value="{{ $city }}" @selected(old('city') === $city)>{{ $city }}</option>
+                            @endforeach
+                        </select>
                         @error('city')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Address</label>
-                    <input type="text" name="address_line" value="{{ old('address_line') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input
+                        type="text"
+                        name="address_line"
+                        value="{{ old('address_line') }}"
+                        class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
+                        placeholder="Start typing an address…"
+                        autocomplete="off"
+                        data-ke-address-autocomplete
+                        data-ke-address-endpoint="{{ route('property.geo.kenya_addresses', absolute: false) }}"
+                        list="ke-address-suggestions"
+                    />
+                    <datalist id="ke-address-suggestions"></datalist>
                     @error('address_line')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save property</button>
@@ -47,7 +64,7 @@
                     <select name="property_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="">Select…</option>
                         @foreach ($properties as $p)
-                            <option value="{{ $p->id }}" @selected(old('property_id') == $p->id)>{{ $p->name }}</option>
+                            <option value="{{ $p->id }}" @selected(old('property_id', request('property_id')) == $p->id)>{{ $p->name }}</option>
                         @endforeach
                     </select>
                     @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

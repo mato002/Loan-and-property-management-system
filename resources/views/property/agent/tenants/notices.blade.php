@@ -9,6 +9,21 @@
     empty-hint="Create a draft or sent notice below."
 >
     <x-slot name="above">
+        <div class="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm max-w-3xl">
+            <p class="text-lg font-semibold text-slate-900">Early move-out / tenancy changes</p>
+            <p class="mt-1 text-sm text-slate-600">Typical flow: Log notice → agree exit date → update lease to <span class="font-semibold">Terminated</span> (unit becomes Vacant automatically) → optionally publish under Listings.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Go to Leases
+                    <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.listings.vacant', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Publish vacancy
+                    <i class="fa-solid fa-bullhorn" aria-hidden="true"></i>
+                </a>
+            </div>
+        </div>
+
         @if (session('success'))
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif

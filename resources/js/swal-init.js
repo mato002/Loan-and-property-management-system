@@ -38,6 +38,12 @@ if (document.readyState === 'loading') {
     runFlash();
 }
 
+// Turbo (Hotwire) navigations do not trigger DOMContentLoaded, so also re-run
+// flashes on Turbo events across the whole app (loan + public + auth pages too).
+document.addEventListener('turbo:load', runFlash);
+document.addEventListener('turbo:render', runFlash);
+document.addEventListener('turbo:frame-load', runFlash);
+
 document.addEventListener(
     'submit',
     (e) => {
