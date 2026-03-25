@@ -83,6 +83,9 @@ return [
         'stk_callback_url' => env('MPESA_STK_CALLBACK_URL'),
         // Optional: some setups use different shortcodes for STK (Till/Paybill vs. organization shortcode)
         'stk_shortcode' => env('MPESA_STK_SHORTCODE', env('MPESA_SHORTCODE')),
+        // Local dev on Windows/XAMPP may not have a complete CA bundle; allow toggling SSL verify.
+        // Set MPESA_VERIFY_SSL=false in local .env if you hit cURL error 60.
+        'verify_ssl' => env('MPESA_VERIFY_SSL', true),
     ],
 
 ];

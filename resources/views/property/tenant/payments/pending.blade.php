@@ -50,10 +50,10 @@
                 </div>
 
                 <div class="mt-5 flex flex-col sm:flex-row gap-3">
-                    <a href="{{ route('property.tenant.payments.pending', $payment) }}" class="inline-flex items-center justify-center rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white hover:bg-teal-700 w-full sm:w-auto">
+                    <a href="{{ route('property.tenant.payments.pending', $payment) }}" data-turbo="false" class="inline-flex items-center justify-center rounded-xl bg-teal-600 px-4 py-3 text-sm font-semibold text-white hover:bg-teal-700 w-full sm:w-auto">
                         Refresh status
                     </a>
-                    <a href="{{ route('property.tenant.payments.history') }}" class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 w-full sm:w-auto dark:bg-slate-900/40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900/60">
+                    <a href="{{ route('property.tenant.payments.history') }}" data-turbo="false" class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 w-full sm:w-auto dark:bg-slate-900/40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900/60">
                         View payment history
                     </a>
                 </div>

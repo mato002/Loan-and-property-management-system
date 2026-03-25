@@ -17,6 +17,7 @@
                 action="{{ route('property.tenant.payments.store') }}"
                 class="space-y-4"
                 x-data="{ method: '{{ old('payment_method', 'mpesa_stk') }}' }"
+                data-turbo="false"
             >
                 @csrf
                 <div>

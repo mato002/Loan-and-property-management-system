@@ -4,6 +4,7 @@ namespace App\Services\Integrations;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Throwable;
 use RuntimeException;
 
 class MpesaDarajaService
@@ -11,6 +12,15 @@ class MpesaDarajaService
     private function config(): array
     {
         return (array) config('services.mpesa', []);
+    }
+
+    private function http()
+    {
+        $verify = (bool) ($this->config()['verify_ssl'] ?? true);
+
+        return Http::timeout(25)->acceptJson()->withOptions([
+            'verify' => $verify,
+        ]);
     }
 
     /**
@@ -79,16 +89,15 @@ class MpesaDarajaService
             throw new RuntimeException('Daraja is not configured (missing consumer key/secret).');
         }
 
-        $res = Http::withBasicAuth($key, $secret)
-            ->timeout(20)
-            ->acceptJson()
+        $res = $this->http()
+            ->withBasicAuth($key, $secret)
             ->get($this->baseUrl().'/oauth/v1/generate', ['grant_type' => 'client_credentials']);
 
         if (! $res->ok()) {
             throw new RuntimeException('Daraja token request failed: '.$res->status().' '.$res->body());
         }
 
-        $token = (string) ($res->json('access_token') ?? '');
+        $token = trim((string) ($res->json('access_token') ?? ''));
         if ($token === '') {
             throw new RuntimeException('Daraja token response missing access_token.');
         }
@@ -103,55 +112,63 @@ class MpesaDarajaService
      */
     public function stkPush(array $payload): array
     {
-        $cfg = $this->config();
+        try {
+            $cfg = $this->config();
 
-        $shortcode = (string) ($cfg['stk_shortcode'] ?? '');
-        $passkey = (string) ($cfg['passkey'] ?? '');
-        $callbackUrl = (string) ($cfg['stk_callback_url'] ?? '');
+            $shortcode = (string) ($cfg['stk_shortcode'] ?? '');
+            $passkey = (string) ($cfg['passkey'] ?? '');
+            $callbackUrl = (string) ($cfg['stk_callback_url'] ?? '');
 
-        if ($shortcode === '' || $passkey === '' || $callbackUrl === '') {
-            return ['ok' => false, 'status' => null, 'body' => null, 'message' => 'Daraja not configured (shortcode/passkey/callback).'];
+            if ($shortcode === '' || $passkey === '' || $callbackUrl === '') {
+                return ['ok' => false, 'status' => null, 'body' => null, 'message' => 'Daraja not configured (shortcode/passkey/callback).'];
+            }
+
+            $timestamp = now()->format('YmdHis');
+            $password = base64_encode($shortcode.$passkey.$timestamp);
+
+            $token = $this->getAccessToken();
+
+            $res = $this->http()
+                ->asJson()
+                ->withToken($token)
+                ->post($this->baseUrl().'/mpesa/stkpush/v1/processrequest', array_merge([
+                    'BusinessShortCode' => $shortcode,
+                    'Password' => $password,
+                    'Timestamp' => $timestamp,
+                    'TransactionType' => 'CustomerPayBillOnline',
+                    'CallBackURL' => $callbackUrl,
+                ], $payload));
+
+            $body = $res->json();
+            $message = is_array($body)
+                ? (string) (
+                    $body['CustomerMessage']
+                    ?? $body['errorMessage']
+                    ?? $body['ResponseDescription']
+                    ?? $body['responseDescription']
+                    ?? $body['ResponseDescription']
+                    ?? null
+                )
+                : null;
+
+            // Daraja often returns HTTP 200 even when initiation fails (ResponseCode != "0").
+            $responseCode = is_array($body) ? (string) ($body['ResponseCode'] ?? '') : '';
+            $ok = $res->ok() && ($responseCode === '' || $responseCode === '0');
+
+            return [
+                'ok' => $ok,
+                'status' => $res->status(),
+                'body' => is_array($body) ? $body : null,
+                'message' => $message,
+            ];
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'status' => null,
+                'body' => null,
+                'message' => $e->getMessage(),
+            ];
         }
-
-        $timestamp = now()->format('YmdHis');
-        $password = base64_encode($shortcode.$passkey.$timestamp);
-
-        $token = $this->getAccessToken();
-
-        $res = Http::timeout(25)
-            ->acceptJson()
-            ->asJson()
-            ->withToken($token)
-            ->post($this->baseUrl().'/mpesa/stkpush/v1/processrequest', array_merge([
-                'BusinessShortCode' => $shortcode,
-                'Password' => $password,
-                'Timestamp' => $timestamp,
-                'TransactionType' => 'CustomerPayBillOnline',
-                'CallBackURL' => $callbackUrl,
-            ], $payload));
-
-        $body = $res->json();
-        $message = is_array($body)
-            ? (string) (
-                $body['CustomerMessage']
-                ?? $body['errorMessage']
-                ?? $body['ResponseDescription']
-                ?? $body['responseDescription']
-                ?? $body['ResponseDescription']
-                ?? null
-            )
-            : null;
-
-        // Daraja often returns HTTP 200 even when initiation fails (ResponseCode != "0").
-        $responseCode = is_array($body) ? (string) ($body['ResponseCode'] ?? '') : '';
-        $ok = $res->ok() && ($responseCode === '' || $responseCode === '0');
-
-        return [
-            'ok' => $ok,
-            'status' => $res->status(),
-            'body' => is_array($body) ? $body : null,
-            'message' => $message,
-        ];
     }
 }
 
