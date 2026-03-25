@@ -1,11 +1,21 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
+        @php
+            $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name');
+            $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');
+            $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
+            $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
+            $resolvedTitle = str_replace(config('app.name'), $companyName, $title);
+        @endphp
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ $title }}</title>
+        <title>{{ $resolvedTitle }}</title>
+        <link rel="icon" href="{{ $faviconVersioned }}" />
+        <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
+        <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
 
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700&display=swap" rel="stylesheet" />
@@ -34,7 +44,7 @@
 
                 <div class="relative z-10 flex w-full flex-col justify-center px-10 py-16 xl:px-16">
                     <div class="mb-8">
-                        <p class="text-sm font-medium uppercase tracking-widest text-white/70">{{ config('app.name') }}</p>
+                        <p class="text-sm font-medium uppercase tracking-widest text-white/70">{{ $companyName }}</p>
                         <h2 class="mt-2 max-w-sm text-3xl font-bold leading-tight text-white xl:text-4xl">
                             {{ __('Operations, revenue, and trust — in one workspace.') }}
                         </h2>

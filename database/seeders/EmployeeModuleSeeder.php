@@ -12,11 +12,32 @@ use App\Models\User;
 use App\Models\WorkplanItem;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Schema;
+use App\Models\UserModuleAccess;
 
 class EmployeeModuleSeeder extends Seeder
 {
     public function run(): void
     {
+        // Ensure demo loan users are approved for loan module access.
+        if (Schema::hasTable('user_module_accesses')) {
+            foreach (['admin@loan.com', 'officer@loan.com', 'manager@loan.com', 'applicant@loan.com'] as $email) {
+                $u = User::query()->where('email', $email)->first();
+                if ($u) {
+                    UserModuleAccess::query()->updateOrCreate(
+                        [
+                            'user_id' => $u->id,
+                            'module' => 'loan',
+                        ],
+                        [
+                            'status' => UserModuleAccess::STATUS_APPROVED,
+                            'approved_at' => now(),
+                        ]
+                    );
+                }
+            }
+        }
+
         if (Employee::query()->where('employee_number', 'EMP-1001')->exists()) {
             if ($this->command) {
                 $this->command->info('Employee demo data already present (EMP-1001). Skipping EmployeeModuleSeeder.');

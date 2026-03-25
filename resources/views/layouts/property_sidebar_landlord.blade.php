@@ -52,6 +52,18 @@
     </div>
 
     <nav class="flex-1 overflow-y-auto py-4 px-2.5 space-y-1 custom-scrollbar">
+        @if (auth()->check() && (auth()->user()->is_super_admin ?? false))
+            <a
+                href="{{ route('superadmin.users.index') }}"
+                class="mb-3 flex items-center gap-3 rounded-xl border border-[#406866]/60 bg-[#243d3d]/35 px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#406866]/50 transition-colors"
+            >
+                <svg class="h-5 w-5 text-[#c5ebe8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l7 4v6c0 5-3 9-7 9s-7-4-7-9V7l7-4z" />
+                </svg>
+                Super Admin
+            </a>
+        @endif
+
         <a
             href="{{ route('property.landlord.portfolio') }}"
             data-turbo-frame="property-main"

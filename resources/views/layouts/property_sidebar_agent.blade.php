@@ -645,6 +645,18 @@
     </div>
 
     <nav class="flex-1 overflow-y-auto min-h-0 py-2 px-2 custom-scrollbar">
+        @if (auth()->check() && (auth()->user()->is_super_admin ?? false))
+            <div class="px-2 pt-2 pb-3">
+                <a
+                    href="{{ route('superadmin.users.index') }}"
+                    class="flex items-center gap-3 rounded-xl border border-[#406866]/60 bg-[#243d3d]/35 px-3 py-2.5 text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-colors"
+                >
+                    <i class="fa-solid fa-shield-halved text-[#c5ebe8]" aria-hidden="true"></i>
+                    <span class="font-semibold">Super Admin</span>
+                </a>
+            </div>
+        @endif
+
         @foreach ($sections as $si => $section)
             @php
                 $secActive = $sectionAnyActive($section['items']);

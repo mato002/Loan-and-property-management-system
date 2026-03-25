@@ -13,12 +13,12 @@
             <img
                 src="https://images.unsplash.com/photo-1467269204594-9661b134dd2b?auto=format&fit=crop&w=2200&q=80"
                 alt="Modern property skyline"
-                class="w-full h-full object-cover brightness-[0.5]"
+                class="w-full h-full object-cover brightness-[0.75]"
             >
-            <div class="absolute inset-0 bg-gradient-to-b from-slate-950/90 via-slate-900/85 to-slate-950/90"></div>
+            <div class="absolute inset-0 bg-gradient-to-b from-slate-950/65 via-slate-900/55 to-slate-950/65"></div>
         </div>
         <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-24 text-center">
-            <div class="inline-block max-w-3xl rounded-2xl bg-slate-950/45 px-6 py-5 sm:px-8 sm:py-6 ring-1 ring-white/15 backdrop-blur-[1px]">
+            <div class="inline-block max-w-3xl rounded-2xl bg-slate-950/25 px-6 py-5 sm:px-8 sm:py-6 ring-1 ring-white/20 backdrop-blur-[1px]">
                 <p class="text-sm font-bold uppercase tracking-[0.2em] text-indigo-200 mb-4">Contact {{ $brandName }}</p>
                 <h1 class="text-5xl md:text-6xl font-black text-white tracking-tight mb-6 drop-shadow-[0_4px_14px_rgba(15,23,42,0.95)]">Get in Touch</h1>
                 <p class="text-xl text-slate-100 max-w-2xl mx-auto font-medium drop-shadow-[0_2px_8px_rgba(15,23,42,0.9)]">Have questions about our properties or management services? Our dedicated account managers are here to help.</p>

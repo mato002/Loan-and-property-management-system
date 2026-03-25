@@ -19,7 +19,7 @@ class FinancialsController extends Controller
     public function incomeExpenses(Request $request): View
     {
         [$monthValue, $fyValue, $start, $end, $periodLabel] = $this->resolvePeriod($request);
-0
+
         $income = (float) PmInvoice::query()
             ->whereBetween('issue_date', [$start->toDateString(), $end->toDateString()])
             ->sum('amount');

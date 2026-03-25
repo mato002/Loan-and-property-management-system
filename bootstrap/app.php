@@ -4,6 +4,8 @@ use App\Http\Middleware\ConfigureViteHotRequests;
 use App\Http\Middleware\EnsureActivePropertySystem;
 use App\Http\Middleware\EnsurePropertyPermission;
 use App\Http\Middleware\EnsurePropertyPortalRole;
+use App\Http\Middleware\EnsureModuleAccess;
+use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogLoanPortalAccess;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -27,6 +29,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'property.system' => EnsureActivePropertySystem::class,
             'property.portal' => EnsurePropertyPortalRole::class,
             'property.permission' => EnsurePropertyPermission::class,
+            'module.access' => EnsureModuleAccess::class,
+            'superadmin' => EnsureSuperAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

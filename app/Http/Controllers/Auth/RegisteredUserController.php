@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\UserModuleAccess;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -48,6 +50,20 @@ class RegisteredUserController extends Controller
             'password' => Hash::make($request->password),
             'property_portal_role' => $propertyPortalRole,
         ]);
+
+        // Registration represents initial module approval for the selected system.
+        if (Schema::hasTable('user_module_accesses')) {
+            UserModuleAccess::query()->updateOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'module' => $request->system,
+                ],
+                [
+                    'status' => UserModuleAccess::STATUS_APPROVED,
+                    'approved_at' => now(),
+                ]
+            );
+        }
 
         event(new Registered($user));
 

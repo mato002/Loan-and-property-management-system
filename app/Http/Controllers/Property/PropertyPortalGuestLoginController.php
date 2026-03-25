@@ -73,6 +73,18 @@ class PropertyPortalGuestLoginController extends Controller
             ]);
         }
 
+        // Block property portal access until the user is approved for the property module.
+        if (! $user->isModuleApproved('property')) {
+            Auth::logout();
+
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            throw ValidationException::withMessages([
+                'email' => __('Your account is not approved for Property management access yet.'),
+            ]);
+        }
+
         $request->session()->regenerate();
         $request->session()->put('active_system', 'property');
 

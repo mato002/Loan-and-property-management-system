@@ -29,7 +29,7 @@ use App\Http\Controllers\Property\Tenant\TenantPortalController;
 use App\Http\Controllers\Property\Tenant\TenantWorkspaceFormController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'verified', 'property.system'])->group(function () {
+Route::middleware(['auth', 'verified', 'module.access:property', 'property.system'])->group(function () {
 
     Route::middleware(['property.portal:agent'])->prefix('property')->name('property.')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'commandCenter'])->name('dashboard');

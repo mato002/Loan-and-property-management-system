@@ -28,6 +28,7 @@
             [x-cloak] { display: none !important; }
             .custom-scrollbar::-webkit-scrollbar {
                 width: 6px;
+                height: 6px;
             }
             .custom-scrollbar::-webkit-scrollbar-track {
                 background: transparent;
@@ -38,6 +39,11 @@
             }
             .custom-scrollbar::-webkit-scrollbar-thumb:hover {
                 background: #94a3b8;
+            }
+            /* Firefox */
+            .custom-scrollbar {
+                scrollbar-width: auto;
+                scrollbar-color: #b8c2ce transparent;
             }
         </style>
     </head>

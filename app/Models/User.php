@@ -14,7 +14,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Schema;
 
-#[Fillable(['name', 'email', 'password', 'property_portal_role'])]
+#[Fillable(['name', 'email', 'password', 'property_portal_role', 'is_super_admin'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -65,8 +65,69 @@ class User extends Authenticatable
             ->withTimestamps();
     }
 
+    public function moduleAccesses(): HasMany
+    {
+        return $this->hasMany(UserModuleAccess::class, 'user_id');
+    }
+
+    /**
+     * @return list<string> modules the user is approved for (e.g. ['property', 'loan'])
+     */
+    public function approvedModules(): array
+    {
+        if (($this->is_super_admin ?? false) === true) {
+            return ['property', 'loan'];
+        }
+
+        if (! Schema::hasTable('user_module_accesses')) {
+            // Legacy-safe: before migrations, infer module from existing field.
+            // Property users have `property_portal_role` set; loan users typically do not.
+            return $this->property_portal_role ? ['property'] : ['loan'];
+        }
+
+        return $this->moduleAccesses()
+            ->where('status', UserModuleAccess::STATUS_APPROVED)
+            ->pluck('module')
+            ->all();
+    }
+
+    public function moduleAccessStatus(string $module): ?string
+    {
+        if (! Schema::hasTable('user_module_accesses')) {
+            return null;
+        }
+
+        return $this->moduleAccesses()
+            ->where('module', $module)
+            ->value('status');
+    }
+
+    public function isModuleApproved(string $module): bool
+    {
+        if (($this->is_super_admin ?? false) === true) {
+            return true;
+        }
+
+        if (! Schema::hasTable('user_module_accesses')) {
+            return match ($module) {
+                'property' => (bool) ($this->property_portal_role ?? null),
+                'loan' => ! (bool) ($this->property_portal_role ?? null),
+                default => true,
+            };
+        }
+
+        return $this->moduleAccesses()
+            ->where('module', $module)
+            ->where('status', UserModuleAccess::STATUS_APPROVED)
+            ->exists();
+    }
+
     public function hasPmPermission(string $permissionKey): bool
     {
+        if (($this->is_super_admin ?? false) === true) {
+            return true;
+        }
+
         if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_permissions') || ! Schema::hasTable('pm_user_role')) {
             return true; // Legacy-safe until RBAC tables are migrated.
         }
@@ -97,6 +158,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_super_admin' => 'boolean',
         ];
     }
 }

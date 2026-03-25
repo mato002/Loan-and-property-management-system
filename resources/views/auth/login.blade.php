@@ -2,7 +2,7 @@
     @php
         $emailErr = $errors->first('email');
         $passErr = $errors->first('password');
-        $sysErr = $errors->first('system');
+        $moduleErr = $errors->first('module');
     @endphp
 
     <div class="mb-8 flex items-center justify-between gap-4">
@@ -28,6 +28,12 @@
         {{ __('Access property and loan staff portals with your work email.') }}
     </p>
 
+    @if ($moduleErr)
+        <div class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {{ $moduleErr }}
+        </div>
+    @endif
+
     <p class="mt-4 text-xs leading-relaxed text-slate-500">
         {{ __('Renting or owning through us?') }}
         <a href="{{ route('property.tenant.login') }}" class="font-semibold text-[#3B59FF] hover:underline">{{ __('Tenant sign-in') }}</a>
@@ -37,30 +43,6 @@
 
     <form method="POST" action="{{ route('login') }}" class="mt-10 space-y-6" x-data="{ showPassword: false }">
         @csrf
-
-        <div class="space-y-1">
-            <label for="system" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('System') }}</label>
-            <div class="flex items-center gap-3 border-b border-slate-200 pb-2.5 transition-colors focus-within:border-[#3B59FF] {{ $sysErr ? '!border-red-400' : '' }}">
-                <span class="text-slate-400" aria-hidden="true">
-                    <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5 3v18m15-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6.75H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
-                    </svg>
-                </span>
-                <select
-                    id="system"
-                    name="system"
-                    required
-                    autofocus
-                    class="min-w-0 flex-1 cursor-pointer border-0 bg-transparent p-0 text-base text-slate-900 focus:ring-0"
-                >
-                    <option value="property" @selected(old('system', 'property') == 'property')>{{ __('Property management (agents)') }}</option>
-                    <option value="loan" @selected(old('system', 'property') == 'loan')>{{ __('Loan management') }}</option>
-                </select>
-            </div>
-            @if ($sysErr)
-                <p class="text-xs text-red-600">{{ $sysErr }}</p>
-            @endif
-        </div>
 
         <x-auth.field-underline
             label="{{ __('Email') }}"

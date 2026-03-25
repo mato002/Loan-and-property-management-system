@@ -20,6 +20,8 @@ use App\Http\Controllers\Loan\LoanSystemHelpController;
 use App\Http\Controllers\Property\PropertyPaymentWebhookController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicController;
+use App\Http\Controllers\Auth\ChooseModuleController;
+use App\Http\Controllers\SuperAdmin\SuperAdminUserController;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
 use Illuminate\Support\Facades\Route;
 
@@ -56,7 +58,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return redirect()->route('loan.dashboard');
     })->name('dashboard');
 
-    Route::get('/loan/dashboard', [LoanDashboardController::class, 'index'])->name('loan.dashboard');
+    Route::get('/choose-module', [ChooseModuleController::class, 'show'])
+        ->name('choose_module');
+
+    Route::post('/choose-module/{module}', [ChooseModuleController::class, 'activate'])
+        ->whereIn('module', ['property', 'loan'])
+        ->name('choose_module.activate');
+
+    Route::middleware('superadmin')->prefix('superadmin')->name('superadmin.')->group(function () {
+        Route::get('/users', [SuperAdminUserController::class, 'index'])->name('users.index');
+        Route::get('/users/create', [SuperAdminUserController::class, 'create'])->name('users.create');
+        Route::post('/users', [SuperAdminUserController::class, 'store'])->name('users.store');
+        Route::get('/users/{user}/edit', [SuperAdminUserController::class, 'edit'])->name('users.edit');
+        Route::put('/users/{user}', [SuperAdminUserController::class, 'update'])->name('users.update');
+    });
+
+    Route::middleware('module.access:loan')->group(function () {
+        Route::get('/loan/dashboard', [LoanDashboardController::class, 'index'])->name('loan.dashboard');
 
     Route::prefix('loan/financial')->name('loan.financial.')->group(function () {
         Route::get('/mpesa-platform', [LoanFinancialController::class, 'mpesaPlatform'])->name('mpesa_platform');
@@ -488,6 +506,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('form_setup.page.save');
 
         Route::get('/access-logs', [LoanSystemHelpController::class, 'accessLogsIndex'])->name('access_logs.index');
+    });
     });
 });
 

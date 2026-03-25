@@ -5,7 +5,7 @@
         $contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '0717018779';
     @endphp
 
-    <section class="relative border-b border-gray-200 py-20 sm:py-24 overflow-hidden">
+    <section class="relative border-b border-gray-200 py-16 sm:py-20 overflow-hidden">
         <div class="absolute inset-0">
             <img
                 src="https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=2400&q=80"
@@ -14,12 +14,12 @@
             >
             <div class="absolute inset-0 bg-slate-900/70"></div>
         </div>
-        <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
-            <div class="max-w-4xl">
-                <p class="text-indigo-300 text-sm font-semibold uppercase tracking-[0.16em]">About us</p>
-                <h1 class="mt-3 text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white">{{ $brandName }}</h1>
-                <p class="mt-4 text-lg sm:text-xl text-slate-200 font-medium">Relax, we got you.</p>
-                <p class="mt-5 text-base sm:text-lg leading-relaxed text-slate-100/95 max-w-3xl">
+        <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 min-h-[440px] flex items-center justify-center">
+            <div class="max-w-5xl text-center rounded-3xl bg-slate-950/35 backdrop-blur-[2px] px-6 py-10 sm:px-10 sm:py-12 border border-white/10 shadow-[0_20px_60px_rgba(2,6,23,0.45)]">
+                <p class="text-gray-200 text-xs sm:text-sm font-semibold uppercase tracking-[0.24em] drop-shadow-[0_2px_8px_rgba(15,23,42,0.7)]">About us</p>
+                <h1 class="mt-4 text-5xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white leading-[0.95] drop-shadow-[0_6px_20px_rgba(15,23,42,0.95)]">{{ $brandName }}</h1>
+                <p class="mt-5 text-xl sm:text-2xl text-gray-200 font-semibold drop-shadow-[0_2px_8px_rgba(15,23,42,0.85)]">Relax, we got you.</p>
+                <p class="mt-6 text-lg sm:text-xl leading-relaxed text-white max-w-4xl mx-auto drop-shadow-[0_3px_10px_rgba(15,23,42,0.95)]">
                     We specialize in hands-free rental management for busy landlords. From rent collection to tenant follow-ups,
                     our team ensures your property works for you with less stress and consistent reporting.
                 </p>

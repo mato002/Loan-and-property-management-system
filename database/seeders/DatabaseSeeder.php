@@ -19,6 +19,16 @@ class DatabaseSeeder extends Seeder
         $password = Hash::make('password');
 
         User::query()->firstOrCreate(
+            ['email' => 'superadmin@system.com'],
+            [
+                'name' => 'Super Administrator',
+                'password' => $password,
+                'email_verified_at' => now(),
+                'is_super_admin' => true,
+            ]
+        );
+
+        User::query()->firstOrCreate(
             ['email' => 'admin@loan.com'],
             [
                 'name' => 'Loan Administrator',

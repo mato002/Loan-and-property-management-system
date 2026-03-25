@@ -25,12 +25,41 @@ class AuthenticatedSessionController extends Controller
     public function store(LoginRequest $request): RedirectResponse
     {
         $request->authenticate();
+        $user = $request->user();
 
-        $request->session()->put('active_system', $request->system);
+        if (($user->is_super_admin ?? false) === true) {
+            $request->session()->forget(['active_system', 'url.intended']);
+            $request->session()->regenerate();
 
+            return redirect()->route('superadmin.users.index');
+        }
+
+        $approvedModules = $user?->approvedModules() ?? [];
+
+        // Ensure users don't keep a previous module selection or stale intended redirects.
+        $request->session()->forget(['active_system', 'url.intended']);
+
+        if (count($approvedModules) === 0) {
+            return redirect()->route('login')
+                ->withErrors([
+                    'module' => 'Your account is not approved for Property or Loan module access yet.',
+                ])
+                ->withInput($request->only('email'));
+        }
+
+        // Auto-redirect if only one module is approved.
+        if (count($approvedModules) === 1) {
+            $request->session()->put('active_system', $approvedModules[0]);
+            $request->session()->regenerate();
+
+            // Don't use intended here; it may point to a route in the other (unapproved) module.
+            return redirect()->route('dashboard');
+        }
+
+        // If both modules are approved, ask which module to enter next.
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        return redirect()->route('choose_module');
     }
 
     /**
@@ -44,6 +73,6 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerateToken();
 
-        return redirect('/');
+        return redirect()->route('login');
     }
 }

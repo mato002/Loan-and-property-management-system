@@ -19,6 +19,7 @@ use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\PropertyUnitPublicImage;
 use App\Models\User;
+use App\Models\UserModuleAccess;
 use App\Services\Property\LandlordLedger;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -37,7 +38,7 @@ class PropertyModuleDemoSeeder extends Seeder
     {
         $password = Hash::make('password');
 
-        User::query()->firstOrCreate(
+        $agentUser = User::query()->firstOrCreate(
             ['email' => 'agent@property.demo'],
             [
                 'name' => 'Demo Agent',
@@ -76,6 +77,22 @@ class PropertyModuleDemoSeeder extends Seeder
                 'property_portal_role' => 'tenant',
             ],
         );
+
+        // Ensure these demo users are approved for property module access.
+        if (Schema::hasTable('user_module_accesses')) {
+            foreach ([$agentUser, $landlord, $landlordCo, $tenantUser] as $u) {
+                UserModuleAccess::query()->updateOrCreate(
+                    [
+                        'user_id' => $u->id,
+                        'module' => 'property',
+                    ],
+                    [
+                        'status' => UserModuleAccess::STATUS_APPROVED,
+                        'approved_at' => now(),
+                    ]
+                );
+            }
+        }
 
         $property = Property::query()->updateOrCreate(
             ['code' => 'DEMO-001'],

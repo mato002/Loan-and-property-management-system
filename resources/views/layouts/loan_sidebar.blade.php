@@ -33,6 +33,17 @@
             </a>
         </div>
 
+        @if (auth()->check() && (auth()->user()->is_super_admin ?? false))
+            <div>
+                <a href="{{ route('superadmin.users.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-white/10 hover:text-white transition-all font-medium group">
+                    <svg class="w-5 h-5 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m2 10H7a2 2 0 01-2-2V6a2 2 0 012-2h6l4 4v12a2 2 0 01-2 2z" />
+                    </svg>
+                    Super Admin
+                </a>
+            </div>
+        @endif
+
         @php
             $menu = [
                 'Employees' => [
