@@ -13,11 +13,13 @@ use App\Models\AccountingSalaryAdvance;
 use App\Models\AccountingUtilityPayment;
 use App\Models\AccountingWalletSlotSetting;
 use App\Models\Employee;
+use App\Support\TabularExport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
+use Carbon\Carbon;
 
 class LoanAccountingController extends Controller
 {
@@ -50,11 +52,42 @@ class LoanAccountingController extends Controller
         ];
     }
 
-    public function chartIndex(): View
+    public function chartIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $accounts = AccountingChartAccount::query()
-            ->orderBy('code')
-            ->get();
+        $export = request()->string('export')->toString();
+        $q = request()->string('q')->toString();
+        $active = request()->string('active')->toString(); // '', '1', '0'
+
+        $accountsQuery = AccountingChartAccount::query();
+        if ($active === '1') {
+            $accountsQuery->where('is_active', true);
+        } elseif ($active === '0') {
+            $accountsQuery->where('is_active', false);
+        }
+        if ($q !== '') {
+            $accountsQuery->where(function ($qq) use ($q) {
+                $qq->where('code', 'like', '%'.$q.'%')
+                    ->orWhere('name', 'like', '%'.$q.'%');
+            });
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('chart-of-accounts', [
+                'Code', 'Name', 'Type', 'Active', 'Cash Account',
+            ], function () use ($accountsQuery) {
+                return $accountsQuery->orderBy('code')->get()->map(function (AccountingChartAccount $a) {
+                    return [
+                        (string) ($a->code ?? ''),
+                        (string) ($a->name ?? ''),
+                        (string) ($a->account_type ?? ''),
+                        $a->is_active ? 'yes' : 'no',
+                        $a->is_cash_account ? 'yes' : 'no',
+                    ];
+                });
+            }, $export);
+        }
+
+        $accounts = $accountsQuery->orderBy('code')->get();
 
         $accountsByType = $accounts->groupBy('account_type');
 
@@ -94,7 +127,9 @@ class LoanAccountingController extends Controller
             'selectAccounts',
             'walletSlots',
             'postingRules',
-            'chartOverview'
+            'chartOverview',
+            'q',
+            'active'
         ));
     }
 
@@ -260,16 +295,52 @@ class LoanAccountingController extends Controller
 
     /* ---------- Journal entries ---------- */
 
-    public function journalIndex(): View
+    public function journalIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $entries = AccountingJournalEntry::query()
-            ->with('createdByUser')
-            ->withCount('lines')
-            ->orderByDesc('entry_date')
-            ->orderByDesc('id')
-            ->paginate(20);
+        $from = request()->string('from')->toString();
+        $to = request()->string('to')->toString();
+        $reference = request()->string('reference')->toString();
+        $createdBy = request()->integer('created_by');
+        $export = request()->string('export')->toString();
 
-        return view('loan.accounting.journal.index', compact('entries'));
+        $q = AccountingJournalEntry::query()
+            ->with('createdByUser')
+            ->withCount('lines');
+
+        if ($from !== '') {
+            $q->where('entry_date', '>=', $from);
+        }
+        if ($to !== '') {
+            $q->where('entry_date', '<=', $to);
+        }
+        if ($reference !== '') {
+            $q->where('reference', 'like', '%'.$reference.'%');
+        }
+        if ($createdBy) {
+            $q->where('created_by', $createdBy);
+        }
+
+        $q->orderByDesc('entry_date')->orderByDesc('id');
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('journal-entries', [
+                'Entry Date', 'Reference', 'Description', 'Lines', 'Created By',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingJournalEntry $e) {
+                    return [
+                        optional($e->entry_date)->format('Y-m-d'),
+                        (string) ($e->reference ?? ''),
+                        (string) ($e->description ?? ''),
+                        (int) ($e->lines_count ?? 0),
+                        (string) ($e->createdByUser?->name ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $entries = $q->paginate(20)->withQueryString();
+
+        return view('loan.accounting.journal.index', compact('entries', 'from', 'to', 'reference', 'createdBy'));
     }
 
     public function journalCreate(): View
@@ -294,7 +365,7 @@ class LoanAccountingController extends Controller
             'entry_date' => ['required', 'date'],
             'reference' => ['nullable', 'string', 'max:64'],
             'description' => ['nullable', 'string', 'max:2000'],
-            'lines' => ['required', 'array', 'min:2'],
+            'lines' => ['required', 'array', 'min:1'],
             'lines.*.accounting_chart_account_id' => ['required', 'exists:accounting_chart_accounts,id'],
             'lines.*.debit' => ['nullable', 'numeric', 'min:0'],
             'lines.*.credit' => ['nullable', 'numeric', 'min:0'],
@@ -306,7 +377,10 @@ class LoanAccountingController extends Controller
             $d = round((float) ($line['debit'] ?? 0), 2);
             $c = round((float) ($line['credit'] ?? 0), 2);
             if ($d > 0 && $c > 0) {
-                return back()->withErrors(['lines.'.$i => 'Each line must be either a debit or a credit, not both.'])->withInput();
+                // allow a single-line "self-balanced" entry (or any line) only when debit equals credit
+                if ($d !== $c) {
+                    return back()->withErrors(['lines.'.$i => 'Each line must be either a debit or a credit (or have equal debit and credit).'])->withInput();
+                }
             }
             if ($d <= 0 && $c <= 0) {
                 return back()->withErrors(['lines.'.$i => 'Each line needs a debit or credit amount.'])->withInput();
@@ -340,9 +414,26 @@ class LoanAccountingController extends Controller
         return redirect()->route('loan.accounting.journal.index')->with('status', 'Journal entry posted.');
     }
 
-    public function journalShow(AccountingJournalEntry $accounting_journal_entry): View
+    public function journalShow(AccountingJournalEntry $accounting_journal_entry): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         $accounting_journal_entry->load(['lines.account', 'createdByUser']);
+
+        $export = request()->string('export')->toString();
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('journal-entry-'.$accounting_journal_entry->id, [
+                'Account Code', 'Account Name', 'Debit', 'Credit', 'Memo',
+            ], function () use ($accounting_journal_entry) {
+                return $accounting_journal_entry->lines->map(function (AccountingJournalLine $line) {
+                    return [
+                        (string) ($line->account?->code ?? ''),
+                        (string) ($line->account?->name ?? ''),
+                        (string) ($line->debit ?? ''),
+                        (string) ($line->credit ?? ''),
+                        (string) ($line->memo ?? ''),
+                    ];
+                });
+            }, $export);
+        }
 
         return view('loan.accounting.journal.show', ['entry' => $accounting_journal_entry]);
     }
@@ -356,8 +447,9 @@ class LoanAccountingController extends Controller
 
     /* ---------- Ledger ---------- */
 
-    public function ledger(Request $request): View
+    public function ledger(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
+        $export = $request->string('export')->toString();
         $accounts = AccountingChartAccount::query()->where('is_active', true)->orderBy('code')->get();
 
         $accountId = $request->integer('account_id');
@@ -400,19 +492,109 @@ class LoanAccountingController extends Controller
             }
         }
 
+        if (in_array($export, ['csv', 'pdf', 'word'], true) && $account) {
+            return TabularExport::stream('ledger-'.$account->code.'-'.$from.'-to-'.$to, [
+                'Account Code', 'Account Name', 'From', 'To', 'Opening', 'Closing',
+                'Entry Date', 'Journal ID', 'Reference', 'Debit', 'Credit', 'Memo',
+            ], function () use ($account, $from, $to, $opening, $closing, $lines) {
+                $headerRow = [[
+                    (string) ($account->code ?? ''),
+                    (string) ($account->name ?? ''),
+                    (string) $from,
+                    (string) $to,
+                    (string) number_format((float) $opening, 2, '.', ''),
+                    (string) number_format((float) $closing, 2, '.', ''),
+                    '', '', '', '', '', '',
+                ]];
+
+                $detail = $lines->map(function (AccountingJournalLine $line) {
+                    return [
+                        '', '', '', '', '', '',
+                        optional($line->entry?->entry_date)->format('Y-m-d'),
+                        (string) ($line->entry?->id ?? ''),
+                        (string) ($line->entry?->reference ?? ''),
+                        (string) ($line->debit ?? ''),
+                        (string) ($line->credit ?? ''),
+                        (string) ($line->memo ?? ''),
+                    ];
+                });
+
+                return collect($headerRow)->concat($detail);
+            }, $export);
+        }
+
         return view('loan.accounting.ledger', compact('accounts', 'account', 'lines', 'from', 'to', 'opening', 'closing'));
     }
 
     /* ---------- Requisitions ---------- */
 
-    public function requisitionsIndex(): View
+    public function requisitionsIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $rows = AccountingRequisition::query()
-            ->with(['requestedByUser', 'approvedByUser'])
-            ->orderByDesc('created_at')
-            ->paginate(20);
+        $status = request()->string('status')->toString();
+        $month = request()->string('month')->toString(); // YYYY-MM
+        $export = request()->string('export')->toString();
 
-        return view('loan.accounting.requisitions.index', compact('rows'));
+        $baseQuery = AccountingRequisition::query()
+            ->with(['requestedByUser', 'approvedByUser']);
+
+        if ($status !== '' && in_array($status, [
+            AccountingRequisition::STATUS_PENDING,
+            AccountingRequisition::STATUS_APPROVED,
+            AccountingRequisition::STATUS_REJECTED,
+            AccountingRequisition::STATUS_PAID,
+        ], true)) {
+            $baseQuery->where('status', $status);
+        }
+
+        if ($month !== '') {
+            try {
+                $m = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+                $baseQuery->whereBetween('created_at', [$m, $m->copy()->endOfMonth()]);
+            } catch (\Throwable $e) {
+                // ignore invalid month filter
+            }
+        }
+
+        $ordered = (clone $baseQuery)->orderByDesc('created_at');
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('requisitions', [
+                'Reference', 'Title', 'Purpose', 'Amount', 'Currency', 'Status', 'Requested By', 'Approved By', 'Created At',
+            ], function () use ($ordered) {
+                return $ordered->get()->map(function (AccountingRequisition $r) {
+                    return [
+                        (string) ($r->reference ?? ''),
+                        (string) ($r->title ?? ''),
+                        (string) ($r->purpose ?? ''),
+                        (string) $r->amount,
+                        (string) ($r->currency ?? ''),
+                        (string) ($r->status ?? ''),
+                        (string) ($r->requestedByUser?->name ?? ''),
+                        (string) ($r->approvedByUser?->name ?? ''),
+                        optional($r->created_at)->toDateTimeString(),
+                    ];
+                });
+            }, $export);
+        }
+
+        $rows = $ordered->paginate(20)->withQueryString();
+
+        $availableMonths = AccountingRequisition::query()
+            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as ym")
+            ->groupBy('ym')
+            ->orderByDesc('ym')
+            ->pluck('ym')
+            ->values();
+
+        $statusOptions = [
+            '' => 'All',
+            AccountingRequisition::STATUS_PENDING => 'Pending',
+            AccountingRequisition::STATUS_APPROVED => 'Approved',
+            AccountingRequisition::STATUS_REJECTED => 'Rejected',
+            AccountingRequisition::STATUS_PAID => 'Paid',
+        ];
+
+        return view('loan.accounting.requisitions.index', compact('rows', 'availableMonths', 'statusOptions', 'status', 'month'));
     }
 
     public function requisitionsCreate(): View
@@ -520,15 +702,74 @@ class LoanAccountingController extends Controller
 
     /* ---------- Utility payments ---------- */
 
-    public function utilitiesIndex(): View
+    public function utilitiesIndex(): \Illuminate\View\View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $rows = AccountingUtilityPayment::query()
+        $type = request()->string('utility_type')->toString();
+        $from = request()->string('from')->toString();
+        $to = request()->string('to')->toString();
+        $provider = request()->string('provider')->toString();
+        $method = request()->string('payment_method')->toString();
+        $export = request()->string('export')->toString();
+
+        $q = AccountingUtilityPayment::query()
             ->with('recordedByUser')
             ->orderByDesc('paid_on')
-            ->orderByDesc('id')
-            ->paginate(20);
+            ->orderByDesc('id');
 
-        return view('loan.accounting.utilities.index', compact('rows'));
+        if ($type !== '') {
+            $q->where('utility_type', $type);
+        }
+        if ($provider !== '') {
+            $q->where('provider', 'like', '%'.$provider.'%');
+        }
+        if ($method !== '') {
+            $q->where('payment_method', $method);
+        }
+        if ($from !== '') {
+            $q->where('paid_on', '>=', $from);
+        }
+        if ($to !== '') {
+            $q->where('paid_on', '<=', $to);
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('utility-payments', [
+                'Type', 'Provider', 'Bill Ref', 'Paid On', 'Amount', 'Currency', 'Method', 'Reference', 'Recorded By', 'Notes',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingUtilityPayment $r) {
+                    return [
+                        (string) ($r->utility_type ?? ''),
+                        (string) ($r->provider ?? ''),
+                        (string) ($r->bill_account_ref ?? ''),
+                        optional($r->paid_on)->format('Y-m-d'),
+                        (string) $r->amount,
+                        (string) ($r->currency ?? ''),
+                        (string) ($r->payment_method ?? ''),
+                        (string) ($r->reference ?? ''),
+                        (string) ($r->recordedByUser?->name ?? ''),
+                        (string) ($r->notes ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $rows = $q->paginate(20)->withQueryString();
+
+        $utilityTypes = AccountingUtilityPayment::query()
+            ->select('utility_type')
+            ->distinct()
+            ->orderBy('utility_type')
+            ->pluck('utility_type')
+            ->values();
+
+        $paymentMethods = AccountingUtilityPayment::query()
+            ->select('payment_method')
+            ->distinct()
+            ->orderBy('payment_method')
+            ->pluck('payment_method')
+            ->values();
+
+        return view('loan.accounting.utilities.index', compact('rows', 'type', 'from', 'to', 'provider', 'method', 'utilityTypes', 'paymentMethods'));
     }
 
     public function utilitiesCreate(): View
@@ -592,13 +833,54 @@ class LoanAccountingController extends Controller
 
     /* ---------- Petty cash ---------- */
 
-    public function pettyIndex(): View
+    public function pettyIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $rows = AccountingPettyCashEntry::query()
+        $kind = request()->string('kind')->toString();
+        $from = request()->string('from')->toString();
+        $to = request()->string('to')->toString();
+        $search = request()->string('q')->toString();
+        $export = request()->string('export')->toString();
+
+        $q = AccountingPettyCashEntry::query()
             ->with('recordedByUser')
             ->orderByDesc('entry_date')
             ->orderByDesc('id')
-            ->paginate(25);
+            ;
+
+        if ($kind !== '' && in_array($kind, [AccountingPettyCashEntry::KIND_RECEIPT, AccountingPettyCashEntry::KIND_DISBURSEMENT], true)) {
+            $q->where('kind', $kind);
+        }
+        if ($from !== '') {
+            $q->where('entry_date', '>=', $from);
+        }
+        if ($to !== '') {
+            $q->where('entry_date', '<=', $to);
+        }
+        if ($search !== '') {
+            $q->where(function ($qq) use ($search) {
+                $qq->where('payee_or_source', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%');
+            });
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('petty-cash', [
+                'Entry Date', 'Kind', 'Amount', 'Payee/Source', 'Description', 'Recorded By',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingPettyCashEntry $r) {
+                    return [
+                        optional($r->entry_date)->format('Y-m-d'),
+                        (string) ($r->kind ?? ''),
+                        (string) $r->amount,
+                        (string) ($r->payee_or_source ?? ''),
+                        (string) ($r->description ?? ''),
+                        (string) ($r->recordedByUser?->name ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $rows = $q->paginate(25)->withQueryString();
 
         $balance = (float) AccountingPettyCashEntry::query()
             ->where('kind', AccountingPettyCashEntry::KIND_RECEIPT)
@@ -607,7 +889,7 @@ class LoanAccountingController extends Controller
                 ->where('kind', AccountingPettyCashEntry::KIND_DISBURSEMENT)
                 ->sum('amount');
 
-        return view('loan.accounting.petty.index', compact('rows', 'balance'));
+        return view('loan.accounting.petty.index', compact('rows', 'balance', 'kind', 'from', 'to', 'search'));
     }
 
     public function pettyCreate(): View
@@ -662,15 +944,61 @@ class LoanAccountingController extends Controller
 
     /* ---------- Salary advances ---------- */
 
-    public function advancesIndex(): View
+    public function advancesIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $rows = AccountingSalaryAdvance::query()
+        $status = request()->string('status')->toString();
+        $from = request()->string('from')->toString();
+        $to = request()->string('to')->toString();
+        $employeeId = request()->integer('employee_id');
+        $export = request()->string('export')->toString();
+
+        $q = AccountingSalaryAdvance::query()
             ->with(['employee', 'approvedByUser'])
             ->orderByDesc('requested_on')
-            ->orderByDesc('id')
-            ->paginate(20);
+            ->orderByDesc('id');
 
-        return view('loan.accounting.advances.index', compact('rows'));
+        if ($status !== '' && in_array($status, [
+            AccountingSalaryAdvance::STATUS_PENDING,
+            AccountingSalaryAdvance::STATUS_APPROVED,
+            AccountingSalaryAdvance::STATUS_REJECTED,
+            AccountingSalaryAdvance::STATUS_SETTLED,
+        ], true)) {
+            $q->where('status', $status);
+        }
+        if ($from !== '') {
+            $q->where('requested_on', '>=', $from);
+        }
+        if ($to !== '') {
+            $q->where('requested_on', '<=', $to);
+        }
+        if ($employeeId) {
+            $q->where('employee_id', $employeeId);
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('salary-advances', [
+                'Employee', 'Employee No', 'Requested On', 'Amount', 'Currency', 'Status', 'Approved By', 'Notes',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingSalaryAdvance $r) {
+                    return [
+                        (string) ($r->employee?->full_name ?? ''),
+                        (string) ($r->employee?->employee_number ?? ''),
+                        optional($r->requested_on)->format('Y-m-d'),
+                        (string) $r->amount,
+                        (string) ($r->currency ?? ''),
+                        (string) ($r->status ?? ''),
+                        (string) ($r->approvedByUser?->name ?? ''),
+                        (string) ($r->notes ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $rows = $q->paginate(20)->withQueryString();
+
+        $employees = Employee::query()->orderBy('first_name')->orderBy('last_name')->get(['id', 'first_name', 'last_name', 'employee_number']);
+
+        return view('loan.accounting.advances.index', compact('rows', 'status', 'from', 'to', 'employeeId', 'employees'));
     }
 
     public function advancesCreate(): View
@@ -687,6 +1015,7 @@ class LoanAccountingController extends Controller
             'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'max:8'],
             'requested_on' => ['required', 'date'],
+            'reason_for_request' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -717,6 +1046,7 @@ class LoanAccountingController extends Controller
             'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'max:8'],
             'requested_on' => ['required', 'date'],
+            'reason_for_request' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -738,9 +1068,14 @@ class LoanAccountingController extends Controller
     public function advancesApprove(Request $request, AccountingSalaryAdvance $accounting_salary_advance): RedirectResponse
     {
         abort_unless($accounting_salary_advance->status === AccountingSalaryAdvance::STATUS_PENDING, 403);
+        $validated = $request->validate([
+            'approved_amount' => ['nullable', 'numeric', 'min:0.01'],
+        ]);
         $accounting_salary_advance->update([
             'status' => AccountingSalaryAdvance::STATUS_APPROVED,
             'approved_by' => $request->user()->id,
+            'approved_amount' => $validated['approved_amount'] ?? $accounting_salary_advance->amount,
+            'approved_at' => now(),
         ]);
 
         return redirect()->back()->with('status', 'Advance approved.');

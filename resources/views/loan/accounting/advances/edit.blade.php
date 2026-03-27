@@ -32,6 +32,11 @@
                     @error('requested_on')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
+                    <label for="reason_for_request" class="block text-xs font-semibold text-slate-600 mb-1">Reason for request</label>
+                    <input id="reason_for_request" name="reason_for_request" value="{{ old('reason_for_request', $row->reason_for_request) }}" maxlength="500" class="w-full rounded-lg border-slate-200 text-sm" />
+                    @error('reason_for_request')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
                     <label for="notes" class="block text-xs font-semibold text-slate-600 mb-1">Notes</label>
                     <textarea id="notes" name="notes" rows="2" class="w-full rounded-lg border-slate-200 text-sm">{{ old('notes', $row->notes) }}</textarea>
                     @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

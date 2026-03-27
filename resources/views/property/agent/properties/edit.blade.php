@@ -55,7 +55,13 @@
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save changes</button>
             </form>
 
-            <form method="post" action="{{ route('property.properties.landlords.attach') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
+            <form
+                method="post"
+                action="{{ route('property.properties.landlords.attach') }}"
+                data-turbo-frame="property-main"
+                data-turbo="false"
+                class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3"
+            >
                 @csrf
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Link landlord</h3>
                 <input type="hidden" name="property_id" value="{{ $property->id }}" />
@@ -95,7 +101,13 @@
                         <td class="px-3 sm:px-4 py-3">{{ $u->name }}</td>
                         <td class="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-300">{{ $u->email }}</td>
                         <td class="px-3 sm:px-4 py-3">
-                            <form method="post" action="{{ route('property.properties.landlords.ownership') }}" class="flex flex-wrap items-center gap-2">
+                        <form
+                            method="post"
+                            action="{{ route('property.properties.landlords.ownership') }}"
+                            data-turbo-frame="property-main"
+                            data-turbo="false"
+                            class="flex flex-wrap items-center gap-2"
+                        >
                                 @csrf
                                 <input type="hidden" name="property_id" value="{{ $property->id }}" />
                                 <input type="hidden" name="user_id" value="{{ $u->id }}" />
@@ -104,7 +116,15 @@
                             </form>
                         </td>
                         <td class="px-3 sm:px-4 py-3">
-                            <form method="post" action="{{ route('property.properties.landlords.detach') }}" data-swal-title="Detach landlord?" data-swal-confirm="Unlink this landlord from the property?" data-swal-confirm-text="Yes, detach">
+                            <form
+                                method="post"
+                                action="{{ route('property.properties.landlords.detach') }}"
+                                data-turbo-frame="property-main"
+                                data-turbo="false"
+                                data-swal-title="Detach landlord?"
+                                data-swal-confirm="Unlink this landlord from the property?"
+                                data-swal-confirm-text="Yes, detach"
+                            >
                                 @csrf
                                 <input type="hidden" name="property_id" value="{{ $property->id }}" />
                                 <input type="hidden" name="user_id" value="{{ $u->id }}" />

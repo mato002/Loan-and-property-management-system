@@ -24,7 +24,9 @@
 
     <x-slot name="toolbar">
         <a
-            href="{{ route('property.listings.create') }}"
+            href="{{ route('property.listings.create', absolute: false) }}"
+            data-turbo-frame="property-main"
+            data-property-nav="property.listings.create"
             class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
         >
             Setup a listing
@@ -92,7 +94,7 @@
                             @endif
                         </td>
                         <td class="px-3 sm:px-4 py-3">
-                            <a href="{{ route('property.listings.vacant.public.edit', $u) }}" class="text-blue-600 dark:text-blue-400 font-medium hover:underline">Photos &amp; publish</a>
+                            <a href="{{ route('property.listings.vacant.public.edit', $u, absolute: false) }}" data-turbo-frame="property-main" data-property-nav="property.listings.vacant.public.edit" class="text-blue-600 dark:text-blue-400 font-medium hover:underline">Photos &amp; publish</a>
                         </td>
                     </tr>
                 @empty

@@ -14,7 +14,8 @@
 
     <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div class="bg-white rounded-[2rem] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.06)] overflow-hidden">
-            <form action="{{ route('public.thank_you') }}" method="GET">
+            <form action="{{ route('public.apply.store') }}" method="POST">
+                @csrf
                 <div class="px-8 py-10 space-y-8">
                     <div>
                         <h3 class="text-2xl font-black text-gray-900 border-b border-gray-100 pb-4 mb-6">Quick Application</h3>
@@ -27,6 +28,10 @@
                             <div class="md:col-span-2">
                                 <label for="phone" class="block text-sm font-bold text-gray-700 mb-2">Phone Number</label>
                                 <input id="phone" name="phone" type="tel" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="e.g. 07XXXXXXXX" required>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label for="email" class="block text-sm font-bold text-gray-700 mb-2">Email <span class="text-gray-400 font-medium">(Optional)</span></label>
+                                <input id="email" name="email" type="email" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="name@example.com">
                             </div>
 
                             @if ($applyUnit ?? null)

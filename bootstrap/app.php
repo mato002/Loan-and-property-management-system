@@ -5,6 +5,7 @@ use App\Http\Middleware\EnsureActivePropertySystem;
 use App\Http\Middleware\EnsurePropertyPermission;
 use App\Http\Middleware\EnsurePropertyPortalRole;
 use App\Http\Middleware\EnsureModuleAccess;
+use App\Http\Middleware\EnsureLoanRole;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\LogLoanPortalAccess;
 use Illuminate\Foundation\Application;
@@ -30,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'property.portal' => EnsurePropertyPortalRole::class,
             'property.permission' => EnsurePropertyPermission::class,
             'module.access' => EnsureModuleAccess::class,
+            'loan.role' => EnsureLoanRole::class,
             'superadmin' => EnsureSuperAdmin::class,
         ]);
     })

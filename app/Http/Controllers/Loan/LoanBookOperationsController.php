@@ -9,6 +9,7 @@ use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookCollectionRate;
 use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookLoan;
+use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -62,6 +63,8 @@ class LoanBookOperationsController extends Controller
                 $disbursement->load('loan');
                 $entry = app(LoanBookGlPostingService::class)->postDisbursement($disbursement, $request->user());
                 $disbursement->update(['accounting_journal_entry_id' => $entry->id]);
+
+                app(LoanBookLoanUpdateService::class)->onDisbursed($disbursement);
             });
         } catch (\RuntimeException $e) {
             return redirect()

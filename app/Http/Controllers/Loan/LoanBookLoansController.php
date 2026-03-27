@@ -96,8 +96,17 @@ class LoanBookLoansController extends Controller
         if (empty($validated['balance'])) {
             $validated['balance'] = $validated['principal'];
         }
+        if (empty($validated['principal_outstanding'])) {
+            $validated['principal_outstanding'] = $validated['principal'];
+        }
 
-        LoanBookLoan::query()->create($validated);
+        $loan = LoanBookLoan::query()->create($validated);
+
+        if ($loan->loan_book_application_id) {
+            LoanBookApplication::query()
+                ->whereKey($loan->loan_book_application_id)
+                ->update(['stage' => LoanBookApplication::STAGE_APPROVED]);
+        }
 
         return redirect()
             ->route('loan.book.loans.index')

@@ -21,7 +21,10 @@ class AccountingSalaryAdvance extends Model
         'currency',
         'status',
         'requested_on',
+        'reason_for_request',
         'approved_by',
+        'approved_amount',
+        'approved_at',
         'settled_on',
         'notes',
     ];
@@ -30,7 +33,9 @@ class AccountingSalaryAdvance extends Model
     {
         return [
             'amount' => 'decimal:2',
+            'approved_amount' => 'decimal:2',
             'requested_on' => 'date',
+            'approved_at' => 'datetime',
             'settled_on' => 'date',
         ];
     }

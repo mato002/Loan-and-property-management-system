@@ -226,11 +226,9 @@ class LoanDashboardController extends Controller
                 : 0.0;
         }
 
-        $values = array_map(
-            fn (float $p, float $s): float => $p + $s,
-            $paymentTotals,
-            $sheetTotals
-        );
+        // IMPORTANT: avoid double counting when teams record the same receipt both as a processed pay-in
+        // and a collection sheet line. We treat processed payments as the canonical source for the chart.
+        $values = $paymentTotals;
 
         $meta = $this->trendMeta($labels, $values);
         $meta['payments_6mo'] = array_sum($paymentTotals);

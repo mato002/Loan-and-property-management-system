@@ -30,6 +30,10 @@
                     <input type="text" name="trigger_event" value="{{ old('trigger_event', 'days_after_due') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
                 <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Grace days</label>
+                    <input type="number" name="grace_days" value="{{ old('grace_days', 0) }}" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Formula</label>
                     <input type="text" name="formula" value="{{ old('formula', 'percent_of_rent') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>

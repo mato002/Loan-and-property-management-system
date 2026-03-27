@@ -12,12 +12,19 @@ class MpesaPlatformTransaction extends Model
         'channel',
         'status',
         'notes',
+        'conversation_id',
+        'originator_conversation_id',
+        'transaction_id',
+        'result_code',
+        'result_desc',
+        'meta',
     ];
 
     protected function casts(): array
     {
         return [
             'amount' => 'decimal:2',
+            'meta' => 'array',
         ];
     }
 }

@@ -14,12 +14,15 @@
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Request details</h3>
         <div>
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-            <select name="property_unit_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                <option value="">Select…</option>
-                @foreach ($units as $u)
-                    <option value="{{ $u->id }}" @selected((string) old('property_unit_id', $requestItem->property_unit_id) === (string) $u->id)>{{ $u->property->name }} / {{ $u->label }}</option>
-                @endforeach
-            </select>
+            <x-property.quick-create-select
+                name="property_unit_id"
+                :required="true"
+                :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id', $requestItem->property_unit_id) === (string) $u->id])->all()"
+                :create="[
+                    'mode' => 'link',
+                    'link' => route('property.properties.units', absolute: false),
+                ]"
+            />
             @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
         <div>

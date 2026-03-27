@@ -11,15 +11,20 @@ class PmUnitUtilityCharge extends Model
 
     protected $fillable = [
         'property_unit_id',
+        'charge_type',
+        'billing_month',
         'label',
         'amount',
         'notes',
+        'is_invoiced',
+        'pm_invoice_id',
     ];
 
     protected function casts(): array
     {
         return [
             'amount' => 'decimal:2',
+            'is_invoiced' => 'boolean',
         ];
     }
 

@@ -93,7 +93,7 @@ class RevenueController extends Controller
             return [
                 $r->name,
                 $r->scope,
-                $r->trigger_event,
+                $r->trigger_event.' (grace '.$r->grace_days.'d)',
                 implode(' · ', array_filter($parts)),
                 $r->cap !== null ? PropertyMoney::kes((float) $r->cap) : '—',
                 $r->effective_from?->format('Y-m-d') ?? '—',
@@ -120,6 +120,7 @@ class RevenueController extends Controller
             'name' => ['required', 'string', 'max:128'],
             'scope' => ['required', 'string', 'max:64'],
             'trigger_event' => ['required', 'string', 'max:64'],
+            'grace_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'formula' => ['required', 'string', 'max:64'],
             'amount' => ['nullable', 'numeric', 'min:0'],
             'percent' => ['nullable', 'numeric', 'min:0', 'max:100'],

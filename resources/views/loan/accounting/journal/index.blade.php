@@ -2,9 +2,30 @@
     <x-loan.page title="Posted journal entries" subtitle="Retrieve and manage posted double-entry vouchers.">
         <x-slot name="actions">
             <a href="{{ route('loan.accounting.books') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Books</a>
+            @include('loan.accounting.partials.export_buttons')
             <a href="{{ route('loan.accounting.journal.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">New entry</a>
         </x-slot>
         @include('loan.accounting.partials.flash')
+
+        <form method="get" class="mb-4">
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">From</label>
+                    <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">To</label>
+                    <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Reference</label>
+                    <input type="text" name="reference" value="{{ $reference ?? '' }}" placeholder="Search…" class="h-10 w-56 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.accounting.journal.index') }}" class="h-10 inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reset</a>
+            </div>
+        </form>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div class="overflow-x-auto">

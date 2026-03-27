@@ -1,9 +1,48 @@
 <x-loan-layout>
     <x-loan.page title="Utility payments" subtitle="Electricity, water, internet, and other recurring bills.">
         <x-slot name="actions">
+            @include('loan.accounting.partials.export_buttons')
             <a href="{{ route('loan.accounting.utilities.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Record payment</a>
         </x-slot>
         @include('loan.accounting.partials.flash')
+
+        <form method="get" class="mb-4">
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Type</label>
+                    <select name="utility_type" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        <option value="">All</option>
+                        @foreach(($utilityTypes ?? []) as $t)
+                            <option value="{{ $t }}" @selected(($type ?? '') === (string) $t)>{{ str_replace('_', ' ', $t) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Method</label>
+                    <select name="payment_method" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        <option value="">All</option>
+                        @foreach(($paymentMethods ?? []) as $m)
+                            <option value="{{ $m }}" @selected(($method ?? '') === (string) $m)>{{ $m }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Provider</label>
+                    <input type="text" name="provider" value="{{ $provider ?? '' }}" placeholder="Search…" class="h-10 w-56 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">From</label>
+                    <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">To</label>
+                    <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.accounting.utilities.index') }}" class="h-10 inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reset</a>
+            </div>
+        </form>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div class="overflow-x-auto">

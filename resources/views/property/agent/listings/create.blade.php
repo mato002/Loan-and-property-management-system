@@ -7,13 +7,17 @@
 >
     <x-slot name="toolbar">
         <a
-            href="{{ route('property.listings.vacant') }}"
+            href="{{ route('property.listings.vacant', absolute: false) }}"
+            data-turbo-frame="property-main"
+            data-property-nav="property.listings.vacant"
             class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
         >
             Full vacant roster
         </a>
         <a
-            href="{{ route('property.properties.units') }}"
+            href="{{ route('property.properties.units', absolute: false) }}"
+            data-turbo-frame="property-main"
+            data-property-nav="property.properties.units"
             class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
         >
             Properties → Units
@@ -32,7 +36,9 @@
                 <p class="text-sm font-semibold text-amber-900 dark:text-amber-100">No vacant units yet</p>
                 <p class="mt-2 text-sm text-amber-900/80 dark:text-amber-200/90">Add a unit and set status to vacant before you can create a public listing.</p>
                 <a
-                    href="{{ route('property.properties.units') }}"
+                    href="{{ route('property.properties.units', absolute: false) }}"
+                    data-turbo-frame="property-main"
+                    data-property-nav="property.properties.units"
                     class="mt-4 inline-flex rounded-xl bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600"
                 >Go to Units</a>
             </div>
@@ -46,26 +52,28 @@
                 <div>
                     <label for="property_unit_id" class="block text-sm font-medium text-slate-800 dark:text-slate-100">Vacant unit</label>
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose which door you are listing; you will upload photos on the next page.</p>
-                    <select
-                        id="property_unit_id"
-                        name="property_unit_id"
-                        required
-                        class="mt-2 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
-                    >
-                        <option value="">Select property / unit…</option>
-                        @foreach ($vacantUnits as $u)
-                            <option value="{{ $u->id }}" @selected(old('property_unit_id') == $u->id)>
-                                {{ $u->property->name }} — {{ $u->label }}
-                                @if ($u->public_listing_published)
-                                    (featured)
-                                @elseif ($u->publicImages->isNotEmpty())
-                                    (photos · {{ $u->publicImages->count() }})
-                                @else
-                                    (on Discover · no photos yet)
-                                @endif
-                            </option>
-                        @endforeach
-                    </select>
+                    <div class="mt-2">
+                        <x-property.quick-create-select
+                            name="property_unit_id"
+                            :required="true"
+                            select-id="property_unit_id"
+                            placeholder="Select property / unit…"
+                            :options="collect($vacantUnits)->map(function($u) {
+                                $suffix = $u->public_listing_published
+                                    ? ' (featured)'
+                                    : ($u->publicImages->isNotEmpty() ? ' (photos · '.$u->publicImages->count().')' : ' (on Discover · no photos yet)');
+                                return [
+                                    'value' => $u->id,
+                                    'label' => $u->property->name.' — '.$u->label.$suffix,
+                                    'selected' => (string) old('property_unit_id') === (string) $u->id,
+                                ];
+                            })->all()"
+                            :create="[
+                                'mode' => 'link',
+                                'link' => route('property.properties.units', absolute: false),
+                            ]"
+                        />
+                    </div>
                     @error('property_unit_id')
                         <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
                     @enderror

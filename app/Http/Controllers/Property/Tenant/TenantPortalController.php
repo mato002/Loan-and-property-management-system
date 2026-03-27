@@ -12,6 +12,7 @@ use App\Models\PmTenantPortalRequest;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Services\Integrations\MpesaDarajaService;
+use App\Services\Property\PropertyPaymentSettlementService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,7 +21,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\Rule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TenantPortalController extends Controller
 {
@@ -28,22 +31,47 @@ class TenantPortalController extends Controller
     {
         $tenant = $request->user()->pmTenantProfile;
         $balance = 0.0;
+        $rentBalance = 0.0;
+        $waterBalance = 0.0;
         $due = null;
+        $recentPayments = collect();
+        $lastCompleted = null;
         if ($tenant) {
             $balance = (float) PmInvoice::query()
                 ->where('pm_tenant_id', $tenant->id)
                 ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
                 ->value('t');
+            $rentBalance = $this->openBalanceForTenant((int) $tenant->id, PmInvoice::TYPE_RENT);
+            $waterBalance = $this->openBalanceForTenant((int) $tenant->id, PmInvoice::TYPE_WATER);
             $due = PmInvoice::query()
                 ->where('pm_tenant_id', $tenant->id)
                 ->whereColumn('amount_paid', '<', 'amount')
                 ->orderBy('due_date')
                 ->first()?->due_date;
+
+            $recentPayments = PmPayment::query()
+                ->where('pm_tenant_id', $tenant->id)
+                ->orderByDesc('id')
+                ->limit(8)
+                ->get();
+
+            $lastCompleted = PmPayment::query()
+                ->where('pm_tenant_id', $tenant->id)
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->orderByDesc('paid_at')
+                ->orderByDesc('id')
+                ->first();
         }
 
         return view('property.tenant.home', [
             'balance' => PropertyMoney::kes($balance),
+            'balanceAmount' => $balance,
+            'rentBalanceAmount' => $rentBalance ?? 0,
+            'waterBalanceAmount' => $waterBalance ?? 0,
             'nextDue' => $due?->format('Y-m-d') ?? '—',
+            'nextDueDate' => $due,
+            'recentPayments' => $recentPayments,
+            'lastCompletedPayment' => $lastCompleted,
         ]);
     }
 
@@ -66,41 +94,218 @@ class TenantPortalController extends Controller
         ]);
     }
 
-    public function paymentsHistory(Request $request): View
+    public function paymentsIndex(Request $request): View
     {
         $tenant = $request->user()->pmTenantProfile;
-        $payments = $tenant
-            ? PmPayment::query()
-                ->with(['allocations.invoice'])
+
+        $balance = $tenant ? $this->openBalanceForTenant((int) $tenant->id) : 0.0;
+        $rentBalance = $tenant ? $this->openBalanceForTenant((int) $tenant->id, PmInvoice::TYPE_RENT) : 0.0;
+        $waterBalance = $tenant ? $this->openBalanceForTenant((int) $tenant->id, PmInvoice::TYPE_WATER) : 0.0;
+
+        $nextInvoice = $tenant
+            ? PmInvoice::query()
                 ->where('pm_tenant_id', $tenant->id)
-                ->orderByDesc('paid_at')
+                ->whereColumn('amount_paid', '<', 'amount')
+                ->orderBy('due_date')
+                ->first()
+            : null;
+
+        $yearPaid = $tenant
+            ? (float) PmPayment::query()
+                ->where('pm_tenant_id', $tenant->id)
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->whereYear('paid_at', now()->year)
+                ->sum('amount')
+            : 0.0;
+
+        $onTimePct = null;
+        if ($tenant) {
+            $allocs = PmPaymentAllocation::query()
+                ->select(['pm_payment_allocations.pm_invoice_id', 'pm_payments.paid_at', 'pm_invoices.due_date'])
+                ->join('pm_payments', 'pm_payments.id', '=', 'pm_payment_allocations.pm_payment_id')
+                ->join('pm_invoices', 'pm_invoices.id', '=', 'pm_payment_allocations.pm_invoice_id')
+                ->where('pm_payments.pm_tenant_id', $tenant->id)
+                ->where('pm_payments.status', PmPayment::STATUS_COMPLETED)
+                ->whereNotNull('pm_payments.paid_at')
+                ->whereNotNull('pm_invoices.due_date')
+                ->orderByDesc('pm_payment_allocations.id')
                 ->limit(100)
+                ->get()
+                ->unique('pm_invoice_id');
+
+            $total = $allocs->count();
+            if ($total > 0) {
+                $onTime = $allocs->filter(function ($a) {
+                    $paid = $a->paid_at ? \Carbon\Carbon::parse((string) $a->paid_at) : null;
+                    $due = $a->due_date ? \Carbon\Carbon::parse((string) $a->due_date)->endOfDay() : null;
+                    return $paid && $due && $paid->lte($due);
+                })->count();
+                $onTimePct = (int) round(($onTime / max(1, $total)) * 100);
+            }
+        }
+
+        $recentPayments = $tenant
+            ? PmPayment::query()
+                ->where('pm_tenant_id', $tenant->id)
+                ->orderByDesc('id')
+                ->limit(6)
                 ->get()
             : collect();
 
-        $rows = $payments->map(fn (PmPayment $p) => [
-            $p->paid_at?->format('Y-m-d H:i') ?? '—',
+        $openInvoices = $tenant
+            ? PmInvoice::query()
+                ->where('pm_tenant_id', $tenant->id)
+                ->whereColumn('amount_paid', '<', 'amount')
+                ->orderBy('due_date')
+                ->orderBy('id')
+                ->limit(30)
+                ->get()
+            : collect();
+
+        return view('property.tenant.payments.index', [
+            'nextDueAmount' => $nextInvoice ? (float) max(0, (float) $nextInvoice->amount - (float) $nextInvoice->amount_paid) : null,
+            'nextDueDate' => $nextInvoice?->due_date,
+            'outstandingBalance' => $balance,
+            'rentBalance' => $rentBalance,
+            'waterBalance' => $waterBalance,
+            'yearPaid' => $yearPaid,
+            'onTimePct' => $onTimePct,
+            'recentPayments' => $recentPayments,
+            'openInvoices' => $openInvoices,
+        ]);
+    }
+
+    public function paymentsHistory(Request $request): View
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        $filters = [
+            'status' => (string) $request->query('status', ''),
+            'channel' => (string) $request->query('channel', ''),
+            'from' => (string) $request->query('from', ''),
+            'to' => (string) $request->query('to', ''),
+            'q' => trim((string) $request->query('q', '')),
+            'sort' => (string) $request->query('sort', 'date_desc'),
+        ];
+
+        $payments = $tenant
+            ? $this->buildPaymentHistoryQuery($tenant->id, $filters)
+                ->with(['allocations.invoice'])
+                ->paginate(15)
+                ->withQueryString()
+            : PmPayment::query()->whereRaw('1 = 0')->paginate(25);
+
+        $rows = $payments->getCollection()->map(fn (PmPayment $p) => [
+            ($p->paid_at ?? $p->created_at)?->format('Y-m-d H:i') ?? '—',
             $p->channel,
             PropertyMoney::kes((float) $p->amount),
             $p->external_ref ?? '—',
             $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ') ?: '—',
             ucfirst($p->status),
-            $p->status === PmPayment::STATUS_COMPLETED
-                ? new HtmlString(
-                    '<a href="'.route('property.tenant.payments.receipts.show', $p).'" class="text-blue-600 hover:text-blue-700 font-medium">View</a> '.
+            match ($p->status) {
+                PmPayment::STATUS_COMPLETED => new HtmlString(
+                    '<a href="'.route('property.tenant.payments.receipts.show', $p).'" class="text-blue-600 hover:text-blue-700 font-medium">View details</a> '.
                     '<span class="text-slate-400">|</span> '.
-                    '<a href="'.route('property.tenant.payments.receipts.download', $p).'" class="text-blue-600 hover:text-blue-700 font-medium">Download</a>'
-                )
-                : '—',
+                    '<a href="'.route('property.tenant.payments.receipts.download', $p).'" data-turbo="false" class="text-blue-600 hover:text-blue-700 font-medium">Download</a> '.
+                    '<span class="text-slate-400">|</span> '.
+                    '<button type="button" class="text-blue-600 hover:text-blue-700 font-medium" data-copy-ref="'.e((string) ($p->external_ref ?? '')).'">Copy ref</button>'
+                ),
+                PmPayment::STATUS_PENDING => new HtmlString(
+                    '<a href="'.route('property.tenant.payments.pending', $p).'" class="text-blue-600 hover:text-blue-700 font-medium">Open</a> '
+                    .'<span class="text-slate-400">|</span> '
+                    .'<a href="'.route('property.tenant.payments.pay', ['custom_amount' => (float) $p->amount]).'" class="text-blue-600 hover:text-blue-700 font-medium">Retry</a>'
+                ),
+                PmPayment::STATUS_FAILED => new HtmlString(
+                    '<a href="'.route('property.tenant.payments.pay', ['custom_amount' => (float) $p->amount]).'" class="text-blue-600 hover:text-blue-700 font-medium">Retry</a> '
+                    .'<span class="text-slate-400">|</span> '
+                    .'<a href="'.route('property.tenant.requests', ['payment_id' => $p->id]).'" class="text-blue-600 hover:text-blue-700 font-medium">Report issue</a>'
+                ),
+                default => '—',
+            },
         ])->all();
 
         return view('property.tenant.payments.history', [
             'stats' => [
-                ['label' => 'Successful', 'value' => (string) $payments->where('status', 'completed')->count(), 'hint' => ''],
-                ['label' => 'Last payment', 'value' => $payments->first()?->paid_at?->format('Y-m-d') ?? '—', 'hint' => ''],
+                ['label' => 'Successful', 'value' => (string) $payments->getCollection()->where('status', 'completed')->count(), 'hint' => 'On this page'],
+                ['label' => 'Pending', 'value' => (string) $payments->getCollection()->where('status', 'pending')->count(), 'hint' => 'On this page'],
+                ['label' => 'Failed', 'value' => (string) $payments->getCollection()->where('status', 'failed')->count(), 'hint' => 'On this page'],
+                ['label' => 'Total matches', 'value' => (string) $payments->total(), 'hint' => 'After filters'],
             ],
-            'columns' => ['Date', 'Channel', 'Amount', 'Reference', 'Invoice', 'Status', 'Receipt'],
+            'columns' => ['Date', 'Channel', 'Amount', 'Reference', 'Invoice', 'Status', 'Actions'],
             'tableRows' => $rows,
+            'filters' => $filters,
+            'payments' => $payments,
+        ]);
+    }
+
+    public function paymentsHistoryExport(Request $request): StreamedResponse
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        abort_unless($tenant, 403);
+
+        $filters = [
+            'status' => (string) $request->query('status', ''),
+            'channel' => (string) $request->query('channel', ''),
+            'from' => (string) $request->query('from', ''),
+            'to' => (string) $request->query('to', ''),
+            'q' => trim((string) $request->query('q', '')),
+            'sort' => (string) $request->query('sort', 'date_desc'),
+        ];
+
+        $payments = $this->buildPaymentHistoryQuery($tenant->id, $filters)
+            ->with(['allocations.invoice'])
+            ->limit(1000)
+            ->get();
+
+        $format = strtolower((string) $request->query('format', 'csv'));
+        $rows = $payments->map(function (PmPayment $p) {
+            return [
+                'id' => $p->id,
+                'date' => ($p->paid_at ?? $p->created_at)?->format('Y-m-d H:i:s') ?? '',
+                'status' => $p->status,
+                'channel' => $p->channel,
+                'amount' => (string) $p->amount,
+                'reference' => (string) ($p->external_ref ?? ''),
+                'invoices' => $p->allocations->pluck('invoice.invoice_no')->filter()->implode('|'),
+                'checkout_request_id' => (string) data_get($p->meta, 'daraja.checkout_request_id', ''),
+            ];
+        })->values();
+
+        if ($format === 'json') {
+            $fileName = 'tenant-payments-'.now()->format('Ymd_His').'.json';
+            return response()->streamDownload(function () use ($rows) {
+                echo json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+            }, $fileName, [
+                'Content-Type' => 'application/json; charset=UTF-8',
+            ]);
+        }
+
+        $isXls = $format === 'xls';
+        $delimiter = $isXls ? "\t" : ',';
+        $fileName = 'tenant-payments-'.now()->format('Ymd_His').($isXls ? '.xls' : '.csv');
+
+        return response()->streamDownload(function () use ($rows, $delimiter) {
+            $out = fopen('php://output', 'w');
+            $header = ['ID', 'Date', 'Status', 'Channel', 'Amount', 'Reference', 'Invoices', 'CheckoutRequestID'];
+            fputcsv($out, $header, $delimiter);
+
+            foreach ($rows as $r) {
+                fputcsv($out, [
+                    $r['id'],
+                    $r['date'],
+                    $r['status'],
+                    $r['channel'],
+                    $r['amount'],
+                    $r['reference'],
+                    $r['invoices'],
+                    $r['checkout_request_id'],
+                ], $delimiter);
+            }
+
+            fclose($out);
+        }, $fileName, [
+            'Content-Type' => $isXls
+                ? 'application/vnd.ms-excel; charset=UTF-8'
+                : 'text/csv; charset=UTF-8',
         ]);
     }
 
@@ -137,7 +342,7 @@ class TenantPortalController extends Controller
                     ? new HtmlString(
                         '<a href="'.route('property.tenant.payments.receipts.show', $payment).'" class="text-blue-600 hover:text-blue-700 font-medium">View</a> '.
                         '<span class="text-slate-400">|</span> '.
-                        '<a href="'.route('property.tenant.payments.receipts.download', $payment).'" class="text-blue-600 hover:text-blue-700 font-medium">Download</a>'
+                        '<a href="'.route('property.tenant.payments.receipts.download', $payment).'" data-turbo="false" class="text-blue-600 hover:text-blue-700 font-medium">Download</a>'
                     )
                     : '—',
             ];
@@ -158,6 +363,9 @@ class TenantPortalController extends Controller
 
         return view('property.tenant.payments.pay', [
             'amountDue' => PropertyMoney::kes($balance),
+            'amountDueRaw' => $balance,
+            'rentDue' => $this->openBalanceForTenant((int) $tenant?->id, PmInvoice::TYPE_RENT),
+            'waterDue' => $this->openBalanceForTenant((int) $tenant?->id, PmInvoice::TYPE_WATER),
             'paymentMethods' => $methodConfig['select'],
             'paymentMethodDetails' => $methodConfig['details'],
         ]);
@@ -170,16 +378,19 @@ class TenantPortalController extends Controller
             return back()->withErrors(['tenant' => 'No tenant profile is linked to your account.']);
         }
 
-        $balance = $this->openBalanceForTenant((int) $tenant->id);
+        $data = $request->validate([
+            'mpesa_phone' => ['required', 'string', 'max:32'],
+            'custom_amount' => ['nullable', 'string', 'max:32'],
+            'bill_scope' => ['nullable', 'string', Rule::in(['all', 'rent', 'water'])],
+        ]);
+
+        $scope = (string) ($data['bill_scope'] ?? 'all');
+        $invoiceType = $this->invoiceTypeForScope($scope);
+        $balance = $this->openBalanceForTenant((int) $tenant->id, $invoiceType);
 
         if ($balance <= 0) {
             return back()->with('success', 'Nothing due right now — no payment request was created.');
         }
-
-        $data = $request->validate([
-            'mpesa_phone' => ['required', 'string', 'max:32'],
-            'custom_amount' => ['nullable', 'string', 'max:32'],
-        ]);
 
         $amount = $balance;
         if (! empty($data['custom_amount'])) {
@@ -204,6 +415,7 @@ class TenantPortalController extends Controller
                 'intent' => 'stk_push',
                 'phone' => $msisdn,
                 'requested_at' => now()->toIso8601String(),
+                'bill_scope' => $scope,
             ],
         ]);
 
@@ -251,7 +463,9 @@ class TenantPortalController extends Controller
         $payment->update(['meta' => $meta]);
 
         return back()->withErrors([
-            'mpesa_phone' => 'Daraja STK initiation failed: '.((string) ($init['message'] ?? 'Unknown error')),
+            'mpesa_phone' => 'Daraja STK initiation failed: '
+                .((string) ($init['message'] ?? 'Unknown error'))
+                .' (env='.(string) ($init['env'] ?? '?').', base='.(string) ($init['base_url'] ?? '?').')',
         ])->withInput();
     }
 
@@ -264,6 +478,92 @@ class TenantPortalController extends Controller
         ]);
     }
 
+    public function pendingPaymentStatus(PmPayment $payment): JsonResponse
+    {
+        abort_unless($payment->pm_tenant_id === (auth()->user()?->pmTenantProfile?->id), 403);
+
+        $payment = $payment->fresh();
+        $status = (string) $payment->status;
+        $redirectUrl = null;
+        if ($status === PmPayment::STATUS_COMPLETED) {
+            $redirectUrl = route('property.tenant.payments.receipts.show', $payment);
+        } elseif ($status === PmPayment::STATUS_FAILED) {
+            $redirectUrl = route('property.tenant.payments.history');
+        }
+
+        return response()->json([
+            'ok' => true,
+            'id' => $payment->id,
+            'status' => $status,
+            'external_ref' => $payment->external_ref,
+            'paid_at' => optional($payment->paid_at)->toIso8601String(),
+            'redirect_url' => $redirectUrl,
+        ]);
+    }
+
+    public function pendingPaymentVerify(PmPayment $payment): RedirectResponse
+    {
+        abort_unless($payment->pm_tenant_id === (auth()->user()?->pmTenantProfile?->id), 403);
+
+        $payment = $payment->fresh();
+        if ($payment->status !== PmPayment::STATUS_PENDING) {
+            return redirect()
+                ->route('property.tenant.payments.pending', $payment)
+                ->with('success', 'Payment status is already '.$payment->status.'.');
+        }
+
+        $checkout = (string) data_get($payment->meta, 'daraja.checkout_request_id', '');
+        if ($checkout === '') {
+            return back()->withErrors(['payment' => 'Missing CheckoutRequestID for this payment.']);
+        }
+
+        $daraja = app(MpesaDarajaService::class);
+        $q = $daraja->stkQuery($checkout);
+
+        // If query says completed, settle the payment even if callback didn’t arrive.
+        if (($q['ok'] ?? false) === true) {
+            app(PropertyPaymentSettlementService::class)->settlePending(
+                $payment->id,
+                'success',
+                $payment->external_ref,
+                now(),
+                (string) ($q['message'] ?? 'Confirmed via STK query'),
+                'daraja_stk_query',
+                (float) $payment->amount,
+            );
+
+            return redirect()
+                ->route('property.tenant.payments.receipts.show', $payment->fresh())
+                ->with('success', 'Payment confirmed. Receipt is ready.');
+        }
+
+        // Handle definitive failures from query (ResultCode != 0) instead of showing generic "wait".
+        $body = is_array($q['body'] ?? null) ? $q['body'] : [];
+        $resultCode = (string) ($body['ResultCode'] ?? '');
+        $resultDesc = (string) ($body['ResultDesc'] ?? ($q['message'] ?? 'Payment failed'));
+        if ($resultCode !== '' && $resultCode !== '0') {
+            app(PropertyPaymentSettlementService::class)->settlePending(
+                $payment->id,
+                'failed',
+                null,
+                null,
+                $resultDesc,
+                'daraja_stk_query',
+                null,
+            );
+
+            return redirect()
+                ->route('property.tenant.payments.history')
+                ->withErrors(['payment' => 'Payment failed: '.$resultDesc.' (code '.$resultCode.').']);
+        }
+
+        $msg = (string) (($q['message'] ?? '') ?: 'Still pending. Please wait a moment then try again.');
+
+        return redirect()
+            ->route('property.tenant.payments.pending', $payment)
+            ->withErrors(['payment' => 'Not confirmed yet: '.$msg]);
+    }
+
     public function paymentStore(Request $request): RedirectResponse
     {
         $tenant = $request->user()->pmTenantProfile;
@@ -271,17 +571,20 @@ class TenantPortalController extends Controller
             return back()->withErrors(['tenant' => 'No tenant profile is linked to your account.']);
         }
 
-        $balance = $this->openBalanceForTenant((int) $tenant->id);
-        if ($balance <= 0) {
-            return back()->with('success', 'Nothing due right now — no payment was recorded.');
-        }
-
         $data = $request->validate([
             'payment_method' => ['required', 'string', Rule::in(array_keys($this->tenantPaymentMethods()['select']))],
             'payer_phone' => ['nullable', 'string', 'max:32'],
             'external_ref' => ['nullable', 'string', 'max:128'],
             'custom_amount' => ['nullable', 'string', 'max:32'],
+            'bill_scope' => ['nullable', 'string', Rule::in(['all', 'rent', 'water'])],
         ]);
+
+        $scope = (string) ($data['bill_scope'] ?? 'all');
+        $invoiceType = $this->invoiceTypeForScope($scope);
+        $balance = $this->openBalanceForTenant((int) $tenant->id, $invoiceType);
+        if ($balance <= 0) {
+            return back()->with('success', 'Nothing due right now — no payment was recorded.');
+        }
 
         $amount = $balance;
         if (! empty($data['custom_amount'])) {
@@ -296,17 +599,12 @@ class TenantPortalController extends Controller
         }
 
         if ($data['payment_method'] === 'mpesa_stk' && empty($data['payer_phone'])) {
-            return back()->withErrors(['payer_phone' => 'Phone number is required for M-Pesa STK.'])->withInput();
+            return back()->withErrors(['payer_phone' => 'Phone number is required for Equity STK Push.'])->withInput();
         }
 
-        if ($data['payment_method'] !== 'mpesa_stk' && empty($data['external_ref'])) {
-            return back()->withErrors(['external_ref' => 'Reference is required for this payment method.'])->withInput();
-        }
+        $isPending = $data['payment_method'] === 'mpesa_stk';
 
-        $bankMethods = ['kcb_bank', 'equity_bank', 'coop_bank'];
-        $isPending = $data['payment_method'] === 'mpesa_stk' || in_array($data['payment_method'], $bankMethods, true);
-
-        $payment = DB::transaction(function () use ($tenant, $data, $amount, $isPending) {
+        $payment = DB::transaction(function () use ($tenant, $data, $amount, $isPending, $scope, $invoiceType) {
             $payment = PmPayment::query()->create([
                 'pm_tenant_id' => $tenant->id,
                 'channel' => $data['payment_method'],
@@ -317,49 +615,16 @@ class TenantPortalController extends Controller
                 'meta' => [
                     'phone' => $data['payer_phone'] ?? null,
                     'submitted_at' => now()->toIso8601String(),
+                    'bill_scope' => $scope,
                 ],
             ]);
 
             if (! $isPending) {
-                $this->allocatePaymentToOpenInvoices($payment);
+                $this->allocatePaymentToOpenInvoices($payment, $invoiceType);
             }
 
             return $payment;
         });
-
-        if (in_array($data['payment_method'], $bankMethods, true)) {
-            $provider = match ($data['payment_method']) {
-                'kcb_bank' => 'kcb',
-                'equity_bank' => 'equity',
-                default => 'coop',
-            };
-
-            $init = $this->initiateBankCollection(
-                $provider,
-                $payment,
-                (string) ($data['payer_phone'] ?? ''),
-                (string) ($data['external_ref'] ?? '')
-            );
-
-            $payment->update([
-                'meta' => array_merge(is_array($payment->meta) ? $payment->meta : [], [
-                    'bank_init' => $init,
-                ]),
-            ]);
-
-            if (($init['ok'] ?? false) !== true) {
-                $payment->update(['status' => PmPayment::STATUS_FAILED]);
-
-                return back()->withErrors([
-                    'payment_method' => 'Bank initiation failed: '.((string) ($init['message'] ?? 'Unknown error')),
-                ])->withInput();
-            }
-
-            return back()->with(
-                'success',
-                (($init['message'] ?? null) ?: 'Bank payment request initiated. Complete authorization with your bank.')
-            );
-        }
 
         if ($isPending) {
             if ($data['payment_method'] === 'mpesa_stk') {
@@ -393,7 +658,7 @@ class TenantPortalController extends Controller
 
                         return redirect()
                             ->route('property.tenant.payments.pending', $payment)
-                            ->with('success', 'STK prompt sent to '.$msisdn.'. Check your phone to complete payment.');
+                            ->with('success', 'Equity STK Push sent to '.$msisdn.'. Check your phone to complete payment.');
                     }
 
                     $meta = is_array($payment->meta) ? $payment->meta : [];
@@ -405,7 +670,9 @@ class TenantPortalController extends Controller
                     $payment->update(['meta' => $meta]);
 
                     return back()->withErrors([
-                        'payer_phone' => 'Daraja STK initiation failed: '.((string) ($init['message'] ?? 'Unknown error')),
+                        'payer_phone' => 'Daraja STK initiation failed: '
+                            .((string) ($init['message'] ?? 'Unknown error'))
+                            .' (env='.(string) ($init['env'] ?? '?').', base='.(string) ($init['base_url'] ?? '?').')',
                     ])->withInput();
                 }
 
@@ -415,18 +682,26 @@ class TenantPortalController extends Controller
                 ])->withInput();
             }
 
-            return back()->with('success', 'STK request queued for '.PropertyMoney::kes($amount).'. Complete prompt on phone to finalize.');
+            return back()->with('success', 'Equity STK request queued for '.PropertyMoney::kes($amount).'. Complete prompt on phone to finalize.');
         }
 
         return back()->with('success', 'Payment recorded as completed and allocated across open invoices.');
     }
 
-    private function openBalanceForTenant(int $tenantId): float
+    private function openBalanceForTenant(?int $tenantId, ?string $invoiceType = null): float
     {
-        return (float) PmInvoice::query()
+        if (! $tenantId) {
+            return 0.0;
+        }
+
+        $query = PmInvoice::query()
             ->where('pm_tenant_id', $tenantId)
-            ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
-            ->value('t');
+            ->whereColumn('amount_paid', '<', 'amount');
+        if ($invoiceType !== null) {
+            $query->where('invoice_type', $invoiceType);
+        }
+
+        return (float) $query->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')->value('t');
     }
 
     /**
@@ -438,69 +713,17 @@ class TenantPortalController extends Controller
     private function tenantPaymentMethods(): array
     {
         $select = [
-            'mpesa_stk' => 'M-Pesa STK Push',
-            'kcb_bank' => 'KCB Bank',
-            'equity_bank' => 'Equity Bank',
-            'coop_bank' => 'Co-op Bank',
-            'bank_transfer' => 'Bank Transfer',
-            'card' => 'Card Payment',
-            'cash' => 'Cash',
+            'mpesa_stk' => 'Equity STK Push',
         ];
 
         $details = [
             [
-                'label' => 'M-Pesa STK Push',
-                'provider' => 'Safaricom M-Pesa',
-                'account' => '',
-                'instructions' => 'Choose this for prompt-to-phone checkout.',
-            ],
-            [
-                'label' => 'KCB Bank',
-                'provider' => 'KCB',
-                'account' => '',
-                'instructions' => 'Integrated bank checkout (requires active KCB API credentials).',
-            ],
-            [
-                'label' => 'Equity Bank',
+                'label' => 'Equity STK Push',
                 'provider' => 'Equity',
                 'account' => '',
-                'instructions' => 'Integrated bank checkout (requires active Equity API credentials).',
-            ],
-            [
-                'label' => 'Co-op Bank',
-                'provider' => 'Co-operative Bank',
-                'account' => '',
-                'instructions' => 'Integrated bank checkout (requires active Co-op API credentials).',
+                'instructions' => 'Prompt-to-phone checkout.',
             ],
         ];
-
-        $raw = PropertyPortalSetting::getValue('custom_payment_methods_json', '[]');
-        $decoded = is_string($raw) ? json_decode($raw, true) : [];
-        $customMethods = is_array($decoded) ? $decoded : [];
-
-        foreach ($customMethods as $idx => $method) {
-            if (! is_array($method)) {
-                continue;
-            }
-
-            $name = trim((string) ($method['name'] ?? ''));
-            if ($name === '') {
-                continue;
-            }
-
-            $provider = trim((string) ($method['provider'] ?? ''));
-            $account = trim((string) ($method['account'] ?? ''));
-            $instructions = trim((string) ($method['instructions'] ?? ''));
-            $key = 'custom_'.$idx;
-
-            $select[$key] = $name;
-            $details[] = [
-                'label' => $name,
-                'provider' => $provider,
-                'account' => $account,
-                'instructions' => $instructions,
-            ];
-        }
 
         return [
             'select' => $select,
@@ -572,7 +795,7 @@ class TenantPortalController extends Controller
         }
     }
 
-    private function allocatePaymentToOpenInvoices(PmPayment $payment): void
+    private function allocatePaymentToOpenInvoices(PmPayment $payment, ?string $invoiceType = null): void
     {
         $remaining = (float) $payment->amount;
         if ($remaining <= 0) {
@@ -582,6 +805,7 @@ class TenantPortalController extends Controller
         $openInvoices = PmInvoice::query()
             ->where('pm_tenant_id', $payment->pm_tenant_id)
             ->whereColumn('amount_paid', '<', 'amount')
+            ->when($invoiceType !== null, fn ($q) => $q->where('invoice_type', $invoiceType))
             ->orderBy('due_date')
             ->orderBy('id')
             ->lockForUpdate()
@@ -614,6 +838,16 @@ class TenantPortalController extends Controller
 
             $remaining -= $allocation;
         }
+    }
+
+    private function invoiceTypeForScope(string $scope): ?string
+    {
+        $scope = strtolower(trim($scope));
+        return match ($scope) {
+            'rent' => PmInvoice::TYPE_RENT,
+            'water' => PmInvoice::TYPE_WATER,
+            default => null,
+        };
     }
 
     public function maintenanceReport(Request $request): View
@@ -783,5 +1017,63 @@ class TenantPortalController extends Controller
         }, $fileName, [
             'Content-Type' => 'text/html; charset=UTF-8',
         ]);
+    }
+
+    private function buildPaymentHistoryQuery(int $tenantId, array $filters)
+    {
+        $query = PmPayment::query()->where('pm_tenant_id', $tenantId);
+
+        $status = strtolower(trim((string) ($filters['status'] ?? '')));
+        if (in_array($status, [PmPayment::STATUS_PENDING, PmPayment::STATUS_COMPLETED, PmPayment::STATUS_FAILED], true)) {
+            $query->where('status', $status);
+        }
+
+        $channel = trim((string) ($filters['channel'] ?? ''));
+        if ($channel !== '') {
+            $query->where('channel', $channel);
+        }
+
+        $from = trim((string) ($filters['from'] ?? ''));
+        if ($from !== '') {
+            $query->whereDate('created_at', '>=', $from);
+        }
+        $to = trim((string) ($filters['to'] ?? ''));
+        if ($to !== '') {
+            $query->whereDate('created_at', '<=', $to);
+        }
+
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('external_ref', 'like', '%'.$search.'%')
+                    ->orWhere('channel', 'like', '%'.$search.'%')
+                    ->orWhere('status', 'like', '%'.$search.'%')
+                    ->orWhere('id', $search)
+                    ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(meta, '$.daraja.checkout_request_id')) like ?", ['%'.$search.'%']);
+            });
+        }
+
+        $sort = strtolower((string) ($filters['sort'] ?? 'date_desc'));
+        switch ($sort) {
+            case 'date_asc':
+                $query->orderBy('id');
+                break;
+            case 'amount_desc':
+                $query->orderByDesc('amount')->orderByDesc('id');
+                break;
+            case 'amount_asc':
+                $query->orderBy('amount')->orderByDesc('id');
+                break;
+            case 'status_asc':
+                $query->orderBy('status')->orderByDesc('id');
+                break;
+            case 'status_desc':
+                $query->orderByDesc('status')->orderByDesc('id');
+                break;
+            default:
+                $query->orderByDesc('id');
+        }
+
+        return $query;
     }
 }

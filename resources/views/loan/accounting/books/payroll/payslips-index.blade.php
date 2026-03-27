@@ -3,8 +3,49 @@
         <x-slot name="actions">
             <a href="{{ route('loan.accounting.payroll.hub') }}" class="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Payroll home</a>
             <a href="{{ route('loan.accounting.payroll.index') }}" class="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Created payrolls</a>
+            @include('loan.accounting.partials.export_buttons')
         </x-slot>
         @include('loan.accounting.partials.flash')
+
+        <form method="get" class="mb-4">
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Employee</label>
+                    <select name="employee_id" class="h-10 min-w-[18rem] rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">All</option>
+                        @foreach(($employees ?? []) as $emp)
+                            <option value="{{ $emp->id }}" @selected((int) ($employeeId ?? 0) === (int) $emp->id)>
+                                {{ trim(($emp->first_name ?? '').' '.($emp->last_name ?? '')) }} ({{ $emp->employee_number ?? '—' }})
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Period</label>
+                    <select name="accounting_payroll_period_id" class="h-10 min-w-[18rem] rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">All</option>
+                        @foreach(($periods ?? []) as $p)
+                            <option value="{{ $p->id }}" @selected((int) ($periodId ?? 0) === (int) $p->id)>
+                                {{ $p->period_start->format('Y-m-d') }} → {{ $p->period_end->format('Y-m-d') }}{{ $p->label ? ' · '.$p->label : '' }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">From</label>
+                    <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">To</label>
+                    <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.accounting.payroll.payslips_index') }}" class="h-10 inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reset</a>
+            </div>
+        </form>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
             <table class="min-w-full text-sm">

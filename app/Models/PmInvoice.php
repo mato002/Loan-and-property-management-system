@@ -19,6 +19,9 @@ class PmInvoice extends Model
     public const STATUS_PAID = 'paid';
 
     public const STATUS_OVERDUE = 'overdue';
+    public const TYPE_RENT = 'rent';
+    public const TYPE_WATER = 'water';
+    public const TYPE_MIXED = 'mixed';
 
     protected $fillable = [
         'pm_lease_id',
@@ -30,6 +33,8 @@ class PmInvoice extends Model
         'amount',
         'amount_paid',
         'status',
+        'invoice_type',
+        'billing_period',
         'description',
     ];
 

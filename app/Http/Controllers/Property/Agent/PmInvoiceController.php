@@ -27,6 +27,8 @@ class PmInvoiceController extends Controller
             'amount' => ['required', 'numeric', 'min:0.01'],
             'description' => ['nullable', 'string', 'max:500'],
             'status' => ['required', 'in:draft,sent'],
+            'invoice_type' => ['nullable', 'in:rent,water,mixed'],
+            'billing_period' => ['nullable', 'date_format:Y-m'],
         ]);
 
         $next = (int) (PmInvoice::query()->max('id') ?? 0) + 1;
@@ -36,6 +38,7 @@ class PmInvoiceController extends Controller
             ...$data,
             'invoice_no' => $invoiceNo,
             'amount_paid' => 0,
+            'invoice_type' => $data['invoice_type'] ?? PmInvoice::TYPE_RENT,
         ]);
 
         $invoice->refreshComputedStatus();

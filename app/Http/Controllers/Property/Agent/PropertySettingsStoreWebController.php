@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\PmPermission;
 use App\Models\PmRole;
+use App\Models\Property;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -363,9 +364,22 @@ class PropertySettingsStoreWebController extends Controller
 
     public function commission(): View
     {
+        $rawOverrides = PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+        $overrides = [];
+        if (is_string($rawOverrides) && $rawOverrides !== '') {
+            $decoded = json_decode($rawOverrides, true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $propertyId => $percent) {
+                    $overrides[(string) $propertyId] = is_scalar($percent) ? (string) $percent : '';
+                }
+            }
+        }
+
         return view('property.agent.settings.commission', [
             'defaultPercent' => PropertyPortalSetting::getValue('commission_default_percent', ''),
             'notes' => PropertyPortalSetting::getValue('commission_notes', ''),
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'propertyCommissionOverrides' => $overrides,
         ]);
     }
 
@@ -374,10 +388,29 @@ class PropertySettingsStoreWebController extends Controller
         $data = $request->validate([
             'commission_default_percent' => ['nullable', 'string', 'max:32'],
             'commission_notes' => ['nullable', 'string', 'max:2000'],
+            'property_commission_overrides' => ['nullable', 'array'],
+            'property_commission_overrides.*' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         PropertyPortalSetting::setValue('commission_default_percent', $data['commission_default_percent'] ?? '');
         PropertyPortalSetting::setValue('commission_notes', $data['commission_notes'] ?? '');
+
+        $overrides = [];
+        foreach (($data['property_commission_overrides'] ?? []) as $propertyId => $percent) {
+            $pid = (int) $propertyId;
+            if ($pid <= 0) {
+                continue;
+            }
+            $value = is_numeric($percent) ? trim((string) $percent) : '';
+            if ($value === '') {
+                continue;
+            }
+            $overrides[(string) $pid] = (float) $value;
+        }
+        PropertyPortalSetting::setValue(
+            'commission_property_overrides_json',
+            json_encode($overrides, JSON_UNESCAPED_UNICODE)
+        );
 
         return back()->with('success', __('Commission settings saved.'));
     }

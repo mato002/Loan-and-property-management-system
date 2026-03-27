@@ -55,6 +55,16 @@ class MpesaDarajaService
             : 'https://sandbox.safaricom.co.ke';
     }
 
+    public function currentEnv(): string
+    {
+        return strtolower((string) ($this->config()['env'] ?? 'sandbox'));
+    }
+
+    public function currentBaseUrl(): string
+    {
+        return $this->baseUrl();
+    }
+
     public function isConfigured(): bool
     {
         return $this->missingConfigKeys() === [];
@@ -81,7 +91,6 @@ class MpesaDarajaService
     public function getAccessToken(): string
     {
         $cfg = $this->config();
-
         $key = (string) ($cfg['consumer_key'] ?? '');
         $secret = (string) ($cfg['consumer_secret'] ?? '');
 
@@ -115,9 +124,11 @@ class MpesaDarajaService
         try {
             $cfg = $this->config();
 
-            $shortcode = (string) ($cfg['stk_shortcode'] ?? '');
-            $passkey = (string) ($cfg['passkey'] ?? '');
-            $callbackUrl = (string) ($cfg['stk_callback_url'] ?? '');
+            // Trim env/config values: accidental whitespace in .env (common on Windows copy/paste)
+            // will break Daraja auth (Password) and trigger "Wrong credentials".
+            $shortcode = trim((string) ($cfg['stk_shortcode'] ?? ''));
+            $passkey = trim((string) ($cfg['passkey'] ?? ''));
+            $callbackUrl = trim((string) ($cfg['stk_callback_url'] ?? ''));
 
             if ($shortcode === '' || $passkey === '' || $callbackUrl === '') {
                 return ['ok' => false, 'status' => null, 'body' => null, 'message' => 'Daraja not configured (shortcode/passkey/callback).'];
@@ -160,6 +171,8 @@ class MpesaDarajaService
                 'status' => $res->status(),
                 'body' => is_array($body) ? $body : null,
                 'message' => $message,
+                'env' => $this->currentEnv(),
+                'base_url' => $this->currentBaseUrl(),
             ];
         } catch (Throwable $e) {
             return [
@@ -167,7 +180,136 @@ class MpesaDarajaService
                 'status' => null,
                 'body' => null,
                 'message' => $e->getMessage(),
+                'env' => $this->currentEnv(),
+                'base_url' => $this->currentBaseUrl(),
             ];
+        }
+    }
+
+    /**
+     * Query STK push status.
+     *
+     * @return array{ok:bool, status:int|null, body:array<string,mixed>|null, message:string|null}
+     */
+    public function stkQuery(string $checkoutRequestId): array
+    {
+        try {
+            $cfg = $this->config();
+
+            $shortcode = trim((string) ($cfg['stk_shortcode'] ?? ''));
+            $passkey = trim((string) ($cfg['passkey'] ?? ''));
+            if ($shortcode === '' || $passkey === '') {
+                return ['ok' => false, 'status' => null, 'body' => null, 'message' => 'Daraja not configured (shortcode/passkey).'];
+            }
+
+            $timestamp = now()->format('YmdHis');
+            $password = base64_encode($shortcode.$passkey.$timestamp);
+
+            $token = $this->getAccessToken();
+
+            $res = $this->http()
+                ->asJson()
+                ->withToken($token)
+                ->post($this->baseUrl().'/mpesa/stkpushquery/v1/query', [
+                    'BusinessShortCode' => $shortcode,
+                    'Password' => $password,
+                    'Timestamp' => $timestamp,
+                    'CheckoutRequestID' => $checkoutRequestId,
+                ]);
+
+            $body = $res->json();
+            $message = is_array($body)
+                ? (string) (
+                    $body['ResultDesc']
+                    ?? $body['errorMessage']
+                    ?? $body['ResponseDescription']
+                    ?? null
+                )
+                : null;
+
+            // For query, ResultCode==0 => success. Some failures still return HTTP 200.
+            $resultCode = is_array($body) ? (string) ($body['ResultCode'] ?? '') : '';
+            $ok = $res->ok() && ($resultCode === '' || $resultCode === '0');
+
+            return [
+                'ok' => $ok,
+                'status' => $res->status(),
+                'body' => is_array($body) ? $body : null,
+                'message' => $message,
+                'env' => $this->currentEnv(),
+                'base_url' => $this->currentBaseUrl(),
+            ];
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'status' => null,
+                'body' => null,
+                'message' => $e->getMessage(),
+                'env' => $this->currentEnv(),
+                'base_url' => $this->currentBaseUrl(),
+            ];
+        }
+    }
+
+    /**
+     * Initiate a B2C payout request (Daraja).
+     *
+     * NOTE: Daraja does NOT provide a "list payouts" endpoint. To display ongoing payouts,
+     * you must record initiation responses AND/or receive B2C result callbacks.
+     *
+     * @return array{ok:bool, status:int|null, body:array<string,mixed>|null, message:string|null}
+     */
+    public function b2cPayout(array $payload): array
+    {
+        try {
+            $cfg = $this->config();
+
+            $shortcode = trim((string) ($cfg['b2c_shortcode'] ?? ''));
+            $initiator = trim((string) ($cfg['b2c_initiator_name'] ?? ''));
+            $securityCredential = trim((string) ($cfg['b2c_security_credential'] ?? ''));
+            $resultUrl = trim((string) ($cfg['b2c_result_url'] ?? ''));
+            $timeoutUrl = trim((string) ($cfg['b2c_timeout_url'] ?? ''));
+
+            if ($shortcode === '' || $initiator === '' || $securityCredential === '' || $resultUrl === '' || $timeoutUrl === '') {
+                return ['ok' => false, 'status' => null, 'body' => null, 'message' => 'Daraja not configured for B2C (shortcode/initiator/security_credential/result_url/timeout_url).'];
+            }
+
+            $token = $this->getAccessToken();
+
+            $res = $this->http()
+                ->asJson()
+                ->withToken($token)
+                ->post($this->baseUrl().'/mpesa/b2c/v1/paymentrequest', array_merge([
+                    'InitiatorName' => $initiator,
+                    'SecurityCredential' => $securityCredential,
+                    'CommandID' => 'BusinessPayment',
+                    'PartyA' => $shortcode,
+                    'QueueTimeOutURL' => $timeoutUrl,
+                    'ResultURL' => $resultUrl,
+                    'Remarks' => 'Payout',
+                    'Occasion' => null,
+                ], $payload));
+
+            $body = $res->json();
+            $message = is_array($body)
+                ? (string) (
+                    $body['ResponseDescription']
+                    ?? $body['errorMessage']
+                    ?? $body['responseDescription']
+                    ?? null
+                )
+                : null;
+
+            $ok = $res->ok();
+
+            return [
+                'ok' => $ok,
+                'status' => $res->status(),
+                'body' => is_array($body) ? $body : null,
+                'message' => $message,
+            ];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'status' => null, 'body' => null, 'message' => $e->getMessage()];
         }
     }
 }

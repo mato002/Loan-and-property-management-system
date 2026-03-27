@@ -5,17 +5,27 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Mail\LandlordPortalCredentialsMail;
 use App\Models\PmLease;
+use App\Models\PmPayment;
 use App\Models\Property;
+use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Models\User;
+use App\Support\CsvExport;
+use App\Support\TabularExport;
 use App\Services\Property\PropertyMoney;
+use Carbon\Carbon;
 use Illuminate\Support\HtmlString;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class PropertyPortfolioController extends Controller
@@ -38,13 +48,48 @@ class PropertyPortfolioController extends Controller
         return 'PROP-'.strtoupper(Str::random(8));
     }
 
-    public function propertyList(): View
+    public function propertyList(Request $request): View
     {
-        $portfolio = Property::query()
+        $filters = $request->only(['q', 'city', 'landlord', 'sort', 'dir']);
+        $q = Property::query()
             ->with(['landlords' => fn ($q) => $q->orderBy('name')])
             ->withCount('units')
-            ->orderBy('name')
-            ->get();
+            ->withCount([
+                'units as occupied_units_count' => fn ($uq) => $uq->where('status', PropertyUnit::STATUS_OCCUPIED),
+                'units as vacant_units_count' => fn ($uq) => $uq->where('status', PropertyUnit::STATUS_VACANT),
+            ]);
+
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $q->where(function ($b) use ($search) {
+                $b->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('code', 'like', '%'.$search.'%')
+                    ->orWhere('city', 'like', '%'.$search.'%')
+                    ->orWhere('address_line', 'like', '%'.$search.'%');
+            });
+        }
+
+        $city = trim((string) ($filters['city'] ?? ''));
+        if ($city !== '') {
+            $q->where('city', $city);
+        }
+
+        $landlord = trim((string) ($filters['landlord'] ?? ''));
+        if ($landlord === 'linked') {
+            $q->has('landlords');
+        } elseif ($landlord === 'unlinked') {
+            $q->doesntHave('landlords');
+        }
+
+        $sort = (string) ($filters['sort'] ?? 'name');
+        $dir = strtolower((string) ($filters['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSort = ['name', 'code', 'city', 'units_count', 'created_at'];
+        if (! in_array($sort, $allowedSort, true)) {
+            $sort = 'name';
+        }
+        $q->orderBy($sort, $dir)->orderBy('name');
+
+        $portfolio = $q->get();
 
         $stats = [
             ['label' => 'Properties', 'value' => (string) $portfolio->count(), 'hint' => 'In portfolio'],
@@ -57,8 +102,20 @@ class PropertyPortfolioController extends Controller
             $landlordCell = $p->landlords->isEmpty()
                 ? '—'
                 : $p->landlords->pluck('name')->join(', ');
+            $status = $p->units_count === 0
+                ? 'No units'
+                : ($p->vacant_units_count > 0 ? 'Has vacancy' : 'Fully occupied');
             $action = new HtmlString(
-                '<a href="'.route('property.properties.edit', $p).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit</a>'
+                '<div class="flex flex-wrap items-center gap-2">'.
+                '<a href="'.route('property.properties.show', $p).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">View</a>'.
+                '<a href="'.route('property.properties.edit', $p).'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
+                '<a href="'.route('property.properties.units', ['property_id' => $p->id], absolute: false).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Units</a>'.
+                '<a href="'.route('property.properties.list', ['property_id' => $p->id], absolute: false).'#link-landlord-form" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Link landlord</a>'.
+                '<form method="POST" action="'.route('property.properties.destroy', $p).'" class="inline-flex" data-swal-title="Delete property?" data-swal-confirm="This will permanently delete this property if it has no units." data-swal-confirm-text="Yes, delete">'.
+                csrf_field().method_field('DELETE').
+                '<button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
+                '</form>'.
+                '</div>'
             );
 
             return [
@@ -68,7 +125,7 @@ class PropertyPortfolioController extends Controller
                 (string) $p->units_count,
                 $p->city ?? '—',
                 $landlordCell,
-                'Active',
+                $status,
                 $action,
             ];
         })->all();
@@ -89,13 +146,409 @@ class PropertyPortfolioController extends Controller
             ->orderBy('users.name')
             ->get();
 
+        $linkableProperties = Property::query()
+            ->doesntHave('landlords')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         return view('property.agent.properties.list', [
             'stats' => $stats,
             'columns' => ['Name', 'Code', 'Address', 'Units', 'City', 'Landlord(s)', 'Status', 'Actions'],
             'tableRows' => $rows,
             'landlordUsers' => User::query()->where('property_portal_role', 'landlord')->orderBy('name')->get(),
             'properties' => $portfolio,
+            'linkableProperties' => $linkableProperties,
             'landlordLinks' => $landlordLinks,
+            'filters' => $filters,
+            'cities' => Property::query()->whereNotNull('city')->where('city', '!=', '')->distinct()->orderBy('city')->pluck('city'),
+        ]);
+    }
+
+    public function propertyListExport(Request $request)
+    {
+        $filters = $request->only(['q', 'city', 'landlord', 'sort', 'dir']);
+        $q = Property::query()
+            ->with(['landlords' => fn ($lq) => $lq->orderBy('name')])
+            ->withCount('units')
+            ->withCount([
+                'units as occupied_units_count' => fn ($uq) => $uq->where('status', PropertyUnit::STATUS_OCCUPIED),
+                'units as vacant_units_count' => fn ($uq) => $uq->where('status', PropertyUnit::STATUS_VACANT),
+            ]);
+
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $q->where(function ($b) use ($search) {
+                $b->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('code', 'like', '%'.$search.'%')
+                    ->orWhere('city', 'like', '%'.$search.'%')
+                    ->orWhere('address_line', 'like', '%'.$search.'%');
+            });
+        }
+        $city = trim((string) ($filters['city'] ?? ''));
+        if ($city !== '') {
+            $q->where('city', $city);
+        }
+        $landlord = trim((string) ($filters['landlord'] ?? ''));
+        if ($landlord === 'linked') {
+            $q->has('landlords');
+        } elseif ($landlord === 'unlinked') {
+            $q->doesntHave('landlords');
+        }
+
+        $rows = $q->orderBy('name')->get();
+
+        return CsvExport::stream(
+            'properties_'.now()->format('Ymd_His').'.csv',
+            ['ID', 'Name', 'Code', 'Address', 'City', 'Total Units', 'Occupied Units', 'Vacant Units', 'Landlords', 'Status'],
+            function () use ($rows) {
+                foreach ($rows as $p) {
+                    $status = $p->units_count === 0
+                        ? 'No units'
+                        : ($p->vacant_units_count > 0 ? 'Has vacancy' : 'Fully occupied');
+
+                    yield [
+                        $p->id,
+                        $p->name,
+                        $p->code,
+                        $p->address_line,
+                        $p->city,
+                        $p->units_count,
+                        $p->occupied_units_count,
+                        $p->vacant_units_count,
+                        $p->landlords->pluck('name')->join(', '),
+                        $status,
+                    ];
+                }
+            }
+        );
+    }
+
+    public function showProperty(Request $request, Property $property)
+    {
+        $month = (string) $request->query('month', '');
+        $fy = (int) $request->query('fy', now()->year);
+        $unitStatus = (string) $request->query('unit_status', '');
+        if (! in_array($unitStatus, [
+            PropertyUnit::STATUS_VACANT,
+            PropertyUnit::STATUS_OCCUPIED,
+            PropertyUnit::STATUS_NOTICE,
+        ], true)) {
+            $unitStatus = '';
+        }
+        $collectionChannel = trim((string) $request->query('collection_channel', ''));
+        $collectionSearch = trim((string) $request->query('collection_q', ''));
+        $exportReport = trim((string) $request->query('export_report', 'full'));
+        if (! in_array($exportReport, ['full', 'units', 'collections', 'channels'], true)) {
+            $exportReport = 'full';
+        }
+        if ($fy < 2000 || $fy > 2100) {
+            $fy = (int) now()->year;
+        }
+
+        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+            $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+            $periodEnd = $periodStart->copy()->endOfMonth();
+            $periodLabel = $periodStart->format('M Y');
+        } else {
+            $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
+            $periodEnd = $periodStart->copy()->endOfYear();
+            $periodLabel = 'FY '.$fy;
+        }
+
+        $property->load(['landlords' => fn ($q) => $q->orderBy('name')]);
+
+        $units = PropertyUnit::query()
+            ->where('property_id', $property->id)
+            ->orderBy('label')
+            ->get();
+        $unitIds = $units->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        $totalUnits = (int) $units->count();
+        $occupiedUnits = (int) $units->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
+        $vacantUnits = (int) $units->where('status', PropertyUnit::STATUS_VACANT)->count();
+        $noticeUnits = (int) $units->where('status', PropertyUnit::STATUS_NOTICE)->count();
+        $rentRoll = (float) $units->sum(fn (PropertyUnit $u) => (float) $u->rent_amount);
+
+        $invoiced = 0.0;
+        $collected = 0.0;
+        $arrears = 0.0;
+        $activeLeasesCount = 0;
+        $activeLeaseRent = 0.0;
+        $recentCollections = collect();
+        $unitSnapshots = collect();
+        $collectionByChannel = collect();
+        $availableCollectionChannels = [];
+
+        if ($unitIds !== []) {
+            $invoiced = (float) DB::table('pm_invoices')
+                ->whereIn('property_unit_id', $unitIds)
+                ->whereBetween('issue_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->sum('amount');
+
+            $collected = (float) DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->whereIn('i.property_unit_id', $unitIds)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->sum('a.amount');
+
+            $arrears = (float) DB::table('pm_invoices')
+                ->whereIn('property_unit_id', $unitIds)
+                ->whereDate('issue_date', '<=', $periodEnd->toDateString())
+                ->sum(DB::raw('GREATEST(amount - amount_paid, 0)'));
+
+            $activeLeaseRows = DB::table('pm_lease_unit as lu')
+                ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+                ->whereIn('lu.property_unit_id', $unitIds)
+                ->where('l.status', PmLease::STATUS_ACTIVE)
+                ->select(['lu.property_unit_id', 'l.monthly_rent'])
+                ->get();
+
+            $activeLeasesCount = (int) $activeLeaseRows->pluck('property_unit_id')->unique()->count();
+            $activeLeaseRent = (float) $activeLeaseRows->sum('monthly_rent');
+
+            $recentCollectionsQuery = DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->leftJoin('pm_tenants as t', 't.id', '=', 'pay.pm_tenant_id')
+                ->whereIn('i.property_unit_id', $unitIds)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->when($collectionChannel !== '', fn ($q) => $q->where('pay.channel', $collectionChannel))
+                ->when($collectionSearch !== '', function ($q) use ($collectionSearch) {
+                    $q->where(function ($qq) use ($collectionSearch) {
+                        $qq->where('t.name', 'like', '%'.$collectionSearch.'%')
+                            ->orWhere('pay.external_ref', 'like', '%'.$collectionSearch.'%');
+                    });
+                });
+
+            $recentCollections = (clone $recentCollectionsQuery)
+                ->orderByDesc('pay.paid_at')
+                ->limit(25)
+                ->select(['pay.paid_at', 'pay.external_ref', 'pay.channel', 'a.amount', 't.name as tenant_name'])
+                ->get();
+
+            $collectionByChannel = DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->whereIn('i.property_unit_id', $unitIds)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->groupBy('pay.channel')
+                ->orderByDesc(DB::raw('SUM(a.amount)'))
+                ->selectRaw('COALESCE(pay.channel, "") as channel, COUNT(*) as tx_count, SUM(a.amount) as total_amount')
+                ->get();
+
+            $availableCollectionChannels = DB::table('pm_payments as pay')
+                ->join('pm_payment_allocations as a', 'a.pm_payment_id', '=', 'pay.id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->whereIn('i.property_unit_id', $unitIds)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->whereNotNull('pay.channel')
+                ->where('pay.channel', '!=', '')
+                ->distinct()
+                ->orderBy('pay.channel')
+                ->pluck('pay.channel')
+                ->all();
+
+            $unitSnapshots = DB::table('property_units as u')
+                ->leftJoin('pm_invoices as i', 'i.property_unit_id', '=', 'u.id')
+                ->selectRaw('u.id, u.label, u.status, u.rent_amount, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as arrears')
+                ->where('u.property_id', $property->id)
+                ->when($unitStatus !== '', fn ($q) => $q->where('u.status', $unitStatus))
+                ->groupBy('u.id', 'u.label', 'u.status', 'u.rent_amount')
+                ->orderBy('u.label')
+                ->get();
+        }
+
+        $commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
+        if ($commissionPct < 0) {
+            $commissionPct = 0.0;
+        }
+        $agentEarning = $collected * ($commissionPct / 100);
+
+        $ownerRows = $property->landlords->map(function (User $u) use ($collected, $arrears, $agentEarning) {
+            $pct = (float) ($u->pivot->ownership_percent ?? 0);
+            $ratio = $pct / 100;
+
+            return [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'ownership_percent' => $pct,
+                'share_collected' => $collected * $ratio,
+                'share_arrears' => $arrears * $ratio,
+                'agent_earning_portion' => $agentEarning * $ratio,
+            ];
+        });
+
+        $occupancyRate = $totalUnits > 0 ? round(($occupiedUnits / $totalUnits) * 100, 1) : 0.0;
+        $collectionRate = $invoiced > 0 ? round(($collected / $invoiced) * 100, 1) : 0.0;
+        $avgArrearsPerUnit = $totalUnits > 0 ? ($arrears / $totalUnits) : 0.0;
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            if ($exportReport === 'units') {
+                return TabularExport::stream(
+                    'property-'.$property->id.'-units',
+                    ['Property', 'Period', 'Unit', 'Status', 'Listed Rent', 'Arrears'],
+                    function () use ($property, $periodLabel, $unitSnapshots) {
+                        return $unitSnapshots->map(function ($u) use ($property, $periodLabel) {
+                            return [
+                                (string) $property->name,
+                                (string) $periodLabel,
+                                (string) ($u->label ?? ''),
+                                (string) ucfirst((string) ($u->status ?? '')),
+                                number_format((float) ($u->rent_amount ?? 0), 2, '.', ''),
+                                number_format((float) ($u->arrears ?? 0), 2, '.', ''),
+                            ];
+                        });
+                    },
+                    $export
+                );
+            }
+
+            if ($exportReport === 'collections') {
+                return TabularExport::stream(
+                    'property-'.$property->id.'-collections',
+                    ['Property', 'Period', 'Date', 'Tenant', 'Channel', 'Reference', 'Amount'],
+                    function () use ($property, $periodLabel, $recentCollections) {
+                        return $recentCollections->map(function ($c) use ($property, $periodLabel) {
+                            return [
+                                (string) $property->name,
+                                (string) $periodLabel,
+                                ! empty($c->paid_at) ? Carbon::parse((string) $c->paid_at)->format('Y-m-d H:i') : '',
+                                (string) ($c->tenant_name ?? '—'),
+                                strtoupper((string) ($c->channel ?? '')),
+                                (string) ($c->external_ref ?? ''),
+                                number_format((float) ($c->amount ?? 0), 2, '.', ''),
+                            ];
+                        });
+                    },
+                    $export
+                );
+            }
+
+            if ($exportReport === 'channels') {
+                return TabularExport::stream(
+                    'property-'.$property->id.'-collection-channels',
+                    ['Property', 'Period', 'Channel', 'Transactions', 'Total Collected'],
+                    function () use ($property, $periodLabel, $collectionByChannel) {
+                        return $collectionByChannel->map(function ($row) use ($property, $periodLabel) {
+                            return [
+                                (string) $property->name,
+                                (string) $periodLabel,
+                                (string) (($row->channel ?? '') !== '' ? strtoupper((string) $row->channel) : 'UNSPECIFIED'),
+                                (string) ((int) ($row->tx_count ?? 0)),
+                                number_format((float) ($row->total_amount ?? 0), 2, '.', ''),
+                            ];
+                        });
+                    },
+                    $export
+                );
+            }
+
+            return TabularExport::stream(
+                'property-'.$property->id.'-intelligence',
+                ['Section', 'Property', 'Period', 'Label', 'Status / Channel', 'Reference', 'Amount', 'Arrears', 'Notes'],
+                function () use ($property, $periodLabel, $unitSnapshots, $recentCollections, $collectionByChannel, $occupancyRate, $collectionRate) {
+                    $rows = [];
+                    $rows[] = [
+                        'Summary',
+                        (string) $property->name,
+                        (string) $periodLabel,
+                        'Occupancy rate',
+                        number_format((float) $occupancyRate, 1).'%',
+                        '',
+                        '',
+                        '',
+                        'Collection rate '.number_format((float) $collectionRate, 1).'%',
+                    ];
+
+                    foreach ($unitSnapshots as $u) {
+                        $rows[] = [
+                            'Unit',
+                            (string) $property->name,
+                            (string) $periodLabel,
+                            (string) ($u->label ?? ''),
+                            (string) ucfirst((string) ($u->status ?? '')),
+                            '',
+                            number_format((float) ($u->rent_amount ?? 0), 2, '.', ''),
+                            number_format((float) ($u->arrears ?? 0), 2, '.', ''),
+                            '',
+                        ];
+                    }
+
+                    foreach ($recentCollections as $c) {
+                        $rows[] = [
+                            'Collection',
+                            (string) $property->name,
+                            (string) $periodLabel,
+                            (string) ($c->tenant_name ?? '—'),
+                            strtoupper((string) ($c->channel ?? '')),
+                            (string) ($c->external_ref ?? ''),
+                            number_format((float) ($c->amount ?? 0), 2, '.', ''),
+                            '',
+                            ! empty($c->paid_at) ? Carbon::parse((string) $c->paid_at)->format('Y-m-d H:i') : '',
+                        ];
+                    }
+
+                    foreach ($collectionByChannel as $row) {
+                        $rows[] = [
+                            'Channel report',
+                            (string) $property->name,
+                            (string) $periodLabel,
+                            (string) (($row->channel ?? '') !== '' ? strtoupper((string) $row->channel) : 'UNSPECIFIED'),
+                            (string) ((int) ($row->tx_count ?? 0)).' tx',
+                            '',
+                            number_format((float) ($row->total_amount ?? 0), 2, '.', ''),
+                            '',
+                            '',
+                        ];
+                    }
+
+                    return $rows;
+                },
+                $export
+            );
+        }
+
+        return view('property.agent.properties.show', [
+            'property' => $property,
+            'units' => $units,
+            'unitSnapshots' => $unitSnapshots,
+            'periodLabel' => $periodLabel,
+            'monthValue' => $month,
+            'fyValue' => $fy,
+            'stats' => [
+                ['label' => 'Units', 'value' => (string) $totalUnits, 'hint' => 'Total doors'],
+                ['label' => 'Occupied', 'value' => (string) $occupiedUnits, 'hint' => 'Current'],
+                ['label' => 'Vacant / Notice', 'value' => $vacantUnits.' / '.$noticeUnits, 'hint' => 'Current'],
+                ['label' => 'Rent roll', 'value' => PropertyMoney::kes($rentRoll), 'hint' => 'Listed unit rents'],
+                ['label' => 'Invoiced ('.$periodLabel.')', 'value' => PropertyMoney::kes($invoiced), 'hint' => 'Issued invoices'],
+                ['label' => 'Collected ('.$periodLabel.')', 'value' => PropertyMoney::kes($collected), 'hint' => 'Completed payments'],
+                ['label' => 'Arrears', 'value' => PropertyMoney::kes($arrears), 'hint' => 'Outstanding invoices'],
+                ['label' => 'Your earnings', 'value' => PropertyMoney::kes($agentEarning), 'hint' => 'At '.number_format($commissionPct, 2).'%'],
+            ],
+            'activeLeasesCount' => $activeLeasesCount,
+            'activeLeaseRent' => $activeLeaseRent,
+            'recentCollections' => $recentCollections,
+            'collectionByChannel' => $collectionByChannel,
+            'availableCollectionChannels' => $availableCollectionChannels,
+            'ownerRows' => $ownerRows,
+            'commissionPct' => $commissionPct,
+            'filters' => [
+                'unit_status' => $unitStatus,
+                'collection_channel' => $collectionChannel,
+                'collection_q' => $collectionSearch,
+                'export_report' => $exportReport,
+            ],
+            'reporting' => [
+                'occupancy_rate' => $occupancyRate,
+                'collection_rate' => $collectionRate,
+                'avg_arrears_per_unit' => $avgArrearsPerUnit,
+            ],
         ]);
     }
 
@@ -123,8 +576,24 @@ class PropertyPortfolioController extends Controller
         return back()->with('success', 'Property updated.');
     }
 
+    public function destroyProperty(Property $property): RedirectResponse
+    {
+        if ($property->units()->exists()) {
+            return back()->with('error', 'Cannot delete a property that already has units. Remove units first.');
+        }
+
+        $property->landlords()->detach();
+        $property->delete();
+
+        return back()->with('success', 'Property deleted.');
+    }
+
     public function detachLandlord(Request $request): RedirectResponse
     {
+        Log::warning('attachLandlord_debug: detachLandlord called', [
+            'property_id' => $request->input('property_id'),
+            'user_id' => $request->input('user_id'),
+        ]);
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
             'user_id' => ['required', 'exists:users,id'],
@@ -133,11 +602,18 @@ class PropertyPortfolioController extends Controller
         $property = Property::query()->findOrFail($data['property_id']);
         $property->landlords()->detach($data['user_id']);
 
-        return back()->with('success', __('Landlord unlinked from property.'));
+        return redirect()
+            ->route('property.properties.edit', $property->id)
+            ->with('success', __('Landlord unlinked from property.'));
     }
 
     public function updateLandlordOwnership(Request $request): RedirectResponse
     {
+        Log::warning('attachLandlord_debug: updateLandlordOwnership called', [
+            'property_id' => $request->input('property_id'),
+            'user_id' => $request->input('user_id'),
+            'ownership_percent' => $request->input('ownership_percent'),
+        ]);
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
             'user_id' => ['required', 'exists:users,id'],
@@ -146,7 +622,10 @@ class PropertyPortfolioController extends Controller
 
         $property = Property::query()->findOrFail($data['property_id']);
         if (! $property->landlords()->whereKey($data['user_id'])->exists()) {
-            return back()->withErrors(['user_id' => __('That landlord is not linked to this property.')]);
+            return redirect()
+                ->route('property.properties.edit', $property->id)
+                ->withErrors(['user_id' => __('That landlord is not linked to this property.')])
+                ->withInput();
         }
 
         $newPct = (float) $data['ownership_percent'];
@@ -155,29 +634,63 @@ class PropertyPortfolioController extends Controller
             ->sum('property_landlord.ownership_percent');
 
         if ($others + $newPct > 100.0001) {
-            return back()->withErrors(['ownership_percent' => __('Total ownership for this property cannot exceed 100%.')]);
+            return redirect()
+                ->route('property.properties.edit', $property->id)
+                ->withErrors(['ownership_percent' => __('Total ownership for this property cannot exceed 100%.')])
+                ->withInput();
         }
 
         $property->landlords()->updateExistingPivot($data['user_id'], [
             'ownership_percent' => $newPct,
         ]);
 
-        return back()->with('success', __('Ownership % updated.'));
+        return redirect()
+            ->route('property.properties.edit', $property->id)
+            ->with('success', __('Ownership % updated.'));
     }
 
-    public function propertyPerformance(): View
+    public function propertyPerformance(Request $request)
     {
-        $units = PropertyUnit::query()
+        $preset = trim((string) $request->query('preset', ''));
+        $status = trim((string) $request->query('status', ''));
+        if (! in_array($status, [PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_NOTICE], true)) {
+            $status = '';
+        }
+        $trendFilter = trim((string) $request->query('trend', ''));
+        if (! in_array($trendFilter, ['below_ask', 'at_or_above_ask', 'vacant'], true)) {
+            $trendFilter = '';
+        }
+        $propertyId = (int) $request->query('property_id', 0);
+        $search = trim((string) $request->query('q', ''));
+        $export = strtolower(trim((string) $request->query('export', '')));
+
+        if ($preset === 'vacant') {
+            $status = PropertyUnit::STATUS_VACANT;
+            $trendFilter = 'vacant';
+        } elseif ($preset === 'below_ask') {
+            $trendFilter = 'below_ask';
+        }
+
+        $baseQuery = PropertyUnit::query()
             ->with([
                 'property',
-                'leases' => fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE),
+                'leases' => fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE)->with('pmTenant'),
             ])
+            ->when($status !== '', fn ($q) => $q->where('status', $status))
+            ->when($propertyId > 0, fn ($q) => $q->where('property_id', $propertyId))
+            ->when($search !== '', function ($q) use ($search) {
+                $q->where(function ($qq) use ($search) {
+                    $qq->where('label', 'like', '%'.$search.'%')
+                        ->orWhereHas('property', fn ($pq) => $pq->where('name', 'like', '%'.$search.'%'));
+                });
+            })
             ->orderBy('property_id')
-            ->orderBy('label')
-            ->get();
+            ->orderBy('label');
+
+        $units = (clone $baseQuery)->get();
 
         $lossToLease = 0.0;
-        $rows = $units->map(function (PropertyUnit $u) use (&$lossToLease) {
+        $computed = $units->map(function (PropertyUnit $u) use (&$lossToLease) {
             $lease = $u->leases->first();
             $asking = (float) $u->rent_amount;
             $effective = $lease ? (float) $lease->monthly_rent : null;
@@ -190,56 +703,531 @@ class PropertyPortfolioController extends Controller
                 ? (int) $u->vacant_since->diffInDays(now())
                 : 0;
 
-            $collected = '—';
-            $target = PropertyMoney::kes($asking);
-            $variance = $delta === null ? '—' : PropertyMoney::kes($delta);
             $trend = $u->status === PropertyUnit::STATUS_VACANT ? 'Vacant' : ($delta !== null && $delta < 0 ? 'Below ask' : 'At/above ask');
+
+            return [
+                'unit' => $u,
+                'lease' => $lease,
+                'asking' => $asking,
+                'delta' => $delta,
+                'vacancy_days' => $vacancyDays,
+                'trend' => $trend,
+            ];
+        });
+
+        $computed = $computed->when($trendFilter !== '', function ($collection) use ($trendFilter) {
+            return $collection->filter(function ($row) use ($trendFilter) {
+                if ($trendFilter === 'vacant') {
+                    return ($row['unit']->status ?? null) === PropertyUnit::STATUS_VACANT;
+                }
+                if ($trendFilter === 'below_ask') {
+                    return ($row['delta'] ?? null) !== null && (float) $row['delta'] < 0;
+                }
+
+                return (($row['unit']->status ?? null) !== PropertyUnit::STATUS_VACANT)
+                    && ((float) ($row['delta'] ?? 0) >= 0);
+            });
+        })->values();
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream(
+                'unit-performance',
+                ['Unit', 'Property', 'Status', 'Active Tenant', 'Days Vacant', 'Asking Rent', 'Lease Rent', 'Variance', 'Trend'],
+                function () use ($computed) {
+                    return $computed->map(function ($row) {
+                        /** @var PropertyUnit $u */
+                        $u = $row['unit'];
+                        $lease = $row['lease'];
+                        $tenant = $lease?->pmTenant;
+                        $leaseRent = $lease ? (float) $lease->monthly_rent : null;
+
+                        return [
+                            (string) $u->label,
+                            (string) ($u->property->name ?? ''),
+                            (string) ucfirst((string) $u->status),
+                            (string) ($tenant?->name ?? '—'),
+                            (string) ($row['vacancy_days'] ?? 0),
+                            number_format((float) ($row['asking'] ?? 0), 2, '.', ''),
+                            $leaseRent !== null ? number_format($leaseRent, 2, '.', '') : '',
+                            ($row['delta'] ?? null) !== null ? number_format((float) $row['delta'], 2, '.', '') : '',
+                            (string) ($row['trend'] ?? ''),
+                        ];
+                    });
+                },
+                $export
+            );
+        }
+
+        $unitsPage = $computed->forPage((int) $request->query('page', 1), 50)->values();
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+            $unitsPage,
+            $computed->count(),
+            50,
+            (int) $request->query('page', 1),
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
+        $rows = $unitsPage->map(function (array $row) {
+            /** @var PropertyUnit $u */
+            $u = $row['unit'];
+            $lease = $row['lease'];
+            $tenant = $lease?->pmTenant;
+            $variance = $row['delta'] === null ? '—' : PropertyMoney::kes((float) $row['delta']);
+
+            $actions = [
+                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="text-indigo-600 hover:text-indigo-700 font-medium">View property</a>',
+            ];
+            if ($u->status === PropertyUnit::STATUS_VACANT) {
+                $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="text-emerald-600 hover:text-emerald-700 font-medium">Assign tenant</a>';
+                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', ['property_unit' => $u->id], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">Publish listing</a>';
+            } elseif ($lease) {
+                $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="text-emerald-600 hover:text-emerald-700 font-medium">Open lease</a>';
+                if ($tenant?->name) {
+                    $actions[] = '<a href="'.route('property.tenants.profiles', ['q' => $tenant->name], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">View tenant</a>';
+                }
+            }
+            $actionHtml = new HtmlString('<div class="flex flex-wrap gap-2">'.implode('<span class="text-slate-300">|</span>', $actions).'</div>');
 
             return [
                 $u->label,
                 $u->property->name,
-                (string) $vacancyDays,
-                $collected,
-                $target,
+                ucfirst((string) $u->status),
+                $tenant?->name ?? '—',
+                (string) ($row['vacancy_days'] ?? 0),
+                PropertyMoney::kes((float) ($row['asking'] ?? 0)),
+                $lease ? PropertyMoney::kes((float) $lease->monthly_rent) : '—',
                 $variance,
-                $trend,
+                (string) ($row['trend'] ?? ''),
+                $actionHtml,
             ];
         })->all();
 
-        $worst = $units->filter(fn (PropertyUnit $u) => $u->status === PropertyUnit::STATUS_VACANT)->count();
+        $worst = $computed->filter(fn ($r) => (($r['unit']->status ?? null) === PropertyUnit::STATUS_VACANT))->count();
+        $withLease = $computed->filter(fn ($r) => $r['lease'] !== null)->count();
+        $avgVacantDays = $worst > 0
+            ? round($computed->where(fn ($r) => (($r['unit']->status ?? null) === PropertyUnit::STATUS_VACANT))->avg('vacancy_days'), 1)
+            : 0.0;
+        $trendBreakdown = [
+            'below_ask' => $computed->where('trend', 'Below ask')->count(),
+            'at_or_above_ask' => $computed->where('trend', 'At/above ask')->count(),
+            'vacant' => $computed->where('trend', 'Vacant')->count(),
+        ];
 
         return view('property.agent.properties.performance', [
             'stats' => [
                 ['label' => 'Loss to lease (est.)', 'value' => PropertyMoney::kes($lossToLease), 'hint' => 'Active leases below asking'],
                 ['label' => 'Vacant units', 'value' => (string) $worst, 'hint' => 'Current'],
-                ['label' => 'Total units', 'value' => (string) $units->count(), 'hint' => ''],
-                ['label' => 'With active lease', 'value' => (string) $units->filter(fn (PropertyUnit $u) => $u->leases->isNotEmpty())->count(), 'hint' => ''],
+                ['label' => 'Total units', 'value' => (string) $computed->count(), 'hint' => 'Filtered'],
+                ['label' => 'With active lease', 'value' => (string) $withLease, 'hint' => ''],
             ],
-            'columns' => ['Unit', 'Property', 'Days vacant (current)', 'Collected', 'Target', 'Variance', 'Trend'],
+            'columns' => ['Unit', 'Property', 'Status', 'Active tenant', 'Days vacant', 'Asking', 'Lease rent', 'Variance', 'Trend', 'Actions'],
             'tableRows' => $rows,
+            'filters' => [
+                'preset' => $preset,
+                'status' => $status,
+                'trend' => $trendFilter,
+                'property_id' => $propertyId > 0 ? (string) $propertyId : '',
+                'q' => $search,
+            ],
+            'propertyOptions' => Property::query()
+                ->whereIn('id', PropertyUnit::query()->select('property_id')->distinct())
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'trendBreakdown' => $trendBreakdown,
+            'avgVacantDays' => $avgVacantDays,
+            'unitsPage' => $paginator,
         ]);
     }
 
-    public function landlordsIndex(): View
+    public function landlordsIndex(Request $request): View|StreamedResponse
     {
+        $month = (string) $request->query('month', '');
+        $fy = (int) $request->query('fy', now()->year);
+        if ($fy < 2000 || $fy > 2100) {
+            $fy = (int) now()->year;
+        }
+        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+            $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+            $periodEnd = $periodStart->copy()->endOfMonth();
+            $periodLabel = $periodStart->format('M Y');
+        } else {
+            $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
+            $periodEnd = $periodStart->copy()->endOfYear();
+            $periodLabel = 'FY '.$fy;
+        }
+
+        $filters = [
+            'q' => trim((string) $request->query('q', '')),
+            'linked' => (string) $request->query('linked', 'all'),
+            'property_id' => (int) $request->query('property_id', 0),
+            'share_level' => (string) $request->query('share_level', 'all'),
+        ];
+
         $landlords = User::query()
             ->where('property_portal_role', 'landlord')
             ->with(['landlordProperties' => fn ($q) => $q->orderBy('name')])
             ->orderBy('name')
             ->get();
 
-        $linked = $landlords->filter(fn (User $u) => $u->landlordProperties->isNotEmpty());
+        $links = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->select([
+                'pl.user_id',
+                'pl.property_id',
+                'pl.ownership_percent',
+                'u.name as owner_name',
+                'u.email as owner_email',
+                'p.name as property_name',
+            ])
+            ->get();
+
+        $collectedByProperty = DB::table('pm_payment_allocations as a')
+            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+            ->where('pay.status', PmPayment::STATUS_COMPLETED)
+            ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+            ->groupBy('pu.property_id')
+            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount),0) as total')
+            ->pluck('total', 'property_id');
+
+        $pendingByProperty = DB::table('pm_invoices as i')
+            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+            ->whereDate('i.issue_date', '<=', $periodEnd->toDateString())
+            ->groupBy('pu.property_id')
+            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as total')
+            ->pluck('total', 'property_id');
+
+        $lastPaidByProperty = DB::table('pm_payment_allocations as a')
+            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+            ->where('pay.status', PmPayment::STATUS_COMPLETED)
+            ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+            ->groupBy('pu.property_id')
+            ->selectRaw('pu.property_id as property_id, MAX(pay.paid_at) as last_paid_at')
+            ->pluck('last_paid_at', 'property_id');
+
+        $commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
+        if ($commissionPct < 0) {
+            $commissionPct = 0.0;
+        }
+
+        $statsByLandlord = [];
+        foreach ($links as $link) {
+            $uid = (int) $link->user_id;
+            $pid = (int) $link->property_id;
+            $pct = ((float) $link->ownership_percent) / 100;
+            $baseCollected = ((float) ($collectedByProperty[$pid] ?? 0)) * $pct;
+            $basePending = ((float) ($pendingByProperty[$pid] ?? 0)) * $pct;
+            $commission = $baseCollected * ($commissionPct / 100);
+
+            if (! isset($statsByLandlord[$uid])) {
+                $statsByLandlord[$uid] = [
+                    'linked_count' => 0,
+                    'ownership_sum' => 0.0,
+                    'available_share' => 0.0,
+                    'pending_share' => 0.0,
+                    'agent_earning' => 0.0,
+                    'last_paid_at' => null,
+                ];
+            }
+            $statsByLandlord[$uid]['linked_count']++;
+            $statsByLandlord[$uid]['ownership_sum'] += (float) $link->ownership_percent;
+            $statsByLandlord[$uid]['available_share'] += $baseCollected;
+            $statsByLandlord[$uid]['pending_share'] += $basePending;
+            $statsByLandlord[$uid]['agent_earning'] += $commission;
+
+            $lp = $lastPaidByProperty[$pid] ?? null;
+            if ($lp && (! $statsByLandlord[$uid]['last_paid_at'] || (string) $lp > (string) $statsByLandlord[$uid]['last_paid_at'])) {
+                $statsByLandlord[$uid]['last_paid_at'] = (string) $lp;
+            }
+        }
+
+        $landlords = $landlords->map(function (User $u) use ($statsByLandlord) {
+            $s = $statsByLandlord[$u->id] ?? null;
+            $u->setAttribute('linked_count', (int) ($s['linked_count'] ?? 0));
+            $u->setAttribute('ownership_sum', (float) ($s['ownership_sum'] ?? 0));
+            $u->setAttribute('available_share', (float) ($s['available_share'] ?? 0));
+            $u->setAttribute('pending_share', (float) ($s['pending_share'] ?? 0));
+            $u->setAttribute('agent_earning', (float) ($s['agent_earning'] ?? 0));
+            $u->setAttribute('last_paid_at', $s['last_paid_at'] ?? null);
+
+            return $u;
+        });
+
+        if ($filters['q'] !== '') {
+            $q = mb_strtolower($filters['q']);
+            $landlords = $landlords->filter(function (User $u) use ($q) {
+                $props = $u->landlordProperties->pluck('name')->join(' ');
+                $hay = mb_strtolower(trim($u->name.' '.$u->email.' '.$props));
+
+                return str_contains($hay, $q);
+            });
+        }
+
+        if ($filters['linked'] === 'linked') {
+            $landlords = $landlords->filter(fn (User $u) => (int) $u->linked_count > 0);
+        } elseif ($filters['linked'] === 'unlinked') {
+            $landlords = $landlords->filter(fn (User $u) => (int) $u->linked_count === 0);
+        }
+
+        if ($filters['property_id'] > 0) {
+            $pid = $filters['property_id'];
+            $landlords = $landlords->filter(fn (User $u) => $u->landlordProperties->contains('id', $pid));
+        }
+
+        if ($filters['share_level'] === 'high') {
+            $landlords = $landlords->filter(fn (User $u) => (float) $u->ownership_sum >= 100);
+        } elseif ($filters['share_level'] === 'medium') {
+            $landlords = $landlords->filter(fn (User $u) => (float) $u->ownership_sum >= 30 && (float) $u->ownership_sum < 100);
+        } elseif ($filters['share_level'] === 'low') {
+            $landlords = $landlords->filter(fn (User $u) => (float) $u->ownership_sum > 0 && (float) $u->ownership_sum < 30);
+        }
+
+        $landlords = $landlords->values();
+        $linked = $landlords->filter(fn (User $u) => (int) $u->linked_count > 0);
+        $agentEarningTotal = (float) $landlords->sum(fn (User $u) => (float) $u->agent_earning);
+        $ownerShareTotal = (float) $landlords->sum(fn (User $u) => (float) $u->available_share);
 
         $stats = [
-            ['label' => 'Landlord accounts', 'value' => (string) $landlords->count(), 'hint' => 'Landlord portal role'],
+            ['label' => 'Landlord accounts', 'value' => (string) $landlords->count(), 'hint' => 'Filtered result'],
             ['label' => 'Linked to properties', 'value' => (string) $linked->count(), 'hint' => 'At least one building'],
             ['label' => 'Not linked yet', 'value' => (string) ($landlords->count() - $linked->count()), 'hint' => 'Use link form on property list'],
+            ['label' => 'Owner share ('.$periodLabel.')', 'value' => PropertyMoney::kes($ownerShareTotal), 'hint' => 'Allocated collections'],
+            ['label' => 'Your earnings ('.$periodLabel.')', 'value' => PropertyMoney::kes($agentEarningTotal), 'hint' => 'Commission estimate'],
         ];
+
+        if ((string) $request->query('export', '') === 'csv') {
+            return CsvExport::stream(
+                'landlords_'.now()->format('Ymd_His').'.csv',
+                ['ID', 'Name', 'Email', 'Properties Linked', 'Ownership %', 'Owner Share', 'Pending Share', 'Agent Earning', 'Last Collection', 'Buildings'],
+                function () use ($landlords) {
+                    foreach ($landlords as $u) {
+                        yield [
+                            $u->id,
+                            $u->name,
+                            $u->email,
+                            (int) ($u->linked_count ?? 0),
+                            number_format((float) ($u->ownership_sum ?? 0), 2),
+                            (float) ($u->available_share ?? 0),
+                            (float) ($u->pending_share ?? 0),
+                            (float) ($u->agent_earning ?? 0),
+                            ! empty($u->last_paid_at) ? Carbon::parse((string) $u->last_paid_at)->format('Y-m-d') : null,
+                            $u->landlordProperties->pluck('name')->join(', '),
+                        ];
+                    }
+                }
+            );
+        }
 
         return view('property.agent.landlords.index', [
             'stats' => $stats,
             'landlords' => $landlords,
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'periodLabel' => $periodLabel,
+            'monthValue' => $month,
+            'fyValue' => $fy,
+            'filters' => $filters,
+            'commissionPct' => $commissionPct,
+        ]);
+    }
+
+    /**
+     * @return array{
+     *   periodLabel:string,
+     *   monthValue:string,
+     *   fyValue:int,
+     *   commissionPct:float,
+     *   totals:array<string,mixed>,
+     *   propertyBreakdown:\Illuminate\Support\Collection<int,array<string,mixed>>,
+     *   recentCollections:\Illuminate\Support\Collection<int,object>
+     * }
+     */
+    private function buildLandlordSnapshot(User $landlord, string $month, int $fy): array
+    {
+        if ($fy < 2000 || $fy > 2100) {
+            $fy = (int) now()->year;
+        }
+        if (preg_match('/^\d{4}-\d{2}$/', $month) === 1) {
+            $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+            $periodEnd = $periodStart->copy()->endOfMonth();
+            $periodLabel = $periodStart->format('M Y');
+        } else {
+            $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
+            $periodEnd = $periodStart->copy()->endOfYear();
+            $periodLabel = 'FY '.$fy;
+        }
+
+        $landlord->load(['landlordProperties' => fn ($q) => $q->orderBy('name')]);
+
+        $propertyLinks = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->where('pl.user_id', $landlord->id)
+            ->select([
+                'pl.property_id',
+                'pl.ownership_percent',
+                'p.name as property_name',
+            ])
+            ->orderBy('p.name')
+            ->get();
+
+        $propertyIds = $propertyLinks->pluck('property_id')->map(fn ($id) => (int) $id)->all();
+
+        $collectedByProperty = collect();
+        $pendingByProperty = collect();
+        $lastPaidByProperty = collect();
+        if ($propertyIds !== []) {
+            $collectedByProperty = DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->whereIn('pu.property_id', $propertyIds)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->groupBy('pu.property_id')
+                ->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount),0) as total')
+                ->pluck('total', 'property_id');
+
+            $pendingByProperty = DB::table('pm_invoices as i')
+                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->whereIn('pu.property_id', $propertyIds)
+                ->whereDate('i.issue_date', '<=', $periodEnd->toDateString())
+                ->groupBy('pu.property_id')
+                ->selectRaw('pu.property_id as property_id, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as total')
+                ->pluck('total', 'property_id');
+
+            $lastPaidByProperty = DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->whereIn('pu.property_id', $propertyIds)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->groupBy('pu.property_id')
+                ->selectRaw('pu.property_id as property_id, MAX(pay.paid_at) as last_paid_at')
+                ->pluck('last_paid_at', 'property_id');
+        }
+
+        $commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
+        if ($commissionPct < 0) {
+            $commissionPct = 0.0;
+        }
+
+        $propertyBreakdown = $propertyLinks->map(function ($link) use ($collectedByProperty, $pendingByProperty, $lastPaidByProperty, $commissionPct) {
+            $pid = (int) $link->property_id;
+            $pct = ((float) $link->ownership_percent) / 100;
+            $grossCollected = (float) ($collectedByProperty[$pid] ?? 0);
+            $grossPending = (float) ($pendingByProperty[$pid] ?? 0);
+            $ownerShare = $grossCollected * $pct;
+            $pendingShare = $grossPending * $pct;
+            $agentEarning = $ownerShare * ($commissionPct / 100);
+
+            return [
+                'property_id' => $pid,
+                'property_name' => (string) $link->property_name,
+                'ownership_percent' => (float) $link->ownership_percent,
+                'owner_share' => $ownerShare,
+                'pending_share' => $pendingShare,
+                'agent_earning' => $agentEarning,
+                'last_paid_at' => $lastPaidByProperty[$pid] ?? null,
+            ];
+        })->values();
+
+        $recentCollections = collect();
+        if ($propertyIds !== []) {
+            $recentCollections = DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->join('pm_tenants as t', 't.id', '=', 'pay.pm_tenant_id')
+                ->whereIn('pu.property_id', $propertyIds)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+                ->orderByDesc('pay.paid_at')
+                ->limit(20)
+                ->select([
+                    'pay.paid_at',
+                    'pay.external_ref',
+                    'pay.channel',
+                    'a.amount',
+                    'pu.property_id',
+                    't.name as tenant_name',
+                ])
+                ->get();
+        }
+
+        $totals = [
+            'properties' => (int) $propertyBreakdown->count(),
+            'ownership_sum' => (float) $propertyBreakdown->sum('ownership_percent'),
+            'owner_share' => (float) $propertyBreakdown->sum('owner_share'),
+            'pending_share' => (float) $propertyBreakdown->sum('pending_share'),
+            'agent_earning' => (float) $propertyBreakdown->sum('agent_earning'),
+        ];
+
+        return [
+            'periodLabel' => $periodLabel,
+            'monthValue' => $month,
+            'fyValue' => $fy,
+            'commissionPct' => $commissionPct,
+            'totals' => $totals,
+            'propertyBreakdown' => $propertyBreakdown,
+            'recentCollections' => $recentCollections,
+        ];
+    }
+
+    public function landlordsShow(Request $request, User $landlord): View|StreamedResponse
+    {
+        abort_unless($landlord->property_portal_role === 'landlord', 404);
+
+        $month = (string) $request->query('month', '');
+        $fy = (int) $request->query('fy', now()->year);
+        $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
+
+        $export = $request->string('export')->toString();
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream(
+                'landlord-'.$landlord->id.'-snapshot',
+                [
+                    'Landlord Name', 'Landlord Email', 'Period', 'Property', 'Ownership %', 'Owner Share', 'Pending Share', 'Agent Earning', 'Last Collection',
+                ],
+                function () use ($landlord, $snapshot) {
+                    return $snapshot['propertyBreakdown']->map(function (array $row) use ($landlord, $snapshot) {
+                        return [
+                            (string) $landlord->name,
+                            (string) $landlord->email,
+                            (string) $snapshot['periodLabel'],
+                            (string) ($row['property_name'] ?? ''),
+                            (string) number_format((float) ($row['ownership_percent'] ?? 0), 2),
+                            (string) number_format((float) ($row['owner_share'] ?? 0), 2, '.', ''),
+                            (string) number_format((float) ($row['pending_share'] ?? 0), 2, '.', ''),
+                            (string) number_format((float) ($row['agent_earning'] ?? 0), 2, '.', ''),
+                            ! empty($row['last_paid_at']) ? Carbon::parse((string) $row['last_paid_at'])->format('Y-m-d') : '',
+                        ];
+                    });
+                },
+                $export
+            );
+        }
+
+        return view('property.agent.landlords.show', [
+            'landlord' => $landlord,
+            ...$snapshot,
+        ]);
+    }
+
+    public function landlordsStatement(Request $request, User $landlord): View
+    {
+        abort_unless($landlord->property_portal_role === 'landlord', 404);
+
+        $month = (string) $request->query('month', '');
+        $fy = (int) $request->query('fy', now()->year);
+        $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
+
+        return view('property.agent.landlords.statement', [
+            'landlord' => $landlord,
+            ...$snapshot,
         ]);
     }
 
@@ -257,7 +1245,7 @@ class PropertyPortfolioController extends Controller
         $landlord = User::query()->create([
             'name' => $data['name'],
             'email' => $data['email'],
-            'password' => $plainPassword,
+            'password' => Hash::make($plainPassword),
             'property_portal_role' => 'landlord',
         ]);
 
@@ -295,6 +1283,49 @@ class PropertyPortfolioController extends Controller
             : 'Landlord onboarded successfully.'.$mailWarning;
 
         return back()->with('success', $message);
+    }
+
+    public function onboardLandlordJson(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8', 'max:255'],
+        ]);
+
+        $plainPassword = (string) $data['password'];
+        $landlord = User::query()->create([
+            'name' => (string) $data['name'],
+            'email' => (string) $data['email'],
+            'password' => Hash::make($plainPassword),
+            'property_portal_role' => 'landlord',
+        ]);
+
+        // Email sending is best-effort; UI will still proceed even if mail isn't configured.
+        $mailOk = true;
+        try {
+            Mail::to($landlord->email)->send(new LandlordPortalCredentialsMail(
+                landlordName: $landlord->name,
+                email: $landlord->email,
+                plainPassword: $plainPassword,
+                loginUrl: route('login'),
+                landlordHomeUrl: route('property.landlord.portfolio'),
+            ));
+        } catch (Throwable) {
+            $mailOk = false;
+        }
+
+        return response()->json([
+            'ok' => true,
+            'user' => [
+                'id' => $landlord->id,
+                'name' => $landlord->name,
+                'email' => $landlord->email,
+            ],
+            'message' => $mailOk
+                ? 'Landlord created. Credentials email sent.'
+                : 'Landlord created. Email not sent (check mail settings).',
+        ]);
     }
 
     public function storeProperty(Request $request): RedirectResponse
@@ -343,9 +1374,89 @@ class PropertyPortfolioController extends Controller
             ]);
     }
 
-    public function unitList(): View
+    public function storePropertyJson(Request $request)
     {
-        $units = PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get();
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'code' => ['nullable', 'string', 'max:64', 'unique:properties,code'],
+            'address_line' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:128'],
+        ]);
+
+        if (!isset($data['code']) || trim((string) $data['code']) === '') {
+            $data['code'] = $this->generateUniquePropertyCode($data['name']);
+        }
+
+        $property = Property::query()->create($data);
+
+        return response()->json([
+            'ok' => true,
+            'item' => [
+                'id' => $property->id,
+                'label' => $property->name,
+            ],
+            'message' => 'Property created.',
+        ]);
+    }
+
+    public function unitList(Request $request): View
+    {
+        $filters = $request->only([
+            'q', 'property_id', 'status', 'unit_type', 'beds_min', 'beds_max', 'rent_min', 'rent_max', 'sort', 'dir',
+        ]);
+        $query = PropertyUnit::query()->with('property');
+
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('label', 'like', '%'.$search.'%')
+                    ->orWhere('unit_type', 'like', '%'.$search.'%')
+                    ->orWhereHas('property', fn ($p) => $p->where('name', 'like', '%'.$search.'%'));
+            });
+        }
+
+        $propertyId = (int) ($filters['property_id'] ?? 0);
+        if ($propertyId > 0) {
+            $query->where('property_id', $propertyId);
+        }
+
+        $status = trim((string) ($filters['status'] ?? ''));
+        if (in_array($status, [PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE], true)) {
+            $query->where('status', $status);
+        }
+
+        $unitType = trim((string) ($filters['unit_type'] ?? ''));
+        if ($unitType !== '' && array_key_exists($unitType, PropertyUnit::typeOptions())) {
+            $query->where('unit_type', $unitType);
+        }
+
+        $bedsMin = is_numeric($filters['beds_min'] ?? null) ? (int) $filters['beds_min'] : null;
+        $bedsMax = is_numeric($filters['beds_max'] ?? null) ? (int) $filters['beds_max'] : null;
+        if ($bedsMin !== null) {
+            $query->where('bedrooms', '>=', $bedsMin);
+        }
+        if ($bedsMax !== null) {
+            $query->where('bedrooms', '<=', $bedsMax);
+        }
+
+        $rentMin = is_numeric($filters['rent_min'] ?? null) ? (float) $filters['rent_min'] : null;
+        $rentMax = is_numeric($filters['rent_max'] ?? null) ? (float) $filters['rent_max'] : null;
+        if ($rentMin !== null) {
+            $query->where('rent_amount', '>=', $rentMin);
+        }
+        if ($rentMax !== null) {
+            $query->where('rent_amount', '<=', $rentMax);
+        }
+
+        $sort = (string) ($filters['sort'] ?? 'property_id');
+        $dir = strtolower((string) ($filters['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSort = ['property_id', 'label', 'rent_amount', 'status', 'bedrooms', 'created_at'];
+        if (! in_array($sort, $allowedSort, true)) {
+            $sort = 'property_id';
+        }
+        $query->orderBy($sort, $dir)->orderBy('label');
+
+        $units = $query->get();
 
         $stats = [
             ['label' => 'Units', 'value' => (string) $units->count(), 'hint' => 'Total'],
@@ -355,15 +1466,32 @@ class PropertyPortfolioController extends Controller
         ];
 
         $rows = $units->map(function (PropertyUnit $u) {
-            $action = new HtmlString(
-                '<a href="'.route('property.properties.units').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Manage unit</a>'
-            );
+            $actions = [
+                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">View property</a>',
+            ];
 
             if ($u->status === PropertyUnit::STATUS_VACANT) {
-                $action = new HtmlString(
-                    '<a href="'.route('property.listings.vacant.public.edit', $u).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit listing</a>'
-                );
+                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', $u, absolute: false).'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Edit listing</a>';
             }
+
+            foreach ([PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE] as $targetStatus) {
+                if ($targetStatus === $u->status) {
+                    continue;
+                }
+                $actions[] = '<form method="POST" action="'.route('property.units.status', $u, absolute: false).'" class="inline-flex">'
+                    .csrf_field()
+                    .'<input type="hidden" name="status" value="'.$targetStatus.'" />'
+                    .'<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Mark '.ucfirst($targetStatus).'</button>'
+                    .'</form>';
+            }
+
+            $actions[] = '<form method="POST" action="'.route('property.units.destroy', $u, absolute: false).'" data-swal-title="Delete unit?" data-swal-confirm="Delete '.$u->label.' from '.$u->property->name.'? This cannot be undone." data-swal-confirm-text="Yes, delete" class="inline-flex">'
+                .csrf_field()
+                .method_field('DELETE')
+                .'<button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Delete</button>'
+                .'</form>';
+
+            $action = new HtmlString('<div class="flex flex-wrap gap-1">'.implode('', $actions).'</div>');
 
             return [
                 $u->label,
@@ -382,21 +1510,102 @@ class PropertyPortfolioController extends Controller
             'stats' => $stats,
             'columns' => ['Unit', 'Property', 'Type', 'Beds', 'Rent', 'Status', 'Tenant', 'Vacant since', 'Actions'],
             'tableRows' => $rows,
-            'properties' => Property::query()->orderBy('name')->get(),
+            'properties' => Property::query()
+                ->whereDoesntHave('units')
+                ->orderBy('name')
+                ->get(),
+            'allProperties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'unitTypes' => PropertyUnit::typeOptions(),
+            'filters' => $filters,
         ]);
+    }
+
+    public function unitListExport(Request $request)
+    {
+        $filters = $request->only([
+            'q', 'property_id', 'status', 'unit_type', 'beds_min', 'beds_max', 'rent_min', 'rent_max',
+        ]);
+
+        $query = PropertyUnit::query()->with('property');
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('label', 'like', '%'.$search.'%')
+                    ->orWhere('unit_type', 'like', '%'.$search.'%')
+                    ->orWhereHas('property', fn ($p) => $p->where('name', 'like', '%'.$search.'%'));
+            });
+        }
+        $propertyId = (int) ($filters['property_id'] ?? 0);
+        if ($propertyId > 0) {
+            $query->where('property_id', $propertyId);
+        }
+        $status = trim((string) ($filters['status'] ?? ''));
+        if (in_array($status, [PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE], true)) {
+            $query->where('status', $status);
+        }
+        $unitType = trim((string) ($filters['unit_type'] ?? ''));
+        if ($unitType !== '' && array_key_exists($unitType, PropertyUnit::typeOptions())) {
+            $query->where('unit_type', $unitType);
+        }
+        if (is_numeric($filters['beds_min'] ?? null)) {
+            $query->where('bedrooms', '>=', (int) $filters['beds_min']);
+        }
+        if (is_numeric($filters['beds_max'] ?? null)) {
+            $query->where('bedrooms', '<=', (int) $filters['beds_max']);
+        }
+        if (is_numeric($filters['rent_min'] ?? null)) {
+            $query->where('rent_amount', '>=', (float) $filters['rent_min']);
+        }
+        if (is_numeric($filters['rent_max'] ?? null)) {
+            $query->where('rent_amount', '<=', (float) $filters['rent_max']);
+        }
+
+        $rows = $query->orderBy('property_id')->orderBy('label')->get();
+
+        return CsvExport::stream(
+            'property_units_'.now()->format('Ymd_His').'.csv',
+            ['ID', 'Property', 'Unit', 'Type', 'Bedrooms', 'Rent', 'Status', 'Vacant Since'],
+            function () use ($rows) {
+                foreach ($rows as $u) {
+                    yield [
+                        $u->id,
+                        $u->property->name,
+                        $u->label,
+                        $u->unitTypeLabel(),
+                        $u->bedroomsLabel(),
+                        (float) $u->rent_amount,
+                        $u->status,
+                        optional($u->vacant_since)->format('Y-m-d'),
+                    ];
+                }
+            }
+        );
     }
 
     public function storeUnit(Request $request): RedirectResponse
     {
+        if ($request->boolean('mixed_units_mode')) {
+            return $this->storeMixedUnits($request);
+        }
+
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
-            'label' => ['required', 'string', 'max:64'],
+            'label' => ['nullable', 'string', 'max:64'],
+            'unit_count' => ['nullable', 'integer', 'min:1', 'max:5000'],
+            'label_prefix' => ['nullable', 'string', 'max:32'],
+            'label_start' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+            'vacant_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
+            'occupied_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
+            'notice_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
+            'status_mode' => ['nullable', 'in:single,split'],
             'unit_type' => ['required', 'string', 'in:'.implode(',', array_keys(PropertyUnit::typeOptions()))],
             // Bedrooms is conditional: some unit types have no separate bedroom and the UI disables the field.
             'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'rent_amount' => ['required', 'numeric', 'min:0'],
-            'status' => ['required', 'in:vacant,occupied,notice'],
+            'status' => [
+                Rule::requiredIf(fn () => (string) $request->input('status_mode', 'single') !== 'split'),
+                'in:vacant,occupied,notice',
+            ],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
 
@@ -413,12 +1622,104 @@ class PropertyPortfolioController extends Controller
                 ->withInput();
         }
 
-        $unit = PropertyUnit::query()->create([
-            ...$data,
-            'rent_amount' => $data['rent_amount'],
-            'public_listing_description' => $desc,
-            'vacant_since' => $data['status'] === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
-        ]);
+        $unitCount = (int) ($data['unit_count'] ?? 1);
+        $labelStart = (int) ($data['label_start'] ?? 1);
+        $labelPrefix = trim((string) ($data['label_prefix'] ?? ''));
+        $baseLabel = trim((string) ($data['label'] ?? ''));
+        $vacantCount = (int) ($data['vacant_count'] ?? 0);
+        $occupiedCount = (int) ($data['occupied_count'] ?? 0);
+        $noticeCount = (int) ($data['notice_count'] ?? 0);
+        $statusMode = (string) ($data['status_mode'] ?? 'single');
+        $hasStatusSplit = $statusMode === 'split';
+        $labels = [];
+        if ($unitCount <= 1) {
+            if ($baseLabel === '') {
+                return back()
+                    ->withErrors(['label' => __('Label is required when saving a single unit.')])
+                    ->withInput();
+            }
+            $labels[] = $baseLabel;
+        } else {
+            // If user typed A1 in prefix and left label blank, auto-split to prefix A + start 1.
+            if ($baseLabel === '' && $labelPrefix !== '' && preg_match('/^(.*?)(\d+)$/', $labelPrefix, $m) === 1) {
+                $labelPrefix = trim((string) $m[1]);
+                $labelStart = (int) $m[2];
+            }
+
+            $baseLooksNumeric = preg_match('/\d/', $baseLabel) === 1;
+            if ($labelPrefix === '' && ! $baseLooksNumeric) {
+                $labelPrefix = $baseLabel;
+            }
+            if ($labelPrefix === '') {
+                return back()
+                    ->withErrors(['label_prefix' => __('Set a label prefix for bulk creation (e.g. A, B, BLOCK-1-).')])
+                    ->withInput();
+            }
+            for ($i = 0; $i < $unitCount; $i++) {
+                $labels[] = $labelPrefix.($labelStart + $i);
+            }
+        }
+
+        if ($hasStatusSplit) {
+            if ($unitCount <= 1) {
+                return back()
+                    ->withErrors(['unit_count' => __('Status split is for bulk only. Set units greater than 1.')])
+                    ->withInput();
+            }
+            if (($vacantCount + $occupiedCount + $noticeCount) !== $unitCount) {
+                return back()
+                    ->withErrors(['unit_count' => __('Vacant + Occupied + Notice counts must equal total units.')])
+                    ->withInput();
+            }
+        }
+
+        $existing = PropertyUnit::query()
+            ->where('property_id', $data['property_id'])
+            ->whereIn('label', $labels)
+            ->pluck('label')
+            ->all();
+        if ($existing !== []) {
+            return back()
+                ->withErrors(['label' => __('Some labels already exist for this property: :labels', ['labels' => implode(', ', array_slice($existing, 0, 10))])])
+                ->withInput();
+        }
+
+        if (! $hasStatusSplit) {
+            $vacantCount = 0;
+            $occupiedCount = 0;
+            $noticeCount = 0;
+        }
+
+        $statuses = [];
+        if ($hasStatusSplit) {
+            for ($i = 0; $i < $vacantCount; $i++) {
+                $statuses[] = PropertyUnit::STATUS_VACANT;
+            }
+            for ($i = 0; $i < $occupiedCount; $i++) {
+                $statuses[] = PropertyUnit::STATUS_OCCUPIED;
+            }
+            for ($i = 0; $i < $noticeCount; $i++) {
+                $statuses[] = PropertyUnit::STATUS_NOTICE;
+            }
+        }
+
+        $created = [];
+        foreach ($labels as $idx => $label) {
+            $rowStatus = $hasStatusSplit
+                ? (string) ($statuses[$idx] ?? $data['status'])
+                : (string) $data['status'];
+            $created[] = PropertyUnit::query()->create([
+                'property_id' => $data['property_id'],
+                'label' => $label,
+                'unit_type' => $data['unit_type'],
+                'bedrooms' => (int) $data['bedrooms'],
+                'rent_amount' => $data['rent_amount'],
+                'status' => $rowStatus,
+                'public_listing_description' => $desc,
+                'vacant_since' => $rowStatus === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
+            ]);
+        }
+        $unit = $created[0];
 
         $actions = [
             [
@@ -454,19 +1755,170 @@ class PropertyPortfolioController extends Controller
             ]);
         }
 
+        $savedMessage = $unitCount > 1
+            ? 'Units saved: '.$unitCount.'.'
+            : 'Unit saved.';
+
         return back()
-            ->with('success', 'Unit saved.')
+            ->with('success', $savedMessage)
             ->with('next_steps', [
                 'title' => 'Unit saved',
                 'message' => $unit->status === PropertyUnit::STATUS_VACANT
-                    ? 'This unit is vacant. You can now add photos and publish it under Listings.'
+                    ? ($unitCount > 1
+                        ? 'These units are vacant. You can now add photos and publish selected ones under Listings.'
+                        : 'This unit is vacant. You can now add photos and publish it under Listings.')
                     : 'Next, add more units, link the landlord, or manage listings for vacant units.',
                 'actions' => $actions,
             ]);
     }
 
+    public function updateUnitStatus(Request $request, PropertyUnit $unit): RedirectResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', 'in:vacant,occupied,notice'],
+        ]);
+
+        $status = (string) $data['status'];
+        $unit->update([
+            'status' => $status,
+            'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? ($unit->vacant_since?->toDateString() ?? now()->toDateString()) : null,
+        ]);
+
+        if ($status !== PropertyUnit::STATUS_VACANT) {
+            $unit->update(['public_listing_published' => false]);
+        }
+
+        return back()->with('success', 'Unit status updated.');
+    }
+
+    public function destroyUnit(PropertyUnit $unit): RedirectResponse
+    {
+        if ($unit->leases()->exists()) {
+            return back()->withErrors(['unit' => 'Cannot delete unit with lease history.']);
+        }
+        if ($unit->invoices()->exists()) {
+            return back()->withErrors(['unit' => 'Cannot delete unit with invoices.']);
+        }
+        if ($unit->utilityCharges()->exists()) {
+            return back()->withErrors(['unit' => 'Cannot delete unit with utility charges.']);
+        }
+        if ($unit->maintenanceRequests()->exists()) {
+            return back()->withErrors(['unit' => 'Cannot delete unit with maintenance records.']);
+        }
+
+        foreach ($unit->publicImages as $img) {
+            Storage::disk('public')->delete($img->path);
+            $img->delete();
+        }
+
+        $unit->delete();
+
+        return back()->with('success', 'Unit deleted.');
+    }
+
+    private function storeMixedUnits(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'property_id' => ['required', 'exists:properties,id'],
+            'unit_groups' => ['required', 'array', 'min:1', 'max:200'],
+            'unit_groups.*.unit_count' => ['required', 'integer', 'min:1', 'max:5000'],
+            'unit_groups.*.label_prefix' => ['required', 'string', 'max:32'],
+            'unit_groups.*.label_start' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'unit_groups.*.unit_type' => ['required', 'string', 'in:'.implode(',', array_keys(PropertyUnit::typeOptions()))],
+            'unit_groups.*.bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'unit_groups.*.rent_amount' => ['required', 'numeric', 'min:0'],
+            'unit_groups.*.status' => ['required', 'in:vacant,occupied,notice'],
+            'unit_groups.*.public_listing_description' => ['nullable', 'string', 'max:20000'],
+        ]);
+
+        $propertyId = (int) $data['property_id'];
+        $groups = (array) $data['unit_groups'];
+        $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
+
+        $allLabels = [];
+        $toCreate = [];
+
+        foreach ($groups as $index => $group) {
+            $groupNumber = $index + 1;
+            $count = (int) ($group['unit_count'] ?? 0);
+            $prefix = trim((string) ($group['label_prefix'] ?? ''));
+            $start = (int) ($group['label_start'] ?? 1);
+            $unitType = (string) ($group['unit_type'] ?? '');
+            $status = (string) ($group['status'] ?? '');
+            $rentAmount = (float) ($group['rent_amount'] ?? 0);
+            $desc = isset($group['public_listing_description']) && trim((string) $group['public_listing_description']) !== ''
+                ? (string) $group['public_listing_description']
+                : null;
+
+            if ($prefix === '') {
+                return back()
+                    ->withErrors(['unit_groups' => __('Group :n: label prefix is required.', ['n' => $groupNumber])])
+                    ->withInput();
+            }
+
+            $requiresNoBedroom = in_array($unitType, $noBedroomTypes, true);
+            $bedrooms = $requiresNoBedroom ? 0 : ($group['bedrooms'] ?? null);
+            if (! $requiresNoBedroom && $bedrooms === null) {
+                return back()
+                    ->withErrors(['unit_groups' => __('Group :n: bedrooms is required for this unit type.', ['n' => $groupNumber])])
+                    ->withInput();
+            }
+
+            for ($i = 0; $i < $count; $i++) {
+                $label = $prefix.($start + $i);
+                $allLabels[] = $label;
+                $toCreate[] = [
+                    'property_id' => $propertyId,
+                    'label' => $label,
+                    'unit_type' => $unitType,
+                    'bedrooms' => (int) $bedrooms,
+                    'rent_amount' => $rentAmount,
+                    'status' => $status,
+                    'public_listing_description' => $desc,
+                    'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
+                ];
+            }
+        }
+
+        $counts = array_count_values($allLabels);
+        $dupesInPayload = array_keys(array_filter($counts, static fn ($c) => $c > 1));
+        if ($dupesInPayload !== []) {
+            return back()
+                ->withErrors([
+                    'unit_groups' => __('Duplicate labels in your batch: :labels. Adjust label prefix/start so each group has a unique range (example: R1-R4, then R5-R8).', [
+                        'labels' => implode(', ', array_slice($dupesInPayload, 0, 10)),
+                    ]),
+                ])
+                ->withInput();
+        }
+
+        $existing = PropertyUnit::query()
+            ->where('property_id', $propertyId)
+            ->whereIn('label', $allLabels)
+            ->pluck('label')
+            ->all();
+        if ($existing !== []) {
+            return back()
+                ->withErrors(['unit_groups' => __('Some labels already exist for this property: :labels', ['labels' => implode(', ', array_slice($existing, 0, 10))])])
+                ->withInput();
+        }
+
+        DB::transaction(function () use ($toCreate): void {
+            foreach ($toCreate as $payload) {
+                PropertyUnit::query()->create($payload);
+            }
+        });
+
+        return back()->with('success', 'Units saved: '.count($toCreate).'.');
+    }
+
     public function attachLandlord(Request $request): RedirectResponse
     {
+        Log::warning('attachLandlord_debug: attachLandlord called', [
+            'property_id' => $request->input('property_id'),
+            'user_id' => $request->input('user_id'),
+            'ownership_percent' => $request->input('ownership_percent'),
+        ]);
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
             'user_id' => ['required', 'exists:users,id'],
@@ -474,18 +1926,28 @@ class PropertyPortfolioController extends Controller
         ]);
 
         $property = Property::query()->findOrFail($data['property_id']);
+        if ($property->landlords()->exists()) {
+            return redirect()
+                ->route('property.properties.list')
+                ->withErrors(['property_id' => __('This property is already linked to a landlord.')])
+                ->withInput();
+        }
         $pct = (float) ($data['ownership_percent'] ?? 100);
 
         $currentSum = (float) $property->landlords()->sum('property_landlord.ownership_percent');
         if ($currentSum + $pct > 100.0001) {
-            return back()->withErrors(['ownership_percent' => __('Total ownership for this property would exceed 100%.')]);
+            return redirect()
+                ->route('property.properties.edit', $property->id)
+                ->withErrors(['ownership_percent' => __('Total ownership for this property would exceed 100%.')])
+                ->withInput();
         }
 
         $property->landlords()->syncWithoutDetaching([
             $data['user_id'] => ['ownership_percent' => $pct],
         ]);
 
-        return back()
+        return redirect()
+            ->route('property.properties.edit', $property->id)
             ->with('success', 'Landlord linked to property.')
             ->with('next_steps', [
                 'title' => 'Landlord linked',
@@ -516,22 +1978,112 @@ class PropertyPortfolioController extends Controller
             ]);
     }
 
-    public function occupancy(): View
+    public function occupancy(Request $request)
     {
-        $units = PropertyUnit::query()
+        $preset = trim((string) $request->query('preset', ''));
+        $status = trim((string) $request->query('status', ''));
+        if (! in_array($status, [PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_NOTICE], true)) {
+            $status = '';
+        }
+        $ageBucket = trim((string) $request->query('age_bucket', ''));
+        if (! in_array($ageBucket, ['0_30', '31_60', '61_90', '90_plus'], true)) {
+            $ageBucket = '';
+        }
+        $propertyId = (int) $request->query('property_id', 0);
+        $search = trim((string) $request->query('q', ''));
+        $export = strtolower(trim((string) $request->query('export', '')));
+
+        if ($preset === 'vacant') {
+            $status = PropertyUnit::STATUS_VACANT;
+        } elseif ($preset === 'notice') {
+            $status = PropertyUnit::STATUS_NOTICE;
+        } elseif ($preset === 'long_vacant') {
+            $status = PropertyUnit::STATUS_VACANT;
+            if ($ageBucket === '') {
+                $ageBucket = '90_plus';
+            }
+        }
+
+        $today = Carbon::today();
+        $d30 = $today->copy()->subDays(30)->toDateString();
+        $d60 = $today->copy()->subDays(60)->toDateString();
+        $d90 = $today->copy()->subDays(90)->toDateString();
+
+        $baseQuery = PropertyUnit::query()
             ->with([
                 'property',
                 'leases' => fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE)->with('pmTenant'),
             ])
+            ->when($status !== '', fn ($q) => $q->where('status', $status))
+            ->when($propertyId > 0, fn ($q) => $q->where('property_id', $propertyId))
+            ->when($search !== '', function ($q) use ($search) {
+                $q->where(function ($qq) use ($search) {
+                    $qq->where('label', 'like', '%'.$search.'%')
+                        ->orWhereHas('property', fn ($pq) => $pq->where('name', 'like', '%'.$search.'%'));
+                });
+            })
+            ->when($ageBucket !== '', function ($q) use ($ageBucket, $d30, $d60, $d90) {
+                $q->whereNotNull('vacant_since');
+                if ($ageBucket === '0_30') {
+                    $q->whereDate('vacant_since', '>=', $d30);
+                } elseif ($ageBucket === '31_60') {
+                    $q->whereBetween('vacant_since', [$d60, Carbon::parse($d30)->subDay()->toDateString()]);
+                } elseif ($ageBucket === '61_90') {
+                    $q->whereBetween('vacant_since', [$d90, Carbon::parse($d60)->subDay()->toDateString()]);
+                } elseif ($ageBucket === '90_plus') {
+                    $q->whereDate('vacant_since', '<', $d90);
+                }
+            })
             ->orderBy('property_id')
-            ->orderBy('label')
-            ->get();
+            ->orderBy('label');
+
+        $units = (clone $baseQuery)->get();
+        $unitsPage = (clone $baseQuery)->paginate(50)->withQueryString();
 
         $total = $units->count();
         $occ = $units->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
         $vac = $units->where('status', PropertyUnit::STATUS_VACANT)->count();
         $notice = $units->where('status', PropertyUnit::STATUS_NOTICE)->count();
         $rate = $total > 0 ? round(100 * $occ / $total, 1) : null;
+        $vacantRentExposure = (float) $units
+            ->where('status', PropertyUnit::STATUS_VACANT)
+            ->sum(fn (PropertyUnit $u) => (float) $u->rent_amount);
+
+        $vacancyAging = [
+            '0_30' => ['label' => '0-30 days', 'count' => 0, 'rent' => 0.0],
+            '31_60' => ['label' => '31-60 days', 'count' => 0, 'rent' => 0.0],
+            '61_90' => ['label' => '61-90 days', 'count' => 0, 'rent' => 0.0],
+            '90_plus' => ['label' => '90+ days', 'count' => 0, 'rent' => 0.0],
+        ];
+        foreach ($units->where('status', PropertyUnit::STATUS_VACANT) as $vu) {
+            $days = $vu->vacant_since ? $vu->vacant_since->diffInDays($today) : 0;
+            $bucket = $days <= 30 ? '0_30' : ($days <= 60 ? '31_60' : ($days <= 90 ? '61_90' : '90_plus'));
+            $vacancyAging[$bucket]['count']++;
+            $vacancyAging[$bucket]['rent'] += (float) $vu->rent_amount;
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream(
+                'occupancy-view',
+                ['Unit', 'Property', 'Status', 'Active Tenant', 'List Rent', 'Vacant Since'],
+                function () use ($units) {
+                    return $units->map(function (PropertyUnit $u) {
+                        $lease = $u->leases->first();
+                        $tenant = $lease?->pmTenant;
+
+                        return [
+                            (string) $u->label,
+                            (string) ($u->property->name ?? ''),
+                            (string) ucfirst($u->status),
+                            (string) ($tenant?->name ?? '—'),
+                            (string) number_format((float) $u->rent_amount, 2, '.', ''),
+                            (string) ($u->vacant_since?->format('Y-m-d') ?? '—'),
+                        ];
+                    });
+                },
+                $export
+            );
+        }
 
         $stats = [
             ['label' => 'Occupancy rate', 'value' => $rate !== null ? $rate.'%' : '—', 'hint' => 'Occupied / all units'],
@@ -540,24 +2092,152 @@ class PropertyPortfolioController extends Controller
             ['label' => 'Notice', 'value' => (string) $notice, 'hint' => 'Move-out pipeline'],
         ];
 
-        $rows = $units->map(function (PropertyUnit $u) {
+        $rows = $unitsPage->getCollection()->map(function (PropertyUnit $u) {
             $lease = $u->leases->first();
             $tenant = $lease?->pmTenant;
+            $actions = [
+                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="text-indigo-600 hover:text-indigo-700 font-medium">View property</a>',
+            ];
+
+            if ($u->status === PropertyUnit::STATUS_VACANT) {
+                $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="text-emerald-600 hover:text-emerald-700 font-medium">Assign tenant</a>';
+                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', ['property_unit' => $u->id], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">Publish listing</a>';
+            } elseif ($u->status === PropertyUnit::STATUS_OCCUPIED) {
+                if ($lease) {
+                    $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="text-emerald-600 hover:text-emerald-700 font-medium">Open lease</a>';
+                }
+                if ($tenant?->name) {
+                    $actions[] = '<a href="'.route('property.tenants.profiles', ['q' => $tenant->name], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">View tenant</a>';
+                }
+            } elseif ($u->status === PropertyUnit::STATUS_NOTICE) {
+                $actions[] = '<a href="'.route('property.tenants.notices', ['q' => $u->label], absolute: false).'" class="text-amber-600 hover:text-amber-700 font-medium">Prepare move-out</a>';
+                $actions[] = '<a href="'.route('property.listings.vacant', ['q' => $u->property->name], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">Market unit</a>';
+            }
+
+            $actionHtml = new HtmlString('<div class="flex flex-wrap gap-2">'.implode('<span class="text-slate-300">|</span>', $actions).'</div>');
+            $select = new HtmlString('<input form="occupancy-bulk-form" type="checkbox" name="unit_ids[]" value="'.$u->id.'" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />');
 
             return [
+                $select,
                 $u->label,
                 $u->property->name,
                 ucfirst($u->status),
                 $tenant?->name ?? '—',
                 PropertyMoney::kes((float) $u->rent_amount),
                 $u->vacant_since?->format('Y-m-d') ?? '—',
+                $actionHtml,
             ];
         })->all();
 
+        $unitIds = $units->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $activityTrend = collect();
+        if ($unitIds !== []) {
+            $startMonth = Carbon::now()->startOfMonth()->subMonths(5);
+            $activityRows = DB::table('pm_unit_movements')
+                ->selectRaw('DATE_FORMAT(COALESCE(completed_on, scheduled_on), "%Y-%m") as ym, movement_type, COUNT(*) as c')
+                ->whereIn('property_unit_id', $unitIds)
+                ->whereIn('movement_type', ['move_in', 'move_out'])
+                ->whereDate(DB::raw('COALESCE(completed_on, scheduled_on)'), '>=', $startMonth->toDateString())
+                ->groupBy('ym', 'movement_type')
+                ->get();
+
+            $activityTrend = collect(range(0, 5))->map(function ($i) use ($startMonth, $activityRows) {
+                $ym = $startMonth->copy()->addMonths($i)->format('Y-m');
+                $monthRows = $activityRows->where('ym', $ym);
+
+                return [
+                    'label' => Carbon::createFromFormat('Y-m', $ym)->format('M Y'),
+                    'move_in' => (int) ($monthRows->firstWhere('movement_type', 'move_in')->c ?? 0),
+                    'move_out' => (int) ($monthRows->firstWhere('movement_type', 'move_out')->c ?? 0),
+                ];
+            });
+        }
+
         return view('property.agent.properties.occupancy', [
             'stats' => $stats,
-            'columns' => ['Unit', 'Property', 'Status', 'Active tenant', 'List rent', 'Vacant since'],
+            'columns' => ['Select', 'Unit', 'Property', 'Status', 'Active tenant', 'List rent', 'Vacant since', 'Actions'],
             'tableRows' => $rows,
+            'filters' => [
+                'preset' => $preset,
+                'status' => $status,
+                'age_bucket' => $ageBucket,
+                'property_id' => $propertyId > 0 ? (string) $propertyId : '',
+                'q' => $search,
+            ],
+            'propertyOptions' => Property::query()
+                ->whereIn('id', PropertyUnit::query()->select('property_id')->distinct())
+                ->orderBy('name')
+                ->get(['id', 'name']),
+            'vacancyAging' => $vacancyAging,
+            'vacantRentExposure' => $vacantRentExposure,
+            'activityTrend' => $activityTrend,
+            'unitsPage' => $unitsPage,
         ]);
+    }
+
+    public function occupancyBulkAction(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'bulk_action' => ['required', Rule::in([
+                'mark_vacant',
+                'mark_occupied',
+                'mark_notice',
+                'open_assign',
+                'open_publish',
+                'open_property',
+            ])],
+            'unit_ids' => ['required', 'array', 'min:1'],
+            'unit_ids.*' => ['integer', 'exists:property_units,id'],
+        ]);
+
+        $units = PropertyUnit::query()->whereIn('id', $data['unit_ids'])->get();
+        if ($units->isEmpty()) {
+            return back()->with('error', 'Select at least one unit.');
+        }
+
+        $action = (string) $data['bulk_action'];
+        if ($action === 'mark_vacant') {
+            PropertyUnit::query()->whereIn('id', $units->pluck('id'))->update([
+                'status' => PropertyUnit::STATUS_VACANT,
+                'vacant_since' => now()->toDateString(),
+            ]);
+
+            return back()->with('success', 'Selected units marked vacant.');
+        }
+        if ($action === 'mark_occupied') {
+            PropertyUnit::query()->whereIn('id', $units->pluck('id'))->update([
+                'status' => PropertyUnit::STATUS_OCCUPIED,
+                'vacant_since' => null,
+            ]);
+
+            return back()->with('success', 'Selected units marked occupied.');
+        }
+        if ($action === 'mark_notice') {
+            PropertyUnit::query()->whereIn('id', $units->pluck('id'))->update([
+                'status' => PropertyUnit::STATUS_NOTICE,
+            ]);
+
+            return back()->with('success', 'Selected units marked notice.');
+        }
+        if ($action === 'open_assign') {
+            $target = $units->firstWhere('status', PropertyUnit::STATUS_VACANT) ?? $units->first();
+
+            return redirect()->route('property.tenants.leases', [
+                'property_id' => $target->property_id,
+                'unit_id' => $target->id,
+            ]);
+        }
+        if ($action === 'open_publish') {
+            $target = $units->firstWhere('status', PropertyUnit::STATUS_VACANT);
+            if (! $target) {
+                return back()->with('error', 'Choose at least one vacant unit to publish.');
+            }
+
+            return redirect()->route('property.listings.vacant.public.edit', ['property_unit' => $target->id]);
+        }
+
+        $target = $units->first();
+
+        return redirect()->route('property.properties.show', ['property' => $target->property_id]);
     }
 }

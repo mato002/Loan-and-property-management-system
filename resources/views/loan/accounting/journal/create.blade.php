@@ -35,10 +35,15 @@
                                 <th class="px-3 py-2 w-28">Debit</th>
                                 <th class="px-3 py-2 w-28">Credit</th>
                                 <th class="px-3 py-2">Memo</th>
+                                <th class="px-3 py-2 w-10"></th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-100">
-                            @for ($i = 0; $i < 6; $i++)
+                        @php
+                            $oldLines = old('lines', []);
+                            $rowCount = max(2, is_array($oldLines) ? count($oldLines) : 0);
+                        @endphp
+                        <tbody id="journal-lines" class="divide-y divide-slate-100" data-next-index="{{ $rowCount }}">
+                            @for ($i = 0; $i < $rowCount; $i++)
                                 <tr>
                                     <td class="px-3 py-2">
                                         <select name="lines[{{ $i }}][accounting_chart_account_id]" class="w-full rounded-lg border-slate-200 text-xs sm:text-sm">
@@ -58,14 +63,85 @@
                                     <td class="px-3 py-2">
                                         <input type="text" name="lines[{{ $i }}][memo]" value="{{ old('lines.'.$i.'.memo') }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                     </td>
+                                    <td class="px-3 py-2 text-right">
+                                        <button type="button" class="js-remove-line text-slate-400 hover:text-red-600" title="Remove">×</button>
+                                    </td>
                                 </tr>
                             @endfor
                         </tbody>
                     </table>
                 </div>
-                <p class="text-xs text-slate-500">Use at least two lines with amounts. Each line is either a debit or a credit.</p>
-                <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Post entry</button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" id="add-line" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Add fields</button>
+                    <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Post entry</button>
+                </div>
+                <p class="text-xs text-slate-500">Use at least one line with an amount. A line can be a debit, a credit, or equal debit and credit.</p>
             </form>
         </div>
     </x-loan.page>
+
+    <template id="journal-line-template">
+        <tr>
+            <td class="px-3 py-2">
+                <select name="lines[__INDEX__][accounting_chart_account_id]" class="w-full rounded-lg border-slate-200 text-xs sm:text-sm">
+                    <option value="">—</option>
+                    @foreach ($accounts as $a)
+                        <option value="{{ $a->id }}">{{ $a->code }} · {{ $a->name }}</option>
+                    @endforeach
+                </select>
+            </td>
+            <td class="px-3 py-2">
+                <input type="number" step="0.01" min="0" name="lines[__INDEX__][debit]" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+            </td>
+            <td class="px-3 py-2">
+                <input type="number" step="0.01" min="0" name="lines[__INDEX__][credit]" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+            </td>
+            <td class="px-3 py-2">
+                <input type="text" name="lines[__INDEX__][memo]" class="w-full rounded-lg border-slate-200 text-sm" />
+            </td>
+            <td class="px-3 py-2 text-right">
+                <button type="button" class="js-remove-line text-slate-400 hover:text-red-600" title="Remove">×</button>
+            </td>
+        </tr>
+    </template>
+
+    <script>
+        (function () {
+            const tbody = document.getElementById('journal-lines');
+            const addBtn = document.getElementById('add-line');
+            const tpl = document.getElementById('journal-line-template');
+            if (!tbody || !addBtn || !tpl) return;
+
+            function nextIndex() {
+                const cur = parseInt(tbody.dataset.nextIndex || '0', 10) || 0;
+                tbody.dataset.nextIndex = String(cur + 1);
+                return cur;
+            }
+
+            function addRow() {
+                const idx = nextIndex();
+                const html = tpl.innerHTML.replaceAll('__INDEX__', String(idx));
+                tbody.insertAdjacentHTML('beforeend', html);
+            }
+
+            function onRemove(e) {
+                const btn = e.target.closest('.js-remove-line');
+                if (!btn) return;
+                const tr = btn.closest('tr');
+                if (!tr) return;
+
+                // keep at least one row visible
+                if (tbody.querySelectorAll('tr').length <= 1) {
+                    tr.querySelectorAll('input').forEach(i => i.value = '');
+                    tr.querySelectorAll('select').forEach(s => s.value = '');
+                    return;
+                }
+
+                tr.remove();
+            }
+
+            addBtn.addEventListener('click', addRow);
+            tbody.addEventListener('click', onRemove);
+        })();
+    </script>
 </x-loan-layout>

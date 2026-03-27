@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountingChartAccount;
+use App\Models\AccountingJournalLine;
 use App\Models\FinancialAccount;
 use App\Models\InvestmentPackage;
 use App\Models\Investor;
 use App\Models\MpesaPayoutBatch;
 use App\Models\MpesaPlatformTransaction;
+use App\Models\PmPayment;
 use App\Models\TellerMovement;
 use App\Models\TellerSession;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -33,6 +37,31 @@ class LoanFinancialController extends Controller
 
         $failedCount = MpesaPlatformTransaction::query()->where('status', 'failed')->count();
 
+        // If mpesa_platform_transactions hasn't been used, fall back to real STK payments recorded in pm_payments.
+        $pmPayments = PmPayment::query()
+            ->where('channel', 'mpesa_stk')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+        $pmTotals = [
+            'stk_today_sum' => (float) PmPayment::query()
+                ->where('channel', 'mpesa_stk')
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->whereDate('created_at', today())
+                ->sum('amount'),
+            'stk_24h_sum' => (float) PmPayment::query()
+                ->where('channel', 'mpesa_stk')
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->where('created_at', '>=', now()->subDay())
+                ->sum('amount'),
+            'failed_count' => (int) PmPayment::query()
+                ->where('channel', 'mpesa_stk')
+                ->where('status', PmPayment::STATUS_FAILED)
+                ->count(),
+        ];
+
+        $mode = $transactions->total() > 0 ? 'platform' : ($pmPayments->isNotEmpty() ? 'pm_payments' : 'platform');
+
         return view('loan.financial.mpesa_platform', [
             'title' => 'M-Pesa platform',
             'subtitle' => 'Log STK, C2B, and B2C-style movements; reconcile before syncing Daraja webhooks.',
@@ -40,6 +69,9 @@ class LoanFinancialController extends Controller
             'stkTodaySum' => $stkTodaySum,
             'c2b24hSum' => $c2b24hSum,
             'failedCount' => $failedCount,
+            'mode' => $mode,
+            'pmPayments' => $pmPayments,
+            'pmTotals' => $pmTotals,
         ]);
     }
 
@@ -71,12 +103,15 @@ class LoanFinancialController extends Controller
 
     public function mpesaPayouts(): View
     {
-        $batches = MpesaPayoutBatch::query()->latest()->paginate(15);
+        $payouts = MpesaPlatformTransaction::query()
+            ->where('channel', 'b2c')
+            ->latest()
+            ->paginate(15);
 
         return view('loan.financial.mpesa_payouts', [
             'title' => 'M-Pesa payouts',
-            'subtitle' => 'Create and track payout batches before connecting live B2C.',
-            'batches' => $batches,
+            'subtitle' => 'Live payouts (B2C) recorded from Daraja callbacks (Result URL).',
+            'payouts' => $payouts,
         ]);
     }
 
@@ -147,12 +182,53 @@ class LoanFinancialController extends Controller
 
     public function accountBalances(): View
     {
+        // Primary source: explicit financial accounts (manual control accounts)
         $accounts = FinancialAccount::query()->orderBy('name')->paginate(15);
+
+        // If none exist, show live balances from the accounting journal instead of an empty page.
+        $journalBalances = collect();
+        $mode = 'financial_accounts';
+        if ($accounts->total() === 0) {
+            $mode = 'journal';
+
+            $balances = AccountingJournalLine::query()
+                ->join('accounting_chart_accounts as a', 'a.id', '=', 'accounting_journal_lines.accounting_chart_account_id')
+                ->select([
+                    'a.id as account_id',
+                    'a.code as code',
+                    'a.name as name',
+                    DB::raw('COALESCE(SUM(accounting_journal_lines.debit),0) - COALESCE(SUM(accounting_journal_lines.credit),0) as balance'),
+                ])
+                ->groupBy('a.id', 'a.code', 'a.name')
+                ->orderBy('a.code')
+                ->get();
+
+            // include accounts with zero activity (so chart is complete)
+            $all = AccountingChartAccount::query()
+                ->orderBy('code')
+                ->get(['id', 'code', 'name']);
+
+            $byId = $balances->keyBy('account_id');
+            $journalBalances = $all->map(function ($a) use ($byId) {
+                $b = (float) (($byId[$a->id]->balance ?? 0));
+                return [
+                    'id' => $a->id,
+                    'name' => $a->code.' · '.$a->name,
+                    'account_type' => 'GL',
+                    'currency' => 'KES',
+                    'balance' => $b,
+                ];
+            });
+        }
 
         return view('loan.financial.account_balances', [
             'title' => 'Account balances',
-            'subtitle' => 'Bank, float, and control accounts used in reporting.',
+            'subtitle' => $mode === 'journal'
+                ? 'Live balances from accounting journal (debit − credit).'
+                : 'Bank, float, and control accounts used in reporting.',
             'accounts' => $accounts,
+            'mode' => $mode,
+            'journalBalances' => $journalBalances,
         ]);
     }
 
@@ -254,7 +330,20 @@ class LoanFinancialController extends Controller
             'status' => ['required', 'in:active,draft'],
         ]);
 
-        InvestmentPackage::create($data);
+        $pkg = InvestmentPackage::create($data);
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'package' => [
+                    'id' => $pkg->id,
+                    'name' => $pkg->name,
+                    'rate_label' => $pkg->rate_label,
+                    'minimum_label' => $pkg->minimum_label,
+                    'status' => $pkg->status,
+                ],
+            ], 201);
+        }
 
         return redirect()
             ->route('loan.financial.investment_packages')

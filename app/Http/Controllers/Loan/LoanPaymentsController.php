@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Loan;
 use App\Http\Controllers\Controller;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
+use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -307,8 +308,8 @@ class LoanPaymentsController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'loan_book_loan_id' => ['nullable', 'exists:loan_book_loans,id'],
-            'amount' => ['required', 'numeric', 'not_in:0'],
+            'loan_book_loan_id' => ['required', 'exists:loan_book_loans,id'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'max:8'],
             'channel' => ['required', 'in:cash,mpesa,bank,cheque,card'],
             'payment_kind' => ['required', 'in:normal,prepayment,overpayment'],
@@ -418,8 +419,8 @@ class LoanPaymentsController extends Controller
         abort_unless($loan_book_payment->canEdit(), 403);
 
         $validated = $request->validate([
-            'loan_book_loan_id' => ['nullable', 'exists:loan_book_loans,id'],
-            'amount' => ['required', 'numeric', 'not_in:0'],
+            'loan_book_loan_id' => ['required', 'exists:loan_book_loans,id'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'max:8'],
             'channel' => ['required', 'in:cash,mpesa,bank,cheque,card'],
             'payment_kind' => ['required', 'in:normal,prepayment,overpayment,c2b_reversal'],
@@ -478,6 +479,8 @@ class LoanPaymentsController extends Controller
                     'posted_by' => $request->user()->id,
                     'accounting_journal_entry_id' => $entry->id,
                 ]);
+
+                app(LoanBookLoanUpdateService::class)->onPaymentProcessed($payment->fresh());
             });
         } catch (\RuntimeException $e) {
             return redirect()

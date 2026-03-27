@@ -21,14 +21,32 @@
         <form method="post" action="{{ route('property.revenue.utilities.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add charge line</h3>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Charge type</label>
+                    <select name="charge_type" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="other" @selected(old('charge_type') === 'other')>Other</option>
+                        <option value="water" @selected(old('charge_type') === 'water')>Water</option>
+                        <option value="service" @selected(old('charge_type') === 'service')>Service</option>
+                        <option value="garbage" @selected(old('charge_type') === 'garbage')>Garbage</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Billing month</label>
+                    <input type="month" name="billing_month" value="{{ old('billing_month') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+            </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-                <select name="property_unit_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="">Select…</option>
-                    @foreach ($units as $u)
-                        <option value="{{ $u->id }}" @selected(old('property_unit_id') == $u->id)>{{ $u->property->name }} — {{ $u->label }}</option>
-                    @endforeach
-                </select>
+                <x-property.quick-create-select
+                    name="property_unit_id"
+                    :required="true"
+                    :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' — '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
+                    :create="[
+                        'mode' => 'link',
+                        'link' => route('property.properties.units', absolute: false),
+                    ]"
+                />
                 @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
@@ -48,6 +66,42 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save charge</button>
         </form>
+
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4 max-w-2xl">
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Water meter reading</h3>
+            <form method="post" action="{{ route('property.revenue.utilities.water_readings.store') }}" class="space-y-3">
+                @csrf
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
+                    <x-property.quick-create-select
+                        name="property_unit_id"
+                        :required="true"
+                        :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' — '.$u->label, 'selected' => false])->all()"
+                        :create="[
+                            'mode' => 'link',
+                            'link' => route('property.properties.units', absolute: false),
+                        ]"
+                    />
+                </div>
+                <div class="grid gap-3 sm:grid-cols-3">
+                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Month</label><input type="month" name="billing_month" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Current reading</label><input type="number" step="0.001" min="0" name="current_reading" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label><input type="number" step="0.01" min="0" name="rate_per_unit" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                </div>
+                <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label><input type="number" step="0.01" min="0" name="fixed_charge" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                <button type="submit" class="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700">Save reading</button>
+            </form>
+            <form method="post" action="{{ route('property.revenue.utilities.water_invoices.generate') }}" class="flex flex-wrap items-end gap-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+                @csrf
+                <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Billing month</label><input type="month" name="billing_month" required class="mt-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Due date</label><input type="date" name="due_date" required class="mt-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Generate water invoices</button>
+            </form>
+            <form method="post" action="{{ route('property.revenue.utilities.water_penalties.apply') }}">
+                @csrf
+                <button type="submit" class="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">Apply overdue water penalties</button>
+            </form>
+        </div>
     </x-slot>
 
     <div class="overflow-x-auto w-full min-w-0 -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -88,6 +142,26 @@
                     <tr>
                         <td colspan="6" class="px-4 py-14 text-center text-slate-600 dark:text-slate-400">No utility charges yet.</td>
                     </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-6 overflow-x-auto w-full min-w-0 -mx-4 px-4 sm:mx-0 sm:px-0">
+        <h3 class="text-sm font-semibold text-slate-900 dark:text-white mb-2">Water readings</h3>
+        <table class="min-w-full text-sm">
+            <thead><tr><th class="px-3 py-2">Month</th><th class="px-3 py-2">Unit</th><th class="px-3 py-2">Used</th><th class="px-3 py-2">Amount</th><th class="px-3 py-2">Status</th></tr></thead>
+            <tbody>
+                @forelse (($waterReadings ?? collect()) as $r)
+                    <tr class="border-t border-slate-100 dark:border-slate-700/80">
+                        <td class="px-3 py-2">{{ $r->billing_month }}</td>
+                        <td class="px-3 py-2">{{ $r->unit->property->name ?? '—' }} / {{ $r->unit->label ?? '—' }}</td>
+                        <td class="px-3 py-2">{{ number_format((float) $r->units_used, 3) }}</td>
+                        <td class="px-3 py-2">{{ \App\Services\Property\PropertyMoney::kes((float) $r->amount) }}</td>
+                        <td class="px-3 py-2">{{ ucfirst((string) $r->status) }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="5" class="px-3 py-6 text-slate-500">No readings yet.</td></tr>
                 @endforelse
             </tbody>
         </table>

@@ -95,7 +95,11 @@ class PmLeaseWebController extends Controller
         $rows = $leases->map(function (PmLease $l) {
             $units = $l->units->map(fn ($u) => $u->property->name.'/'.$u->label)->implode(', ');
             $actions = new HtmlString(
-                '<a href="'.route('property.leases.edit', $l).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit</a>'
+                '<div class="flex flex-wrap gap-2">'.
+                '<a href="'.route('property.leases.show', $l).'" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'.
+                '<span class="text-slate-300">|</span>'.
+                '<a href="'.route('property.leases.edit', $l).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit</a>'.
+                '</div>'
             );
 
 
@@ -168,6 +172,25 @@ class PmLeaseWebController extends Controller
         });
 
         return back()->with('success', 'Lease saved.');
+    }
+
+    public function show(PmLease $lease): View
+    {
+        $lease->load([
+            'pmTenant',
+            'units.property',
+        ]);
+
+        $units = $lease->units->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
+        $daysLeft = $lease->end_date->isBefore(today()) ? 0 : (int) today()->diffInDays($lease->end_date);
+        $isEndingSoon = $lease->status === PmLease::STATUS_ACTIVE && $lease->end_date->lte(now()->addDays(60));
+
+        return view('property.agent.tenants.lease_show', [
+            'lease' => $lease,
+            'unitsLabel' => $units !== '' ? $units : '—',
+            'daysLeft' => $daysLeft,
+            'isEndingSoon' => $isEndingSoon,
+        ]);
     }
 
     public function edit(PmLease $lease): View

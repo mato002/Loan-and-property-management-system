@@ -9,6 +9,55 @@
     empty-hint="Log a request below; create a job from the Jobs screen once scoped."
 >
     <x-slot name="above">
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ route('property.maintenance.requests', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All requests</a>
+                <a href="{{ route('property.maintenance.requests', array_merge((array) ($filters ?? []), ['status' => 'open']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Open</a>
+                <a href="{{ route('property.maintenance.requests', array_merge((array) ($filters ?? []), ['status' => 'in_progress']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">In progress</a>
+                <a href="{{ route('property.maintenance.requests', array_merge((array) ($filters ?? []), ['status' => 'done']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Done</a>
+                <a href="{{ route('property.maintenance.requests.export', (array) ($filters ?? []), absolute: false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
+            </div>
+        </div>
+
+        <form method="get" action="{{ route('property.maintenance.requests') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
+                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Category, description, unit..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
+                    <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">All</option>
+                        @foreach (['open', 'in_progress', 'done', 'closed'] as $st)
+                            <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ ucfirst(str_replace('_', ' ', $st)) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Urgency</label>
+                    <select name="urgency" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">All</option>
+                        @foreach (['normal', 'urgent', 'emergency'] as $u)
+                            <option value="{{ $u }}" @selected(($filters['urgency'] ?? '') === $u)>{{ ucfirst($u) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">From</label>
+                    <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">To</label>
+                    <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
+                <a href="{{ route('property.maintenance.requests', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
+            </div>
+        </form>
+
         @if (session('success'))
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif
@@ -31,12 +80,15 @@
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New request</h3>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-                <select name="property_unit_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="">Select…</option>
-                    @foreach ($units as $u)
-                        <option value="{{ $u->id }}" @selected(old('property_unit_id') == $u->id)>{{ $u->property->name }} / {{ $u->label }}</option>
-                    @endforeach
-                </select>
+                <x-property.quick-create-select
+                    name="property_unit_id"
+                    :required="true"
+                    :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
+                    :create="[
+                        'mode' => 'link',
+                        'link' => route('property.properties.units', absolute: false),
+                    ]"
+                />
                 @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>

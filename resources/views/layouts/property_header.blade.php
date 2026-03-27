@@ -11,13 +11,13 @@
     $notifyRoute = match ($portalRole) {
         'landlord' => route('property.landlord.notifications'),
         'tenant' => route('property.tenant.notifications'),
-        default => route('property.communications.messages'),
+        default => route('property.notifications'),
     };
 
     $notifyNavPattern = match ($portalRole) {
         'landlord' => 'property.landlord.notifications',
         'tenant' => 'property.tenant.notifications',
-        default => 'property.communications.messages',
+        default => 'property.notifications',
     };
 
     $quickLinks = match ($portalRole) {
@@ -61,6 +61,29 @@
     };
 
     $todayLabel = now()->format('D, j M');
+
+    $notificationItems = collect();
+    $notificationUnread = 0;
+    if ($portalRole === 'agent' && Auth::check() && \Illuminate\Support\Facades\Schema::hasTable('pm_message_logs')) {
+        $uid = (int) Auth::id();
+        $baseNotifQuery = \App\Models\PmMessageLog::query()
+            ->where('channel', 'system')
+            ->orderByDesc('id');
+
+        $notificationItems = (clone $baseNotifQuery)
+            ->limit(8)
+            ->get(['id', 'channel', 'subject', 'body', 'delivery_status', 'created_at']);
+
+        if (\Illuminate\Support\Facades\Schema::hasTable('pm_message_reads')) {
+            $notificationUnread = (int) \App\Models\PmMessageLog::query()
+                ->leftJoin('pm_message_reads as pmr', function ($join) use ($uid) {
+                    $join->on('pm_message_logs.id', '=', 'pmr.pm_message_log_id')
+                        ->where('pmr.user_id', '=', $uid);
+                })
+                ->whereNull('pmr.id')
+                ->count();
+        }
+    }
 @endphp
 
 <header class="property-topbar relative z-50 flex-shrink-0 shadow-md shadow-emerald-950/10">
@@ -121,22 +144,74 @@
             </div>
 
             <div class="flex items-center gap-1 sm:gap-2 shrink-0">
-                <a
-                    href="{{ $notifyRoute }}"
-                    class="hidden sm:flex p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                    title="Messages &amp; notifications"
-                >
-                    <i class="fa-regular fa-bell text-lg sm:text-xl" aria-hidden="true"></i>
-                </a>
+                @if ($portalRole === 'agent')
+                    <a
+                        href="{{ route('public.home') }}"
+                        target="_blank"
+                        rel="noopener"
+                        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 text-xs font-semibold"
+                        title="Open public website"
+                    >
+                        <i class="fa-solid fa-globe" aria-hidden="true"></i>
+                        Website
+                    </a>
+                @endif
+
+                <div class="hidden sm:block relative z-[60]" x-data="{ bellOpen: false }" @click.outside="bellOpen = false">
+                    <button
+                        type="button"
+                        @click="bellOpen = !bellOpen"
+                        class="relative p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                        title="Messages &amp; notifications"
+                        aria-label="Notifications"
+                    >
+                        <i class="fa-regular fa-bell text-lg sm:text-xl" aria-hidden="true"></i>
+                        @if ($notificationUnread > 0)
+                            <span class="absolute -top-0.5 -right-0.5 min-w-[1.05rem] h-[1.05rem] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[1.05rem] text-center font-bold">{{ $notificationUnread > 99 ? '99+' : $notificationUnread }}</span>
+                        @endif
+                    </button>
+
+                    <div
+                        x-show="bellOpen"
+                        x-transition:enter="transition ease-out duration-150"
+                        x-transition:enter-start="opacity-0 translate-y-1"
+                        x-transition:enter-end="opacity-100 translate-y-0"
+                        x-transition:leave="transition ease-in duration-100"
+                        x-transition:leave-start="opacity-100 translate-y-0"
+                        x-transition:leave-end="opacity-0 translate-y-1"
+                        class="absolute right-0 mt-2 w-[23rem] max-w-[90vw] rounded-xl bg-white text-slate-800 shadow-xl border border-slate-200/90 overflow-hidden"
+                        x-cloak
+                    >
+                        <div class="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                            <p class="text-sm font-semibold text-slate-900">Alerts</p>
+                            <a href="{{ $notifyRoute }}" data-turbo-frame="property-main" data-property-nav="{{ $notifyNavPattern }}" class="text-xs font-semibold text-emerald-700 hover:text-emerald-800">View all</a>
+                        </div>
+                        <div class="max-h-80 overflow-auto">
+                            @forelse ($notificationItems as $item)
+                                <a href="{{ $notifyRoute }}" data-turbo-frame="property-main" data-property-nav="{{ $notifyNavPattern }}" class="block px-4 py-3 border-b border-slate-100 last:border-b-0 hover:bg-slate-50">
+                                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ strtoupper((string) ($item->channel ?? 'notice')) }}</p>
+                                    <p class="text-sm font-medium text-slate-900 mt-0.5">{{ \Illuminate\Support\Str::limit((string) ($item->subject ?: 'Notification'), 80) }}</p>
+                                    <p class="text-xs text-slate-600 mt-0.5">{{ \Illuminate\Support\Str::limit(strip_tags((string) ($item->body ?? '')), 110) }}</p>
+                                    <p class="text-[11px] text-slate-400 mt-1">{{ optional($item->created_at)->diffForHumans() }}</p>
+                                </a>
+                            @empty
+                                <div class="px-4 py-6 text-sm text-slate-500">No alerts yet.</div>
+                            @endforelse
+                        </div>
+                    </div>
+                </div>
 
                 <a
                     href="{{ $notifyRoute }}"
                     data-turbo-frame="property-main"
                     data-property-nav="{{ $notifyNavPattern }}"
-                    class="sm:hidden p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/10 transition-colors aria-[current=page]:bg-white/20 aria-[current=page]:text-white"
+                    class="sm:hidden relative p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/10 transition-colors aria-[current=page]:bg-white/20 aria-[current=page]:text-white"
                     aria-label="Notifications"
                 >
                     <i class="fa-regular fa-bell text-lg" aria-hidden="true"></i>
+                    @if ($notificationUnread > 0)
+                        <span class="absolute -top-0.5 -right-0.5 min-w-[1rem] h-[1rem] px-1 rounded-full bg-rose-500 text-white text-[9px] leading-[1rem] text-center font-bold">{{ $notificationUnread > 99 ? '99+' : $notificationUnread }}</span>
+                    @endif
                 </a>
 
                 <div class="hidden sm:block w-px h-8 bg-white/20 mx-0.5" aria-hidden="true"></div>

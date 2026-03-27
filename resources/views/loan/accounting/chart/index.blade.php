@@ -12,6 +12,7 @@
             <a href="{{ route('loan.accounting.reports.hub') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reports</a>
             <a href="{{ route('loan.accounting.books') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Books</a>
             <a href="{{ route('loan.accounting.books.chart_rules') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Guidance</a>
+            @include('loan.accounting.partials.export_buttons')
         </x-slot>
 
         <x-slot name="banner">
@@ -103,6 +104,25 @@
         @error('delete')
             <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ $message }}</div>
         @enderror
+
+        <form method="get" class="mb-4">
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Active</label>
+                    <select name="active" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="" @selected(($active ?? '') === '')>All</option>
+                        <option value="1" @selected(($active ?? '') === '1')>Active</option>
+                        <option value="0" @selected(($active ?? '') === '0')>Inactive</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Search</label>
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Code/name…" class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.accounting.chart.index') }}" class="h-10 inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reset</a>
+            </div>
+        </form>
 
         <div
             class="space-y-6"

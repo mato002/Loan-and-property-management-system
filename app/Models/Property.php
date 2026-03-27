@@ -26,4 +26,10 @@ class Property extends Model
             ->withPivot('ownership_percent')
             ->withTimestamps();
     }
+
+    public function amenities(): BelongsToMany
+    {
+        return $this->belongsToMany(PmAmenity::class, 'pm_amenity_property', 'property_id', 'pm_amenity_id')
+            ->withTimestamps();
+    }
 }

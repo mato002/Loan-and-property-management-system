@@ -23,12 +23,23 @@
             <div class="grid gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Vendor</label>
-                    <select name="pm_vendor_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">—</option>
-                        @foreach ($vendors as $v)
-                            <option value="{{ $v->id }}" @selected((string) old('pm_vendor_id', $job->pm_vendor_id) === (string) $v->id)>{{ $v->name }}</option>
-                        @endforeach
-                    </select>
+                    <x-property.quick-create-select
+                        name="pm_vendor_id"
+                        :required="false"
+                        placeholder="—"
+                        :options="collect($vendors)->map(fn($v) => ['value' => $v->id, 'label' => $v->name, 'selected' => (string) old('pm_vendor_id', $job->pm_vendor_id) === (string) $v->id])->all()"
+                        :create="[
+                            'mode' => 'ajax',
+                            'title' => 'Create vendor',
+                            'endpoint' => route('property.vendors.store_json'),
+                            'fields' => [
+                                ['name' => 'name', 'label' => 'Vendor name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Acme Plumbing'],
+                                ['name' => 'category', 'label' => 'Category (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Plumbing, Electrical…'],
+                                ['name' => 'phone', 'label' => 'Phone (optional)', 'required' => false, 'span' => '2', 'placeholder' => '+2547…'],
+                                ['name' => 'email', 'label' => 'Email (optional)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'vendor@example.com'],
+                            ],
+                        ]"
+                    />
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Quote (KES)</label>

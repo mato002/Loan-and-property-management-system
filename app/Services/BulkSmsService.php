@@ -8,9 +8,62 @@ use App\Models\SmsWallet;
 use App\Models\SmsWalletTopup;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Throwable;
 
 class BulkSmsService
 {
+    private function billingMode(): string
+    {
+        $mode = strtolower((string) config('bulksms.billing_mode', 'local_wallet'));
+        return in_array($mode, ['local_wallet', 'provider', 'both'], true) ? $mode : 'local_wallet';
+    }
+
+    /**
+     * Provider balance in currency units (e.g. KES), when supported.
+     * @return array{ok:bool,balance?:float,error?:string}
+     */
+    public function providerBalance(): array
+    {
+        $cfg = (array) config('bulksms.provider', []);
+        $apiUrl = rtrim((string) ($cfg['api_url'] ?? ''), '/');
+        $clientId = trim((string) ($cfg['client_id'] ?? ''));
+        $apiKey = trim((string) ($cfg['api_key'] ?? ''));
+        $balancePath = ltrim((string) ($cfg['balance_path'] ?? ''), '/');
+
+        if ($apiUrl === '' || $clientId === '' || $apiKey === '') {
+            return ['ok' => false, 'error' => 'Bulk SMS provider is not configured (missing api_url/client_id/api_key).'];
+        }
+        if ($balancePath === '') {
+            return ['ok' => false, 'error' => 'Provider balance endpoint is not configured. Set BULKSMS_BALANCE_PATH.'];
+        }
+
+        try {
+            $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                ->withOptions(['verify' => (bool) ($cfg['verify_ssl'] ?? true)])
+                ->withHeaders([
+                    'X-API-KEY' => $apiKey,
+                    'Accept' => 'application/json',
+                ])
+                ->get($apiUrl.'/'.$clientId.'/'.$balancePath);
+
+            $json = $response->json();
+            if (! $response->ok() || ! is_array($json)) {
+                return ['ok' => false, 'error' => 'Provider balance error: '.$response->status().' '.$response->body()];
+            }
+
+            // Try a few common keys
+            $raw = $json['balance'] ?? $json['credit'] ?? $json['wallet_balance'] ?? data_get($json, 'data.balance') ?? null;
+            if ($raw === null || $raw === '') {
+                return ['ok' => false, 'error' => 'Provider balance response did not include a balance field.'];
+            }
+
+            return ['ok' => true, 'balance' => (float) $raw];
+        } catch (Throwable $e) {
+            return ['ok' => false, 'error' => 'Provider balance connection failed: '.$e->getMessage()];
+        }
+    }
+
     public function costPerSms(): float
     {
         return max(0.0001, (float) config('bulksms.cost_per_sms', 0.5));
@@ -30,8 +83,12 @@ class BulkSmsService
         $out = [];
         foreach ($parts as $p) {
             $digits = preg_replace('/\D+/', '', trim($p));
-            if ($digits !== '' && strlen($digits) >= 9) {
-                $out[] = $digits;
+            if ($digits === '' || strlen($digits) < 9) {
+                continue;
+            }
+            $normalized = $this->normalizePhone($digits);
+            if ($normalized !== null) {
+                $out[] = $normalized;
             }
         }
 
@@ -57,41 +114,199 @@ class BulkSmsService
         $total = round(count($phones) * $cost, 4);
 
         return DB::transaction(function () use ($message, $phones, $userId, $scheduleId, $cost, $total) {
-            /** @var SmsWallet $wallet */
-            $wallet = SmsWallet::query()->lockForUpdate()->firstOrFail();
+            $mode = $this->billingMode();
 
-            if ((float) $wallet->balance < $total) {
+            /** @var SmsWallet|null $wallet */
+            $wallet = null;
+            if (in_array($mode, ['local_wallet', 'both'], true)) {
+                $wallet = SmsWallet::query()->lockForUpdate()->firstOrFail();
+                if ((float) $wallet->balance < $total) {
+                    return [
+                        'ok' => false,
+                        'error' => sprintf(
+                            'Insufficient local SMS wallet balance. Need %s %s for %d message(s); available %s %s.',
+                            number_format($total, 2),
+                            $this->currency(),
+                            count($phones),
+                            number_format((float) $wallet->balance, 2),
+                            $this->currency()
+                        ),
+                    ];
+                }
+            }
+
+            if (in_array($mode, ['provider', 'both'], true)) {
+                $bal = $this->providerBalance();
+                if (! ($bal['ok'] ?? false)) {
+                    return [
+                        'ok' => false,
+                        'error' => $bal['error'] ?? 'Could not verify provider balance.',
+                    ];
+                }
+                $providerBal = (float) ($bal['balance'] ?? 0);
+                if ($providerBal < $total) {
+                    return [
+                        'ok' => false,
+                        'error' => sprintf(
+                            'Insufficient provider balance. Need %s %s for %d message(s); available %s %s.',
+                            number_format($total, 2),
+                            $this->currency(),
+                            count($phones),
+                            number_format($providerBal, 2),
+                            $this->currency()
+                        ),
+                    ];
+                }
+            }
+
+            $send = $this->sendViaProvider($message, $phones);
+            if (! $send['ok']) {
                 return [
                     'ok' => false,
-                    'error' => sprintf(
-                        'Insufficient wallet balance. Need %s %s for %d message(s); available %s %s.',
-                        number_format($total, 2),
-                        $this->currency(),
-                        count($phones),
-                        number_format((float) $wallet->balance, 2),
-                        $this->currency()
-                    ),
+                    'error' => (string) ($send['error'] ?? 'Could not send messages.'),
                 ];
             }
 
             $now = now();
             foreach ($phones as $phone) {
+                $phoneStatus = (array) ($send['per_phone'][$phone] ?? []);
+                $status = (string) ($phoneStatus['status'] ?? 'sent');
+                $providerId = (string) ($phoneStatus['provider_message_id'] ?? '');
+
                 SmsLog::create([
                     'user_id' => $userId,
                     'sms_schedule_id' => $scheduleId,
                     'phone' => $phone,
                     'message' => $message,
-                    'status' => 'sent',
+                    'status' => $status === 'failed' ? 'failed' : 'sent',
+                    'error' => $status === 'failed' ? (string) ($phoneStatus['error'] ?? 'Provider send failed') : null,
                     'charged_amount' => $cost,
-                    'sent_at' => $now,
+                    'sent_at' => $status === 'failed' ? null : $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ]);
+
+                if ($providerId !== '') {
+                    $recent = SmsLog::query()
+                        ->where('phone', $phone)
+                        ->where('created_at', $now)
+                        ->latest('id')
+                        ->first();
+                    if ($recent) {
+                        $recent->update([
+                            'error' => $recent->error ? $recent->error.' | provider_id: '.$providerId : 'provider_id: '.$providerId,
+                        ]);
+                    }
+                }
             }
 
-            $wallet->balance = round((float) $wallet->balance - $total, 2);
-            $wallet->save();
+            if ($wallet !== null && in_array($mode, ['local_wallet', 'both'], true)) {
+                $wallet->balance = round((float) $wallet->balance - $total, 2);
+                $wallet->save();
+            }
 
-            return ['ok' => true, 'sent' => count($phones), 'charged' => $total];
+            return ['ok' => true, 'sent' => (int) ($send['sent'] ?? count($phones)), 'charged' => $total];
         });
+    }
+
+    /**
+     * @param list<string> $phones
+     * @return array{ok:bool,error?:string,sent?:int,per_phone?:array<string,array<string,mixed>>}
+     */
+    private function sendViaProvider(string $message, array $phones): array
+    {
+        $cfg = (array) config('bulksms.provider', []);
+        $apiUrl = rtrim((string) ($cfg['api_url'] ?? ''), '/');
+        $clientId = trim((string) ($cfg['client_id'] ?? ''));
+        $apiKey = trim((string) ($cfg['api_key'] ?? ''));
+        $senderId = trim((string) ($cfg['sender_id'] ?? ''));
+
+        if ($apiUrl === '' || $clientId === '' || $apiKey === '' || $senderId === '') {
+            return ['ok' => false, 'error' => 'Bulk SMS provider is not configured. Set BULKSMS_API_URL, BULKSMS_CLIENT_ID, BULKSMS_API_KEY and BULKSMS_SENDER_ID.'];
+        }
+
+        try {
+            $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                ->withOptions(['verify' => (bool) ($cfg['verify_ssl'] ?? true)])
+                ->withHeaders([
+                    'X-API-KEY' => $apiKey,
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ])
+                ->post($apiUrl.'/'.$clientId.'/sms/send', [
+                    'recipients' => array_values($phones),
+                    'message' => $message,
+                    'sender_id' => $senderId,
+                ]);
+
+            $json = $response->json();
+            if (! $response->ok() || ! is_array($json)) {
+                return [
+                    'ok' => false,
+                    'error' => 'SMS provider error: '.$response->status().' '.$response->body(),
+                ];
+            }
+
+            $status = strtolower((string) ($json['status'] ?? ''));
+            if (! in_array($status, ['success', 'ok'], true)) {
+                return [
+                    'ok' => false,
+                    'error' => (string) ($json['message'] ?? 'SMS provider rejected request.'),
+                ];
+            }
+
+            $perPhone = [];
+            $results = is_array($json['results'] ?? null) ? $json['results'] : [];
+            foreach ($results as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $recipient = (string) ($row['recipient'] ?? '');
+                if ($recipient === '') {
+                    continue;
+                }
+                $rowStatus = strtolower((string) ($row['status'] ?? 'sent'));
+                $perPhone[$recipient] = [
+                    'status' => $rowStatus === 'failed' ? 'failed' : 'sent',
+                    'provider_message_id' => (string) ($row['message_id'] ?? ''),
+                    'error' => $rowStatus === 'failed' ? (string) ($row['error'] ?? 'Failed at provider') : null,
+                ];
+            }
+
+            // If provider omitted per-recipient detail, assume send accepted for all.
+            foreach ($phones as $phone) {
+                if (! isset($perPhone[$phone])) {
+                    $perPhone[$phone] = ['status' => 'sent', 'provider_message_id' => '', 'error' => null];
+                }
+            }
+
+            return [
+                'ok' => true,
+                'sent' => (int) ($json['sent'] ?? count($phones)),
+                'per_phone' => $perPhone,
+            ];
+        } catch (Throwable $e) {
+            return [
+                'ok' => false,
+                'error' => 'SMS provider connection failed: '.$e->getMessage(),
+            ];
+        }
+    }
+
+    private function normalizePhone(string $digits): ?string
+    {
+        // Kenya SMS format normalization -> 2547XXXXXXXX / 2541XXXXXXXX
+        if (str_starts_with($digits, '0') && strlen($digits) === 10) {
+            return '254'.substr($digits, 1);
+        }
+        if ((str_starts_with($digits, '7') || str_starts_with($digits, '1')) && strlen($digits) === 9) {
+            return '254'.$digits;
+        }
+        if (str_starts_with($digits, '254') && strlen($digits) === 12) {
+            return $digits;
+        }
+
+        return null;
     }
 
     public function topup(float $amount, ?string $reference, ?string $notes): void

@@ -40,22 +40,34 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-                    <select name="property_unit_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">Select…</option>
-                        @foreach ($units as $u)
-                            <option value="{{ $u->id }}" @selected(old('property_unit_id') == $u->id)>{{ $u->property->name }} / {{ $u->label }}</option>
-                        @endforeach
-                    </select>
+                    <x-property.quick-create-select
+                        name="property_unit_id"
+                        :required="true"
+                        :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
+                        :create="[
+                            'mode' => 'link',
+                            'link' => route('property.properties.units', absolute: false),
+                        ]"
+                    />
                     @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
-                    <select name="pm_tenant_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">Select…</option>
-                        @foreach ($tenants as $t)
-                            <option value="{{ $t->id }}" @selected(old('pm_tenant_id') == $t->id)>{{ $t->name }}</option>
-                        @endforeach
-                    </select>
+                    <x-property.quick-create-select
+                        name="pm_tenant_id"
+                        :required="true"
+                        :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id') === (string) $t->id])->all()"
+                        :create="[
+                            'mode' => 'ajax',
+                            'title' => 'Create tenant',
+                            'endpoint' => route('property.tenants.store_json'),
+                            'fields' => [
+                                ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. John Tenant'],
+                                ['name' => 'phone', 'label' => 'Phone', 'required' => false, 'span' => '2', 'placeholder' => '+2547…'],
+                                ['name' => 'email', 'label' => 'Email (optional)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
+                            ],
+                        ]"
+                    />
                     @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>

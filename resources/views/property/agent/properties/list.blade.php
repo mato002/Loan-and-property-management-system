@@ -5,6 +5,7 @@
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
+    :show-search="false"
     empty-title="No properties"
     empty-hint="Add a property below, then open Units to add doors and rents."
 >
@@ -55,30 +56,109 @@
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save property</button>
             </form>
 
-            <form id="link-landlord-form" method="post" action="{{ route('property.properties.landlords.attach') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 scroll-mt-24">
+            <form
+                id="link-landlord-form"
+                method="post"
+                action="{{ route('property.properties.landlords.attach') }}"
+                data-turbo-frame="property-main"
+                data-turbo="false"
+                class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 scroll-mt-24"
+                x-data="{
+                    showNewLandlord: false,
+                    creating: false,
+                    onboardUrl: '{{ route('property.landlords.onboard_json') }}',
+                    async createLandlord() {
+                        const name = (document.getElementById('new-landlord-name')?.value || '').trim();
+                        const email = (document.getElementById('new-landlord-email')?.value || '').trim();
+                        const password = (document.getElementById('new-landlord-password')?.value || '').trim();
+                        if (!name || !email || !password) {
+                            if (window.Swal) Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name, email and password are required.' });
+                            else alert('Name, email and password are required.');
+                            return;
+                        }
+                        this.creating = true;
+                        try {
+                            const token = document.querySelector('#link-landlord-form input[name=_token]')?.value;
+                            const res = await fetch(this.onboardUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': token || ''
+                                },
+                                body: JSON.stringify({ name, email, password })
+                            });
+                            const data = await res.json().catch(() => ({}));
+                            if (!res.ok || !data.ok) {
+                                const msg = (data && (data.message || data.error)) ? (data.message || data.error) : 'Could not create landlord.';
+                                if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: msg });
+                                else alert(msg);
+                                return;
+                            }
+                            const u = data.user;
+                            const sel = document.getElementById('landlord-user-select');
+                            if (sel && u && u.id) {
+                                const opt = document.createElement('option');
+                                opt.value = String(u.id);
+                                opt.textContent = `${u.name} (${u.email})`;
+                                sel.appendChild(opt);
+                                sel.value = String(u.id);
+                            }
+                            if (window.Swal) Swal.fire({ icon: 'success', title: 'Landlord created', text: data.message || 'Created.', timer: 1800, showConfirmButton: false });
+                            this.showNewLandlord = false;
+                        } catch (e) {
+                            if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: 'Network/server error while creating landlord.' });
+                            else alert('Network/server error while creating landlord.');
+                        } finally {
+                            this.creating = false;
+                        }
+                    }
+                }"
+            >
                 @csrf
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Link landlord user</h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400">Users must have the landlord portal role at registration.</p>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
-                    <select name="property_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">Select…</option>
-                        @foreach ($properties as $p)
-                            <option value="{{ $p->id }}" @selected(old('property_id', request('property_id')) == $p->id)>{{ $p->name }}</option>
-                        @endforeach
-                    </select>
+                    <x-property.quick-create-select
+                        name="property_id"
+                        :required="true"
+                        :options="collect($linkableProperties ?? [])->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id', request('property_id')) === (string) $p->id])->all()"
+                        :create="[
+                            'mode' => 'ajax',
+                            'title' => 'Create property',
+                            'endpoint' => route('property.properties.store_json'),
+                            'fields' => [
+                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
+                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
+                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
+                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
+                            ],
+                        ]"
+                    />
                     @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    @if (collect($linkableProperties ?? [])->isEmpty())
+                        <p class="text-xs text-amber-700 mt-1">All properties are already linked to landlord users.</p>
+                    @endif
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Landlord user</label>
-                    <select name="user_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">Select…</option>
-                        @forelse ($landlordUsers as $u)
-                            <option value="{{ $u->id }}" @selected(old('user_id') == $u->id)>{{ $u->name }} ({{ $u->email }})</option>
-                        @empty
-                            <option value="" disabled>No landlord users yet</option>
-                        @endforelse
-                    </select>
+                    <x-property.quick-create-select
+                        name="user_id"
+                        :required="true"
+                        select-id="landlord-user-select"
+                        :options="collect($landlordUsers)->map(fn($u) => ['value' => $u->id, 'label' => $u->name.' ('.$u->email.')', 'selected' => (string) old('user_id') === (string) $u->id])->all()"
+                        :create="[
+                            'mode' => 'ajax',
+                            'title' => 'Create landlord',
+                            'endpoint' => route('property.landlords.onboard_json'),
+                            'fields' => [
+                                ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Jane Landlord'],
+                                ['name' => 'email', 'label' => 'Email', 'type' => 'email', 'required' => true, 'span' => '2', 'placeholder' => 'name@example.com'],
+                                ['name' => 'password', 'label' => 'Temporary password', 'required' => true, 'span' => '2', 'placeholder' => 'At least 8 characters'],
+                            ],
+                        ]"
+                    />
                     @error('user_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -88,6 +168,7 @@
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Co-owners on the same property cannot exceed 100% in total.</p>
                 </div>
                 <button type="submit" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80">Attach</button>
+
             </form>
         </div>
 
@@ -113,7 +194,13 @@
                                     <td class="py-2 pr-4">{{ $link->user_name }}</td>
                                     <td class="py-2 pr-4 text-slate-500 dark:text-slate-400">{{ $link->user_email }}</td>
                                     <td class="py-2 pr-4">
-                                        <form method="post" action="{{ route('property.properties.landlords.ownership') }}" class="flex flex-wrap items-center gap-2">
+                                        <form
+                                            method="post"
+                                            action="{{ route('property.properties.landlords.ownership') }}"
+                                            data-turbo-frame="property-main"
+                                            data-turbo="false"
+                                            class="flex flex-wrap items-center gap-2"
+                                        >
                                             @csrf
                                             <input type="hidden" name="property_id" value="{{ $link->property_id }}" />
                                             <input type="hidden" name="user_id" value="{{ $link->user_id }}" />
@@ -130,7 +217,15 @@
                                         </form>
                                     </td>
                                     <td class="py-2">
-                                        <form method="post" action="{{ route('property.properties.landlords.detach') }}" data-swal-title="Detach landlord?" data-swal-confirm="Unlink this landlord from this property?" data-swal-confirm-text="Yes, detach">
+                                        <form
+                                            method="post"
+                                            action="{{ route('property.properties.landlords.detach') }}"
+                                            data-turbo-frame="property-main"
+                                            data-turbo="false"
+                                            data-swal-title="Detach landlord?"
+                                            data-swal-confirm="Unlink this landlord from this property?"
+                                            data-swal-confirm-text="Yes, detach"
+                                        >
                                             @csrf
                                             <input type="hidden" name="property_id" value="{{ $link->property_id }}" />
                                             <input type="hidden" name="user_id" value="{{ $link->user_id }}" />
@@ -147,6 +242,30 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <input type="search" data-table-filter="parent" autocomplete="off" placeholder="Search property…" class="w-full min-w-0 sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+        <form method="get" action="{{ route('property.properties.list') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+            <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search name, code, city..." class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 lg:col-span-2" />
+            <select name="city" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">All cities</option>
+                @foreach (($cities ?? []) as $city)
+                    <option value="{{ $city }}" @selected(($filters['city'] ?? '') === $city)>{{ $city }}</option>
+                @endforeach
+            </select>
+            <select name="landlord" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">Landlord: All</option>
+                <option value="linked" @selected(($filters['landlord'] ?? '') === 'linked')>Linked only</option>
+                <option value="unlinked" @selected(($filters['landlord'] ?? '') === 'unlinked')>Unlinked only</option>
+            </select>
+            <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="name" @selected(($filters['sort'] ?? 'name') === 'name')>Sort: Name</option>
+                <option value="city" @selected(($filters['sort'] ?? '') === 'city')>Sort: City</option>
+                <option value="units_count" @selected(($filters['sort'] ?? '') === 'units_count')>Sort: Units</option>
+                <option value="created_at" @selected(($filters['sort'] ?? '') === 'created_at')>Sort: Newest</option>
+            </select>
+            <div class="flex items-center gap-2">
+                <input type="hidden" name="dir" value="{{ ($filters['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc' }}" />
+                <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
+                <a href="{{ route('property.properties.list', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
+            </div>
+        </form>
     </x-slot>
 </x-property.workspace>

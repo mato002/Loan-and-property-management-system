@@ -39,6 +39,10 @@ return [
         'secret' => env('PROPERTY_WEBHOOK_SECRET'),
     ],
 
+    'property_sms_ingest' => [
+        'secret' => env('PROPERTY_SMS_INGEST_SECRET'),
+    ],
+
     'property_banks' => [
         'timeout_seconds' => (int) env('PROPERTY_BANK_TIMEOUT', 20),
         'providers' => [
@@ -86,6 +90,13 @@ return [
         // Local dev on Windows/XAMPP may not have a complete CA bundle; allow toggling SSL verify.
         // Set MPESA_VERIFY_SSL=false in local .env if you hit cURL error 60.
         'verify_ssl' => env('MPESA_VERIFY_SSL', true),
+
+        // --- Optional: B2C payouts ---
+        'b2c_shortcode' => env('MPESA_B2C_SHORTCODE', env('MPESA_SHORTCODE')),
+        'b2c_initiator_name' => env('MPESA_B2C_INITIATOR_NAME'),
+        'b2c_security_credential' => env('MPESA_B2C_SECURITY_CREDENTIAL'),
+        'b2c_result_url' => env('MPESA_B2C_RESULT_URL'),
+        'b2c_timeout_url' => env('MPESA_B2C_TIMEOUT_URL'),
     ],
 
 ];

@@ -12,6 +12,8 @@ use App\Models\AccountingJournalLine;
 use App\Models\AccountingPayrollLine;
 use App\Models\AccountingPayrollPeriod;
 use App\Models\Employee;
+use App\Support\CsvExport;
+use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -225,15 +227,68 @@ class LoanAccountingBooksController extends Controller
 
     /* ---------- Company expenses ---------- */
 
-    public function companyExpensesIndex(): View
+    public function companyExpensesIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $rows = AccountingCompanyExpense::query()
+        $from = request()->string('from')->toString();
+        $to = request()->string('to')->toString();
+        $category = request()->string('category')->toString();
+        $search = request()->string('q')->toString();
+        $export = request()->string('export')->toString();
+
+        $q = AccountingCompanyExpense::query()
             ->with('recordedByUser')
             ->orderByDesc('expense_date')
-            ->orderByDesc('id')
-            ->paginate(20);
+            ->orderByDesc('id');
 
-        return view('loan.accounting.books.company-expenses.index', compact('rows'));
+        if ($from !== '') {
+            $q->where('expense_date', '>=', $from);
+        }
+        if ($to !== '') {
+            $q->where('expense_date', '<=', $to);
+        }
+        if ($category !== '') {
+            $q->where('category', $category);
+        }
+        if ($search !== '') {
+            $q->where(function ($qq) use ($search) {
+                $qq->where('title', 'like', '%'.$search.'%')
+                    ->orWhere('reference', 'like', '%'.$search.'%')
+                    ->orWhere('notes', 'like', '%'.$search.'%');
+            });
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('company-expenses', [
+                'Expense Date', 'Title', 'Category', 'Amount', 'Currency', 'Payment Method', 'Reference', 'Recorded By', 'Notes',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingCompanyExpense $r) {
+                    return [
+                        optional($r->expense_date)->format('Y-m-d'),
+                        (string) ($r->title ?? ''),
+                        (string) ($r->category ?? ''),
+                        (string) $r->amount,
+                        (string) ($r->currency ?? ''),
+                        (string) ($r->payment_method ?? ''),
+                        (string) ($r->reference ?? ''),
+                        (string) ($r->recordedByUser?->name ?? ''),
+                        (string) ($r->notes ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $rows = $q->paginate(20)->withQueryString();
+
+        $categories = AccountingCompanyExpense::query()
+            ->select('category')
+            ->whereNotNull('category')
+            ->where('category', '!=', '')
+            ->distinct()
+            ->orderBy('category')
+            ->pluck('category')
+            ->values();
+
+        return view('loan.accounting.books.company-expenses.index', compact('rows', 'from', 'to', 'category', 'search', 'categories'));
     }
 
     public function companyExpensesCreate(): View
@@ -293,14 +348,83 @@ class LoanAccountingBooksController extends Controller
 
     /* ---------- Company assets ---------- */
 
-    public function assetsIndex(): View
+    public function assetsIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $rows = AccountingCompanyAsset::query()
-            ->orderByDesc('acquired_on')
-            ->orderBy('name')
-            ->paginate(20);
+        $status = request()->string('status')->toString();
+        $branch = request()->string('branch')->toString();
+        $search = request()->string('q')->toString();
+        $from = request()->string('from')->toString();
+        $to = request()->string('to')->toString();
+        $export = request()->string('export')->toString();
 
-        return view('loan.accounting.books.assets.index', compact('rows'));
+        $q = AccountingCompanyAsset::query()
+            ->orderByDesc('acquired_on')
+            ->orderBy('name');
+
+        if ($status !== '') {
+            $q->where('status', $status);
+        }
+        if ($branch !== '') {
+            $q->where('branch', $branch);
+        }
+        if ($from !== '') {
+            $q->whereDate('acquired_on', '>=', $from);
+        }
+        if ($to !== '') {
+            $q->whereDate('acquired_on', '<=', $to);
+        }
+        if ($search !== '') {
+            $q->where(function ($qq) use ($search) {
+                $qq->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('asset_code', 'like', '%'.$search.'%')
+                    ->orWhere('category', 'like', '%'.$search.'%')
+                    ->orWhere('location', 'like', '%'.$search.'%')
+                    ->orWhere('notes', 'like', '%'.$search.'%');
+            });
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('company-assets', [
+                'Asset Code', 'Name', 'Category', 'Location', 'Branch', 'Acquired On', 'Cost', 'Net Book Value', 'Status', 'Notes',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingCompanyAsset $r) {
+                    return [
+                        (string) ($r->asset_code ?? ''),
+                        (string) ($r->name ?? ''),
+                        (string) ($r->category ?? ''),
+                        (string) ($r->location ?? ''),
+                        (string) ($r->branch ?? ''),
+                        optional($r->acquired_on)->format('Y-m-d'),
+                        (string) ($r->cost ?? ''),
+                        (string) ($r->net_book_value ?? ''),
+                        (string) ($r->status ?? ''),
+                        (string) ($r->notes ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $rows = $q->paginate(20)->withQueryString();
+
+        $statuses = AccountingCompanyAsset::query()
+            ->select('status')
+            ->whereNotNull('status')
+            ->where('status', '!=', '')
+            ->distinct()
+            ->orderBy('status')
+            ->pluck('status')
+            ->values();
+
+        $branches = AccountingCompanyAsset::query()
+            ->select('branch')
+            ->whereNotNull('branch')
+            ->where('branch', '!=', '')
+            ->distinct()
+            ->orderBy('branch')
+            ->pluck('branch')
+            ->values();
+
+        return view('loan.accounting.books.assets.index', compact('rows', 'status', 'branch', 'search', 'from', 'to', 'statuses', 'branches'));
     }
 
     public function assetsCreate(): View
@@ -377,14 +501,63 @@ class LoanAccountingBooksController extends Controller
         ]);
     }
 
-    public function payrollPayslipsIndex(): View
+    public function payrollPayslipsIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $lines = AccountingPayrollLine::query()
-            ->with(['period', 'employee'])
-            ->orderByDesc('id')
-            ->paginate(25);
+        $employeeId = request()->integer('employee_id') ?: null;
+        $periodId = request()->integer('accounting_payroll_period_id') ?: null;
+        $from = request()->string('from')->toString();
+        $to = request()->string('to')->toString();
+        $export = request()->string('export')->toString();
 
-        return view('loan.accounting.books.payroll.payslips-index', compact('lines'));
+        $q = AccountingPayrollLine::query()
+            ->with(['period', 'employee'])
+            ->orderByDesc('id');
+
+        if ($employeeId !== null) {
+            $q->where('employee_id', $employeeId);
+        }
+        if ($periodId !== null) {
+            $q->where('accounting_payroll_period_id', $periodId);
+        }
+        if ($from !== '') {
+            $q->whereHas('period', fn ($qq) => $qq->whereDate('period_start', '>=', $from));
+        }
+        if ($to !== '') {
+            $q->whereHas('period', fn ($qq) => $qq->whereDate('period_end', '<=', $to));
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('payslips', [
+                'Employee', 'Employee No', 'Period Start', 'Period End', 'Label', 'Gross Pay', 'Deductions', 'Net Pay', 'Payslip No',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingPayrollLine $line) {
+                    return [
+                        (string) ($line->employee?->full_name ?? ''),
+                        (string) ($line->employee?->employee_number ?? ''),
+                        optional($line->period?->period_start)->format('Y-m-d'),
+                        optional($line->period?->period_end)->format('Y-m-d'),
+                        (string) ($line->period?->label ?? ''),
+                        (string) ($line->gross_pay ?? ''),
+                        (string) ($line->deductions ?? ''),
+                        (string) ($line->net_pay ?? ''),
+                        (string) ($line->payslip_number ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $lines = $q->paginate(25)->withQueryString();
+
+        $employees = Employee::query()
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get(['id', 'first_name', 'last_name', 'employee_number']);
+
+        $periods = AccountingPayrollPeriod::query()
+            ->orderByDesc('period_start')
+            ->get(['id', 'period_start', 'period_end', 'label']);
+
+        return view('loan.accounting.books.payroll.payslips-index', compact('lines', 'employeeId', 'periodId', 'from', 'to', 'employees', 'periods'));
     }
 
     public function payrollStatutorySettings(): View
@@ -411,13 +584,52 @@ class LoanAccountingBooksController extends Controller
         ]);
     }
 
-    public function payrollIndex(): View
+    public function payrollIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $periods = AccountingPayrollPeriod::query()
-            ->orderByDesc('period_start')
-            ->paginate(15);
+        $status = request()->string('status')->toString();
+        $from = request()->string('from')->toString();
+        $to = request()->string('to')->toString();
+        $export = request()->string('export')->toString();
 
-        return view('loan.accounting.books.payroll.index', compact('periods'));
+        $q = AccountingPayrollPeriod::query()
+            ->orderByDesc('period_start');
+
+        if ($status !== '') {
+            $q->where('status', $status);
+        }
+        if ($from !== '') {
+            $q->whereDate('period_start', '>=', $from);
+        }
+        if ($to !== '') {
+            $q->whereDate('period_end', '<=', $to);
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('payroll-periods', [
+                'Period Start', 'Period End', 'Label', 'Status', 'Notes',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingPayrollPeriod $p) {
+                    return [
+                        optional($p->period_start)->format('Y-m-d'),
+                        optional($p->period_end)->format('Y-m-d'),
+                        (string) ($p->label ?? ''),
+                        (string) ($p->status ?? ''),
+                        (string) ($p->notes ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $periods = $q->paginate(15)->withQueryString();
+
+        $statuses = AccountingPayrollPeriod::query()
+            ->select('status')
+            ->distinct()
+            ->orderBy('status')
+            ->pluck('status')
+            ->values();
+
+        return view('loan.accounting.books.payroll.index', compact('periods', 'status', 'from', 'to', 'statuses'));
     }
 
     public function payrollCreate(): View
@@ -541,15 +753,75 @@ class LoanAccountingBooksController extends Controller
 
     /* ---------- Budget ---------- */
 
-    public function budgetIndex(): View
+    public function budgetIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $rows = AccountingBudgetLine::query()
+        $year = request()->integer('fiscal_year') ?: null;
+        $month = request()->integer('month') ?: null;
+        $branch = request()->string('branch')->toString();
+        $accountId = request()->integer('accounting_chart_account_id') ?: null;
+        $export = request()->string('export')->toString();
+
+        $q = AccountingBudgetLine::query()
             ->with('account')
             ->orderByDesc('fiscal_year')
-            ->orderBy('month')
-            ->paginate(25);
+            ->orderBy('month');
 
-        return view('loan.accounting.books.budget.index', compact('rows'));
+        if ($year !== null) {
+            $q->where('fiscal_year', $year);
+        }
+        if ($month !== null) {
+            $q->where('month', $month);
+        }
+        if ($branch !== '') {
+            $q->where('branch', $branch);
+        }
+        if ($accountId !== null) {
+            $q->where('accounting_chart_account_id', $accountId);
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('budget-lines', [
+                'Fiscal Year', 'Month', 'Branch', 'Account Code', 'Account Name', 'Label', 'Amount', 'Notes',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingBudgetLine $r) {
+                    return [
+                        (string) ($r->fiscal_year ?? ''),
+                        (string) ($r->month ?? ''),
+                        (string) ($r->branch ?? ''),
+                        (string) ($r->account?->code ?? ''),
+                        (string) ($r->account?->name ?? ''),
+                        (string) ($r->label ?? ''),
+                        (string) $r->amount,
+                        (string) ($r->notes ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $rows = $q->paginate(25)->withQueryString();
+
+        $years = AccountingBudgetLine::query()
+            ->select('fiscal_year')
+            ->distinct()
+            ->orderByDesc('fiscal_year')
+            ->pluck('fiscal_year')
+            ->values();
+
+        $branches = AccountingBudgetLine::query()
+            ->select('branch')
+            ->whereNotNull('branch')
+            ->where('branch', '!=', '')
+            ->distinct()
+            ->orderBy('branch')
+            ->pluck('branch')
+            ->values();
+
+        $accounts = AccountingChartAccount::query()
+            ->where('is_active', true)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name']);
+
+        return view('loan.accounting.books.budget.index', compact('rows', 'year', 'month', 'branch', 'accountId', 'years', 'branches', 'accounts'));
     }
 
     public function budgetCreate(): View
@@ -653,14 +925,66 @@ class LoanAccountingBooksController extends Controller
 
     /* ---------- Bank reconciliation ---------- */
 
-    public function reconciliationIndex(): View
+    public function reconciliationIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $rows = AccountingBankReconciliation::query()
-            ->with(['account', 'preparedByUser'])
-            ->orderByDesc('statement_date')
-            ->paginate(15);
+        $status = request()->string('status')->toString();
+        $accountId = request()->integer('accounting_chart_account_id') ?: null;
+        $from = request()->string('from')->toString();
+        $to = request()->string('to')->toString();
+        $export = request()->string('export')->toString();
 
-        return view('loan.accounting.books.reconciliation.index', compact('rows'));
+        $q = AccountingBankReconciliation::query()
+            ->with(['account', 'preparedByUser'])
+            ->orderByDesc('statement_date');
+
+        if ($status !== '') {
+            $q->where('status', $status);
+        }
+        if ($accountId !== null) {
+            $q->where('accounting_chart_account_id', $accountId);
+        }
+        if ($from !== '') {
+            $q->whereDate('statement_date', '>=', $from);
+        }
+        if ($to !== '') {
+            $q->whereDate('statement_date', '<=', $to);
+        }
+
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream('reconciliations', [
+                'Account Code', 'Account Name', 'Statement Date', 'Statement Balance', 'Adjustment Amount', 'Status', 'Prepared By', 'Notes',
+            ], function () use ($q) {
+                return $q->get()->map(function (AccountingBankReconciliation $r) {
+                    return [
+                        (string) ($r->account?->code ?? ''),
+                        (string) ($r->account?->name ?? ''),
+                        optional($r->statement_date)->format('Y-m-d'),
+                        (string) ($r->statement_balance ?? ''),
+                        (string) ($r->adjustment_amount ?? ''),
+                        (string) ($r->status ?? ''),
+                        (string) ($r->preparedByUser?->name ?? ''),
+                        (string) ($r->notes ?? ''),
+                    ];
+                });
+            }, $export);
+        }
+
+        $rows = $q->paginate(15)->withQueryString();
+
+        $statuses = AccountingBankReconciliation::query()
+            ->select('status')
+            ->distinct()
+            ->orderBy('status')
+            ->pluck('status')
+            ->values();
+
+        $cashAccounts = AccountingChartAccount::query()
+            ->where('is_active', true)
+            ->where('is_cash_account', true)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name']);
+
+        return view('loan.accounting.books.reconciliation.index', compact('rows', 'status', 'accountId', 'from', 'to', 'statuses', 'cashAccounts'));
     }
 
     public function reconciliationCreate(): View

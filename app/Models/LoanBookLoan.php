@@ -24,8 +24,11 @@ class LoanBookLoan extends Model
         'loan_client_id',
         'product_name',
         'principal',
+        'principal_outstanding',
         'balance',
         'interest_rate',
+        'interest_outstanding',
+        'fees_outstanding',
         'status',
         'dpd',
         'disbursed_at',
@@ -40,8 +43,11 @@ class LoanBookLoan extends Model
     {
         return [
             'principal' => 'decimal:2',
+            'principal_outstanding' => 'decimal:2',
             'balance' => 'decimal:2',
             'interest_rate' => 'decimal:4',
+            'interest_outstanding' => 'decimal:2',
+            'fees_outstanding' => 'decimal:2',
             'is_checkoff' => 'boolean',
             'disbursed_at' => 'datetime',
             'maturity_date' => 'date',

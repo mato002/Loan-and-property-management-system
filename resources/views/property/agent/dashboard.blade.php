@@ -180,6 +180,40 @@
             </div>
         </div>
 
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 overflow-hidden shadow-sm">
+            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between gap-2">
+                <h2 class="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-user-tie text-slate-500" aria-hidden="true"></i>
+                    Recent landlord links
+                </h2>
+                <a href="{{ route('property.landlords.index') }}" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">View all</a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 dark:bg-slate-900/50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        <tr>
+                            <th class="px-4 py-3">Property</th>
+                            <th class="px-4 py-3">Landlord</th>
+                            <th class="px-4 py-3 whitespace-nowrap">Ownership</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                        @forelse (($recentLandlordLinks ?? []) as $row)
+                            <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $row['property'] }}</td>
+                                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $row['landlord'] }}</td>
+                                <td class="px-4 py-3 font-semibold tabular-nums text-slate-900 dark:text-white">{{ $row['ownership'] }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="3" class="px-4 py-10 text-center text-slate-500 dark:text-slate-400">No landlord links yet — open Manage Properties to link a landlord.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="grid gap-6 lg:grid-cols-3">
             <div class="rounded-2xl border border-amber-200/80 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 p-5">
                 <h2 class="text-sm font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-2">
@@ -189,9 +223,15 @@
                 <ul class="mt-3 space-y-2 text-sm text-amber-950/90 dark:text-amber-100/90">
                     <li class="flex justify-between gap-2"><span>Overdue invoices</span><span class="font-semibold tabular-nums">{{ $overdueCount }}</span></li>
                     <li class="flex justify-between gap-2"><span>Active work orders</span><span class="font-semibold tabular-nums">{{ $jobsActive }}</span></li>
-                    <li class="flex justify-between gap-2"><span>Landlord accounts</span><span class="font-semibold tabular-nums">{{ $landlords }}</span></li>
+                    <li class="flex justify-between gap-2"><span>Landlord users</span><span class="font-semibold tabular-nums">{{ $landlords }}</span></li>
+                    <li class="flex justify-between gap-2"><span>Linked landlords</span><span class="font-semibold tabular-nums">{{ $linkedLandlords ?? 0 }}</span></li>
+                    <li class="flex justify-between gap-2"><span>Properties with no landlord</span><span class="font-semibold tabular-nums">{{ $propertiesWithoutLandlord ?? 0 }}</span></li>
                     <li class="flex justify-between gap-2"><span>Maintenance spend (MTD)</span><span class="font-semibold tabular-nums">{{ $maintenanceMtd }}</span></li>
                 </ul>
+                <a href="{{ route('property.landlords.index') }}" class="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-300 hover:underline">
+                    Open landlord workspace
+                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </a>
             </div>
             <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 p-5 lg:col-span-2">
                 <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Arrears buckets (open balance)</h2>

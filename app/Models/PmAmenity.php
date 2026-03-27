@@ -22,4 +22,13 @@ class PmAmenity extends Model
         return $this->belongsToMany(PropertyUnit::class, 'pm_amenity_unit', 'pm_amenity_id', 'property_unit_id')
             ->withTimestamps();
     }
+
+    /**
+     * @return BelongsToMany<Property, $this>
+     */
+    public function properties(): BelongsToMany
+    {
+        return $this->belongsToMany(Property::class, 'pm_amenity_property', 'pm_amenity_id', 'property_id')
+            ->withTimestamps();
+    }
 }

@@ -76,12 +76,23 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property (optional)</label>
-                    <select name="property_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">General</option>
-                        @foreach ($properties as $p)
-                            <option value="{{ $p->id }}" @selected((string) old('property_id') === (string) $p->id)>{{ $p->name }}</option>
-                        @endforeach
-                    </select>
+                    <x-property.quick-create-select
+                        name="property_id"
+                        :required="false"
+                        placeholder="General"
+                        :options="collect($properties)->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id') === (string) $p->id])->all()"
+                        :create="[
+                            'mode' => 'ajax',
+                            'title' => 'Create property',
+                            'endpoint' => route('property.properties.store_json'),
+                            'fields' => [
+                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
+                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
+                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
+                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
+                            ],
+                        ]"
+                    />
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Account</label>

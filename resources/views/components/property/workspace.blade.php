@@ -41,7 +41,9 @@
             <div class="flex flex-wrap items-center gap-3 min-w-0">
                 @if ($backRoute)
                     <a
-                        href="{{ route($backRoute) }}"
+                        href="{{ route($backRoute, absolute: false) }}"
+                        data-turbo-frame="property-main"
+                        data-property-nav="{{ $backRoute }}"
                         class="inline-flex items-center text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
                     >
                         {{ $backLabel }}

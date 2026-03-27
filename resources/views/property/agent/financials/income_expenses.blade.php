@@ -5,12 +5,14 @@
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
+    :show-search="false"
     empty-title="No GL mapping yet"
     empty-hint="Rollups below use live invoices, maintenance quotes, and utility charges."
 >
     <x-slot name="actions">
         <a
-            href="{{ route('property.exports.income_expenses_summary') }}"
+            href="{{ route('property.financials.income_expenses', array_merge(request()->query(), ['export' => 'csv']), false) }}"
+            data-turbo="false"
             class="inline-flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto"
         >Export summary (CSV)</a>
         <form method="get" action="{{ route('property.financials.income_expenses') }}" class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">

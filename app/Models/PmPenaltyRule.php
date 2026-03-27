@@ -12,6 +12,7 @@ class PmPenaltyRule extends Model
         'name',
         'scope',
         'trigger_event',
+        'grace_days',
         'formula',
         'amount',
         'percent',
@@ -28,6 +29,7 @@ class PmPenaltyRule extends Model
             'cap' => 'decimal:2',
             'effective_from' => 'date',
             'is_active' => 'boolean',
+            'grace_days' => 'integer',
         ];
     }
 }

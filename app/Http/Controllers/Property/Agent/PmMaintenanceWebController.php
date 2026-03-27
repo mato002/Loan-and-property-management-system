@@ -8,8 +8,10 @@ use App\Models\PmMaintenanceRequest;
 use App\Models\PmVendor;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
+use App\Support\CsvExport;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -19,11 +21,12 @@ use Illuminate\View\View;
 
 class PmMaintenanceWebController extends Controller
 {
-    public function requests(): View
+    public function requests(Request $request): View
     {
         $maintenanceEnabled = PropertyPortalSetting::getValue('form_maintenance_enabled', '1') === '1';
         $workflowAutoAssignTickets = PropertyPortalSetting::getValue('workflow_auto_assign_tickets', '0') === '1';
-        $requests = PmMaintenanceRequest::query()->with(['unit.property', 'reportedBy'])->orderByDesc('id')->limit(200)->get();
+        $filters = $request->only(['q', 'status', 'urgency', 'unit_id', 'from', 'to', 'sort', 'dir']);
+        $requests = $this->requestsQuery($filters)->limit(400)->get();
 
         $stats = [
             ['label' => 'Open', 'value' => (string) $requests->where('status', 'open')->count(), 'hint' => ''],
@@ -72,7 +75,33 @@ class PmMaintenanceWebController extends Controller
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
             'maintenanceEnabled' => $maintenanceEnabled,
             'workflowAutoAssignTickets' => $workflowAutoAssignTickets,
+            'filters' => $filters,
         ]);
+    }
+
+    public function requestsExport(Request $request)
+    {
+        $filters = $request->only(['q', 'status', 'urgency', 'unit_id', 'from', 'to', 'sort', 'dir']);
+        $rows = $this->requestsQuery($filters)->get();
+
+        return CsvExport::stream(
+            'maintenance_requests_'.now()->format('Ymd_His').'.csv',
+            ['ID', 'Unit', 'Category', 'Description', 'Urgency', 'Status', 'Reported By', 'Created At'],
+            function () use ($rows) {
+                foreach ($rows as $r) {
+                    yield [
+                        $r->id,
+                        $r->unit->property->name.'/'.$r->unit->label,
+                        $r->category,
+                        $r->description,
+                        $r->urgency,
+                        $r->status,
+                        $r->reportedBy?->name,
+                        optional($r->created_at)->format('Y-m-d H:i:s'),
+                    ];
+                }
+            }
+        );
     }
 
     public function storeRequest(Request $request): RedirectResponse
@@ -142,13 +171,10 @@ class PmMaintenanceWebController extends Controller
         return back()->with('success', 'Maintenance request updated.');
     }
 
-    public function jobs(): View
+    public function jobs(Request $request): View
     {
-        $jobs = PmMaintenanceJob::query()
-            ->with(['request.unit.property', 'vendor'])
-            ->orderByDesc('id')
-            ->limit(200)
-            ->get();
+        $filters = $request->only(['q', 'status', 'vendor_id', 'from', 'to', 'sort', 'dir']);
+        $jobs = $this->jobsQuery($filters)->limit(400)->get();
 
         $mtdCompletedCount = PmMaintenanceJob::query()
             ->whereNotNull('completed_at')
@@ -231,7 +257,32 @@ class PmMaintenanceWebController extends Controller
             'tableRows' => $rows,
             'requests' => PmMaintenanceRequest::query()->with('unit.property')->orderByDesc('id')->limit(100)->get(),
             'vendors' => PmVendor::query()->where('status', 'active')->orderBy('name')->get(),
+            'filters' => $filters,
         ]);
+    }
+
+    public function jobsExport(Request $request)
+    {
+        $filters = $request->only(['q', 'status', 'vendor_id', 'from', 'to', 'sort', 'dir']);
+        $rows = $this->jobsQuery($filters)->get();
+
+        return CsvExport::stream(
+            'maintenance_jobs_'.now()->format('Ymd_His').'.csv',
+            ['ID', 'Unit', 'Vendor', 'Quote', 'Status', 'Completed At', 'Notes'],
+            function () use ($rows) {
+                foreach ($rows as $j) {
+                    yield [
+                        $j->id,
+                        $j->request->unit->property->name.'/'.$j->request->unit->label,
+                        $j->vendor?->name,
+                        $j->quote_amount,
+                        $j->status,
+                        optional($j->completed_at)->format('Y-m-d H:i:s'),
+                        $j->notes,
+                    ];
+                }
+            }
+        );
     }
 
     public function storeJob(Request $request): RedirectResponse
@@ -399,6 +450,98 @@ class PmMaintenanceWebController extends Controller
             'columns' => ['Scope', 'Property / unit', 'Period', 'Spend', 'Tickets', 'vs budget', 'Notes'],
             'tableRows' => $rows,
         ]);
+    }
+
+    private function requestsQuery(array $filters): Builder
+    {
+        $q = PmMaintenanceRequest::query()->with(['unit.property', 'reportedBy']);
+
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $q->where(function (Builder $b) use ($search) {
+                $b->where('category', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhereHas('unit', function (Builder $u) use ($search) {
+                        $u->where('label', 'like', '%'.$search.'%')
+                            ->orWhereHas('property', fn (Builder $p) => $p->where('name', 'like', '%'.$search.'%'));
+                    });
+            });
+        }
+
+        foreach (['status', 'urgency'] as $f) {
+            $v = trim((string) ($filters[$f] ?? ''));
+            if ($v !== '') {
+                $q->where($f, $v);
+            }
+        }
+
+        $unitId = (int) ($filters['unit_id'] ?? 0);
+        if ($unitId > 0) {
+            $q->where('property_unit_id', $unitId);
+        }
+
+        $from = trim((string) ($filters['from'] ?? ''));
+        if ($from !== '') {
+            $q->whereDate('created_at', '>=', $from);
+        }
+        $to = trim((string) ($filters['to'] ?? ''));
+        if ($to !== '') {
+            $q->whereDate('created_at', '<=', $to);
+        }
+
+        $sort = (string) ($filters['sort'] ?? 'created_at');
+        $dir = strtolower((string) ($filters['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
+        $allowedSort = ['id', 'created_at', 'status', 'urgency'];
+        if (! in_array($sort, $allowedSort, true)) {
+            $sort = 'created_at';
+        }
+
+        return $q->orderBy($sort, $dir)->orderByDesc('id');
+    }
+
+    private function jobsQuery(array $filters): Builder
+    {
+        $q = PmMaintenanceJob::query()->with(['request.unit.property', 'vendor']);
+
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $q->where(function (Builder $b) use ($search) {
+                $b->where('notes', 'like', '%'.$search.'%')
+                    ->orWhereHas('vendor', fn (Builder $v) => $v->where('name', 'like', '%'.$search.'%'))
+                    ->orWhereHas('request', function (Builder $r) use ($search) {
+                        $r->where('category', 'like', '%'.$search.'%')
+                            ->orWhere('description', 'like', '%'.$search.'%');
+                    });
+            });
+        }
+
+        $status = trim((string) ($filters['status'] ?? ''));
+        if ($status !== '') {
+            $q->where('status', $status);
+        }
+
+        $vendorId = (int) ($filters['vendor_id'] ?? 0);
+        if ($vendorId > 0) {
+            $q->where('pm_vendor_id', $vendorId);
+        }
+
+        $from = trim((string) ($filters['from'] ?? ''));
+        if ($from !== '') {
+            $q->whereDate('created_at', '>=', $from);
+        }
+        $to = trim((string) ($filters['to'] ?? ''));
+        if ($to !== '') {
+            $q->whereDate('created_at', '<=', $to);
+        }
+
+        $sort = (string) ($filters['sort'] ?? 'created_at');
+        $dir = strtolower((string) ($filters['dir'] ?? 'desc')) === 'asc' ? 'asc' : 'desc';
+        $allowedSort = ['id', 'created_at', 'status', 'completed_at'];
+        if (! in_array($sort, $allowedSort, true)) {
+            $sort = 'created_at';
+        }
+
+        return $q->orderBy($sort, $dir)->orderByDesc('id');
     }
 
     public function frequency(): View

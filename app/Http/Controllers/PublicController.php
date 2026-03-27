@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\PmTenant;
+use App\Models\PmListingApplication;
+use App\Models\PmMessageLog;
 use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
 class PublicController extends Controller
@@ -204,6 +207,64 @@ class PublicController extends Controller
         }
 
         return view('public.apply', compact('propertyId', 'applyUnit'));
+    }
+
+    /**
+     * Store a public rental application so agents can review and onboard.
+     */
+    public function applyStore(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'full_name' => ['required', 'string', 'max:255'],
+            'phone' => ['required', 'string', 'max:64'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'move_in_date' => ['nullable', 'date'],
+            'property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
+            // Only present when no unit id is provided
+            'property' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $notesParts = [];
+        if (! empty($data['move_in_date'] ?? null)) {
+            $notesParts[] = 'Move-in: '.$data['move_in_date'];
+        }
+        if (empty($data['property_unit_id'] ?? null) && ! empty($data['property'] ?? null)) {
+            $notesParts[] = 'Property/Unit entered: '.$data['property'];
+        }
+        $notesParts[] = 'Source: public.apply';
+
+        $application = PmListingApplication::query()->create([
+            'property_unit_id' => $data['property_unit_id'] ?? null,
+            'applicant_name' => $data['full_name'],
+            'applicant_phone' => $data['phone'],
+            'applicant_email' => $data['email'] ?? null,
+            'status' => 'received',
+            'notes' => implode(' | ', $notesParts),
+        ]);
+
+        $unitLabel = null;
+        if (! empty($application->property_unit_id)) {
+            $unit = PropertyUnit::query()->with('property')->find($application->property_unit_id);
+            if ($unit && $unit->property) {
+                $unitLabel = $unit->property->name.'/'.$unit->label;
+            }
+        }
+
+        PmMessageLog::query()->create([
+            'user_id' => null,
+            'channel' => 'system',
+            'to_address' => 'agents',
+            'subject' => 'New public rental application #'.$application->id,
+            'body' => 'Applicant: '.$application->applicant_name
+                .' | Phone: '.($application->applicant_phone ?: '—')
+                .' | Email: '.($application->applicant_email ?: '—')
+                .' | Unit: '.($unitLabel ?: 'Not specified'),
+            'delivery_status' => 'new',
+            'delivery_error' => null,
+            'sent_at' => now(),
+        ]);
+
+        return redirect()->route('public.thank_you');
     }
 
     /**

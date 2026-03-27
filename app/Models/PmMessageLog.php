@@ -15,7 +15,17 @@ class PmMessageLog extends Model
         'to_address',
         'subject',
         'body',
+        'delivery_status',
+        'delivery_error',
+        'sent_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'sent_at' => 'datetime',
+        ];
+    }
 
     public function user(): BelongsTo
     {

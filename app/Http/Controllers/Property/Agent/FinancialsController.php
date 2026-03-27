@@ -8,15 +8,17 @@ use App\Models\PmMaintenanceJob;
 use App\Models\PmPayment;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PropertyPortalSetting;
+use App\Support\CsvExport;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FinancialsController extends Controller
 {
-    public function incomeExpenses(Request $request): View
+    public function incomeExpenses(Request $request): View|StreamedResponse
     {
         [$monthValue, $fyValue, $start, $end, $periodLabel] = $this->resolvePeriod($request);
 
@@ -41,6 +43,19 @@ class FinancialsController extends Controller
             ['NOI proxy', 'Derived', '—', PropertyMoney::kes($noi), '—', 'Income − opex (simplified)'],
         ];
 
+        if ((string) $request->query('export', '') === 'csv') {
+            return CsvExport::stream(
+                'financials_income_expenses_'.now()->format('Ymd_His').'.csv',
+                ['Period', 'Account', 'Class', 'Actual', 'Notes'],
+                function () use ($periodLabel, $income, $maint, $utilities, $noi) {
+                    yield [$periodLabel, 'Rental income (billed)', 'Revenue', $income, 'Sum of invoices'];
+                    yield [$periodLabel, 'Maintenance (quoted jobs)', 'Opex', $maint, 'Job quotes with amounts'];
+                    yield [$periodLabel, 'Utility charges', 'Opex', $utilities, 'Recurring charges'];
+                    yield [$periodLabel, 'NOI proxy', 'Derived', $noi, 'Income minus opex'];
+                }
+            );
+        }
+
         return view('property.agent.financials.income_expenses', [
             'stats' => [
                 ['label' => 'Billed', 'value' => PropertyMoney::kes($income), 'hint' => $periodLabel],
@@ -58,7 +73,7 @@ class FinancialsController extends Controller
         ]);
     }
 
-    public function cashFlow(Request $request): View
+    public function cashFlow(Request $request): View|StreamedResponse
     {
         [$monthValue, $fyValue, $start, $end, $periodLabel] = $this->resolvePeriod($request);
 
@@ -107,6 +122,18 @@ class FinancialsController extends Controller
             ];
         }
 
+        if ((string) $request->query('export', '') === 'csv') {
+            return CsvExport::stream(
+                'financials_cash_flow_'.now()->format('Ymd_His').'.csv',
+                ['Date', 'Type', 'Description', 'Property', 'In', 'Out', 'Balance'],
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield $row;
+                    }
+                }
+            );
+        }
+
         $monthly = PropertyChartSeries::agentCashFlowMonthly(6);
         $dual = [];
         foreach ($monthly as $m) {
@@ -131,9 +158,10 @@ class FinancialsController extends Controller
         ]);
     }
 
-    public function ownerBalances(Request $request): View
+    public function ownerBalances(Request $request): View|StreamedResponse
     {
         [$monthValue, $fyValue, $start, $end, $periodLabel] = $this->resolvePeriod($request);
+        $search = trim((string) $request->query('q', ''));
 
         $links = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
@@ -176,6 +204,15 @@ class FinancialsController extends Controller
             ->selectRaw('pu.property_id as property_id, MAX(pay.paid_at) as last_paid_at')
             ->pluck('last_paid_at', 'property_id');
 
+        if ($search !== '') {
+            $needle = mb_strtolower($search);
+            $links = $links->filter(function ($link) use ($needle) {
+                $hay = mb_strtolower((string) ($link->owner_name.' '.$link->property_name));
+
+                return str_contains($hay, $needle);
+            })->values();
+        }
+
         $rows = $links->map(function ($link) use ($collectedByProperty, $pendingByProperty, $lastRemitByProperty) {
             $pct = ((float) $link->ownership_percent) / 100;
             $available = ((float) ($collectedByProperty[$link->property_id] ?? 0)) * $pct;
@@ -201,6 +238,18 @@ class FinancialsController extends Controller
             $pending += ((float) ($pendingByProperty[$link->property_id] ?? 0)) * $pct;
         }
 
+        if ((string) $request->query('export', '') === 'csv') {
+            return CsvExport::stream(
+                'financials_owner_balances_'.now()->format('Ymd_His').'.csv',
+                ['Owner', 'Property', 'Available', 'Pending', 'Last Remittance', 'Next Run', 'Statement'],
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield $row;
+                    }
+                }
+            );
+        }
+
         return view('property.agent.financials.owner_balances', [
             'stats' => [
                 ['label' => 'Held in trust', 'value' => PropertyMoney::kes($held), 'hint' => 'All owners'],
@@ -212,12 +261,14 @@ class FinancialsController extends Controller
             'monthValue' => $monthValue,
             'fyValue' => $fyValue,
             'periodLabel' => $periodLabel,
+            'filters' => ['q' => $search],
         ]);
     }
 
-    public function commission(Request $request): View
+    public function commission(Request $request): View|StreamedResponse
     {
         [$monthValue, $fyValue, $monthStart, $monthEnd, $periodLabel] = $this->resolvePeriod($request);
+        $search = trim((string) $request->query('q', ''));
 
         $defaultPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
         if ($defaultPct < 0) {
@@ -255,7 +306,16 @@ class FinancialsController extends Controller
             ->selectRaw('pu.property_id as property_id, COALESCE(SUM(i.amount),0) as total')
             ->pluck('total', 'property_id');
 
-        $rows = $links->map(function ($link) use ($defaultPct, $collectedMtdByProperty, $invoicedMtdByProperty) {
+        if ($search !== '') {
+            $needle = mb_strtolower($search);
+            $links = $links->filter(function ($link) use ($needle) {
+                $hay = mb_strtolower((string) ($link->owner_name.' '.$link->property_name));
+
+                return str_contains($hay, $needle);
+            })->values();
+        }
+
+        $rows = $links->map(function ($link) use ($defaultPct, $collectedMtdByProperty, $invoicedMtdByProperty, $periodLabel) {
             $ownership = ((float) $link->ownership_percent) / 100;
             $baseRent = ((float) ($collectedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
             $accrued = $baseRent * ($defaultPct / 100);
@@ -286,6 +346,18 @@ class FinancialsController extends Controller
 
         $openDelta = max(0.0, $totalInvoiced - $totalPaid);
 
+        if ((string) $request->query('export', '') === 'csv') {
+            return CsvExport::stream(
+                'financials_commission_'.now()->format('Ymd_His').'.csv',
+                ['Period', 'Owner', 'Property', 'Base Rent', 'Fee %', 'Accrued', 'Status', 'Actions'],
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield $row;
+                    }
+                }
+            );
+        }
+
         return view('property.agent.financials.commission', [
             'stats' => [
                 ['label' => 'Accrued', 'value' => PropertyMoney::kes($totalAccrued), 'hint' => $periodLabel],
@@ -298,6 +370,7 @@ class FinancialsController extends Controller
             'monthValue' => $monthValue,
             'fyValue' => $fyValue,
             'periodLabel' => $periodLabel,
+            'filters' => ['q' => $search],
         ]);
     }
 

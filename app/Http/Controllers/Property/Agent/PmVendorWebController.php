@@ -77,6 +77,31 @@ class PmVendorWebController extends Controller
         return back()->with('success', 'Vendor saved.');
     }
 
+    public function storeJson(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'category' => ['nullable', 'string', 'max:128'],
+            'phone' => ['nullable', 'string', 'max:64'],
+            'email' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        $vendor = PmVendor::query()->create([
+            ...$data,
+            'status' => 'active',
+            'rating' => null,
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'item' => [
+                'id' => $vendor->id,
+                'label' => $vendor->name.($vendor->phone ? ' ('.$vendor->phone.')' : ''),
+            ],
+            'message' => 'Vendor created.',
+        ]);
+    }
+
     public function edit(PmVendor $vendor): View
     {
         return view('property.agent.vendors.edit', [

@@ -32,17 +32,26 @@ Route::get('/properties/{id}', [PublicController::class, 'propertyDetails'])->na
 Route::get('/about', [PublicController::class, 'about'])->name('public.about');
 Route::get('/contact', [PublicController::class, 'contact'])->name('public.contact');
 Route::get('/apply', [PublicController::class, 'apply'])->name('public.apply');
+Route::post('/apply', [PublicController::class, 'applyStore'])->name('public.apply.store');
 Route::get('/thank-you', [PublicController::class, 'thankYou'])->name('public.thank_you');
 Route::view('/privacy-policy', 'public.privacy')->name('public.privacy');
 Route::view('/terms-of-service', 'public.terms')->name('public.terms');
 Route::post('/webhooks/property/payments/stk-callback', [PropertyPaymentWebhookController::class, 'stkCallback'])
     ->withoutMiddleware([ValidateCsrfToken::class])
     ->name('webhooks.property.payments.stk_callback');
+Route::post('/webhooks/property/payments/sms-ingest', [PropertyPaymentWebhookController::class, 'smsIngest'])
+    ->withoutMiddleware([ValidateCsrfToken::class])
+    ->name('webhooks.property.payments.sms_ingest');
 
 // Safaricom Daraja STK callback (raw Daraja format)
 Route::post('/webhooks/mpesa/stk-callback', [MpesaDarajaWebhookController::class, 'stkCallback'])
     ->withoutMiddleware([ValidateCsrfToken::class])
     ->name('webhooks.mpesa.stk_callback');
+
+// Safaricom Daraja B2C Result URL callback
+Route::post('/webhooks/mpesa/b2c-result', [MpesaDarajaWebhookController::class, 'b2cResultCallback'])
+    ->withoutMiddleware([ValidateCsrfToken::class])
+    ->name('webhooks.mpesa.b2c_result');
 Route::post('/webhooks/property/payments/bank/{provider}', [PropertyPaymentWebhookController::class, 'bankCallback'])
     ->whereIn('provider', ['kcb', 'equity', 'coop'])
     ->withoutMiddleware([ValidateCsrfToken::class])
@@ -82,7 +91,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('module.access:loan')->group(function () {
         Route::get('/loan/dashboard', [LoanDashboardController::class, 'index'])->name('loan.dashboard');
 
-    Route::prefix('loan/financial')->name('loan.financial.')->group(function () {
+    Route::prefix('loan/financial')->middleware('loan.role:accountant,admin,manager')->name('loan.financial.')->group(function () {
         Route::get('/mpesa-platform', [LoanFinancialController::class, 'mpesaPlatform'])->name('mpesa_platform');
         Route::post('/mpesa-platform/transactions', [LoanFinancialController::class, 'mpesaPlatformTransactionStore'])->name('mpesa_platform.transactions.store');
         Route::delete('/mpesa-platform/transactions/{mpesa_platform_transaction}', [LoanFinancialController::class, 'mpesaPlatformTransactionDestroy'])->name('mpesa_platform.transactions.destroy');
@@ -257,7 +266,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/performance/{analytics_performance_record}', [LoanBusinessAnalyticsController::class, 'performanceDestroy'])->name('performance.destroy');
     });
 
-    Route::prefix('loan/accounting')->name('loan.accounting.')->group(function () {
+    Route::prefix('loan/accounting')->middleware('loan.role:accountant,admin,manager')->name('loan.accounting.')->group(function () {
         Route::get('/expense-summary', [LoanAccountingController::class, 'expenseSummary'])->name('expense_summary');
         Route::get('/cashflow', [LoanAccountingController::class, 'cashflow'])->name('cashflow');
 

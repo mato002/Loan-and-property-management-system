@@ -13,6 +13,7 @@ use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class PropertyDashboardOverview
@@ -61,6 +62,9 @@ final class PropertyDashboardOverview
         $jobsActive = PmMaintenanceJob::query()->whereIn('status', ['quoted', 'approved', 'in_progress'])->count();
         $vendorsActive = PmVendor::query()->where('status', 'active')->count();
         $landlords = User::query()->where('property_portal_role', 'landlord')->count();
+        $linkedLandlords = (int) DB::table('property_landlord')->distinct('user_id')->count('user_id');
+        $linkedProperties = (int) Property::query()->has('landlords')->count();
+        $propertiesWithoutLandlord = max(0, $properties - $linkedProperties);
 
         $occ = PropertyDashboardStats::occupancyRate();
 
@@ -143,6 +147,20 @@ final class PropertyDashboardOverview
                 'bar' => 'bg-slate-500',
             ],
             [
+                'label' => 'Linked landlords',
+                'value' => (string) $linkedLandlords,
+                'icon' => 'fa-user-check',
+                'route' => 'property.landlords.index',
+                'bar' => 'bg-fuchsia-500',
+            ],
+            [
+                'label' => 'Unlinked properties',
+                'value' => (string) $propertiesWithoutLandlord,
+                'icon' => 'fa-link-slash',
+                'route' => 'property.properties.list',
+                'bar' => 'bg-yellow-500',
+            ],
+            [
                 'label' => 'Active vendors',
                 'value' => (string) $vendorsActive,
                 'icon' => 'fa-truck-field',
@@ -207,6 +225,25 @@ final class PropertyDashboardOverview
             })
             ->all();
 
+        $recentLandlordLinks = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->orderByDesc('pl.id')
+            ->limit(6)
+            ->get([
+                'p.name as property_name',
+                'u.name as landlord_name',
+                'pl.ownership_percent',
+            ])
+            ->map(function ($row) {
+                return [
+                    'property' => (string) ($row->property_name ?? '—'),
+                    'landlord' => (string) ($row->landlord_name ?? '—'),
+                    'ownership' => number_format((float) ($row->ownership_percent ?? 0), 2).'%',
+                ];
+            })
+            ->all();
+
         return [
             'kpis' => $kpis,
             'chartYear' => $year,
@@ -215,12 +252,16 @@ final class PropertyDashboardOverview
             'chartPayments' => $chartPayments,
             'recentRequests' => $recentRequests,
             'recentPayments' => $recentPayments,
+            'recentLandlordLinks' => $recentLandlordLinks,
             'arrears7' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(7, 14)),
             'arrears14' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(14, 30)),
             'arrears30' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(30)),
             'occupancyDisplay' => $occ !== null ? $occ.'%' : '—',
             'overdueCount' => $overdueCount,
             'landlords' => $landlords,
+            'linkedLandlords' => $linkedLandlords,
+            'linkedProperties' => $linkedProperties,
+            'propertiesWithoutLandlord' => $propertiesWithoutLandlord,
             'jobsActive' => $jobsActive,
             'maintenanceMtd' => PropertyMoney::kes(PropertyDashboardStats::maintenanceSpendMtd()),
         ];

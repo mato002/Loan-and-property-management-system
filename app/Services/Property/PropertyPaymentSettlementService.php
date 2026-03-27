@@ -29,8 +29,21 @@ class PropertyPaymentSettlementService
         return $payment->fresh();
     }
 
-    public function complete(PmPayment $payment, ?string $externalRef, mixed $paidAt, ?string $message, string $source): PmPayment
+    public function complete(
+        PmPayment $payment,
+        ?string $externalRef,
+        mixed $paidAt,
+        ?string $message,
+        string $source,
+        ?float $paidAmount = null,
+    ): PmPayment
     {
+        // If the provider callback includes a definitive amount, prefer it.
+        // This avoids cases where the initiated amount differs from the confirmed amount.
+        if ($paidAmount !== null && $paidAmount > 0) {
+            $payment->amount = $paidAmount;
+        }
+
         $payment->update([
             'status' => PmPayment::STATUS_COMPLETED,
             'paid_at' => $paidAt ?: now(),
@@ -40,15 +53,24 @@ class PropertyPaymentSettlementService
                     'source' => $source,
                     'status' => 'success',
                     'message' => $message,
+                    'amount' => $paidAmount,
                     'received_at' => now()->toIso8601String(),
                 ],
             ]),
         ]);
 
+        $scope = (string) data_get($payment->meta, 'bill_scope', 'all');
+        $invoiceType = match (strtolower(trim($scope))) {
+            'rent' => PmInvoice::TYPE_RENT,
+            'water' => PmInvoice::TYPE_WATER,
+            default => null,
+        };
+
         $remaining = (float) $payment->amount;
         $openInvoices = PmInvoice::query()
             ->where('pm_tenant_id', $payment->pm_tenant_id)
             ->whereColumn('amount_paid', '<', 'amount')
+            ->when($invoiceType !== null, fn ($q) => $q->where('invoice_type', $invoiceType))
             ->orderBy('due_date')
             ->orderBy('id')
             ->lockForUpdate()
@@ -90,8 +112,9 @@ class PropertyPaymentSettlementService
         mixed $paidAt,
         ?string $message,
         string $source,
+        ?float $paidAmount = null,
     ): PmPayment {
-        return DB::transaction(function () use ($paymentId, $status, $externalRef, $paidAt, $message, $source) {
+        return DB::transaction(function () use ($paymentId, $status, $externalRef, $paidAt, $message, $source, $paidAmount) {
             /** @var PmPayment $payment */
             $payment = PmPayment::query()->lockForUpdate()->findOrFail($paymentId);
 
@@ -104,7 +127,7 @@ class PropertyPaymentSettlementService
                 return $this->fail($payment, $externalRef, $message, $source);
             }
 
-            return $this->complete($payment, $externalRef, $paidAt, $message, $source);
+            return $this->complete($payment, $externalRef, $paidAt, $message, $source, $paidAmount);
         });
     }
 }

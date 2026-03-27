@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -198,6 +199,8 @@ class PmTenantDirectoryController extends Controller
 
             $actions = new HtmlString(
                 '<div class="flex flex-wrap gap-1">'.
+                '<a href="'.route('property.tenants.show', $t).'" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'.
+                '<span class="text-slate-300">|</span>'.
                 '<a href="'.route('property.tenants.edit', $t).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit</a>'.
                 '<span class="text-slate-300">|</span>'.
                 '<a href="'.route('property.tenants.leases').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Leases</a>'.
@@ -252,7 +255,7 @@ class PmTenantDirectoryController extends Controller
             $user = User::query()->create([
                 'name' => $data['name'],
                 'email' => Str::lower($data['email']),
-                'password' => $plainPassword,
+                'password' => Hash::make($plainPassword),
                 'property_portal_role' => 'tenant',
                 'email_verified_at' => now(),
             ]);
@@ -318,6 +321,69 @@ class PmTenantDirectoryController extends Controller
         return back()
             ->with('success', 'Tenant saved.')
             ->with('next_steps', $nextSteps);
+    }
+
+    public function storeJson(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:64'],
+            'email' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        $tenant = PmTenant::query()->create([
+            'user_id' => null,
+            'name' => $data['name'],
+            'phone' => $data['phone'] ?? null,
+            'email' => isset($data['email']) && trim((string) $data['email']) !== '' ? Str::lower($data['email']) : null,
+            'national_id' => null,
+            'risk_level' => 'normal',
+            'notes' => null,
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'item' => [
+                'id' => $tenant->id,
+                'label' => $tenant->name.($tenant->phone ? ' ('.$tenant->phone.')' : ''),
+            ],
+            'message' => 'Tenant created.',
+        ]);
+    }
+
+    public function show(PmTenant $tenant): View
+    {
+        $tenant->load([
+            'leases' => fn ($q) => $q->with(['units.property'])->orderByDesc('start_date'),
+            'invoices' => fn ($q) => $q->latest('issue_date')->limit(10),
+        ])->loadCount(['leases', 'invoices']);
+
+        $leaseRows = $tenant->leases->map(function ($lease) {
+            $units = $lease->units->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
+
+            return [
+                'id' => $lease->id,
+                'status' => (string) $lease->status,
+                'start' => $lease->start_date?->format('Y-m-d') ?? '—',
+                'end' => $lease->end_date?->format('Y-m-d') ?? '—',
+                'rent' => (float) $lease->monthly_rent,
+                'units' => $units !== '' ? $units : '—',
+            ];
+        });
+
+        $invoiceTotal = (float) $tenant->invoices->sum('amount');
+        $invoicePaid = (float) $tenant->invoices->sum('amount_paid');
+        $invoiceDue = max(0.0, $invoiceTotal - $invoicePaid);
+
+        return view('property.agent.tenants.show', [
+            'tenant' => $tenant,
+            'leaseRows' => $leaseRows,
+            'invoiceTotals' => [
+                'total' => $invoiceTotal,
+                'paid' => $invoicePaid,
+                'due' => $invoiceDue,
+            ],
+        ]);
     }
 
     public function edit(PmTenant $tenant): View

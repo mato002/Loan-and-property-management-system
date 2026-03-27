@@ -125,11 +125,29 @@ return new class extends Migration
                 $table->string('currency', 8)->default('KES');
                 $table->string('status', 24)->default('pending');
                 $table->date('requested_on');
+                $table->string('reason_for_request', 500)->nullable();
                 $table->foreignId('approved_by')->nullable()->constrained('users')->nullOnDelete();
+                $table->decimal('approved_amount', 14, 2)->nullable();
+                $table->timestamp('approved_at')->nullable();
                 $table->date('settled_on')->nullable();
                 $table->text('notes')->nullable();
                 $table->timestamps();
                 $table->index('status', 'acct_sa_status_idx_r');
+            });
+        }
+        if (Schema::hasTable('accounting_salary_advances') && ! Schema::hasColumn('accounting_salary_advances', 'reason_for_request')) {
+            Schema::table('accounting_salary_advances', function (Blueprint $table) {
+                $table->string('reason_for_request', 500)->nullable()->after('requested_on');
+            });
+        }
+        if (Schema::hasTable('accounting_salary_advances') && ! Schema::hasColumn('accounting_salary_advances', 'approved_amount')) {
+            Schema::table('accounting_salary_advances', function (Blueprint $table) {
+                $table->decimal('approved_amount', 14, 2)->nullable()->after('approved_by');
+            });
+        }
+        if (Schema::hasTable('accounting_salary_advances') && ! Schema::hasColumn('accounting_salary_advances', 'approved_at')) {
+            Schema::table('accounting_salary_advances', function (Blueprint $table) {
+                $table->timestamp('approved_at')->nullable()->after('approved_amount');
             });
         }
 

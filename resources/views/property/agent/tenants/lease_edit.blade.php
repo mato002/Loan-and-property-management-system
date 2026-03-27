@@ -15,12 +15,21 @@
         <div class="grid gap-3 sm:grid-cols-2">
             <div class="sm:col-span-2">
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
-                <select name="pm_tenant_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="">Select…</option>
-                    @foreach ($tenants as $t)
-                        <option value="{{ $t->id }}" @selected((string) old('pm_tenant_id', $lease->pm_tenant_id) === (string) $t->id)>{{ $t->name }}</option>
-                    @endforeach
-                </select>
+                <x-property.quick-create-select
+                    name="pm_tenant_id"
+                    :required="true"
+                    :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id', $lease->pm_tenant_id) === (string) $t->id])->all()"
+                    :create="[
+                        'mode' => 'ajax',
+                        'title' => 'Create tenant',
+                        'endpoint' => route('property.tenants.store_json'),
+                        'fields' => [
+                            ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. John Tenant'],
+                            ['name' => 'phone', 'label' => 'Phone', 'required' => false, 'span' => '2', 'placeholder' => '+2547…'],
+                            ['name' => 'email', 'label' => 'Email (optional)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
+                        ],
+                    ]"
+                />
                 @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>

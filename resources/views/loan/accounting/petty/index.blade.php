@@ -1,9 +1,38 @@
 <x-loan-layout>
     <x-loan.page title="Petty cashbook" subtitle="Receipts increase the imprest; disbursements decrease it.">
         <x-slot name="actions">
+            @include('loan.accounting.partials.export_buttons')
             <a href="{{ route('loan.accounting.petty.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">New line</a>
         </x-slot>
         @include('loan.accounting.partials.flash')
+
+        <form method="get" class="mb-4">
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Kind</label>
+                    <select name="kind" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        <option value="">All</option>
+                        <option value="receipt" @selected(($kind ?? '') === 'receipt')>receipt</option>
+                        <option value="disbursement" @selected(($kind ?? '') === 'disbursement')>disbursement</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Search</label>
+                    <input type="text" name="q" value="{{ $search ?? '' }}" placeholder="Payee/description…" class="h-10 w-64 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">From</label>
+                    <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">To</label>
+                    <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.accounting.petty.index') }}" class="h-10 inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reset</a>
+            </div>
+        </form>
 
         <div class="rounded-xl border border-slate-200 bg-white p-5 mb-6 shadow-sm">
             <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Imprest balance (all time)</p>

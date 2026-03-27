@@ -37,6 +37,7 @@ class LoanSystemHelpController extends Controller
         'payment_automation',
         'approval_levels',
         'client_loyalty_points',
+        'loan_repayment_allocation_order',
     ];
 
     /**
@@ -438,6 +439,7 @@ class LoanSystemHelpController extends Controller
             ['key' => 'payment_automation', 'label' => 'Payment automation (notes / rules)', 'group' => 'preferences', 'value' => ''],
             ['key' => 'approval_levels', 'label' => 'Approval levels & thresholds', 'group' => 'preferences', 'value' => ''],
             ['key' => 'client_loyalty_points', 'label' => 'Client loyalty / royalty points rules', 'group' => 'preferences', 'value' => ''],
+            ['key' => 'loan_repayment_allocation_order', 'label' => 'Loan repayment allocation order (csv: fees,interest,principal)', 'group' => 'preferences', 'value' => 'fees,interest,principal'],
         ];
 
         foreach ($defaults as $row) {

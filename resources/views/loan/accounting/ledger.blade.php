@@ -2,6 +2,7 @@
     <x-loan.page title="General ledger" subtitle="Opening balance is from journal activity before the selected period.">
         <x-slot name="actions">
             <a href="{{ route('loan.accounting.books') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Books</a>
+            @include('loan.accounting.partials.export_buttons')
         </x-slot>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">

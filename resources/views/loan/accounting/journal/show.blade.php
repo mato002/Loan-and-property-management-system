@@ -2,6 +2,7 @@
     <x-loan.page title="Journal {{ $entry->entry_date->format('Y-m-d') }}" subtitle="{{ $entry->reference ?? 'No reference' }}">
         <x-slot name="actions">
             <a href="{{ route('loan.accounting.journal.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
+            @include('loan.accounting.partials.export_buttons')
         </x-slot>
 
         @if ($entry->description)
