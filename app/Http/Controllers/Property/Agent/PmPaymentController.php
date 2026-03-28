@@ -41,6 +41,7 @@ class PmPaymentController extends Controller
 
         $rows = $payments->map(function (PmPayment $p) {
             $allocatedTo = $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
+            $source = $this->sourceBadge($p);
             $actions = '—';
             if ($p->status === PmPayment::STATUS_PENDING) {
                 $completeUrl = route('property.payments.settle', $p);
@@ -63,6 +64,7 @@ class PmPaymentController extends Controller
 
             return [
                 'PAY-'.$p->id,
+                $source,
                 $p->channel,
                 number_format((float) $p->amount, 2),
                 $p->paid_at?->format('Y-m-d H:i') ?? '—',
@@ -75,7 +77,7 @@ class PmPaymentController extends Controller
 
         return view('property.agent.revenue.payments', [
             'stats' => $stats,
-            'columns' => ['Ref', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status', 'Actions'],
+            'columns' => ['Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status', 'Actions'],
             'tableRows' => $rows,
             'tenants' => PmTenant::query()->orderBy('name')->get(),
             'openInvoices' => PmInvoice::query()
@@ -84,6 +86,18 @@ class PmPaymentController extends Controller
                 ->orderBy('due_date')
                 ->get(),
         ]);
+    }
+
+    private function sourceBadge(PmPayment $payment): HtmlString
+    {
+        $source = (string) data_get($payment->meta, 'source', 'manual');
+        $provider = (string) data_get($payment->meta, 'provider', '');
+
+        return match ($source) {
+            'equity_api' => new HtmlString('<span class="inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">Equity API</span>'),
+            'sms_ingest' => new HtmlString('<span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">SMS Forwarder'.($provider !== '' ? ' ('.e(strtoupper($provider)).')' : '').'</span>'),
+            default => new HtmlString('<span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Manual / Legacy</span>'),
+        };
     }
 
     public function store(Request $request): RedirectResponse

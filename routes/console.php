@@ -9,6 +9,9 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('bulksms:dispatch-schedules')->everyFiveMinutes();
+Schedule::command('fetch:equity-transactions')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
 
 // Rent automation (enabled when workflow_auto_reminders=1 in property portal settings)
 Schedule::command('rent:generate-invoices')->dailyAt('00:15');

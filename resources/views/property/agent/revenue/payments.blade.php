@@ -21,6 +21,20 @@
                     View receipts
                     <i class="fa-solid fa-receipt" aria-hidden="true"></i>
                 </a>
+                @if (auth()->user()?->hasPmPermission('payments.settle'))
+                    <a href="{{ route('property.equity.sync_status', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">
+                        Equity sync
+                        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                    </a>
+                    <a href="{{ route('property.equity.unmatched', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100">
+                        Unmatched bank payments
+                        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                    </a>
+                    <a href="{{ route('property.equity.all', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        All equity payments
+                        <i class="fa-solid fa-building-columns" aria-hidden="true"></i>
+                    </a>
+                @endif
             </div>
         </div>
 
@@ -93,6 +107,8 @@
         <select data-table-filter="parent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
             <option value="">Channel: All</option>
             <option value="mpesa">M-Pesa</option>
+            <option value="equity_paybill">Equity Paybill API</option>
+            <option value="mpesa_sms_ingest">SMS Forwarder</option>
             <option value="bank">Bank</option>
             <option value="cash">Cash</option>
         </select>

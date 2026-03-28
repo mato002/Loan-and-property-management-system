@@ -17,6 +17,9 @@
                     <a href="{{ route('property.financials.cash_flow', [], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Profit and Loss by Months</a>
                     <a href="{{ route('property.accounting.reports.trial_balance', [], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Trial Balance</a>
                     <a href="{{ route('property.accounting.reports.cash_book', [], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Cash Book</a>
+                    @if (auth()->user()?->hasPmPermission('payments.settle'))
+                        <a href="{{ route('property.equity.sync_status', [], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">Equity Sync Status</a>
+                    @endif
                 </div>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -31,11 +34,17 @@
             </div>
         </div>
 
-        <x-property.hub-grid :items="[
+        @php
+            $items = [
             ['route' => 'property.financials.income_expenses', 'title' => 'Income vs expenses', 'description' => 'Period P&amp;L style views.'],
             ['route' => 'property.financials.cash_flow', 'title' => 'Cash flow', 'description' => 'Operating liquidity picture.'],
             ['route' => 'property.financials.owner_balances', 'title' => 'Owner balances', 'description' => 'Trust and remittance positions.'],
             ['route' => 'property.financials.commission', 'title' => 'Commission tracking', 'description' => 'Accrual vs paid.'],
-        ]" />
+            ];
+            if (auth()->user()?->hasPmPermission('payments.settle')) {
+                $items[] = ['route' => 'property.equity.sync_status', 'title' => 'Equity bank sync', 'description' => 'Live intake, matching, and reconciliation status.'];
+            }
+        @endphp
+        <x-property.hub-grid :items="$items" />
     </x-property.page>
 </x-property-layout>

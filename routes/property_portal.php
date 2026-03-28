@@ -24,6 +24,7 @@ use App\Http\Controllers\Property\Agent\PropertyTenantsOpsWebController;
 use App\Http\Controllers\Property\Agent\PropertyUtilityChargeController;
 use App\Http\Controllers\Property\Agent\PropertyReportsController;
 use App\Http\Controllers\Property\Agent\RevenueController;
+use App\Http\Controllers\Property\Agent\EquitySyncController;
 use App\Http\Controllers\Property\Landlord\LandlordPortalController;
 use App\Http\Controllers\Property\PropertyPortalQuickActionController;
 use App\Http\Controllers\Property\PropertyGeoController;
@@ -62,6 +63,18 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/revenue/utilities-charges/water-invoices', [PropertyUtilityChargeController::class, 'generateWaterInvoices'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_invoices.generate');
         Route::post('/revenue/utilities-charges/water-penalties/apply', [PropertyUtilityChargeController::class, 'applyWaterPenalties'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.utilities.water_penalties.apply');
         Route::delete('/revenue/utilities-charges/{charge}', [PropertyUtilityChargeController::class, 'destroy'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.destroy');
+        Route::get('/revenue/equity/sync-status', [EquitySyncController::class, 'syncStatus'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.sync_status');
+        Route::post('/revenue/equity/sync-status/sync', [EquitySyncController::class, 'triggerSync'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.sync_status.sync');
+        Route::get('/revenue/equity/unmatched', [EquitySyncController::class, 'unmatchedPayments'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.unmatched');
+        Route::get('/revenue/equity/all', [EquitySyncController::class, 'allPayments'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.all');
         Route::view('/revenue', 'property.agent.revenue.index')->name('revenue.index');
 
         Route::get('/tenants/directory', [PmTenantDirectoryController::class, 'directory'])->name('tenants.directory');

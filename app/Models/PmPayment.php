@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PmPayment extends Model
@@ -43,5 +44,18 @@ class PmPayment extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(PmPaymentAllocation::class, 'pm_payment_id');
+    }
+
+    /**
+     * Linked invoices allow reports to roll up from payment -> unit -> property.
+     */
+    public function invoices(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            PmInvoice::class,
+            'pm_payment_allocations',
+            'pm_payment_id',
+            'pm_invoice_id'
+        )->withPivot('amount')->withTimestamps();
     }
 }

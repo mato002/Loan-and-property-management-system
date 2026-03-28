@@ -1,0 +1,548 @@
+<?php
+
+namespace App\Modules\Reporting\Landlord;
+
+use App\Models\PmAccountingEntry;
+use App\Models\PmInvoice;
+use App\Models\PmLandlordLedgerEntry;
+use App\Models\PmLease;
+use App\Models\PmPayment;
+use App\Models\PropertyPortalSetting;
+use App\Models\User;
+use App\Modules\Reporting\Support\ReportFilters;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+
+class LandlordReportService
+{
+	use ReportFilters;
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	public function buildLandlordLedgerReport(): array
+	{
+		$leaseQuery = PmLease::query()
+			->with(['pmTenant', 'units.property'])
+			->withSum('invoices as invoices_total', 'amount')
+			->withSum('invoices as invoices_paid_total', 'amount_paid');
+		$this->applyDateRange($leaseQuery, 'start_date');
+		$leases = $leaseQuery->latest('start_date')->limit(300)->get();
+
+		$leaseIds = $leases->pluck('id')->all();
+		$arrearsByLease = [];
+		$carryForwardCutoff = now()->startOfMonth()->toDateString();
+
+		if (count($leaseIds) > 0) {
+			$arrearsByLease = PmInvoice::query()
+				->select('pm_lease_id', DB::raw('SUM(GREATEST(amount - amount_paid, 0)) as arrears_total'))
+				->whereIn('pm_lease_id', $leaseIds)
+				->whereDate('due_date', '<', $carryForwardCutoff)
+				->groupBy('pm_lease_id')
+				->pluck('arrears_total', 'pm_lease_id')
+				->toArray();
+		}
+
+		return [
+			'stats' => [
+				['label' => 'Lease rows', 'value' => (string) $leases->count(), 'hint' => 'Landlord statement lines'],
+				['label' => 'Monthly rent', 'value' => $this->money((float) $leases->sum('monthly_rent')), 'hint' => 'Current contract rent'],
+				['label' => 'Amount paid', 'value' => $this->money((float) $leases->sum('invoices_paid_total')), 'hint' => 'Invoice settlements'],
+				['label' => 'Total balance', 'value' => $this->money((float) $leases->sum(function (PmLease $lease) use ($arrearsByLease) {
+					$monthlyRent = (float) ($lease->monthly_rent ?? 0);
+					$arrears = (float) ($arrearsByLease[$lease->id] ?? 0);
+					$total = $monthlyRent + $arrears;
+					$paid = (float) ($lease->invoices_paid_total ?? 0);
+
+					return max(0.0, $total - $paid);
+				})), 'hint' => 'Outstanding'],
+			],
+			'columns' => ['Unit', 'Tenant Name', 'Monthly Rent', 'Arrears', 'Total', 'Amount Paid', 'Total Balance'],
+			'tableRows' => $leases->map(function (PmLease $lease) use ($arrearsByLease) {
+				$units = $lease->units->map(fn ($unit) => ($unit->property->name ?? '—').' / '.($unit->label ?? '—'))->implode(', ');
+				$monthlyRent = (float) ($lease->monthly_rent ?? 0);
+				$arrears = (float) ($arrearsByLease[$lease->id] ?? 0);
+				$total = $monthlyRent + $arrears;
+				$paid = (float) ($lease->invoices_paid_total ?? 0);
+				$balance = max(0.0, $total - $paid);
+
+				return [
+					$units !== '' ? $units : '—',
+					(string) ($lease->pmTenant?->name ?? '—'),
+					$this->money($monthlyRent),
+					$this->money($arrears),
+					$this->money($total),
+					$this->money($paid),
+					$this->money($balance),
+				];
+			})->all(),
+		];
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	public function buildLandlordDetailedStatementReport(): array
+	{
+		$landlords = User::query()
+			->where('property_portal_role', 'landlord')
+			->orderBy('name')
+			->get(['id', 'name']);
+
+		$landlordId = $this->filterLandlordId();
+		if ($landlordId === null) {
+			return [
+				'landlords' => $landlords,
+				'selectedLandlordId' => null,
+				'stats' => [
+					['label' => 'Landlord', 'value' => '—', 'hint' => 'Select a landlord to view statement'],
+				],
+				'columns' => ['Date', 'Transaction Type', 'Transaction ID', 'Invoice No', 'Payments', 'Balance'],
+				'tableRows' => [],
+				'emptyTitle' => 'Select a landlord',
+				'emptyHint' => 'Use the landlord filter to load the detailed statement.',
+			];
+		}
+
+		$selected = $landlords->firstWhere('id', $landlordId);
+
+		$query = PmLandlordLedgerEntry::query()
+			->where('user_id', $landlordId)
+			->orderBy('occurred_at')
+			->orderBy('id');
+		$this->applyDateRange($query, 'occurred_at');
+		$entries = $query->limit(2000)->get();
+
+		$running = 0.0;
+		$rows = $entries->map(function (PmLandlordLedgerEntry $e) use (&$running) {
+			$amount = (float) $e->amount;
+			$isCredit = $e->direction === PmLandlordLedgerEntry::DIRECTION_CREDIT;
+
+			if ($e->balance_after !== null) {
+				$running = (float) $e->balance_after;
+			} else {
+				$running += $isCredit ? $amount : (-1 * $amount);
+			}
+
+			$txnType = $e->reference_type ?: ($isCredit ? 'Credit' : 'Debit');
+			$txnId = ($e->reference_type && $e->reference_id)
+				? strtoupper((string) $e->reference_type).'-'.$e->reference_id
+				: 'LED-'.$e->id;
+
+			$invoiceNo = '—';
+			if ($e->reference_type === 'invoice' && $e->reference_id) {
+				$invoiceNo = (string) (PmInvoice::query()->where('id', $e->reference_id)->value('invoice_no') ?? '—');
+			}
+
+			$payments = $isCredit ? $this->money($amount) : $this->money(0);
+
+			return [
+				$this->dateTime((string) $e->occurred_at),
+				(string) $txnType,
+				(string) $txnId,
+				(string) $invoiceNo,
+				$payments,
+				$this->money((float) $running),
+			];
+		})->all();
+
+		return [
+			'landlords' => $landlords,
+			'selectedLandlordId' => $landlordId,
+			'stats' => [
+				['label' => 'Landlord', 'value' => (string) ($selected?->name ?? '—'), 'hint' => 'Detailed statement'],
+				['label' => 'Entries', 'value' => (string) count($rows), 'hint' => 'Ledger rows'],
+			],
+			'columns' => ['Date', 'Transaction Type', 'Transaction ID', 'Invoice No', 'Payments', 'Balance'],
+			'tableRows' => $rows,
+		];
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	public function buildLandlordBalanceSummaryReport(): array
+	{
+		$query = PmLandlordLedgerEntry::query()
+			->select('user_id', DB::raw("SUM(CASE WHEN direction='credit' THEN amount ELSE 0 END) as paid_amount"))
+			->groupBy('user_id')
+			->orderByDesc('paid_amount')
+			->limit(200);
+
+		$this->applyDateRange($query, 'occurred_at');
+		$rows = $query->get();
+
+		$users = User::query()
+			->whereIn('id', $rows->pluck('user_id')->filter()->all())
+			->get()
+			->keyBy('id');
+
+		$totalPaid = (float) $rows->sum('paid_amount');
+
+		return [
+			'stats' => [
+				['label' => 'Landlords', 'value' => (string) $rows->count(), 'hint' => 'With payments'],
+				['label' => 'Total paid', 'value' => $this->money($totalPaid), 'hint' => 'Credits'],
+			],
+			'columns' => ['Landlord', 'Amount paid'],
+			'tableRows' => $rows->map(function ($row) use ($users) {
+				return [
+					(string) ($users->get($row->user_id)?->name ?? '—'),
+					$this->money((float) ($row->paid_amount ?? 0)),
+				];
+			})->all(),
+		];
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	public function buildLandlordCommissionsReport(): array
+	{
+		$commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
+		if ($commissionPct < 0) {
+			$commissionPct = 0.0;
+		}
+
+		$collectedByPropertyQ = DB::table('pm_payment_allocations as a')
+			->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+			->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+			->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+			->where('pay.status', PmPayment::STATUS_COMPLETED)
+			->groupBy('pu.property_id')
+			->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount),0) as total');
+		$this->applyDateRange($collectedByPropertyQ, 'pay.paid_at');
+		$collectedByProperty = $collectedByPropertyQ->pluck('total', 'property_id');
+
+		$links = DB::table('property_landlord as pl')
+			->join('users as u', 'u.id', '=', 'pl.user_id')
+			->join('properties as p', 'p.id', '=', 'pl.property_id')
+			->select([
+				'pl.property_id',
+				'pl.ownership_percent',
+				'u.name as landlord_name',
+				'p.name as property_name',
+			])
+			->orderBy('p.name')
+			->orderBy('u.name')
+			->get();
+
+		$rawRows = $links->map(function ($link) use ($collectedByProperty, $commissionPct) {
+			$pid = (int) $link->property_id;
+			$ownership = (float) ($link->ownership_percent ?? 0);
+			$income = ((float) ($collectedByProperty[$pid] ?? 0)) * ($ownership / 100);
+			$commission = $income * ($commissionPct / 100);
+
+			return [
+				'property' => (string) ($link->property_name ?? '—'),
+				'landlord' => (string) ($link->landlord_name ?? '—'),
+				'income' => $income,
+				'commission' => $commission,
+			];
+		})->filter(fn (array $r) => $r['income'] > 0)->values();
+
+		$totalIncome = (float) $rawRows->sum('income');
+		$totalCommission = (float) $rawRows->sum('commission');
+
+		return [
+			'stats' => [
+				['label' => 'Commission rate', 'value' => number_format($commissionPct, 2).'%', 'hint' => 'Default setting'],
+				['label' => 'Income (collected)', 'value' => $this->money($totalIncome), 'hint' => 'Landlord share'],
+				['label' => 'Agent earns', 'value' => $this->money($totalCommission), 'hint' => 'Commission total'],
+			],
+			'columns' => ['Property', 'Landlord', 'Income (total rent collected)', 'Commissions (agent earns)'],
+			'tableRows' => $rawRows->map(fn (array $r) => [
+				$r['property'],
+				$r['landlord'],
+				$this->money((float) $r['income']),
+				$this->money((float) $r['commission']),
+			])->all(),
+		];
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	public function buildRentCollectionReport(): array
+	{
+		$query = PmPayment::query()->with(['tenant', 'invoices.unit.property']);
+		$this->applyDateRange($query, 'paid_at');
+		$payments = $query->latest('paid_at')->latest('id')->limit(300)->get();
+
+		return [
+			'stats' => [
+				['label' => 'Payments', 'value' => (string) $payments->count(), 'hint' => 'Recent'],
+				['label' => 'Completed', 'value' => (string) $payments->where('status', PmPayment::STATUS_COMPLETED)->count(), 'hint' => 'Settled'],
+				['label' => 'Collected', 'value' => $this->money((float) $payments->where('status', PmPayment::STATUS_COMPLETED)->sum('amount')), 'hint' => 'Completed only'],
+			],
+			'columns' => ['Date', 'Tenant', 'Property / Unit', 'Channel', 'Amount', 'Reference', 'Status'],
+			'tableRows' => $payments->map(function (PmPayment $payment) {
+				$allocations = $payment->invoices
+					->map(fn ($invoice) => (($invoice->unit?->property?->name ?? '—').' / '.($invoice->unit?->label ?? '—')))
+					->filter()
+					->unique()
+					->values()
+					->implode(', ');
+
+				return [
+					$this->dateTime((string) $payment->paid_at),
+					(string) ($payment->tenant?->name ?? '—'),
+					$allocations !== '' ? $allocations : '—',
+					ucfirst((string) ($payment->channel ?? '—')),
+					$this->money((float) $payment->amount),
+					(string) ($payment->external_ref ?? '—'),
+					ucfirst((string) $payment->status),
+				];
+			})->all(),
+		];
+	}
+
+	/**
+	 * @return array<string,mixed>
+	 */
+	public function buildPropertyStatementReport(): array
+	{
+		$from = $this->filterDateFrom();
+		$to = $this->filterDateTo();
+		$periodStart = $from ? Carbon::parse($from)->startOfDay() : now()->startOfMonth();
+		$periodEnd = $to ? Carbon::parse($to)->endOfDay() : now()->endOfMonth();
+
+		$propertyQ = $this->filterPropertySearch();
+
+		$openingQ = DB::table('pm_invoices as i')
+			->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
+			->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
+			->join('properties as p', 'p.id', '=', 'u.property_id')
+			->whereExists(function ($sub) {
+				$sub->selectRaw('1')
+					->from('pm_accounting_entries as ae')
+					->where('ae.source_key', 'invoice_issued')
+					->whereColumn('ae.reference', 'i.invoice_no');
+			})
+			->whereDate('i.issue_date', '<', $periodStart->toDateString())
+			->whereColumn('i.amount_paid', '<', 'i.amount')
+			->selectRaw("
+                i.pm_tenant_id as tenant_id,
+                i.property_unit_id as unit_id,
+                MAX(t.name) as tenant_name,
+                MAX(u.label) as unit_label,
+                MAX(p.name) as property_name,
+                COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as opening_balance
+            ")
+			->groupBy('i.pm_tenant_id', 'i.property_unit_id');
+		if ($propertyQ !== null) {
+			$openingQ->where('p.name', 'like', '%'.$propertyQ.'%');
+		}
+		$openingRows = $openingQ->get();
+
+		$periodInvQ = DB::table('pm_invoices as i')
+			->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
+			->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
+			->join('properties as p', 'p.id', '=', 'u.property_id')
+			->whereExists(function ($sub) {
+				$sub->selectRaw('1')
+					->from('pm_accounting_entries as ae')
+					->where('ae.source_key', 'invoice_issued')
+					->whereColumn('ae.reference', 'i.invoice_no');
+			})
+			->whereBetween('i.issue_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+			->selectRaw("
+                i.pm_tenant_id as tenant_id,
+                i.property_unit_id as unit_id,
+                MAX(t.name) as tenant_name,
+                MAX(u.label) as unit_label,
+                MAX(p.name) as property_name,
+                COALESCE(SUM(CASE WHEN i.invoice_type = 'rent' THEN i.amount ELSE 0 END),0) as rent_invoices,
+                COALESCE(SUM(CASE
+                    WHEN (i.invoice_type = 'mixed' AND LOWER(COALESCE(i.description, '')) LIKE '%penalty%')
+                      OR (i.invoice_type NOT IN ('rent', 'water', 'mixed'))
+                    THEN i.amount ELSE 0 END),0) as penalties_invoices,
+                COALESCE(SUM(CASE
+                    WHEN i.invoice_type = 'water'
+                      OR (i.invoice_type = 'mixed' AND LOWER(COALESCE(i.description, '')) NOT LIKE '%penalty%')
+                    THEN i.amount ELSE 0 END),0) as bills_invoices,
+                COALESCE(SUM(i.amount),0) as invoices_total
+            ")
+			->groupBy('i.pm_tenant_id', 'i.property_unit_id');
+		if ($propertyQ !== null) {
+			$periodInvQ->where('p.name', 'like', '%'.$propertyQ.'%');
+		}
+		$periodInvRows = $periodInvQ->get();
+
+		$payQ = DB::table('pm_payment_allocations as a')
+			->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+			->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+			->join('pm_tenants as t', 't.id', '=', 'pay.pm_tenant_id')
+			->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
+			->join('properties as p', 'p.id', '=', 'u.property_id')
+			->where('pay.status', PmPayment::STATUS_COMPLETED)
+			->whereExists(function ($sub) {
+				$sub->selectRaw('1')
+					->from('pm_accounting_entries as ae')
+					->where('ae.source_key', 'payment_received')
+					->whereRaw("ae.reference = COALESCE(NULLIF(pay.external_ref, ''), CONCAT('PAY-', pay.id))");
+			})
+			->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
+			->selectRaw("
+                pay.pm_tenant_id as tenant_id,
+                i.property_unit_id as unit_id,
+                MAX(t.name) as tenant_name,
+                MAX(u.label) as unit_label,
+                MAX(p.name) as property_name,
+                COALESCE(SUM(a.amount),0) as payments_received
+            ")
+			->groupBy('pay.pm_tenant_id', 'i.property_unit_id');
+		if ($propertyQ !== null) {
+			$payQ->where('p.name', 'like', '%'.$propertyQ.'%');
+		}
+		$paymentRows = $payQ->get();
+
+		$index = [];
+		$put = static function ($tenantId, $unitId, array $payload) use (&$index) {
+			$k = (string) $tenantId.'|'.(string) $unitId;
+			$index[$k] = array_merge($index[$k] ?? [
+				'tenant_name' => '—',
+				'unit_label' => '—',
+				'property_name' => '—',
+				'opening_balance' => 0.0,
+				'rent_invoices' => 0.0,
+				'penalties_invoices' => 0.0,
+				'bills_invoices' => 0.0,
+				'invoices_total' => 0.0,
+				'payments_received' => 0.0,
+			], $payload);
+		};
+
+		foreach ($openingRows as $r) {
+			$put($r->tenant_id, $r->unit_id, [
+				'tenant_name' => (string) ($r->tenant_name ?? '—'),
+				'unit_label' => (string) ($r->unit_label ?? '—'),
+				'property_name' => (string) ($r->property_name ?? '—'),
+				'opening_balance' => (float) ($r->opening_balance ?? 0),
+			]);
+		}
+		foreach ($periodInvRows as $r) {
+			$put($r->tenant_id, $r->unit_id, [
+				'tenant_name' => (string) ($r->tenant_name ?? '—'),
+				'unit_label' => (string) ($r->unit_label ?? '—'),
+				'property_name' => (string) ($r->property_name ?? '—'),
+				'rent_invoices' => (float) ($r->rent_invoices ?? 0),
+				'penalties_invoices' => (float) ($r->penalties_invoices ?? 0),
+				'bills_invoices' => (float) ($r->bills_invoices ?? 0),
+				'invoices_total' => (float) ($r->invoices_total ?? 0),
+			]);
+		}
+		foreach ($paymentRows as $r) {
+			$put($r->tenant_id, $r->unit_id, [
+				'tenant_name' => (string) ($r->tenant_name ?? '—'),
+				'unit_label' => (string) ($r->unit_label ?? '—'),
+				'property_name' => (string) ($r->property_name ?? '—'),
+				'payments_received' => (float) ($r->payments_received ?? 0),
+			]);
+		}
+
+		$rowsRaw = collect(array_values($index))
+			->map(function (array $r) {
+				$opening = (float) ($r['opening_balance'] ?? 0);
+				$rent = (float) ($r['rent_invoices'] ?? 0);
+				$pen = (float) ($r['penalties_invoices'] ?? 0);
+				$bills = (float) ($r['bills_invoices'] ?? 0);
+				$invTotal = $rent + $pen + $bills;
+				$paid = (float) ($r['payments_received'] ?? 0);
+				$closing = max(0.0, $opening + $invTotal - $paid);
+
+				return [
+					'property_name' => (string) ($r['property_name'] ?? '—'),
+					'tenant_name' => (string) ($r['tenant_name'] ?? '—'),
+					'unit_label' => (string) ($r['unit_label'] ?? '—'),
+					'closing' => $closing,
+					'rent' => $rent,
+					'penalty' => $pen,
+					'bills' => $bills,
+					'paid' => $paid,
+					'opening' => $opening,
+				];
+			})
+			->sortBy([fn ($a) => $a['property_name'], fn ($a) => $a['tenant_name'], fn ($a) => $a['unit_label']])
+			->values()
+			->all();
+
+		$rows = collect($rowsRaw)->map(fn (array $r) => [
+			$r['property_name'],
+			$r['tenant_name'],
+			$r['unit_label'],
+			$this->money((float) $r['closing']),
+			$this->money((float) $r['rent']),
+			$this->money((float) $r['penalty']),
+			$this->money((float) $r['bills']),
+			$this->money((float) $r['paid']),
+			$this->money((float) $r['opening']),
+			$this->money((float) $r['closing']),
+		])->all();
+
+		$totalClosing = (float) collect($rowsRaw)->sum('closing');
+
+		$postedInvoicesQ = DB::table('pm_accounting_entries as ae')
+			->leftJoin('properties as p', 'p.id', '=', 'ae.property_id')
+			->where('ae.source_key', 'invoice_issued')
+			->where('ae.category', PmAccountingEntry::CATEGORY_INCOME)
+			->where('ae.entry_type', PmAccountingEntry::TYPE_CREDIT)
+			->whereBetween('ae.entry_date', [$periodStart->toDateString(), $periodEnd->toDateString()]);
+		if ($propertyQ !== null) {
+			$postedInvoicesQ->where('p.name', 'like', '%'.$propertyQ.'%');
+		}
+		$postedInvoices = (float) $postedInvoicesQ->sum('ae.amount');
+
+		$postedPaymentsQ = DB::table('pm_accounting_entries as ae')
+			->leftJoin('properties as p', 'p.id', '=', 'ae.property_id')
+			->where('ae.source_key', 'payment_received')
+			->where('ae.category', PmAccountingEntry::CATEGORY_ASSET)
+			->where('ae.entry_type', PmAccountingEntry::TYPE_DEBIT)
+			->whereBetween('ae.entry_date', [$periodStart->toDateString(), $periodEnd->toDateString()]);
+		if ($propertyQ !== null) {
+			$postedPaymentsQ->where('p.name', 'like', '%'.$propertyQ.'%');
+		}
+		$postedPayments = (float) $postedPaymentsQ->sum('ae.amount');
+
+		return [
+			'stats' => [
+				['label' => 'Rows', 'value' => (string) count($rows), 'hint' => 'Tenant-unit lines'],
+				['label' => 'Total outstanding', 'value' => $this->money((float) $totalClosing), 'hint' => 'Balances'],
+				['label' => 'Invoices (posted)', 'value' => $this->money($postedInvoices), 'hint' => 'Accounting module'],
+				['label' => 'Payments (posted)', 'value' => $this->money($postedPayments), 'hint' => 'Accounting module'],
+				['label' => 'Period', 'value' => $periodStart->format('Y-m-d').' -> '.$periodEnd->format('Y-m-d'), 'hint' => 'Filter'],
+			],
+			'columns' => [
+				'Property',
+				'Tenant name',
+				'Unit number',
+				'Balance (owes us)',
+				'Invoices: Rent',
+				'Invoices: Penalties',
+				'Invoices: Bills',
+				'Payments received',
+				'Opening balance',
+				'Total balance',
+			],
+			'tableRows' => $rows,
+			'showPropertyFilter' => true,
+		];
+	}
+
+	private function filterLandlordId(): ?int
+	{
+		$id = request()->query('landlord_id');
+		if ($id === null || $id === '') {
+			return null;
+		}
+
+		if (is_numeric($id)) {
+			$int = (int) $id;
+
+			return $int > 0 ? $int : null;
+		}
+
+		return null;
+	}
+}
+

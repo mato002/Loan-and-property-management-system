@@ -3,21 +3,28 @@
 namespace App\Http\Controllers\Property;
 
 use App\Http\Controllers\Controller;
-use App\Models\PmInvoice;
 use App\Models\PmPayment;
-use App\Models\PmPaymentAllocation;
 use App\Models\PmSmsIngest;
-use App\Models\PmTenant;
 use App\Services\Integrations\MpesaDarajaService;
-use App\Services\Property\PropertyAccountingPostingService;
+use App\Repositories\Equity\EquityPaymentRepository;
+use App\Repositories\Equity\PaymentAuditLogRepository;
+use App\Services\PaymentMatchingService;
 use App\Services\Property\PropertyPaymentSettlementService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class PropertyPaymentWebhookController extends Controller
 {
-    public function smsIngest(Request $request, MpesaDarajaService $daraja): JsonResponse
+    public function smsIngest(
+        Request $request,
+        MpesaDarajaService $daraja,
+        EquityPaymentRepository $payments,
+        PaymentMatchingService $matcher,
+        PaymentAuditLogRepository $auditLogs
+    ): JsonResponse
     {
         $secret = (string) config('services.property_sms_ingest.secret', '');
         $providedSecret = (string) $request->header('X-Property-Sms-Secret', '');
@@ -29,34 +36,63 @@ class PropertyPaymentWebhookController extends Controller
         $data = $request->validate([
             'provider' => ['nullable', 'string', 'max:32'],
             'source_device' => ['nullable', 'string', 'max:128'],
-            'provider_txn_code' => ['required', 'string', 'max:64'],
+            'provider_txn_code' => ['nullable', 'string', 'max:64'],
             'payer_phone' => ['nullable', 'string', 'max:32'],
-            'amount' => ['required', 'numeric', 'min:1'],
-            'paid_at' => ['nullable', 'date'],
+            'amount' => ['nullable', 'numeric', 'min:1'],
+            'paid_at' => ['nullable', 'string', 'max:64'],
             'raw_message' => ['nullable', 'string'],
-            'payload' => ['nullable', 'array'],
+            'payload' => ['nullable'],
         ]);
 
-        $normalizedPhone = isset($data['payer_phone']) && trim((string) $data['payer_phone']) !== ''
-            ? $daraja->normalizeMsisdn((string) $data['payer_phone'])
+        $payload = $this->normalizePayload($data['payload'] ?? null);
+        $paidAt = $this->normalizePaidAt($data['paid_at'] ?? null);
+
+        $rawMessage = (string) ($data['raw_message'] ?? '');
+        $parsed = $this->extractMpesaFields($rawMessage);
+        $providerTxnCode = (string) ($data['provider_txn_code'] ?? $parsed['provider_txn_code'] ?? '');
+        if ($providerTxnCode === '') {
+            // Deterministic fallback for idempotency when sender does not provide explicit txn code.
+            $providerTxnCode = 'SMS-'.strtoupper(substr(sha1($rawMessage.'|'.(string) ($data['paid_at'] ?? now()->toIso8601String())), 0, 20));
+        }
+        $amount = (float) ($data['amount'] ?? $parsed['amount'] ?? 0);
+        if ($amount < 1) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Could not determine a valid amount. Include amount or send recognizable M-Pesa confirmation text in raw_message.',
+            ], 422);
+        }
+
+        $incomingPhoneRaw = (string) ($data['payer_phone'] ?? '');
+        $parsedPhoneRaw = (string) ($parsed['phone'] ?? '');
+        $phoneCandidate = trim($incomingPhoneRaw) !== '' && strtoupper(trim($incomingPhoneRaw)) !== 'MPESA'
+            ? $incomingPhoneRaw
+            : $parsedPhoneRaw;
+        $normalizedPhone = $phoneCandidate !== ''
+            ? $daraja->normalizeMsisdn($phoneCandidate)
             : null;
 
         $ingest = PmSmsIngest::query()->firstOrCreate(
-            ['provider_txn_code' => (string) $data['provider_txn_code']],
+            ['provider_txn_code' => $providerTxnCode],
             [
                 'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
                 'source_device' => $data['source_device'] ?? null,
                 'payer_phone' => $normalizedPhone,
-                'amount' => (float) $data['amount'],
-                'paid_at' => $data['paid_at'] ?? now(),
+                'amount' => $amount,
+                'paid_at' => $paidAt ?? now(),
                 'raw_message' => $data['raw_message'] ?? null,
-                'payload' => $data['payload'] ?? null,
+                'payload' => $payload,
                 'match_status' => 'unmatched',
             ]
         );
 
         // Idempotency: if this transaction was already linked to a payment, do nothing.
         if ($ingest->pm_payment_id) {
+            $auditLogs->decision('success', [
+                'stage' => 'sms_ingest',
+                'decision' => 'duplicate_skipped',
+                'transaction_id' => $providerTxnCode,
+            ], 'sms_forwarder_decision');
+
             return response()->json([
                 'ok' => true,
                 'ingest_id' => $ingest->id,
@@ -66,13 +102,136 @@ class PropertyPaymentWebhookController extends Controller
             ]);
         }
 
-        $tenant = $normalizedPhone ? $this->findTenantByPhone($normalizedPhone) : null;
+        $tx = [
+            'transaction_id' => $providerTxnCode,
+            'amount' => $amount,
+            'account_number' => (string) ($payload['account_number'] ?? ''),
+            'reference' => (string) ($payload['reference'] ?? ''),
+            'phone' => (string) ($normalizedPhone ?? ''),
+            'transaction_date' => $paidAt ?? now(),
+            'raw_payload' => [
+                'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
+                'source_device' => $data['source_device'] ?? null,
+                'raw_message' => $data['raw_message'] ?? null,
+                'payload' => $payload,
+            ],
+        ];
 
-        if (! $tenant) {
+        // Keep compatibility if new reconciliation tables are not yet migrated.
+        if (! Schema::hasTable('payments') || ! Schema::hasTable('unassigned_payments')) {
+            $tenant = $normalizedPhone ? $this->findTenantByPhone($normalizedPhone) : null;
+
+            if (! $tenant) {
+                $ingest->update([
+                    'match_status' => 'unmatched',
+                    'match_note' => 'No tenant found by payer phone.',
+                ]);
+
+                return response()->json([
+                    'ok' => true,
+                    'ingest_id' => $ingest->id,
+                    'status' => 'unmatched',
+                ]);
+            }
+
+            $existingPayment = PmPayment::query()
+                ->where('external_ref', $providerTxnCode)
+                ->first();
+
+            if ($existingPayment) {
+                $ingest->update([
+                    'matched_tenant_id' => $tenant->id,
+                    'pm_payment_id' => $existingPayment->id,
+                    'match_status' => 'duplicate',
+                    'match_note' => 'Transaction code already exists in pm_payments.',
+                ]);
+
+                return response()->json([
+                    'ok' => true,
+                    'ingest_id' => $ingest->id,
+                    'status' => 'duplicate',
+                    'payment_id' => $existingPayment->id,
+                ]);
+            }
+
+            $payment = PmPayment::query()->create([
+                'pm_tenant_id' => $tenant->id,
+                'channel' => 'mpesa_sms_ingest',
+                'amount' => $amount,
+                'external_ref' => $providerTxnCode,
+                'paid_at' => $paidAt ?? now(),
+                'status' => PmPayment::STATUS_COMPLETED,
+                'meta' => [
+                    'source' => 'sms_ingest',
+                    'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
+                    'source_device' => $data['source_device'] ?? null,
+                    'payer_phone' => $normalizedPhone,
+                    'raw_message' => $data['raw_message'] ?? null,
+                    'payload' => $payload,
+                ],
+            ]);
+
+            app(PropertyPaymentSettlementService::class)->complete(
+                $payment,
+                $providerTxnCode,
+                $paidAt ?? now(),
+                'Payment ingested via SMS bridge.',
+                'sms_ingest',
+                $amount,
+            );
+
+            $ingest->update([
+                'matched_tenant_id' => $tenant->id,
+                'pm_payment_id' => $payment->id,
+                'match_status' => 'matched',
+                'match_note' => 'Matched by payer phone and posted automatically.',
+            ]);
+
+            return response()->json([
+                'ok' => true,
+                'ingest_id' => $ingest->id,
+                'status' => 'matched',
+                'payment_id' => $payment->id,
+                'tenant_id' => $tenant->id,
+            ]);
+        }
+
+        if ($payments->transactionExists((string) $tx['transaction_id'])) {
+            $ingest->update([
+                'match_status' => 'duplicate',
+                'match_note' => 'Transaction already exists in unified payments ledger.',
+            ]);
+
+            $auditLogs->decision('success', [
+                'stage' => 'sms_ingest',
+                'decision' => 'duplicate_skipped',
+                'transaction_id' => (string) $tx['transaction_id'],
+            ], 'sms_forwarder_decision');
+
+            return response()->json([
+                'ok' => true,
+                'ingest_id' => $ingest->id,
+                'status' => 'duplicate',
+            ]);
+        }
+
+        $match = $matcher->match($tx);
+        if (($match['tenant_id'] ?? null) === null) {
+            $payments->storeUnmatched($tx, (string) ($match['reason'] ?? 'No tenant match'), [
+                'payment_method' => 'sms_forwarder',
+            ]);
+
             $ingest->update([
                 'match_status' => 'unmatched',
-                'match_note' => 'No tenant found by payer phone.',
+                'match_note' => (string) ($match['reason'] ?? 'No tenant match'),
             ]);
+
+            $auditLogs->decision('success', [
+                'stage' => 'sms_ingest',
+                'decision' => 'unmatched',
+                'transaction_id' => (string) $tx['transaction_id'],
+                'reason' => (string) ($match['reason'] ?? 'No tenant match'),
+            ], 'sms_forwarder_decision');
 
             return response()->json([
                 'ok' => true,
@@ -81,69 +240,103 @@ class PropertyPaymentWebhookController extends Controller
             ]);
         }
 
-        $existingPayment = PmPayment::query()
-            ->where('external_ref', (string) $data['provider_txn_code'])
-            ->first();
-
-        if ($existingPayment) {
-            $ingest->update([
-                'matched_tenant_id' => $tenant->id,
-                'pm_payment_id' => $existingPayment->id,
-                'match_status' => 'duplicate',
-                'match_note' => 'Transaction code already exists in pm_payments.',
-            ]);
-
-            return response()->json([
-                'ok' => true,
-                'ingest_id' => $ingest->id,
-                'status' => 'duplicate',
-                'payment_id' => $existingPayment->id,
-            ]);
-        }
-
-        $payment = PmPayment::query()->create([
-            'pm_tenant_id' => $tenant->id,
+        $localPayment = $payments->storeMatched($tx, (int) $match['tenant_id'], (string) ($match['matched_by'] ?? 'phone'), [
+            'payment_method' => 'sms_forwarder',
             'channel' => 'mpesa_sms_ingest',
-            'amount' => (float) $data['amount'],
-            'external_ref' => (string) $data['provider_txn_code'],
-            'paid_at' => $data['paid_at'] ?? now(),
-            'status' => PmPayment::STATUS_COMPLETED,
-            'meta' => [
-                'source' => 'sms_ingest',
-                'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
-                'source_device' => $data['source_device'] ?? null,
-                'payer_phone' => $normalizedPhone,
-                'raw_message' => $data['raw_message'] ?? null,
-                'payload' => $data['payload'] ?? null,
-            ],
+            'source' => 'sms_ingest',
+            'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
+            'message' => 'Payment ingested via SMS Forwarder.',
         ]);
-
-        app(PropertyPaymentSettlementService::class)->complete(
-            $payment,
-            (string) $data['provider_txn_code'],
-            $data['paid_at'] ?? now(),
-            'Payment ingested via SMS bridge.',
-            'sms_ingest',
-            (float) $data['amount'],
-        );
 
         $ingest->update([
-            'matched_tenant_id' => $tenant->id,
-            'pm_payment_id' => $payment->id,
+            'matched_tenant_id' => (int) $match['tenant_id'],
+            'pm_payment_id' => (int) ($localPayment->pm_payment_id ?? 0) ?: null,
             'match_status' => 'matched',
-            'match_note' => 'Matched by payer phone and posted automatically.',
+            'match_note' => 'Matched and posted via unified payments pipeline.',
         ]);
+
+        $auditLogs->decision('success', [
+            'stage' => 'sms_ingest',
+            'decision' => 'matched',
+            'transaction_id' => (string) $tx['transaction_id'],
+            'tenant_id' => (int) $match['tenant_id'],
+            'matched_by' => (string) ($match['matched_by'] ?? 'phone'),
+        ], 'sms_forwarder_decision');
 
         return response()->json([
             'ok' => true,
             'ingest_id' => $ingest->id,
             'status' => 'matched',
-            'payment_id' => $payment->id,
-            'tenant_id' => $tenant->id,
+            'payment_id' => $localPayment->pm_payment_id,
+            'tenant_id' => (int) $match['tenant_id'],
         ]);
     }
 
-    private function findTenantByPhone(string $normalizedPhone): ?PmTenant
+    /**
+     * Attempt to extract transaction code and amount from raw M-Pesa confirmation SMS.
+     *
+     * @return array{provider_txn_code?:string,amount?:float}
+     */
+    private function extractMpesaFields(string $message): array
+    {
+        if (trim($message) === '') {
+            return [];
+        }
+
+        $out = [];
+
+        // Typical M-Pesa code: alphanumeric, often 8-12 chars, appears near start.
+        if (preg_match('/\b([A-Z0-9]{8,12})\b/u', $message, $m) === 1) {
+            $out['provider_txn_code'] = strtoupper((string) $m[1]);
+        }
+
+        // Match amount formats like "Ksh1,250.00" or "KES 1250" or "Ksh 1,250".
+        if (preg_match('/(?:KSH|KES)\s*([0-9,]+(?:\.[0-9]{1,2})?)/iu', $message, $m) === 1) {
+            $value = str_replace(',', '', (string) $m[1]);
+            $out['amount'] = (float) $value;
+        }
+
+        // Extract phone number from text: 07xxxxxxxx, 01xxxxxxxx, +2547xxxxxxx, 2547xxxxxxx
+        if (preg_match('/\b(\+?2547\d{8}|\+?2541\d{8}|07\d{8}|01\d{8})\b/u', $message, $m) === 1) {
+            $out['phone'] = (string) $m[1];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function normalizePayload(mixed $payload): ?array
+    {
+        if (is_array($payload)) {
+            return $payload;
+        }
+        if (is_string($payload) && trim($payload) !== '') {
+            $decoded = json_decode($payload, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizePaidAt(mixed $value): ?Carbon
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            // Accept forwarder-specific date formats by falling back to now.
+            return null;
+        }
+    }
+
+    private function findTenantByPhone(string $normalizedPhone): ?\App\Models\PmTenant
     {
         $local = str_starts_with($normalizedPhone, '254') ? '0'.substr($normalizedPhone, 3) : $normalizedPhone;
         $compact = ltrim($normalizedPhone, '+');

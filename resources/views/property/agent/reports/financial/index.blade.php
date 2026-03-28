@@ -11,6 +11,9 @@
         ['label' => 'Balance Sheet Standard', 'route' => 'property.reports.financial.balance_sheet_standard'],
         ['label' => 'Balance Sheet Itemised', 'route' => 'property.reports.financial.balance_sheet_itemised'],
     ];
+    if (auth()->user()?->hasPmPermission('payments.settle')) {
+        $panelItems[] = ['label' => 'Equity Sync Status', 'route' => 'property.equity.sync_status'];
+    }
 @endphp
 
 @include('property.agent.reports.partials.module_page')

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class PropertyUnit extends Model
 {
@@ -84,6 +85,21 @@ class PropertyUnit extends Model
     public function invoices(): HasMany
     {
         return $this->hasMany(PmInvoice::class, 'property_unit_id');
+    }
+
+    /**
+     * ERP-style link: all tenants who have been billed on this unit.
+     */
+    public function tenants(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            PmTenant::class,
+            PmInvoice::class,
+            'property_unit_id',
+            'id',
+            'id',
+            'pm_tenant_id'
+        );
     }
 
     public function maintenanceRequests(): HasMany

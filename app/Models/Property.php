@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Property extends Model
 {
@@ -18,6 +19,21 @@ class Property extends Model
     public function units(): HasMany
     {
         return $this->hasMany(PropertyUnit::class);
+    }
+
+    /**
+     * All invoices linked to this property through its units.
+     */
+    public function invoices(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            PmInvoice::class,
+            PropertyUnit::class,
+            'property_id',
+            'property_unit_id',
+            'id',
+            'id'
+        );
     }
 
     public function landlords(): BelongsToMany
