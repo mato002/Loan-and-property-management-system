@@ -270,9 +270,22 @@ class FinancialsController extends Controller
         [$monthValue, $fyValue, $monthStart, $monthEnd, $periodLabel] = $this->resolvePeriod($request);
         $search = trim((string) $request->query('q', ''));
 
-        $defaultPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
+        $defaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
+        $defaultPct = is_numeric($defaultRaw) ? (float) $defaultRaw : 10.0;
         if ($defaultPct < 0) {
             $defaultPct = 0;
+        }
+        $overrideRaw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+        $overrides = [];
+        $decoded = json_decode($overrideRaw, true);
+        if (is_array($decoded)) {
+            foreach ($decoded as $propertyId => $pct) {
+                $pid = (int) $propertyId;
+                if ($pid <= 0 || ! is_numeric($pct)) {
+                    continue;
+                }
+                $overrides[$pid] = max(0.0, (float) $pct);
+            }
         }
 
         $links = DB::table('property_landlord as pl')
@@ -315,17 +328,18 @@ class FinancialsController extends Controller
             })->values();
         }
 
-        $rows = $links->map(function ($link) use ($defaultPct, $collectedMtdByProperty, $invoicedMtdByProperty, $periodLabel) {
+        $rows = $links->map(function ($link) use ($defaultPct, $overrides, $collectedMtdByProperty, $invoicedMtdByProperty, $periodLabel) {
             $ownership = ((float) $link->ownership_percent) / 100;
             $baseRent = ((float) ($collectedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
-            $accrued = $baseRent * ($defaultPct / 100);
+            $ratePct = $overrides[(int) $link->property_id] ?? $defaultPct;
+            $accrued = $baseRent * ($ratePct / 100);
 
             return [
                 $periodLabel,
                 $link->owner_name,
                 $link->property_name,
                 PropertyMoney::kes($baseRent),
-                number_format($defaultPct, 2).'%',
+                number_format($ratePct, 2).'%',
                 PropertyMoney::kes($accrued),
                 $accrued > 0 ? 'Accrued' : 'No activity',
                 '—',

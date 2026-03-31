@@ -363,11 +363,20 @@ class PropertyPortfolioController extends Controller
                 ->get();
         }
 
-        $commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
-        if ($commissionPct < 0) {
-            $commissionPct = 0.0;
+        $commissionDefaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
+        $commissionDefaultPct = is_numeric($commissionDefaultRaw) ? (float) $commissionDefaultRaw : 10.0;
+        if ($commissionDefaultPct < 0) {
+            $commissionDefaultPct = 0.0;
         }
-        $agentEarning = $collected * ($commissionPct / 100);
+        $commissionOverridesRaw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+        $commissionOverrides = json_decode($commissionOverridesRaw, true);
+        $propertyCommissionPct = $commissionDefaultPct;
+        if (is_array($commissionOverrides)) {
+            $propertyCommissionPct = is_numeric($commissionOverrides[(string) $property->id] ?? null)
+                ? max(0.0, (float) $commissionOverrides[(string) $property->id])
+                : $commissionDefaultPct;
+        }
+        $agentEarning = $collected * ($propertyCommissionPct / 100);
 
         $ownerRows = $property->landlords->map(function (User $u) use ($collected, $arrears, $agentEarning) {
             $pct = (float) ($u->pivot->ownership_percent ?? 0);
@@ -529,7 +538,7 @@ class PropertyPortfolioController extends Controller
                 ['label' => 'Invoiced ('.$periodLabel.')', 'value' => PropertyMoney::kes($invoiced), 'hint' => 'Issued invoices'],
                 ['label' => 'Collected ('.$periodLabel.')', 'value' => PropertyMoney::kes($collected), 'hint' => 'Completed payments'],
                 ['label' => 'Arrears', 'value' => PropertyMoney::kes($arrears), 'hint' => 'Outstanding invoices'],
-                ['label' => 'Your earnings', 'value' => PropertyMoney::kes($agentEarning), 'hint' => 'At '.number_format($commissionPct, 2).'%'],
+                ['label' => 'Your earnings', 'value' => PropertyMoney::kes($agentEarning), 'hint' => 'At '.number_format($propertyCommissionPct, 2).'%'],
             ],
             'activeLeasesCount' => $activeLeasesCount,
             'activeLeaseRent' => $activeLeaseRent,
@@ -537,7 +546,7 @@ class PropertyPortfolioController extends Controller
             'collectionByChannel' => $collectionByChannel,
             'availableCollectionChannels' => $availableCollectionChannels,
             'ownerRows' => $ownerRows,
-            'commissionPct' => $commissionPct,
+            'commissionPct' => $propertyCommissionPct,
             'filters' => [
                 'unit_status' => $unitStatus,
                 'collection_channel' => $collectionChannel,
@@ -909,9 +918,22 @@ class PropertyPortfolioController extends Controller
             ->selectRaw('pu.property_id as property_id, MAX(pay.paid_at) as last_paid_at')
             ->pluck('last_paid_at', 'property_id');
 
-        $commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
-        if ($commissionPct < 0) {
-            $commissionPct = 0.0;
+        $commissionDefaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
+        $commissionDefaultPct = is_numeric($commissionDefaultRaw) ? (float) $commissionDefaultRaw : 10.0;
+        if ($commissionDefaultPct < 0) {
+            $commissionDefaultPct = 0.0;
+        }
+        $commissionOverridesRaw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+        $commissionOverrides = [];
+        $decodedOverrides = json_decode($commissionOverridesRaw, true);
+        if (is_array($decodedOverrides)) {
+            foreach ($decodedOverrides as $propertyId => $pct) {
+                $pid = (int) $propertyId;
+                if ($pid <= 0 || ! is_numeric($pct)) {
+                    continue;
+                }
+                $commissionOverrides[$pid] = max(0.0, (float) $pct);
+            }
         }
 
         $statsByLandlord = [];
@@ -921,6 +943,7 @@ class PropertyPortfolioController extends Controller
             $pct = ((float) $link->ownership_percent) / 100;
             $baseCollected = ((float) ($collectedByProperty[$pid] ?? 0)) * $pct;
             $basePending = ((float) ($pendingByProperty[$pid] ?? 0)) * $pct;
+            $commissionPct = $commissionOverrides[$pid] ?? $commissionDefaultPct;
             $commission = $baseCollected * ($commissionPct / 100);
 
             if (! isset($statsByLandlord[$uid])) {
@@ -1030,7 +1053,7 @@ class PropertyPortfolioController extends Controller
             'monthValue' => $month,
             'fyValue' => $fy,
             'filters' => $filters,
-            'commissionPct' => $commissionPct,
+            'commissionPct' => $commissionDefaultPct,
         ]);
     }
 
@@ -1110,18 +1133,32 @@ class PropertyPortfolioController extends Controller
                 ->pluck('last_paid_at', 'property_id');
         }
 
-        $commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
-        if ($commissionPct < 0) {
-            $commissionPct = 0.0;
+        $commissionDefaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
+        $commissionDefaultPct = is_numeric($commissionDefaultRaw) ? (float) $commissionDefaultRaw : 10.0;
+        if ($commissionDefaultPct < 0) {
+            $commissionDefaultPct = 0.0;
+        }
+        $commissionOverridesRaw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+        $commissionOverrides = [];
+        $decodedOverrides = json_decode($commissionOverridesRaw, true);
+        if (is_array($decodedOverrides)) {
+            foreach ($decodedOverrides as $propertyId => $pct) {
+                $pid = (int) $propertyId;
+                if ($pid <= 0 || ! is_numeric($pct)) {
+                    continue;
+                }
+                $commissionOverrides[$pid] = max(0.0, (float) $pct);
+            }
         }
 
-        $propertyBreakdown = $propertyLinks->map(function ($link) use ($collectedByProperty, $pendingByProperty, $lastPaidByProperty, $commissionPct) {
+        $propertyBreakdown = $propertyLinks->map(function ($link) use ($collectedByProperty, $pendingByProperty, $lastPaidByProperty, $commissionDefaultPct, $commissionOverrides) {
             $pid = (int) $link->property_id;
             $pct = ((float) $link->ownership_percent) / 100;
             $grossCollected = (float) ($collectedByProperty[$pid] ?? 0);
             $grossPending = (float) ($pendingByProperty[$pid] ?? 0);
             $ownerShare = $grossCollected * $pct;
             $pendingShare = $grossPending * $pct;
+            $commissionPct = $commissionOverrides[$pid] ?? $commissionDefaultPct;
             $agentEarning = $ownerShare * ($commissionPct / 100);
 
             return [
@@ -1170,7 +1207,7 @@ class PropertyPortfolioController extends Controller
             'periodLabel' => $periodLabel,
             'monthValue' => $month,
             'fyValue' => $fy,
-            'commissionPct' => $commissionPct,
+            'commissionPct' => $commissionDefaultPct,
             'totals' => $totals,
             'propertyBreakdown' => $propertyBreakdown,
             'recentCollections' => $recentCollections,
@@ -1789,6 +1826,62 @@ class PropertyPortfolioController extends Controller
         }
 
         return back()->with('success', 'Unit status updated.');
+    }
+
+    public function storeUnitJson(Request $request)
+    {
+        $data = $request->validate([
+            'property_id' => ['required', 'integer', 'exists:properties,id'],
+            'label' => ['required', 'string', 'max:64'],
+            'unit_type' => ['nullable', 'string', 'in:'.implode(',', array_keys(PropertyUnit::typeOptions()))],
+            'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'rent_amount' => ['nullable', 'numeric', 'min:0'],
+            'status' => ['nullable', 'in:vacant,occupied,notice'],
+        ]);
+
+        $propertyId = (int) $data['property_id'];
+        $label = trim((string) $data['label']);
+
+        $exists = PropertyUnit::query()
+            ->where('property_id', $propertyId)
+            ->where('label', $label)
+            ->exists();
+        if ($exists) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'A unit with that label already exists for the selected property.',
+            ], 422);
+        }
+
+        $unitType = (string) ($data['unit_type'] ?? PropertyUnit::TYPE_APARTMENT);
+        $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
+        $bedrooms = in_array($unitType, $noBedroomTypes, true)
+            ? 0
+            : (int) ($data['bedrooms'] ?? 1);
+
+        $status = (string) ($data['status'] ?? PropertyUnit::STATUS_VACANT);
+        $rentAmount = (float) ($data['rent_amount'] ?? 0);
+
+        $unit = PropertyUnit::query()->create([
+            'property_id' => $propertyId,
+            'label' => $label,
+            'unit_type' => $unitType,
+            'bedrooms' => $bedrooms,
+            'rent_amount' => $rentAmount,
+            'status' => $status,
+            'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
+        ]);
+
+        $unit->loadMissing('property');
+
+        return response()->json([
+            'ok' => true,
+            'item' => [
+                'id' => $unit->id,
+                'label' => ($unit->property?->name ?? 'Property '.$propertyId).' / '.$unit->label,
+            ],
+            'message' => 'Unit created.',
+        ]);
     }
 
     public function destroyUnit(PropertyUnit $unit): RedirectResponse

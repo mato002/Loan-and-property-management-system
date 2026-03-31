@@ -14,19 +14,67 @@
         $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone) ?: '+18005550199';
         $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
         $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
+        $currentUrl = url()->current();
+        $resolvedPageTitle = isset($publicPageTitle) && trim((string) $publicPageTitle) !== ''
+            ? trim((string) $publicPageTitle).' | '.$companyName
+            : $companyName.' - Property Management System';
+        $resolvedDescription = isset($publicPageDescription) && trim((string) $publicPageDescription) !== ''
+            ? trim((string) $publicPageDescription)
+            : $companyName.' helps you discover verified rental properties, schedule site visits, and manage applications online with trusted property professionals.';
+        $resolvedOgImage = isset($publicPageImage) && trim((string) $publicPageImage) !== ''
+            ? trim((string) $publicPageImage)
+            : ($companyLogoUrl !== '' ? $companyLogoUrl : asset('favicon.ico'));
+        $resolvedRobots = isset($publicPageRobots) && trim((string) $publicPageRobots) !== ''
+            ? trim((string) $publicPageRobots)
+            : 'index,follow';
+        $resolvedLocale = str_replace('_', '-', app()->getLocale());
+        $schemaGraph = [
+            '@context' => 'https://schema.org',
+            '@graph' => [
+                [
+                    '@type' => 'Organization',
+                    'name' => $companyName,
+                    'url' => url('/'),
+                    'logo' => $resolvedOgImage,
+                    'email' => $contactEmailPrimary,
+                    'telephone' => $contactPhone,
+                ],
+                [
+                    '@type' => 'WebSite',
+                    'name' => $companyName,
+                    'url' => url('/'),
+                    'potentialAction' => [
+                        '@type' => 'SearchAction',
+                        'target' => url('/properties').'?q={search_term_string}',
+                        'query-input' => 'required name=search_term_string',
+                    ],
+                ],
+            ],
+        ];
     @endphp
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>@isset($publicPageTitle){{ $publicPageTitle }} | {{ $companyName }} @else Property Management System - Find Your Next Home @endisset</title>
-    <meta name="description" content="{{ $companyName }} helps you discover verified rental properties, schedule site visits, and manage applications online with trusted property professionals.">
+    <title>{{ $resolvedPageTitle }}</title>
+    <meta name="description" content="{{ $resolvedDescription }}">
     <meta name="keywords" content="property management, rentals, apartments, houses, real estate, verified listings">
-    <meta property="og:title" content="@isset($publicPageTitle){{ $publicPageTitle }} | {{ $companyName }} @else {{ $companyName }} - Verified Property Listings @endisset">
-    <meta property="og:description" content="Browse verified listings, connect with agents, and apply online with {{ $companyName }}.">
+    <meta name="robots" content="{{ $resolvedRobots }}">
+    <link rel="canonical" href="{{ $currentUrl }}">
+    <link rel="alternate" hreflang="{{ $resolvedLocale }}" href="{{ $currentUrl }}">
+    <link rel="alternate" hreflang="x-default" href="{{ $currentUrl }}">
+    <meta property="og:title" content="{{ $resolvedPageTitle }}">
+    <meta property="og:description" content="{{ $resolvedDescription }}">
     <meta property="og:type" content="website">
-    <meta name="robots" content="index,follow">
+    <meta property="og:url" content="{{ $currentUrl }}">
+    <meta property="og:image" content="{{ $resolvedOgImage }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{ $resolvedPageTitle }}">
+    <meta name="twitter:description" content="{{ $resolvedDescription }}">
+    <meta name="twitter:image" content="{{ $resolvedOgImage }}">
     <link rel="icon" href="{{ $faviconVersioned }}" />
     <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
     <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
+    <script type="application/ld+json">{!! json_encode($schemaGraph, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}</script>
+    @stack('head')
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800&display=swap" rel="stylesheet" />

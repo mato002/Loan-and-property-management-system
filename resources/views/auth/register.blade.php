@@ -11,7 +11,7 @@
     <div class="mb-8 flex items-center justify-between gap-4">
         <a
             href="{{ url('/') }}"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#3B59FF]/40 hover:text-[#3B59FF]"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#4d8d82]/40 hover:text-[#4d8d82]"
             aria-label="{{ __('Back to home') }}"
         >
             <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
@@ -20,7 +20,7 @@
         </a>
         <p class="text-sm text-slate-600">
             {{ __('Already a member?') }}
-            <a href="{{ route('login') }}" class="font-semibold text-[#3B59FF] hover:text-[#2d47cc]">{{ __('Sign in') }}</a>
+            <a href="{{ route('login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70]">{{ __('Sign in') }}</a>
         </p>
     </div>
 
@@ -49,7 +49,7 @@
 
         <div class="space-y-1">
             <label for="system" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('System') }}</label>
-            <div class="flex items-center gap-3 border-b border-slate-200 pb-2.5 transition-colors focus-within:border-[#3B59FF] {{ $sysErr ? '!border-red-400' : '' }}">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-2.5 transition-colors focus-within:border-[#4d8d82] {{ $sysErr ? '!border-red-400' : '' }}">
                 <span class="text-slate-400" aria-hidden="true">
                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5 3v18m15-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6.75H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
@@ -73,7 +73,7 @@
 
         <div id="property-portal-role-wrap" class="space-y-1" style="display: none;">
             <label for="property_portal_role" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('Property portal role') }}</label>
-            <div class="flex items-center gap-3 border-b border-slate-200 pb-2.5 transition-colors focus-within:border-[#3B59FF] {{ $roleErr ? '!border-red-400' : '' }}">
+            <div class="flex items-center gap-3 border-b border-slate-200 pb-2.5 transition-colors focus-within:border-[#4d8d82] {{ $roleErr ? '!border-red-400' : '' }}">
                 <span class="text-slate-400" aria-hidden="true">
                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
@@ -145,7 +145,7 @@
 
         <div class="space-y-1">
             <label for="password" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('Password') }}</label>
-            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $passErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#3B59FF]' }}">
+            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $passErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}">
                 <span class="text-slate-400" aria-hidden="true">
                     <svg class="h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
@@ -205,7 +205,7 @@
 
         <div class="space-y-1">
             <label for="password_confirmation" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('Confirm password') }}</label>
-            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $confirmErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#3B59FF]' }}">
+            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $confirmErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}">
                 <span class="text-slate-400" aria-hidden="true">
                     <svg class="h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
@@ -243,7 +243,7 @@
 
         <button
             type="submit"
-            class="group relative flex w-full items-center justify-center gap-3 rounded-full bg-[#3B59FF] py-4 text-base font-semibold text-white shadow-lg shadow-[#3B59FF]/35 transition hover:bg-[#2f4cd4] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B59FF] focus-visible:ring-offset-2"
+            class="group relative flex w-full items-center justify-center gap-3 rounded-full bg-[#4d8d82] py-4 text-base font-semibold text-white shadow-lg shadow-[#4d8d82]/35 transition hover:bg-[#3f7a70] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4d8d82] focus-visible:ring-offset-2"
         >
             {{ __('Create account') }}
             <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 transition group-hover:bg-white/30" aria-hidden="true">

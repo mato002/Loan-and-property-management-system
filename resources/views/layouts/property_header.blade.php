@@ -138,6 +138,30 @@
                 @endisset
             </div>
 
+            @if ($portalRole === 'agent')
+                <form
+                    method="get"
+                    action="{{ route('property.search') }}"
+                    data-turbo-frame="property-main"
+                    class="hidden lg:flex items-center shrink-0 min-w-[320px] max-w-[520px] w-[38vw]"
+                >
+                    <label class="sr-only" for="property-global-search">Search</label>
+                    <div class="relative w-full">
+                        <input
+                            id="property-global-search"
+                            name="q"
+                            value="{{ request('q') }}"
+                            placeholder="Search tenants, units, invoices, payments…"
+                            class="w-full rounded-xl bg-white/12 text-white placeholder:text-white/65 border border-white/20 px-4 py-2.5 pr-11 text-sm font-semibold shadow-inner focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40"
+                        />
+                        <button type="submit" class="absolute right-1.5 top-1.5 h-8 w-8 rounded-lg bg-white/15 hover:bg-white/25 text-white/90">
+                            <i class="fa-solid fa-magnifying-glass text-sm" aria-hidden="true"></i>
+                            <span class="sr-only">Search</span>
+                        </button>
+                    </div>
+                </form>
+            @endif
+
             <div class="hidden sm:flex flex-col items-end justify-center shrink-0 text-right leading-tight pr-1">
                 <span class="text-[10px] uppercase tracking-wider text-white/55 font-semibold">Today</span>
                 <time class="text-xs font-semibold text-white/90 tabular-nums" datetime="{{ now()->toDateString() }}">{{ $todayLabel }}</time>

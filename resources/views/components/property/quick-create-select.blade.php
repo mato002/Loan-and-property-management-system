@@ -134,14 +134,28 @@
                     @foreach ((array) ($create['fields'] ?? []) as $f)
                         <div class="{{ (($f['span'] ?? '') === '2' ? 'sm:col-span-2' : '') }}">
                             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">{{ $f['label'] ?? $f['name'] }}</label>
-                            <input
-                                id="{{ $id }}-f-{{ $f['name'] }}"
-                                type="{{ $f['type'] ?? 'text' }}"
-                                @if(!empty($f['required'])) x-bind:required="open" @endif
-                                x-bind:disabled="!open"
-                                class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-950 text-sm px-3 py-2"
-                                placeholder="{{ $f['placeholder'] ?? '' }}"
-                            />
+                            @if (($f['type'] ?? 'text') === 'select')
+                                <select
+                                    id="{{ $id }}-f-{{ $f['name'] }}"
+                                    @if(!empty($f['required'])) x-bind:required="open" @endif
+                                    x-bind:disabled="!open"
+                                    class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-950 text-sm px-3 py-2"
+                                >
+                                    <option value="">{{ $f['placeholder'] ?? 'Select…' }}</option>
+                                    @foreach ((array) ($f['options'] ?? []) as $opt)
+                                        <option value="{{ (string) ($opt['value'] ?? '') }}">{{ (string) ($opt['label'] ?? ($opt['value'] ?? '')) }}</option>
+                                    @endforeach
+                                </select>
+                            @else
+                                <input
+                                    id="{{ $id }}-f-{{ $f['name'] }}"
+                                    type="{{ $f['type'] ?? 'text' }}"
+                                    @if(!empty($f['required'])) x-bind:required="open" @endif
+                                    x-bind:disabled="!open"
+                                    class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-950 text-sm px-3 py-2"
+                                    placeholder="{{ $f['placeholder'] ?? '' }}"
+                                />
+                            @endif
                         </div>
                     @endforeach
                 </div>

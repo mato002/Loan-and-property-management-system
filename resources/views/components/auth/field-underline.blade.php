@@ -19,7 +19,7 @@
         <label for="{{ $id }}" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ $label }}</label>
     @endif
     <div
-        class="flex items-stretch gap-3 border-b pb-2.5 transition-colors {{ $hasError ? 'border-red-400' : 'border-slate-200 focus-within:border-[#3B59FF]' }}"
+        class="flex items-stretch gap-3 border-b pb-2.5 transition-colors {{ $hasError ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}"
     >
         <span class="flex shrink-0 items-center text-slate-400 [&_svg]:h-5 [&_svg]:w-5" aria-hidden="true">
             {{ $icon ?? '' }}

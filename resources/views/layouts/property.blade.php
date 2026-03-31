@@ -46,22 +46,66 @@
                 scrollbar-color: #b8c2ce transparent;
                 scrollbar-gutter: stable;
             }
+            @media print {
+                @page { size: auto; margin: 12mm; }
+                html, body {
+                    background: #fff !important;
+                    color: #000 !important;
+                    height: auto !important;
+                    overflow: visible !important;
+                }
+                .property-print-hide,
+                .print-hide {
+                    display: none !important;
+                }
+                .property-print-only {
+                    display: block !important;
+                }
+                .property-print-root {
+                    display: block !important;
+                    width: 100% !important;
+                    min-height: auto !important;
+                }
+                .property-print-main {
+                    overflow: visible !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                #property-main {
+                    display: block !important;
+                    width: 100% !important;
+                }
+                a {
+                    text-decoration: none !important;
+                    color: #000 !important;
+                }
+                .shadow-sm, .shadow, .shadow-lg, .rounded-2xl, .rounded-xl, .rounded-lg {
+                    box-shadow: none !important;
+                }
+            }
+            .property-print-only {
+                display: none;
+            }
         </style>
     </head>
     <body class="font-sans antialiased h-screen overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif" x-data="{ sidebarOpen: false }">
-        <div class="h-full flex">
+        <div class="h-full flex property-print-root">
             
             <!-- Property Module Dedicated Sidebar -->
-            @include('layouts.property_sidebar')
+            <div class="property-print-hide h-full flex-shrink-0">
+                @include('layouts.property_sidebar')
+            </div>
 
             <!-- Main view container (Header, Content, Footer) -->
             <div class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
                 
                 <!-- Dedicated Header -->
-                @include('layouts.property_header')
+                <div class="property-print-hide">
+                    @include('layouts.property_header')
+                </div>
 
                 <!-- Scrollable Content Area (Header/Footer remain constant) -->
-                <main class="relative z-0 flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar">
+                <main class="property-print-main relative z-0 flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar">
                     <div class="p-4 sm:p-6 lg:p-8 w-full">
                         <turbo-frame id="property-main" data-turbo-action="advance">
                             <div id="property-main-route" data-route-name="{{ Route::currentRouteName() ?? '' }}" hidden></div>
@@ -73,7 +117,9 @@
                 </main>
 
                 <!-- Dedicated Footer (constant) -->
-                @include('layouts.property_footer')
+                <div class="property-print-hide">
+                    @include('layouts.property_footer')
+                </div>
 
             </div>
         </div>
@@ -82,7 +128,7 @@
             <a
                 href="{{ route('property.advisor') }}"
                 data-turbo-frame="property-main"
-                class="fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 ring-2 ring-white/20 hover:bg-violet-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 transition-colors"
+                class="property-print-hide fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 ring-2 ring-white/20 hover:bg-violet-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 transition-colors"
                 title="AI advisor"
             >
                 <i class="fa-solid fa-robot text-lg" aria-hidden="true"></i>

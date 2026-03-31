@@ -8,7 +8,7 @@
     <div class="mb-8 flex items-center justify-between gap-4">
         <a
             href="{{ route('login') }}"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#3B59FF]/40 hover:text-[#3B59FF]"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#4d8d82]/40 hover:text-[#4d8d82]"
             aria-label="{{ __('Back to sign in') }}"
         >
             <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
@@ -43,7 +43,7 @@
 
         <div class="space-y-1">
             <label for="password" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('Password') }}</label>
-            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $passErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#3B59FF]' }}">
+            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $passErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}">
                 <span class="text-slate-400" aria-hidden="true">
                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
@@ -68,7 +68,7 @@
 
         <div class="space-y-1">
             <label for="password_confirmation" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('Confirm password') }}</label>
-            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $confirmErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#3B59FF]' }}">
+            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $confirmErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}">
                 <span class="text-slate-400" aria-hidden="true">
                     <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
@@ -93,7 +93,7 @@
 
         <button
             type="submit"
-            class="group flex w-full items-center justify-center gap-3 rounded-full bg-[#3B59FF] py-4 text-base font-semibold text-white shadow-lg shadow-[#3B59FF]/35 transition hover:bg-[#2f4cd4]"
+            class="group flex w-full items-center justify-center gap-3 rounded-full bg-[#4d8d82] py-4 text-base font-semibold text-white shadow-lg shadow-[#4d8d82]/35 transition hover:bg-[#3f7a70]"
         >
             {{ __('Reset password') }}
             <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20" aria-hidden="true">

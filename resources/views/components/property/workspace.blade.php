@@ -23,12 +23,49 @@
     $customRowFilters = is_array($tableRowFilters ?? null)
         && count($tableRowFilters) === count($tableRows);
     $canShowDefaultSearch = (bool) $showSearch && $hasTable;
+    $printableFilters = collect(request()->query())
+        ->except(['export', 'page'])
+        ->filter(static fn ($value) => ! is_null($value) && $value !== '');
+    $printBrandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Property Management System');
+    $printBrandLogo = trim((string) \App\Models\PropertyPortalSetting::getValue('company_logo_url', ''));
+    $printContactParts = collect([
+        \App\Models\PropertyPortalSetting::getValue('contact_phone', ''),
+        \App\Models\PropertyPortalSetting::getValue('contact_email_primary', ''),
+        \App\Models\PropertyPortalSetting::getValue('contact_address', ''),
+        \App\Models\PropertyPortalSetting::getValue('contact_reg_no', ''),
+    ])->filter(static fn ($value) => ! is_null($value) && trim((string) $value) !== '');
 @endphp
 
 <x-property-layout>
     <x-slot name="header">{{ $title }}</x-slot>
 
     <x-property.page :title="$title" :subtitle="$subtitle">
+        <div class="property-print-only mb-4 border-b border-slate-300 pb-3">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <div class="text-lg font-semibold text-slate-900">{{ $printBrandName }}</div>
+                    @if ($printContactParts->isNotEmpty())
+                        <div class="mt-1 text-xs text-slate-600">{{ $printContactParts->implode(' | ') }}</div>
+                    @endif
+                </div>
+                @if ($printBrandLogo !== '')
+                    <img src="{{ $printBrandLogo }}" alt="{{ $printBrandName }} logo" class="max-h-12 w-auto object-contain" />
+                @endif
+            </div>
+            <div class="mt-3 text-xl font-semibold text-slate-900">{{ $title }}</div>
+            @if (! empty($subtitle))
+                <div class="mt-1 text-sm text-slate-700">{{ $subtitle }}</div>
+            @endif
+            <div class="mt-2 text-xs text-slate-600">
+                Generated on {{ now()->format('d M Y, h:i A') }}
+                @if ($printableFilters->isNotEmpty())
+                    <span class="mx-1">|</span>
+                    Filters:
+                    {{ $printableFilters->map(static fn ($value, $key) => \Illuminate\Support\Str::headline((string) $key).': '.(is_scalar($value) ? (string) $value : json_encode($value)))->implode(' ; ') }}
+                @endif
+            </div>
+        </div>
+
         @isset($above)
             @if (! $above->isEmpty())
                 <div class="mb-4 space-y-4 w-full min-w-0">
@@ -37,8 +74,8 @@
             @endif
         @endisset
 
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between w-full min-w-0">
-            <div class="flex flex-wrap items-center gap-3 min-w-0">
+        <div class="print-hide flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between w-full min-w-0">
+            <div class="print-hide flex flex-wrap items-center gap-3 min-w-0">
                 @if ($backRoute)
                     <a
                         href="{{ route($backRoute, absolute: false) }}"
@@ -50,7 +87,7 @@
                     </a>
                 @endif
             </div>
-            <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full sm:w-auto min-w-0 justify-start sm:justify-end [&>button]:w-full [&>button]:sm:w-auto">
+            <div class="print-hide flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full sm:w-auto min-w-0 justify-start sm:justify-end [&>button]:w-full [&>button]:sm:w-auto">
                 {{ $actions ?? '' }}
             </div>
         </div>
@@ -73,7 +110,7 @@
             <div class="property-ws-wrap w-full min-w-0 space-y-3">
                 @if ($hasToolbar || $canShowDefaultSearch)
                     <div
-                        class="flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center w-full min-w-0 [&_input[type=search]]:w-full [&_input[type=search]]:min-w-0 [&_input[type=search]]:sm:max-w-md [&_input[type=month]]:w-full [&_input[type=month]]:min-w-0 [&_input[type=month]]:sm:w-auto [&_select]:w-full [&_select]:min-w-0 [&_select]:sm:w-auto [&_.flex-1]:min-w-0"
+                        class="print-hide flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center w-full min-w-0 [&_input[type=search]]:w-full [&_input[type=search]]:min-w-0 [&_input[type=search]]:sm:max-w-md [&_input[type=month]]:w-full [&_input[type=month]]:min-w-0 [&_input[type=month]]:sm:w-auto [&_select]:w-full [&_select]:min-w-0 [&_select]:sm:w-auto [&_.flex-1]:min-w-0"
                     >
                         @if ($canShowDefaultSearch)
                             <input

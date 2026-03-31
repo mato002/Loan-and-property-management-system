@@ -68,8 +68,15 @@
                         placeholder="Not now"
                         :options="collect($properties)->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id') === (string) $p->id])->all()"
                         :create="[
-                            'mode' => 'link',
-                            'link' => route('property.properties.list', absolute: false),
+                            'mode' => 'ajax',
+                            'title' => 'Create property',
+                            'endpoint' => route('property.properties.store_json'),
+                            'fields' => [
+                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
+                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
+                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
+                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
+                            ],
                         ]"
                     />
                     @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

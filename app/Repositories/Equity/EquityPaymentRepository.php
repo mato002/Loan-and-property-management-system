@@ -9,6 +9,7 @@ use App\Models\UnassignedPayment;
 use App\Services\Property\PropertyPaymentSettlementService;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class EquityPaymentRepository
 {
@@ -84,7 +85,9 @@ class EquityPaymentRepository
 
     public function storeUnmatched(array $tx, string $reason, array $options = []): Payment
     {
-        return DB::transaction(function () use ($tx, $reason, $options) {
+        $hasUnassignedPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
+
+        return DB::transaction(function () use ($tx, $reason, $options, $hasUnassignedPaymentMethod) {
             $payment = Payment::query()->create([
                 'tenant_id' => null,
                 'amount' => (float) $tx['amount'],
@@ -98,15 +101,20 @@ class EquityPaymentRepository
                 'raw_payload' => $tx['raw_payload'] ?? null,
             ]);
 
+            $unassignedValues = [
+                'amount' => (float) $tx['amount'],
+                'account_number' => $tx['account_number'] ?? null,
+                'phone' => $tx['phone'] ?? null,
+                'reason' => $reason,
+                'created_at' => $tx['transaction_date'] ?? now(),
+            ];
+            if ($hasUnassignedPaymentMethod) {
+                $unassignedValues['payment_method'] = (string) ($options['payment_method'] ?? 'equity');
+            }
+
             UnassignedPayment::query()->updateOrCreate(
                 ['transaction_id' => (string) $tx['transaction_id']],
-                [
-                    'amount' => (float) $tx['amount'],
-                    'account_number' => $tx['account_number'] ?? null,
-                    'phone' => $tx['phone'] ?? null,
-                    'reason' => $reason,
-                    'created_at' => now(),
-                ]
+                $unassignedValues
             );
 
             return $payment;

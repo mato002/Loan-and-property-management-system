@@ -57,13 +57,23 @@
                     <p class="text-xs text-slate-500 mt-1">Wallet: {{ $walletBalance ?? '0' }} {{ $currency ?? 'KES' }} · Cost/SMS: {{ number_format((float) ($costPerSms ?? 0.5), 2) }} {{ $currency ?? 'KES' }}</p>
                 </div>
             </div>
+            <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-gray-900/40 p-3">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs text-slate-600 dark:text-slate-400 mr-1">Load recipients:</span>
+                    <button type="button" data-segment="tenants" class="pm-load-recipients rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">Tenants</button>
+                    <button type="button" data-segment="landlords" class="pm-load-recipients rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">Landlords</button>
+                    <button type="button" data-segment="staff" class="pm-load-recipients rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">Staff</button>
+                    <span id="pm-load-hint" class="text-[11px] text-slate-500 dark:text-slate-400 hidden">Loading…</span>
+                </div>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2">This app tries to find phone numbers for the selected group and appends them below. Review before sending.</p>
+            </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Segment label</label>
                 <input type="text" name="segment_label" value="{{ old('segment_label') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. All tenants — Block A" />
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Recipients</label>
-                <textarea name="recipients" rows="4" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="254712345678, 254723456789">{{ old('recipients') }}</textarea>
+                <textarea id="pm-recipients" name="recipients" rows="4" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="254712345678, 254723456789">{{ old('recipients') }}</textarea>
                 @error('recipients')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
@@ -80,3 +90,37 @@
         </form>
     </x-slot>
 </x-property.workspace>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const buttons = document.querySelectorAll('.pm-load-recipients');
+    const recipientsEl = document.getElementById('pm-recipients');
+    const hint = document.getElementById('pm-load-hint');
+    async function loadPhones(type) {
+        if (!recipientsEl) return;
+        try {
+            hint && (hint.classList.remove('hidden'), hint.textContent = 'Loading…');
+            const url = "{{ route('property.communications.recipients') }}?type=" + encodeURIComponent(type);
+            const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            const json = await res.json();
+            if (!json.ok) {
+                alert(json.error || 'Failed to load recipients.');
+                return;
+            }
+            if (!Array.isArray(json.phones) || json.phones.length === 0) {
+                alert('No phone numbers found for ' + type + '.');
+                return;
+            }
+            const existing = recipientsEl.value ? recipientsEl.value + '\n' : '';
+            recipientsEl.value = existing + json.phones.join('\n');
+        } catch (e) {
+            console.error(e);
+            alert('Failed to load recipients. Check your connection.');
+        } finally {
+            hint && (hint.textContent = 'Done', setTimeout(() => hint.classList.add('hidden'), 800));
+        }
+    }
+    buttons.forEach(btn => {
+        btn.addEventListener('click', () => loadPhones(btn.getAttribute('data-segment')));
+    });
+});
+</script>

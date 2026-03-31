@@ -221,4 +221,34 @@ class PmPaymentController extends Controller
 
         return back()->with('success', 'Payment settlement updated.');
     }
+
+    public function showReceipt(Request $request, PmPayment $payment): View
+    {
+        abort_unless($payment->status === PmPayment::STATUS_COMPLETED, 404);
+
+        $payment->loadMissing(['tenant', 'allocations.invoice']);
+
+        return view('property.agent.revenue.payment_receipt', [
+            'payment' => $payment,
+        ]);
+    }
+
+    public function downloadReceipt(Request $request, PmPayment $payment)
+    {
+        abort_unless($payment->status === PmPayment::STATUS_COMPLETED, 404);
+
+        $payment->loadMissing(['tenant', 'allocations.invoice']);
+
+        $html = view('property.agent.revenue.payment_receipt_download', [
+            'payment' => $payment,
+        ])->render();
+
+        $fileName = 'receipt-RCP-PAY-'.$payment->id.'.html';
+
+        return response()->streamDownload(function () use ($html) {
+            echo $html;
+        }, $fileName, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+        ]);
+    }
 }

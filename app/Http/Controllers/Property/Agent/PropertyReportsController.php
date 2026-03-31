@@ -10,16 +10,19 @@ use App\Modules\Reporting\Tenant\AgingBalanceReportBuilder;
 use App\Modules\Reporting\Tenant\TenantReportService;
 use App\Models\PmAccountingEntry;
 use App\Models\PmInvoice;
+use App\Models\PropertyPortalSetting;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmMessageLog;
 use App\Models\PmPayment;
 use App\Models\PmPortalAction;
+use App\Models\PmTenant;
 use App\Models\PmUnitMovement;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmVendor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -60,92 +63,574 @@ class PropertyReportsController extends Controller
 		$this->landlordReports = $landlordReports;
 	}
 
-    public function tenantStatements(): View
+    public function tenantStatements(Request $request)
     {
-        $invoices = PmInvoice::query()
-            ->with('tenant')
-            ->when($this->filterDateFrom(), fn ($q, $from) => $q->whereDate('issue_date', '>=', $from))
-            ->when($this->filterDateTo(), fn ($q, $to) => $q->whereDate('issue_date', '<=', $to))
-            ->get();
+        $from = $this->filterDateFrom();
+        $to = $this->filterDateTo();
+        $tenantId = (int) $request->query('tenant_id', 0);
+        $search = trim((string) $request->query('q', ''));
 
-        $payments = PmPayment::query()
-            ->with('tenant')
-            ->when($this->filterDateFrom(), fn ($q, $from) => $q->whereDate('paid_at', '>=', $from))
-            ->when($this->filterDateTo(), fn ($q, $to) => $q->whereDate('paid_at', '<=', $to))
-            ->get();
-
-        $entries = collect();
-
-        foreach ($invoices as $invoice) {
-            $entries->push([
-                'date' => $invoice->issue_date?->toDateString(),
-                'timestamp' => $invoice->issue_date?->startOfDay()?->timestamp ?? 0,
-                'type' => 'Invoice',
-                'id' => ($invoice->invoice_no ?: '#INV-'.$invoice->id).' / '.($invoice->tenant?->name ?? 'Unknown tenant'),
-                'debit' => (float) $invoice->amount,
-                'credit' => 0.0,
-            ]);
-        }
-
-        foreach ($payments as $payment) {
-            $entries->push([
-                'date' => $payment->paid_at?->toDateString(),
-                'timestamp' => $payment->paid_at?->timestamp ?? 0,
-                'type' => 'Payment',
-                'id' => ($payment->external_ref ?: '#PAY-'.$payment->id).' / '.($payment->tenant?->name ?? 'Unknown tenant'),
-                'debit' => 0.0,
-                'credit' => (float) $payment->amount,
-            ]);
-        }
-
-        $entries = $entries
-            ->sortBy([
-                ['timestamp', 'asc'],
-                ['type', 'asc'],
+        $tenantsQuery = PmTenant::query()
+            ->with([
+                'invoices' => function ($q) use ($from, $to) {
+                    $q->select(['id', 'pm_tenant_id', 'amount', 'amount_paid', 'issue_date'])
+                        ->when($from, fn ($qq, $dateFrom) => $qq->whereDate('issue_date', '>=', $dateFrom))
+                        ->when($to, fn ($qq, $dateTo) => $qq->whereDate('issue_date', '<=', $dateTo));
+                },
+                'payments' => function ($q) use ($from, $to) {
+                    $q->select(['id', 'pm_tenant_id', 'amount', 'status', 'paid_at', 'created_at'])
+                        ->when($from, fn ($qq, $dateFrom) => $qq->whereDate('paid_at', '>=', $dateFrom))
+                        ->when($to, fn ($qq, $dateTo) => $qq->whereDate('paid_at', '<=', $dateTo));
+                },
             ])
-            ->values();
+            ->orderBy('name');
 
-        $runningBalance = 0.0;
-        $totalDebit = 0.0;
-        $totalCredit = 0.0;
+        if ($tenantId > 0) {
+            $tenantsQuery->where('id', $tenantId);
+        }
+        if ($search !== '') {
+            $tenantsQuery->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%')
+                    ->orWhere('phone', 'like', '%'.$search.'%')
+                    ->orWhere('account_number', 'like', '%'.$search.'%')
+                    ->orWhere('national_id', 'like', '%'.$search.'%');
+            });
+        }
 
-        $rows = $entries->map(function (array $entry) use (&$runningBalance, &$totalDebit, &$totalCredit) {
-            $debit = (float) $entry['debit'];
-            $credit = (float) $entry['credit'];
+        $tenants = $tenantsQuery->limit(500)->get();
 
-            $totalDebit += $debit;
-            $totalCredit += $credit;
-            $runningBalance += $debit - $credit;
+        $rows = [];
+        $exportRows = [];
+        $totalInvoiced = 0.0;
+        $totalCollected = 0.0;
+        $totalOutstanding = 0.0;
+        $totalPending = 0.0;
 
-            return [
-                $entry['date'] ?: '—',
-                $entry['type'],
-                $entry['id'],
-                'KES '.number_format($debit, 2),
-                'KES '.number_format($credit, 2),
-                'KES '.number_format($runningBalance, 2),
+        foreach ($tenants as $tenant) {
+            $invoiced = (float) $tenant->invoices->sum('amount');
+            $collected = (float) $tenant->payments
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->sum('amount');
+            $pendingAmount = (float) $tenant->payments
+                ->where('status', PmPayment::STATUS_PENDING)
+                ->sum('amount');
+            $outstanding = max(0.0, $invoiced - $collected);
+
+            $invoiceCount = (int) $tenant->invoices->count();
+            $paymentCount = (int) $tenant->payments->count();
+            $lastInvoiceDate = $tenant->invoices->max('issue_date');
+            $lastPaymentDate = $tenant->payments->max('paid_at');
+
+            $baseStatementParams = array_filter([
+                'from' => $from,
+                'to' => $to,
+            ]);
+            $statementUrl = route('property.tenants.statement', $tenant, false).'?'.http_build_query($baseStatementParams);
+            $statementEmbedUrl = route('property.tenants.statement', $tenant, false).'?'.http_build_query(array_merge($baseStatementParams, ['embed' => 1]));
+
+            $actions = new HtmlString(
+                '<button type="button" class="text-indigo-600 hover:text-indigo-700 font-medium" data-statement-open="1" data-tenant="'.e((string) $tenant->name).'" data-url="'.e($statementEmbedUrl).'">View</button>'.
+                ' <span class="text-slate-300">|</span> '.
+                '<a href="'.$statementUrl.'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">Open page</a>'
+            );
+
+            $rows[] = [
+                (string) $tenant->name,
+                (string) ($tenant->account_number ?? '—'),
+                (string) ($tenant->phone ?? '—'),
+                (string) ($tenant->email ?? '—'),
+                (string) $invoiceCount,
+                (string) $paymentCount,
+                'KES '.number_format($invoiced, 2),
+                'KES '.number_format($collected, 2),
+                'KES '.number_format($pendingAmount, 2),
+                'KES '.number_format($outstanding, 2),
+                $lastInvoiceDate?->format('Y-m-d') ?? '—',
+                $lastPaymentDate?->format('Y-m-d') ?? '—',
+                $actions,
             ];
-        })->all();
+
+            $exportRows[] = [
+                (string) $tenant->name,
+                (string) ($tenant->account_number ?? ''),
+                (string) ($tenant->phone ?? ''),
+                (string) ($tenant->email ?? ''),
+                (string) $invoiceCount,
+                (string) $paymentCount,
+                number_format($invoiced, 2, '.', ''),
+                number_format($collected, 2, '.', ''),
+                number_format($pendingAmount, 2, '.', ''),
+                number_format($outstanding, 2, '.', ''),
+                $lastInvoiceDate?->format('Y-m-d') ?? '',
+                $lastPaymentDate?->format('Y-m-d') ?? '',
+            ];
+
+            $totalInvoiced += $invoiced;
+            $totalCollected += $collected;
+            $totalOutstanding += $outstanding;
+            $totalPending += $pendingAmount;
+        }
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            return $this->exportTenantStatements($exportRows, $export);
+        }
 
         return view('property.agent.reports.tenant.statements', [
             'title' => 'Tenant Statements',
             'subtitle' => 'Tenant Reports',
             'backRoute' => 'property.reports.tenant',
             'stats' => [
-                ['label' => 'Transactions', 'value' => (string) count($rows), 'hint' => 'Invoices + payments'],
-                ['label' => 'Total debit', 'value' => 'KES '.number_format($totalDebit, 2), 'hint' => 'Charges'],
-                ['label' => 'Total credit', 'value' => 'KES '.number_format($totalCredit, 2), 'hint' => 'Payments'],
-                ['label' => 'Closing balance', 'value' => 'KES '.number_format($runningBalance, 2), 'hint' => 'Debit - credit'],
+                ['label' => 'Tenants', 'value' => (string) count($rows), 'hint' => 'In current filter'],
+                ['label' => 'Invoiced', 'value' => 'KES '.number_format($totalInvoiced, 2), 'hint' => 'Charges'],
+                ['label' => 'Collected', 'value' => 'KES '.number_format($totalCollected, 2), 'hint' => 'Completed payments'],
+                ['label' => 'Outstanding', 'value' => 'KES '.number_format($totalOutstanding, 2), 'hint' => 'Invoiced - collected'],
+                ['label' => 'Pending payments', 'value' => 'KES '.number_format($totalPending, 2), 'hint' => 'Awaiting completion'],
             ],
-            'columns' => ['Date', 'Transaction Type', 'Transaction ID', 'Debit', 'Credit', 'Balance'],
+            'columns' => ['Tenant', 'Account #', 'Phone', 'Email', 'Invoices', 'Payments', 'Invoiced', 'Collected', 'Pending', 'Outstanding', 'Last invoice', 'Last payment', 'Actions'],
             'tableRows' => $rows,
             'emptyTitle' => 'No tenant statement records',
             'emptyHint' => 'Tenant statement data will appear once invoices and payments are recorded.',
             'filters' => [
-                'from' => $this->filterDateFrom(),
-                'to' => $this->filterDateTo(),
+                'from' => $from,
+                'to' => $to,
+                'tenant_id' => $tenantId > 0 ? (string) $tenantId : '',
+                'q' => $search,
             ],
+            'tenantOptions' => PmTenant::query()->orderBy('name')->limit(500)->get(['id', 'name']),
         ]);
+    }
+
+    /**
+     * @param array<int,array<int,string>> $rows
+     */
+    private function exportTenantStatements(array $rows, string $format): StreamedResponse
+    {
+        $columns = ['Tenant', 'Account Number', 'Phone', 'Email', 'Invoice Count', 'Payment Count', 'Invoiced', 'Collected', 'Pending Payments', 'Outstanding', 'Last Invoice Date', 'Last Payment Date'];
+        $stamp = now()->format('Ymd_His');
+
+        if ($format === 'pdf') {
+            $filename = 'tenant-statements-'.$stamp.'.pdf';
+
+            return response()->streamDownload(function () use ($columns, $rows) {
+                echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Tenant statements</title>';
+                echo '<style>body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:12px;margin:24px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;}th{background:#f8fafc;font-weight:600;font-size:11px;text-transform:uppercase;}</style>';
+                echo '</head><body>';
+                echo '<h1>Tenant Statements</h1>';
+                echo '<table><thead><tr>';
+                foreach ($columns as $col) {
+                    echo '<th>'.e($col).'</th>';
+                }
+                echo '</tr></thead><tbody>';
+                foreach ($rows as $row) {
+                    echo '<tr>';
+                    foreach ($row as $cell) {
+                        echo '<td>'.e((string) $cell).'</td>';
+                    }
+                    echo '</tr>';
+                }
+                echo '</tbody></table></body></html>';
+            }, $filename, [
+                'Content-Type' => 'text/html; charset=UTF-8',
+            ]);
+        }
+
+        $delimiter = $format === 'xls' ? "\t" : ',';
+        $filename = 'tenant-statements-'.$stamp.($format === 'xls' ? '.xls' : '.csv');
+        $contentType = $format === 'xls'
+            ? 'application/vnd.ms-excel; charset=UTF-8'
+            : 'text/csv; charset=UTF-8';
+
+        return response()->streamDownload(function () use ($columns, $rows, $delimiter) {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+            fputcsv($out, $columns, $delimiter);
+            foreach ($rows as $row) {
+                fputcsv($out, $row, $delimiter);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => $contentType]);
+    }
+
+    public function landlordStatements(Request $request)
+    {
+        $from = $this->filterDateFrom();
+        $to = $this->filterDateTo();
+        $landlordId = (int) $request->query('landlord_id', 0);
+        $propertySearch = $this->filterPropertySearch();
+
+        $commissionDefaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
+        $commissionDefaultPct = is_numeric($commissionDefaultRaw) ? (float) $commissionDefaultRaw : 10.0;
+        if ($commissionDefaultPct < 0) {
+            $commissionDefaultPct = 0.0;
+        }
+
+        $commissionOverridesRaw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+        $commissionOverrides = [];
+        $decodedOverrides = json_decode($commissionOverridesRaw, true);
+        if (is_array($decodedOverrides)) {
+            foreach ($decodedOverrides as $propertyId => $pct) {
+                $pid = (int) $propertyId;
+                if ($pid <= 0) {
+                    continue;
+                }
+                if (! is_numeric($pct)) {
+                    continue;
+                }
+                $rate = max(0.0, (float) $pct);
+                $commissionOverrides[$pid] = $rate;
+            }
+        }
+
+        $collectedByPropertyQ = DB::table('pm_payment_allocations as a')
+            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+            ->where('pay.status', PmPayment::STATUS_COMPLETED)
+            ->groupBy('pu.property_id')
+            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount),0) as total');
+        $this->applyDateRange($collectedByPropertyQ, 'pay.paid_at');
+        $collectedByProperty = $collectedByPropertyQ->pluck('total', 'property_id');
+
+        $expenseByPropertyPostedQ = DB::table('pm_accounting_entries as ae')
+            ->where('ae.category', PmAccountingEntry::CATEGORY_EXPENSE)
+            ->whereNotNull('ae.property_id')
+            ->groupBy('ae.property_id')
+            ->selectRaw('ae.property_id as property_id, COALESCE(SUM(ae.amount),0) as total');
+        $this->applyDateRange($expenseByPropertyPostedQ, 'ae.entry_date');
+        $expenseByPropertyPosted = $expenseByPropertyPostedQ->pluck('total', 'property_id');
+
+        $utilityByPropertyQ = DB::table('pm_unit_utility_charges as uc')
+            ->join('property_units as pu', 'pu.id', '=', 'uc.property_unit_id')
+            ->groupBy('pu.property_id')
+            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(uc.amount),0) as total');
+        if ($from !== null) {
+            $utilityByPropertyQ->where('uc.billing_month', '>=', substr($from, 0, 7));
+        }
+        if ($to !== null) {
+            $utilityByPropertyQ->where('uc.billing_month', '<=', substr($to, 0, 7));
+        }
+        $utilityByProperty = $utilityByPropertyQ->pluck('total', 'property_id');
+
+        $maintenanceByPropertyQ = DB::table('pm_maintenance_jobs as mj')
+            ->join('pm_maintenance_requests as mr', 'mr.id', '=', 'mj.pm_maintenance_request_id')
+            ->join('property_units as pu', 'pu.id', '=', 'mr.property_unit_id')
+            ->groupBy('pu.property_id')
+            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(mj.quote_amount),0) as total');
+        if ($from !== null) {
+            $maintenanceByPropertyQ->whereDate('mj.created_at', '>=', $from);
+        }
+        if ($to !== null) {
+            $maintenanceByPropertyQ->whereDate('mj.created_at', '<=', $to);
+        }
+        $maintenanceByProperty = $maintenanceByPropertyQ->pluck('total', 'property_id');
+
+        $links = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->select([
+                'pl.user_id as landlord_id',
+                'pl.property_id',
+                'pl.ownership_percent',
+                'u.name as landlord_name',
+                'p.name as property_name',
+            ])
+            ->orderBy('u.name')
+            ->orderBy('p.name');
+
+        if ($landlordId > 0) {
+            $links->where('pl.user_id', $landlordId);
+        }
+        if ($propertySearch !== null) {
+            $links->where('p.name', 'like', '%'.$propertySearch.'%');
+        }
+
+        $linkRows = $links->get();
+
+        $perLandlord = [];
+        $exportRows = [];
+        $propertySeen = [];
+        $expenseBreakdown = [];
+
+        foreach ($linkRows as $link) {
+            $pid = (int) $link->property_id;
+            $lid = (int) $link->landlord_id;
+            $ownership = (float) ($link->ownership_percent ?? 0);
+            $totalCollectedForProperty = (float) ($collectedByProperty[$pid] ?? 0);
+            if ($totalCollectedForProperty <= 0 || $ownership <= 0) {
+                continue;
+            }
+
+            $income = $totalCollectedForProperty * ($ownership / 100);
+            if ($income <= 0) {
+                continue;
+            }
+
+            $propertyCommissionPct = $commissionOverrides[$pid] ?? $commissionDefaultPct;
+            $commission = $income * ($propertyCommissionPct / 100);
+            $ownerShare = max(0.0, $income - $commission);
+
+            if (! isset($perLandlord[$lid])) {
+                $perLandlord[$lid] = [
+                    'name' => (string) ($link->landlord_name ?? '—'),
+                    'properties' => 0,
+                    'income' => 0.0,
+                    'commission' => 0.0,
+                    'owner_share' => 0.0,
+                    'expense_share' => 0.0,
+                    'net_payable' => 0.0,
+                ];
+                $propertySeen[$lid] = [];
+                $expenseBreakdown[$lid] = [];
+            }
+
+            if (! in_array($pid, $propertySeen[$lid], true)) {
+                $perLandlord[$lid]['properties']++;
+                $propertySeen[$lid][] = $pid;
+            }
+
+            $perLandlord[$lid]['income'] += $income;
+            $perLandlord[$lid]['commission'] += $commission;
+            $perLandlord[$lid]['owner_share'] += $ownerShare;
+            $propertyExpensePosted = (float) ($expenseByPropertyPosted[$pid] ?? 0);
+            $propertyExpenseUtility = (float) ($utilityByProperty[$pid] ?? 0);
+            $propertyExpenseMaintenance = (float) ($maintenanceByProperty[$pid] ?? 0);
+            $propertyExpenseOther = max(0.0, $propertyExpensePosted - $propertyExpenseUtility - $propertyExpenseMaintenance);
+            $propertyExpense = $propertyExpenseUtility + $propertyExpenseMaintenance + $propertyExpenseOther;
+            $ownerExpenseShare = $propertyExpense * ($ownership / 100);
+            $perLandlord[$lid]['expense_share'] += $ownerExpenseShare;
+
+            if ($ownerExpenseShare > 0) {
+                $expenseBreakdown[$lid][] = [
+                    'property' => (string) ($link->property_name ?? '—'),
+                    'ownership_percent' => $ownership,
+                    'utility_expense' => $propertyExpenseUtility,
+                    'maintenance_expense' => $propertyExpenseMaintenance,
+                    'other_expense' => $propertyExpenseOther,
+                    'property_expense' => $propertyExpense,
+                    'owner_share_expense' => $ownerExpenseShare,
+                ];
+            }
+        }
+
+        $rows = [];
+        $totalIncome = 0.0;
+        $totalCommission = 0.0;
+        $totalOwnerShare = 0.0;
+        $totalExpenseShare = 0.0;
+        $totalNetPayable = 0.0;
+
+        foreach ($perLandlord as $lid => $data) {
+            $data['net_payable'] = (float) $data['owner_share'] - (float) $data['expense_share'];
+            $totalIncome += $data['income'];
+            $totalCommission += $data['commission'];
+            $totalOwnerShare += $data['owner_share'];
+            $totalExpenseShare += $data['expense_share'];
+            $totalNetPayable += $data['net_payable'];
+
+            $statementUrl = route('property.reports.landlord.detailed_statement', [
+                'landlord_id' => $lid,
+                'from' => $from,
+                'to' => $to,
+            ], false);
+            $statementEmbedUrl = route('property.reports.landlord.detailed_statement', [
+                'landlord_id' => $lid,
+                'from' => $from,
+                'to' => $to,
+                'embed' => 1,
+            ], false);
+
+            $actions = new HtmlString(
+                '<button type="button" class="text-indigo-600 hover:text-indigo-700 font-medium" data-landlord-statement-open="1" data-landlord="'.e((string) $data['name']).'" data-url="'.e($statementEmbedUrl).'">View</button>'.
+                ' <span class="text-slate-300">|</span> '.
+                '<button type="button" class="text-amber-700 hover:text-amber-800 font-medium" data-expense-open="1" data-landlord="'.e((string) $data['name']).'" data-expenses=\''.e((string) json_encode($expenseBreakdown[$lid] ?? [], JSON_UNESCAPED_UNICODE)).'\'>Expenses</button>'.
+                ' <span class="text-slate-300">|</span> '.
+                '<a href="'.$statementUrl.'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">Open page</a>'
+            );
+
+            $rows[] = [
+                (string) $data['name'],
+                (string) $data['properties'],
+                'KES '.number_format($data['income'], 2),
+                'KES '.number_format($data['commission'], 2),
+                'KES '.number_format($data['owner_share'], 2),
+                'KES '.number_format($data['expense_share'], 2),
+                'KES '.number_format($data['net_payable'], 2),
+                $actions,
+            ];
+
+            $exportRows[] = [
+                (string) $data['name'],
+                (string) $data['properties'],
+                number_format($data['income'], 2, '.', ''),
+                number_format($data['commission'], 2, '.', ''),
+                number_format($data['owner_share'], 2, '.', ''),
+                number_format($data['expense_share'], 2, '.', ''),
+                number_format($data['net_payable'], 2, '.', ''),
+            ];
+        }
+
+        $expenseExportLandlordId = (int) $request->query('expense_export_landlord_id', 0);
+        $expenseExportFormat = strtolower((string) $request->query('expense_export', ''));
+        if ($expenseExportLandlordId > 0 && in_array($expenseExportFormat, ['csv', 'pdf'], true)) {
+            $landlordName = (string) ($perLandlord[$expenseExportLandlordId]['name'] ?? ('Landlord '.$expenseExportLandlordId));
+            $rowsForExport = collect($expenseBreakdown[$expenseExportLandlordId] ?? [])->map(function (array $r) {
+                return [
+                    (string) ($r['property'] ?? '—'),
+                    number_format((float) ($r['ownership_percent'] ?? 0), 2, '.', ''),
+                    number_format((float) ($r['utility_expense'] ?? 0), 2, '.', ''),
+                    number_format((float) ($r['maintenance_expense'] ?? 0), 2, '.', ''),
+                    number_format((float) ($r['other_expense'] ?? 0), 2, '.', ''),
+                    number_format((float) ($r['property_expense'] ?? 0), 2, '.', ''),
+                    number_format((float) ($r['owner_share_expense'] ?? 0), 2, '.', ''),
+                ];
+            })->all();
+
+            return $this->exportLandlordExpenseBreakdown($rowsForExport, $expenseExportFormat, $landlordName);
+        }
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            return $this->exportLandlordStatements($exportRows, $export);
+        }
+
+        return view('property.agent.reports.landlord.statements', [
+            'title' => 'Landlord Statements',
+            'subtitle' => 'Landlord Reports',
+            'backRoute' => 'property.reports.landlord',
+            'stats' => [
+                ['label' => 'Landlords', 'value' => (string) count($rows), 'hint' => 'In current filter'],
+                ['label' => 'Income (rent collected)', 'value' => 'KES '.number_format($totalIncome, 2), 'hint' => 'Landlord share basis'],
+                ['label' => 'Agent commissions', 'value' => 'KES '.number_format($totalCommission, 2), 'hint' => 'Agent earnings'],
+                ['label' => 'Gross payable', 'value' => 'KES '.number_format($totalOwnerShare, 2), 'hint' => 'Income - commission'],
+                ['label' => 'Expenses (owner share)', 'value' => 'KES '.number_format($totalExpenseShare, 2), 'hint' => 'Utilities + maintenance + other'],
+                ['label' => 'Net payable', 'value' => 'KES '.number_format($totalNetPayable, 2), 'hint' => 'Gross payable - operational expenses'],
+            ],
+            'columns' => ['Landlord', 'Properties', 'Income (collected)', 'Commission (agent earns)', 'Gross payable', 'Expenses (owner share)', 'Net payable', 'Actions'],
+            'tableRows' => $rows,
+            'emptyTitle' => 'No landlord statement records',
+            'emptyHint' => 'Landlord statement data will appear once rent is collected.',
+            'filters' => [
+                'from' => $from,
+                'to' => $to,
+                'landlord_id' => $landlordId > 0 ? (string) $landlordId : '',
+                'property' => $propertySearch,
+            ],
+            'landlordOptions' => \App\Models\User::query()
+                ->where('property_portal_role', 'landlord')
+                ->orderBy('name')
+                ->limit(500)
+                ->get(['id', 'name']),
+        ]);
+    }
+
+    /**
+     * @param array<int,array<int,string>> $rows
+     */
+    private function exportLandlordStatements(array $rows, string $format): StreamedResponse
+    {
+        $columns = ['Landlord', 'Properties', 'IncomeCollected', 'Commission', 'GrossPayable', 'ExpenseShare', 'NetPayable'];
+        $stamp = now()->format('Ymd_His');
+
+        if ($format === 'pdf') {
+            $filename = 'landlord-statements-'.$stamp.'.pdf';
+
+            return response()->streamDownload(function () use ($columns, $rows) {
+                echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Landlord statements</title>';
+                echo '<style>body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:12px;margin:24px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;}th{background:#f8fafc;font-weight:600;font-size:11px;text-transform:uppercase;}</style>';
+                echo '</head><body>';
+                echo '<h1>Landlord Statements</h1>';
+                echo '<table><thead><tr>';
+                foreach ($columns as $col) {
+                    echo '<th>'.e($col).'</th>';
+                }
+                echo '</tr></thead><tbody>';
+                foreach ($rows as $row) {
+                    echo '<tr>';
+                    foreach ($row as $cell) {
+                        echo '<td>'.e((string) $cell).'</td>';
+                    }
+                    echo '</tr>';
+                }
+                echo '</tbody></table></body></html>';
+            }, $filename, [
+                'Content-Type' => 'text/html; charset=UTF-8',
+            ]);
+        }
+
+        $delimiter = $format === 'xls' ? "\t" : ',';
+        $filename = 'landlord-statements-'.$stamp.($format === 'xls' ? '.xls' : '.csv');
+        $contentType = $format === 'xls'
+            ? 'application/vnd.ms-excel; charset=UTF-8'
+            : 'text/csv; charset=UTF-8';
+
+        return response()->streamDownload(function () use ($columns, $rows, $delimiter) {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+            fputcsv($out, $columns, $delimiter);
+            foreach ($rows as $row) {
+                fputcsv($out, $row, $delimiter);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => $contentType]);
+    }
+
+    /**
+     * @param array<int,array<int,string>> $rows
+     */
+    private function exportLandlordExpenseBreakdown(array $rows, string $format, string $landlordName): StreamedResponse
+    {
+        $columns = ['Property', 'OwnershipPercent', 'Utilities', 'Maintenance', 'Other', 'TotalPropertyExpenses', 'OwnerShareExpense'];
+        $stamp = now()->format('Ymd_His');
+        $safeName = preg_replace('/[^a-z0-9\-]+/i', '-', strtolower($landlordName)) ?: 'landlord';
+
+        if ($format === 'pdf') {
+            $filename = 'landlord-expenses-'.$safeName.'-'.$stamp.'.pdf';
+
+            return response()->streamDownload(function () use ($columns, $rows, $landlordName) {
+                echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Landlord expense breakdown</title>';
+                echo '<style>body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:12px;margin:24px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;}th{background:#f8fafc;font-weight:600;font-size:11px;text-transform:uppercase;}</style>';
+                echo '</head><body>';
+                echo '<h1>Landlord Expense Breakdown</h1>';
+                echo '<p><strong>Landlord:</strong> '.e($landlordName).'</p>';
+                echo '<table><thead><tr>';
+                foreach ($columns as $col) {
+                    echo '<th>'.e($col).'</th>';
+                }
+                echo '</tr></thead><tbody>';
+                foreach ($rows as $row) {
+                    echo '<tr>';
+                    foreach ($row as $cell) {
+                        echo '<td>'.e((string) $cell).'</td>';
+                    }
+                    echo '</tr>';
+                }
+                if (count($rows) === 0) {
+                    echo '<tr><td colspan="4">No expense rows in this period.</td></tr>';
+                }
+                echo '</tbody></table></body></html>';
+            }, $filename, [
+                'Content-Type' => 'text/html; charset=UTF-8',
+            ]);
+        }
+
+        $filename = 'landlord-expenses-'.$safeName.'-'.$stamp.'.csv';
+        return response()->streamDownload(function () use ($columns, $rows) {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+            fputcsv($out, $columns);
+            foreach ($rows as $row) {
+                fputcsv($out, $row);
+            }
+            fclose($out);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
     public function reportPage(Request $request, string $reportKey): View
@@ -155,6 +640,54 @@ class PropertyReportsController extends Controller
 
         $report = $reports[$reportKey];
         $payload = ($report['builder'])();
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true) && ! empty($payload['exportRows'])) {
+            $columns = (array) ($payload['exportColumns'] ?? $payload['columns'] ?? []);
+            $rows = (array) ($payload['exportRows'] ?? []);
+            $safeTitle = preg_replace('/[^a-z0-9\-]+/i', '-', (string) ($report['title'] ?? 'report'));
+            $baseName = strtolower(trim((string) $safeTitle, '-'));
+
+            if ($export === 'pdf') {
+                return response()->streamDownload(function () use ($columns, $rows, $report) {
+                    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'.e((string) ($report['title'] ?? 'Report')).'</title>';
+                    echo '<style>body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:12px;margin:24px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;}th{background:#f8fafc;font-weight:600;font-size:11px;text-transform:uppercase;}</style>';
+                    echo '</head><body><h1>'.e((string) ($report['title'] ?? 'Report')).'</h1><table><thead><tr>';
+                    foreach ($columns as $col) {
+                        echo '<th>'.e((string) $col).'</th>';
+                    }
+                    echo '</tr></thead><tbody>';
+                    foreach ($rows as $row) {
+                        echo '<tr>';
+                        foreach ((array) $row as $cell) {
+                            echo '<td>'.e((string) $cell).'</td>';
+                        }
+                        echo '</tr>';
+                    }
+                    echo '</tbody></table></body></html>';
+                }, $baseName.'-'.now()->format('Ymd_His').'.pdf', [
+                    'Content-Type' => 'text/html; charset=UTF-8',
+                ]);
+            }
+
+            $delimiter = $export === 'xls' ? "\t" : ',';
+            $filename = $baseName.'-'.now()->format('Ymd_His').($export === 'xls' ? '.xls' : '.csv');
+            $contentType = $export === 'xls'
+                ? 'application/vnd.ms-excel; charset=UTF-8'
+                : 'text/csv; charset=UTF-8';
+
+            return response()->streamDownload(function () use ($columns, $rows, $delimiter) {
+                $out = fopen('php://output', 'w');
+                if ($out === false) {
+                    return;
+                }
+                fputcsv($out, $columns, $delimiter);
+                foreach ($rows as $row) {
+                    fputcsv($out, (array) $row, $delimiter);
+                }
+                fclose($out);
+            }, $filename, ['Content-Type' => $contentType]);
+        }
 
         $viewName = $report['view'] ?? 'property.agent.reports.table';
 
@@ -263,6 +796,7 @@ class PropertyReportsController extends Controller
                 'group' => 'Landlord Reports',
                 'back_route' => 'property.reports.landlord',
                 'builder' => fn () => $this->landlordReports->buildRentCollectionReport(),
+                'view' => 'property.agent.reports.landlord.rent_collection',
             ],
             'landlord_property_statement' => [
                 'title' => 'Property Statement',

@@ -77,6 +77,13 @@
         @else
         <form method="post" action="{{ route('property.maintenance.requests.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
             @csrf
+            @php
+                $propertyOptions = collect($units)
+                    ->map(fn($u) => ['value' => $u->property_id, 'label' => $u->property->name])
+                    ->unique('value')
+                    ->values()
+                    ->all();
+            @endphp
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New request</h3>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
@@ -85,8 +92,72 @@
                     :required="true"
                     :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
                     :create="[
-                        'mode' => 'link',
-                        'link' => route('property.properties.units', absolute: false),
+                        'mode' => 'ajax',
+                        'title' => 'Add unit',
+                        'subtitle' => 'Create a unit without leaving maintenance requests.',
+                        'endpoint' => route('property.units.store_json'),
+                        'fields' => [
+                            [
+                                'name' => 'property_id',
+                                'label' => 'Property',
+                                'required' => true,
+                                'span' => '2',
+                                'placeholder' => 'Select property',
+                                'type' => 'select',
+                                'options' => $propertyOptions,
+                            ],
+                            [
+                                'name' => 'label',
+                                'label' => 'Unit label',
+                                'required' => true,
+                                'span' => '2',
+                                'placeholder' => 'e.g. A1',
+                            ],
+                            [
+                                'name' => 'unit_type',
+                                'label' => 'Unit type',
+                                'required' => false,
+                                'type' => 'select',
+                                'placeholder' => 'Select unit type',
+                                'options' => [
+                                    ['value' => 'apartment', 'label' => 'Apartment'],
+                                    ['value' => 'single_room', 'label' => 'Single room'],
+                                    ['value' => 'bedsitter', 'label' => 'Bedsitter'],
+                                    ['value' => 'studio', 'label' => 'Studio'],
+                                    ['value' => 'bungalow', 'label' => 'Bungalow'],
+                                    ['value' => 'maisonette', 'label' => 'Maisonette'],
+                                    ['value' => 'villa', 'label' => 'Villa'],
+                                    ['value' => 'townhouse', 'label' => 'Townhouse'],
+                                    ['value' => 'commercial', 'label' => 'Commercial'],
+                                ],
+                            ],
+                            [
+                                'name' => 'bedrooms',
+                                'label' => 'Bedrooms',
+                                'required' => false,
+                                'type' => 'number',
+                                'placeholder' => 'e.g. 1',
+                            ],
+                            [
+                                'name' => 'rent_amount',
+                                'label' => 'Rent amount',
+                                'required' => false,
+                                'type' => 'number',
+                                'placeholder' => 'e.g. 15000',
+                            ],
+                            [
+                                'name' => 'status',
+                                'label' => 'Status',
+                                'required' => false,
+                                'type' => 'select',
+                                'placeholder' => 'Select status',
+                                'options' => [
+                                    ['value' => 'vacant', 'label' => 'Vacant'],
+                                    ['value' => 'occupied', 'label' => 'Occupied'],
+                                    ['value' => 'notice', 'label' => 'Notice'],
+                                ],
+                            ],
+                        ],
                     ]"
                 />
                 @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

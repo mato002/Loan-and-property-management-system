@@ -865,8 +865,28 @@ class TenantPortalController extends Controller
             }
         }
 
+        $propertyOptions = $leaseUnits
+            ->map(fn ($unit) => [
+                'id' => (int) $unit->property_id,
+                'name' => (string) ($unit->property?->name ?? 'Property '.$unit->property_id),
+            ])
+            ->unique('id')
+            ->values();
+
+        $unitsByProperty = $leaseUnits
+            ->groupBy(fn ($unit) => (int) $unit->property_id)
+            ->map(fn ($units) => $units->map(fn ($unit) => [
+                'id' => (int) $unit->id,
+                'label' => (string) $unit->label,
+                'property_id' => (int) $unit->property_id,
+                'property_name' => (string) ($unit->property?->name ?? ''),
+            ])->values())
+            ->toArray();
+
         return view('property.tenant.maintenance.report', [
             'leaseUnits' => $leaseUnits,
+            'propertyOptions' => $propertyOptions,
+            'unitsByProperty' => $unitsByProperty,
         ]);
     }
 
@@ -892,14 +912,23 @@ class TenantPortalController extends Controller
         }
 
         $allowedIds = $lease->units->pluck('id')->all();
+        $allowedPropertyIds = $lease->units->pluck('property_id')->unique()->map(fn ($v) => (int) $v)->all();
 
         $data = $request->validate([
+            'property_id' => ['required', 'integer', Rule::in($allowedPropertyIds)],
             'property_unit_id' => ['required', 'integer', Rule::in($allowedIds)],
             'category' => ['required', 'string', 'in:plumbing,electrical,security,other'],
             'description' => ['required', 'string', 'max:5000'],
             'urgency' => ['required', 'string', 'in:normal,urgent,emergency'],
             'access_notes' => ['nullable', 'string', 'max:500'],
         ]);
+
+        $selectedUnit = $lease->units->firstWhere('id', (int) $data['property_unit_id']);
+        if (! $selectedUnit || (int) $selectedUnit->property_id !== (int) $data['property_id']) {
+            return back()
+                ->withErrors(['property_unit_id' => 'Selected unit must belong to the selected property.'])
+                ->withInput();
+        }
 
         $description = $data['description'];
         if (! empty($data['access_notes'])) {

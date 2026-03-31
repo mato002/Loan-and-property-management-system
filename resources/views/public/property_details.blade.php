@@ -6,8 +6,37 @@
     $unitTypeLabel = $unit->unitTypeLabel();
     $bedroomsLabel = $unit->bedroomsLabel();
     $mapsUrl = 'https://www.google.com/maps/search/?api=1&query='.rawurlencode($addr !== '—' ? $addr : $unit->property->name);
+    $currentPage = url()->current();
+    $listingImage = $publicPageImage ?? ($gallerySlots[0] ?? $listingPlaceholderImage);
+    $breadcrumbSchema = [
+        '@context' => 'https://schema.org',
+        '@type' => 'BreadcrumbList',
+        'itemListElement' => [
+            ['@type' => 'ListItem', 'position' => 1, 'name' => 'Home', 'item' => url('/')],
+            ['@type' => 'ListItem', 'position' => 2, 'name' => 'Properties', 'item' => route('public.properties')],
+            ['@type' => 'ListItem', 'position' => 3, 'name' => $title, 'item' => $currentPage],
+        ],
+    ];
+    $residenceSchema = [
+        '@context' => 'https://schema.org',
+        '@type' => 'Residence',
+        'name' => $title,
+        'description' => $publicPageDescription ?? null,
+        'url' => $currentPage,
+        'image' => $listingImage,
+        'address' => [
+            '@type' => 'PostalAddress',
+            'streetAddress' => (string) ($unit->property->address_line ?? ''),
+            'addressLocality' => (string) ($unit->property->city ?? ''),
+            'addressCountry' => 'KE',
+        ],
+    ];
 @endphp
 <x-public-layout :page-title="$title">
+    @push('head')
+        <script type="application/ld+json">{!! json_encode($breadcrumbSchema, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}</script>
+        <script type="application/ld+json">{!! json_encode($residenceSchema, JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}</script>
+    @endpush
     <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 py-8">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
             <div>

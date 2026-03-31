@@ -24,6 +24,7 @@ use App\Http\Controllers\PublicController;
 use App\Http\Controllers\Auth\ChooseModuleController;
 use App\Http\Controllers\SuperAdmin\SuperAdminUserController;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [PublicController::class, 'home'])->name('public.home');
@@ -36,6 +37,85 @@ Route::post('/apply', [PublicController::class, 'applyStore'])->name('public.app
 Route::get('/thank-you', [PublicController::class, 'thankYou'])->name('public.thank_you');
 Route::view('/privacy-policy', 'public.privacy')->name('public.privacy');
 Route::view('/terms-of-service', 'public.terms')->name('public.terms');
+Route::get('/seo/health', function () {
+    $sitemapUrl = url('/sitemap.xml');
+    $robotsUrl = url('/robots.txt');
+    $health = [
+        'sitemap_url' => $sitemapUrl,
+        'robots_url' => $robotsUrl,
+        'sitemap_route_exists' => Route::has('seo.sitemap'),
+        'robots_route_exists' => Route::has('seo.robots'),
+        'public_routes' => [
+            'home' => route('public.home'),
+            'properties' => route('public.properties'),
+            'about' => route('public.about'),
+            'contact' => route('public.contact'),
+        ],
+    ];
+
+    return view('seo.health', ['health' => $health]);
+})->name('seo.health');
+
+Route::get('/robots.txt', function () {
+    $lines = [
+        'User-agent: *',
+        'Allow: /',
+        'Disallow: /dashboard',
+        'Disallow: /loan',
+        'Disallow: /property',
+        'Disallow: /superadmin',
+        'Sitemap: '.url('/sitemap.xml'),
+    ];
+
+    return response(implode("\n", $lines)."\n", 200)
+        ->header('Content-Type', 'text/plain; charset=UTF-8');
+})->name('seo.robots');
+
+Route::get('/sitemap.xml', function () {
+    $viewLastMod = function (string $viewPath, string $fallback): string {
+        $full = resource_path('views/'.str_replace('.', '/', $viewPath).'.blade.php');
+        if (is_file($full)) {
+            $mtime = @filemtime($full);
+            if (is_int($mtime) && $mtime > 0) {
+                return \Carbon\Carbon::createFromTimestamp($mtime)->toAtomString();
+            }
+        }
+        return $fallback;
+    };
+    $now = now()->toAtomString();
+
+    $urls = [
+        ['loc' => url('/'), 'lastmod' => $viewLastMod('public.home', $now), 'changefreq' => 'daily', 'priority' => '1.0'],
+        ['loc' => url('/properties'), 'lastmod' => $viewLastMod('public.properties', $now), 'changefreq' => 'daily', 'priority' => '0.9'],
+        ['loc' => url('/about'), 'lastmod' => $viewLastMod('public.about', $now), 'changefreq' => 'monthly', 'priority' => '0.7'],
+        ['loc' => url('/contact'), 'lastmod' => $viewLastMod('public.contact', $now), 'changefreq' => 'monthly', 'priority' => '0.7'],
+        ['loc' => url('/privacy-policy'), 'lastmod' => $viewLastMod('public.privacy', $now), 'changefreq' => 'yearly', 'priority' => '0.4'],
+        ['loc' => url('/terms-of-service'), 'lastmod' => $viewLastMod('public.terms', $now), 'changefreq' => 'yearly', 'priority' => '0.4'],
+    ];
+
+    if (class_exists(\App\Models\Property::class) && Schema::hasTable('properties')) {
+        try {
+            \App\Models\Property::query()
+                ->select(['id', 'updated_at'])
+                ->orderByDesc('updated_at')
+                ->limit(500)
+                ->get()
+                ->each(function ($property) use (&$urls) {
+                    $urls[] = [
+                        'loc' => route('public.property_details', ['id' => $property->id]),
+                        'lastmod' => optional($property->updated_at)->toAtomString() ?: now()->toAtomString(),
+                        'changefreq' => 'weekly',
+                        'priority' => '0.8',
+                    ];
+                });
+        } catch (\Throwable) {
+            // Keep sitemap generation resilient even if property table/schema differs.
+        }
+    }
+
+    $xml = view('seo.sitemap', ['urls' => $urls])->render();
+    return response($xml, 200)->header('Content-Type', 'application/xml; charset=UTF-8');
+})->name('seo.sitemap');
 Route::post('/webhooks/property/payments/stk-callback', [PropertyPaymentWebhookController::class, 'stkCallback'])
     ->withoutMiddleware([PreventRequestForgery::class])
     ->name('webhooks.property.payments.stk_callback');

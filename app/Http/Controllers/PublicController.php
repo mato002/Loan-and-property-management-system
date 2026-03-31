@@ -35,6 +35,8 @@ class PublicController extends Controller
             'availableCities' => $this->availableCities(),
             'availableUnitTypes' => PropertyUnit::typeOptions(),
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
+            'publicPageTitle' => 'Find Verified Rentals',
+            'publicPageDescription' => 'Browse verified rental properties, compare units, and connect with trusted property agents in minutes.',
             'publicStats' => [
                 'properties' => Property::query()->count(),
                 'vacant_listings' => PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)->count(),
@@ -100,12 +102,20 @@ class PublicController extends Controller
             default => 'Recently updated',
         };
 
+        $activeCity = trim((string) $request->string('city'));
+        $seoTitle = $activeCity !== '' ? 'Properties in '.$activeCity : 'Available Properties';
+        $seoDescription = $activeCity !== ''
+            ? 'Explore verified rental properties in '.$activeCity.' with transparent pricing and current vacancy status.'
+            : 'Explore verified property listings with up-to-date pricing, unit details, and availability.';
+
         return view('public.properties', [
             'units' => $units,
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
             'filterCities' => $filterCities,
             'filterUnitTypes' => PropertyUnit::typeOptions(),
             'sortLabel' => $sortLabel,
+            'publicPageTitle' => $seoTitle,
+            'publicPageDescription' => $seoDescription,
         ]);
     }
 
@@ -154,6 +164,15 @@ class PublicController extends Controller
             ->get();
 
         $pageTitle = $unit->property->name.' — Unit '.$unit->label;
+        $metaBits = array_filter([
+            (string) $unit->property->city,
+            $unit->bedrooms ? ($unit->bedrooms.' bedroom') : null,
+            $unit->rent_amount ? ('KES '.number_format((float) $unit->rent_amount, 0).' / month') : null,
+        ]);
+        $pageDescription = 'View '.$unit->label.' at '.$unit->property->name
+            .(count($metaBits) ? ' in '.implode(', ', $metaBits) : '')
+            .'. See photos, amenities, and availability before booking a visit.';
+        $heroImage = $imageUrls[0] ?? self::LISTING_PLACEHOLDER_IMAGE;
 
         return view('public.property_details', [
             'unit' => $unit,
@@ -162,6 +181,9 @@ class PublicController extends Controller
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
             'similarUnits' => $similarUnits,
             'pageTitle' => $pageTitle,
+            'publicPageTitle' => $pageTitle,
+            'publicPageDescription' => $pageDescription,
+            'publicPageImage' => $heroImage,
         ]);
     }
 
@@ -170,7 +192,11 @@ class PublicController extends Controller
      */
     public function signup(): View
     {
-        return view('public.signup');
+        return view('public.signup', [
+            'publicPageTitle' => 'Create Your Account',
+            'publicPageDescription' => 'Sign up to continue with property applications and tenant or landlord services.',
+            'publicPageRobots' => 'noindex,nofollow',
+        ]);
     }
 
     /**
@@ -178,7 +204,10 @@ class PublicController extends Controller
      */
     public function about(): View
     {
-        return view('public.about');
+        return view('public.about', [
+            'publicPageTitle' => 'About Us',
+            'publicPageDescription' => 'Learn about our property management team, our mission, and how we help landlords and tenants succeed.',
+        ]);
     }
 
     /**
@@ -186,7 +215,10 @@ class PublicController extends Controller
      */
     public function contact(): View
     {
-        return view('public.contact');
+        return view('public.contact', [
+            'publicPageTitle' => 'Contact Us',
+            'publicPageDescription' => 'Reach our property team for site visits, rental inquiries, and support with listings or applications.',
+        ]);
     }
 
     /**
@@ -206,7 +238,11 @@ class PublicController extends Controller
                 ->first();
         }
 
-        return view('public.apply', compact('propertyId', 'applyUnit'));
+        return view('public.apply', array_merge(compact('propertyId', 'applyUnit'), [
+            'publicPageTitle' => 'Apply for a Rental',
+            'publicPageDescription' => 'Submit your rental application securely through our online process.',
+            'publicPageRobots' => 'noindex,nofollow',
+        ]));
     }
 
     /**
@@ -272,6 +308,10 @@ class PublicController extends Controller
      */
     public function thankYou(): View
     {
-        return view('public.thank_you');
+        return view('public.thank_you', [
+            'publicPageTitle' => 'Application Received',
+            'publicPageDescription' => 'Thank you. Your request has been received and our team will contact you.',
+            'publicPageRobots' => 'noindex,nofollow',
+        ]);
     }
 }

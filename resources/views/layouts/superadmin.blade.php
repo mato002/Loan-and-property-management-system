@@ -1,3 +1,7 @@
+@php
+    $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Application');
+    $displayName = strtolower($companyName) === 'laravel' ? 'Property Management System' : $companyName;
+@endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
@@ -5,7 +9,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ $title ?? ('Super Admin — '.config('app.name')) }}</title>
+        <title>{{ $title ?? ('Super Admin — '.$displayName) }}</title>
 
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700&display=swap" rel="stylesheet" />
@@ -23,7 +27,7 @@
                             SA
                         </span>
                         <div class="leading-tight">
-                            <div class="text-sm font-black text-slate-900">{{ config('app.name') }}</div>
+                            <div class="text-sm font-black text-slate-900">{{ $displayName }}</div>
                             <div class="text-xs font-bold text-slate-500 uppercase tracking-widest">Super Admin</div>
                         </div>
                     </div>
@@ -111,7 +115,7 @@
                 {{-- Footer --}}
                 <footer class="border-t border-slate-200 bg-white">
                     <div class="px-4 sm:px-6 lg:px-8 py-4 text-xs text-slate-500 flex items-center justify-between">
-                        <span>© {{ date('Y') }} {{ config('app.name') }}</span>
+                        <span>© {{ date('Y') }} {{ $displayName }}</span>
                         <span class="font-semibold text-slate-400">Super Admin Console</span>
                     </div>
                 </footer>

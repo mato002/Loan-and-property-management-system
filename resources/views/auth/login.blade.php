@@ -8,7 +8,7 @@
     <div class="mb-8 flex items-center justify-between gap-4">
         <a
             href="{{ url('/') }}"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#3B59FF]/40 hover:text-[#3B59FF]"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#4d8d82]/40 hover:text-[#4d8d82]"
             aria-label="{{ __('Back to home') }}"
         >
             <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
@@ -18,7 +18,7 @@
         <p class="text-sm text-slate-600">
             {{ __('Not a member?') }}
             @if (Route::has('register'))
-                <a href="{{ route('register') }}" class="font-semibold text-[#3B59FF] hover:text-[#2d47cc]">{{ __('Sign up') }}</a>
+                <a href="{{ route('register') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70]">{{ __('Sign up') }}</a>
             @endif
         </p>
     </div>
@@ -36,9 +36,9 @@
 
     <p class="mt-4 text-xs leading-relaxed text-slate-500">
         {{ __('Renting or owning through us?') }}
-        <a href="{{ route('property.tenant.login') }}" class="font-semibold text-[#3B59FF] hover:underline">{{ __('Tenant sign-in') }}</a>
+        <a href="{{ route('property.tenant.login') }}" class="font-semibold text-[#4d8d82] hover:underline">{{ __('Tenant sign-in') }}</a>
         <span class="text-slate-300" aria-hidden="true">·</span>
-        <a href="{{ route('property.landlord.login') }}" class="font-semibold text-[#3B59FF] hover:underline">{{ __('Landlord sign-in') }}</a>
+        <a href="{{ route('property.landlord.login') }}" class="font-semibold text-[#4d8d82] hover:underline">{{ __('Landlord sign-in') }}</a>
     </p>
 
     <form method="POST" action="{{ route('login') }}" class="mt-10 space-y-6" x-data="{ showPassword: false }">
@@ -64,7 +64,7 @@
 
         <div class="space-y-1">
             <label for="password" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('Password') }}</label>
-            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $passErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#3B59FF]' }}">
+            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $passErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}">
                 <span class="text-slate-400" aria-hidden="true">
                     <svg class="h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
@@ -102,17 +102,17 @@
 
         <div class="flex flex-wrap items-center justify-between gap-3">
             <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-                <input id="remember_me" type="checkbox" name="remember" class="h-4 w-4 rounded border-slate-300 text-[#3B59FF] focus:ring-[#3B59FF]" />
+                <input id="remember_me" type="checkbox" name="remember" class="h-4 w-4 rounded border-slate-300 text-[#4d8d82] focus:ring-[#4d8d82]" />
                 <span>{{ __('Remember me') }}</span>
             </label>
             @if (Route::has('password.request'))
-                <a href="{{ route('password.request') }}" class="text-sm font-semibold text-[#3B59FF] hover:text-[#2d47cc]">{{ __('Forgot password?') }}</a>
+                <a href="{{ route('password.request') }}" class="text-sm font-semibold text-[#4d8d82] hover:text-[#3f7a70]">{{ __('Forgot password?') }}</a>
             @endif
         </div>
 
         <button
             type="submit"
-            class="group relative flex w-full items-center justify-center gap-3 rounded-full bg-[#3B59FF] py-4 text-base font-semibold text-white shadow-lg shadow-[#3B59FF]/35 transition hover:bg-[#2f4cd4] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B59FF] focus-visible:ring-offset-2"
+            class="group relative flex w-full items-center justify-center gap-3 rounded-full bg-[#4d8d82] py-4 text-base font-semibold text-white shadow-lg shadow-[#4d8d82]/35 transition hover:bg-[#3f7a70] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4d8d82] focus-visible:ring-offset-2"
         >
             {{ __('Sign in') }}
             <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 transition group-hover:bg-white/30" aria-hidden="true">

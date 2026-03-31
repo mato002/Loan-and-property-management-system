@@ -318,7 +318,7 @@
         </form>
     </x-slot>
     <script>
-        const initUnitTypeBedroomsDependency = () => {
+        window.initUnitTypeBedroomsDependency = window.initUnitTypeBedroomsDependency || function () {
             const unitCount = document.getElementById('unit_count');
             const labelInput = document.getElementById('label_input');
             const labelWrapper = document.getElementById('label_wrapper');
@@ -438,13 +438,17 @@
             syncSplitValidation();
         };
 
-        document.addEventListener('DOMContentLoaded', initUnitTypeBedroomsDependency);
-        document.addEventListener('turbo:load', initUnitTypeBedroomsDependency);
-        document.addEventListener('turbo:frame-load', (event) => {
-            const frame = event.target;
-            if (frame && frame.id === 'property-main') {
-                initUnitTypeBedroomsDependency();
-            }
-        });
+        // Prevent duplicate global listeners when Turbo re-renders this frame.
+        if (!window.__unitTypeBedroomsDependencyBound) {
+            window.__unitTypeBedroomsDependencyBound = true;
+            document.addEventListener('DOMContentLoaded', window.initUnitTypeBedroomsDependency);
+            document.addEventListener('turbo:load', window.initUnitTypeBedroomsDependency);
+            document.addEventListener('turbo:frame-load', (event) => {
+                const frame = event.target;
+                if (frame && frame.id === 'property-main') {
+                    window.initUnitTypeBedroomsDependency();
+                }
+            });
+        }
     </script>
 </x-property.workspace>

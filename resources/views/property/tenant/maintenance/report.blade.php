@@ -22,6 +22,27 @@
                 </div>
             @endif
             <div>
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="property_id">Property</label>
+                <select
+                    id="property_id"
+                    name="property_id"
+                    required
+                    @disabled($leaseUnits->isEmpty())
+                    class="mt-1 w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-sm px-4 py-3 disabled:opacity-60"
+                >
+                    @if ($propertyOptions->isNotEmpty())
+                        <option value="">Select property</option>
+                        @foreach ($propertyOptions as $property)
+                            <option value="{{ $property['id'] }}" @selected(old('property_id') == $property['id'])>
+                                {{ $property['name'] }}
+                            </option>
+                        @endforeach
+                    @else
+                        <option value="">No property found on your active lease.</option>
+                    @endif
+                </select>
+            </div>
+            <div>
                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300" for="property_unit_id">Unit</label>
                 <select
                     id="property_unit_id"
@@ -30,13 +51,7 @@
                     @disabled($leaseUnits->isEmpty())
                     class="mt-1 w-full min-w-0 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/40 text-sm px-4 py-3 disabled:opacity-60"
                 >
-                    @forelse ($leaseUnits as $unit)
-                        <option value="{{ $unit->id }}" @selected(old('property_unit_id') == $unit->id)>
-                            {{ $unit->property->name }} / {{ $unit->label }}
-                        </option>
-                    @empty
-                        <option value="">No unit on your active lease — contact your agent.</option>
-                    @endforelse
+                    <option value="">Select property first</option>
                 </select>
             </div>
             <div>
@@ -110,6 +125,62 @@
                 Submit request
             </button>
         </form>
+        <script>
+            (function () {
+                const propertySelect = document.getElementById('property_id');
+                const unitSelect = document.getElementById('property_unit_id');
+                const unitsByProperty = @json($unitsByProperty);
+                const selectedUnit = @json((string) old('property_unit_id', ''));
+
+                if (!propertySelect || !unitSelect) return;
+
+                const renderUnits = function () {
+                    const propertyId = String(propertySelect.value || '');
+                    const list = unitsByProperty[propertyId] || [];
+                    unitSelect.innerHTML = '';
+
+                    if (!propertyId) {
+                        const opt = document.createElement('option');
+                        opt.value = '';
+                        opt.textContent = 'Select property first';
+                        unitSelect.appendChild(opt);
+                        return;
+                    }
+
+                    if (list.length === 0) {
+                        const opt = document.createElement('option');
+                        opt.value = '';
+                        opt.textContent = 'No unit found under selected property';
+                        unitSelect.appendChild(opt);
+                        return;
+                    }
+
+                    const placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    placeholder.textContent = 'Select unit';
+                    unitSelect.appendChild(placeholder);
+
+                    list.forEach(function (unit) {
+                        const opt = document.createElement('option');
+                        opt.value = String(unit.id);
+                        opt.textContent = unit.label;
+                        if (selectedUnit && String(selectedUnit) === String(unit.id)) {
+                            opt.selected = true;
+                        }
+                        unitSelect.appendChild(opt);
+                    });
+                };
+
+                propertySelect.addEventListener('change', function () {
+                    renderUnits();
+                    if (propertySelect.value !== @json((string) old('property_id', ''))) {
+                        unitSelect.value = '';
+                    }
+                });
+
+                renderUnits();
+            })();
+        </script>
         <a href="{{ route('property.tenant.maintenance.index') }}" class="inline-block mt-4 text-sm font-medium text-teal-700 dark:text-teal-400 hover:underline">← Back to maintenance</a>
     </x-property.page>
 </x-property-layout>

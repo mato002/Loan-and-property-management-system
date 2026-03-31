@@ -6,13 +6,19 @@ use App\Http\Controllers\Controller;
 use App\Models\EquitySyncRun;
 use App\Models\Payment;
 use App\Models\PmTenant;
+use App\Models\PmSmsIngest;
 use App\Models\UnassignedPayment;
+use App\Repositories\Equity\EquityPaymentRepository;
+use App\Repositories\Equity\PaymentAuditLogRepository;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EquitySyncController extends Controller
 {
@@ -47,17 +53,177 @@ class EquitySyncController extends Controller
             return $this->notReadyView('Unassigned payments table is missing. Run migrations first.');
         }
 
-        $query = UnassignedPayment::query()->latest('created_at');
-        if ($request->filled('from')) {
-            $query->whereDate('created_at', '>=', (string) $request->query('from'));
-        }
-        if ($request->filled('to')) {
-            $query->whereDate('created_at', '<=', (string) $request->query('to'));
-        }
+        $hasPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
+        $query = $this->buildUnmatchedQuery($request, $hasPaymentMethod);
+        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
         return view('property.agent.equity.unmatched_payments', [
-            'items' => $query->paginate(30)->withQueryString(),
+            'items' => $query->paginate($perPage)->withQueryString(),
+            'hasPaymentMethod' => $hasPaymentMethod,
+            'filters' => [
+                'q' => (string) $request->query('q', ''),
+                'source' => (string) $request->query('source', ''),
+                'from' => (string) $request->query('from', ''),
+                'to' => (string) $request->query('to', ''),
+                'per_page' => (string) $perPage,
+            ],
         ]);
+    }
+
+    public function unmatchedPaymentsExport(Request $request): StreamedResponse
+    {
+        if (! Schema::hasTable('unassigned_payments')) {
+            abort(404, 'Unassigned payments table is missing.');
+        }
+
+        $hasPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
+        $query = $this->buildUnmatchedQuery($request, $hasPaymentMethod);
+        $format = strtolower((string) $request->query('format', 'csv'));
+        $isXls = $format === 'xls';
+        $sep = $isXls ? "\t" : ",";
+        $stamp = now()->format('Ymd_His');
+        $filename = 'unmatched-payments-'.$stamp.($isXls ? '.xls' : '.csv');
+        $contentType = $isXls
+            ? 'application/vnd.ms-excel; charset=UTF-8'
+            : 'text/csv; charset=UTF-8';
+
+        return response()->streamDownload(function () use ($query, $sep, $hasPaymentMethod) {
+            $out = fopen('php://output', 'w');
+            if (! $out) {
+                return;
+            }
+            if ($sep === ',') {
+                fputcsv($out, ['Date', 'Transaction', 'Amount', 'Account', 'Phone', 'Source', 'Reason']);
+            } else {
+                fwrite($out, implode($sep, ['Date', 'Transaction', 'Amount', 'Account', 'Phone', 'Source', 'Reason'])."\n");
+            }
+
+            foreach ($query->cursor() as $item) {
+                $row = [
+                    optional($item->created_at)->format('Y-m-d H:i:s'),
+                    (string) $item->transaction_id,
+                    number_format((float) $item->amount, 2, '.', ''),
+                    (string) ($item->account_number ?? ''),
+                    (string) ($item->phone ?? ''),
+                    $hasPaymentMethod && (string) ($item->payment_method ?? '') === 'sms_forwarder' ? 'SMS Forwarder' : 'Equity',
+                    (string) ($item->reason ?? ''),
+                ];
+
+                if ($sep === ',') {
+                    fputcsv($out, $row);
+                } else {
+                    fwrite($out, implode($sep, array_map(
+                        static fn ($v) => str_replace(["\t", "\r", "\n"], ' ', (string) $v),
+                        $row
+                    ))."\n");
+                }
+            }
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => $contentType,
+        ]);
+    }
+
+    public function unmatchedPaymentsPrint(Request $request): Response
+    {
+        if (! Schema::hasTable('unassigned_payments')) {
+            abort(404, 'Unassigned payments table is missing.');
+        }
+
+        $hasPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
+        $items = $this->buildUnmatchedQuery($request, $hasPaymentMethod)
+            ->limit(2000)
+            ->get();
+
+        return response()->view('property.agent.equity.unmatched_payments_print', [
+            'items' => $items,
+            'hasPaymentMethod' => $hasPaymentMethod,
+        ]);
+    }
+
+    public function showUnmatchedPayment(UnassignedPayment $unassignedPayment): View
+    {
+        if (! Schema::hasTable('unassigned_payments') || ! Schema::hasTable('payments')) {
+            return $this->notReadyView('Payments module is not ready. Run migrations first.');
+        }
+
+        return view('property.agent.equity.unmatched_assign', [
+            'item' => $unassignedPayment,
+            'tenants' => PmTenant::query()->orderBy('name')->get(['id', 'name', 'phone', 'account_number']),
+        ]);
+    }
+
+    public function assignUnmatchedPayment(
+        Request $request,
+        UnassignedPayment $unassignedPayment,
+        EquityPaymentRepository $payments,
+        PaymentAuditLogRepository $auditLogs
+    ): RedirectResponse {
+        if (! Schema::hasTable('unassigned_payments') || ! Schema::hasTable('payments')) {
+            return back()->withErrors(['payments' => 'Payments module is not ready. Run migrations first.']);
+        }
+
+        $data = $request->validate([
+            'tenant_id' => ['required', 'integer', 'exists:pm_tenants,id'],
+            'note' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $method = (string) ($unassignedPayment->payment_method ?: 'equity');
+        $isSms = $method === 'sms_forwarder';
+
+        $tx = [
+            'transaction_id' => (string) $unassignedPayment->transaction_id,
+            'amount' => (float) $unassignedPayment->amount,
+            'account_number' => (string) ($unassignedPayment->account_number ?? ''),
+            'reference' => '',
+            'phone' => (string) ($unassignedPayment->phone ?? ''),
+            'transaction_date' => $unassignedPayment->created_at ?? now(),
+            'raw_payload' => [
+                'manual_assigned' => true,
+                'unassigned_payment_id' => (int) $unassignedPayment->id,
+                'reason' => (string) ($unassignedPayment->reason ?? ''),
+                'note' => (string) ($data['note'] ?? ''),
+            ],
+        ];
+
+        $options = [
+            'payment_method' => $method,
+            'channel' => $isSms ? 'mpesa_sms_ingest' : 'equity_paybill',
+            'source' => $isSms ? 'sms_ingest' : 'equity_api',
+            'provider' => $isSms ? 'mpesa' : 'equity',
+            'message' => 'Manually assigned by agent from unposted payments queue.',
+        ];
+
+        $payment = $payments->storeMatched($tx, (int) $data['tenant_id'], 'manual', $options);
+
+        if ($isSms) {
+            PmSmsIngest::query()
+                ->where('provider_txn_code', (string) $unassignedPayment->transaction_id)
+                ->whereNull('pm_payment_id')
+                ->update([
+                    'matched_tenant_id' => (int) $data['tenant_id'],
+                    'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0) ?: null,
+                    'match_status' => 'matched',
+                    'match_note' => 'Manually matched by agent from unmatched payments queue.',
+                ]);
+        }
+
+        $auditLogs->decision('success', [
+            'stage' => 'manual_assign',
+            'decision' => 'assigned',
+            'unassigned_payment_id' => (int) $unassignedPayment->id,
+            'transaction_id' => (string) $unassignedPayment->transaction_id,
+            'tenant_id' => (int) $data['tenant_id'],
+            'payment_id' => (int) $payment->id,
+            'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0),
+            'note' => (string) ($data['note'] ?? ''),
+        ], 'manual_assign_decision');
+
+        $unassignedPayment->delete();
+
+        return redirect()
+            ->route('property.equity.unmatched')
+            ->with('success', 'Payment assigned and posted successfully.');
     }
 
     public function allPayments(Request $request): View
@@ -184,6 +350,35 @@ class EquitySyncController extends Controller
         return view('property.agent.equity.not_ready', [
             'reason' => $reason,
         ]);
+    }
+
+    private function buildUnmatchedQuery(Request $request, bool $hasPaymentMethod): Builder
+    {
+        $query = UnassignedPayment::query()->latest('created_at');
+
+        if ($request->filled('from')) {
+            $query->whereDate('created_at', '>=', (string) $request->query('from'));
+        }
+        if ($request->filled('to')) {
+            $query->whereDate('created_at', '<=', (string) $request->query('to'));
+        }
+        if ($request->filled('q')) {
+            $q = trim((string) $request->query('q'));
+            $query->where(function (Builder $inner) use ($q) {
+                $inner->where('transaction_id', 'like', '%'.$q.'%')
+                    ->orWhere('phone', 'like', '%'.$q.'%')
+                    ->orWhere('account_number', 'like', '%'.$q.'%')
+                    ->orWhere('reason', 'like', '%'.$q.'%');
+            });
+        }
+        if ($hasPaymentMethod && $request->filled('source')) {
+            $source = strtolower((string) $request->query('source'));
+            if (in_array($source, ['equity', 'sms_forwarder'], true)) {
+                $query->where('payment_method', $source);
+            }
+        }
+
+        return $query;
     }
 }
 

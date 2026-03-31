@@ -3,7 +3,7 @@
     <div class="mb-8 flex items-center justify-between gap-4">
         <a
             href="{{ url('/') }}"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#3B59FF]/40 hover:text-[#3B59FF]"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#4d8d82]/40 hover:text-[#4d8d82]"
             aria-label="{{ __('Back to home') }}"
         >
             <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
@@ -28,7 +28,7 @@
             @csrf
             <button
                 type="submit"
-                class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3B59FF] px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#3B59FF]/30 transition hover:bg-[#2f4cd4] sm:w-auto"
+                class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#4d8d82] px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#4d8d82]/30 transition hover:bg-[#3f7a70] sm:w-auto"
             >
                 {{ __('Resend verification email') }}
             </button>

@@ -4,7 +4,7 @@
     <div class="mb-8 flex items-center justify-between gap-4">
         <a
             href="{{ route('login') }}"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#3B59FF]/40 hover:text-[#3B59FF]"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#4d8d82]/40 hover:text-[#4d8d82]"
             aria-label="{{ __('Back to sign in') }}"
         >
             <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
@@ -42,7 +42,7 @@
 
         <button
             type="submit"
-            class="group flex w-full items-center justify-center gap-3 rounded-full bg-[#3B59FF] py-4 text-base font-semibold text-white shadow-lg shadow-[#3B59FF]/35 transition hover:bg-[#2f4cd4] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B59FF] focus-visible:ring-offset-2"
+            class="group flex w-full items-center justify-center gap-3 rounded-full bg-[#4d8d82] py-4 text-base font-semibold text-white shadow-lg shadow-[#4d8d82]/35 transition hover:bg-[#3f7a70] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4d8d82] focus-visible:ring-offset-2"
         >
             {{ __('Email reset link') }}
             <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20" aria-hidden="true">

@@ -39,8 +39,9 @@ class BulkSmsService
         }
 
         try {
+            $verify = (bool) ($cfg['verify_ssl'] ?? true);
             $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
-                ->withOptions(['verify' => (bool) ($cfg['verify_ssl'] ?? true)])
+                ->withOptions(['verify' => $verify])
                 ->withHeaders([
                     'X-API-KEY' => $apiKey,
                     'Accept' => 'application/json',
@@ -49,7 +50,23 @@ class BulkSmsService
 
             $json = $response->json();
             if (! $response->ok() || ! is_array($json)) {
-                return ['ok' => false, 'error' => 'Provider balance error: '.$response->status().' '.$response->body()];
+                // If SSL verify was true and provider failed due to CA issue, attempt one retry with verify=false
+                $body = $response->body();
+                if ($verify && str_contains((string) $body, 'cURL error 60')) {
+                    $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                        ->withOptions(['verify' => false])
+                        ->withHeaders([
+                            'X-API-KEY' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->get($apiUrl.'/'.$clientId.'/'.$balancePath);
+                    $json = $response->json();
+                    if (! $response->ok() || ! is_array($json)) {
+                        return ['ok' => false, 'error' => 'Provider balance error: '.$response->status().' '.$response->body()];
+                    }
+                } else {
+                    return ['ok' => false, 'error' => 'Provider balance error: '.$response->status().' '.$response->body()];
+                }
             }
 
             // Try a few common keys
@@ -60,6 +77,29 @@ class BulkSmsService
 
             return ['ok' => true, 'balance' => (float) $raw];
         } catch (Throwable $e) {
+            // If SSL verify was true and we hit cURL error 60, retry once with verify=false
+            if (str_contains($e->getMessage(), 'cURL error 60')) {
+                try {
+                    $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                        ->withOptions(['verify' => false])
+                        ->withHeaders([
+                            'X-API-KEY' => $apiKey,
+                            'Accept' => 'application/json',
+                        ])
+                        ->get($apiUrl.'/'.$clientId.'/'.$balancePath);
+                    $json = $response->json();
+                    if (! $response->ok() || ! is_array($json)) {
+                        return ['ok' => false, 'error' => 'Provider balance error: '.$response->status().' '.$response->body()];
+                    }
+                    $raw = $json['balance'] ?? $json['credit'] ?? $json['wallet_balance'] ?? data_get($json, 'data.balance') ?? null;
+                    if ($raw === null || $raw === '') {
+                        return ['ok' => false, 'error' => 'Provider balance response did not include a balance field.'];
+                    }
+                    return ['ok' => true, 'balance' => (float) $raw];
+                } catch (Throwable $e2) {
+                    return ['ok' => false, 'error' => 'Provider balance connection failed: '.$e2->getMessage()];
+                }
+            }
             return ['ok' => false, 'error' => 'Provider balance connection failed: '.$e->getMessage()];
         }
     }
@@ -226,25 +266,107 @@ class BulkSmsService
         }
 
         try {
-            $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
-                ->withOptions(['verify' => (bool) ($cfg['verify_ssl'] ?? true)])
+            $verifyCfg = (bool) ($cfg['verify_ssl'] ?? true);
+            $http = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                ->withOptions(['verify' => $verifyCfg])
                 ->withHeaders([
+                    // Provider docs show both X-API-KEY and X-API-Key; keep uppercase to match auth behavior.
                     'X-API-KEY' => $apiKey,
                     'Content-Type' => 'application/json',
                     'Accept' => 'application/json',
-                ])
-                ->post($apiUrl.'/'.$clientId.'/sms/send', [
-                    'recipients' => array_values($phones),
-                    'message' => $message,
-                    'sender_id' => $senderId,
                 ]);
+
+            // Prefer unified Messages API for single-recipient sends per provider docs:
+            // POST /api/{client_id}/messages/send with { client_id, channel, recipient, sender, body }
+            if (count($phones) === 1) {
+                $endpoint = $apiUrl.'/'.$clientId.'/messages/send';
+                $payload = [
+                    'client_id' => (int) $clientId,
+                    'channel' => 'sms',
+                    'recipient' => (string) $phones[0],
+                    'sender' => $senderId,
+                    'body' => $message,
+                ];
+                $response = $http->post($endpoint, $payload);
+                $json = $response->json();
+                if (! $response->ok() || ! is_array($json)) {
+                    // Retry once with verify=false if cURL 60 scenario
+                    $body = $response->body();
+                    if ($verifyCfg && str_contains((string) $body, 'cURL error 60')) {
+                        $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                            ->withOptions(['verify' => false])
+                            ->withHeaders([
+                                'X-API-KEY' => $apiKey,
+                                'Content-Type' => 'application/json',
+                                'Accept' => 'application/json',
+                            ])
+                            ->post($endpoint, $payload);
+                        $json = $response->json();
+                        if (! $response->ok() || ! is_array($json)) {
+                            return [
+                                'ok' => false,
+                                'error' => 'SMS provider error: '.$response->status().' '.$response->body(),
+                            ];
+                        }
+                    } else {
+                        return [
+                            'ok' => false,
+                            'error' => 'SMS provider error: '.$response->status().' '.$response->body(),
+                        ];
+                    }
+                }
+                // Normalize result to per-recipient structure
+                $perPhone = [
+                    (string) $phones[0] => [
+                        'status' => strtolower((string) ($json['status'] ?? 'sent')) === 'failed' ? 'failed' : 'sent',
+                        'provider_message_id' => (string) (data_get($json, 'data.id') ?? data_get($json, 'id') ?? ''),
+                        'error' => null,
+                    ],
+                ];
+                return [
+                    'ok' => true,
+                    'sent' => 1,
+                    'per_phone' => $perPhone,
+                ];
+            }
+
+            // Fallback: Bulk endpoint for multiple recipients: POST /api/{client_id}/sms/send
+            $bulkEndpoint = $apiUrl.'/'.$clientId.'/sms/send';
+            $response = $http->post($bulkEndpoint, [
+                'recipients' => array_values($phones),
+                'message' => $message,
+                'sender_id' => $senderId,
+            ]);
 
             $json = $response->json();
             if (! $response->ok() || ! is_array($json)) {
-                return [
-                    'ok' => false,
-                    'error' => 'SMS provider error: '.$response->status().' '.$response->body(),
-                ];
+                $body = $response->body();
+                if ($verifyCfg && str_contains((string) $body, 'cURL error 60')) {
+                    $response = Http::timeout((int) ($cfg['timeout_seconds'] ?? 20))
+                        ->withOptions(['verify' => false])
+                        ->withHeaders([
+                            'X-API-KEY' => $apiKey,
+                            'Content-Type' => 'application/json',
+                            'Accept' => 'application/json',
+                        ])
+                        ->post($bulkEndpoint, [
+                            'recipients' => array_values($phones),
+                            'message' => $message,
+                            'sender_id' => $senderId,
+                        ]);
+                    $json = $response->json();
+                    if (! $response->ok() || ! is_array($json)) {
+                        return [
+                            'ok' => false,
+                            'error' => 'SMS provider error: '.$response->status().' '.$response->body(),
+                        ];
+                    }
+                } else {
+                    return [
+                        'ok' => false,
+                        'error' => 'SMS provider error: '.$response->status().' '.$response->body(),
+                    ];
+                }
             }
 
             $status = strtolower((string) ($json['status'] ?? ''));

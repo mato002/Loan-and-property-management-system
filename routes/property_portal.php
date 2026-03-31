@@ -25,6 +25,7 @@ use App\Http\Controllers\Property\Agent\PropertyUtilityChargeController;
 use App\Http\Controllers\Property\Agent\PropertyReportsController;
 use App\Http\Controllers\Property\Agent\RevenueController;
 use App\Http\Controllers\Property\Agent\EquitySyncController;
+use App\Http\Controllers\Property\Agent\PropertySearchController;
 use App\Http\Controllers\Property\Landlord\LandlordPortalController;
 use App\Http\Controllers\Property\PropertyPortalQuickActionController;
 use App\Http\Controllers\Property\PropertyGeoController;
@@ -38,6 +39,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
 
     Route::middleware(['property.portal:agent'])->prefix('property')->name('property.')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'commandCenter'])->name('dashboard');
+        Route::get('/search', [PropertySearchController::class, 'index'])->name('search');
 
         Route::get('/workspace/forms/{form}', [AgentWorkspaceFormController::class, 'show'])
             ->where('form', '[a-z0-9\-]+')
@@ -56,6 +58,8 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/revenue/payments', [PmPaymentController::class, 'payments'])->name('revenue.payments');
         Route::post('/revenue/payments', [PmPaymentController::class, 'store'])->middleware('property.permission:payments.record')->name('payments.store');
         Route::patch('/revenue/payments/{payment}/settle', [PmPaymentController::class, 'settle'])->middleware('property.permission:payments.settle')->name('payments.settle');
+        Route::get('/revenue/payments/{payment}/receipt', [PmPaymentController::class, 'showReceipt'])->name('payments.receipt.show');
+        Route::get('/revenue/payments/{payment}/receipt/download', [PmPaymentController::class, 'downloadReceipt'])->name('payments.receipt.download');
         Route::get('/revenue/receipts', [RevenueController::class, 'receipts'])->name('revenue.receipts');
         Route::get('/revenue/utilities-charges', [PropertyUtilityChargeController::class, 'index'])->name('revenue.utilities');
         Route::post('/revenue/utilities-charges', [PropertyUtilityChargeController::class, 'store'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.store');
@@ -72,6 +76,18 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/revenue/equity/unmatched', [EquitySyncController::class, 'unmatchedPayments'])
             ->middleware('property.permission:payments.settle')
             ->name('equity.unmatched');
+        Route::get('/revenue/equity/unmatched/export', [EquitySyncController::class, 'unmatchedPaymentsExport'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.unmatched.export');
+        Route::get('/revenue/equity/unmatched/print', [EquitySyncController::class, 'unmatchedPaymentsPrint'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.unmatched.print');
+        Route::get('/revenue/equity/unmatched/{unassignedPayment}', [EquitySyncController::class, 'showUnmatchedPayment'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.unmatched.show');
+        Route::post('/revenue/equity/unmatched/{unassignedPayment}/assign', [EquitySyncController::class, 'assignUnmatchedPayment'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.unmatched.assign');
         Route::get('/revenue/equity/all', [EquitySyncController::class, 'allPayments'])
             ->middleware('property.permission:payments.settle')
             ->name('equity.all');
@@ -90,9 +106,10 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
             ->name('tenants.import.store');
         Route::post('/tenants', [PmTenantDirectoryController::class, 'store'])->middleware('property.permission:tenants.manage')->name('tenants.store');
         Route::post('/tenants/create-json', [PmTenantDirectoryController::class, 'storeJson'])->middleware('property.permission:tenants.manage')->name('tenants.store_json');
-        Route::get('/tenants/{tenant}', [PmTenantDirectoryController::class, 'show'])->name('tenants.show');
-        Route::get('/tenants/{tenant}/edit', [PmTenantDirectoryController::class, 'edit'])->name('tenants.edit');
-        Route::put('/tenants/{tenant}', [PmTenantDirectoryController::class, 'update'])->middleware('property.permission:tenants.manage')->name('tenants.update');
+        Route::get('/tenants/{tenant}', [PmTenantDirectoryController::class, 'show'])->whereNumber('tenant')->name('tenants.show');
+        Route::get('/tenants/{tenant}/statement', [PmTenantDirectoryController::class, 'statement'])->whereNumber('tenant')->name('tenants.statement');
+        Route::get('/tenants/{tenant}/edit', [PmTenantDirectoryController::class, 'edit'])->whereNumber('tenant')->name('tenants.edit');
+        Route::put('/tenants/{tenant}', [PmTenantDirectoryController::class, 'update'])->whereNumber('tenant')->middleware('property.permission:tenants.manage')->name('tenants.update');
         Route::get('/tenants/leases', [PmLeaseWebController::class, 'leases'])->name('tenants.leases');
         Route::post('/leases', [PmLeaseWebController::class, 'store'])->middleware('property.permission:leases.manage')->name('leases.store');
         Route::get('/leases/{lease}', [PmLeaseWebController::class, 'show'])->name('leases.show');
@@ -121,7 +138,8 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/reports/tenant/deposits', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'tenant_deposits')->name('reports.tenant.deposits');
         Route::get('/reports/tenant/aging-balance', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'tenant_aging_balance')->name('reports.tenant.aging_balance');
         Route::get('/reports/tenant/statements-by-allocation', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'tenant_statements_by_allocation')->name('reports.tenant.statements_by_allocation');
-        Route::get('/reports/landlord/statements', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'landlord_statements')->name('reports.landlord.statements');
+        Route::get('/reports/landlord/statements', [PropertyReportsController::class, 'landlordStatements'])->name('reports.landlord.statements');
+        Route::get('/reports/landlord/statements/expenses', [PropertyReportsController::class, 'landlordStatementExpenses'])->name('reports.landlord.statements.expenses');
         Route::get('/reports/landlord/detailed-statement', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'landlord_detailed_statement')->name('reports.landlord.detailed_statement');
         Route::get('/reports/landlord/balance-summary', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'landlord_balance_summary')->name('reports.landlord.balance_summary');
         Route::get('/reports/landlord/rental-income-commissions', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'landlord_rental_income_commissions')->name('reports.landlord.rental_income_commissions');
@@ -154,20 +172,21 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/properties/list/export', [PropertyPortfolioController::class, 'propertyListExport'])->name('properties.list.export');
         Route::post('/properties', [PropertyPortfolioController::class, 'storeProperty'])->middleware('property.permission:properties.manage')->name('properties.store');
         Route::post('/properties/create-json', [PropertyPortfolioController::class, 'storePropertyJson'])->middleware('property.permission:properties.manage')->name('properties.store_json');
-        Route::get('/properties/{property}/edit', [PropertyPortfolioController::class, 'editProperty'])->name('properties.edit');
-        Route::patch('/properties/{property}', [PropertyPortfolioController::class, 'updateProperty'])->middleware('property.permission:properties.manage')->name('properties.update');
-        Route::delete('/properties/{property}', [PropertyPortfolioController::class, 'destroyProperty'])->middleware('property.permission:properties.manage')->name('properties.destroy');
+        Route::get('/properties/{property}/edit', [PropertyPortfolioController::class, 'editProperty'])->whereNumber('property')->name('properties.edit');
+        Route::patch('/properties/{property}', [PropertyPortfolioController::class, 'updateProperty'])->whereNumber('property')->middleware('property.permission:properties.manage')->name('properties.update');
+        Route::delete('/properties/{property}', [PropertyPortfolioController::class, 'destroyProperty'])->whereNumber('property')->middleware('property.permission:properties.manage')->name('properties.destroy');
         Route::post('/landlords/onboard', [PropertyPortfolioController::class, 'onboardLandlord'])->name('landlords.onboard');
         Route::post('/landlords/onboard-json', [PropertyPortfolioController::class, 'onboardLandlordJson'])->name('landlords.onboard_json');
         Route::post('/properties/landlords', [PropertyPortfolioController::class, 'attachLandlord'])->name('properties.landlords.attach');
         Route::post('/properties/landlords/detach', [PropertyPortfolioController::class, 'detachLandlord'])->name('properties.landlords.detach');
         Route::post('/properties/landlords/ownership', [PropertyPortfolioController::class, 'updateLandlordOwnership'])->name('properties.landlords.ownership');
         Route::get('/landlords', [PropertyPortfolioController::class, 'landlordsIndex'])->name('landlords.index');
-        Route::get('/landlords/{landlord}', [PropertyPortfolioController::class, 'landlordsShow'])->name('landlords.show');
-        Route::get('/landlords/{landlord}/statement', [PropertyPortfolioController::class, 'landlordsStatement'])->name('landlords.statement');
+        Route::get('/landlords/{landlord}', [PropertyPortfolioController::class, 'landlordsShow'])->whereNumber('landlord')->name('landlords.show');
+        Route::get('/landlords/{landlord}/statement', [PropertyPortfolioController::class, 'landlordsStatement'])->whereNumber('landlord')->name('landlords.statement');
         Route::get('/properties/units', [PropertyPortfolioController::class, 'unitList'])->name('properties.units');
         Route::get('/properties/units/export', [PropertyPortfolioController::class, 'unitListExport'])->name('properties.units.export');
         Route::post('/units', [PropertyPortfolioController::class, 'storeUnit'])->middleware('property.permission:properties.manage')->name('units.store');
+        Route::post('/units/create-json', [PropertyPortfolioController::class, 'storeUnitJson'])->middleware('property.permission:properties.manage')->name('units.store_json');
         Route::post('/units/{unit}/status', [PropertyPortfolioController::class, 'updateUnitStatus'])->middleware('property.permission:properties.manage')->name('units.status');
         Route::delete('/units/{unit}', [PropertyPortfolioController::class, 'destroyUnit'])->middleware('property.permission:properties.manage')->name('units.destroy');
         Route::get('/properties/occupancy', [PropertyPortfolioController::class, 'occupancy'])->name('properties.occupancy');
@@ -178,7 +197,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/properties/amenities/attach', [PropertyAmenityController::class, 'attach'])->name('properties.amenities.attach');
         Route::post('/properties/amenities/detach', [PropertyAmenityController::class, 'detach'])->name('properties.amenities.detach');
         Route::delete('/properties/amenities/{amenity}', [PropertyAmenityController::class, 'destroy'])->name('properties.amenities.destroy');
-        Route::get('/properties/{property}', [PropertyPortfolioController::class, 'showProperty'])->name('properties.show');
+        Route::get('/properties/{property}', [PropertyPortfolioController::class, 'showProperty'])->whereNumber('property')->name('properties.show');
         Route::view('/properties', 'property.agent.properties.index')->name('properties.index');
 
         Route::get('/maintenance/requests', [PmMaintenanceWebController::class, 'requests'])->name('maintenance.requests');
@@ -258,6 +277,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/communications/bulk', [PropertyCommunicationsWebController::class, 'bulk'])->name('communications.bulk');
         Route::get('/communications/bulk/export', [PropertyCommunicationsWebController::class, 'bulkExport'])->name('communications.bulk.export');
         Route::post('/communications/bulk', [PropertyCommunicationsWebController::class, 'logBulk'])->middleware('property.permission:communications.manage')->name('communications.bulk.store');
+        Route::get('/communications/recipients', [PropertyCommunicationsWebController::class, 'recipients'])->middleware('property.permission:communications.manage')->name('communications.recipients');
         Route::get('/communications/templates', [PropertyCommunicationsWebController::class, 'templates'])->name('communications.templates');
         Route::post('/communications/templates', [PropertyCommunicationsWebController::class, 'storeTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.store');
         Route::delete('/communications/templates/{template}', [PropertyCommunicationsWebController::class, 'destroyTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.destroy');

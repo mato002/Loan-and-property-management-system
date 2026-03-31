@@ -10,6 +10,7 @@ use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
 use App\Services\PaymentMatchingService;
 use App\Services\Property\PropertyPaymentSettlementService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -48,8 +49,19 @@ class PropertyPaymentWebhookController extends Controller
         $paidAt = $this->normalizePaidAt($data['paid_at'] ?? null);
 
         $rawMessage = (string) ($data['raw_message'] ?? '');
+        if (! $this->isLikelyIncomingPaymentMessage($rawMessage)) {
+            return response()->json([
+                'ok' => true,
+                'status' => 'ignored',
+                'message' => 'SMS ignored: not a recognized incoming payment confirmation.',
+            ]);
+        }
+
         $parsed = $this->extractMpesaFields($rawMessage);
-        $providerTxnCode = (string) ($data['provider_txn_code'] ?? $parsed['provider_txn_code'] ?? '');
+        // Prefer payment timestamp parsed from SMS content over forwarder metadata timestamp.
+        $paidAt = $this->extractMpesaPaidAt($rawMessage) ?? $paidAt;
+        // Prefer transaction code extracted from SMS body, since some forwarders may send altered ref ids.
+        $providerTxnCode = (string) ($parsed['provider_txn_code'] ?? $data['provider_txn_code'] ?? '');
         if ($providerTxnCode === '') {
             // Deterministic fallback for idempotency when sender does not provide explicit txn code.
             $providerTxnCode = 'SMS-'.strtoupper(substr(sha1($rawMessage.'|'.(string) ($data['paid_at'] ?? now()->toIso8601String())), 0, 20));
@@ -71,19 +83,28 @@ class PropertyPaymentWebhookController extends Controller
             ? $daraja->normalizeMsisdn($phoneCandidate)
             : null;
 
-        $ingest = PmSmsIngest::query()->firstOrCreate(
-            ['provider_txn_code' => $providerTxnCode],
-            [
-                'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
-                'source_device' => $data['source_device'] ?? null,
-                'payer_phone' => $normalizedPhone,
-                'amount' => $amount,
-                'paid_at' => $paidAt ?? now(),
-                'raw_message' => $data['raw_message'] ?? null,
-                'payload' => $payload,
-                'match_status' => 'unmatched',
-            ]
-        );
+        try {
+            $ingest = PmSmsIngest::query()->firstOrCreate(
+                ['provider_txn_code' => $providerTxnCode],
+                [
+                    'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
+                    'source_device' => $data['source_device'] ?? null,
+                    'payer_phone' => $normalizedPhone,
+                    'amount' => $amount,
+                    'paid_at' => $paidAt ?? now(),
+                    'raw_message' => $data['raw_message'] ?? null,
+                    'payload' => $payload,
+                    'match_status' => 'unmatched',
+                ]
+            );
+        } catch (QueryException $e) {
+            if (! $this->isDuplicateKey($e)) {
+                throw $e;
+            }
+            $ingest = PmSmsIngest::query()
+                ->where('provider_txn_code', $providerTxnCode)
+                ->firstOrFail();
+        }
 
         // Idempotency: if this transaction was already linked to a payment, do nothing.
         if ($ingest->pm_payment_id) {
@@ -215,11 +236,49 @@ class PropertyPaymentWebhookController extends Controller
             ]);
         }
 
+        $phoneMatchedTenant = $normalizedPhone ? $this->findTenantByPhone($normalizedPhone) : null;
+        if (! $phoneMatchedTenant) {
+            $reason = 'No tenant found by payer phone.';
+            try {
+                $payments->storeUnmatched($tx, $reason, [
+                    'payment_method' => 'sms_forwarder',
+                ]);
+            } catch (QueryException $e) {
+                if (! $this->isDuplicateKey($e)) {
+                    throw $e;
+                }
+            }
+
+            $ingest->update([
+                'match_status' => 'unmatched',
+                'match_note' => $reason,
+            ]);
+
+            $auditLogs->decision('success', [
+                'stage' => 'sms_ingest',
+                'decision' => 'unmatched',
+                'transaction_id' => (string) $tx['transaction_id'],
+                'reason' => $reason,
+            ], 'sms_forwarder_decision');
+
+            return response()->json([
+                'ok' => true,
+                'ingest_id' => $ingest->id,
+                'status' => 'unmatched',
+            ]);
+        }
+
         $match = $matcher->match($tx);
         if (($match['tenant_id'] ?? null) === null) {
-            $payments->storeUnmatched($tx, (string) ($match['reason'] ?? 'No tenant match'), [
-                'payment_method' => 'sms_forwarder',
-            ]);
+            try {
+                $payments->storeUnmatched($tx, (string) ($match['reason'] ?? 'No tenant match'), [
+                    'payment_method' => 'sms_forwarder',
+                ]);
+            } catch (QueryException $e) {
+                if (! $this->isDuplicateKey($e)) {
+                    throw $e;
+                }
+            }
 
             $ingest->update([
                 'match_status' => 'unmatched',
@@ -285,9 +344,17 @@ class PropertyPaymentWebhookController extends Controller
 
         $out = [];
 
-        // Typical M-Pesa code: alphanumeric, often 8-12 chars, appears near start.
-        if (preg_match('/\b([A-Z0-9]{8,12})\b/u', $message, $m) === 1) {
-            $out['provider_txn_code'] = strtoupper((string) $m[1]);
+        // Prefer the token immediately before "Confirmed", which matches M-Pesa confirmation format.
+        if (preg_match('/\b([A-Z0-9]{8,12})\s+Confirmed\b/iu', $message, $m) === 1) {
+            $candidate = strtoupper((string) $m[1]);
+            if ($this->isLikelyTxnCode($candidate)) {
+                $out['provider_txn_code'] = $candidate;
+            }
+        } elseif (preg_match('/\b([A-Z0-9]{8,12})\b/u', $message, $m) === 1) {
+            $candidate = strtoupper((string) $m[1]);
+            if ($this->isLikelyTxnCode($candidate)) {
+                $out['provider_txn_code'] = $candidate;
+            }
         }
 
         // Match amount formats like "Ksh1,250.00" or "KES 1250" or "Ksh 1,250".
@@ -302,6 +369,96 @@ class PropertyPaymentWebhookController extends Controller
         }
 
         return $out;
+    }
+
+    private function extractMpesaPaidAt(string $message): ?Carbon
+    {
+        if (trim($message) === '') {
+            return null;
+        }
+
+        // Example: "... on 30/3/26 at 3:43 PM."
+        if (preg_match('/\bon\s+(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+at\s+(\d{1,2}):(\d{2})\s*(AM|PM)\b/iu', $message, $m) !== 1) {
+            return null;
+        }
+
+        $day = (int) $m[1];
+        $month = (int) $m[2];
+        $year = (int) $m[3];
+        $hour = (int) $m[4];
+        $minute = (int) $m[5];
+        $meridiem = strtoupper((string) $m[6]);
+
+        if ($year < 100) {
+            $year += 2000;
+        }
+        if ($meridiem === 'PM' && $hour < 12) {
+            $hour += 12;
+        }
+        if ($meridiem === 'AM' && $hour === 12) {
+            $hour = 0;
+        }
+
+        try {
+            return Carbon::create($year, $month, $day, $hour, $minute, 0, 'Africa/Nairobi')->utc();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function isLikelyTxnCode(string $value): bool
+    {
+        // M-Pesa transaction codes are alphanumeric; avoid matching plain phone numbers.
+        return preg_match('/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{8,12}$/', $value) === 1;
+    }
+
+    private function isDuplicateKey(QueryException $e): bool
+    {
+        $sqlState = (string) ($e->errorInfo[0] ?? '');
+        $driverCode = (int) ($e->errorInfo[1] ?? 0);
+
+        return $sqlState === '23000' || $driverCode === 1062;
+    }
+
+    private function isLikelyIncomingPaymentMessage(string $message): bool
+    {
+        $text = Str::lower(trim($message));
+        if ($text === '') {
+            return false;
+        }
+
+        // Exclude known non-payment or outgoing transaction notifications.
+        $negativeSignals = [
+            ' sent to ',
+            'fuliza',
+            'airtime',
+            'withdraw',
+            'withdrawn',
+            'moved from your m-pesa account',
+            'okoa jahazi',
+        ];
+        foreach ($negativeSignals as $signal) {
+            if (str_contains($text, $signal)) {
+                return false;
+            }
+        }
+
+        // Accept common incoming-payment style SMS patterns.
+        $positiveSignals = [
+            'received',
+            'received from',
+            'you have received',
+            'paid',
+            'payment received',
+            'confirmed',
+        ];
+        foreach ($positiveSignals as $signal) {
+            if (str_contains($text, $signal)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

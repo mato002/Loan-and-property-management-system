@@ -15,6 +15,7 @@ class UnassignedPayment extends Model
         'amount',
         'account_number',
         'phone',
+        'payment_method',
         'reason',
         'created_at',
     ];

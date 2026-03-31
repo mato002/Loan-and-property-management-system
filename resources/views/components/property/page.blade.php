@@ -18,7 +18,7 @@
             </div>
             @isset($actions)
                 @if (! $actions->isEmpty())
-                    <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full lg:w-auto min-w-0 shrink-0 lg:pt-1 [&>button]:w-full [&>button]:sm:w-auto">
+                    <div class="print-hide flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full lg:w-auto min-w-0 shrink-0 lg:pt-1 [&>button]:w-full [&>button]:sm:w-auto">
                         {{ $actions }}
                     </div>
                 @endif

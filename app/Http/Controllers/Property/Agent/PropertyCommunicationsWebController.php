@@ -3,9 +3,13 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
 use App\Models\PmMessageLog;
 use App\Models\PmMessageRead;
 use App\Models\PmMessageTemplate;
+use App\Models\PmTenant;
+use App\Models\Property;
+use App\Models\User;
 use App\Support\CsvExport;
 use App\Services\BulkSmsService;
 use Carbon\Carbon;
@@ -13,6 +17,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
@@ -168,6 +173,66 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return view('property.agent.communications.message_show', ['log' => $log]);
+    }
+
+    /**
+     * Returns a JSON list of phone numbers for a given group.
+     * Supported: tenants, landlords, staff.
+     */
+    public function recipients(Request $request): Response
+    {
+        $type = strtolower((string) $request->query('type', ''));
+        $propertyId = $request->integer('property_id') ?: null;
+
+        /** @var BulkSmsService $bulk */
+        $bulk = app(BulkSmsService::class);
+        $normalize = fn (?string $p) => $p ? $bulk->normalizeRecipientList($p)[0] ?? null : null;
+
+        $phones = [];
+
+        if ($type === 'tenants') {
+            $q = PmTenant::query()->whereNotNull('phone');
+            // Optional narrow by property via active leases tied to units of a property
+            if ($propertyId) {
+                $q->whereHas('leases.units', function (Builder $b) use ($propertyId) {
+                    $b->where('property_units.property_id', $propertyId);
+                });
+            }
+            $phones = $q->pluck('phone')->filter()->map($normalize)->filter()->unique()->values()->all();
+        } elseif ($type === 'staff') {
+            $phones = Employee::query()
+                ->whereNotNull('phone')
+                ->pluck('phone')
+                ->filter()
+                ->map($normalize)
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+        } elseif ($type === 'landlords') {
+            // Landlord phone numbers are not stored on users by default.
+            // If your app stores landlord phones elsewhere, adjust here.
+            // For now, attempt to infer via users who also have tenant profiles with phones.
+            $userIds = User::query()->where('property_portal_role', 'landlord')->pluck('id')->all();
+            if ($userIds !== []) {
+                $phones = PmTenant::query()
+                    ->whereIn('user_id', $userIds)
+                    ->whereNotNull('phone')
+                    ->pluck('phone')
+                    ->filter()
+                    ->map($normalize)
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+            } else {
+                $phones = [];
+            }
+        } else {
+            return response(['ok' => false, 'error' => 'Unknown type. Use tenants, landlords, or staff.'], 422);
+        }
+
+        return response(['ok' => true, 'type' => $type, 'count' => count($phones), 'phones' => array_values($phones)]);
     }
 
     public function logMessage(Request $request): RedirectResponse

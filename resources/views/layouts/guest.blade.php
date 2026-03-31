@@ -7,6 +7,7 @@
             $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
             $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
             $resolvedTitle = str_replace(config('app.name'), $companyName, $title);
+            $heroImage = 'https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=1800&q=80';
         @endphp
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -23,68 +24,50 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         <style>[x-cloak]{display:none!important}</style>
     </head>
-    <body class="min-h-screen antialiased bg-white text-slate-900" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">
+    <body class="min-h-screen antialiased bg-[#eef5f3] text-slate-900" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">
         <x-swal-flash />
-        <div class="min-h-screen flex flex-col lg:flex-row">
-            <div class="h-1.5 w-full shrink-0 bg-gradient-to-r from-[#1e3a8a] via-[#3B59FF] to-[#6d28d9] lg:hidden" aria-hidden="true"></div>
-            {{-- Form column --}}
-            <div class="relative z-10 flex w-full flex-1 flex-col px-6 py-8 sm:px-10 sm:py-12 lg:w-1/2 lg:max-w-none lg:flex-none lg:px-14 lg:py-16 xl:px-20">
-                <div class="mx-auto w-full max-w-md flex-1">
-                    {{ $slot }}
-                </div>
-            </div>
-
+        <div class="min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
             {{-- Visual column --}}
-            <aside class="relative hidden min-h-[280px] flex-1 overflow-hidden lg:flex lg:min-h-screen">
-                <div class="absolute inset-0 bg-gradient-to-br from-[#1e3a8a] via-[#3B59FF] to-[#6d28d9]"></div>
-                <div class="absolute -right-20 top-1/4 h-96 w-96 rounded-full bg-white/10 blur-3xl"></div>
-                <div class="absolute -left-16 bottom-1/4 h-80 w-80 rounded-full bg-violet-400/20 blur-3xl"></div>
-                <div class="absolute right-1/4 top-10 h-64 w-64 rounded-full border border-white/10 bg-white/5"></div>
-                <div class="absolute bottom-32 left-12 h-40 w-40 rounded-full bg-indigo-300/20 blur-2xl"></div>
+            <aside class="relative overflow-hidden flex min-h-[140px] lg:min-h-screen">
+                <div class="absolute inset-0">
+                    <img
+                        src="{{ $heroImage }}"
+                        alt=""
+                        class="h-full w-full object-cover object-center"
+                        loading="lazy"
+                        decoding="async"
+                    />
+                </div>
+                <div class="absolute inset-0 bg-gradient-to-br from-[#6fa79f]/85 via-[#4d8d82]/88 to-[#2f4f4f]/90"></div>
+                <div class="absolute -top-24 -left-20 h-72 w-72 rounded-full bg-white/15 blur-2xl"></div>
+                <div class="absolute bottom-10 left-8 h-44 w-44 rounded-full bg-emerald-200/30 blur-2xl"></div>
+                <div class="hidden lg:block absolute -right-8 top-1/2 -translate-y-1/2 h-[84%] w-24 rounded-l-[999px] bg-[#eef5f3]"></div>
 
-                <div class="relative z-10 flex w-full flex-col justify-center px-10 py-16 xl:px-16">
-                    <div class="mb-8">
-                        <p class="text-sm font-medium uppercase tracking-widest text-white/70">{{ $companyName }}</p>
-                        <h2 class="mt-2 max-w-sm text-3xl font-bold leading-tight text-white xl:text-4xl">
-                            {{ __('Operations, revenue, and trust — in one workspace.') }}
+                <div class="relative z-10 flex w-full flex-col justify-between px-5 py-4 lg:px-12 lg:py-12 text-white">
+                    <div>
+                        <p class="text-[11px] lg:text-sm font-semibold uppercase tracking-[0.18em] lg:tracking-[0.2em] text-white/75">{{ $companyName }}</p>
+                        <h2 class="mt-2 lg:mt-6 max-w-md text-lg lg:text-4xl font-extrabold leading-tight">
+                            {{ __('Welcome back to your operations workspace.') }}
                         </h2>
+                        <p class="mt-1.5 lg:mt-4 max-w-md text-xs lg:text-sm leading-relaxed text-white/85">
+                            {{ __('Track properties, finances, tenants, and reports from one secure portal with role-based access control.') }}
+                        </p>
                     </div>
 
-                    <div class="space-y-5">
-                        <div class="rounded-2xl bg-white/95 p-5 shadow-xl shadow-black/10 ring-1 ring-white/20 backdrop-blur-sm">
-                            <div class="flex items-start justify-between gap-3">
-                                <div>
-                                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('Portfolio pulse') }}</p>
-                                    <p class="mt-1 text-3xl font-bold tabular-nums text-slate-900">—</p>
-                                </div>
-                                <span class="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-bold text-white">Live</span>
-                            </div>
-                            <div class="mt-4 flex h-12 items-end gap-1">
-                                @foreach ([40, 65, 45, 80, 55, 90, 70] as $h)
-                                    <div class="flex-1 rounded-t bg-gradient-to-t from-amber-400 to-amber-300" style="height: {{ $h }}%"></div>
-                                @endforeach
-                            </div>
-                        </div>
-
-                        <div class="rounded-2xl bg-white/95 p-5 shadow-xl shadow-black/10 ring-1 ring-white/20 backdrop-blur-sm">
-                            <div class="flex gap-4">
-                                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-2xl" aria-hidden="true">🔐</div>
-                                <div>
-                                    <h3 class="font-semibold text-slate-900">{{ __('Your data, your rules') }}</h3>
-                                    <p class="mt-1 text-sm leading-relaxed text-slate-600">
-                                        {{ __('Role-based access keeps landlord, tenant, and agent views separated. Sign in with your staff credentials to continue.') }}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mt-12 flex gap-3 text-white/50">
-                        <span class="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-xs font-semibold">in</span>
-                        <span class="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 text-xs font-semibold">TT</span>
+                    <div class="hidden lg:block rounded-3xl border border-white/25 bg-white/10 p-5 backdrop-blur-sm">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-white/70">{{ __('Secure Access') }}</p>
+                        <p class="mt-2 text-lg font-semibold">{{ __('Sign in to continue') }}</p>
+                        <p class="mt-1 text-sm text-white/80">{{ __('Use your staff credentials to access property and loan modules.') }}</p>
                     </div>
                 </div>
             </aside>
+
+            {{-- Form column --}}
+            <div class="relative z-10 flex items-center justify-center px-6 py-10 sm:px-10 lg:px-14 xl:px-20 lg:-ml-8">
+                <div class="w-full max-w-md rounded-[2rem] bg-white px-7 py-8 shadow-[0_20px_45px_rgba(47,79,79,0.14)] ring-1 ring-[#dbe8e4] sm:px-9 sm:py-10">
+                    {{ $slot }}
+                </div>
+            </div>
         </div>
     </body>
 </html>

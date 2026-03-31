@@ -199,9 +199,23 @@ class LandlordReportService
 	 */
 	public function buildLandlordCommissionsReport(): array
 	{
-		$commissionPct = (float) PropertyPortalSetting::getValue('commission_default_percent', '10');
-		if ($commissionPct < 0) {
-			$commissionPct = 0.0;
+		$commissionDefaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
+		$commissionDefaultPct = is_numeric($commissionDefaultRaw) ? (float) $commissionDefaultRaw : 10.0;
+		if ($commissionDefaultPct < 0) {
+			$commissionDefaultPct = 0.0;
+		}
+
+		$commissionOverridesRaw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+		$commissionOverrides = [];
+		$decodedOverrides = json_decode($commissionOverridesRaw, true);
+		if (is_array($decodedOverrides)) {
+			foreach ($decodedOverrides as $propertyId => $pct) {
+				$pid = (int) $propertyId;
+				if ($pid <= 0 || ! is_numeric($pct)) {
+					continue;
+				}
+				$commissionOverrides[$pid] = max(0.0, (float) $pct);
+			}
 		}
 
 		$collectedByPropertyQ = DB::table('pm_payment_allocations as a')
@@ -227,11 +241,12 @@ class LandlordReportService
 			->orderBy('u.name')
 			->get();
 
-		$rawRows = $links->map(function ($link) use ($collectedByProperty, $commissionPct) {
+		$rawRows = $links->map(function ($link) use ($collectedByProperty, $commissionDefaultPct, $commissionOverrides) {
 			$pid = (int) $link->property_id;
 			$ownership = (float) ($link->ownership_percent ?? 0);
 			$income = ((float) ($collectedByProperty[$pid] ?? 0)) * ($ownership / 100);
-			$commission = $income * ($commissionPct / 100);
+			$rate = $commissionOverrides[$pid] ?? $commissionDefaultPct;
+			$commission = $income * ($rate / 100);
 
 			return [
 				'property' => (string) ($link->property_name ?? '—'),
@@ -246,7 +261,7 @@ class LandlordReportService
 
 		return [
 			'stats' => [
-				['label' => 'Commission rate', 'value' => number_format($commissionPct, 2).'%', 'hint' => 'Default setting'],
+				['label' => 'Default commission rate', 'value' => number_format($commissionDefaultPct, 2).'%', 'hint' => 'Per-property overrides apply'],
 				['label' => 'Income (collected)', 'value' => $this->money($totalIncome), 'hint' => 'Landlord share'],
 				['label' => 'Agent earns', 'value' => $this->money($totalCommission), 'hint' => 'Commission total'],
 			],
@@ -265,15 +280,70 @@ class LandlordReportService
 	 */
 	public function buildRentCollectionReport(): array
 	{
+		$landlords = User::query()
+			->where('property_portal_role', 'landlord')
+			->orderBy('name')
+			->get(['id', 'name']);
+		$landlordId = $this->filterLandlordId();
+
 		$query = PmPayment::query()->with(['tenant', 'invoices.unit.property']);
+		if ($landlordId !== null) {
+			$query->whereExists(function ($sub) use ($landlordId) {
+				$sub->selectRaw('1')
+					->from('pm_payment_allocations as a')
+					->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+					->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
+					->join('property_landlord as pl', 'pl.property_id', '=', 'u.property_id')
+					->whereColumn('a.pm_payment_id', 'pm_payments.id')
+					->where('pl.user_id', $landlordId);
+			});
+		}
 		$this->applyDateRange($query, 'paid_at');
 		$payments = $query->latest('paid_at')->latest('id')->limit(300)->get();
 
+		$channelSummary = $payments
+			->where('status', PmPayment::STATUS_COMPLETED)
+			->groupBy(fn (PmPayment $p) => (string) ($p->channel ?: 'unknown'))
+			->map(fn ($group, $channel) => [
+				'channel' => ucfirst((string) $channel),
+				'count' => $group->count(),
+				'amount' => (float) $group->sum('amount'),
+			])
+			->sortByDesc('amount')
+			->values()
+			->all();
+
+		$propertySummary = collect();
+		foreach ($payments as $payment) {
+			if ($payment->status !== PmPayment::STATUS_COMPLETED) {
+				continue;
+			}
+			foreach ($payment->invoices as $invoice) {
+				$key = (string) ($invoice->unit?->property?->name ?? '—');
+				$alloc = (float) ($invoice->pivot?->amount ?? 0);
+				if ($alloc <= 0) {
+					continue;
+				}
+				if (! $propertySummary->has($key)) {
+					$propertySummary->put($key, 0.0);
+				}
+				$propertySummary->put($key, (float) $propertySummary->get($key) + $alloc);
+			}
+		}
+		$propertySummary = $propertySummary
+			->map(fn ($amount, $property) => ['property' => (string) $property, 'amount' => (float) $amount])
+			->sortByDesc('amount')
+			->values()
+			->all();
+
 		return [
 			'stats' => [
+				['label' => 'Landlord', 'value' => (string) ($landlords->firstWhere('id', $landlordId)?->name ?? 'All'), 'hint' => 'Filter'],
 				['label' => 'Payments', 'value' => (string) $payments->count(), 'hint' => 'Recent'],
 				['label' => 'Completed', 'value' => (string) $payments->where('status', PmPayment::STATUS_COMPLETED)->count(), 'hint' => 'Settled'],
 				['label' => 'Collected', 'value' => $this->money((float) $payments->where('status', PmPayment::STATUS_COMPLETED)->sum('amount')), 'hint' => 'Completed only'],
+				['label' => 'Pending', 'value' => (string) $payments->where('status', PmPayment::STATUS_PENDING)->count(), 'hint' => 'Awaiting settlement'],
+				['label' => 'Failed', 'value' => (string) $payments->where('status', PmPayment::STATUS_FAILED)->count(), 'hint' => 'Failed attempts'],
 			],
 			'columns' => ['Date', 'Tenant', 'Property / Unit', 'Channel', 'Amount', 'Reference', 'Status'],
 			'tableRows' => $payments->map(function (PmPayment $payment) {
@@ -294,6 +364,31 @@ class LandlordReportService
 					ucfirst((string) $payment->status),
 				];
 			})->all(),
+			'exportColumns' => ['Date', 'Tenant', 'Property / Unit', 'Channel', 'Amount', 'Reference', 'Status'],
+			'exportRows' => $payments->map(function (PmPayment $payment) {
+				$allocations = $payment->invoices
+					->map(fn ($invoice) => (($invoice->unit?->property?->name ?? '—').' / '.($invoice->unit?->label ?? '—')))
+					->filter()
+					->unique()
+					->values()
+					->implode(', ');
+
+				return [
+					$this->dateTime((string) $payment->paid_at),
+					(string) ($payment->tenant?->name ?? '—'),
+					$allocations !== '' ? $allocations : '—',
+					ucfirst((string) ($payment->channel ?? '—')),
+					number_format((float) $payment->amount, 2, '.', ''),
+					(string) ($payment->external_ref ?? '—'),
+					ucfirst((string) $payment->status),
+				];
+			})->all(),
+			'showLandlordFilter' => true,
+			'landlords' => $landlords,
+			'selectedLandlordId' => $landlordId,
+			'channelSummary' => $channelSummary,
+			'propertySummary' => $propertySummary,
+			'showPrintAction' => true,
 		];
 	}
 
