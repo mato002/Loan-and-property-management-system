@@ -50,6 +50,9 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
 
         Route::get('/revenue/rent-roll', [RevenueController::class, 'rentRoll'])->name('revenue.rent_roll');
         Route::get('/revenue/arrears', [RevenueController::class, 'arrears'])->name('revenue.arrears');
+        Route::post('/revenue/arrears/reminders', [RevenueController::class, 'sendArrearsReminders'])
+            ->middleware('property.permission:communications.manage')
+            ->name('revenue.arrears.reminders');
         Route::get('/revenue/invoices', [PmInvoiceController::class, 'invoices'])->name('revenue.invoices');
         Route::post('/revenue/invoices', [PmInvoiceController::class, 'store'])->name('invoices.store');
         Route::get('/revenue/penalties', [RevenueController::class, 'penalties'])->name('revenue.penalties');

@@ -5,11 +5,12 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\EquitySyncRun;
 use App\Models\Payment;
-use App\Models\PmTenant;
 use App\Models\PmSmsIngest;
+use App\Models\PmTenant;
 use App\Models\UnassignedPayment;
 use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
+use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,9 +57,24 @@ class EquitySyncController extends Controller
         $hasPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
         $query = $this->buildUnmatchedQuery($request, $hasPaymentMethod);
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $items = $query->paginate($perPage)->withQueryString();
+
+        $txnIds = $items->getCollection()->pluck('transaction_id')->filter()->values()->all();
+        $smsSourceMap = $this->loadSmsSourceMap($txnIds);
+        $items->setCollection(
+            $items->getCollection()->map(function ($item) use ($hasPaymentMethod, $smsSourceMap) {
+                $item->source_label = $this->resolveSourceLabel(
+                    (string) ($item->transaction_id ?? ''),
+                    $hasPaymentMethod ? (string) ($item->payment_method ?? '') : '',
+                    $smsSourceMap
+                );
+
+                return $item;
+            })
+        );
 
         return view('property.agent.equity.unmatched_payments', [
-            'items' => $query->paginate($perPage)->withQueryString(),
+            'items' => $items,
             'hasPaymentMethod' => $hasPaymentMethod,
             'filters' => [
                 'q' => (string) $request->query('q', ''),
@@ -78,7 +94,34 @@ class EquitySyncController extends Controller
 
         $hasPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
         $query = $this->buildUnmatchedQuery($request, $hasPaymentMethod);
+        $txnIds = (clone $query)->pluck('transaction_id')->filter()->values()->all();
+        $smsSourceMap = $this->loadSmsSourceMap($txnIds);
         $format = strtolower((string) $request->query('format', 'csv'));
+        if ($format === 'pdf') {
+            return TabularExport::stream(
+                'unmatched-payments-'.now()->format('Ymd_His'),
+                ['Date', 'Transaction', 'Amount', 'Account', 'Phone', 'Source', 'Reason'],
+                function () use ($query, $hasPaymentMethod, $smsSourceMap) {
+                    foreach ($query->cursor() as $item) {
+                        yield [
+                            optional($item->created_at)->format('Y-m-d H:i:s'),
+                            (string) $item->transaction_id,
+                            number_format((float) $item->amount, 2, '.', ''),
+                            (string) ($item->account_number ?? ''),
+                            (string) ($item->phone ?? ''),
+                            $this->resolveSourceLabel(
+                                (string) ($item->transaction_id ?? ''),
+                                $hasPaymentMethod ? (string) ($item->payment_method ?? '') : '',
+                                $smsSourceMap
+                            ),
+                            (string) ($item->reason ?? ''),
+                        ];
+                    }
+                },
+                'pdf'
+            );
+        }
+
         $isXls = $format === 'xls';
         $sep = $isXls ? "\t" : ",";
         $stamp = now()->format('Ymd_His');
@@ -87,7 +130,7 @@ class EquitySyncController extends Controller
             ? 'application/vnd.ms-excel; charset=UTF-8'
             : 'text/csv; charset=UTF-8';
 
-        return response()->streamDownload(function () use ($query, $sep, $hasPaymentMethod) {
+        return response()->streamDownload(function () use ($query, $sep, $hasPaymentMethod, $smsSourceMap) {
             $out = fopen('php://output', 'w');
             if (! $out) {
                 return;
@@ -105,7 +148,11 @@ class EquitySyncController extends Controller
                     number_format((float) $item->amount, 2, '.', ''),
                     (string) ($item->account_number ?? ''),
                     (string) ($item->phone ?? ''),
-                    $hasPaymentMethod && (string) ($item->payment_method ?? '') === 'sms_forwarder' ? 'SMS Forwarder' : 'Equity',
+                    $this->resolveSourceLabel(
+                        (string) ($item->transaction_id ?? ''),
+                        $hasPaymentMethod ? (string) ($item->payment_method ?? '') : '',
+                        $smsSourceMap
+                    ),
                     (string) ($item->reason ?? ''),
                 ];
 
@@ -134,6 +181,17 @@ class EquitySyncController extends Controller
         $items = $this->buildUnmatchedQuery($request, $hasPaymentMethod)
             ->limit(2000)
             ->get();
+        $txnIds = $items->pluck('transaction_id')->filter()->values()->all();
+        $smsSourceMap = $this->loadSmsSourceMap($txnIds);
+        $items = $items->map(function ($item) use ($hasPaymentMethod, $smsSourceMap) {
+            $item->source_label = $this->resolveSourceLabel(
+                (string) ($item->transaction_id ?? ''),
+                $hasPaymentMethod ? (string) ($item->payment_method ?? '') : '',
+                $smsSourceMap
+            );
+
+            return $item;
+        });
 
         return response()->view('property.agent.equity.unmatched_payments_print', [
             'items' => $items,
@@ -193,6 +251,13 @@ class EquitySyncController extends Controller
             'provider' => $isSms ? 'mpesa' : 'equity',
             'message' => 'Manually assigned by agent from unposted payments queue.',
         ];
+
+        // A matching unmatched ledger row may already exist with the same transaction_id.
+        // Remove only unmatched entries so we can post the matched payment without unique-key collision.
+        Payment::query()
+            ->where('transaction_id', (string) $unassignedPayment->transaction_id)
+            ->where('status', 'unmatched')
+            ->delete();
 
         $payment = $payments->storeMatched($tx, (int) $data['tenant_id'], 'manual', $options);
 
@@ -379,6 +444,43 @@ class EquitySyncController extends Controller
         }
 
         return $query;
+    }
+
+    /**
+     * @param  array<int,string>  $transactionIds
+     * @return array<string,string>
+     */
+    private function loadSmsSourceMap(array $transactionIds): array
+    {
+        if ($transactionIds === []) {
+            return [];
+        }
+
+        return PmSmsIngest::query()
+            ->whereIn('provider_txn_code', $transactionIds)
+            ->get(['provider_txn_code', 'provider'])
+            ->mapWithKeys(function (PmSmsIngest $ingest) {
+                $provider = strtolower((string) ($ingest->provider ?? ''));
+                $label = $provider !== '' ? 'SMS Forwarder ('.strtoupper($provider).')' : 'SMS Forwarder';
+
+                return [(string) $ingest->provider_txn_code => $label];
+            })
+            ->all();
+    }
+
+    /**
+     * @param  array<string,string>  $smsSourceMap
+     */
+    private function resolveSourceLabel(string $transactionId, string $paymentMethod, array $smsSourceMap): string
+    {
+        if (isset($smsSourceMap[$transactionId])) {
+            return $smsSourceMap[$transactionId];
+        }
+        if ($paymentMethod === 'sms_forwarder') {
+            return 'SMS Forwarder';
+        }
+
+        return 'Equity';
     }
 }
 

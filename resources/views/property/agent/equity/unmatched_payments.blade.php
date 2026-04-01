@@ -5,6 +5,10 @@
         title="Unmatched Payments"
         subtitle="Transactions from Equity and SMS Forwarder that could not be auto-matched and require manual assignment."
     >
+        <div
+            x-data="{ printOpen: false, printUrl: '{{ route('property.equity.unmatched.print', request()->query()) }}' }"
+            class="space-y-4"
+        >
         <form method="get" class="mb-4 flex flex-wrap items-end gap-3">
             <div>
                 <label class="text-xs text-slate-500">Search</label>
@@ -36,7 +40,7 @@
             </div>
             <button class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Apply</button>
             <a href="{{ route('property.equity.unmatched') }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
-        </div>
+        </form>
 
         <div class="mb-4 flex flex-wrap items-center gap-2">
             <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'csv'])) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
@@ -45,10 +49,17 @@
             <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'xls'])) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Export XLS
             </a>
-            <a href="{{ route('property.equity.unmatched.print', request()->query()) }}" target="_blank" rel="noopener" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                Print
+            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'pdf'])) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                Export PDF
             </a>
-        </form>
+            <button
+                type="button"
+                @click="printOpen = true"
+                class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+                Print
+            </button>
+        </div>
 
         <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <table class="w-full text-sm">
@@ -72,13 +83,7 @@
                             <td class="px-4 py-3 text-right">{{ number_format((float) $item->amount, 2) }}</td>
                             <td class="px-4 py-3">{{ $item->account_number ?: '—' }}</td>
                             <td class="px-4 py-3">{{ $item->phone ?: '—' }}</td>
-                            <td class="px-4 py-3">
-                                @if (($item->payment_method ?? '') === 'sms_forwarder')
-                                    SMS Forwarder
-                                @else
-                                    Equity
-                                @endif
-                            </td>
+                            <td class="px-4 py-3">{{ $item->source_label ?? 'Equity' }}</td>
                             <td class="px-4 py-3">{{ $item->reason }}</td>
                             <td class="px-4 py-3 text-right">
                                 <a
@@ -100,6 +105,36 @@
                 Showing {{ $items->firstItem() ?? 0 }}-{{ $items->lastItem() ?? 0 }} of {{ $items->total() }}
             </p>
             {{ $items->links() }}
+        </div>
+
+        <div
+            x-show="printOpen"
+            x-cloak
+            class="fixed inset-0 z-[70] bg-slate-900/50 p-4"
+        >
+            <div class="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                    <h3 class="text-sm font-semibold text-slate-900">Print Preview - Unmatched Payments</h3>
+                    <div class="flex items-center gap-2">
+                        <button
+                            type="button"
+                            @click="$refs.printFrame?.contentWindow?.print()"
+                            class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                        >
+                            Print
+                        </button>
+                        <button
+                            type="button"
+                            @click="printOpen = false"
+                            class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+                <iframe x-ref="printFrame" :src="printUrl" class="h-full w-full border-0"></iframe>
+            </div>
+        </div>
         </div>
     </x-property.page>
 </x-property-layout>

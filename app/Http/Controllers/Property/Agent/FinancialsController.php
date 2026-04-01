@@ -12,6 +12,7 @@ use App\Support\CsvExport;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\Request;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -333,6 +334,19 @@ class FinancialsController extends Controller
             $baseRent = ((float) ($collectedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
             $ratePct = $overrides[(int) $link->property_id] ?? $defaultPct;
             $accrued = $baseRent * ($ratePct / 100);
+            $invoicedBase = ((float) ($invoicedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
+            $delta = max(0.0, ($invoicedBase - $baseRent) * ($ratePct / 100));
+
+            $ownerHref = route('property.landlords.show', ['landlord' => (int) $link->user_id], false);
+            $statementHref = route('property.landlords.statement', ['landlord' => (int) $link->user_id], false);
+            $propertyHref = route('property.properties.show', ['property' => (int) $link->property_id], false);
+            $actions = new HtmlString(
+                '<div class="flex flex-wrap items-center gap-1.5">'
+                .'<a href="'.$ownerHref.'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Owner</a>'
+                .'<a href="'.$statementHref.'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Statement</a>'
+                .'<a href="'.$propertyHref.'" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Property</a>'
+                .'</div>'
+            );
 
             return [
                 $periodLabel,
@@ -341,8 +355,8 @@ class FinancialsController extends Controller
                 PropertyMoney::kes($baseRent),
                 number_format($ratePct, 2).'%',
                 PropertyMoney::kes($accrued),
-                $accrued > 0 ? 'Accrued' : 'No activity',
-                '—',
+                $delta > 0 ? 'Review delta' : ($accrued > 0 ? 'Accrued' : 'No activity'),
+                $actions,
             ];
         })->all();
 
@@ -353,19 +367,27 @@ class FinancialsController extends Controller
             $ownership = ((float) $link->ownership_percent) / 100;
             $baseCollected = ((float) ($collectedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
             $baseInvoiced = ((float) ($invoicedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
-            $totalAccrued += $baseCollected * ($defaultPct / 100);
-            $totalInvoiced += $baseInvoiced * ($defaultPct / 100);
-            $totalPaid += $baseCollected * ($defaultPct / 100);
+            $ratePct = $overrides[(int) $link->property_id] ?? $defaultPct;
+            $totalAccrued += $baseCollected * ($ratePct / 100);
+            $totalInvoiced += $baseInvoiced * ($ratePct / 100);
+            $totalPaid += $baseCollected * ($ratePct / 100);
         }
 
         $openDelta = max(0.0, $totalInvoiced - $totalPaid);
 
         if ((string) $request->query('export', '') === 'csv') {
+            $exportRows = array_map(static function (array $row): array {
+                $copy = $row;
+                $copy[7] = 'Owner | Statement | Property';
+
+                return $copy;
+            }, $rows);
+
             return CsvExport::stream(
                 'financials_commission_'.now()->format('Ymd_His').'.csv',
                 ['Period', 'Owner', 'Property', 'Base Rent', 'Fee %', 'Accrued', 'Status', 'Actions'],
-                function () use ($rows) {
-                    foreach ($rows as $row) {
+                function () use ($exportRows) {
+                    foreach ($exportRows as $row) {
                         yield $row;
                     }
                 }

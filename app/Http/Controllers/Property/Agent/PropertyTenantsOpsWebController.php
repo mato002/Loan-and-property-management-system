@@ -18,6 +18,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class PropertyTenantsOpsWebController extends Controller
@@ -311,12 +312,38 @@ class PropertyTenantsOpsWebController extends Controller
             ];
         })->all();
 
+        $tenants = PmTenant::query()->orderBy('name')->get();
+        $units = PropertyUnit::query()->with('property')->orderBy('property_id')->get();
+
+        // Auto-pick the most recent invoiced unit per tenant when creating a notice.
+        $tenantUnitMap = DB::table('pm_invoices as i')
+            ->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
+            ->whereNotNull('i.property_unit_id')
+            ->selectRaw('i.pm_tenant_id as tenant_id, i.property_unit_id as unit_id, MAX(COALESCE(i.issue_date, i.due_date, DATE(i.created_at))) as latest_date')
+            ->groupBy('i.pm_tenant_id', 'i.property_unit_id')
+            ->orderByDesc('latest_date')
+            ->get()
+            ->groupBy('tenant_id')
+            ->map(static function (Collection $rows): ?int {
+                $first = $rows->first();
+                if (! $first) {
+                    return null;
+                }
+
+                $unitId = (int) ($first->unit_id ?? 0);
+
+                return $unitId > 0 ? $unitId : null;
+            })
+            ->filter(static fn (?int $unitId): bool => $unitId !== null)
+            ->toArray();
+
         return view('property.agent.tenants.notices', [
             'stats' => $stats,
             'columns' => ['Tenant', 'Unit', 'Type', 'Status', 'Due', 'By', 'Actions'],
             'tableRows' => $rows,
-            'tenants' => PmTenant::query()->orderBy('name')->get(),
-            'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
+            'tenants' => $tenants,
+            'units' => $units,
+            'tenantUnitMap' => $tenantUnitMap,
             'noticeTemplate' => $noticeTemplate,
             'workflowAutoReminders' => $workflowAutoReminders,
             'reminderLeadDays' => $reminderLeadDays,

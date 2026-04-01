@@ -8,6 +8,7 @@ use App\Modules\Reporting\Landlord\LandlordReportService;
 use App\Modules\Reporting\Support\ReportFilters;
 use App\Modules\Reporting\Tenant\AgingBalanceReportBuilder;
 use App\Modules\Reporting\Tenant\TenantReportService;
+use App\Support\TabularExport;
 use App\Models\PmAccountingEntry;
 use App\Models\PmInvoice;
 use App\Models\PropertyPortalSetting;
@@ -21,6 +22,7 @@ use App\Models\PmUnitMovement;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmVendor;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
@@ -633,41 +635,64 @@ class PropertyReportsController extends Controller
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    public function reportPage(Request $request, string $reportKey): View
+    public function reportPage(Request $request, string $reportKey): View|StreamedResponse
     {
         $reports = $this->reportDefinitions();
         abort_unless(isset($reports[$reportKey]), 404);
 
         $report = $reports[$reportKey];
         $payload = ($report['builder'])();
+        $q = trim((string) $request->query('q', ''));
+        $perPage = min(200, max(10, (int) $request->integer('per_page', (int) ($payload['perPage'] ?? 30))));
+
+        if ($q !== '' && ! isset($payload['paginator']) && isset($payload['tableRows']) && is_array($payload['tableRows'])) {
+            $payload['tableRows'] = array_values(array_filter(
+                $payload['tableRows'],
+                static function ($row) use ($q): bool {
+                    $cells = array_map(static function ($cell): string {
+                        if ($cell instanceof HtmlString) {
+                            return strip_tags((string) $cell);
+                        }
+                        if (is_scalar($cell) || $cell === null) {
+                            return (string) $cell;
+                        }
+
+                        return (string) json_encode($cell);
+                    }, (array) $row);
+                    $haystack = mb_strtolower(implode(' ', $cells));
+
+                    return str_contains($haystack, mb_strtolower($q));
+                }
+            ));
+        }
+
+        if (! isset($payload['paginator']) && isset($payload['tableRows']) && is_array($payload['tableRows'])) {
+            $payload['paginator'] = $this->paginateRows($payload['tableRows'], $perPage, $request);
+            $payload['tableRows'] = $payload['paginator']->getCollection()->all();
+            $payload['perPage'] = $perPage;
+        }
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true) && ! empty($payload['exportRows'])) {
+        if (in_array($export, ['csv', 'xls', 'pdf'], true) && (! empty($payload['exportRows']) || ! empty($payload['tableRows']))) {
             $columns = (array) ($payload['exportColumns'] ?? $payload['columns'] ?? []);
-            $rows = (array) ($payload['exportRows'] ?? []);
+            $rows = (array) ($payload['exportRows'] ?? $payload['tableRows'] ?? []);
             $safeTitle = preg_replace('/[^a-z0-9\-]+/i', '-', (string) ($report['title'] ?? 'report'));
             $baseName = strtolower(trim((string) $safeTitle, '-'));
 
             if ($export === 'pdf') {
-                return response()->streamDownload(function () use ($columns, $rows, $report) {
-                    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'.e((string) ($report['title'] ?? 'Report')).'</title>';
-                    echo '<style>body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:12px;margin:24px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;}th{background:#f8fafc;font-weight:600;font-size:11px;text-transform:uppercase;}</style>';
-                    echo '</head><body><h1>'.e((string) ($report['title'] ?? 'Report')).'</h1><table><thead><tr>';
-                    foreach ($columns as $col) {
-                        echo '<th>'.e((string) $col).'</th>';
-                    }
-                    echo '</tr></thead><tbody>';
-                    foreach ($rows as $row) {
-                        echo '<tr>';
-                        foreach ((array) $row as $cell) {
-                            echo '<td>'.e((string) $cell).'</td>';
+                return TabularExport::stream(
+                    $baseName.'-'.now()->format('Ymd_His'),
+                    $columns,
+                    function () use ($rows) {
+                        foreach ($rows as $row) {
+                            yield array_map(
+                                static fn ($cell) => is_scalar($cell) || $cell === null ? $cell : json_encode($cell),
+                                (array) $row
+                            );
                         }
-                        echo '</tr>';
-                    }
-                    echo '</tbody></table></body></html>';
-                }, $baseName.'-'.now()->format('Ymd_His').'.pdf', [
-                    'Content-Type' => 'text/html; charset=UTF-8',
-                ]);
+                    },
+                    TabularExport::FORMAT_PDF
+                );
             }
 
             $delimiter = $export === 'xls' ? "\t" : ',';
@@ -701,8 +726,29 @@ class PropertyReportsController extends Controller
                 'from' => $this->filterDateFrom(),
                 'to' => $this->filterDateTo(),
                 'property' => $this->filterPropertySearch(),
+                'q' => $q,
+                'per_page' => (string) $perPage,
             ],
         ], $payload));
+    }
+
+    /**
+     * @param array<int,mixed> $rows
+     */
+    private function paginateRows(array $rows, int $perPage, Request $request): LengthAwarePaginator
+    {
+        $page = max(1, (int) $request->query('page', 1));
+        $total = count($rows);
+        $offset = ($page - 1) * $perPage;
+        $items = array_slice($rows, $offset, $perPage);
+
+        return (new LengthAwarePaginator(
+            $items,
+            $total,
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        ))->withQueryString();
     }
 
     public function exportReportCsv(Request $request, string $reportKey): StreamedResponse
@@ -784,12 +830,14 @@ class PropertyReportsController extends Controller
                 'group' => 'Landlord Reports',
                 'back_route' => 'property.reports.landlord',
                 'builder' => fn () => $this->landlordReports->buildLandlordBalanceSummaryReport(),
+                'view' => 'property.agent.reports.landlord.balance_summary',
             ],
             'landlord_rental_income_commissions' => [
                 'title' => 'Rental Income Commissions',
                 'group' => 'Landlord Reports',
                 'back_route' => 'property.reports.landlord',
                 'builder' => fn () => $this->landlordReports->buildLandlordCommissionsReport(),
+                'view' => 'property.agent.reports.landlord.rental_income_commissions',
             ],
             'landlord_rent_collection' => [
                 'title' => 'Rent Collection Report',
@@ -803,6 +851,7 @@ class PropertyReportsController extends Controller
                 'group' => 'Landlord Reports',
                 'back_route' => 'property.reports.landlord',
                 'builder' => fn () => $this->landlordReports->buildPropertyStatementReport(),
+                'view' => 'property.agent.reports.landlord.property_statement',
             ],
             'expense_income_expenses_summary' => [
                 'title' => 'Income & Expenses Summary',

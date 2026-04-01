@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Models\PmInvoice;
+use App\Models\PmMessageLog;
 use App\Models\PmPenaltyRule;
+use App\Services\BulkSmsService;
 use App\Services\Property\PropertyDashboardStats;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\RentRollQuery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\View\View;
 
 class RevenueController extends Controller
@@ -52,9 +55,11 @@ class RevenueController extends Controller
 
         $rows = $invoices->map(function (PmInvoice $i) {
             $bal = max(0, (float) $i->amount - (float) $i->amount_paid);
-            $days = now()->diffInDays($i->due_date);
+            $days = (int) $i->due_date->startOfDay()->diffInDays(now()->startOfDay(), true);
             $workflow = $days >= 30 ? 'Escalated' : ($days >= 14 ? 'Follow-up' : 'Reminder');
-            $owner = new HtmlString('<a href="'.route('property.tenants.notices').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Open notices</a>');
+            $owner = new HtmlString(
+                '<a href="'.route('property.tenants.notices', ['tenant_id' => $i->pm_tenant_id, 'view' => 1], absolute: false).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Open notices</a>'
+            );
             $lastContact = $i->updated_at?->format('Y-m-d') ?? '—';
 
             return [
@@ -74,6 +79,125 @@ class RevenueController extends Controller
             'columns' => ['Tenant', 'Unit', 'Oldest due', 'Days late', 'Balance', 'Last contact', 'Workflow', 'Owner'],
             'tableRows' => $rows,
         ]);
+    }
+
+    public function sendArrearsReminders(Request $request, BulkSmsService $sms): RedirectResponse
+    {
+        $data = $request->validate([
+            'channel' => ['required', 'in:sms,email,both'],
+            'template_key' => ['required', 'in:friendly,firm,final'],
+        ]);
+
+        $templates = [
+            'friendly' => "Dear {tenant}, this is a reminder that your rent invoice {invoice_no} for {property_unit} is overdue by {days_overdue} day(s). Amount due: KES {balance_due}. Please make payment as soon as possible. If already paid, kindly share your receipt.",
+            'firm' => "Dear {tenant}, your rent invoice {invoice_no} for {property_unit} is now {days_overdue} day(s) overdue. Outstanding amount: KES {balance_due}. Please clear this balance immediately to avoid penalties or restrictions.",
+            'final' => "FINAL NOTICE: {tenant}, invoice {invoice_no} for {property_unit} remains unpaid ({days_overdue} day(s) overdue). Amount due: KES {balance_due}. Kindly settle urgently or contact management today.",
+        ];
+        $template = $templates[$data['template_key']] ?? $templates['friendly'];
+
+        $invoices = PmInvoice::query()
+            ->with(['tenant:id,name,email,phone', 'unit:id,label,property_id', 'unit.property:id,name'])
+            ->where('status', '!=', PmInvoice::STATUS_DRAFT)
+            ->whereColumn('amount_paid', '<', 'amount')
+            ->where('due_date', '<=', now()->toDateString())
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->limit(500)
+            ->get();
+
+        $sentSms = 0;
+        $sentEmail = 0;
+        $failed = 0;
+        $today = now()->toDateString();
+
+        foreach ($invoices as $inv) {
+            $tenant = $inv->tenant;
+            if (! $tenant) {
+                continue;
+            }
+
+            $balance = max(0.0, (float) $inv->amount - (float) $inv->amount_paid);
+            if ($balance <= 0) {
+                continue;
+            }
+
+            $dueDate = $inv->due_date?->toDateString();
+            if (! $dueDate) {
+                continue;
+            }
+
+            $daysOverdue = max(0, now()->diffInDays($inv->due_date, false) * -1);
+            $propertyUnit = trim((string) (($inv->unit?->property?->name ?? '—').'/'.($inv->unit?->label ?? '—')), '/');
+            $subject = '[ARREARS] '.$inv->invoice_no.' D+'.(string) $daysOverdue;
+            $message = strtr($template, [
+                '{tenant}' => (string) $tenant->name,
+                '{invoice_no}' => (string) $inv->invoice_no,
+                '{property_unit}' => $propertyUnit,
+                '{due_date}' => $dueDate,
+                '{days_overdue}' => (string) $daysOverdue,
+                '{balance_due}' => number_format($balance, 2),
+            ]);
+
+            if (in_array($data['channel'], ['email', 'both'], true) && ! empty($tenant->email)) {
+                $alreadyEmailed = PmMessageLog::query()
+                    ->where('channel', 'email')
+                    ->where('subject', $subject)
+                    ->where('to_address', (string) $tenant->email)
+                    ->whereDate('created_at', $today)
+                    ->exists();
+
+                if (! $alreadyEmailed) {
+                    try {
+                        Mail::raw($message, function ($m) use ($tenant, $subject) {
+                            $m->to((string) $tenant->email)->subject($subject);
+                        });
+                        PmMessageLog::query()->create([
+                            'user_id' => $request->user()?->id,
+                            'channel' => 'email',
+                            'to_address' => (string) $tenant->email,
+                            'subject' => $subject,
+                            'body' => $message,
+                            'delivery_status' => 'sent',
+                            'sent_at' => now(),
+                        ]);
+                        $sentEmail++;
+                    } catch (\Throwable $e) {
+                        $failed++;
+                    }
+                }
+            }
+
+            if (in_array($data['channel'], ['sms', 'both'], true) && ! empty($tenant->phone)) {
+                $phones = $sms->normalizeRecipientList((string) $tenant->phone);
+                if ($phones !== []) {
+                    $alreadySms = PmMessageLog::query()
+                        ->where('channel', 'sms')
+                        ->where('subject', $subject)
+                        ->whereDate('created_at', $today)
+                        ->exists();
+
+                    if (! $alreadySms) {
+                        $result = $sms->sendNow($message, $phones, $request->user()?->id, null);
+                        if (($result['ok'] ?? false) === true) {
+                            PmMessageLog::query()->create([
+                                'user_id' => $request->user()?->id,
+                                'channel' => 'sms',
+                                'to_address' => implode(',', $phones),
+                                'subject' => $subject,
+                                'body' => $message,
+                                'delivery_status' => 'sent',
+                                'sent_at' => now(),
+                            ]);
+                            $sentSms++;
+                        } else {
+                            $failed++;
+                        }
+                    }
+                }
+            }
+        }
+
+        return back()->with('success', "Arrears reminders sent. SMS: {$sentSms}, Email: {$sentEmail}, Failed: {$failed}.");
     }
 
     public function penalties(): View

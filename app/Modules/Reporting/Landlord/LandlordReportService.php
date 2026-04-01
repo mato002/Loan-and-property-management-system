@@ -10,7 +10,9 @@ use App\Models\PmPayment;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
 use App\Modules\Reporting\Support\ReportFilters;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class LandlordReportService
@@ -163,34 +165,102 @@ class LandlordReportService
 	 */
 	public function buildLandlordBalanceSummaryReport(): array
 	{
-		$query = PmLandlordLedgerEntry::query()
-			->select('user_id', DB::raw("SUM(CASE WHEN direction='credit' THEN amount ELSE 0 END) as paid_amount"))
-			->groupBy('user_id')
-			->orderByDesc('paid_amount')
-			->limit(200);
+		$landlords = User::query()
+			->where('property_portal_role', 'landlord')
+			->orderBy('name')
+			->get(['id', 'name']);
+		$selectedLandlordId = $this->filterLandlordId();
+		$search = trim((string) request()->query('q', ''));
+		$perPage = (int) request()->query('per_page', 30);
+		if (! in_array($perPage, [10, 30, 50, 100, 200], true)) {
+			$perPage = 30;
+		}
 
-		$this->applyDateRange($query, 'occurred_at');
-		$rows = $query->get();
+		$baseQuery = PmLandlordLedgerEntry::query()
+			->join('users', 'users.id', '=', 'pm_landlord_ledger_entries.user_id')
+			->selectRaw('pm_landlord_ledger_entries.user_id as user_id')
+			->selectRaw("COALESCE(SUM(CASE WHEN pm_landlord_ledger_entries.direction='credit' THEN pm_landlord_ledger_entries.amount ELSE 0 END),0) as total_credits")
+			->selectRaw("COALESCE(SUM(CASE WHEN pm_landlord_ledger_entries.direction='debit' THEN pm_landlord_ledger_entries.amount ELSE 0 END),0) as total_debits")
+			->selectRaw('COALESCE(MAX(pm_landlord_ledger_entries.occurred_at), NULL) as last_entry_at')
+			->where('users.property_portal_role', 'landlord')
+			->groupBy('pm_landlord_ledger_entries.user_id', 'users.name');
+
+		if ($selectedLandlordId !== null) {
+			$baseQuery->where('pm_landlord_ledger_entries.user_id', $selectedLandlordId);
+		}
+		if ($search !== '') {
+			$baseQuery->where('users.name', 'like', '%'.$search.'%');
+		}
+		$this->applyDateRange($baseQuery, 'pm_landlord_ledger_entries.occurred_at');
+
+		$statsRows = (clone $baseQuery)->get();
+		$totalCredits = (float) $statsRows->sum(static fn ($row) => (float) ($row->total_credits ?? 0));
+		$totalDebits = (float) $statsRows->sum(static fn ($row) => (float) ($row->total_debits ?? 0));
+		$totalNetBalance = $totalCredits - $totalDebits;
+
+		$paginator = $baseQuery
+			->orderByDesc('last_entry_at')
+			->paginate($perPage)
+			->withQueryString();
 
 		$users = User::query()
-			->whereIn('id', $rows->pluck('user_id')->filter()->all())
-			->get()
+			->whereIn('id', $paginator->getCollection()->pluck('user_id')->filter()->all())
+			->get(['id', 'name'])
 			->keyBy('id');
 
-		$totalPaid = (float) $rows->sum('paid_amount');
+		$tableRows = $paginator->getCollection()->map(function ($row) use ($users) {
+			$credits = (float) ($row->total_credits ?? 0);
+			$debits = (float) ($row->total_debits ?? 0);
+			$net = $credits - $debits;
+
+			return [
+				(string) ($users->get($row->user_id)?->name ?? '—'),
+				$this->money($credits),
+				$this->money($debits),
+				$this->money($net),
+				$this->dateTime((string) ($row->last_entry_at ?? '')),
+			];
+		})->all();
+
+		$exportRows = $statsRows->map(function ($row) use ($landlords) {
+			$credits = (float) ($row->total_credits ?? 0);
+			$debits = (float) ($row->total_debits ?? 0);
+			$net = $credits - $debits;
+			$name = (string) ($landlords->firstWhere('id', (int) $row->user_id)?->name ?? '—');
+
+			return [
+				$name,
+				number_format($credits, 2, '.', ''),
+				number_format($debits, 2, '.', ''),
+				number_format($net, 2, '.', ''),
+				(string) ($row->last_entry_at ?? ''),
+			];
+		})->values()->all();
 
 		return [
+			'landlords' => $landlords,
+			'selectedLandlordId' => $selectedLandlordId,
+			'perPage' => $perPage,
+			'paginator' => $paginator,
+			'showLandlordFilter' => true,
 			'stats' => [
-				['label' => 'Landlords', 'value' => (string) $rows->count(), 'hint' => 'With payments'],
-				['label' => 'Total paid', 'value' => $this->money($totalPaid), 'hint' => 'Credits'],
+				['label' => 'Landlords', 'value' => (string) $statsRows->count(), 'hint' => 'Within current filters'],
+				['label' => 'Total credits', 'value' => $this->money($totalCredits), 'hint' => 'Amounts paid to landlords'],
+				['label' => 'Total debits', 'value' => $this->money($totalDebits), 'hint' => 'Charges/adjustments'],
+				['label' => 'Net balance', 'value' => $this->money($totalNetBalance), 'hint' => 'Credits - debits'],
 			],
-			'columns' => ['Landlord', 'Amount paid'],
-			'tableRows' => $rows->map(function ($row) use ($users) {
-				return [
-					(string) ($users->get($row->user_id)?->name ?? '—'),
-					$this->money((float) ($row->paid_amount ?? 0)),
-				];
-			})->all(),
+			'columns' => ['Landlord', 'Total credits', 'Total debits', 'Net balance', 'Last entry'],
+			'tableRows' => $tableRows,
+			'exportColumns' => ['Landlord', 'TotalCredits', 'TotalDebits', 'NetBalance', 'LastEntryAt'],
+			'exportRows' => $exportRows,
+			'filters' => [
+				'from' => $this->filterDateFrom(),
+				'to' => $this->filterDateTo(),
+				'landlord_id' => $selectedLandlordId ? (string) $selectedLandlordId : '',
+				'q' => $search,
+			],
+			'emptyTitle' => 'No landlord balances found',
+			'emptyHint' => 'Try widening the date range or removing filters.',
 		];
 	}
 
@@ -228,18 +298,37 @@ class LandlordReportService
 		$this->applyDateRange($collectedByPropertyQ, 'pay.paid_at');
 		$collectedByProperty = $collectedByPropertyQ->pluck('total', 'property_id');
 
+		$landlords = User::query()
+			->where('property_portal_role', 'landlord')
+			->orderBy('name')
+			->get(['id', 'name']);
+		$selectedLandlordId = $this->filterLandlordId();
+		$propertyQ = $this->filterPropertySearch();
+		$q = trim((string) request()->query('q', ''));
+		$perPage = (int) request()->query('per_page', 30);
+		if (! in_array($perPage, [10, 30, 50, 100, 200], true)) {
+			$perPage = 30;
+		}
+
 		$links = DB::table('property_landlord as pl')
 			->join('users as u', 'u.id', '=', 'pl.user_id')
 			->join('properties as p', 'p.id', '=', 'pl.property_id')
 			->select([
+				'pl.user_id',
 				'pl.property_id',
 				'pl.ownership_percent',
 				'u.name as landlord_name',
 				'p.name as property_name',
 			])
 			->orderBy('p.name')
-			->orderBy('u.name')
-			->get();
+			->orderBy('u.name');
+		if ($selectedLandlordId !== null) {
+			$links->where('pl.user_id', $selectedLandlordId);
+		}
+		if ($propertyQ !== null) {
+			$links->where('p.name', 'like', '%'.$propertyQ.'%');
+		}
+		$links = $links->get();
 
 		$rawRows = $links->map(function ($link) use ($collectedByProperty, $commissionDefaultPct, $commissionOverrides) {
 			$pid = (int) $link->property_id;
@@ -249,15 +338,27 @@ class LandlordReportService
 			$commission = $income * ($rate / 100);
 
 			return [
+				'landlord_id' => (int) ($link->user_id ?? 0),
 				'property' => (string) ($link->property_name ?? '—'),
 				'landlord' => (string) ($link->landlord_name ?? '—'),
 				'income' => $income,
 				'commission' => $commission,
 			];
-		})->filter(fn (array $r) => $r['income'] > 0)->values();
+		})->filter(fn (array $r) => $r['income'] > 0);
+		if ($q !== '') {
+			$qNorm = mb_strtolower($q);
+			$rawRows = $rawRows->filter(static function (array $r) use ($qNorm): bool {
+				$haystack = mb_strtolower(($r['property'] ?? '').' '.($r['landlord'] ?? ''));
+
+				return str_contains($haystack, $qNorm);
+			});
+		}
+		$rawRows = $rawRows->values();
 
 		$totalIncome = (float) $rawRows->sum('income');
 		$totalCommission = (float) $rawRows->sum('commission');
+		$paginator = $this->paginateCollection($rawRows, $perPage);
+		$pageRows = $paginator->getCollection();
 
 		return [
 			'stats' => [
@@ -266,12 +367,32 @@ class LandlordReportService
 				['label' => 'Agent earns', 'value' => $this->money($totalCommission), 'hint' => 'Commission total'],
 			],
 			'columns' => ['Property', 'Landlord', 'Income (total rent collected)', 'Commissions (agent earns)'],
-			'tableRows' => $rawRows->map(fn (array $r) => [
+			'tableRows' => $pageRows->map(fn (array $r) => [
 				$r['property'],
 				$r['landlord'],
 				$this->money((float) $r['income']),
 				$this->money((float) $r['commission']),
 			])->all(),
+			'exportColumns' => ['Property', 'Landlord', 'IncomeCollected', 'Commission'],
+			'exportRows' => $rawRows->map(fn (array $r) => [
+				$r['property'],
+				$r['landlord'],
+				number_format((float) $r['income'], 2, '.', ''),
+				number_format((float) $r['commission'], 2, '.', ''),
+			])->all(),
+			'landlords' => $landlords,
+			'selectedLandlordId' => $selectedLandlordId,
+			'showLandlordFilter' => true,
+			'showPropertyFilter' => true,
+			'perPage' => $perPage,
+			'paginator' => $paginator,
+			'filters' => [
+				'from' => $this->filterDateFrom(),
+				'to' => $this->filterDateTo(),
+				'property' => $propertyQ,
+				'landlord_id' => $selectedLandlordId ? (string) $selectedLandlordId : '',
+				'q' => $q,
+			],
 		];
 	}
 
@@ -285,6 +406,8 @@ class LandlordReportService
 			->orderBy('name')
 			->get(['id', 'name']);
 		$landlordId = $this->filterLandlordId();
+		$q = trim((string) request()->query('q', ''));
+		$perPage = min(200, max(10, (int) request()->integer('per_page', 30)));
 
 		$query = PmPayment::query()->with(['tenant', 'invoices.unit.property']);
 		if ($landlordId !== null) {
@@ -298,8 +421,31 @@ class LandlordReportService
 					->where('pl.user_id', $landlordId);
 			});
 		}
+		if ($q !== '') {
+			$query->where(function ($sub) use ($q) {
+				$sub->where('external_ref', 'like', '%'.$q.'%')
+					->orWhere('channel', 'like', '%'.$q.'%')
+					->orWhereHas('tenant', function ($tenantQ) use ($q) {
+						$tenantQ->where('name', 'like', '%'.$q.'%')
+							->orWhere('email', 'like', '%'.$q.'%')
+							->orWhere('phone', 'like', '%'.$q.'%')
+							->orWhere('account_number', 'like', '%'.$q.'%');
+					})
+					->orWhereHas('invoices.unit', function ($unitQ) use ($q) {
+						$unitQ->where('label', 'like', '%'.$q.'%')
+							->orWhereHas('property', function ($propertyQ) use ($q) {
+								$propertyQ->where('name', 'like', '%'.$q.'%');
+							});
+					});
+			});
+		}
 		$this->applyDateRange($query, 'paid_at');
-		$payments = $query->latest('paid_at')->latest('id')->limit(300)->get();
+		$paginator = $query
+			->latest('paid_at')
+			->latest('id')
+			->paginate($perPage)
+			->withQueryString();
+		$payments = $paginator->getCollection();
 
 		$channelSummary = $payments
 			->where('status', PmPayment::STATUS_COMPLETED)
@@ -386,9 +532,17 @@ class LandlordReportService
 			'showLandlordFilter' => true,
 			'landlords' => $landlords,
 			'selectedLandlordId' => $landlordId,
+			'perPage' => $perPage,
 			'channelSummary' => $channelSummary,
 			'propertySummary' => $propertySummary,
+			'paginator' => $paginator,
 			'showPrintAction' => true,
+			'filters' => [
+				'from' => $this->filterDateFrom(),
+				'to' => $this->filterDateTo(),
+				'landlord_id' => $landlordId ? (string) $landlordId : '',
+				'q' => $q,
+			],
 		];
 	}
 
@@ -403,6 +557,7 @@ class LandlordReportService
 		$periodEnd = $to ? Carbon::parse($to)->endOfDay() : now()->endOfMonth();
 
 		$propertyQ = $this->filterPropertySearch();
+		$q = trim((string) request()->query('q', ''));
 
 		$openingQ = DB::table('pm_invoices as i')
 			->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
@@ -559,10 +714,27 @@ class LandlordReportService
 				];
 			})
 			->sortBy([fn ($a) => $a['property_name'], fn ($a) => $a['tenant_name'], fn ($a) => $a['unit_label']])
-			->values()
-			->all();
+			->values();
+		if ($q !== '') {
+			$qNorm = mb_strtolower($q);
+			$rowsRaw = $rowsRaw->filter(static function (array $r) use ($qNorm): bool {
+				$haystack = mb_strtolower(
+					($r['property_name'] ?? '').' '.($r['tenant_name'] ?? '').' '.($r['unit_label'] ?? '')
+				);
 
-		$rows = collect($rowsRaw)->map(fn (array $r) => [
+				return str_contains($haystack, $qNorm);
+			})->values();
+		}
+		$rowsRaw = $rowsRaw->all();
+
+		$perPage = (int) request()->query('per_page', 30);
+		if (! in_array($perPage, [10, 30, 50, 100, 200], true)) {
+			$perPage = 30;
+		}
+		$paginator = $this->paginateCollection(collect($rowsRaw), $perPage);
+		$pageRowsRaw = $paginator->getCollection();
+
+		$rows = $pageRowsRaw->map(fn (array $r) => [
 			$r['property_name'],
 			$r['tenant_name'],
 			$r['unit_label'],
@@ -620,8 +792,58 @@ class LandlordReportService
 				'Total balance',
 			],
 			'tableRows' => $rows,
+			'exportColumns' => [
+				'Property',
+				'TenantName',
+				'UnitNumber',
+				'BalanceOwesUs',
+				'InvoicesRent',
+				'InvoicesPenalties',
+				'InvoicesBills',
+				'PaymentsReceived',
+				'OpeningBalance',
+				'TotalBalance',
+			],
+			'exportRows' => collect($rowsRaw)->map(fn (array $r) => [
+				$r['property_name'],
+				$r['tenant_name'],
+				$r['unit_label'],
+				number_format((float) $r['closing'], 2, '.', ''),
+				number_format((float) $r['rent'], 2, '.', ''),
+				number_format((float) $r['penalty'], 2, '.', ''),
+				number_format((float) $r['bills'], 2, '.', ''),
+				number_format((float) $r['paid'], 2, '.', ''),
+				number_format((float) $r['opening'], 2, '.', ''),
+				number_format((float) $r['closing'], 2, '.', ''),
+			])->all(),
 			'showPropertyFilter' => true,
+			'perPage' => $perPage,
+			'paginator' => $paginator,
+			'filters' => [
+				'from' => $from,
+				'to' => $to,
+				'property' => $propertyQ,
+				'q' => $q,
+			],
 		];
+	}
+
+	/**
+	 * @param Collection<int,mixed> $rows
+	 */
+	private function paginateCollection(Collection $rows, int $perPage): LengthAwarePaginator
+	{
+		$page = max(1, (int) request()->query('page', 1));
+		$total = $rows->count();
+		$items = $rows->forPage($page, $perPage)->values();
+
+		return (new LengthAwarePaginator(
+			$items,
+			$total,
+			$perPage,
+			$page,
+			['path' => request()->url(), 'query' => request()->query()]
+		))->withQueryString();
 	}
 
 	private function filterLandlordId(): ?int

@@ -1441,7 +1441,15 @@ class PropertyPortfolioController extends Controller
         $filters = $request->only([
             'q', 'property_id', 'status', 'unit_type', 'beds_min', 'beds_max', 'rent_min', 'rent_max', 'sort', 'dir',
         ]);
-        $query = PropertyUnit::query()->with('property');
+        $query = PropertyUnit::query()->with([
+            'property',
+            'leases' => function ($q) {
+                $q->where('pm_leases.status', \App\Models\PmLease::STATUS_ACTIVE)
+                    ->with('pmTenant:id,name')
+                    ->orderBy('pm_leases.start_date')
+                    ->orderBy('pm_leases.id');
+            },
+        ]);
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {
@@ -1503,6 +1511,8 @@ class PropertyPortfolioController extends Controller
         ];
 
         $rows = $units->map(function (PropertyUnit $u) {
+            $activeLease = $u->leases->first();
+            $activeTenantName = (string) ($activeLease?->pmTenant?->name ?? '');
             $actions = [
                 '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">View property</a>',
             ];
@@ -1537,7 +1547,9 @@ class PropertyPortfolioController extends Controller
                 $u->bedroomsLabel(),
                 PropertyMoney::kes((float) $u->rent_amount),
                 ucfirst($u->status),
-                '—',
+                $activeTenantName !== ''
+                    ? $activeTenantName
+                    : ($u->status === PropertyUnit::STATUS_OCCUPIED ? 'No active lease' : '—'),
                 $u->vacant_since?->format('Y-m-d') ?? '—',
                 $action,
             ];
@@ -1563,7 +1575,15 @@ class PropertyPortfolioController extends Controller
             'q', 'property_id', 'status', 'unit_type', 'beds_min', 'beds_max', 'rent_min', 'rent_max',
         ]);
 
-        $query = PropertyUnit::query()->with('property');
+        $query = PropertyUnit::query()->with([
+            'property',
+            'leases' => function ($q) {
+                $q->where('pm_leases.status', \App\Models\PmLease::STATUS_ACTIVE)
+                    ->with('pmTenant:id,name')
+                    ->orderBy('pm_leases.start_date')
+                    ->orderBy('pm_leases.id');
+            },
+        ]);
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -1601,9 +1621,11 @@ class PropertyPortfolioController extends Controller
 
         return CsvExport::stream(
             'property_units_'.now()->format('Ymd_His').'.csv',
-            ['ID', 'Property', 'Unit', 'Type', 'Bedrooms', 'Rent', 'Status', 'Vacant Since'],
+            ['ID', 'Property', 'Unit', 'Type', 'Bedrooms', 'Rent', 'Status', 'Tenant', 'Vacant Since'],
             function () use ($rows) {
                 foreach ($rows as $u) {
+                    $activeLease = $u->leases->first();
+                    $activeTenantName = (string) ($activeLease?->pmTenant?->name ?? '');
                     yield [
                         $u->id,
                         $u->property->name,
@@ -1612,6 +1634,7 @@ class PropertyPortfolioController extends Controller
                         $u->bedroomsLabel(),
                         (float) $u->rent_amount,
                         $u->status,
+                        $activeTenantName !== '' ? $activeTenantName : ($u->status === PropertyUnit::STATUS_OCCUPIED ? 'No active lease' : ''),
                         optional($u->vacant_since)->format('Y-m-d'),
                     ];
                 }
@@ -1816,6 +1839,18 @@ class PropertyPortfolioController extends Controller
         ]);
 
         $status = (string) $data['status'];
+        $hasActiveLease = $unit->leases()->where('pm_leases.status', PmLease::STATUS_ACTIVE)->exists();
+        if ($status === PropertyUnit::STATUS_OCCUPIED && ! $hasActiveLease) {
+            return back()->withErrors([
+                'status' => 'Cannot mark unit occupied without an active lease. Create/activate a lease first.',
+            ]);
+        }
+        if ($status === PropertyUnit::STATUS_VACANT && $hasActiveLease) {
+            return back()->withErrors([
+                'status' => 'Cannot mark unit vacant while it still has an active lease.',
+            ]);
+        }
+
         $unit->update([
             'status' => $status,
             'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? ($unit->vacant_since?->toDateString() ?? now()->toDateString()) : null,
@@ -2290,6 +2325,15 @@ class PropertyPortfolioController extends Controller
 
         $action = (string) $data['bulk_action'];
         if ($action === 'mark_vacant') {
+            $activeLeaseCount = DB::table('pm_lease_unit as lu')
+                ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+                ->whereIn('lu.property_unit_id', $units->pluck('id'))
+                ->where('l.status', PmLease::STATUS_ACTIVE)
+                ->count();
+            if ($activeLeaseCount > 0) {
+                return back()->with('error', 'Some selected units still have active leases. End those leases before marking vacant.');
+            }
+
             PropertyUnit::query()->whereIn('id', $units->pluck('id'))->update([
                 'status' => PropertyUnit::STATUS_VACANT,
                 'vacant_since' => now()->toDateString(),
@@ -2298,6 +2342,20 @@ class PropertyPortfolioController extends Controller
             return back()->with('success', 'Selected units marked vacant.');
         }
         if ($action === 'mark_occupied') {
+            $activeLeaseUnitIds = DB::table('pm_lease_unit as lu')
+                ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+                ->whereIn('lu.property_unit_id', $units->pluck('id'))
+                ->where('l.status', PmLease::STATUS_ACTIVE)
+                ->distinct()
+                ->pluck('lu.property_unit_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            $selectedIds = $units->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $missing = array_values(array_diff($selectedIds, $activeLeaseUnitIds));
+            if ($missing !== []) {
+                return back()->with('error', 'Some selected units have no active lease. Only units with active leases can be marked occupied.');
+            }
+
             PropertyUnit::query()->whereIn('id', $units->pluck('id'))->update([
                 'status' => PropertyUnit::STATUS_OCCUPIED,
                 'vacant_since' => null,

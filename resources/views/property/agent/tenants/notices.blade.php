@@ -85,14 +85,16 @@
             </p>
         @endif
 
-        <form method="post" action="{{ route('property.tenants.notices.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
-            @csrf
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New notice</h3>
-            <div class="grid gap-3 sm:grid-cols-2">
+        @if (request()->query('view') !== '1')
+            <form method="post" action="{{ route('property.tenants.notices.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+                @csrf
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New notice</h3>
+                <div class="grid gap-3 sm:grid-cols-2">
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
                     <x-property.quick-create-select
                         name="pm_tenant_id"
+                        select-id="notice-tenant-select"
                         :required="true"
                         :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id') === (string) $t->id])->all()"
                         :create="[
@@ -112,6 +114,7 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit (optional)</label>
                     <x-property.quick-create-select
                         name="property_unit_id"
+                        select-id="notice-unit-select"
                         :required="false"
                         placeholder="—"
                         :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
@@ -153,9 +156,33 @@
                     <textarea name="notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('notes', $noticeTemplate ?? '') }}</textarea>
                     @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-            </div>
-            <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save notice</button>
-        </form>
+                </div>
+                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save notice</button>
+            </form>
+        @endif
+
+        <script>
+            (function () {
+                const tenantToUnit = @json($tenantUnitMap ?? []);
+                const tenantSelect = document.getElementById('notice-tenant-select');
+                const unitSelect = document.getElementById('notice-unit-select');
+                if (!tenantSelect || !unitSelect) return;
+
+                const syncUnitFromTenant = () => {
+                    const tenantId = String(tenantSelect.value || '');
+                    if (!tenantId) return;
+                    const unitId = tenantToUnit[tenantId];
+                    if (!unitId) return;
+                    const target = String(unitId);
+                    if (unitSelect.querySelector(`option[value="${target}"]`)) {
+                        unitSelect.value = target;
+                    }
+                };
+
+                tenantSelect.addEventListener('change', syncUnitFromTenant);
+                syncUnitFromTenant();
+            })();
+        </script>
     </x-slot>
 
     <x-slot name="toolbar">

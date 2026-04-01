@@ -182,57 +182,73 @@ class PropertyCommunicationsWebController extends Controller
     public function recipients(Request $request): Response
     {
         $type = strtolower((string) $request->query('type', ''));
+        $channel = strtolower((string) $request->query('channel', 'sms'));
         $propertyId = $request->integer('property_id') ?: null;
 
         /** @var BulkSmsService $bulk */
         $bulk = app(BulkSmsService::class);
         $normalize = fn (?string $p) => $p ? $bulk->normalizeRecipientList($p)[0] ?? null : null;
 
-        $phones = [];
+        $recipients = [];
 
         if ($type === 'tenants') {
-            $q = PmTenant::query()->whereNotNull('phone');
+            $q = PmTenant::query();
             // Optional narrow by property via active leases tied to units of a property
             if ($propertyId) {
                 $q->whereHas('leases.units', function (Builder $b) use ($propertyId) {
                     $b->where('property_units.property_id', $propertyId);
                 });
             }
-            $phones = $q->pluck('phone')->filter()->map($normalize)->filter()->unique()->values()->all();
+            $recipients = $channel === 'email'
+                ? $q->whereNotNull('email')->pluck('email')->filter()->map(static fn ($e) => trim((string) $e))->filter()->unique()->values()->all()
+                : $q->whereNotNull('phone')->pluck('phone')->filter()->map($normalize)->filter()->unique()->values()->all();
         } elseif ($type === 'staff') {
-            $phones = Employee::query()
-                ->whereNotNull('phone')
-                ->pluck('phone')
-                ->filter()
-                ->map($normalize)
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
+            $staffQuery = Employee::query();
+            $recipients = $channel === 'email'
+                ? $staffQuery->whereNotNull('email')->pluck('email')->filter()->map(static fn ($e) => trim((string) $e))->filter()->unique()->values()->all()
+                : $staffQuery->whereNotNull('phone')->pluck('phone')->filter()->map($normalize)->filter()->unique()->values()->all();
         } elseif ($type === 'landlords') {
-            // Landlord phone numbers are not stored on users by default.
-            // If your app stores landlord phones elsewhere, adjust here.
-            // For now, attempt to infer via users who also have tenant profiles with phones.
             $userIds = User::query()->where('property_portal_role', 'landlord')->pluck('id')->all();
             if ($userIds !== []) {
-                $phones = PmTenant::query()
-                    ->whereIn('user_id', $userIds)
-                    ->whereNotNull('phone')
-                    ->pluck('phone')
-                    ->filter()
-                    ->map($normalize)
-                    ->filter()
-                    ->unique()
-                    ->values()
-                    ->all();
+                if ($channel === 'email') {
+                    $recipients = User::query()
+                        ->whereIn('id', $userIds)
+                        ->whereNotNull('email')
+                        ->pluck('email')
+                        ->filter()
+                        ->map(static fn ($e) => trim((string) $e))
+                        ->filter()
+                        ->unique()
+                        ->values()
+                        ->all();
+                } else {
+                    // Landlord phone numbers are often unavailable on users; attempt tenant-linked profile phones.
+                    $recipients = PmTenant::query()
+                        ->whereIn('user_id', $userIds)
+                        ->whereNotNull('phone')
+                        ->pluck('phone')
+                        ->filter()
+                        ->map($normalize)
+                        ->filter()
+                        ->unique()
+                        ->values()
+                        ->all();
+                }
             } else {
-                $phones = [];
+                $recipients = [];
             }
         } else {
             return response(['ok' => false, 'error' => 'Unknown type. Use tenants, landlords, or staff.'], 422);
         }
 
-        return response(['ok' => true, 'type' => $type, 'count' => count($phones), 'phones' => array_values($phones)]);
+        return response([
+            'ok' => true,
+            'type' => $type,
+            'channel' => $channel,
+            'count' => count($recipients),
+            'recipients' => array_values($recipients),
+            'phones' => $channel === 'sms' ? array_values($recipients) : [],
+        ]);
     }
 
     public function logMessage(Request $request): RedirectResponse
@@ -357,11 +373,13 @@ class PropertyCommunicationsWebController extends Controller
 
     public function bulk(Request $request): View
     {
-        $filters = $request->only(['q', 'status', 'from', 'to', 'sort', 'dir']);
+        $filters = $request->only(['q', 'channel', 'status', 'from', 'to', 'sort', 'dir']);
         $logs = $this->bulkLogsQuery($filters)->limit(200)->get();
 
         $stats = [
             ['label' => 'Bulk jobs logged', 'value' => (string) $logs->count(), 'hint' => ''],
+            ['label' => 'Bulk SMS', 'value' => (string) $logs->where('channel', 'sms')->count(), 'hint' => ''],
+            ['label' => 'Bulk Email', 'value' => (string) $logs->where('channel', 'email')->count(), 'hint' => ''],
         ];
 
         $mapped = $logs->map(function (PmMessageLog $l) {
@@ -374,6 +392,7 @@ class PropertyCommunicationsWebController extends Controller
                 'filter' => mb_strtolower($l->to_address.' '.$l->body.' '.($l->delivery_status ?? '')),
                 'cells' => [
                     $l->created_at->format('Y-m-d H:i'),
+                    strtoupper((string) $l->channel),
                     strtoupper((string) ($l->delivery_status ?? 'unknown')),
                     $l->to_address,
                     Str::limit($l->body, 80),
@@ -384,7 +403,7 @@ class PropertyCommunicationsWebController extends Controller
 
         return view('property.agent.communications.bulk', [
             'stats' => $stats,
-            'columns' => ['When', 'Status', 'Segment / label', 'Notes', 'Actions'],
+            'columns' => ['When', 'Channel', 'Status', 'Segment / label', 'Notes', 'Actions'],
             'tableRows' => $mapped->map(fn (array $r) => $r['cells'])->values()->all(),
             'tableRowFilters' => $mapped->map(fn (array $r) => $r['filter'])->values()->all(),
             'walletBalance' => app(BulkSmsService::class)->walletBalance(),
@@ -396,17 +415,18 @@ class PropertyCommunicationsWebController extends Controller
 
     public function bulkExport(Request $request)
     {
-        $filters = $request->only(['q', 'status', 'from', 'to', 'sort', 'dir']);
+        $filters = $request->only(['q', 'channel', 'status', 'from', 'to', 'sort', 'dir']);
         $rows = $this->bulkLogsQuery($filters)->get();
 
         return CsvExport::stream(
             'communications_bulk_'.now()->format('Ymd_His').'.csv',
-            ['ID', 'When', 'Status', 'Segment Label', 'Subject', 'Notes', 'By'],
+            ['ID', 'When', 'Channel', 'Status', 'Segment Label', 'Subject', 'Notes', 'By'],
             function () use ($rows) {
                 foreach ($rows as $l) {
                     yield [
                         $l->id,
                         optional($l->created_at)->format('Y-m-d H:i:s'),
+                        $l->channel,
                         $l->delivery_status,
                         $l->to_address,
                         $l->subject,
@@ -421,55 +441,120 @@ class PropertyCommunicationsWebController extends Controller
     public function logBulk(Request $request): RedirectResponse
     {
         $data = $request->validate([
+            'channel' => ['required', 'in:sms,email'],
             'segment_label' => ['required', 'string', 'max:255'],
             'recipients' => ['required', 'string'],
             'message' => ['required', 'string', 'max:1000'],
+            'subject' => ['nullable', 'string', 'max:255'],
             'schedule_at' => ['nullable', 'date', 'after:now'],
         ]);
 
-        $bulkSms = app(BulkSmsService::class);
-        $phones = $bulkSms->normalizeRecipientList($data['recipients']);
-        if ($phones === []) {
-            return back()
-                ->withInput()
-                ->withErrors(['recipients' => 'No valid phone numbers found. Use digits only, separated by comma, semicolon, or new lines.']);
-        }
+        if ($data['channel'] === 'sms') {
+            $bulkSms = app(BulkSmsService::class);
+            $phones = $bulkSms->normalizeRecipientList($data['recipients']);
+            if ($phones === []) {
+                return back()
+                    ->withInput()
+                    ->withErrors(['recipients' => 'No valid phone numbers found. Use digits only, separated by comma, semicolon, or new lines.']);
+            }
 
-        if (! empty($data['schedule_at'])) {
-            $when = Carbon::parse($data['schedule_at']);
-            $bulkSms->createSchedule($data['message'], $phones, $when, null, $request->user()->id);
+            if (! empty($data['schedule_at'])) {
+                $when = Carbon::parse($data['schedule_at']);
+                $bulkSms->createSchedule($data['message'], $phones, $when, null, $request->user()->id);
+
+                PmMessageLog::query()->create([
+                    'user_id' => $request->user()->id,
+                    'channel' => 'sms',
+                    'to_address' => $data['segment_label'],
+                    'subject' => '[BULK][SMS] '.$data['segment_label'],
+                    'body' => 'Scheduled '.$when->format('Y-m-d H:i').' · Recipients: '.count($phones),
+                    'delivery_status' => 'queued',
+                    'delivery_error' => null,
+                    'sent_at' => null,
+                ]);
+
+                return back()->with('success', __('Bulk SMS scheduled for '.$when->format('Y-m-d H:i').'.'));
+            }
+
+            $result = $bulkSms->sendNow($data['message'], $phones, $request->user()->id, null);
+            if (! ($result['ok'] ?? false)) {
+                return back()->withInput()->withErrors(['message' => $result['error'] ?? 'Could not send messages.']);
+            }
 
             PmMessageLog::query()->create([
                 'user_id' => $request->user()->id,
                 'channel' => 'sms',
                 'to_address' => $data['segment_label'],
-                'subject' => '[BULK] '.$data['segment_label'],
-                'body' => 'Scheduled '.$when->format('Y-m-d H:i').' · Recipients: '.count($phones),
-                'delivery_status' => 'queued',
+                'subject' => '[BULK][SMS] '.$data['segment_label'],
+                'body' => 'Sent '.count($phones).' SMS(s).',
+                'delivery_status' => 'sent',
                 'delivery_error' => null,
+                'sent_at' => now(),
+            ]);
+
+            return back()->with('success', __('Bulk SMS sent and logged.'));
+        }
+
+        if (! empty($data['schedule_at'])) {
+            return back()
+                ->withInput()
+                ->withErrors(['schedule_at' => 'Scheduling is currently supported for SMS only. For email, send immediately.']);
+        }
+
+        $emails = collect(preg_split('/[\s,;]+/', (string) $data['recipients']) ?: [])
+            ->map(static fn (string $value): string => trim($value))
+            ->filter()
+            ->filter(static fn (string $value): bool => filter_var($value, FILTER_VALIDATE_EMAIL) !== false)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($emails === []) {
+            return back()
+                ->withInput()
+                ->withErrors(['recipients' => 'No valid email addresses found. Use comma, semicolon, space, or new lines.']);
+        }
+
+        $subject = trim((string) ($data['subject'] ?? ''));
+        $mailSubject = $subject !== '' ? $subject : '[Bulk] '.$data['segment_label'];
+
+        $sent = 0;
+        try {
+            foreach ($emails as $email) {
+                Mail::raw((string) $data['message'], function ($m) use ($email, $mailSubject) {
+                    $m->to($email)->subject($mailSubject);
+                });
+                $sent++;
+            }
+        } catch (\Throwable $e) {
+            PmMessageLog::query()->create([
+                'user_id' => $request->user()->id,
+                'channel' => 'email',
+                'to_address' => $data['segment_label'],
+                'subject' => '[BULK][EMAIL] '.$data['segment_label'],
+                'body' => 'Failed after sending '.$sent.'/'.count($emails).' email(s).',
+                'delivery_status' => 'failed',
+                'delivery_error' => 'Email failed: '.$e->getMessage(),
                 'sent_at' => null,
             ]);
 
-            return back()->with('success', __('Bulk SMS scheduled for '.$when->format('Y-m-d H:i').'.'));
-        }
-
-        $result = $bulkSms->sendNow($data['message'], $phones, $request->user()->id, null);
-        if (! ($result['ok'] ?? false)) {
-            return back()->withInput()->withErrors(['message' => $result['error'] ?? 'Could not send messages.']);
+            return back()->withInput()->withErrors([
+                'message' => 'Bulk email failed: '.$e->getMessage(),
+            ]);
         }
 
         PmMessageLog::query()->create([
             'user_id' => $request->user()->id,
-            'channel' => 'sms',
+            'channel' => 'email',
             'to_address' => $data['segment_label'],
-            'subject' => '[BULK] '.$data['segment_label'],
-            'body' => 'Sent '.count($phones).' SMS(s).',
+            'subject' => '[BULK][EMAIL] '.$data['segment_label'],
+            'body' => 'Sent '.$sent.' email(s).',
             'delivery_status' => 'sent',
             'delivery_error' => null,
             'sent_at' => now(),
         ]);
 
-        return back()->with('success', __('Bulk SMS sent and logged.'));
+        return back()->with('success', __('Bulk email sent and logged.'));
     }
 
     private function messageLogsQuery(array $filters): Builder
@@ -520,6 +605,11 @@ class PropertyCommunicationsWebController extends Controller
         $q = PmMessageLog::query()
             ->with('user')
             ->where('subject', 'like', '[BULK]%');
+        $channel = trim((string) ($filters['channel'] ?? ''));
+        if ($channel !== '' && in_array($channel, ['sms', 'email'], true)) {
+            $q->where('channel', $channel);
+        }
+
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {

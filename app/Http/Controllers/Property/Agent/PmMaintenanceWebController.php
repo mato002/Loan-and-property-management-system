@@ -14,6 +14,7 @@ use App\Services\Property\PropertyMoney;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
@@ -112,17 +113,24 @@ class PmMaintenanceWebController extends Controller
         $workflowAutoAssignTickets = PropertyPortalSetting::getValue('workflow_auto_assign_tickets', '0') === '1';
 
         $data = $request->validate([
-            'property_unit_id' => ['required', 'exists:property_units,id'],
+            'property_id' => ['required', 'exists:properties,id'],
+            'property_unit_id' => [
+                'required',
+                Rule::exists('property_units', 'id')->where(fn ($q) => $q->where('property_id', (int) $request->input('property_id'))),
+            ],
             'category' => ['required', 'string', 'max:64'],
             'description' => ['required', 'string', 'max:5000'],
             'urgency' => ['required', 'in:normal,urgent,emergency'],
         ]);
 
         PmMaintenanceRequest::query()->create([
-            ...$data,
+            'property_unit_id' => (int) $data['property_unit_id'],
             'reported_by_user_id' => $request->user()->id,
             // Auto-assign behavior is represented by moving new tickets into triage immediately.
             'status' => $workflowAutoAssignTickets ? 'in_progress' : 'open',
+            'category' => (string) $data['category'],
+            'description' => (string) $data['description'],
+            'urgency' => (string) $data['urgency'],
         ]);
 
         return back()->with(

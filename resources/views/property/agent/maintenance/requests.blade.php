@@ -75,91 +75,56 @@
                 Maintenance request form is currently disabled in System setup.
             </div>
         @else
-        <form method="post" action="{{ route('property.maintenance.requests.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+        <form
+            method="post"
+            action="{{ route('property.maintenance.requests.store') }}"
+            class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl"
+            x-data="{
+                propertyId: @js((string) old('property_id')),
+                unitId: @js((string) old('property_unit_id')),
+                units: @js(collect($units)->map(fn($u) => [
+                    'id' => (string) $u->id,
+                    'property_id' => (string) $u->property_id,
+                    'label' => $u->label,
+                    'property_name' => $u->property->name,
+                ])->values()),
+                get filteredUnits() {
+                    return this.units.filter(u => u.property_id === this.propertyId);
+                }
+            }"
+        >
             @csrf
-            @php
-                $propertyOptions = collect($units)
-                    ->map(fn($u) => ['value' => $u->property_id, 'label' => $u->property->name])
-                    ->unique('value')
-                    ->values()
-                    ->all();
-            @endphp
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New request</h3>
             <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
+                <select
+                    name="property_id"
+                    x-model="propertyId"
+                    @change="unitId = ''"
+                    required
+                    class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
+                >
+                    <option value="">Select property...</option>
+                    @foreach (collect($units)->pluck('property')->unique('id')->sortBy('name') as $property)
+                        <option value="{{ $property->id }}">{{ $property->name }}</option>
+                    @endforeach
+                </select>
+                @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-                <x-property.quick-create-select
+                <select
                     name="property_unit_id"
-                    :required="true"
-                    :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
-                    :create="[
-                        'mode' => 'ajax',
-                        'title' => 'Add unit',
-                        'subtitle' => 'Create a unit without leaving maintenance requests.',
-                        'endpoint' => route('property.units.store_json'),
-                        'fields' => [
-                            [
-                                'name' => 'property_id',
-                                'label' => 'Property',
-                                'required' => true,
-                                'span' => '2',
-                                'placeholder' => 'Select property',
-                                'type' => 'select',
-                                'options' => $propertyOptions,
-                            ],
-                            [
-                                'name' => 'label',
-                                'label' => 'Unit label',
-                                'required' => true,
-                                'span' => '2',
-                                'placeholder' => 'e.g. A1',
-                            ],
-                            [
-                                'name' => 'unit_type',
-                                'label' => 'Unit type',
-                                'required' => false,
-                                'type' => 'select',
-                                'placeholder' => 'Select unit type',
-                                'options' => [
-                                    ['value' => 'apartment', 'label' => 'Apartment'],
-                                    ['value' => 'single_room', 'label' => 'Single room'],
-                                    ['value' => 'bedsitter', 'label' => 'Bedsitter'],
-                                    ['value' => 'studio', 'label' => 'Studio'],
-                                    ['value' => 'bungalow', 'label' => 'Bungalow'],
-                                    ['value' => 'maisonette', 'label' => 'Maisonette'],
-                                    ['value' => 'villa', 'label' => 'Villa'],
-                                    ['value' => 'townhouse', 'label' => 'Townhouse'],
-                                    ['value' => 'commercial', 'label' => 'Commercial'],
-                                ],
-                            ],
-                            [
-                                'name' => 'bedrooms',
-                                'label' => 'Bedrooms',
-                                'required' => false,
-                                'type' => 'number',
-                                'placeholder' => 'e.g. 1',
-                            ],
-                            [
-                                'name' => 'rent_amount',
-                                'label' => 'Rent amount',
-                                'required' => false,
-                                'type' => 'number',
-                                'placeholder' => 'e.g. 15000',
-                            ],
-                            [
-                                'name' => 'status',
-                                'label' => 'Status',
-                                'required' => false,
-                                'type' => 'select',
-                                'placeholder' => 'Select status',
-                                'options' => [
-                                    ['value' => 'vacant', 'label' => 'Vacant'],
-                                    ['value' => 'occupied', 'label' => 'Occupied'],
-                                    ['value' => 'notice', 'label' => 'Notice'],
-                                ],
-                            ],
-                        ],
-                    ]"
-                />
+                    x-model="unitId"
+                    :disabled="!propertyId"
+                    required
+                    class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 disabled:bg-slate-100 disabled:text-slate-500"
+                >
+                    <option value="">Select unit...</option>
+                    <template x-for="u in filteredUnits" :key="u.id">
+                        <option :value="u.id" x-text="u.label"></option>
+                    </template>
+                </select>
                 @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>

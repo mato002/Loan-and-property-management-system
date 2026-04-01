@@ -45,13 +45,7 @@
                     <td class="amount">{{ number_format((float) $item->amount, 2) }}</td>
                     <td>{{ $item->account_number ?: '—' }}</td>
                     <td>{{ $item->phone ?: '—' }}</td>
-                    <td>
-                        @if (($item->payment_method ?? '') === 'sms_forwarder')
-                            SMS Forwarder
-                        @else
-                            Equity
-                        @endif
-                    </td>
+                    <td>{{ $item->source_label ?? 'Equity' }}</td>
                     <td>{{ $item->reason }}</td>
                 </tr>
             @empty

@@ -13,10 +13,66 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PmLeaseWebController extends Controller
 {
+    /**
+     * @param array<int,int|string> $unitIds
+     *
+     * @throws ValidationException
+     */
+    private function assertActiveLeaseRules(int $tenantId, array $unitIds, ?int $excludeLeaseId = null): void
+    {
+        $unitIds = array_values(array_unique(array_map('intval', $unitIds)));
+
+        $tenantHasActiveLease = PmLease::query()
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->where('pm_tenant_id', $tenantId)
+            ->when($excludeLeaseId !== null, fn ($q) => $q->where('id', '!=', $excludeLeaseId))
+            ->exists();
+        if ($tenantHasActiveLease) {
+            throw ValidationException::withMessages([
+                'pm_tenant_id' => 'This tenant already has an active unit/lease. End the current lease first.',
+            ]);
+        }
+
+        if ($unitIds === []) {
+            return;
+        }
+
+        $busyUnits = PmLease::query()
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->when($excludeLeaseId !== null, fn ($q) => $q->where('id', '!=', $excludeLeaseId))
+            ->whereHas('units', fn ($q) => $q->whereIn('property_units.id', $unitIds))
+            ->with('units:id,label')
+            ->get()
+            ->flatMap(fn (PmLease $l) => $l->units->pluck('id'))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($busyUnits !== []) {
+            throw ValidationException::withMessages([
+                'property_unit_ids' => 'One or more selected units are already assigned to an active lease.',
+            ]);
+        }
+    }
+
+    /**
+     * Units that are truly available: status vacant and not in any active lease.
+     */
+    private function trulyVacantUnits()
+    {
+        return PropertyUnit::query()
+            ->where('status', PropertyUnit::STATUS_VACANT)
+            ->whereDoesntHave('leases', fn ($q) => $q->where('pm_leases.status', PmLease::STATUS_ACTIVE))
+            ->with('property')
+            ->orderBy('property_id');
+    }
+
     private function ensureMovementLogged(PmLease $lease, array $unitIds, string $movementType, ?string $date): void
     {
         $unitIds = array_values(array_unique(array_map('intval', $unitIds)));
@@ -122,7 +178,7 @@ class PmLeaseWebController extends Controller
             'columns' => ['Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent', 'Deposit held', 'Status', 'Actions'],
             'tableRows' => $rows,
             'tenants' => PmTenant::query()->orderBy('name')->get(),
-            'vacantUnits' => PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)->with('property')->orderBy('property_id')->get(),
+            'vacantUnits' => $this->trulyVacantUnits()->get(),
             'leaseTemplate' => $leaseTemplate,
         ]);
     }
@@ -142,6 +198,10 @@ class PmLeaseWebController extends Controller
         ]);
 
         DB::transaction(function () use ($data) {
+            if ($data['status'] === PmLease::STATUS_ACTIVE) {
+                $this->assertActiveLeaseRules((int) $data['pm_tenant_id'], (array) ($data['property_unit_ids'] ?? []), null);
+            }
+
             $lease = PmLease::query()->create([
                 'pm_tenant_id' => $data['pm_tenant_id'],
                 'start_date' => $data['start_date'],
@@ -224,6 +284,9 @@ class PmLeaseWebController extends Controller
         DB::transaction(function () use ($data, $lease) {
             $prevStatus = $lease->status;
             $prevUnitIds = $lease->units->pluck('id')->map(fn ($v) => (int) $v)->all();
+            if ($data['status'] === PmLease::STATUS_ACTIVE) {
+                $this->assertActiveLeaseRules((int) $data['pm_tenant_id'], (array) ($data['property_unit_ids'] ?? []), (int) $lease->id);
+            }
 
             $lease->update([
                 'pm_tenant_id' => $data['pm_tenant_id'],
