@@ -89,16 +89,17 @@ class PropertyPortfolioController extends Controller
         }
         $q->orderBy($sort, $dir)->orderBy('name');
 
-        $portfolio = $q->get();
+        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $portfolio = $q->paginate($perPage)->withQueryString();
 
         $stats = [
-            ['label' => 'Properties', 'value' => (string) $portfolio->count(), 'hint' => 'In portfolio'],
+            ['label' => 'Properties', 'value' => (string) $portfolio->total(), 'hint' => 'In portfolio'],
             ['label' => 'Total units', 'value' => (string) PropertyUnit::query()->count(), 'hint' => 'Across all'],
             ['label' => 'Occupied', 'value' => (string) PropertyUnit::query()->where('status', PropertyUnit::STATUS_OCCUPIED)->count(), 'hint' => 'Units'],
             ['label' => 'Vacant', 'value' => (string) PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)->count(), 'hint' => 'Units'],
         ];
 
-        $rows = $portfolio->map(function (Property $p) {
+        $rows = $portfolio->getCollection()->map(function (Property $p) {
             $landlordCell = $p->landlords->isEmpty()
                 ? '—'
                 : $p->landlords->pluck('name')->join(', ');
@@ -159,7 +160,8 @@ class PropertyPortfolioController extends Controller
             'properties' => $portfolio,
             'linkableProperties' => $linkableProperties,
             'landlordLinks' => $landlordLinks,
-            'filters' => $filters,
+            'filters' => array_merge($filters, ['per_page' => (string) $perPage]),
+            'perPage' => $perPage,
             'cities' => Property::query()->whereNotNull('city')->where('city', '!=', '')->distinct()->orderBy('city')->pluck('city'),
         ]);
     }
@@ -1319,7 +1321,35 @@ class PropertyPortfolioController extends Controller
             ? 'Landlord onboarded successfully. Credentials email sent.'
             : 'Landlord onboarded successfully.'.$mailWarning;
 
-        return back()->with('success', $message);
+        $nextSteps = [
+            'title' => 'Landlord onboarded',
+            'message' => 'Next, link this landlord to properties and review their owner balance and commission.',
+            'landlord' => [
+                'id' => $landlord->id,
+                'name' => $landlord->name,
+                'email' => $landlord->email,
+            ],
+            'actions' => [
+                [
+                    'label' => 'Link to property now',
+                    'href' => route('property.properties.list', absolute: false).'#link-landlord-form',
+                    'kind' => 'primary',
+                    'icon' => 'fa-solid fa-link',
+                    'turbo_frame' => 'property-main',
+                ],
+                [
+                    'label' => 'View landlord profile',
+                    'href' => route('property.landlords.index', absolute: false),
+                    'kind' => 'secondary',
+                    'icon' => 'fa-solid fa-user-tie',
+                    'turbo_frame' => 'property-main',
+                ],
+            ],
+        ];
+
+        return back()
+            ->with('success', $message)
+            ->with('next_steps', $nextSteps);
     }
 
     public function onboardLandlordJson(Request $request)
@@ -1501,20 +1531,24 @@ class PropertyPortfolioController extends Controller
         }
         $query->orderBy($sort, $dir)->orderBy('label');
 
-        $units = $query->get();
+        $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
+        $units = $query->paginate($perPage)->withQueryString();
+        $unitCollection = $units->getCollection();
 
         $stats = [
-            ['label' => 'Units', 'value' => (string) $units->count(), 'hint' => 'Total'],
-            ['label' => 'Occupied', 'value' => (string) $units->where('status', PropertyUnit::STATUS_OCCUPIED)->count(), 'hint' => ''],
-            ['label' => 'Vacant', 'value' => (string) $units->where('status', PropertyUnit::STATUS_VACANT)->count(), 'hint' => ''],
-            ['label' => 'Listed rent (avg)', 'value' => $units->count() ? PropertyMoney::kes($units->avg('rent_amount')) : PropertyMoney::kes(0), 'hint' => 'Asking'],
+            ['label' => 'Units', 'value' => (string) $units->total(), 'hint' => 'Total'],
+            ['label' => 'Occupied', 'value' => (string) $unitCollection->where('status', PropertyUnit::STATUS_OCCUPIED)->count(), 'hint' => 'This page'],
+            ['label' => 'Vacant', 'value' => (string) $unitCollection->where('status', PropertyUnit::STATUS_VACANT)->count(), 'hint' => 'This page'],
+            ['label' => 'Listed rent (avg)', 'value' => $unitCollection->count() ? PropertyMoney::kes($unitCollection->avg('rent_amount')) : PropertyMoney::kes(0), 'hint' => 'This page'],
         ];
 
-        $rows = $units->map(function (PropertyUnit $u) {
+        $rows = $unitCollection->map(function (PropertyUnit $u) {
             $activeLease = $u->leases->first();
             $activeTenantName = (string) ($activeLease?->pmTenant?->name ?? '');
             $actions = [
                 '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">View property</a>',
+                // Quick path to onboarding or takeover: create a lease (often future-dated) for this unit
+                '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id], absolute: false).'" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Add lease</a>',
             ];
 
             if ($u->status === PropertyUnit::STATUS_VACANT) {
@@ -1559,6 +1593,8 @@ class PropertyPortfolioController extends Controller
             'stats' => $stats,
             'columns' => ['Unit', 'Property', 'Type', 'Beds', 'Rent', 'Status', 'Tenant', 'Vacant since', 'Actions'],
             'tableRows' => $rows,
+            'paginator' => $units,
+            'perPage' => $perPage,
             'properties' => Property::query()
                 ->whereDoesntHave('units')
                 ->orderBy('name')
@@ -1700,23 +1736,33 @@ class PropertyPortfolioController extends Controller
             }
             $labels[] = $baseLabel;
         } else {
+            $numericOnlyLabels = false;
             // If user typed A1 in prefix and left label blank, auto-split to prefix A + start 1.
             if ($baseLabel === '' && $labelPrefix !== '' && preg_match('/^(.*?)(\d+)$/', $labelPrefix, $m) === 1) {
                 $labelPrefix = trim((string) $m[1]);
                 $labelStart = (int) $m[2];
+                $numericOnlyLabels = $labelPrefix === '';
             }
 
             $baseLooksNumeric = preg_match('/\d/', $baseLabel) === 1;
             if ($labelPrefix === '' && ! $baseLooksNumeric) {
                 $labelPrefix = $baseLabel;
             }
-            if ($labelPrefix === '') {
+            // Support numeric-only labels for buildings that use doors like 1,2,3...
+            if ($labelPrefix === '' && preg_match('/^\d+$/', $baseLabel) === 1) {
+                $labelStart = (int) $baseLabel;
+                $numericOnlyLabels = true;
+            }
+
+            if ($labelPrefix === '' && ! $numericOnlyLabels) {
                 return back()
                     ->withErrors(['label_prefix' => __('Set a label prefix for bulk creation (e.g. A, B, BLOCK-1-).')])
                     ->withInput();
             }
             for ($i = 0; $i < $unitCount; $i++) {
-                $labels[] = $labelPrefix.($labelStart + $i);
+                $labels[] = $numericOnlyLabels
+                    ? (string) ($labelStart + $i)
+                    : $labelPrefix.($labelStart + $i);
             }
         }
 
@@ -1971,6 +2017,7 @@ class PropertyPortfolioController extends Controller
             $count = (int) ($group['unit_count'] ?? 0);
             $prefix = trim((string) ($group['label_prefix'] ?? ''));
             $start = (int) ($group['label_start'] ?? 1);
+            $numericOnlyLabels = false;
             $unitType = (string) ($group['unit_type'] ?? '');
             $status = (string) ($group['status'] ?? '');
             $rentAmount = (float) ($group['rent_amount'] ?? 0);
@@ -1978,7 +2025,13 @@ class PropertyPortfolioController extends Controller
                 ? (string) $group['public_listing_description']
                 : null;
 
-            if ($prefix === '') {
+            if ($prefix !== '' && preg_match('/^(.*?)(\d+)$/', $prefix, $m) === 1) {
+                $prefix = trim((string) $m[1]);
+                $start = (int) $m[2];
+                $numericOnlyLabels = $prefix === '';
+            }
+
+            if ($prefix === '' && ! $numericOnlyLabels) {
                 return back()
                     ->withErrors(['unit_groups' => __('Group :n: label prefix is required.', ['n' => $groupNumber])])
                     ->withInput();
@@ -1993,7 +2046,9 @@ class PropertyPortfolioController extends Controller
             }
 
             for ($i = 0; $i < $count; $i++) {
-                $label = $prefix.($start + $i);
+                $label = $numericOnlyLabels
+                    ? (string) ($start + $i)
+                    : $prefix.($start + $i);
                 $allLabels[] = $label;
                 $toCreate[] = [
                     'property_id' => $propertyId,

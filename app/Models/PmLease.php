@@ -25,6 +25,8 @@ class PmLease extends Model
         'end_date',
         'monthly_rent',
         'deposit_amount',
+        'utility_expense_type',
+        'utility_expense_amount',
         'status',
         'terms_summary',
     ];
@@ -36,6 +38,7 @@ class PmLease extends Model
             'end_date' => 'date',
             'monthly_rent' => 'decimal:2',
             'deposit_amount' => 'decimal:2',
+            'utility_expense_amount' => 'decimal:2',
         ];
     }
 

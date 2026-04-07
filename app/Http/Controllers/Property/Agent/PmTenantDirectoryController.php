@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\UserModuleAccess;
 use App\Mail\TenantPortalCredentialsMail;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
@@ -15,6 +16,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -263,6 +265,20 @@ class PmTenantDirectoryController extends Controller
                 'property_portal_role' => 'tenant',
                 'email_verified_at' => now(),
             ]);
+
+            // Auto-approve tenant accounts for the Property module so their portal login works immediately.
+            if (Schema::hasTable('user_module_accesses')) {
+                UserModuleAccess::query()->updateOrCreate(
+                    [
+                        'user_id' => $user->id,
+                        'module' => 'property',
+                    ],
+                    [
+                        'status' => UserModuleAccess::STATUS_APPROVED,
+                        'approved_at' => now(),
+                    ]
+                );
+            }
         }
 
         $tenant = PmTenant::query()->create([
@@ -277,7 +293,14 @@ class PmTenantDirectoryController extends Controller
 
         $nextSteps = [
             'title' => 'Tenant saved',
-            'message' => 'Next, allocate a vacant unit by creating a lease (Active leases mark units as occupied).',
+            'message' => 'Step 1 of 4 complete. Next, allocate a vacant unit, then raise the first rent bill and record the opening payment.',
+            'tenant' => [
+                'id' => $tenant->id,
+                'name' => $tenant->name,
+                'phone' => $tenant->phone,
+                'email' => $tenant->email,
+                'national_id' => $tenant->national_id,
+            ],
             'actions' => [
                 [
                     'label' => 'Allocate vacant unit (create lease)',

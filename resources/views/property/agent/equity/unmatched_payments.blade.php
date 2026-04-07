@@ -3,7 +3,7 @@
 
     <x-property.page
         title="Unmatched Payments"
-        subtitle="Transactions from Equity and SMS Forwarder that could not be auto-matched and require manual assignment."
+        subtitle="Transactions from Equity API and SMS ingest (M-Pesa/Equity) that could not be auto-matched and require manual assignment."
     >
         <div
             x-data="{ printOpen: false, printUrl: '{{ route('property.equity.unmatched.print', request()->query()) }}' }"
@@ -26,8 +26,8 @@
                 <label class="text-xs text-slate-500">Source</label>
                 <select name="source" class="block rounded-xl border-slate-300 shadow-sm">
                     <option value="">All</option>
-                    <option value="equity" @selected(($filters['source'] ?? '') === 'equity')>Equity</option>
-                    <option value="sms_forwarder" @selected(($filters['source'] ?? '') === 'sms_forwarder')>SMS Forwarder</option>
+                    <option value="equity" @selected(($filters['source'] ?? '') === 'equity')>Equity API</option>
+                    <option value="sms_forwarder" @selected(($filters['source'] ?? '') === 'sms_forwarder')>SMS Ingest (M-Pesa/Equity)</option>
                 </select>
             </div>
             <div>
@@ -43,14 +43,17 @@
         </form>
 
         <div class="mb-4 flex flex-wrap items-center gap-2">
-            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'csv'])) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'csv'])) }}" data-turbo="false" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Export CSV
             </a>
-            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'xls'])) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'xls'])) }}" data-turbo="false" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Export XLS
             </a>
-            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'pdf'])) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'pdf'])) }}" data-turbo="false" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Export PDF
+            </a>
+            <a href="{{ route('property.equity.matched', request()->only(['q', 'from', 'to', 'source'])) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                View Matched Payments
             </a>
             <button
                 type="button"
@@ -86,9 +89,18 @@
                             <td class="px-4 py-3">{{ $item->source_label ?? 'Equity' }}</td>
                             <td class="px-4 py-3">{{ $item->reason }}</td>
                             <td class="px-4 py-3 text-right">
+                                <form method="post" action="{{ route('property.equity.unmatched.rematch', $item) }}" data-turbo="false" class="inline-block">
+                                    @csrf
+                                    <button
+                                        type="submit"
+                                        class="inline-flex items-center rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+                                    >
+                                        Auto re-match
+                                    </button>
+                                </form>
                                 <a
                                     href="{{ route('property.equity.unmatched.show', $item) }}"
-                                    class="inline-flex items-center rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
+                                    class="ml-2 inline-flex items-center rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
                                 >
                                     Assign
                                 </a>

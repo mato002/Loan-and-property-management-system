@@ -11,9 +11,11 @@ use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\HtmlString;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Support\TabularExport;
 
 class PropertyAccountingController extends Controller
 {
@@ -50,7 +52,8 @@ class PropertyAccountingController extends Controller
         $reversalFilter = $request->string('reversal')->toString();
         $sourceFilter = $request->string('source_key')->toString();
 
-        $list = $query->limit(300)->get();
+        $paginator = $query->paginate(50)->withQueryString();
+        $list = $paginator->getCollection();
 
         $reversedIds = PmAccountingEntry::query()
             ->whereNotNull('reversal_of_id')
@@ -78,6 +81,7 @@ class PropertyAccountingController extends Controller
             }
 
             return [
+                new HtmlString('<input type="checkbox" class="pm-bulk" value="'.(int) $e->id.'" />'),
                 $e->entry_date?->format('Y-m-d') ?? '—',
                 $e->property?->name ?? 'General',
                 $e->account_name,
@@ -95,8 +99,9 @@ class PropertyAccountingController extends Controller
             'stats' => [
                 ['label' => 'Rows shown', 'value' => (string) count($rows), 'hint' => 'Latest first'],
             ],
-            'columns' => ['Date', 'Property', 'Account', 'Category', 'Type', 'Amount', 'Source', 'Reference', 'Description', 'Actions'],
+            'columns' => ['Select', 'Date', 'Property', 'Account', 'Category', 'Type', 'Amount', 'Source', 'Reference', 'Description', 'Actions'],
             'tableRows' => $rows,
+            'paginator' => $paginator,
             'properties' => Property::query()->orderBy('name')->get(),
             'categoryOptions' => PmAccountingEntry::categoryOptions(),
             'typeOptions' => PmAccountingEntry::typeOptions(),
@@ -115,26 +120,28 @@ class PropertyAccountingController extends Controller
     public function exportEntriesCsv(Request $request): StreamedResponse
     {
         $rowsData = $this->buildEntriesQuery($request)->limit(5000)->get();
+        $format = strtolower((string) $request->query('format', 'csv'));
 
-        $rows = $rowsData->map(fn (PmAccountingEntry $e) => [
-            (string) $e->id,
-            $e->entry_date?->format('Y-m-d') ?? '',
-            $e->property?->name ?? 'General',
-            $e->account_name,
-            $e->category,
-            $e->entry_type,
-            (string) $e->amount,
-            $e->source_key ?? 'manual_entry',
-            $e->reversal_of_id ? ('reversal_of_'.$e->reversal_of_id) : 'original',
-            $e->reference ?? '',
-            $e->description ?? '',
-        ])->all();
+        $headers = ['ID', 'Date', 'Property', 'Account', 'Category', 'Type', 'Amount', 'Source', 'Reversal state', 'Reference', 'Description'];
+        $rowsClosure = function () use ($rowsData) {
+            foreach ($rowsData as $e) {
+                yield [
+                    (string) $e->id,
+                    $e->entry_date?->format('Y-m-d') ?? '',
+                    $e->property?->name ?? 'General',
+                    $e->account_name,
+                    $e->category,
+                    $e->entry_type,
+                    (string) $e->amount,
+                    $e->source_key ?? 'manual_entry',
+                    $e->reversal_of_id ? ('reversal_of_'.$e->reversal_of_id) : 'original',
+                    $e->reference ?? '',
+                    $e->description ?? '',
+                ];
+            }
+        };
 
-        return $this->streamCsv(
-            'property-accounting-entries.csv',
-            ['ID', 'Date', 'Property', 'Account', 'Category', 'Type', 'Amount', 'Source', 'Reversal state', 'Reference', 'Description'],
-            $rows
-        );
+        return TabularExport::stream('property-accounting-entries', $headers, $rowsClosure, $format);
     }
 
     public function auditTrail(Request $request): View
@@ -163,7 +170,8 @@ class PropertyAccountingController extends Controller
             });
         }
 
-        $rowsData = $query->limit(500)->get();
+        $paginator = $query->paginate(50)->withQueryString();
+        $rowsData = $paginator->getCollection();
 
         $rows = $rowsData->map(fn (PmAccountingEntry $e) => [
             '#'.$e->id,
@@ -179,10 +187,11 @@ class PropertyAccountingController extends Controller
 
         return view('property.agent.accounting.audit_trail', [
             'stats' => [
-                ['label' => 'Rows shown', 'value' => (string) count($rows), 'hint' => 'Latest 500 max'],
+                ['label' => 'Rows shown', 'value' => (string) count($rows), 'hint' => 'Current page'],
             ],
             'columns' => ['ID', 'Date', 'Property', 'Account', 'Type', 'Amount', 'Source', 'Reversal state', 'Reference'],
             'tableRows' => $rows,
+            'paginator' => $paginator,
             'sourceOptions' => PmAccountingEntry::query()
                 ->whereNotNull('source_key')
                 ->distinct()
@@ -224,25 +233,28 @@ class PropertyAccountingController extends Controller
             });
         }
 
-        $rows = $query->limit(5000)->get()->map(fn (PmAccountingEntry $e) => [
-            (string) $e->id,
-            $e->entry_date?->format('Y-m-d') ?? '',
-            $e->property?->name ?? 'General',
-            $e->account_name,
-            $e->category,
-            $e->entry_type,
-            (string) $e->amount,
-            $e->source_key ?? 'manual_entry',
-            $e->reversal_of_id ? ('reversal_of_'.$e->reversal_of_id) : 'original',
-            $e->reference ?? '',
-            $e->description ?? '',
-        ])->all();
+        $rowsData = $query->limit(5000)->get();
+        $format = strtolower((string) $request->query('format', 'csv'));
+        $headers = ['ID', 'Date', 'Property', 'Account', 'Category', 'Type', 'Amount', 'Source', 'Reversal state', 'Reference', 'Description'];
+        $rowsClosure = function () use ($rowsData) {
+            foreach ($rowsData as $e) {
+                yield [
+                    (string) $e->id,
+                    $e->entry_date?->format('Y-m-d') ?? '',
+                    $e->property?->name ?? 'General',
+                    $e->account_name,
+                    $e->category,
+                    $e->entry_type,
+                    (string) $e->amount,
+                    $e->source_key ?? 'manual_entry',
+                    $e->reversal_of_id ? ('reversal_of_'.$e->reversal_of_id) : 'original',
+                    $e->reference ?? '',
+                    $e->description ?? '',
+                ];
+            }
+        };
 
-        return $this->streamCsv(
-            'property-accounting-audit-trail.csv',
-            ['ID', 'Date', 'Property', 'Account', 'Category', 'Type', 'Amount', 'Source', 'Reversal state', 'Reference', 'Description'],
-            $rows
-        );
+        return TabularExport::stream('property-accounting-audit-trail', $headers, $rowsClosure, $format);
     }
 
     /**
@@ -348,6 +360,66 @@ class PropertyAccountingController extends Controller
         return back()->with('success', 'Reversal entry posted.');
     }
 
+    public function bulkEntries(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'action' => ['required', 'in:reverse_selected'],
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'min:1'],
+        ]);
+
+        $ids = array_unique(array_map('intval', $data['ids']));
+        if (count($ids) === 0) {
+            return back()->withErrors(['ids' => 'No entries selected.']);
+        }
+
+        if ($data['action'] === 'reverse_selected') {
+            $entries = PmAccountingEntry::query()->whereIn('id', $ids)->get();
+
+            // Determine which are eligible for reversal.
+            $alreadyReversedIds = PmAccountingEntry::query()
+                ->whereIn('reversal_of_id', $ids)
+                ->pluck('reversal_of_id')
+                ->map(fn ($v) => (int) $v)
+                ->all();
+
+            $eligible = $entries->filter(function (PmAccountingEntry $e) use ($alreadyReversedIds) {
+                return $e->reversal_of_id === null && ! in_array((int) $e->id, $alreadyReversedIds, true);
+            });
+
+            $created = 0;
+            DB::transaction(function () use ($request, $eligible, &$created): void {
+                foreach ($eligible as $entry) {
+                    $reverseType = $entry->entry_type === PmAccountingEntry::TYPE_DEBIT
+                        ? PmAccountingEntry::TYPE_CREDIT
+                        : PmAccountingEntry::TYPE_DEBIT;
+
+                    PmAccountingEntry::query()->create([
+                        'property_id' => $entry->property_id,
+                        'recorded_by_user_id' => $request->user()->id,
+                        'entry_date' => now()->toDateString(),
+                        'account_name' => $entry->account_name,
+                        'category' => $entry->category,
+                        'entry_type' => $reverseType,
+                        'amount' => (float) $entry->amount,
+                        'reference' => 'REV-'.($entry->reference ?: $entry->id),
+                        'description' => 'Reversal of entry #'.$entry->id,
+                        'reversal_of_id' => $entry->id,
+                        'source_key' => 'manual_reversal',
+                    ]);
+                    $created++;
+                }
+            });
+
+            $skipped = count($ids) - $created;
+            $msg = "Reversed {$created} entr".($created === 1 ? 'y' : 'ies').($skipped > 0 ? " ({$skipped} skipped)" : '');
+
+            return back()->with('success', $msg);
+        }
+
+        return back()->withErrors(['action' => 'Unsupported bulk action.']);
+    }
+
     public function saveAccountMap(Request $request): RedirectResponse
     {
         $data = $request->validate([
@@ -368,49 +440,113 @@ class PropertyAccountingController extends Controller
 
     public function trialBalance(Request $request): View
     {
-        $entries = PmAccountingEntry::query();
+        $from = $request->date('from')?->toDateString();
+        $asAt = $request->date('as_at')?->toDateString() ?? now()->toDateString();
         $q = trim($request->string('q')->toString());
+        $category = strtolower(trim($request->string('category')->toString()));
+        $onlyImbalanced = $request->boolean('only_imbalanced');
+        $sort = strtolower(trim($request->string('sort')->toString()));
+        $dir = strtolower(trim($request->string('dir')->toString()));
+        $perPage = max(10, min(200, (int) $request->query('per_page', 50)));
+
+        $entries = PmAccountingEntry::query()
+            ->whereDate('entry_date', '<=', $asAt);
+        if ($from) {
+            $entries->whereDate('entry_date', '>=', $from);
+        }
         if ($q !== '') {
             $entries->where('account_name', 'like', '%'.$q.'%');
         }
         $entries = $entries->get();
+
         $accounts = $entries->groupBy('account_name')->map(function ($group, $accountName) {
             $debits = (float) $group->where('entry_type', PmAccountingEntry::TYPE_DEBIT)->sum('amount');
             $credits = (float) $group->where('entry_type', PmAccountingEntry::TYPE_CREDIT)->sum('amount');
+            $byCategory = $group->groupBy('category')->map(fn ($g) => (float) $g->sum('amount'));
+            $dominantCategory = (string) ($byCategory->sortDesc()->keys()->first() ?? '');
 
             return [
                 'account' => $accountName,
+                'category' => $dominantCategory,
                 'debit' => $debits,
                 'credit' => $credits,
+                'balance' => $debits - $credits,
             ];
-        })->sortBy('account')->values();
+        })->values();
 
-        $rows = $accounts->map(fn (array $a) => [
-            $a['account'],
+        $validCategories = array_keys(PmAccountingEntry::categoryOptions());
+        if ($category !== '' && in_array($category, $validCategories, true)) {
+            $accounts = $accounts->where('category', $category)->values();
+        }
+        if ($onlyImbalanced) {
+            $accounts = $accounts->filter(fn (array $a) => abs((float) ($a['balance'] ?? 0)) > 0.0001)->values();
+        }
+
+        $sortField = in_array($sort, ['account', 'category', 'debit', 'credit', 'balance'], true) ? $sort : 'account';
+        $sortDir = in_array($dir, ['asc', 'desc'], true) ? $dir : 'asc';
+        $accounts = $accounts->sortBy($sortField, SORT_NATURAL | SORT_FLAG_CASE, $sortDir === 'desc')->values();
+
+        $totalDebit = (float) $accounts->sum('debit');
+        $totalCredit = (float) $accounts->sum('credit');
+        $difference = $totalDebit - $totalCredit;
+        $isBalanced = abs($difference) < 0.0001;
+
+        $paginator = $this->paginateCollection($request, $accounts->all(), $perPage);
+        $pageAccounts = collect($paginator->items());
+
+        $rows = $pageAccounts->map(fn (array $a) => [
+            new HtmlString('<a class="text-indigo-600 hover:text-indigo-700 font-medium" href="'.route('property.accounting.entries', ['q' => $a['account']]).'">'.e($a['account']).'</a>'),
+            ucfirst((string) ($a['category'] ?: 'other')),
             PropertyMoney::kes($a['debit']),
             PropertyMoney::kes($a['credit']),
+            PropertyMoney::kes($a['balance']),
         ])->all();
 
         return view('property.agent.accounting.reports.trial_balance', [
             'stats' => [
-                ['label' => 'Total debit', 'value' => PropertyMoney::kes((float) $accounts->sum('debit')), 'hint' => 'All accounts'],
-                ['label' => 'Total credit', 'value' => PropertyMoney::kes((float) $accounts->sum('credit')), 'hint' => 'All accounts'],
+                ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'All accounts'],
+                ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'All accounts'],
+                ['label' => 'Difference', 'value' => PropertyMoney::kes($difference), 'hint' => $isBalanced ? 'Balanced' : 'Out of balance'],
             ],
-            'columns' => ['Account', 'Debit', 'Credit'],
+            'columns' => ['Account', 'Type', 'Debit', 'Credit', 'Balance (Dr-Cr)'],
             'tableRows' => $rows,
-            'filters' => ['q' => $q],
+            'paginator' => $paginator,
+            'isBalanced' => $isBalanced,
+            'difference' => $difference,
+            'totals' => [
+                'debit' => $totalDebit,
+                'credit' => $totalCredit,
+                'difference' => $difference,
+            ],
+            'filters' => [
+                'q' => $q,
+                'from' => $from,
+                'as_at' => $asAt,
+                'category' => $category,
+                'sort' => $sortField,
+                'dir' => $sortDir,
+                'per_page' => (string) $perPage,
+                'only_imbalanced' => $onlyImbalanced ? '1' : '0',
+            ],
+            'categoryOptions' => PmAccountingEntry::categoryOptions(),
         ]);
     }
 
     public function incomeStatement(Request $request): View
     {
-        $queryBase = PmAccountingEntry::query();
-        if ($request->filled('from')) {
-            $queryBase->whereDate('entry_date', '>=', $request->date('from'));
+        $from = $request->date('from')?->toDateString() ?? now()->startOfMonth()->toDateString();
+        $to = $request->date('to')?->toDateString() ?? now()->endOfMonth()->toDateString();
+        $propertyId = (int) $request->integer('property_id');
+        $perPage = max(10, min(200, (int) $request->query('per_page', 30)));
+
+        $queryBase = PmAccountingEntry::query()
+            ->with('property')
+            ->whereDate('entry_date', '>=', $from)
+            ->whereDate('entry_date', '<=', $to);
+        if ($propertyId > 0) {
+            $queryBase->where('property_id', $propertyId);
         }
-        if ($request->filled('to')) {
-            $queryBase->whereDate('entry_date', '<=', $request->date('to'));
-        }
+
         $income = (float) (clone $queryBase)
             ->where('category', PmAccountingEntry::CATEGORY_INCOME)
             ->where('entry_type', PmAccountingEntry::TYPE_CREDIT)
@@ -419,12 +555,137 @@ class PropertyAccountingController extends Controller
             ->where('category', PmAccountingEntry::CATEGORY_EXPENSE)
             ->where('entry_type', PmAccountingEntry::TYPE_DEBIT)
             ->sum('amount');
+        $net = $income - $expenses;
+
+        $fromDate = \Carbon\Carbon::parse($from)->startOfDay();
+        $toDate = \Carbon\Carbon::parse($to)->endOfDay();
+        $days = max(1, $fromDate->diffInDays($toDate) + 1);
+        $prevFrom = $fromDate->copy()->subDays($days)->toDateString();
+        $prevTo = $fromDate->copy()->subDay()->toDateString();
+
+        $prevBase = PmAccountingEntry::query()
+            ->whereDate('entry_date', '>=', $prevFrom)
+            ->whereDate('entry_date', '<=', $prevTo);
+        if ($propertyId > 0) {
+            $prevBase->where('property_id', $propertyId);
+        }
+        $prevIncome = (float) (clone $prevBase)
+            ->where('category', PmAccountingEntry::CATEGORY_INCOME)
+            ->where('entry_type', PmAccountingEntry::TYPE_CREDIT)
+            ->sum('amount');
+        $prevExpenses = (float) (clone $prevBase)
+            ->where('category', PmAccountingEntry::CATEGORY_EXPENSE)
+            ->where('entry_type', PmAccountingEntry::TYPE_DEBIT)
+            ->sum('amount');
+        $prevNet = $prevIncome - $prevExpenses;
+
+        $incomeBreakdown = (clone $queryBase)
+            ->where('category', PmAccountingEntry::CATEGORY_INCOME)
+            ->where('entry_type', PmAccountingEntry::TYPE_CREDIT)
+            ->selectRaw('account_name, COALESCE(SUM(amount),0) as total')
+            ->groupBy('account_name')
+            ->orderByDesc('total')
+            ->get()
+            ->map(fn ($r) => [
+                'account' => (string) $r->account_name,
+                'total' => (float) $r->total,
+                'pct' => $income > 0 ? round(((float) $r->total / $income) * 100, 1) : 0.0,
+            ])
+            ->values()
+            ->all();
+
+        $expenseBreakdown = (clone $queryBase)
+            ->where('category', PmAccountingEntry::CATEGORY_EXPENSE)
+            ->where('entry_type', PmAccountingEntry::TYPE_DEBIT)
+            ->selectRaw('account_name, COALESCE(SUM(amount),0) as total')
+            ->groupBy('account_name')
+            ->orderByDesc('total')
+            ->get()
+            ->map(fn ($r) => [
+                'account' => (string) $r->account_name,
+                'total' => (float) $r->total,
+                'pct' => $expenses > 0 ? round(((float) $r->total / $expenses) * 100, 1) : 0.0,
+            ])
+            ->values()
+            ->all();
+
+        $propertyBreakdown = (clone $queryBase)
+            ->leftJoin('properties', 'properties.id', '=', 'pm_accounting_entries.property_id')
+            ->selectRaw("COALESCE(properties.name, 'General') as property_name")
+            ->selectRaw("COALESCE(SUM(CASE WHEN pm_accounting_entries.category = ? AND pm_accounting_entries.entry_type = ? THEN pm_accounting_entries.amount ELSE 0 END),0) as income_total", [PmAccountingEntry::CATEGORY_INCOME, PmAccountingEntry::TYPE_CREDIT])
+            ->selectRaw("COALESCE(SUM(CASE WHEN pm_accounting_entries.category = ? AND pm_accounting_entries.entry_type = ? THEN pm_accounting_entries.amount ELSE 0 END),0) as expense_total", [PmAccountingEntry::CATEGORY_EXPENSE, PmAccountingEntry::TYPE_DEBIT])
+            ->groupBy('properties.name')
+            ->orderBy('property_name')
+            ->get()
+            ->map(fn ($r) => [
+                'property' => (string) $r->property_name,
+                'income' => (float) $r->income_total,
+                'expenses' => (float) $r->expense_total,
+                'net' => (float) $r->income_total - (float) $r->expense_total,
+            ])
+            ->values()
+            ->all();
+
+        $trendStart = now()->startOfMonth()->subMonths(5);
+        $trendEnd = now()->endOfMonth();
+        $trendBase = PmAccountingEntry::query()
+            ->whereDate('entry_date', '>=', $trendStart->toDateString())
+            ->whereDate('entry_date', '<=', $trendEnd->toDateString());
+        if ($propertyId > 0) {
+            $trendBase->where('property_id', $propertyId);
+        }
+        $trendRows = (clone $trendBase)
+            ->selectRaw("DATE_FORMAT(entry_date, '%Y-%m') as ym")
+            ->selectRaw("COALESCE(SUM(CASE WHEN category = ? AND entry_type = ? THEN amount ELSE 0 END),0) as income_total", [PmAccountingEntry::CATEGORY_INCOME, PmAccountingEntry::TYPE_CREDIT])
+            ->selectRaw("COALESCE(SUM(CASE WHEN category = ? AND entry_type = ? THEN amount ELSE 0 END),0) as expense_total", [PmAccountingEntry::CATEGORY_EXPENSE, PmAccountingEntry::TYPE_DEBIT])
+            ->groupBy('ym')
+            ->orderBy('ym')
+            ->get()
+            ->keyBy('ym');
+        $trend = collect(range(0, 5))->map(function ($i) use ($trendStart, $trendRows) {
+            $m = $trendStart->copy()->addMonths($i);
+            $ym = $m->format('Y-m');
+            $row = $trendRows->get($ym);
+            $incomeVal = (float) ($row->income_total ?? 0);
+            $expenseVal = (float) ($row->expense_total ?? 0);
+            return [
+                'label' => $m->format('M Y'),
+                'income' => $incomeVal,
+                'expenses' => $expenseVal,
+                'net' => $incomeVal - $expenseVal,
+            ];
+        })->all();
+
+        $txnPaginator = (clone $queryBase)
+            ->orderByDesc('entry_date')
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'txn_page')
+            ->withQueryString();
 
         return view('property.agent.accounting.reports.income_statement', [
             'income' => PropertyMoney::kes($income),
             'expenses' => PropertyMoney::kes($expenses),
-            'net' => PropertyMoney::kes($income - $expenses),
-            'filters' => ['from' => $request->input('from'), 'to' => $request->input('to')],
+            'net' => PropertyMoney::kes($net),
+            'noi' => PropertyMoney::kes($net),
+            'incomeRaw' => $income,
+            'expensesRaw' => $expenses,
+            'netRaw' => $net,
+            'prevIncomeRaw' => $prevIncome,
+            'prevExpensesRaw' => $prevExpenses,
+            'prevNetRaw' => $prevNet,
+            'incomeBreakdown' => $incomeBreakdown,
+            'expenseBreakdown' => $expenseBreakdown,
+            'propertyBreakdown' => $propertyBreakdown,
+            'trend' => $trend,
+            'txnPaginator' => $txnPaginator,
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'periodLabel' => \Carbon\Carbon::parse($from)->format('d M Y').' - '.\Carbon\Carbon::parse($to)->format('d M Y'),
+            'filters' => [
+                'from' => $from,
+                'to' => $to,
+                'property_id' => $propertyId > 0 ? (string) $propertyId : '',
+                'per_page' => (string) $perPage,
+            ],
         ]);
     }
 
@@ -463,12 +724,15 @@ class PropertyAccountingController extends Controller
             ];
         })->all();
 
+        $paginator = $this->paginateCollection($request, $rows, 50);
+
         return view('property.agent.accounting.reports.cash_book', [
             'columns' => ['Date', 'Account', 'Description', 'Debit', 'Credit', 'Running balance'],
-            'tableRows' => $rows,
+            'tableRows' => $paginator->items(),
             'stats' => [
                 ['label' => 'Rows', 'value' => (string) count($rows), 'hint' => 'Cash/Bank records'],
             ],
+            'paginator' => $paginator,
             'filters' => ['from' => $request->input('from'), 'to' => $request->input('to'), 'q' => $request->input('q')],
         ]);
     }
@@ -489,7 +753,8 @@ class PropertyAccountingController extends Controller
             ->where('category', PmAccountingEntry::CATEGORY_LIABILITY)
             ->sum('amount');
 
-        $rows = (clone $base)->orderByDesc('entry_date')->orderByDesc('id')->limit(30)->get()
+        $paginator = (clone $base)->orderByDesc('entry_date')->orderByDesc('id')->paginate(50)->withQueryString();
+        $rows = $paginator->getCollection()
             ->map(fn (PmAccountingEntry $e) => [
                 $e->entry_date?->format('Y-m-d') ?? '—',
                 $e->account_name,
@@ -507,6 +772,7 @@ class PropertyAccountingController extends Controller
             ],
             'columns' => ['Date', 'Account', 'Type', 'Amount', 'Reference', 'Description'],
             'tableRows' => $rows,
+            'paginator' => $paginator,
         ]);
     }
 
@@ -557,7 +823,7 @@ class PropertyAccountingController extends Controller
 
     public function payrollPayslips(Request $request): View
     {
-        $items = PmAccountingEntry::query()
+        $itemsQuery = PmAccountingEntry::query()
             ->where('source_key', 'like', 'payroll%')
             ->when($request->filled('from'), fn ($q) => $q->whereDate('entry_date', '>=', $request->date('from')))
             ->when($request->filled('to'), fn ($q) => $q->whereDate('entry_date', '<=', $request->date('to')))
@@ -570,9 +836,10 @@ class PropertyAccountingController extends Controller
                 });
             })
             ->orderByDesc('entry_date')
-            ->orderByDesc('id')
-            ->limit(200)
-            ->get();
+            ->orderByDesc('id');
+
+        $paginator = $itemsQuery->paginate(50)->withQueryString();
+        $items = $paginator->getCollection();
 
         $rows = $items->map(function (PmAccountingEntry $e) {
             $reference = $e->reference ?: '—';
@@ -599,46 +866,93 @@ class PropertyAccountingController extends Controller
             ],
             'columns' => ['Entry', 'Date', 'Reference', 'Account', 'Type', 'Amount', 'Payslip'],
             'tableRows' => $rows,
+            'paginator' => $paginator,
             'filters' => ['from' => $request->input('from'), 'to' => $request->input('to'), 'q' => $request->input('q')],
         ]);
     }
 
     public function exportTrialBalanceCsv(Request $request): StreamedResponse
     {
-        $entries = PmAccountingEntry::query();
+        $from = $request->date('from')?->toDateString();
+        $asAt = $request->date('as_at')?->toDateString() ?? now()->toDateString();
         $q = trim($request->string('q')->toString());
+        $category = strtolower(trim($request->string('category')->toString()));
+
+        $entries = PmAccountingEntry::query()->whereDate('entry_date', '<=', $asAt);
+        if ($from) {
+            $entries->whereDate('entry_date', '>=', $from);
+        }
         if ($q !== '') {
             $entries->where('account_name', 'like', '%'.$q.'%');
         }
-        $accounts = $entries->get()->groupBy('account_name')->map(function ($group, $accountName) {
-            return [
-                (string) $accountName,
-                (string) ((float) $group->where('entry_type', PmAccountingEntry::TYPE_DEBIT)->sum('amount')),
-                (string) ((float) $group->where('entry_type', PmAccountingEntry::TYPE_CREDIT)->sum('amount')),
-            ];
-        })->values()->all();
+        $grouped = $entries->get()->groupBy('account_name');
+        $format = strtolower((string) $request->query('format', 'csv'));
+        $headers = ['Account', 'Type', 'Debit', 'Credit', 'Balance'];
+        $rowsClosure = function () use ($grouped, $category) {
+            foreach ($grouped as $accountName => $group) {
+                $byCategory = $group->groupBy('category')->map(fn ($g) => (float) $g->sum('amount'));
+                $dominantCategory = (string) ($byCategory->sortDesc()->keys()->first() ?? '');
+                if ($category !== '' && $dominantCategory !== $category) {
+                    continue;
+                }
+                $debit = (float) $group->where('entry_type', PmAccountingEntry::TYPE_DEBIT)->sum('amount');
+                $credit = (float) $group->where('entry_type', PmAccountingEntry::TYPE_CREDIT)->sum('amount');
+                yield [
+                    (string) $accountName,
+                    $dominantCategory,
+                    (string) $debit,
+                    (string) $credit,
+                    (string) ($debit - $credit),
+                ];
+            }
+        };
 
-        return $this->streamCsv('property-accounting-trial-balance.csv', ['Account', 'Debit', 'Credit'], $accounts);
+        return TabularExport::stream('property-accounting-trial-balance', $headers, $rowsClosure, $format);
     }
 
     public function exportIncomeStatementCsv(Request $request): StreamedResponse
     {
-        $queryBase = PmAccountingEntry::query();
-        if ($request->filled('from')) {
-            $queryBase->whereDate('entry_date', '>=', $request->date('from'));
-        }
-        if ($request->filled('to')) {
-            $queryBase->whereDate('entry_date', '<=', $request->date('to'));
+        $from = $request->date('from')?->toDateString() ?? now()->startOfMonth()->toDateString();
+        $to = $request->date('to')?->toDateString() ?? now()->endOfMonth()->toDateString();
+        $propertyId = (int) $request->integer('property_id');
+        $queryBase = PmAccountingEntry::query()
+            ->whereDate('entry_date', '>=', $from)
+            ->whereDate('entry_date', '<=', $to);
+        if ($propertyId > 0) {
+            $queryBase->where('property_id', $propertyId);
         }
         $income = (float) (clone $queryBase)->where('category', PmAccountingEntry::CATEGORY_INCOME)->where('entry_type', PmAccountingEntry::TYPE_CREDIT)->sum('amount');
         $expenses = (float) (clone $queryBase)->where('category', PmAccountingEntry::CATEGORY_EXPENSE)->where('entry_type', PmAccountingEntry::TYPE_DEBIT)->sum('amount');
-        $rows = [
-            ['Income', (string) $income],
-            ['Expenses', (string) $expenses],
-            ['Net', (string) ($income - $expenses)],
-        ];
+        $incomeLines = (clone $queryBase)
+            ->where('category', PmAccountingEntry::CATEGORY_INCOME)
+            ->where('entry_type', PmAccountingEntry::TYPE_CREDIT)
+            ->selectRaw('account_name, COALESCE(SUM(amount),0) as total')
+            ->groupBy('account_name')
+            ->orderByDesc('total')
+            ->get();
+        $expenseLines = (clone $queryBase)
+            ->where('category', PmAccountingEntry::CATEGORY_EXPENSE)
+            ->where('entry_type', PmAccountingEntry::TYPE_DEBIT)
+            ->selectRaw('account_name, COALESCE(SUM(amount),0) as total')
+            ->groupBy('account_name')
+            ->orderByDesc('total')
+            ->get();
+        $format = strtolower((string) $request->query('format', 'csv'));
+        $headers = ['Section', 'Line', 'Amount'];
+        $rowsClosure = function () use ($from, $to, $income, $expenses, $incomeLines, $expenseLines) {
+            yield ['Period', $from.' to '.$to, ''];
+            yield ['Summary', 'Income', (string) $income];
+            foreach ($incomeLines as $line) {
+                yield ['Income breakdown', (string) $line->account_name, (string) $line->total];
+            }
+            yield ['Summary', 'Expenses', (string) $expenses];
+            foreach ($expenseLines as $line) {
+                yield ['Expense breakdown', (string) $line->account_name, (string) $line->total];
+            }
+            yield ['Summary', 'Net / NOI', (string) ($income - $expenses)];
+        };
 
-        return $this->streamCsv('property-accounting-income-statement.csv', ['Line', 'Amount'], $rows);
+        return TabularExport::stream('property-accounting-income-statement', $headers, $rowsClosure, $format);
     }
 
     public function exportCashBookCsv(Request $request): StreamedResponse
@@ -659,22 +973,26 @@ class PropertyAccountingController extends Controller
             ->orderBy('entry_date')
             ->orderBy('id')
             ->get();
-        $running = 0.0;
-        $rows = $rowsRaw->map(function (PmAccountingEntry $e) use (&$running) {
-            $debit = $e->entry_type === PmAccountingEntry::TYPE_DEBIT ? (float) $e->amount : 0.0;
-            $credit = $e->entry_type === PmAccountingEntry::TYPE_CREDIT ? (float) $e->amount : 0.0;
-            $running += $debit - $credit;
-            return [
-                $e->entry_date?->format('Y-m-d') ?? '',
-                $e->account_name,
-                $e->description ?? '',
-                (string) $debit,
-                (string) $credit,
-                (string) $running,
-            ];
-        })->all();
+        $format = strtolower((string) $request->query('format', 'csv'));
+        $headers = ['Date', 'Account', 'Description', 'Debit', 'Credit', 'Running balance'];
+        $rowsClosure = function () use ($rowsRaw) {
+            $running = 0.0;
+            foreach ($rowsRaw as $e) {
+                $debit = $e->entry_type === PmAccountingEntry::TYPE_DEBIT ? (float) $e->amount : 0.0;
+                $credit = $e->entry_type === PmAccountingEntry::TYPE_CREDIT ? (float) $e->amount : 0.0;
+                $running += $debit - $credit;
+                yield [
+                    $e->entry_date?->format('Y-m-d') ?? '',
+                    $e->account_name,
+                    $e->description ?? '',
+                    (string) $debit,
+                    (string) $credit,
+                    (string) $running,
+                ];
+            }
+        };
 
-        return $this->streamCsv('property-accounting-cash-book.csv', ['Date', 'Account', 'Description', 'Debit', 'Credit', 'Running balance'], $rows);
+        return TabularExport::stream('property-accounting-cash-book', $headers, $rowsClosure, $format);
     }
 
     public function exportPayrollPayslipsCsv(Request $request): StreamedResponse
@@ -695,16 +1013,22 @@ class PropertyAccountingController extends Controller
             ->orderByDesc('id')
             ->limit(5000)
             ->get();
-        $rows = $items->map(fn (PmAccountingEntry $e) => [
-            (string) $e->id,
-            $e->entry_date?->format('Y-m-d') ?? '',
-            $e->reference ?? '',
-            $e->account_name,
-            $e->entry_type,
-            (string) $e->amount,
-        ])->all();
+        $format = strtolower((string) $request->query('format', 'csv'));
+        $headers = ['Entry', 'Date', 'Reference', 'Account', 'Type', 'Amount'];
+        $rowsClosure = function () use ($items) {
+            foreach ($items as $e) {
+                yield [
+                    (string) $e->id,
+                    $e->entry_date?->format('Y-m-d') ?? '',
+                    $e->reference ?? '',
+                    $e->account_name,
+                    $e->entry_type,
+                    (string) $e->amount,
+                ];
+            }
+        };
 
-        return $this->streamCsv('property-accounting-payroll-ledger.csv', ['Entry', 'Date', 'Reference', 'Account', 'Type', 'Amount'], $rows);
+        return TabularExport::stream('property-accounting-payroll-ledger', $headers, $rowsClosure, $format);
     }
 
     public function payrollSettings(): View
@@ -900,6 +1224,29 @@ class PropertyAccountingController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * @template T
+     *
+     * @param  list<T>  $items
+     */
+    private function paginateCollection(Request $request, array $items, int $perPage): LengthAwarePaginator
+    {
+        $page = max(1, (int) $request->query('page', 1));
+        $total = count($items);
+        $slice = array_slice($items, ($page - 1) * $perPage, $perPage);
+
+        return new LengthAwarePaginator(
+            $slice,
+            $total,
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
+        );
     }
 }
 

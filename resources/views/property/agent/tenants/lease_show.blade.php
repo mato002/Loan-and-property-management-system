@@ -6,7 +6,7 @@
         ['label' => 'Status', 'value' => ucfirst($lease->status), 'hint' => 'Current'],
         ['label' => 'Monthly rent', 'value' => \App\Services\Property\PropertyMoney::kes((float) $lease->monthly_rent), 'hint' => 'Contract'],
         ['label' => 'Deposit', 'value' => \App\Services\Property\PropertyMoney::kes((float) $lease->deposit_amount), 'hint' => 'Held'],
-        ['label' => 'Days to end', 'value' => (string) $daysLeft, 'hint' => $isEndingSoon ? 'Renewal window' : ''],
+        ['label' => 'Days to end', 'value' => is_null($daysLeft) ? 'Open-ended' : (string) $daysLeft, 'hint' => $isEndingSoon ? 'Renewal window' : ''],
     ]"
     :columns="[]"
 >
@@ -24,7 +24,9 @@
                 <p><span class="text-slate-500">Phone:</span> {{ $lease->pmTenant->phone ?? '—' }}</p>
                 <p><span class="text-slate-500">Email:</span> {{ $lease->pmTenant->email ?? '—' }}</p>
                 <p><span class="text-slate-500">Start:</span> {{ $lease->start_date?->format('Y-m-d') ?? '—' }}</p>
-                <p><span class="text-slate-500">End:</span> {{ $lease->end_date?->format('Y-m-d') ?? '—' }}</p>
+                <p><span class="text-slate-500">End:</span> {{ $lease->end_date?->format('Y-m-d') ?? 'Open-ended' }}</p>
+                <p><span class="text-slate-500">Utility expense:</span> {{ $lease->utility_expense_type ? ucfirst($lease->utility_expense_type) : '—' }}</p>
+                <p><span class="text-slate-500">Utility amount paid:</span> {{ $lease->utility_expense_amount ? \App\Services\Property\PropertyMoney::kes((float) $lease->utility_expense_amount) : '—' }}</p>
                 <p><span class="text-slate-500">Linked unit(s):</span> {{ $unitsLabel }}</p>
             </div>
         </div>

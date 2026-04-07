@@ -654,6 +654,34 @@
             ],
         ],
     ];
+
+    // Keep related modules adjacent for faster navigation.
+    $preferredSectionOrder = [
+        '',
+        'Properties',
+        'Listings',
+        'Tenants',
+        'Revenue',
+        'Financials',
+        'Accounting',
+        'Maintenance',
+        'Vendors',
+        'Communications',
+        'Analytics',
+        'Reports',
+        'AI advisor',
+        'Settings',
+    ];
+    $sectionOrderMap = array_flip($preferredSectionOrder);
+    usort($sections, static function (array $a, array $b) use ($sectionOrderMap): int {
+        $aOrder = $sectionOrderMap[(string) ($a['heading'] ?? '')] ?? PHP_INT_MAX;
+        $bOrder = $sectionOrderMap[(string) ($b['heading'] ?? '')] ?? PHP_INT_MAX;
+        if ($aOrder === $bOrder) {
+            return 0;
+        }
+
+        return $aOrder <=> $bOrder;
+    });
 @endphp
 
 <div

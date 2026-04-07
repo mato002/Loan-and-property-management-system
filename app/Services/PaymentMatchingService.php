@@ -23,7 +23,14 @@ class PaymentMatchingService
 
         $phone = $this->normalizePhone((string) ($transaction['phone'] ?? ''));
         if ($phone !== '') {
-            $tenant = PmTenant::query()->whereIn('phone', [$phone, ltrim($phone, '+')])->first();
+            $phoneCandidates = $this->phoneCandidates($phone);
+            $tenant = PmTenant::query()
+                ->where(function ($q) use ($phoneCandidates) {
+                    foreach ($phoneCandidates as $candidate) {
+                        $q->orWhereRaw('REPLACE(REPLACE(REPLACE(phone, " ", ""), "-", ""), "+", "") = ?', [$candidate]);
+                    }
+                })
+                ->first();
             if ($tenant) {
                 return ['tenant_id' => (int) $tenant->id, 'matched_by' => 'phone', 'reason' => null];
             }
@@ -54,6 +61,26 @@ class PaymentMatchingService
         }
 
         return $digits;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function phoneCandidates(string $normalized): array
+    {
+        $clean = preg_replace('/\D+/', '', $normalized) ?? '';
+        if ($clean === '') {
+            return [];
+        }
+
+        $candidates = [$clean];
+        if (str_starts_with($clean, '254') && strlen($clean) >= 12) {
+            $candidates[] = '0'.substr($clean, 3);
+        } elseif (str_starts_with($clean, '0') && strlen($clean) >= 10) {
+            $candidates[] = '254'.substr($clean, 1);
+        }
+
+        return array_values(array_unique(array_filter($candidates)));
     }
 
     private function normalizeReference(string $value): string

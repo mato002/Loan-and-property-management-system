@@ -8,7 +8,7 @@
         
         <div class="flex flex-col sm:flex-row gap-4">
             <a href="{{ route('public.home') }}" class="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-center font-bold px-10 py-4 rounded-xl transition-colors shadow-sm">Return Home</a>
-            <a href="{{ route('public.properties') }}" class="bg-indigo-600 hover:bg-indigo-700 text-white text-center font-bold px-10 py-4 rounded-xl shadow-lg shadow-indigo-600/30 transition-all hover:-translate-y-0.5">Browse More Listings</a>
+            <a href="{{ route('public.properties') }}" class="bg-emerald-600 hover:bg-emerald-700 text-white text-center font-bold px-10 py-4 rounded-xl shadow-lg shadow-emerald-600/30 transition-all hover:-translate-y-0.5">Browse More Listings</a>
         </div>
     </div>
 </x-public-layout>

@@ -24,9 +24,10 @@
             </div>
         </div>
 
-        <form method="post" action="{{ route('property.leases.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+        <form method="post" action="{{ route('property.leases.store') }}" class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New lease</h3>
+            <h3 class="property-attention-title dark:text-white">New Lease</h3>
+            <p class="property-attention-hint dark:text-slate-300">Allocate one vacant unit to a tenant to activate tenancy and unlock monthly billing.</p>
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
@@ -54,8 +55,9 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">End</label>
-                    <input type="date" name="end_date" value="{{ old('end_date') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="date" name="end_date" value="{{ old('end_date') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('end_date')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <p class="mt-1 text-xs text-slate-500">Optional for open-ended leases.</p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Monthly rent</label>
@@ -66,6 +68,21 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Deposit</label>
                     <input type="number" name="deposit_amount" value="{{ old('deposit_amount', 0) }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('deposit_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Utility expense type (optional)</label>
+                    <select name="utility_expense_type" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">None</option>
+                        <option value="water" @selected(old('utility_expense_type') === 'water')>Water</option>
+                        <option value="electricity" @selected(old('utility_expense_type') === 'electricity')>Electricity</option>
+                        <option value="other" @selected(old('utility_expense_type') === 'other')>Other</option>
+                    </select>
+                    @error('utility_expense_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Utility expense amount paid (optional)</label>
+                    <input type="number" name="utility_expense_amount" value="{{ old('utility_expense_amount') }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. 2500" />
+                    @error('utility_expense_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
@@ -79,15 +96,25 @@
                 </div>
             </div>
             <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Units (vacant)</label>
-                <select name="property_unit_ids[]" multiple size="6" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property (with vacant units)</label>
+                <select id="lease-property-select" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <option value="">All properties</option>
+                    @foreach (($vacantProperties ?? []) as $property)
+                        <option value="{{ $property->id }}">{{ $property->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit (vacant)</label>
+                <select id="lease-unit-select" name="property_unit_ids[]" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <option value="">Select unit...</option>
                     @forelse ($vacantUnits as $u)
-                        <option value="{{ $u->id }}" @selected(collect(old('property_unit_ids', []))->contains($u->id))>{{ $u->property->name }} / {{ $u->label }}</option>
+                        <option value="{{ $u->id }}" data-property-id="{{ $u->property_id }}" @selected(collect(old('property_unit_ids', []))->contains($u->id))>{{ $u->property->name }} / {{ $u->label }}</option>
                     @empty
                         <option value="" disabled>No vacant units</option>
                     @endforelse
                 </select>
-                <p class="mt-1 text-xs text-slate-500">Hold Ctrl (Windows) or ⌘ to select multiple.</p>
+                <p class="mt-1 text-xs text-slate-500">A tenant can only be assigned one unit.</p>
                 @error('property_unit_ids')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 @error('property_unit_ids.*')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
@@ -109,4 +136,32 @@
             <option value="terminated">Terminated</option>
         </select>
     </x-slot>
+    <script>
+        (function () {
+            const propertySelect = document.getElementById('lease-property-select');
+            const unitSelect = document.getElementById('lease-unit-select');
+            if (!propertySelect || !unitSelect) return;
+
+            const filterUnits = () => {
+                const propertyId = (propertySelect.value || '').toString();
+                let visibleCount = 0;
+                Array.from(unitSelect.options).forEach((opt) => {
+                    const optPropertyId = (opt.getAttribute('data-property-id') || '').toString();
+                    const selected = opt.selected;
+                    const shouldShow = propertyId === '' || optPropertyId === propertyId || selected;
+                    opt.hidden = !shouldShow;
+                    if (shouldShow) visibleCount++;
+                });
+
+                if (visibleCount === 0 && propertyId !== '') {
+                    unitSelect.title = 'No vacant units under selected property.';
+                } else {
+                    unitSelect.title = '';
+                }
+            };
+
+            propertySelect.addEventListener('change', filterUnits);
+            filterUnits();
+        })();
+    </script>
 </x-property.workspace>

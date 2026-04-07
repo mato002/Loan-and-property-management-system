@@ -19,6 +19,17 @@ use Illuminate\View\View;
 class PmLeaseWebController extends Controller
 {
     /**
+     * @param  array<int,int|string>  $unitIds
+     * @return array<int,int>
+     */
+    private function normalizeSingleUnitSelection(array $unitIds): array
+    {
+        $normalized = array_values(array_unique(array_map('intval', $unitIds)));
+
+        return array_slice($normalized, 0, 1);
+    }
+
+    /**
      * @param array<int,int|string> $unitIds
      *
      * @throws ValidationException
@@ -71,6 +82,27 @@ class PmLeaseWebController extends Controller
             ->whereDoesntHave('leases', fn ($q) => $q->where('pm_leases.status', PmLease::STATUS_ACTIVE))
             ->with('property')
             ->orderBy('property_id');
+    }
+
+    private function leaseAssignableUnits(?PmLease $lease = null)
+    {
+        return PropertyUnit::query()
+            ->where(function ($q) use ($lease) {
+                $q->where(function ($vacant) {
+                    $vacant->where('status', PropertyUnit::STATUS_VACANT)
+                        ->whereDoesntHave('leases', fn ($lq) => $lq->where('pm_leases.status', PmLease::STATUS_ACTIVE));
+                });
+
+                if ($lease) {
+                    $selectedIds = $lease->units->pluck('id')->all();
+                    if ($selectedIds !== []) {
+                        $q->orWhereIn('id', $selectedIds);
+                    }
+                }
+            })
+            ->with('property')
+            ->orderBy('property_id')
+            ->orderBy('label');
     }
 
     private function ensureMovementLogged(PmLease $lease, array $unitIds, string $movementType, ?string $date): void
@@ -144,12 +176,22 @@ class PmLeaseWebController extends Controller
         $stats = [
             ['label' => 'All leases', 'value' => (string) $leases->count(), 'hint' => ''],
             ['label' => 'Active', 'value' => (string) $leases->where('status', PmLease::STATUS_ACTIVE)->count(), 'hint' => ''],
-            ['label' => 'Ending ≤60d', 'value' => (string) $leases->filter(fn (PmLease $l) => $l->status === PmLease::STATUS_ACTIVE && $l->end_date->isFuture() && $l->end_date->lte(now()->addDays(60)))->count(), 'hint' => ''],
+            ['label' => 'Ending ≤60d', 'value' => (string) $leases->filter(fn (PmLease $l) => $l->status === PmLease::STATUS_ACTIVE && $l->end_date && $l->end_date->isFuture() && $l->end_date->lte(now()->addDays(60)))->count(), 'hint' => ''],
             ['label' => 'Draft', 'value' => (string) $leases->where('status', PmLease::STATUS_DRAFT)->count(), 'hint' => ''],
         ];
 
         $rows = $leases->map(function (PmLease $l) {
             $units = $l->units->map(fn ($u) => $u->property->name.'/'.$u->label)->implode(', ');
+            $expenseType = match ((string) ($l->utility_expense_type ?? '')) {
+                'water' => 'Water',
+                'electricity' => 'Electricity',
+                'other' => 'Other',
+                default => '',
+            };
+            $expenseAmount = (float) ($l->utility_expense_amount ?? 0);
+            $expenseLabel = ($expenseType !== '' && $expenseAmount > 0)
+                ? $expenseType.' '.PropertyMoney::kes($expenseAmount)
+                : '—';
             $actions = new HtmlString(
                 '<div class="flex flex-wrap gap-2">'.
                 '<a href="'.route('property.leases.show', $l).'" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'.
@@ -165,20 +207,29 @@ class PmLeaseWebController extends Controller
                 $l->pmTenant->name,
                 $units !== '' ? $units : '—',
                 $l->start_date->format('Y-m-d'),
-                $l->end_date->format('Y-m-d'),
+                $l->end_date?->format('Y-m-d') ?? 'Open-ended',
                 number_format((float) $l->monthly_rent, 2),
                 number_format((float) $l->deposit_amount, 2),
+                $expenseLabel,
                 ucfirst($l->status),
                 $actions,
             ];
         })->all();
 
+        $vacantUnits = $this->leaseAssignableUnits()->get();
+
         return view('property.agent.tenants.leases', [
             'stats' => $stats,
-            'columns' => ['Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent', 'Deposit held', 'Status', 'Actions'],
+            'columns' => ['Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent', 'Deposit held', 'Expense paid', 'Status', 'Actions'],
             'tableRows' => $rows,
             'tenants' => PmTenant::query()->orderBy('name')->get(),
-            'vacantUnits' => $this->trulyVacantUnits()->get(),
+            'vacantUnits' => $vacantUnits,
+            'vacantProperties' => $vacantUnits
+                ->pluck('property')
+                ->filter()
+                ->unique('id')
+                ->sortBy('name')
+                ->values(),
             'leaseTemplate' => $leaseTemplate,
         ]);
     }
@@ -188,26 +239,32 @@ class PmLeaseWebController extends Controller
         $data = $request->validate([
             'pm_tenant_id' => ['required', 'exists:pm_tenants,id'],
             'start_date' => ['required', 'date'],
-            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'monthly_rent' => ['required', 'numeric', 'min:0'],
             'deposit_amount' => ['nullable', 'numeric', 'min:0'],
+            'utility_expense_type' => ['nullable', 'in:water,electricity,other'],
+            'utility_expense_amount' => ['nullable', 'numeric', 'min:0', 'required_with:utility_expense_type'],
             'status' => ['required', 'in:draft,active,expired,terminated'],
             'terms_summary' => ['nullable', 'string', 'max:5000'],
-            'property_unit_ids' => ['nullable', 'array'],
+            'property_unit_ids' => ['nullable', 'array', 'max:1'],
             'property_unit_ids.*' => ['integer', 'exists:property_units,id'],
         ]);
 
         DB::transaction(function () use ($data) {
+            $unitIds = $this->normalizeSingleUnitSelection((array) ($data['property_unit_ids'] ?? []));
+
             if ($data['status'] === PmLease::STATUS_ACTIVE) {
-                $this->assertActiveLeaseRules((int) $data['pm_tenant_id'], (array) ($data['property_unit_ids'] ?? []), null);
+                $this->assertActiveLeaseRules((int) $data['pm_tenant_id'], $unitIds, null);
             }
 
             $lease = PmLease::query()->create([
                 'pm_tenant_id' => $data['pm_tenant_id'],
                 'start_date' => $data['start_date'],
-                'end_date' => $data['end_date'],
+                'end_date' => $data['end_date'] ?? null,
                 'monthly_rent' => $data['monthly_rent'],
                 'deposit_amount' => $data['deposit_amount'] ?? 0,
+                'utility_expense_type' => $data['utility_expense_type'] ?? null,
+                'utility_expense_amount' => $data['utility_expense_amount'] ?? null,
                 'status' => $data['status'],
                 'terms_summary' => ($data['terms_summary'] ?? '') !== ''
                     ? $data['terms_summary']
@@ -215,7 +272,6 @@ class PmLeaseWebController extends Controller
             ]);
 
             $lease->load('pmTenant');
-            $unitIds = $data['property_unit_ids'] ?? [];
             if ($unitIds !== []) {
                 $lease->units()->sync($unitIds);
                 if ($data['status'] === PmLease::STATUS_ACTIVE) {
@@ -242,8 +298,12 @@ class PmLeaseWebController extends Controller
         ]);
 
         $units = $lease->units->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
-        $daysLeft = $lease->end_date->isBefore(today()) ? 0 : (int) today()->diffInDays($lease->end_date);
-        $isEndingSoon = $lease->status === PmLease::STATUS_ACTIVE && $lease->end_date->lte(now()->addDays(60));
+        $daysLeft = $lease->end_date
+            ? ($lease->end_date->isBefore(today()) ? 0 : (int) today()->diffInDays($lease->end_date))
+            : null;
+        $isEndingSoon = $lease->status === PmLease::STATUS_ACTIVE
+            && $lease->end_date
+            && $lease->end_date->lte(now()->addDays(60));
 
         return view('property.agent.tenants.lease_show', [
             'lease' => $lease,
@@ -260,7 +320,13 @@ class PmLeaseWebController extends Controller
         return view('property.agent.tenants.lease_edit', [
             'lease' => $lease,
             'tenants' => PmTenant::query()->orderBy('name')->get(),
-            'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get(),
+            'units' => $this->leaseAssignableUnits($lease)->get(),
+            'vacantProperties' => $this->leaseAssignableUnits($lease)->get()
+                ->pluck('property')
+                ->filter()
+                ->unique('id')
+                ->sortBy('name')
+                ->values(),
             'leaseTemplate' => PropertyPortalSetting::getValue('template_lease_text', ''),
         ]);
     }
@@ -272,35 +338,39 @@ class PmLeaseWebController extends Controller
         $data = $request->validate([
             'pm_tenant_id' => ['required', 'exists:pm_tenants,id'],
             'start_date' => ['required', 'date'],
-            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'monthly_rent' => ['required', 'numeric', 'min:0'],
             'deposit_amount' => ['nullable', 'numeric', 'min:0'],
+            'utility_expense_type' => ['nullable', 'in:water,electricity,other'],
+            'utility_expense_amount' => ['nullable', 'numeric', 'min:0', 'required_with:utility_expense_type'],
             'status' => ['required', 'in:draft,active,expired,terminated'],
             'terms_summary' => ['nullable', 'string', 'max:5000'],
-            'property_unit_ids' => ['nullable', 'array'],
+            'property_unit_ids' => ['nullable', 'array', 'max:1'],
             'property_unit_ids.*' => ['integer', 'exists:property_units,id'],
         ]);
 
         DB::transaction(function () use ($data, $lease) {
             $prevStatus = $lease->status;
             $prevUnitIds = $lease->units->pluck('id')->map(fn ($v) => (int) $v)->all();
+            $unitIds = $this->normalizeSingleUnitSelection((array) ($data['property_unit_ids'] ?? []));
             if ($data['status'] === PmLease::STATUS_ACTIVE) {
-                $this->assertActiveLeaseRules((int) $data['pm_tenant_id'], (array) ($data['property_unit_ids'] ?? []), (int) $lease->id);
+                $this->assertActiveLeaseRules((int) $data['pm_tenant_id'], $unitIds, (int) $lease->id);
             }
 
             $lease->update([
                 'pm_tenant_id' => $data['pm_tenant_id'],
                 'start_date' => $data['start_date'],
-                'end_date' => $data['end_date'],
+                'end_date' => $data['end_date'] ?? null,
                 'monthly_rent' => $data['monthly_rent'],
                 'deposit_amount' => $data['deposit_amount'] ?? 0,
+                'utility_expense_type' => $data['utility_expense_type'] ?? null,
+                'utility_expense_amount' => $data['utility_expense_amount'] ?? null,
                 'status' => $data['status'],
                 'terms_summary' => ($data['terms_summary'] ?? '') !== ''
                     ? $data['terms_summary']
                     : PropertyPortalSetting::getValue('template_lease_text', null),
             ]);
 
-            $unitIds = $data['property_unit_ids'] ?? [];
             $lease->units()->sync($unitIds);
 
             // If lease is active, mark linked units occupied.

@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Models\PmLease;
+use App\Models\PmTenant;
+use App\Models\Property;
 use App\Models\SmsLog;
 use App\Models\SmsSchedule;
 use App\Models\SmsTemplate;
@@ -11,6 +14,7 @@ use App\Services\BulkSmsService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class LoanBulkSmsController extends Controller
@@ -28,6 +32,42 @@ class LoanBulkSmsController extends Controller
             }
         }
 
+        $activeTenantRows = DB::table('pm_tenants as t')
+            ->join('pm_leases as l', 'l.pm_tenant_id', '=', 't.id')
+            ->join('pm_lease_unit as lu', 'lu.pm_lease_id', '=', 'l.id')
+            ->join('property_units as u', 'u.id', '=', 'lu.property_unit_id')
+            ->join('properties as p', 'p.id', '=', 'u.property_id')
+            ->where('l.status', PmLease::STATUS_ACTIVE)
+            ->whereNotNull('t.phone')
+            ->where('t.phone', '!=', '')
+            ->selectRaw('t.id as tenant_id, t.name as tenant_name, t.phone as tenant_phone, p.id as property_id, p.name as property_name, u.label as unit_label')
+            ->orderBy('p.name')
+            ->orderBy('t.name')
+            ->get();
+
+        $propertyOptions = Property::query()
+            ->whereIn('id', $activeTenantRows->pluck('property_id')->filter()->unique()->values()->all())
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $tenantOptions = $activeTenantRows
+            ->groupBy('tenant_id')
+            ->map(function ($rows, $tenantId) {
+                $first = $rows->first();
+                $propertyIds = $rows->pluck('property_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+                $unitLabels = $rows->pluck('unit_label')->filter()->unique()->values()->all();
+
+                return [
+                    'id' => (int) $tenantId,
+                    'name' => (string) ($first->tenant_name ?? 'Tenant'),
+                    'phone' => (string) ($first->tenant_phone ?? ''),
+                    'property_ids' => $propertyIds,
+                    'property_names' => $rows->pluck('property_name')->filter()->unique()->values()->all(),
+                    'units' => $unitLabels,
+                ];
+            })
+            ->values();
+
         return view('loan.bulksms.compose', [
             'templates' => $templates,
             'walletBalance' => $bulkSms->walletBalance(),
@@ -35,25 +75,83 @@ class LoanBulkSmsController extends Controller
             'costPerSms' => $bulkSms->costPerSms(),
             'prefillBody' => $prefillBody,
             'prefillTemplateId' => $prefillTemplateId,
+            'propertyOptions' => $propertyOptions,
+            'tenantOptions' => $tenantOptions,
         ]);
     }
 
     public function composeStore(Request $request, BulkSmsService $bulkSms): RedirectResponse
     {
         $validated = $request->validate([
-            'recipients' => ['required', 'string'],
+            'recipient_source' => ['nullable', 'in:manual,all_tenants,property_tenants'],
+            'recipients' => ['nullable', 'string'],
+            'property_id' => ['nullable', 'integer', 'exists:properties,id'],
+            'tenant_selection_mode' => ['nullable', 'in:all,selected'],
+            'tenant_ids' => ['nullable', 'array'],
+            'tenant_ids.*' => ['integer', 'exists:pm_tenants,id'],
             'message' => ['required', 'string', 'max:1000'],
             'schedule_at' => ['nullable', 'date', 'after:now'],
             'sms_template_id' => ['nullable', 'exists:sms_templates,id'],
         ]);
 
-        $phones = $bulkSms->normalizeRecipientList($validated['recipients']);
+        $recipientSource = (string) ($validated['recipient_source'] ?? 'manual');
+        $phones = [];
+        if ($recipientSource === 'all_tenants') {
+            $phones = PmTenant::query()
+                ->whereHas('leases', fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE))
+                ->whereNotNull('phone')
+                ->where('phone', '!=', '')
+                ->pluck('phone')
+                ->map(fn ($p) => (string) $p)
+                ->all();
+        } elseif ($recipientSource === 'property_tenants') {
+            $propertyId = (int) ($validated['property_id'] ?? 0);
+            if ($propertyId <= 0) {
+                return back()->withInput()->withErrors(['property_id' => 'Select a property for property tenants.']);
+            }
+
+            $tenantSelectionMode = (string) ($validated['tenant_selection_mode'] ?? 'all');
+            $baseTenantQuery = PmTenant::query()
+                ->whereHas('leases', function ($q) use ($propertyId) {
+                    $q->where('status', PmLease::STATUS_ACTIVE)
+                        ->whereHas('units', fn ($uq) => $uq->where('property_id', $propertyId));
+                })
+                ->whereNotNull('phone')
+                ->where('phone', '!=', '');
+
+            if ($tenantSelectionMode === 'selected') {
+                $tenantIds = collect((array) ($validated['tenant_ids'] ?? []))
+                    ->map(fn ($id) => (int) $id)
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+                if ($tenantIds === []) {
+                    return back()->withInput()->withErrors(['tenant_ids' => 'Select at least one tenant for the chosen property.']);
+                }
+                $baseTenantQuery->whereIn('id', $tenantIds);
+            }
+
+            $phones = $baseTenantQuery->pluck('phone')->map(fn ($p) => (string) $p)->all();
+        } else {
+            $rawRecipients = (string) ($validated['recipients'] ?? '');
+            if (trim($rawRecipients) === '') {
+                return back()
+                    ->withInput()
+                    ->withErrors(['recipients' => 'Enter at least one phone number or choose a tenant source.']);
+            }
+            $phones = $bulkSms->normalizeRecipientList($rawRecipients);
+        }
+
+        if ($recipientSource !== 'manual') {
+            $phones = $bulkSms->normalizeRecipientList(implode("\n", $phones));
+        }
         $userId = $request->user()?->id;
 
         if ($phones === []) {
             return back()
                 ->withInput()
-                ->withErrors(['recipients' => 'No valid phone numbers found. Use digits only (at least 9 per number), separated by comma, semicolon, or new lines.']);
+                ->withErrors(['recipients' => 'No valid recipient phone numbers found for the selected target.']);
         }
 
         if (! empty($validated['schedule_at'])) {

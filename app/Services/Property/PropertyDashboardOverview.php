@@ -8,13 +8,16 @@ use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmPayment;
 use App\Models\PmTenant;
+use App\Models\PmMessageLog;
 use App\Models\PmVendor;
 use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use App\Services\BulkSmsService;
 
 final class PropertyDashboardOverview
 {
@@ -65,6 +68,9 @@ final class PropertyDashboardOverview
         $linkedLandlords = (int) DB::table('property_landlord')->distinct('user_id')->count('user_id');
         $linkedProperties = (int) Property::query()->has('landlords')->count();
         $propertiesWithoutLandlord = max(0, $properties - $linkedProperties);
+        $unmatchedBankPayments = Schema::hasTable('unassigned_payments')
+            ? (int) DB::table('unassigned_payments')->count()
+            : 0;
 
         $occ = PropertyDashboardStats::occupancyRate();
 
@@ -167,6 +173,13 @@ final class PropertyDashboardOverview
                 'route' => 'property.vendors.directory',
                 'bar' => 'bg-blue-600',
             ],
+            [
+                'label' => 'Unmatched bank payments',
+                'value' => (string) $unmatchedBankPayments,
+                'icon' => 'fa-building-columns',
+                'route' => 'property.equity.unmatched',
+                'bar' => 'bg-amber-600',
+            ],
         ];
 
         $chartLabels = [];
@@ -225,6 +238,104 @@ final class PropertyDashboardOverview
             })
             ->all();
 
+        $recentUnmatched = [];
+        if (Schema::hasTable('unassigned_payments')) {
+            $recentUnmatched = \App\Models\UnassignedPayment::query()
+                ->orderByDesc('created_at')
+                ->limit(5)
+                ->get(['transaction_id', 'amount', 'payment_method', 'reason', 'created_at'])
+                ->map(function ($u) {
+                    return [
+                        'txn' => (string) ($u->transaction_id ?? ''),
+                        'amount' => PropertyMoney::kes((float) ($u->amount ?? 0)),
+                        'source' => (string) ($u->payment_method ?? ''),
+                        'reason' => (string) ($u->reason ?? ''),
+                        'date' => $u->created_at ? $u->created_at->format('Y-m-d H:i') : '—',
+                        'url' => route('property.equity.unmatched'),
+                    ];
+                })
+                ->all();
+        }
+
+        $arrearsToday = PmMessageLog::query()
+            ->whereDate('created_at', now()->toDateString())
+            ->whereIn('channel', ['email', 'sms'])
+            ->where('subject', 'like', '[ARREARS]%');
+        $remindersSentToday = (clone $arrearsToday)->where('delivery_status', 'sent')->count();
+        $remindersFailedToday = (clone $arrearsToday)->where('delivery_status', 'failed')->count();
+
+        $recentArrearsReminders = PmMessageLog::query()
+            ->whereIn('channel', ['email', 'sms'])
+            ->where('subject', 'like', '[ARREARS]%')
+            ->orderByDesc('id')
+            ->limit(6)
+            ->get(['channel', 'to_address', 'delivery_status', 'delivery_error', 'created_at', 'subject'])
+            ->map(function (PmMessageLog $m) {
+                return [
+                    'when' => $m->created_at?->format('Y-m-d H:i') ?? '—',
+                    'channel' => strtoupper((string) ($m->channel ?? '')),
+                    'to' => (string) ($m->to_address ?? ''),
+                    'status' => strtoupper((string) ($m->delivery_status ?? '')),
+                    'error' => (string) ($m->delivery_error ?? ''),
+                    'subject' => (string) ($m->subject ?? ''),
+                ];
+            })
+            ->all();
+
+        $recentLeaseActivations = PmLease::query()
+            ->with(['pmTenant:id,name', 'units:id,label,property_id', 'units.property:id,name'])
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->whereDate('start_date', '>=', now()->startOfMonth()->toDateString())
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->limit(6)
+            ->get()
+            ->map(function (PmLease $l) {
+                $unit = $l->units->first();
+                $unitLabel = $unit && $unit->property ? ($unit->property->name.' / '.$unit->label) : '—';
+                return [
+                    'id' => (int) $l->id,
+                    'tenant' => (string) ($l->pmTenant?->name ?? ''),
+                    'unit' => $unitLabel,
+                    'start' => $l->start_date?->format('Y-m-d') ?? '—',
+                ];
+            })
+            ->all();
+
+        // Takeover checklist: occupied units with no active lease
+        $occupiedNoLease = PropertyUnit::query()
+            ->where('status', PropertyUnit::STATUS_OCCUPIED)
+            ->whereDoesntHave('leases', function ($q) {
+                $q->where('status', PmLease::STATUS_ACTIVE);
+            })
+            ->with('property:id,name')
+            ->orderBy('property_id')
+            ->orderBy('label')
+            ->limit(6)
+            ->get(['id', 'label', 'property_id'])
+            ->map(function (PropertyUnit $u) {
+                return [
+                    'id' => (int) $u->id,
+                    'unit' => (string) $u->label,
+                    'property' => (string) ($u->property?->name ?? '—'),
+                    'action_url' => route('property.tenants.leases', ['property_id' => $u->property_id]),
+                ];
+            })
+            ->all();
+
+        // System health
+        $mailFrom = (string) (config('mail.from.address') ?? config('mail.from') ?? env('MAIL_FROM_ADDRESS', ''));
+        $smtpHost = (string) (config('mail.mailers.smtp.host') ?? env('MAIL_HOST', ''));
+        $mailConfigured = $mailFrom !== '' && $smtpHost !== '';
+        $lastArrearsError = PmMessageLog::query()
+            ->where('delivery_status', 'failed')
+            ->where('subject', 'like', '[ARREARS]%')
+            ->orderByDesc('id')
+            ->value('delivery_error') ?? '';
+        $bulk = app(BulkSmsService::class);
+        $smsWalletBalance = $bulk->walletBalance();
+        $provider = $bulk->providerBalance();
+
         $recentLandlordLinks = DB::table('property_landlord as pl')
             ->join('properties as p', 'p.id', '=', 'pl.property_id')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
@@ -253,6 +364,10 @@ final class PropertyDashboardOverview
             'recentRequests' => $recentRequests,
             'recentPayments' => $recentPayments,
             'recentLandlordLinks' => $recentLandlordLinks,
+            'recentUnmatched' => $recentUnmatched,
+            'recentArrearsReminders' => $recentArrearsReminders,
+            'recentLeaseActivations' => $recentLeaseActivations,
+            'occupiedNoLease' => $occupiedNoLease,
             'arrears7' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(7, 14)),
             'arrears14' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(14, 30)),
             'arrears30' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(30)),
@@ -264,6 +379,16 @@ final class PropertyDashboardOverview
             'propertiesWithoutLandlord' => $propertiesWithoutLandlord,
             'jobsActive' => $jobsActive,
             'maintenanceMtd' => PropertyMoney::kes(PropertyDashboardStats::maintenanceSpendMtd()),
+            'remindersSentToday' => (int) $remindersSentToday,
+            'remindersFailedToday' => (int) $remindersFailedToday,
+            'mailConfigured' => $mailConfigured,
+            'lastArrearsError' => (string) $lastArrearsError,
+            'smsWalletBalance' => (string) $smsWalletBalance,
+            'smsProvider' => [
+                'ok' => (bool) ($provider['ok'] ?? false),
+                'balance' => isset($provider['balance']) ? (float) $provider['balance'] : null,
+                'error' => (string) ($provider['error'] ?? ''),
+            ],
         ];
     }
 }

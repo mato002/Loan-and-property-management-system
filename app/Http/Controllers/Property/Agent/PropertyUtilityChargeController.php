@@ -9,21 +9,76 @@ use App\Models\PmPenaltyRule;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmWaterReading;
 use App\Models\PropertyUnit;
+use App\Support\TabularExport;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PropertyUtilityChargeController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View|StreamedResponse
     {
-        $charges = PmUnitUtilityCharge::query()
+        $filters = [
+            'q' => trim((string) $request->query('q', '')),
+            'charge_type' => strtolower(trim((string) $request->query('charge_type', ''))),
+            'month' => trim((string) $request->query('month', '')),
+            'sort' => strtolower(trim((string) $request->query('sort', 'id'))),
+            'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
+        ];
+        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+
+        $query = PmUnitUtilityCharge::query()
             ->with(['unit.property'])
-            ->orderByDesc('id')
-            ->limit(300)
-            ->get();
+            ->whereNotNull('id');
+        if ($filters['q'] !== '') {
+            $q = $filters['q'];
+            $query->where(function ($inner) use ($q) {
+                $inner->where('label', 'like', '%'.$q.'%')
+                    ->orWhere('notes', 'like', '%'.$q.'%')
+                    ->orWhereHas('unit', fn ($uq) => $uq
+                        ->where('label', 'like', '%'.$q.'%')
+                        ->orWhereHas('property', fn ($pq) => $pq->where('name', 'like', '%'.$q.'%')));
+            });
+        }
+        if ($filters['charge_type'] !== '' && in_array($filters['charge_type'], ['water', 'service', 'garbage', 'other'], true)) {
+            $query->where('charge_type', $filters['charge_type']);
+        }
+        if ($filters['month'] !== '' && preg_match('/^\d{4}\-\d{2}$/', $filters['month']) === 1) {
+            $query->where('billing_month', $filters['month']);
+        }
+        $sortMap = ['id' => 'id', 'amount' => 'amount', 'created_at' => 'created_at', 'label' => 'label', 'billing_month' => 'billing_month'];
+        $sortBy = $sortMap[$filters['sort']] ?? 'id';
+        $dir = in_array($filters['dir'], ['asc', 'desc'], true) ? $filters['dir'] : 'desc';
+        $query->orderBy($sortBy, $dir)->orderByDesc('id');
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'utility-charges-'.now()->format('Ymd_His'),
+                ['Label', 'Unit', 'Type', 'Billing month', 'Added', 'Amount', 'Notes'],
+                function () use ($rows) {
+                    foreach ($rows as $c) {
+                        yield [
+                            (string) $c->label,
+                            (string) (($c->unit->property->name ?? '').' / '.($c->unit->label ?? '')),
+                            (string) ($c->charge_type ?? ''),
+                            (string) ($c->billing_month ?? ''),
+                            $c->created_at?->format('Y-m-d') ?? '',
+                            (string) PropertyMoney::kes((float) $c->amount),
+                            (string) ($c->notes ?? ''),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $charges = (clone $query)->paginate($perPage)->withQueryString();
         $waterReadings = PmWaterReading::query()
             ->with(['unit.property', 'invoice'])
             ->orderByDesc('billing_month')
@@ -37,9 +92,9 @@ class PropertyUtilityChargeController extends Controller
             ->sum('amount');
 
         $stats = [
-            ['label' => 'Charge lines', 'value' => (string) $charges->count(), 'hint' => 'Listed'],
+            ['label' => 'Charge lines', 'value' => (string) $charges->total(), 'hint' => 'Filtered total'],
             ['label' => 'New (MTD)', 'value' => PropertyMoney::kes((float) $mtd), 'hint' => 'Sum of amounts'],
-            ['label' => 'Distinct units', 'value' => (string) $charges->unique('property_unit_id')->count(), 'hint' => ''],
+            ['label' => 'Distinct units', 'value' => (string) $charges->getCollection()->unique('property_unit_id')->count(), 'hint' => 'Current page'],
             ['label' => 'Water readings', 'value' => (string) $waterReadings->count(), 'hint' => 'Recent'],
         ];
 
@@ -47,6 +102,12 @@ class PropertyUtilityChargeController extends Controller
             'stats' => $stats,
             'charges' => $charges,
             'waterReadings' => $waterReadings,
+            'filters' => [
+                ...$filters,
+                'sort' => $sortBy,
+                'dir' => $dir,
+                'per_page' => (string) $perPage,
+            ],
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get(),
         ]);
     }

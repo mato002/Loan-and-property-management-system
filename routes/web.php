@@ -417,6 +417,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/journal-entries/create', [LoanAccountingController::class, 'journalCreate'])->name('journal.create');
         Route::post('/journal-entries', [LoanAccountingController::class, 'journalStore'])->name('journal.store');
         Route::get('/journal-entries', [LoanAccountingController::class, 'journalIndex'])->name('journal.index');
+        Route::post('/journal-entries/bulk', [LoanAccountingController::class, 'journalBulk'])->name('journal.bulk');
         Route::get('/journal-entries/{accounting_journal_entry}', [LoanAccountingController::class, 'journalShow'])->name('journal.show');
         Route::delete('/journal-entries/{accounting_journal_entry}', [LoanAccountingController::class, 'journalDestroy'])->name('journal.destroy');
 
@@ -425,6 +426,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/requisitions/create', [LoanAccountingController::class, 'requisitionsCreate'])->name('requisitions.create');
         Route::post('/requisitions', [LoanAccountingController::class, 'requisitionsStore'])->name('requisitions.store');
         Route::get('/requisitions', [LoanAccountingController::class, 'requisitionsIndex'])->name('requisitions.index');
+        Route::post('/requisitions/bulk', [LoanAccountingController::class, 'requisitionsBulk'])->name('requisitions.bulk');
         Route::get('/requisitions/{accounting_requisition}/edit', [LoanAccountingController::class, 'requisitionsEdit'])->name('requisitions.edit');
         Route::patch('/requisitions/{accounting_requisition}', [LoanAccountingController::class, 'requisitionsUpdate'])->name('requisitions.update');
         Route::delete('/requisitions/{accounting_requisition}', [LoanAccountingController::class, 'requisitionsDestroy'])->name('requisitions.destroy');
@@ -435,6 +437,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/utility-payments/create', [LoanAccountingController::class, 'utilitiesCreate'])->name('utilities.create');
         Route::post('/utility-payments', [LoanAccountingController::class, 'utilitiesStore'])->name('utilities.store');
         Route::get('/utility-payments', [LoanAccountingController::class, 'utilitiesIndex'])->name('utilities.index');
+        Route::post('/utility-payments/bulk', [LoanAccountingController::class, 'utilitiesBulk'])->name('utilities.bulk');
         Route::get('/utility-payments/{accounting_utility_payment}/edit', [LoanAccountingController::class, 'utilitiesEdit'])->name('utilities.edit');
         Route::patch('/utility-payments/{accounting_utility_payment}', [LoanAccountingController::class, 'utilitiesUpdate'])->name('utilities.update');
         Route::delete('/utility-payments/{accounting_utility_payment}', [LoanAccountingController::class, 'utilitiesDestroy'])->name('utilities.destroy');
@@ -442,6 +445,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/petty-cash/create', [LoanAccountingController::class, 'pettyCreate'])->name('petty.create');
         Route::post('/petty-cash', [LoanAccountingController::class, 'pettyStore'])->name('petty.store');
         Route::get('/petty-cash', [LoanAccountingController::class, 'pettyIndex'])->name('petty.index');
+        Route::post('/petty-cash/bulk', [LoanAccountingController::class, 'pettyBulk'])->name('petty.bulk');
         Route::get('/petty-cash/{accounting_petty_cash_entry}/edit', [LoanAccountingController::class, 'pettyEdit'])->name('petty.edit');
         Route::patch('/petty-cash/{accounting_petty_cash_entry}', [LoanAccountingController::class, 'pettyUpdate'])->name('petty.update');
         Route::delete('/petty-cash/{accounting_petty_cash_entry}', [LoanAccountingController::class, 'pettyDestroy'])->name('petty.destroy');
@@ -449,6 +453,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/salary-advances/create', [LoanAccountingController::class, 'advancesCreate'])->name('advances.create');
         Route::post('/salary-advances', [LoanAccountingController::class, 'advancesStore'])->name('advances.store');
         Route::get('/salary-advances', [LoanAccountingController::class, 'advancesIndex'])->name('advances.index');
+        Route::post('/salary-advances/bulk', [LoanAccountingController::class, 'advancesBulk'])->name('advances.bulk');
         Route::get('/salary-advances/{accounting_salary_advance}/edit', [LoanAccountingController::class, 'advancesEdit'])->name('advances.edit');
         Route::patch('/salary-advances/{accounting_salary_advance}', [LoanAccountingController::class, 'advancesUpdate'])->name('advances.update');
         Route::delete('/salary-advances/{accounting_salary_advance}', [LoanAccountingController::class, 'advancesDestroy'])->name('advances.destroy');

@@ -13,17 +13,17 @@
         <img src="{{ $thumb }}" alt="{{ $title }}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
         <div class="absolute top-4 left-4 bg-white/95 backdrop-blur px-3 py-1 rounded-full text-xs font-black tracking-wider text-gray-900 shadow-sm uppercase">For Rent</div>
         @if ($unit->public_listing_published)
-            <div class="absolute top-4 right-4 bg-indigo-600/95 backdrop-blur px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-white shadow-sm uppercase">Featured</div>
+            <div class="absolute top-4 right-4 bg-amber-500/95 backdrop-blur px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-white shadow-sm uppercase">Featured</div>
         @endif
         <div class="absolute bottom-4 left-4 bg-gray-900/85 backdrop-blur px-4 py-1.5 rounded-lg text-white font-black shadow-lg">{{ $rentLabel }}</div>
     </div>
     <div class="p-6 flex-1 flex flex-col">
         <h3 class="text-2xl font-black text-gray-900 mb-2 truncate">{{ $title }}</h3>
-        <p class="inline-flex items-center w-fit mb-3 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold uppercase tracking-wide">
+        <p class="inline-flex items-center w-fit mb-3 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-bold uppercase tracking-wide">
             {{ $unitTypeLabel }}
         </p>
         <p class="text-gray-500 text-sm mb-4 flex items-center gap-1.5">
-            <svg class="w-4 h-4 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <svg class="w-4 h-4 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             <span class="truncate">{{ $addr }}</span>
         </p>
         <div class="flex items-center justify-between border-t border-gray-100 pt-5 mt-auto mb-6">
@@ -36,6 +36,6 @@
                 Unit {{ $unit->label }}
             </div>
         </div>
-        <a href="{{ route('public.property_details', $unit->id) }}" class="block w-full text-center bg-gray-50 hover:bg-indigo-600 text-indigo-600 hover:text-white border border-gray-100 font-bold py-3 rounded-xl transition-all shadow-sm">View Details</a>
+        <a href="{{ route('public.property_details', $unit->id) }}" class="block w-full text-center bg-gray-50 hover:bg-emerald-600 text-emerald-600 hover:text-white border border-gray-100 font-bold py-3 rounded-xl transition-all shadow-sm">View Details</a>
     </div>
 </div>

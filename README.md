@@ -61,6 +61,58 @@ curl -X POST "http://127.0.0.1:8000/webhooks/property/payments/stk-callback" \
 - `success` marks payment completed, allocates to open invoices (oldest first), and posts accounting entries.
 - `failed` marks payment failed and stores callback metadata.
 
+## Property SMS Ingest Webhook Testing
+
+The SMS ingest endpoint is:
+
+- `POST /webhooks/property/payments/sms-ingest`
+- Header: `X-Property-Sms-Secret: <PROPERTY_SMS_INGEST_SECRET>`
+
+Set your env value first:
+
+```env
+PROPERTY_SMS_INGEST_SECRET=replace-with-a-long-random-secret
+```
+
+Then clear config cache if needed:
+
+```bash
+php artisan config:clear
+```
+
+### Example: Equity SMS format (from forwarded inbox)
+
+```bash
+curl -X POST "http://127.0.0.1:8000/webhooks/property/payments/sms-ingest" \
+  -H "Content-Type: application/json" \
+  -H "X-Property-Sms-Secret: replace-with-a-long-random-secret" \
+  -d '{
+    "provider": "equity",
+    "source_device": "android-forwarder-01",
+    "raw_message": "Confirmed. KES. 6,300.00 from NOBERT OKARE OMOLLO Phone No. 254799544357 received via M-Pesa Ref. UCVKMB3UG9 on 31-03-2026 at 23:48. Thank you."
+  }'
+```
+
+### Example: M-Pesa style (provider explicit)
+
+```bash
+curl -X POST "http://127.0.0.1:8000/webhooks/property/payments/sms-ingest" \
+  -H "Content-Type: application/json" \
+  -H "X-Property-Sms-Secret: replace-with-a-long-random-secret" \
+  -d '{
+    "provider": "mpesa",
+    "source_device": "android-forwarder-01",
+    "raw_message": "UD192BBN4X Confirmed. Ksh2,000.00 received from SAMUEL NDUNGU 254728580788 on 01/04/26 at 10:24 AM."
+  }'
+```
+
+### Response outcomes
+
+- `status: matched` -> payment posted to tenant payment pipeline.
+- `status: unmatched` -> payment stored in unmatched queue for manual assignment.
+- `status: duplicate` -> transaction already processed; no re-post.
+- `status: ignored` -> SMS skipped (unsupported provider or non-payment message).
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

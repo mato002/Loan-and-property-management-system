@@ -23,15 +23,15 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div class="md:col-span-2">
                                 <label for="full_name" class="block text-sm font-bold text-gray-700 mb-2">Full Name</label>
-                                <input id="full_name" name="full_name" type="text" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-4 bg-gray-50 focus:bg-white outline-none" required>
+                                <input id="full_name" name="full_name" type="text" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none" required>
                             </div>
                             <div class="md:col-span-2">
                                 <label for="phone" class="block text-sm font-bold text-gray-700 mb-2">Phone Number</label>
-                                <input id="phone" name="phone" type="tel" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="e.g. 07XXXXXXXX" required>
+                                <input id="phone" name="phone" type="tel" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="e.g. 07XXXXXXXX" required>
                             </div>
                             <div class="md:col-span-2">
                                 <label for="email" class="block text-sm font-bold text-gray-700 mb-2">Email <span class="text-gray-400 font-medium">(Optional)</span></label>
-                                <input id="email" name="email" type="email" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="name@example.com">
+                                <input id="email" name="email" type="email" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="name@example.com">
                             </div>
 
                             @if ($applyUnit ?? null)
@@ -43,25 +43,25 @@
                             @else
                                 <div class="md:col-span-2">
                                     <label for="property" class="block text-sm font-bold text-gray-700 mb-2">Property</label>
-                                    <input id="property" name="property" type="text" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="Property name or unit reference" required>
+                                    <input id="property" name="property" type="text" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="Property name or unit reference" required>
                                 </div>
                             @endif
 
                             <div class="md:col-span-2">
                                 <label for="move_in_date" class="block text-sm font-bold text-gray-700 mb-2">Move-in Date <span class="text-gray-400 font-medium">(Optional)</span></label>
-                                <input id="move_in_date" name="move_in_date" type="date" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-4 bg-gray-50 focus:bg-white outline-none">
+                                <input id="move_in_date" name="move_in_date" type="date" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none">
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="bg-gray-50 px-8 py-6 border-t border-gray-100 flex items-center justify-between">
                     <div class="flex items-center">
-                        <input id="terms" type="checkbox" required class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                        <input id="terms" type="checkbox" required class="h-5 w-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
                         <label for="terms" class="ml-3 block text-sm font-medium text-gray-900">
                             I verify this information is accurate.
                         </label>
                     </div>
-                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-black px-10 py-5 rounded-xl shadow-xl shadow-indigo-600/30 transition-transform hover:-translate-y-1">
+                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-10 py-5 rounded-xl shadow-xl shadow-emerald-600/30 transition-transform hover:-translate-y-1">
                         Submit Application
                     </button>
                 </div>

@@ -96,6 +96,152 @@
             </div>
         </div>
 
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 p-5 shadow-sm">
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <h2 class="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-heart-pulse text-emerald-600 dark:text-emerald-400" aria-hidden="true"></i>
+                    System health
+                </h2>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Mail config</p>
+                    <p class="mt-1 text-sm">
+                        @if ($mailConfigured)
+                            <span class="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400"><i class="fa-solid fa-circle-check"></i> OK</span>
+                        @else
+                            <span class="inline-flex items-center gap-1 text-rose-700 dark:text-rose-400"><i class="fa-solid fa-triangle-exclamation"></i> Incomplete</span>
+                        @endif
+                    </p>
+                    @if (! $mailConfigured && ($lastArrearsError ?? '') !== '')
+                        <p class="mt-1 text-xs text-rose-700 dark:text-rose-400">Last error: {{ \Illuminate\Support\Str::limit($lastArrearsError, 80) }}</p>
+                    @endif
+                </div>
+                <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">SMS wallet</p>
+                    <p class="mt-1 text-sm text-slate-800 dark:text-slate-200">{{ $smsWalletBalance }}</p>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        @if (!empty($smsProvider['ok']) && isset($smsProvider['balance']))
+                            Provider balance: <span class="font-semibold">{{ number_format((float) $smsProvider['balance'], 2) }}</span>
+                        @elseif (!empty($smsProvider['error']))
+                            <span class="text-amber-700 dark:text-amber-400">Provider: {{ \Illuminate\Support\Str::limit($smsProvider['error'], 80) }}</span>
+                        @else
+                            Check provider balance if using provider/both mode.
+                        @endif
+                    </p>
+                </div>
+                <div class="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Arrears activity (today)</p>
+                    <p class="mt-1 text-sm"><span class="font-semibold">{{ $remindersSentToday }}</span> sent · <span class="font-semibold">{{ $remindersFailedToday }}</span> failed</p>
+                    <a href="{{ route('property.revenue.arrears') }}" class="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline">Open arrears</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid gap-6 lg:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 overflow-hidden shadow-sm">
+                <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between gap-2">
+                    <h2 class="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                        <i class="fa-solid fa-paper-plane text-slate-500" aria-hidden="true"></i>
+                        Recent arrears reminders (today: sent {{ $remindersSentToday }}, failed {{ $remindersFailedToday }})
+                    </h2>
+                    <a href="{{ route('property.communications.messages') }}" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Messages</a>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-slate-50 dark:bg-slate-900/50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            <tr>
+                                <th class="px-4 py-3">When</th>
+                                <th class="px-4 py-3">Channel</th>
+                                <th class="px-4 py-3">To</th>
+                                <th class="px-4 py-3">Status</th>
+                                <th class="px-4 py-3">Error</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                            @forelse (($recentArrearsReminders ?? []) as $m)
+                                <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                                    <td class="px-4 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap text-xs">{{ $m['when'] }}</td>
+                                    <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $m['channel'] }}</td>
+                                    <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $m['to'] }}</td>
+                                    <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $m['status'] }}</td>
+                                    <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ \Illuminate\Support\Str::limit($m['error'], 60) }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="5" class="px-4 py-10 text-center text-slate-500 dark:text-slate-400">No arrears reminders logged yet.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 overflow-hidden shadow-sm">
+                <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between gap-2">
+                    <h2 class="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                        <i class="fa-solid fa-file-contract text-slate-500" aria-hidden="true"></i>
+                        Lease activations (this month)
+                    </h2>
+                    <a href="{{ route('property.tenants.leases') }}" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Leases</a>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-slate-50 dark:bg-slate-900/50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            <tr>
+                                <th class="px-4 py-3">Lease #</th>
+                                <th class="px-4 py-3">Tenant</th>
+                                <th class="px-4 py-3">Unit</th>
+                                <th class="px-4 py-3">Start</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                            @forelse (($recentLeaseActivations ?? []) as $l)
+                                <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                                    <td class="px-4 py-3 text-slate-700 dark:text-slate-300">#{{ $l['id'] }}</td>
+                                    <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $l['tenant'] }}</td>
+                                    <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $l['unit'] }}</td>
+                                    <td class="px-4 py-3 text-slate-700 dark:text-slate-300 whitespace-nowrap text-xs">{{ $l['start'] }}</td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="4" class="px-4 py-10 text-center text-slate-500 dark:text-slate-400">No activations this month.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 overflow-hidden shadow-sm">
+            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between gap-2">
+                <h2 class="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                    <i class="fa-solid fa-flag text-slate-500" aria-hidden="true"></i>
+                    Takeover checklist · Occupied but no active lease
+                </h2>
+                <a href="{{ route('property.properties.units') }}" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Unit status</a>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 dark:bg-slate-900/50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        <tr>
+                            <th class="px-4 py-3">Property</th>
+                            <th class="px-4 py-3">Unit</th>
+                            <th class="px-4 py-3 w-32">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
+                        @forelse (($occupiedNoLease ?? []) as $u)
+                            <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $u['property'] }}</td>
+                                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $u['unit'] }}</td>
+                                <td class="px-4 py-3">
+                                    <a href="{{ $u['action_url'] }}" class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-xs font-semibold px-3 py-1.5 hover:bg-emerald-700 transition-colors">Add lease</a>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="3" class="px-4 py-10 text-center text-slate-500 dark:text-slate-400">All occupied units have active leases — great!</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
         <div class="grid gap-6 lg:grid-cols-2">
             <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 overflow-hidden shadow-sm">
                 <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between gap-2">

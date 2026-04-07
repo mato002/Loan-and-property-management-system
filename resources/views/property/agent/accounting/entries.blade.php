@@ -9,13 +9,22 @@
     empty-hint="Start by recording your first journal row."
 >
     <x-slot name="actions">
-        <a
-            href="{{ route('property.accounting.entries.export', ['reversal' => $reversalFilter ?? null, 'source_key' => $sourceFilter ?? null, 'q' => request('q')]) }}"
-            class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto"
-        >Export CSV</a>
+        @include('property.agent.partials.export_dropdown', [
+            'csvUrl' => route('property.accounting.entries.export', ['reversal' => $reversalFilter ?? null, 'source_key' => $sourceFilter ?? null, 'q' => request('q')]),
+            'pdfUrl' => route('property.accounting.entries.export', ['reversal' => $reversalFilter ?? null, 'source_key' => $sourceFilter ?? null, 'q' => request('q'), 'format' => 'pdf']),
+        ])
     </x-slot>
 
     <x-slot name="toolbar">
+        <form id="pm-bulk-form" method="post" action="{{ route('property.accounting.entries.bulk') }}" class="flex items-stretch gap-2 w-full sm:w-auto">
+            @csrf
+            <select name="action" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">Bulk actions</option>
+                <option value="reverse_selected">Reverse selected</option>
+            </select>
+            <button type="submit" class="rounded-lg border border-rose-200 dark:border-rose-900/50 bg-white px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50">Apply</button>
+            <button type="button" id="pm-select-all" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">Select all</button>
+        </form>
         <select name="reversal-filter" onchange="window.location=this.value" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
             <option value="{{ route('property.accounting.entries', array_merge(request()->query(), ['reversal' => null])) }}" @selected(($reversalFilter ?? '') === '')>Reversals: All</option>
             <option value="{{ route('property.accounting.entries', array_merge(request()->query(), ['reversal' => 'only_reversals'])) }}" @selected(($reversalFilter ?? '') === 'only_reversals')>Reversals only</option>
@@ -34,6 +43,28 @@
             <button type="submit" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Search</button>
         </form>
     </x-slot>
+    <script>
+        (function () {
+            const form = document.getElementById('pm-bulk-form');
+            const selectAll = document.getElementById('pm-select-all');
+            if (!form || !selectAll) return;
+            selectAll.addEventListener('click', function () {
+                document.querySelectorAll('input.pm-bulk[type=checkbox]').forEach(cb => cb.checked = true);
+            });
+            form.addEventListener('submit', function (e) {
+                // remove any old hidden ids
+                form.querySelectorAll('input[name="ids[]"]').forEach(n => n.remove());
+                const checked = Array.from(document.querySelectorAll('input.pm-bulk[type=checkbox]:checked'));
+                checked.forEach(cb => {
+                    const input = document.createElement('input');
+                    input.type = 'hidden';
+                    input.name = 'ids[]';
+                    input.value = cb.value;
+                    form.appendChild(input);
+                });
+            });
+        })();
+    </script>
 
     <x-slot name="above">
         <form method="post" action="{{ route('property.accounting.settings.account_map.save') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-4xl">
@@ -132,6 +163,11 @@
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save entry</button>
         </form>
     </x-slot>
+    @isset($paginator)
+        <x-slot name="footer">
+            @include('property.agent.partials.pagination_controls', ['paginator' => $paginator])
+        </x-slot>
+    @endisset
 </x-property.workspace>
 
 

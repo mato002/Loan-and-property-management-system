@@ -9,6 +9,7 @@ use App\Models\PmPayment;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PropertyPortalSetting;
 use App\Support\CsvExport;
+use App\Support\TabularExport;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\Request;
@@ -44,16 +45,18 @@ class FinancialsController extends Controller
             ['NOI proxy', 'Derived', '—', PropertyMoney::kes($noi), '—', 'Income − opex (simplified)'],
         ];
 
-        if ((string) $request->query('export', '') === 'csv') {
-            return CsvExport::stream(
-                'financials_income_expenses_'.now()->format('Ymd_His').'.csv',
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream(
+                'financials_income_expenses_'.now()->format('Ymd_His'),
                 ['Period', 'Account', 'Class', 'Actual', 'Notes'],
                 function () use ($periodLabel, $income, $maint, $utilities, $noi) {
                     yield [$periodLabel, 'Rental income (billed)', 'Revenue', $income, 'Sum of invoices'];
                     yield [$periodLabel, 'Maintenance (quoted jobs)', 'Opex', $maint, 'Job quotes with amounts'];
                     yield [$periodLabel, 'Utility charges', 'Opex', $utilities, 'Recurring charges'];
                     yield [$periodLabel, 'NOI proxy', 'Derived', $noi, 'Income minus opex'];
-                }
+                },
+                $export
             );
         }
 
@@ -123,15 +126,17 @@ class FinancialsController extends Controller
             ];
         }
 
-        if ((string) $request->query('export', '') === 'csv') {
-            return CsvExport::stream(
-                'financials_cash_flow_'.now()->format('Ymd_His').'.csv',
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream(
+                'financials_cash_flow_'.now()->format('Ymd_His'),
                 ['Date', 'Type', 'Description', 'Property', 'In', 'Out', 'Balance'],
                 function () use ($rows) {
                     foreach ($rows as $row) {
                         yield $row;
                     }
-                }
+                },
+                $export
             );
         }
 
@@ -239,15 +244,17 @@ class FinancialsController extends Controller
             $pending += ((float) ($pendingByProperty[$link->property_id] ?? 0)) * $pct;
         }
 
-        if ((string) $request->query('export', '') === 'csv') {
-            return CsvExport::stream(
-                'financials_owner_balances_'.now()->format('Ymd_His').'.csv',
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
+            return TabularExport::stream(
+                'financials_owner_balances_'.now()->format('Ymd_His'),
                 ['Owner', 'Property', 'Available', 'Pending', 'Last Remittance', 'Next Run', 'Statement'],
                 function () use ($rows) {
                     foreach ($rows as $row) {
                         yield $row;
                     }
-                }
+                },
+                $export
             );
         }
 
@@ -375,7 +382,8 @@ class FinancialsController extends Controller
 
         $openDelta = max(0.0, $totalInvoiced - $totalPaid);
 
-        if ((string) $request->query('export', '') === 'csv') {
+        if (in_array(strtolower((string) $request->query('export', '')), ['csv', 'pdf', 'word'], true)) {
+            $export = strtolower((string) $request->query('export', 'csv'));
             $exportRows = array_map(static function (array $row): array {
                 $copy = $row;
                 $copy[7] = 'Owner | Statement | Property';
@@ -383,14 +391,15 @@ class FinancialsController extends Controller
                 return $copy;
             }, $rows);
 
-            return CsvExport::stream(
-                'financials_commission_'.now()->format('Ymd_His').'.csv',
+            return TabularExport::stream(
+                'financials_commission_'.now()->format('Ymd_His'),
                 ['Period', 'Owner', 'Property', 'Base Rent', 'Fee %', 'Accrued', 'Status', 'Actions'],
                 function () use ($exportRows) {
                     foreach ($exportRows as $row) {
                         yield $row;
                     }
-                }
+                },
+                $export
             );
         }
 

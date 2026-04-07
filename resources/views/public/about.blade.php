@@ -37,9 +37,9 @@
                         Landlords get transparency on performance while tenants receive faster communication and service.
                     </p>
                 </div>
-                <div class="rounded-2xl border border-indigo-200 bg-indigo-50 p-6 sm:p-8">
-                    <h3 class="text-xl font-black text-indigo-900">What makes us different</h3>
-                    <ul class="mt-4 space-y-2 text-indigo-900">
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 sm:p-8">
+                    <h3 class="text-xl font-black text-emerald-900">What makes us different</h3>
+                    <ul class="mt-4 space-y-2 text-emerald-900">
                         <li>Personalized landlord service</li>
                         <li>Transparent earnings breakdown</li>
                         <li>Available on both mobile and laptop</li>
@@ -77,7 +77,7 @@
 
     <section class="py-16 bg-white">
         <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
-            <div class="rounded-3xl border border-indigo-200 bg-indigo-50 p-8 sm:p-10 text-center shadow-sm">
+            <div class="rounded-3xl border border-emerald-200 bg-emerald-50 p-8 sm:p-10 text-center shadow-sm">
                 <h2 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">Let your property earn. We will do the work.</h2>
                 <p class="mt-4 text-gray-700 text-base sm:text-lg">
                     Call or WhatsApp: <span class="font-bold text-gray-900">{{ $contactPhone }}</span>
@@ -86,8 +86,8 @@
                     Email: <span class="font-bold text-gray-900">{{ $contactEmail }}</span>
                 </p>
                 <div class="mt-6 flex flex-wrap justify-center gap-3">
-                    <a href="{{ route('public.contact') }}" class="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-extrabold text-white hover:bg-indigo-700 transition">Contact us</a>
-                    <a href="{{ route('public.properties') }}" class="rounded-xl border border-indigo-300 px-6 py-3 text-sm font-extrabold text-indigo-700 hover:bg-indigo-100 transition">View listings</a>
+                    <a href="{{ route('public.contact') }}" class="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-extrabold text-white hover:bg-emerald-700 transition">Contact us</a>
+                    <a href="{{ route('public.properties') }}" class="rounded-xl border border-emerald-300 px-6 py-3 text-sm font-extrabold text-emerald-700 hover:bg-emerald-100 transition">View listings</a>
                 </div>
             </div>
         </div>

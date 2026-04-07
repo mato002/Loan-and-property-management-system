@@ -11,10 +11,12 @@
     <x-slot name="actions">
         <a
             href="{{ route('property.landlord.earnings.history.export') }}"
+            data-turbo="false"
             class="inline-flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto"
         >Export CSV</a>
         <a
             href="{{ route('property.landlord.earnings.history.export') }}"
+            data-turbo="false"
             class="inline-flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto"
         >Statement (CSV)</a>
     </x-slot>

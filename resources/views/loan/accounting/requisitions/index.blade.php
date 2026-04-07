@@ -24,6 +24,12 @@
                     @endforeach
                 </select>
 
+                <select name="per_page" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                    @foreach ([10, 30, 50, 100, 200] as $size)
+                        <option value="{{ $size }}" @selected((int) ($perPage ?? request('per_page', 20)) === $size)>Per page: {{ $size }}</option>
+                    @endforeach
+                </select>
+
                 <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
 
                 @if(($status ?? '') !== '' || ($month ?? '') !== '')
@@ -32,7 +38,21 @@
             </div>
         </form>
 
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <form method="post" action="{{ route('loan.accounting.requisitions.bulk') }}" data-swal-confirm="Apply bulk action to selected requisitions?">
+            @csrf
+            <div class="mb-3">
+                <div class="inline-flex items-center gap-2">
+                    <label class="text-xs font-semibold text-slate-600">Select</label>
+                    <button type="button" class="text-xs px-2 py-1 rounded border border-slate-200" onclick="document.querySelectorAll('.req-row').forEach(cb=>cb.checked=true)">All</button>
+                    <button type="button" class="text-xs px-2 py-1 rounded border border-slate-200" onclick="document.querySelectorAll('.req-row').forEach(cb=>cb.checked=false)">None</button>
+                    <select name="action" class="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700">
+                        <option value="">Bulk action</option>
+                        <option value="delete">Delete (excludes paid)</option>
+                    </select>
+                    <button type="submit" class="h-8 rounded-lg bg-red-600 px-3 text-[11px] font-semibold uppercase tracking-wide text-white shadow-sm hover:bg-red-700">Apply</button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             @forelse ($rows as $r)
                 @php
                     $status = (string) $r->status;
@@ -94,9 +114,15 @@
                             <div class="text-sm font-semibold text-emerald-900">
                                 {{ $r->currency }} {{ number_format((float) $r->amount, 2) }}
                             </div>
-                            <a href="{{ route('loan.accounting.requisitions.edit', $r) }}" class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">
-                                Open
-                            </a>
+                            <div class="flex items-center gap-2">
+                                <label class="inline-flex items-center gap-2 text-xs text-slate-600">
+                                    <input type="checkbox" name="ids[]" value="{{ $r->id }}" class="req-row">
+                                    Select
+                                </label>
+                                <a href="{{ route('loan.accounting.requisitions.edit', $r) }}" class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">
+                                    Open
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -105,7 +131,8 @@
                     No requisitions found.
                 </div>
             @endforelse
-        </div>
+            </div>
+        </form>
 
         @if ($rows->hasPages())
             <div class="mt-5">{{ $rows->links() }}</div>

@@ -86,6 +86,24 @@
             .property-print-only {
                 display: none;
             }
+            /* Reusable high-attention blocks for first-time user guidance */
+            .property-attention-card {
+                border-width: 2px;
+                border-color: #bfdbfe;
+                background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+            }
+            .property-attention-title {
+                font-size: 1.125rem;
+                line-height: 1.5rem;
+                font-weight: 700;
+                color: #0f172a;
+                letter-spacing: -0.01em;
+            }
+            .property-attention-hint {
+                font-size: 0.8rem;
+                line-height: 1.15rem;
+                color: #475569;
+            }
         </style>
     </head>
     <body class="font-sans antialiased h-screen overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif" x-data="{ sidebarOpen: false }">

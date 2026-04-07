@@ -82,4 +82,9 @@
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Post payroll batch</button>
         </form>
     </x-slot>
+    @isset($paginator)
+        <x-slot name="footer">
+            @include('property.agent.partials.pagination_controls', ['paginator' => $paginator])
+        </x-slot>
+    @endisset
 </x-property.workspace>

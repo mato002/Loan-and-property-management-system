@@ -45,6 +45,7 @@
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
                     <x-property.quick-create-select
+                        id="payment-tenant-select"
                         name="pm_tenant_id"
                         :required="true"
                         :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id') === (string) $t->id])->all()"
@@ -60,6 +61,9 @@
                         ]"
                     />
                     @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        This screen posts payments against an <span class="font-medium">open invoice</span>. Only tenants with an open invoice are listed.
+                    </p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Channel</label>
@@ -72,16 +76,19 @@
                 </div>
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Invoice (open balance)</label>
-                    <select name="pm_invoice_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <select id="payment-invoice-select" name="pm_invoice_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="">Select…</option>
                         @foreach ($openInvoices as $inv)
                             @php $open = max(0, (float) $inv->amount - (float) $inv->amount_paid); @endphp
-                            <option value="{{ $inv->id }}" @selected(old('pm_invoice_id') == $inv->id)>
+                            <option value="{{ $inv->id }}" data-tenant-id="{{ $inv->pm_tenant_id }}" @selected(old('pm_invoice_id') == $inv->id)>
                                 {{ $inv->invoice_no }} · {{ $inv->tenant->name }} · bal {{ number_format($open, 2) }}
                             </option>
                         @endforeach
                     </select>
                     @error('pm_invoice_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <p id="payment-no-invoices-hint" class="mt-1 hidden text-xs text-amber-700">
+                        No open invoices for the selected tenant. Create an invoice first.
+                    </p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
@@ -101,16 +108,113 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save payment</button>
         </form>
+
+        <script>
+            (function () {
+                const tenantSelect = document.getElementById('payment-tenant-select');
+                const invoiceSelect = document.getElementById('payment-invoice-select');
+                const noInvoicesHint = document.getElementById('payment-no-invoices-hint');
+
+                if (!tenantSelect || !invoiceSelect) return;
+
+                function filterInvoices() {
+                    const tenantId = (tenantSelect.value || '').toString();
+                    let visibleCount = 0;
+                    let selectedStillValid = false;
+
+                    Array.from(invoiceSelect.options).forEach((opt, idx) => {
+                        if (idx === 0) return; // "Select…"
+                        const optTenantId = (opt.getAttribute('data-tenant-id') || '').toString();
+                        const shouldShow = tenantId === '' || optTenantId === tenantId;
+                        opt.hidden = !shouldShow;
+                        if (shouldShow) visibleCount++;
+                        if (shouldShow && opt.selected) selectedStillValid = true;
+                    });
+
+                    if (!selectedStillValid) {
+                        invoiceSelect.value = '';
+                    }
+
+                    if (noInvoicesHint) {
+                        const showHint = tenantId !== '' && visibleCount === 0;
+                        noInvoicesHint.classList.toggle('hidden', !showHint);
+                    }
+                }
+
+                tenantSelect.addEventListener('change', filterInvoices);
+                filterInvoices(); // initial load (old input)
+            })();
+        </script>
     </x-slot>
 
     <x-slot name="toolbar">
-        <select data-table-filter="parent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
-            <option value="">Channel: All</option>
-            <option value="mpesa">M-Pesa</option>
-            <option value="equity_paybill">Equity Paybill API</option>
-            <option value="mpesa_sms_ingest">SMS Forwarder</option>
-            <option value="bank">Bank</option>
-            <option value="cash">Cash</option>
-        </select>
+        <div class="flex flex-wrap items-center gap-2">
+            <form method="get" action="{{ route('property.revenue.payments') }}" class="flex flex-wrap items-center gap-2">
+                <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search ref, tenant, phone..." class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-64" />
+                <select name="status" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
+                    <option value="">Status: All</option>
+                    <option value="completed" @selected(($filters['status'] ?? '') === 'completed')>Completed</option>
+                    <option value="pending" @selected(($filters['status'] ?? '') === 'pending')>Pending</option>
+                    <option value="failed" @selected(($filters['status'] ?? '') === 'failed')>Failed</option>
+                </select>
+                <select name="channel" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
+                    <option value="">Channel: All</option>
+                    @foreach (['mpesa' => 'M-Pesa', 'equity_paybill' => 'Equity Paybill API', 'mpesa_sms_ingest' => 'SMS Forwarder', 'bank' => 'Bank', 'cash' => 'Cash', 'card' => 'Card', 'cheque' => 'Cheque', 'mpesa_stk' => 'M-Pesa STK'] as $cv => $cl)
+                        <option value="{{ $cv }}" @selected(($filters['channel'] ?? '') === $cv)>{{ $cl }}</option>
+                    @endforeach
+                </select>
+                <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+                <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+                <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                    <option value="paid_at" @selected(($filters['sort'] ?? 'paid_at') === 'paid_at')>Sort: Received at</option>
+                    <option value="created_at" @selected(($filters['sort'] ?? '') === 'created_at')>Sort: Created at</option>
+                    <option value="amount" @selected(($filters['sort'] ?? '') === 'amount')>Sort: Amount</option>
+                    <option value="status" @selected(($filters['sort'] ?? '') === 'status')>Sort: Status</option>
+                    <option value="id" @selected(($filters['sort'] ?? '') === 'id')>Sort: ID</option>
+                </select>
+                <select name="dir" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                    <option value="desc" @selected(($filters['dir'] ?? 'desc') === 'desc')>Desc</option>
+                    <option value="asc" @selected(($filters['dir'] ?? '') === 'asc')>Asc</option>
+                </select>
+                <label class="text-xs text-slate-500">Per page</label>
+                <select name="per_page" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                    @foreach ([10, 30, 50, 100, 200] as $size)
+                        <option value="{{ $size }}" @selected((int) ($perPage ?? request('per_page', 30)) === $size)>{{ $size }}</option>
+                    @endforeach
+                </select>
+                <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
+                <a href="{{ route('property.revenue.payments', absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
+                @include('property.agent.partials.export_dropdown', [
+                    'csvUrl' => route('property.revenue.payments', array_merge(request()->query(), ['export' => 'csv']), false),
+                    'xlsUrl' => route('property.revenue.payments', array_merge(request()->query(), ['export' => 'xls']), false),
+                    'pdfUrl' => route('property.revenue.payments', array_merge(request()->query(), ['export' => 'pdf']), false),
+                ])
+            </form>
+        </div>
+    </x-slot>
+
+    <x-slot name="footer">
+        @isset($paginator)
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm text-slate-600">
+                    Showing {{ $paginator->firstItem() ?? 0 }}–{{ $paginator->lastItem() ?? 0 }} of {{ $paginator->total() }} payment(s)
+                </p>
+                <div>
+                    {{ $paginator->links() }}
+                </div>
+            </div>
+        @endisset
+    </x-slot>
+    <x-slot name="table_actions">
+        @if (!empty($tableRows))
+            <form id="property-payments-bulk-form" method="post" action="{{ route('property.revenue.payments.bulk') }}" class="flex items-center gap-2" data-swal-confirm="Apply bulk action to selected payments?">
+                @csrf
+                <select name="action" class="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700">
+                    <option value="">Bulk action</option>
+                    <option value="delete">Delete (pending/failed only)</option>
+                </select>
+                <button type="submit" class="rounded-lg bg-red-600 text-white px-3 py-1.5 text-xs font-semibold">Apply</button>
+            </form>
+        @endif
     </x-slot>
 </x-property.workspace>

@@ -10,6 +10,10 @@
         <form method="get" class="mb-4">
             <div class="flex flex-wrap items-end gap-2">
                 <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Search</label>
+                    <input type="search" name="q" value="{{ $search ?? '' }}" placeholder="Account, notes, preparer..." class="h-10 min-w-[16rem] rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
                     <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Status</label>
                     <select name="status" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                         <option value="">All</option>
@@ -36,6 +40,30 @@
                 <div>
                     <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">To</label>
                     <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Per page</label>
+                    <select name="per_page" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        @foreach([10,15,25,50,100,200] as $size)
+                            <option value="{{ $size }}" @selected((int)($perPage ?? 15) === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Sort</label>
+                    <select name="sort" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="statement_date" @selected(($sort ?? 'statement_date') === 'statement_date')>Statement date</option>
+                        <option value="statement_balance" @selected(($sort ?? '') === 'statement_balance')>Statement balance</option>
+                        <option value="status" @selected(($sort ?? '') === 'status')>Status</option>
+                        <option value="id" @selected(($sort ?? '') === 'id')>ID</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Direction</label>
+                    <select name="dir" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="desc" @selected(($dir ?? 'desc') === 'desc')>Desc</option>
+                        <option value="asc" @selected(($dir ?? '') === 'asc')>Asc</option>
+                    </select>
                 </div>
 
                 <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>

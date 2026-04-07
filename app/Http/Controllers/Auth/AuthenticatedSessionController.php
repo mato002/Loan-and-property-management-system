@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Services\Property\LoginActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
@@ -24,8 +26,34 @@ class AuthenticatedSessionController extends Controller
      */
     public function store(LoginRequest $request): RedirectResponse
     {
-        $request->authenticate();
+        try {
+            $request->authenticate();
+        } catch (ValidationException $e) {
+            app(LoginActivityLogger::class)->log(
+                null,
+                'failed',
+                'Staff login failed',
+                (string) $request->input('email'),
+                [
+                    'portal' => 'staff',
+                    'ip' => (string) $request->ip(),
+                    'user_agent' => (string) $request->userAgent(),
+                ]
+            );
+            throw $e;
+        }
         $user = $request->user();
+        app(LoginActivityLogger::class)->log(
+            (int) $user->id,
+            'sent',
+            'Staff login successful',
+            (string) $user->email,
+            [
+                'portal' => 'staff',
+                'ip' => (string) $request->ip(),
+                'user_agent' => (string) $request->userAgent(),
+            ]
+        );
 
         // Super admins should still choose which module (Property / Loan) to enter.
         // They can access the Super Admin console from the navigation.
@@ -37,6 +65,16 @@ class AuthenticatedSessionController extends Controller
         $request->session()->forget(['active_system', 'url.intended']);
 
         if (count($approvedModules) === 0) {
+            app(LoginActivityLogger::class)->log(
+                (int) $user->id,
+                'failed',
+                'Staff login blocked (module not approved)',
+                (string) $user->email,
+                [
+                    'portal' => 'staff',
+                    'ip' => (string) $request->ip(),
+                ]
+            );
             return redirect()->route('login')
                 ->withErrors([
                     'module' => 'Your account is not approved for Property or Loan module access yet.',
@@ -64,6 +102,22 @@ class AuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        $user = $request->user();
+        if ($user) {
+            $portal = in_array((string) ($user->property_portal_role ?? ''), ['tenant', 'landlord'], true)
+                ? (string) $user->property_portal_role
+                : 'staff';
+            app(LoginActivityLogger::class)->log(
+                (int) $user->id,
+                'sent',
+                'Logout',
+                (string) $user->email,
+                [
+                    'portal' => $portal,
+                    'ip' => (string) $request->ip(),
+                ]
+            );
+        }
         Auth::guard('web')->logout();
 
         $request->session()->invalidate();

@@ -1,55 +1,49 @@
-<x-guest-layout :title="__('Reset password').' — '.config('app.name')">
-    @php $emailErr = $errors->first('email'); @endphp
+@php $emailErr = $errors->first('email'); @endphp
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{{ __('Reset password').' — '.config('app.name') }}</title>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+</head>
+<body class="min-h-screen bg-[#0f2f2a] text-white antialiased">
+    <x-swal-flash />
+    <main class="min-h-screen flex items-center justify-center px-6 py-10 sm:px-10">
+        <div class="w-full max-w-md">
+            <h2 class="text-center text-3xl font-bold">{{ __('Forgot password?') }}</h2>
+            <p class="mt-2 text-center text-sm text-white/80">{{ __('No problem. Enter your email and we will send a reset link.') }}</p>
 
-    <div class="mb-8 flex items-center justify-between gap-4">
-        <a
-            href="{{ route('login') }}"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#4d8d82]/40 hover:text-[#4d8d82]"
-            aria-label="{{ __('Back to sign in') }}"
-        >
-            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-            </svg>
-        </a>
-    </div>
+            <form method="POST" action="{{ route('password.email') }}" class="mt-8 space-y-4">
+                @csrf
+                <div>
+                    <label for="email" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-white/85">{{ __('Email') }}</label>
+                    <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        value="{{ old('email') }}"
+                        required
+                        autofocus
+                        autocomplete="username"
+                        placeholder="name@company.com"
+                        class="w-full rounded-md border border-white/30 bg-white/95 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 focus:border-[#4d8d82] focus:outline-none focus:ring-2 focus:ring-[#4d8d82]/40"
+                    >
+                    @if ($emailErr)
+                        <p class="mt-1.5 text-xs text-red-200">{{ $emailErr }}</p>
+                    @endif
+                </div>
 
-    <h1 class="text-3xl font-bold tracking-tight text-slate-900">{{ __('Forgot password?') }}</h1>
-    <p class="mt-2 text-sm leading-relaxed text-slate-500">
-        {{ __('No problem. Enter your email and we will send a reset link.') }}
-    </p>
+                <button type="submit" class="w-full rounded-md bg-[#4d8d82] py-2.5 text-sm font-semibold text-white transition hover:bg-[#3f7a70] focus:outline-none focus:ring-2 focus:ring-[#7bc4b8]">
+                    {{ __('Email reset link') }}
+                </button>
+            </form>
 
-    <form method="POST" action="{{ route('password.email') }}" class="mt-10 space-y-8">
-        @csrf
-
-        <x-auth.field-underline
-            label="{{ __('Email') }}"
-            id="email"
-            name="email"
-            type="email"
-            :value="old('email')"
-            required
-            autofocus
-            autocomplete="username"
-            placeholder="name@company.com"
-            :error="$emailErr"
-        >
-            <x-slot name="icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-                </svg>
-            </x-slot>
-        </x-auth.field-underline>
-
-        <button
-            type="submit"
-            class="group flex w-full items-center justify-center gap-3 rounded-full bg-[#4d8d82] py-4 text-base font-semibold text-white shadow-lg shadow-[#4d8d82]/35 transition hover:bg-[#3f7a70] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4d8d82] focus-visible:ring-offset-2"
-        >
-            {{ __('Email reset link') }}
-            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20" aria-hidden="true">
-                <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                </svg>
-            </span>
-        </button>
-    </form>
-</x-guest-layout>
+            <p class="mt-5 text-center text-xs">
+                <a href="{{ route('login') }}" class="font-semibold text-[#8cd4c8] hover:underline">{{ __('Back to sign in') }}</a>
+            </p>
+        </div>
+    </main>
+</body>
+</html>

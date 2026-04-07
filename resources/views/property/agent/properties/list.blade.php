@@ -11,9 +11,10 @@
 >
     <x-slot name="above">
         <div class="grid gap-4 lg:grid-cols-2">
-            <form method="post" action="{{ route('property.properties.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
+            <form method="post" action="{{ route('property.properties.store') }}" class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
                 @csrf
-                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add property</h3>
+                <h3 class="property-attention-title dark:text-white">Add Property</h3>
+                <p class="property-attention-hint dark:text-slate-300">Start here: create the property first, then add units and landlord links.</p>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Name</label>
                     <input type="text" name="name" value="{{ old('name') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
@@ -62,7 +63,7 @@
                 action="{{ route('property.properties.landlords.attach') }}"
                 data-turbo-frame="property-main"
                 data-turbo="false"
-                class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 scroll-mt-24"
+                class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 scroll-mt-24"
                 x-data="{
                     showNewLandlord: false,
                     creating: false,
@@ -116,8 +117,8 @@
                 }"
             >
                 @csrf
-                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Link landlord user</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Users must have the landlord portal role at registration.</p>
+                <h3 class="property-attention-title dark:text-white">Link Landlord User</h3>
+                <p class="property-attention-hint dark:text-slate-300">Assign a landlord account to a property so ownership and statements are connected.</p>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
                     <x-property.quick-create-select
@@ -242,7 +243,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.properties.list') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+        <form method="get" action="{{ route('property.properties.list') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-7 items-end">
             <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search name, code, city..." class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 lg:col-span-2" />
             <select name="city" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="">All cities</option>
@@ -262,10 +263,37 @@
                 <option value="created_at" @selected(($filters['sort'] ?? '') === 'created_at')>Sort: Newest</option>
             </select>
             <div class="flex items-center gap-2">
+                <label class="text-xs text-slate-500 dark:text-slate-400">Per page</label>
+                <select name="per_page" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-2 py-2">
+                    @foreach ([10, 30, 50, 100, 200] as $size)
+                        <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 30) === $size)>{{ $size }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="flex items-center gap-2">
                 <input type="hidden" name="dir" value="{{ ($filters['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc' }}" />
                 <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
                 <a href="{{ route('property.properties.list', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
             </div>
+            <div class="flex items-center">
+                @include('property.agent.partials.export_dropdown', [
+                    'csvUrl' => route('property.properties.list.export', array_merge(request()->query(), ['format' => 'csv']), false),
+                    'xlsUrl' => route('property.properties.list.export', array_merge(request()->query(), ['format' => 'xls']), false),
+                    'pdfUrl' => route('property.properties.list.export', array_merge(request()->query(), ['format' => 'pdf']), false),
+                ])
+            </div>
         </form>
+    </x-slot>
+    <x-slot name="footer">
+        @isset($properties)
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm text-slate-600 dark:text-slate-300">
+                    Showing {{ $properties->firstItem() ?? 0 }}–{{ $properties->lastItem() ?? 0 }} of {{ $properties->total() }} propert{{ $properties->total() === 1 ? 'y' : 'ies' }}
+                </p>
+                <div>
+                    {{ $properties->links() }}
+                </div>
+            </div>
+        @endisset
     </x-slot>
 </x-property.workspace>

@@ -1,10 +1,10 @@
-@php
-    $url = $url ?? request()->fullUrl();
-@endphp
-
-<div class="inline-flex rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
-    <a href="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}" class="px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 border-r border-slate-200">CSV</a>
-    <a href="{{ request()->fullUrlWithQuery(['export' => 'pdf']) }}" class="px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 border-r border-slate-200">PDF</a>
-    <a href="{{ request()->fullUrlWithQuery(['export' => 'word']) }}" class="px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Word</a>
-</div>
+<select
+    class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+    onchange="if(this.value){ window.location.href=this.value; this.selectedIndex=0; }"
+>
+    <option value="">Export</option>
+    <option value="{{ request()->fullUrlWithQuery(['export' => 'csv']) }}">CSV</option>
+    <option value="{{ request()->fullUrlWithQuery(['export' => 'pdf']) }}">PDF</option>
+    <option value="{{ request()->fullUrlWithQuery(['export' => 'word']) }}">Word</option>
+</select>
 

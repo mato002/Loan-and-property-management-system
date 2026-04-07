@@ -82,6 +82,40 @@
                     <button type="button" data-segment="staff" class="pm-load-recipients rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">Staff</button>
                     <span id="pm-load-hint" class="text-[11px] text-slate-500 dark:text-slate-400 hidden">Loading…</span>
                 </div>
+                <div id="pm-tenant-advanced" class="mt-3 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 p-3 hidden space-y-2">
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Tenant targeting</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-[11px] text-slate-600 dark:text-slate-400">Scope</label>
+                            <select id="pm-tenant-scope" class="mt-1 w-full rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-xs px-2 py-1.5">
+                                <option value="all">All tenants</option>
+                                <option value="property">By property</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-slate-600 dark:text-slate-400">Property</label>
+                            <select id="pm-tenant-property" class="mt-1 w-full rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-xs px-2 py-1.5" disabled>
+                                <option value="">All properties</option>
+                                @foreach (($propertyOptions ?? collect()) as $p)
+                                    <option value="{{ $p->id }}">{{ $p->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-slate-600 dark:text-slate-400">Tenant selection</label>
+                            <select id="pm-tenant-mode" class="mt-1 w-full rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-xs px-2 py-1.5">
+                                <option value="all">All in scope</option>
+                                <option value="selected">Select specific</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="pm-tenant-pick-wrap" class="hidden">
+                        <label class="block text-[11px] text-slate-600 dark:text-slate-400">Pick tenants</label>
+                        <select id="pm-tenant-pick" multiple class="mt-1 w-full min-h-[120px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-xs px-2 py-1.5"></select>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Hold Ctrl/Cmd to select multiple.</p>
+                    </div>
+                    <button type="button" id="pm-apply-tenants" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Apply tenant recipients</button>
+                </div>
                 <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2">This app loads recipients for the selected group and appends them below based on channel. Review before sending.</p>
             </div>
             <div>
@@ -121,6 +155,77 @@ document.addEventListener('DOMContentLoaded', function () {
     const subjectWrap = document.getElementById('pm-email-subject-wrap');
     const scheduleHint = document.getElementById('pm-schedule-hint');
     const hint = document.getElementById('pm-load-hint');
+    const tenantAdvanced = document.getElementById('pm-tenant-advanced');
+    const tenantScopeEl = document.getElementById('pm-tenant-scope');
+    const tenantPropertyEl = document.getElementById('pm-tenant-property');
+    const tenantModeEl = document.getElementById('pm-tenant-mode');
+    const tenantPickWrap = document.getElementById('pm-tenant-pick-wrap');
+    const tenantPickEl = document.getElementById('pm-tenant-pick');
+    const applyTenantsBtn = document.getElementById('pm-apply-tenants');
+    let tenantItems = [];
+
+    function normalizeList(arr) {
+        const seen = new Set();
+        const out = [];
+        arr.forEach(v => {
+            const val = String(v || '').trim();
+            if (!val || seen.has(val)) return;
+            seen.add(val);
+            out.push(val);
+        });
+        return out;
+    }
+    function appendRecipients(list) {
+        if (!recipientsEl) return;
+        const existing = recipientsEl.value ? recipientsEl.value.split(/[\n,;]+/).map(x => x.trim()).filter(Boolean) : [];
+        const merged = normalizeList(existing.concat(list));
+        recipientsEl.value = merged.join('\n');
+    }
+    function updateTenantUi() {
+        const propertyMode = tenantScopeEl && tenantScopeEl.value === 'property';
+        if (tenantPropertyEl) {
+            tenantPropertyEl.disabled = !propertyMode;
+            if (!propertyMode) tenantPropertyEl.value = '';
+        }
+        const selectedMode = tenantModeEl && tenantModeEl.value === 'selected';
+        tenantPickWrap && tenantPickWrap.classList.toggle('hidden', !selectedMode);
+    }
+    function renderTenantOptions() {
+        if (!tenantPickEl) return;
+        const propertyId = String(tenantPropertyEl?.value || '');
+        const opts = tenantItems.filter(item => {
+            if (!propertyId) return true;
+            return (item.property_ids || []).map(String).includes(propertyId);
+        });
+        tenantPickEl.innerHTML = opts.map(item => {
+            const text = `${item.name} (${item.recipient})`;
+            return `<option value="${item.id}" data-recipient="${item.recipient}">${text}</option>`;
+        }).join('');
+    }
+    async function loadTenantItems() {
+        try {
+            hint && (hint.classList.remove('hidden'), hint.textContent = 'Loading tenants…');
+            const channel = channelEl ? channelEl.value : 'sms';
+            const propertyId = String(tenantPropertyEl?.value || '');
+            let url = "{{ route('property.communications.recipients') }}?type=tenants&detailed=1&channel=" + encodeURIComponent(channel);
+            if (propertyId) {
+                url += "&property_id=" + encodeURIComponent(propertyId);
+            }
+            const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            const json = await res.json();
+            if (!json.ok) {
+                alert(json.error || 'Failed to load tenant recipients.');
+                return;
+            }
+            tenantItems = Array.isArray(json.tenant_items) ? json.tenant_items : [];
+            renderTenantOptions();
+        } catch (e) {
+            console.error(e);
+            alert('Failed to load tenant recipients.');
+        } finally {
+            hint && (hint.textContent = 'Done', setTimeout(() => hint.classList.add('hidden'), 800));
+        }
+    }
     function updateBulkChannelUi() {
         const isEmail = channelEl && channelEl.value === 'email';
         if (subjectWrap) {
@@ -139,6 +244,11 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     async function loadPhones(type) {
         if (!recipientsEl) return;
+        if (type === 'tenants') {
+            tenantAdvanced && tenantAdvanced.classList.remove('hidden');
+            await loadTenantItems();
+            return;
+        }
         try {
             hint && (hint.classList.remove('hidden'), hint.textContent = 'Loading…');
             const channel = channelEl ? channelEl.value : 'sms';
@@ -154,8 +264,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 alert('No recipients found for ' + type + ' (' + channel + ').');
                 return;
             }
-            const existing = recipientsEl.value ? recipientsEl.value + '\n' : '';
-            recipientsEl.value = existing + list.join('\n');
+            appendRecipients(list);
         } catch (e) {
             console.error(e);
             alert('Failed to load recipients. Check your connection.');
@@ -166,7 +275,35 @@ document.addEventListener('DOMContentLoaded', function () {
     buttons.forEach(btn => {
         btn.addEventListener('click', () => loadPhones(btn.getAttribute('data-segment')));
     });
+    tenantScopeEl && tenantScopeEl.addEventListener('change', async () => {
+        updateTenantUi();
+        await loadTenantItems();
+    });
+    tenantPropertyEl && tenantPropertyEl.addEventListener('change', async () => {
+        await loadTenantItems();
+    });
+    tenantModeEl && tenantModeEl.addEventListener('change', updateTenantUi);
+    applyTenantsBtn && applyTenantsBtn.addEventListener('click', () => {
+        const mode = tenantModeEl ? tenantModeEl.value : 'all';
+        let list = [];
+        if (mode === 'selected') {
+            list = [...(tenantPickEl?.selectedOptions || [])].map(opt => opt.getAttribute('data-recipient') || '').filter(Boolean);
+        } else {
+            list = [...(tenantPickEl?.options || [])].map(opt => opt.getAttribute('data-recipient') || '').filter(Boolean);
+        }
+        if (list.length === 0) {
+            alert('No tenant recipients selected.');
+            return;
+        }
+        appendRecipients(list);
+    });
     channelEl && channelEl.addEventListener('change', updateBulkChannelUi);
+    channelEl && channelEl.addEventListener('change', async () => {
+        if (tenantAdvanced && !tenantAdvanced.classList.contains('hidden')) {
+            await loadTenantItems();
+        }
+    });
     updateBulkChannelUi();
+    updateTenantUi();
 });
 </script>

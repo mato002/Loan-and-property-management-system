@@ -4,7 +4,7 @@
         subtitle="Filter and export the payment register."
     >
         <x-slot name="actions">
-            <a href="{{ route('loan.payments.report.export', request()->query()) }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Export CSV</a>
+            <a href="{{ route('loan.payments.report.export', request()->query()) }}" data-turbo="false" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Export CSV</a>
         </x-slot>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mb-6">

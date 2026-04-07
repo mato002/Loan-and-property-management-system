@@ -8,13 +8,40 @@
     empty-hint="Add a line below — amounts are stored separately from core rent."
 >
     <x-slot name="toolbar">
-        <input
-            type="search"
-            data-table-filter="parent"
-            autocomplete="off"
-            placeholder="Search label or unit…"
-            class="w-full min-w-0 sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2"
-        />
+        <form method="get" action="{{ route('property.revenue.utilities', absolute: false) }}" class="w-full flex flex-wrap items-end gap-2">
+            <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" autocomplete="off" placeholder="Search label or unit…" class="w-full min-w-0 sm:w-64 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+            <select name="charge_type" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">Type: All</option>
+                <option value="water" @selected(($filters['charge_type'] ?? '') === 'water')>Water</option>
+                <option value="service" @selected(($filters['charge_type'] ?? '') === 'service')>Service</option>
+                <option value="garbage" @selected(($filters['charge_type'] ?? '') === 'garbage')>Garbage</option>
+                <option value="other" @selected(($filters['charge_type'] ?? '') === 'other')>Other</option>
+            </select>
+            <input type="month" name="month" value="{{ $filters['month'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+            <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="id" @selected(($filters['sort'] ?? 'id') === 'id')>Sort: ID</option>
+                <option value="created_at" @selected(($filters['sort'] ?? '') === 'created_at')>Sort: Added date</option>
+                <option value="amount" @selected(($filters['sort'] ?? '') === 'amount')>Sort: Amount</option>
+                <option value="label" @selected(($filters['sort'] ?? '') === 'label')>Sort: Label</option>
+                <option value="billing_month" @selected(($filters['sort'] ?? '') === 'billing_month')>Sort: Billing month</option>
+            </select>
+            <select name="dir" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="desc" @selected(($filters['dir'] ?? 'desc') === 'desc')>Desc</option>
+                <option value="asc" @selected(($filters['dir'] ?? '') === 'asc')>Asc</option>
+            </select>
+            <select name="per_page" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                @foreach ([10, 30, 50, 100, 200] as $size)
+                    <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 30) === $size)>{{ $size }}</option>
+                @endforeach
+            </select>
+            <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
+            <a href="{{ route('property.revenue.utilities', absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
+            @include('property.agent.partials.export_dropdown', [
+                'csvUrl' => route('property.revenue.utilities', array_merge(request()->query(), ['export' => 'csv']), false),
+                'xlsUrl' => route('property.revenue.utilities', array_merge(request()->query(), ['export' => 'xls']), false),
+                'pdfUrl' => route('property.revenue.utilities', array_merge(request()->query(), ['export' => 'pdf']), false),
+            ])
+        </form>
     </x-slot>
 
     <x-slot name="above">
@@ -160,6 +187,16 @@
             </tbody>
         </table>
     </div>
+    <x-slot name="footer">
+        @if (method_exists($charges, 'links'))
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm text-slate-600">
+                    Showing {{ $charges->firstItem() ?? 0 }}-{{ $charges->lastItem() ?? 0 }} of {{ $charges->total() }} charge line(s)
+                </p>
+                {{ $charges->links() }}
+            </div>
+        @endif
+    </x-slot>
 
     <div class="mt-6 overflow-x-auto w-full min-w-0 -mx-4 px-4 sm:mx-0 sm:px-0">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white mb-2">Water readings</h3>

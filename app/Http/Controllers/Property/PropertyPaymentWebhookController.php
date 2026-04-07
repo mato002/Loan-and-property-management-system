@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Property;
 use App\Http\Controllers\Controller;
 use App\Models\PmPayment;
 use App\Models\PmSmsIngest;
+use App\Models\PmTenant;
 use App\Services\Integrations\MpesaDarajaService;
 use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
@@ -28,7 +29,11 @@ class PropertyPaymentWebhookController extends Controller
     ): JsonResponse
     {
         $secret = (string) config('services.property_sms_ingest.secret', '');
+        // Accept secret from header primarily; fall back to query/body for devices that cannot set headers.
         $providedSecret = (string) $request->header('X-Property-Sms-Secret', '');
+        if ($providedSecret === '') {
+            $providedSecret = (string) ($request->query('secret', $request->input('secret', '')));
+        }
 
         if ($secret === '' || ! hash_equals($secret, $providedSecret)) {
             return response()->json(['ok' => false, 'message' => 'Unauthorized webhook'], 401);
@@ -49,6 +54,14 @@ class PropertyPaymentWebhookController extends Controller
         $paidAt = $this->normalizePaidAt($data['paid_at'] ?? null);
 
         $rawMessage = (string) ($data['raw_message'] ?? '');
+        $provider = strtolower(trim((string) ($data['provider'] ?? '')));
+        if (! $this->isAllowedSmsProvider($provider, $rawMessage)) {
+            return response()->json([
+                'ok' => true,
+                'status' => 'ignored',
+                'message' => 'SMS ignored: provider is not allowed for ingest (allowed: mpesa, equity).',
+            ]);
+        }
         if (! $this->isLikelyIncomingPaymentMessage($rawMessage)) {
             return response()->json([
                 'ok' => true,
@@ -87,7 +100,7 @@ class PropertyPaymentWebhookController extends Controller
             $ingest = PmSmsIngest::query()->firstOrCreate(
                 ['provider_txn_code' => $providerTxnCode],
                 [
-                    'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
+                    'provider' => $provider !== '' ? $provider : 'mpesa',
                     'source_device' => $data['source_device'] ?? null,
                     'payer_phone' => $normalizedPhone,
                     'amount' => $amount,
@@ -131,7 +144,7 @@ class PropertyPaymentWebhookController extends Controller
             'phone' => (string) ($normalizedPhone ?? ''),
             'transaction_date' => $paidAt ?? now(),
             'raw_payload' => [
-                'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
+                'provider' => $provider !== '' ? $provider : 'mpesa',
                 'source_device' => $data['source_device'] ?? null,
                 'raw_message' => $data['raw_message'] ?? null,
                 'payload' => $payload,
@@ -184,7 +197,7 @@ class PropertyPaymentWebhookController extends Controller
                 'status' => PmPayment::STATUS_COMPLETED,
                 'meta' => [
                     'source' => 'sms_ingest',
-                    'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
+                    'provider' => $provider !== '' ? $provider : 'mpesa',
                     'source_device' => $data['source_device'] ?? null,
                     'payer_phone' => $normalizedPhone,
                     'raw_message' => $data['raw_message'] ?? null,
@@ -303,7 +316,7 @@ class PropertyPaymentWebhookController extends Controller
             'payment_method' => 'sms_forwarder',
             'channel' => 'mpesa_sms_ingest',
             'source' => 'sms_ingest',
-            'provider' => strtolower((string) ($data['provider'] ?? 'mpesa')),
+            'provider' => $provider !== '' ? $provider : 'mpesa',
             'message' => 'Payment ingested via SMS Forwarder.',
         ]);
 
@@ -344,21 +357,29 @@ class PropertyPaymentWebhookController extends Controller
 
         $out = [];
 
-        // Prefer the token immediately before "Confirmed", which matches M-Pesa confirmation format.
-        if (preg_match('/\b([A-Z0-9]{8,12})\s+Confirmed\b/iu', $message, $m) === 1) {
-            $candidate = strtoupper((string) $m[1]);
-            if ($this->isLikelyTxnCode($candidate)) {
-                $out['provider_txn_code'] = $candidate;
-            }
-        } elseif (preg_match('/\b([A-Z0-9]{8,12})\b/u', $message, $m) === 1) {
+        // Prefer explicit reference markers first (e.g. "Ref. UDV..."/"M-Pesa Ref. UCV...").
+        if (preg_match('/\b(?:m-?pesa\s+)?ref(?:erence)?\.?\s*[:\-]?\s*([A-Z0-9]{8,12})\b/iu', $message, $m) === 1) {
             $candidate = strtoupper((string) $m[1]);
             if ($this->isLikelyTxnCode($candidate)) {
                 $out['provider_txn_code'] = $candidate;
             }
         }
 
-        // Match amount formats like "Ksh1,250.00" or "KES 1250" or "Ksh 1,250".
-        if (preg_match('/(?:KSH|KES)\s*([0-9,]+(?:\.[0-9]{1,2})?)/iu', $message, $m) === 1) {
+        // Prefer the token immediately before "Confirmed", which matches common M-Pesa confirmation format.
+        if (! isset($out['provider_txn_code']) && preg_match('/\b([A-Z0-9]{8,12})\s+Confirmed\b/iu', $message, $m) === 1) {
+            $candidate = strtoupper((string) $m[1]);
+            if ($this->isLikelyTxnCode($candidate)) {
+                $out['provider_txn_code'] = $candidate;
+            }
+        } elseif (! isset($out['provider_txn_code']) && preg_match('/\b([A-Z0-9]{8,12})\b/u', $message, $m) === 1) {
+            $candidate = strtoupper((string) $m[1]);
+            if ($this->isLikelyTxnCode($candidate)) {
+                $out['provider_txn_code'] = $candidate;
+            }
+        }
+
+        // Match amount formats like "Ksh1,250.00", "KES 1250", "KES. 6,300.00".
+        if (preg_match('/(?:KSH|KES)\.?\s*([0-9,]+(?:\.[0-9]{1,2})?)/iu', $message, $m) === 1) {
             $value = str_replace(',', '', (string) $m[1]);
             $out['amount'] = (float) $value;
         }
@@ -377,26 +398,36 @@ class PropertyPaymentWebhookController extends Controller
             return null;
         }
 
+        $day = $month = $year = $hour = $minute = null;
         // Example: "... on 30/3/26 at 3:43 PM."
-        if (preg_match('/\bon\s+(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+at\s+(\d{1,2}):(\d{2})\s*(AM|PM)\b/iu', $message, $m) !== 1) {
+        if (preg_match('/\bon\s+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\s+at\s+(\d{1,2}):(\d{2})\s*(AM|PM)\b/iu', $message, $m) === 1) {
+            $day = (int) $m[1];
+            $month = (int) $m[2];
+            $year = (int) $m[3];
+            $hour = (int) $m[4];
+            $minute = (int) $m[5];
+            $meridiem = strtoupper((string) $m[6]);
+            if ($year < 100) {
+                $year += 2000;
+            }
+            if ($meridiem === 'PM' && $hour < 12) {
+                $hour += 12;
+            }
+            if ($meridiem === 'AM' && $hour === 12) {
+                $hour = 0;
+            }
+        } elseif (preg_match('/\bon\s+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\s+at\s+(\d{1,2}):(\d{2})\b/u', $message, $m) === 1) {
+            // Example: "... on 01-04-2026 at 10:24"
+            $day = (int) $m[1];
+            $month = (int) $m[2];
+            $year = (int) $m[3];
+            $hour = (int) $m[4];
+            $minute = (int) $m[5];
+            if ($year < 100) {
+                $year += 2000;
+            }
+        } else {
             return null;
-        }
-
-        $day = (int) $m[1];
-        $month = (int) $m[2];
-        $year = (int) $m[3];
-        $hour = (int) $m[4];
-        $minute = (int) $m[5];
-        $meridiem = strtoupper((string) $m[6]);
-
-        if ($year < 100) {
-            $year += 2000;
-        }
-        if ($meridiem === 'PM' && $hour < 12) {
-            $hour += 12;
-        }
-        if ($meridiem === 'AM' && $hour === 12) {
-            $hour = 0;
         }
 
         try {
@@ -461,6 +492,24 @@ class PropertyPaymentWebhookController extends Controller
         return false;
     }
 
+    private function isAllowedSmsProvider(string $provider, string $message): bool
+    {
+        $p = strtolower(trim($provider));
+        if (in_array($p, ['mpesa', 'equity'], true)) {
+            return true;
+        }
+
+        $text = Str::lower(trim($message));
+        if ($text === '') {
+            return false;
+        }
+
+        // If provider is missing from payload, infer only from trusted keywords.
+        return str_contains($text, 'm-pesa')
+            || str_contains($text, 'mpesa')
+            || str_contains($text, 'equity');
+    }
+
     /**
      * @return array<string,mixed>|null
      */
@@ -493,7 +542,7 @@ class PropertyPaymentWebhookController extends Controller
         }
     }
 
-    private function findTenantByPhone(string $normalizedPhone): ?\App\Models\PmTenant
+    private function findTenantByPhone(string $normalizedPhone): ?PmTenant
     {
         $local = str_starts_with($normalizedPhone, '254') ? '0'.substr($normalizedPhone, 3) : $normalizedPhone;
         $compact = ltrim($normalizedPhone, '+');

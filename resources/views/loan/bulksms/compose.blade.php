@@ -17,6 +17,61 @@
                 <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
                     <form method="post" action="{{ route('loan.bulksms.compose.store') }}" class="space-y-5">
                         @csrf
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label for="recipient_source" class="block text-sm font-medium text-slate-700">Recipient source</label>
+                                <select id="recipient_source" name="recipient_source"
+                                    class="mt-2 w-full rounded-lg border-slate-200 text-sm shadow-sm focus:border-[#2f4f4f] focus:ring-[#2f4f4f]">
+                                    <option value="manual" @selected(old('recipient_source', 'manual') === 'manual')>Manual phone numbers</option>
+                                    <option value="all_tenants" @selected(old('recipient_source') === 'all_tenants')>All active tenants</option>
+                                    <option value="property_tenants" @selected(old('recipient_source') === 'property_tenants')>Tenants of a specific property</option>
+                                </select>
+                            </div>
+                            <div id="property-wrap" class="hidden">
+                                <label for="property_id" class="block text-sm font-medium text-slate-700">Property</label>
+                                <select id="property_id" name="property_id"
+                                    class="mt-2 w-full rounded-lg border-slate-200 text-sm shadow-sm focus:border-[#2f4f4f] focus:ring-[#2f4f4f]">
+                                    <option value="">— Select property —</option>
+                                    @foreach (($propertyOptions ?? collect()) as $p)
+                                        <option value="{{ $p->id }}" @selected((string) old('property_id') === (string) $p->id)>{{ $p->name }}</option>
+                                    @endforeach
+                                </select>
+                                @error('property_id')
+                                    <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        </div>
+                        <div id="tenant-selection-wrap" class="hidden">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label for="tenant_selection_mode" class="block text-sm font-medium text-slate-700">Tenant selection</label>
+                                    <select id="tenant_selection_mode" name="tenant_selection_mode"
+                                        class="mt-2 w-full rounded-lg border-slate-200 text-sm shadow-sm focus:border-[#2f4f4f] focus:ring-[#2f4f4f]">
+                                        <option value="all" @selected(old('tenant_selection_mode', 'all') === 'all')>All tenants in selected property</option>
+                                        <option value="selected" @selected(old('tenant_selection_mode') === 'selected')>Select specific tenants</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="tenant-list-wrap" class="hidden mt-3">
+                                <label for="tenant_ids" class="block text-sm font-medium text-slate-700">Choose tenants</label>
+                                <select id="tenant_ids" name="tenant_ids[]" multiple
+                                    class="mt-2 w-full rounded-lg border-slate-200 text-sm shadow-sm focus:border-[#2f4f4f] focus:ring-[#2f4f4f] min-h-[160px]">
+                                    @foreach (($tenantOptions ?? collect()) as $tenant)
+                                        <option
+                                            value="{{ $tenant['id'] }}"
+                                            data-property-ids="{{ implode(',', $tenant['property_ids'] ?? []) }}"
+                                            @selected(collect(old('tenant_ids', []))->contains((string) $tenant['id']) || collect(old('tenant_ids', []))->contains((int) $tenant['id']))
+                                        >
+                                            {{ $tenant['name'] }} ({{ $tenant['phone'] }})
+                                        </option>
+                                    @endforeach
+                                </select>
+                                <p class="text-xs text-slate-500 mt-1">Hold Ctrl/Cmd to select multiple tenants.</p>
+                                @error('tenant_ids')
+                                    <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        </div>
                         <div>
                             <label for="recipients" class="block text-sm font-medium text-slate-700">Recipients</label>
                             <p class="text-xs text-slate-500 mt-0.5">One number per line, or comma / semicolon separated. Digits only (9+ per number).</p>
@@ -25,6 +80,10 @@
                             @error('recipients')
                                 <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                             @enderror
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                            <span class="font-medium">Recipient preview:</span>
+                            <span id="recipient-preview">0 phone number(s) selected.</span>
                         </div>
                         <div>
                             <label for="message" class="block text-sm font-medium text-slate-700">Message</label>
@@ -90,5 +149,121 @@
                 </div>
             </div>
         </div>
+        <script>
+            (() => {
+                const source = document.getElementById('recipient_source');
+                const propertyWrap = document.getElementById('property-wrap');
+                const propertySelect = document.getElementById('property_id');
+                const tenantSelectionWrap = document.getElementById('tenant-selection-wrap');
+                const tenantMode = document.getElementById('tenant_selection_mode');
+                const tenantListWrap = document.getElementById('tenant-list-wrap');
+                const tenantSelect = document.getElementById('tenant_ids');
+                const recipients = document.getElementById('recipients');
+                const preview = document.getElementById('recipient-preview');
+
+                if (!source || !recipients) {
+                    return;
+                }
+
+                const parseManualCount = () => {
+                    const raw = String(recipients.value || '');
+                    const parts = raw.split(/[\r\n,;]+/).map((x) => x.trim()).filter(Boolean);
+                    const normalized = new Set();
+                    for (const part of parts) {
+                        const digits = part.replace(/\D+/g, '');
+                        if (digits.length >= 9) {
+                            normalized.add(digits);
+                        }
+                    }
+                    return normalized.size;
+                };
+
+                const visibleTenantOptions = () => {
+                    if (!tenantSelect) {
+                        return [];
+                    }
+                    return [...tenantSelect.options].filter((opt) => !opt.hidden);
+                };
+
+                const selectedVisibleTenantOptions = () => {
+                    return visibleTenantOptions().filter((opt) => opt.selected);
+                };
+
+                const updatePreview = () => {
+                    if (!preview) {
+                        return;
+                    }
+                    const src = source.value || 'manual';
+                    if (src === 'manual') {
+                        const manualCount = parseManualCount();
+                        preview.textContent = `${manualCount} phone number(s) selected.`;
+                        return;
+                    }
+                    if (src === 'all_tenants') {
+                        const allCount = [...(tenantSelect?.options || [])].length;
+                        preview.textContent = `${allCount} active tenant phone(s) will be used.`;
+                        return;
+                    }
+
+                    const mode = tenantMode?.value || 'all';
+                    if (mode === 'selected') {
+                        const selectedCount = selectedVisibleTenantOptions().length;
+                        preview.textContent = `${selectedCount} selected tenant phone(s) will be used.`;
+                        return;
+                    }
+                    const propertyCount = visibleTenantOptions().length;
+                    preview.textContent = `${propertyCount} tenant phone(s) in selected property will be used.`;
+                };
+
+                const filterTenantOptions = () => {
+                    if (!tenantSelect) {
+                        return;
+                    }
+                    const propertyId = String(propertySelect?.value || '');
+                    [...tenantSelect.options].forEach((opt) => {
+                        const propIds = String(opt.dataset.propertyIds || '').split(',').filter(Boolean);
+                        const visible = !propertyId || propIds.includes(propertyId);
+                        opt.hidden = !visible;
+                        if (!visible) {
+                            opt.selected = false;
+                        }
+                    });
+                    updatePreview();
+                };
+
+                const sync = () => {
+                    const src = source.value || 'manual';
+                    const propertyMode = src === 'property_tenants';
+                    const allTenantMode = src === 'all_tenants';
+                    const manualMode = src === 'manual';
+
+                    propertyWrap?.classList.toggle('hidden', !propertyMode);
+                    tenantSelectionWrap?.classList.toggle('hidden', !propertyMode);
+                    const showTenantList = propertyMode && (tenantMode?.value === 'selected');
+                    tenantListWrap?.classList.toggle('hidden', !showTenantList);
+
+                    recipients.required = manualMode;
+                    recipients.disabled = !manualMode;
+                    recipients.classList.toggle('bg-slate-100', !manualMode);
+                    recipients.classList.toggle('cursor-not-allowed', !manualMode);
+
+                    if (allTenantMode || propertyMode) {
+                        recipients.placeholder = 'Recipients are auto-derived from tenant records based on your selection above.';
+                    } else {
+                        recipients.placeholder = '';
+                    }
+
+                    filterTenantOptions();
+                    updatePreview();
+                };
+
+                source.addEventListener('change', sync);
+                tenantMode?.addEventListener('change', sync);
+                propertySelect?.addEventListener('change', sync);
+                tenantSelect?.addEventListener('change', updatePreview);
+                recipients.addEventListener('input', updatePreview);
+                sync();
+            })();
+        </script>
     </x-loan.page>
 </x-loan-layout>

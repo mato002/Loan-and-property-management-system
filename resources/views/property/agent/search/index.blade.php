@@ -29,7 +29,31 @@
                 Type something above to search. Examples: <span class="font-semibold">0717…</span>, <span class="font-semibold">INV-000123</span>, <span class="font-semibold">Greenfield</span>, <span class="font-semibold">Unit A1</span>.
             </div>
         @else
+            @if (!empty($searchError))
+                <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    {{ $searchError }}
+                </div>
+            @endif
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-black text-slate-900">Landlords</h3>
+                        <span class="text-xs font-bold text-slate-500">{{ $landlords->count() }}</span>
+                    </div>
+                    <div class="mt-3 space-y-2">
+                        @forelse ($landlords as $l)
+                            <a href="{{ route('property.landlords.index', ['q' => $l->name]) }}" data-turbo-frame="property-main" class="block rounded-xl border border-slate-100 px-4 py-3 hover:bg-slate-50">
+                                <div class="font-bold text-slate-900">{{ $l->name }}</div>
+                                <div class="text-xs text-slate-500 mt-0.5">
+                                    {{ $l->email ?: '—' }} • {{ $l->landlord_properties_count ?? 0 }} propert{{ (($l->landlord_properties_count ?? 0) == 1) ? 'y' : 'ies' }}
+                                </div>
+                            </a>
+                        @empty
+                            <div class="text-sm text-slate-500">No landlords matched.</div>
+                        @endforelse
+                    </div>
+                </div>
+
                 <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div class="flex items-center justify-between">
                         <h3 class="text-sm font-black text-slate-900">Tenants</h3>
@@ -40,7 +64,14 @@
                             <a href="{{ route('property.tenants.show', $t) }}" data-turbo-frame="property-main" class="block rounded-xl border border-slate-100 px-4 py-3 hover:bg-slate-50">
                                 <div class="font-bold text-slate-900">{{ $t->name }}</div>
                                 <div class="text-xs text-slate-500 mt-0.5">
-                                    {{ $t->phone ?: '—' }}@if($t->account_number) • {{ $t->account_number }}@endif@if($t->email) • {{ $t->email }}@endif
+                                    @php
+                                        $tenantMeta = collect([
+                                            $t->phone ?: '—',
+                                            data_get($t, 'account_number'),
+                                            $t->email,
+                                        ])->filter(fn ($v) => $v !== null && $v !== '')->implode(' • ');
+                                    @endphp
+                                    {{ $tenantMeta }}
                                 </div>
                             </a>
                         @empty
@@ -59,7 +90,14 @@
                             <a href="{{ route('property.properties.show', $p) }}" data-turbo-frame="property-main" class="block rounded-xl border border-slate-100 px-4 py-3 hover:bg-slate-50">
                                 <div class="font-bold text-slate-900">{{ $p->name }}</div>
                                 <div class="text-xs text-slate-500 mt-0.5">
-                                    {{ $p->code ?: '—' }}@if($p->city) • {{ $p->city }}@endif@if($p->address_line) • {{ $p->address_line }}@endif
+                                    @php
+                                        $propertyMeta = collect([
+                                            data_get($p, 'code') ?: '—',
+                                            data_get($p, 'city'),
+                                            data_get($p, 'address_line'),
+                                        ])->filter(fn ($v) => $v !== null && $v !== '')->implode(' • ');
+                                    @endphp
+                                    {{ $propertyMeta }}
                                 </div>
                             </a>
                         @empty

@@ -931,11 +931,14 @@ class LoanAccountingBooksController extends Controller
         $accountId = request()->integer('accounting_chart_account_id') ?: null;
         $from = request()->string('from')->toString();
         $to = request()->string('to')->toString();
+        $search = trim(request()->string('q')->toString());
+        $perPage = min(200, max(10, (int) request()->integer('per_page', 15)));
+        $sort = strtolower(trim(request()->string('sort')->toString() ?: 'statement_date'));
+        $dir = strtolower(trim(request()->string('dir')->toString() ?: 'desc'));
         $export = request()->string('export')->toString();
 
         $q = AccountingBankReconciliation::query()
-            ->with(['account', 'preparedByUser'])
-            ->orderByDesc('statement_date');
+            ->with(['account', 'preparedByUser']);
 
         if ($status !== '') {
             $q->where('status', $status);
@@ -949,6 +952,27 @@ class LoanAccountingBooksController extends Controller
         if ($to !== '') {
             $q->whereDate('statement_date', '<=', $to);
         }
+        if ($search !== '') {
+            $q->where(function ($qq) use ($search) {
+                $qq->where('notes', 'like', '%'.$search.'%')
+                    ->orWhere('outstanding_items', 'like', '%'.$search.'%')
+                    ->orWhere('status', 'like', '%'.$search.'%')
+                    ->orWhereHas('account', function ($qa) use ($search) {
+                        $qa->where('code', 'like', '%'.$search.'%')
+                            ->orWhere('name', 'like', '%'.$search.'%');
+                    })
+                    ->orWhereHas('preparedByUser', fn ($qu) => $qu->where('name', 'like', '%'.$search.'%'));
+            });
+        }
+        $sortMap = [
+            'statement_date' => 'statement_date',
+            'statement_balance' => 'statement_balance',
+            'status' => 'status',
+            'id' => 'id',
+        ];
+        $sortBy = $sortMap[$sort] ?? 'statement_date';
+        $sortDir = in_array($dir, ['asc', 'desc'], true) ? $dir : 'desc';
+        $q->orderBy($sortBy, $sortDir)->orderByDesc('id');
 
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {
             return TabularExport::stream('reconciliations', [
@@ -969,7 +993,7 @@ class LoanAccountingBooksController extends Controller
             }, $export);
         }
 
-        $rows = $q->paginate(15)->withQueryString();
+        $rows = $q->paginate($perPage)->withQueryString();
 
         $statuses = AccountingBankReconciliation::query()
             ->select('status')
@@ -984,7 +1008,7 @@ class LoanAccountingBooksController extends Controller
             ->orderBy('code')
             ->get(['id', 'code', 'name']);
 
-        return view('loan.accounting.books.reconciliation.index', compact('rows', 'status', 'accountId', 'from', 'to', 'statuses', 'cashAccounts'));
+        return view('loan.accounting.books.reconciliation.index', compact('rows', 'status', 'accountId', 'from', 'to', 'search', 'perPage', 'sort', 'dir', 'statuses', 'cashAccounts'));
     }
 
     public function reconciliationCreate(): View

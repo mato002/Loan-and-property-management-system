@@ -19,7 +19,7 @@
                         <select
                             id="city"
                             name="city"
-                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 outline-none"
+                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 outline-none"
                         >
                             <option value="">{{ __('All cities') }}</option>
                             @foreach ($filterCities as $c)
@@ -32,7 +32,7 @@
                         <select
                             id="unit_type"
                             name="unit_type"
-                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-700 outline-none"
+                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-gray-700 outline-none"
                         >
                             <option value="">{{ __('All house types') }}</option>
                             @foreach ($filterUnitTypes as $typeValue => $typeLabel)
@@ -45,7 +45,7 @@
                         <select
                             id="bedrooms"
                             name="bedrooms"
-                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-700 outline-none"
+                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-gray-700 outline-none"
                         >
                             <option value="any" @selected(request('bedrooms', 'any') === 'any' || request('bedrooms') === '' || request('bedrooms') === null)>Any</option>
                             @for ($b = 0; $b <= 6; $b++)
@@ -63,7 +63,7 @@
                                 step="1"
                                 placeholder="Min"
                                 value="{{ request('min_rent') }}"
-                                class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 outline-none"
+                                class="w-full rounded-xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 outline-none"
                             />
                             <span class="text-gray-400 shrink-0">–</span>
                             <input
@@ -73,7 +73,7 @@
                                 step="1"
                                 placeholder="Max"
                                 value="{{ request('max_rent') }}"
-                                class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 outline-none"
+                                class="w-full rounded-xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 outline-none"
                             />
                         </div>
                     </div>
@@ -82,7 +82,7 @@
                         <select
                             id="sort"
                             name="sort"
-                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-700 outline-none"
+                            class="w-full rounded-xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-gray-700 outline-none"
                         >
                             <option value="updated" @selected($currentSort === 'updated')>{{ __('Recently updated') }}</option>
                             <option value="featured" @selected($currentSort === 'featured')>{{ __('Featured first') }}</option>
@@ -90,9 +90,9 @@
                             <option value="rent_desc" @selected($currentSort === 'rent_desc')>{{ __('Rent: high to low') }}</option>
                         </select>
                     </div>
-                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-md shadow-indigo-600/20">{{ __('Apply filters') }}</button>
+                    <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-md shadow-emerald-600/20">{{ __('Apply filters') }}</button>
                     <p class="text-center">
-                        <a href="{{ route('public.properties') }}" class="text-sm font-bold text-indigo-600 hover:text-indigo-700">{{ __('Clear filters') }}</a>
+                        <a href="{{ route('public.properties') }}" class="text-sm font-bold text-emerald-600 hover:text-emerald-700">{{ __('Clear filters') }}</a>
                     </p>
                 </form>
             </div>

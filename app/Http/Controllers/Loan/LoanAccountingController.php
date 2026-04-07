@@ -338,9 +338,10 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        $entries = $q->paginate(20)->withQueryString();
+        $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
+        $entries = $q->paginate($perPage)->withQueryString();
 
-        return view('loan.accounting.journal.index', compact('entries', 'from', 'to', 'reference', 'createdBy'));
+        return view('loan.accounting.journal.index', compact('entries', 'from', 'to', 'reference', 'createdBy', 'perPage'));
     }
 
     public function journalCreate(): View
@@ -443,6 +444,20 @@ class LoanAccountingController extends Controller
         $accounting_journal_entry->delete();
 
         return redirect()->route('loan.accounting.journal.index')->with('status', 'Journal entry deleted.');
+    }
+    
+    public function journalBulk(Request $request): RedirectResponse
+    {
+        $action = $request->string('action')->toString();
+        $ids = collect($request->input('ids', []))->map(fn ($v) => (int) $v)->filter()->values();
+        if ($ids->isEmpty()) {
+            return back()->withErrors(['bulk' => 'Select at least one entry.']);
+        }
+        if ($action === 'delete') {
+            AccountingJournalEntry::query()->whereIn('id', $ids)->delete();
+            return back()->with('status', 'Selected journal entries deleted.');
+        }
+        return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
     }
 
     /* ---------- Ledger ---------- */
@@ -577,7 +592,8 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        $rows = $ordered->paginate(20)->withQueryString();
+        $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
+        $rows = $ordered->paginate($perPage)->withQueryString();
 
         $availableMonths = AccountingRequisition::query()
             ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as ym")
@@ -594,7 +610,7 @@ class LoanAccountingController extends Controller
             AccountingRequisition::STATUS_PAID => 'Paid',
         ];
 
-        return view('loan.accounting.requisitions.index', compact('rows', 'availableMonths', 'statusOptions', 'status', 'month'));
+        return view('loan.accounting.requisitions.index', compact('rows', 'availableMonths', 'statusOptions', 'status', 'month', 'perPage'));
     }
 
     public function requisitionsCreate(): View
@@ -665,6 +681,24 @@ class LoanAccountingController extends Controller
         $accounting_requisition->delete();
 
         return redirect()->route('loan.accounting.requisitions.index')->with('status', 'Requisition removed.');
+    }
+    
+    public function requisitionsBulk(Request $request): RedirectResponse
+    {
+        $action = $request->string('action')->toString();
+        $ids = collect($request->input('ids', []))->map(fn ($v) => (int) $v)->filter()->values();
+        if ($ids->isEmpty()) {
+            return back()->withErrors(['bulk' => 'Select at least one requisition.']);
+        }
+        if ($action === 'delete') {
+            // Do not delete PAID requisitions
+            AccountingRequisition::query()
+                ->whereIn('id', $ids)
+                ->where('status', '!=', AccountingRequisition::STATUS_PAID)
+                ->delete();
+            return back()->with('status', 'Selected requisitions removed (excluding paid).');
+        }
+        return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
     }
 
     public function requisitionsApprove(Request $request, AccountingRequisition $accounting_requisition): RedirectResponse
@@ -753,7 +787,8 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        $rows = $q->paginate(20)->withQueryString();
+        $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
+        $rows = $q->paginate($perPage)->withQueryString();
 
         $utilityTypes = AccountingUtilityPayment::query()
             ->select('utility_type')
@@ -769,7 +804,7 @@ class LoanAccountingController extends Controller
             ->pluck('payment_method')
             ->values();
 
-        return view('loan.accounting.utilities.index', compact('rows', 'type', 'from', 'to', 'provider', 'method', 'utilityTypes', 'paymentMethods'));
+        return view('loan.accounting.utilities.index', compact('rows', 'type', 'from', 'to', 'provider', 'method', 'utilityTypes', 'paymentMethods', 'perPage'));
     }
 
     public function utilitiesCreate(): View
@@ -830,6 +865,20 @@ class LoanAccountingController extends Controller
 
         return redirect()->route('loan.accounting.utilities.index')->with('status', 'Record removed.');
     }
+    
+    public function utilitiesBulk(Request $request): RedirectResponse
+    {
+        $action = $request->string('action')->toString();
+        $ids = collect($request->input('ids', []))->map(fn ($v) => (int) $v)->filter()->values();
+        if ($ids->isEmpty()) {
+            return back()->withErrors(['bulk' => 'Select at least one utility payment.']);
+        }
+        if ($action === 'delete') {
+            AccountingUtilityPayment::query()->whereIn('id', $ids)->delete();
+            return back()->with('status', 'Selected utility payments removed.');
+        }
+        return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
+    }
 
     /* ---------- Petty cash ---------- */
 
@@ -880,7 +929,8 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        $rows = $q->paginate(25)->withQueryString();
+        $perPage = max(10, min(200, (int) request()->input('per_page', 25)));
+        $rows = $q->paginate($perPage)->withQueryString();
 
         $balance = (float) AccountingPettyCashEntry::query()
             ->where('kind', AccountingPettyCashEntry::KIND_RECEIPT)
@@ -889,7 +939,7 @@ class LoanAccountingController extends Controller
                 ->where('kind', AccountingPettyCashEntry::KIND_DISBURSEMENT)
                 ->sum('amount');
 
-        return view('loan.accounting.petty.index', compact('rows', 'balance', 'kind', 'from', 'to', 'search'));
+        return view('loan.accounting.petty.index', compact('rows', 'balance', 'kind', 'from', 'to', 'search', 'perPage'));
     }
 
     public function pettyCreate(): View
@@ -940,6 +990,20 @@ class LoanAccountingController extends Controller
         $accounting_petty_cash_entry->delete();
 
         return redirect()->route('loan.accounting.petty.index')->with('status', 'Entry removed.');
+    }
+    
+    public function pettyBulk(Request $request): RedirectResponse
+    {
+        $action = $request->string('action')->toString();
+        $ids = collect($request->input('ids', []))->map(fn ($v) => (int) $v)->filter()->values();
+        if ($ids->isEmpty()) {
+            return back()->withErrors(['bulk' => 'Select at least one petty cash entry.']);
+        }
+        if ($action === 'delete') {
+            AccountingPettyCashEntry::query()->whereIn('id', $ids)->delete();
+            return back()->with('status', 'Selected petty cash entries removed.');
+        }
+        return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
     }
 
     /* ---------- Salary advances ---------- */
@@ -994,11 +1058,12 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        $rows = $q->paginate(20)->withQueryString();
+        $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
+        $rows = $q->paginate($perPage)->withQueryString();
 
         $employees = Employee::query()->orderBy('first_name')->orderBy('last_name')->get(['id', 'first_name', 'last_name', 'employee_number']);
 
-        return view('loan.accounting.advances.index', compact('rows', 'status', 'from', 'to', 'employeeId', 'employees'));
+        return view('loan.accounting.advances.index', compact('rows', 'status', 'from', 'to', 'employeeId', 'employees', 'perPage'));
     }
 
     public function advancesCreate(): View
@@ -1063,6 +1128,23 @@ class LoanAccountingController extends Controller
         $accounting_salary_advance->delete();
 
         return redirect()->route('loan.accounting.advances.index')->with('status', 'Advance removed.');
+    }
+    
+    public function advancesBulk(Request $request): RedirectResponse
+    {
+        $action = $request->string('action')->toString();
+        $ids = collect($request->input('ids', []))->map(fn ($v) => (int) $v)->filter()->values();
+        if ($ids->isEmpty()) {
+            return back()->withErrors(['bulk' => 'Select at least one advance.']);
+        }
+        if ($action === 'delete') {
+            AccountingSalaryAdvance::query()
+                ->whereIn('id', $ids)
+                ->where('status', '!=', AccountingSalaryAdvance::STATUS_SETTLED)
+                ->delete();
+            return back()->with('status', 'Selected advances removed (excluding settled).');
+        }
+        return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
     }
 
     public function advancesApprove(Request $request, AccountingSalaryAdvance $accounting_salary_advance): RedirectResponse

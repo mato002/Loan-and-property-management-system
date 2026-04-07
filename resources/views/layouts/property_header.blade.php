@@ -41,7 +41,9 @@
             ['label' => 'Arrears', 'route' => 'property.revenue.arrears', 'patterns' => ['property.revenue.arrears']],
             ['label' => 'Properties', 'route' => 'property.properties.list', 'patterns' => ['property.properties.*', 'property.landlords.index', 'property.units.store']],
             ['label' => 'Tenants', 'route' => 'property.tenants.directory', 'patterns' => ['property.tenants.*', 'property.leases.store']],
-            ['label' => 'Property users', 'route' => 'property.settings.roles', 'patterns' => ['property.settings.roles']],
+            (($auth = Auth::user()) && (($auth->is_super_admin ?? false) === true))
+                ? ['label' => 'Property users', 'route' => 'property.settings.roles', 'patterns' => ['property.settings.roles']]
+                : ['label' => 'Settings', 'route' => 'property.settings.index', 'patterns' => ['property.settings.*']],
             ['label' => 'Maintenance', 'route' => 'property.maintenance.requests', 'patterns' => ['property.maintenance.*']],
             ['label' => 'Listings', 'route' => 'property.listings.vacant', 'patterns' => ['property.listings.*']],
             ['label' => 'Financials', 'route' => 'property.financials.index', 'patterns' => ['property.financials.*']],
@@ -67,7 +69,7 @@
     if ($portalRole === 'agent' && Auth::check() && \Illuminate\Support\Facades\Schema::hasTable('pm_message_logs')) {
         $uid = (int) Auth::id();
         $baseNotifQuery = \App\Models\PmMessageLog::query()
-            ->where('channel', 'system')
+            ->whereIn('channel', ['system', 'email', 'sms'])
             ->orderByDesc('id');
 
         $notificationItems = (clone $baseNotifQuery)
@@ -80,14 +82,15 @@
                     $join->on('pm_message_logs.id', '=', 'pmr.pm_message_log_id')
                         ->where('pmr.user_id', '=', $uid);
                 })
+                ->whereIn('pm_message_logs.channel', ['system', 'email', 'sms'])
                 ->whereNull('pmr.id')
                 ->count();
         }
     }
 @endphp
 
-<header class="property-topbar relative z-50 flex-shrink-0 shadow-md shadow-emerald-950/10">
-    <div class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 text-white">
+<header class="property-topbar relative z-[5000] overflow-visible flex-shrink-0 shadow-md shadow-emerald-950/10">
+    <div class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 text-white overflow-visible">
         <div class="flex items-center justify-between h-[60px] sm:h-[64px] px-3 sm:px-5 lg:px-6 gap-2 sm:gap-4">
             <div class="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                 <button
@@ -140,24 +143,27 @@
 
             @if ($portalRole === 'agent')
                 <form
+                    id="property-global-search-form"
                     method="get"
                     action="{{ route('property.search') }}"
                     data-turbo-frame="property-main"
                     class="hidden lg:flex items-center shrink-0 min-w-[320px] max-w-[520px] w-[38vw]"
                 >
                     <label class="sr-only" for="property-global-search">Search</label>
-                    <div class="relative w-full">
+                    <div class="relative w-full z-[9000]" id="property-global-search-wrap">
                         <input
                             id="property-global-search"
                             name="q"
                             value="{{ request('q') }}"
                             placeholder="Search tenants, units, invoices, payments…"
-                            class="w-full rounded-xl bg-white/12 text-white placeholder:text-white/65 border border-white/20 px-4 py-2.5 pr-11 text-sm font-semibold shadow-inner focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40"
+                            autocomplete="off"
+                            class="w-full rounded-xl bg-white text-slate-900 placeholder:text-slate-500 border border-white/70 px-4 py-2.5 pr-11 text-sm font-medium shadow-inner focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40"
                         />
-                        <button type="submit" class="absolute right-1.5 top-1.5 h-8 w-8 rounded-lg bg-white/15 hover:bg-white/25 text-white/90">
+                        <button type="button" id="property-global-search-btn" class="absolute right-1.5 top-1.5 h-8 w-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700">
                             <i class="fa-solid fa-magnifying-glass text-sm" aria-hidden="true"></i>
                             <span class="sr-only">Search</span>
                         </button>
+                        <div id="property-search-suggest" class="hidden absolute z-[99999] mt-2 w-full rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl overflow-hidden"></div>
                     </div>
                 </form>
             @endif
@@ -313,3 +319,134 @@
         </div>
     </div>
 </header>
+
+@if ($portalRole === 'agent')
+    <script>
+        function initPropertyHeaderLiveSearch() {
+            const input = document.getElementById('property-global-search');
+            const form = document.getElementById('property-global-search-form');
+            const btn = document.getElementById('property-global-search-btn');
+            const box = document.getElementById('property-search-suggest');
+            const wrap = document.getElementById('property-global-search-wrap');
+            if (!input || !box || !wrap || !form) return;
+            if (input.dataset.liveSearchInit === '1') return;
+            input.dataset.liveSearchInit = '1';
+            const endpoint = @json(route('property.search.suggest'));
+            let timer = null;
+            let ctrl = null;
+            let lastQ = '';
+            let firstUrl = '';
+
+            const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[ch]));
+            const highlight = (txt, q) => {
+                const t = String(txt ?? '');
+                const qq = String(q ?? '').trim();
+                if (!qq) return esc(t);
+                const safe = esc(t);
+                const re = new RegExp(qq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+                return safe.replace(re, (m) => `<mark class="bg-yellow-100 px-0.5 rounded">${m}</mark>`);
+            };
+            const labels = {
+                pages: 'Pages',
+                landlords: 'Landlords',
+                tenants: 'Tenants',
+                properties: 'Properties',
+                units: 'Units',
+                invoices: 'Invoices',
+                payments: 'Payments',
+            };
+
+            const closeBox = () => {
+                box.classList.add('hidden');
+                box.innerHTML = '';
+                firstUrl = '';
+            };
+            const render = (payload, q) => {
+                const groups = payload?.groups || {};
+                const keys = Object.keys(labels);
+                const hasAny = keys.some((k) => Array.isArray(groups[k]) && groups[k].length > 0);
+                if (!hasAny) {
+                    box.innerHTML = '<div class="px-4 py-3 text-sm text-slate-500">No results</div>';
+                    box.classList.remove('hidden');
+                    return;
+                }
+                const html = keys.map((k) => {
+                    const rows = Array.isArray(groups[k]) ? groups[k] : [];
+                    if (rows.length === 0) return '';
+                    const items = rows.slice(0, 5).map((r) => `
+                        <a href="${esc(r.url)}" data-turbo-frame="property-main" class="block px-4 py-2 hover:bg-slate-50">
+                            <div class="text-sm font-semibold text-slate-900">${highlight(r.title, q)}</div>
+                            <div class="text-xs text-slate-500">${highlight(r.subtitle, q)}</div>
+                        </a>
+                    `).join('');
+                    return `
+                        <div class="border-b border-slate-100 last:border-b-0">
+                            <div class="px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 bg-slate-50">${labels[k]}</div>
+                            ${items}
+                        </div>
+                    `;
+                }).join('');
+                const firstGroup = keys.find((k) => Array.isArray(groups[k]) && groups[k].length > 0);
+                firstUrl = firstGroup ? (groups[firstGroup][0]?.url || '') : '';
+                box.innerHTML = html;
+                box.classList.remove('hidden');
+            };
+
+            const load = async () => {
+                const q = (input.value || '').trim();
+                if (q.length < 1) {
+                    closeBox();
+                    return;
+                }
+                if (q === lastQ) return;
+                lastQ = q;
+                if (ctrl) ctrl.abort();
+                ctrl = new AbortController();
+                try {
+                    const res = await fetch(`${endpoint}?q=${encodeURIComponent(q)}`, {
+                        headers: { 'Accept': 'application/json' },
+                        signal: ctrl.signal,
+                    });
+                    if (!res.ok) {
+                        closeBox();
+                        return;
+                    }
+                    const payload = await res.json();
+                    render(payload, q);
+                } catch (_) {
+                    closeBox();
+                }
+            };
+
+            input.addEventListener('input', () => {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(load, 220);
+            });
+            input.addEventListener('focus', () => {
+                if ((input.value || '').trim().length >= 1) load();
+            });
+            if (btn) {
+                btn.addEventListener('click', () => {
+                    load();
+                });
+            }
+            // Do not redirect to full search page from header input.
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (!box.classList.contains('hidden') && firstUrl) {
+                    window.location.href = firstUrl;
+                    return;
+                }
+                load();
+            });
+            document.addEventListener('click', (e) => {
+                if (!wrap.contains(e.target)) closeBox();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeBox();
+            });
+        }
+        document.addEventListener('DOMContentLoaded', initPropertyHeaderLiveSearch);
+        document.addEventListener('turbo:load', initPropertyHeaderLiveSearch);
+    </script>
+@endif

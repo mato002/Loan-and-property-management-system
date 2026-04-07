@@ -101,6 +101,7 @@
             <a href="{{ url()->current() }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
             <a
                 href="{{ route('property.reports.export.csv', array_filter(['reportKey' => 'landlord_detailed_statement', 'landlord_id' => request('landlord_id'), 'from' => request('from'), 'to' => request('to')]), false) }}"
+                data-turbo="false"
                 class="rounded-lg border border-emerald-300 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
             >
                 Export CSV

@@ -35,10 +35,10 @@
                 <p class="text-xs text-slate-500 mt-0.5">Downloads open in the browser as CSV.</p>
             </div>
             <div class="px-5 py-6 flex flex-wrap gap-3">
-                <a href="{{ route('loan.financial.investors_reports.export.statement') }}" class="inline-flex items-center justify-center rounded-lg border border-[#2f4f4f] bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#264040] transition-colors">
+                <a href="{{ route('loan.financial.investors_reports.export.statement') }}" data-turbo="false" class="inline-flex items-center justify-center rounded-lg border border-[#2f4f4f] bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#264040] transition-colors">
                     Investor statement (CSV)
                 </a>
-                <a href="{{ route('loan.financial.investors_reports.export.maturity') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 transition-colors">
+                <a href="{{ route('loan.financial.investors_reports.export.maturity') }}" data-turbo="false" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 transition-colors">
                     Maturity schedule (CSV)
                 </a>
             </div>

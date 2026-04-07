@@ -86,7 +86,7 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Label prefix (optional)</label>
                     <input type="text" name="label_prefix" value="{{ old('label_prefix') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. A, B, BLOCK-1-" />
                     @error('label_prefix')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">For bulk only. Tip: you can type A1 here and it will start from A1 automatically.</p>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">For bulk only. Tip: A1 becomes A1,A2... and 1 becomes 1,2,3...</p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Start number (for bulk)</label>
@@ -289,7 +289,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.properties.units') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-8">
+        <form method="get" action="{{ route('property.properties.units') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-9">
             <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search unit, property, type..." class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 lg:col-span-2" />
             <select name="property_id" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="">All properties</option>
@@ -311,11 +311,30 @@
             </select>
             <input type="number" name="rent_min" value="{{ $filters['rent_min'] ?? '' }}" min="0" step="0.01" placeholder="Min rent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
             <input type="number" name="rent_max" value="{{ $filters['rent_max'] ?? '' }}" min="0" step="0.01" placeholder="Max rent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-            <div class="flex items-center gap-2 lg:col-span-2">
+            <div>
+                <select name="per_page" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                    @foreach ([10, 30, 50, 100, 200] as $size)
+                        <option value="{{ $size }}" @selected((int) ($perPage ?? request('per_page', 30)) === $size)>{{ $size }} / page</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="flex items-center gap-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
                 <a href="{{ route('property.properties.units', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
             </div>
         </form>
+    </x-slot>
+    <x-slot name="footer">
+        @isset($paginator)
+            <div class="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm text-slate-600">
+                    Showing {{ $paginator->firstItem() ?? 0 }}–{{ $paginator->lastItem() ?? 0 }} of {{ $paginator->total() }} unit(s)
+                </p>
+                <div>
+                    {{ $paginator->links() }}
+                </div>
+            </div>
+        @endisset
     </x-slot>
     <script>
         window.initUnitTypeBedroomsDependency = window.initUnitTypeBedroomsDependency || function () {

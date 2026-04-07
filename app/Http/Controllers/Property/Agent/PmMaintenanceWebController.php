@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
+use App\Models\PmMessageLog;
 use App\Models\PmVendor;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
@@ -22,6 +23,26 @@ use Illuminate\View\View;
 
 class PmMaintenanceWebController extends Controller
 {
+    private function notifyTenantProgress(PmMaintenanceRequest $requestItem, string $subject, string $body): void
+    {
+        $requestItem->loadMissing(['reportedBy', 'unit.property']);
+        $userId = (int) ($requestItem->reported_by_user_id ?? 0);
+        if ($userId <= 0) {
+            return;
+        }
+
+        PmMessageLog::query()->create([
+            'user_id' => $userId,
+            'channel' => 'system',
+            'to_address' => (string) ($requestItem->reportedBy?->email ?? ('user:'.$userId)),
+            'subject' => $subject,
+            'body' => $body,
+            'delivery_status' => 'sent',
+            'delivery_error' => null,
+            'sent_at' => now(),
+        ]);
+    }
+
     public function requests(Request $request): View
     {
         $maintenanceEnabled = PropertyPortalSetting::getValue('form_maintenance_enabled', '1') === '1';
@@ -147,9 +168,23 @@ class PmMaintenanceWebController extends Controller
             'status' => ['required', 'in:open,in_progress,done,closed'],
         ]);
 
+        $oldStatus = (string) $requestItem->status;
         $requestItem->update([
             'status' => $data['status'],
         ]);
+        $newStatus = (string) $data['status'];
+        if ($oldStatus !== $newStatus) {
+            $unitLabel = (string) optional($requestItem->unit?->property)->name.'/'.(optional($requestItem->unit)->label ?? '—');
+            $this->notifyTenantProgress(
+                $requestItem,
+                'Maintenance request #'.$requestItem->id.' update',
+                'Your request at '.$unitLabel.' moved from '
+                .str_replace('_', ' ', $oldStatus)
+                .' to '
+                .str_replace('_', ' ', $newStatus)
+                .'.'
+            );
+        }
 
         return back()->with('success', 'Request status updated.');
     }
@@ -174,7 +209,21 @@ class PmMaintenanceWebController extends Controller
             'status' => ['required', 'in:open,in_progress,done,closed'],
         ]);
 
+        $oldStatus = (string) $requestItem->status;
         $requestItem->update($data);
+        $newStatus = (string) ($data['status'] ?? $oldStatus);
+        if ($oldStatus !== $newStatus) {
+            $unitLabel = (string) optional($requestItem->unit?->property)->name.'/'.(optional($requestItem->unit)->label ?? '—');
+            $this->notifyTenantProgress(
+                $requestItem,
+                'Maintenance request #'.$requestItem->id.' update',
+                'Your request at '.$unitLabel.' moved from '
+                .str_replace('_', ' ', $oldStatus)
+                .' to '
+                .str_replace('_', ' ', $newStatus)
+                .'.'
+            );
+        }
 
         return back()->with('success', 'Maintenance request updated.');
     }
@@ -336,13 +385,28 @@ class PmMaintenanceWebController extends Controller
         ]);
 
         $status = $data['status'];
+        $oldStatus = (string) $job->status;
         $job->update([
             ...$data,
             'completed_at' => $status === 'done' ? now() : null,
         ]);
+        $job->loadMissing(['request.unit.property', 'vendor']);
 
         if ($status === 'done') {
             PropertyAccountingPostingService::postMaintenanceExpense($job, $request->user());
+        }
+        if ($oldStatus !== $status && $job->request) {
+            $unitLabel = (string) optional($job->request->unit?->property)->name.'/'.(optional($job->request->unit)->label ?? '—');
+            $vendorName = (string) ($job->vendor?->name ?? 'assigned vendor');
+            $this->notifyTenantProgress(
+                $job->request,
+                'Maintenance job #'.$job->id.' update',
+                'Work on '.$unitLabel.' moved from '
+                .str_replace('_', ' ', $oldStatus)
+                .' to '
+                .str_replace('_', ' ', $status)
+                .' with '.$vendorName.'.'
+            );
         }
 
         return redirect()->route('property.maintenance.jobs')->with('success', 'Job updated.');
@@ -362,13 +426,28 @@ class PmMaintenanceWebController extends Controller
         ]);
 
         $status = $data['status'];
+        $oldStatus = (string) $job->status;
         $job->update([
             'status' => $status,
             'completed_at' => $status === 'done' ? now() : null,
         ]);
+        $job->loadMissing(['request.unit.property', 'vendor']);
 
         if ($status === 'done') {
             PropertyAccountingPostingService::postMaintenanceExpense($job, $request->user());
+        }
+        if ($oldStatus !== $status && $job->request) {
+            $unitLabel = (string) optional($job->request->unit?->property)->name.'/'.(optional($job->request->unit)->label ?? '—');
+            $vendorName = (string) ($job->vendor?->name ?? 'assigned vendor');
+            $this->notifyTenantProgress(
+                $job->request,
+                'Maintenance job #'.$job->id.' update',
+                'Work on '.$unitLabel.' moved from '
+                .str_replace('_', ' ', $oldStatus)
+                .' to '
+                .str_replace('_', ' ', $status)
+                .' with '.$vendorName.'.'
+            );
         }
 
         return back()->with('success', 'Job status updated.');

@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Models\PmMaintenanceJob;
+use App\Models\PmAccountingEntry;
 use App\Models\PmPortalAction;
 use App\Models\PmVendor;
+use App\Models\User;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
@@ -33,6 +35,7 @@ class PmVendorWebController extends Controller
 
             $actions = new HtmlString(
                 '<div class="flex flex-wrap gap-1">'.
+                '<a href="'.route('property.vendors.show', $v).'" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">View</a>'.
                 '<a href="'.route('property.vendors.edit', $v).'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
                 '<form method="POST" action="'.route('property.vendors.status', $v).'" class="inline-flex">'.csrf_field().
                 '<input type="hidden" name="status" value="'.$nextStatus.'" />'.
@@ -61,6 +64,259 @@ class PmVendorWebController extends Controller
         ]);
     }
 
+    public function show(PmVendor $vendor): View
+    {
+        $jobs = PmMaintenanceJob::query()
+            ->with(['request.unit.property'])
+            ->where('pm_vendor_id', $vendor->id)
+            ->latest('id')
+            ->limit(300)
+            ->get();
+
+        $completed = $jobs->where('status', 'done');
+        $completedAmount = (float) $completed->sum(fn (PmMaintenanceJob $j) => (float) ($j->quote_amount ?? 0));
+
+        $references = $jobs->map(fn (PmMaintenanceJob $j) => 'MNT-'.$j->id)->all();
+        $allocatedRefs = PmAccountingEntry::query()
+            ->where('source_key', 'maintenance_expense')
+            ->where('category', PmAccountingEntry::CATEGORY_LIABILITY)
+            ->where('entry_type', PmAccountingEntry::TYPE_CREDIT)
+            ->whereIn('reference', $references)
+            ->pluck('reference')
+            ->flip();
+        $paidRefs = PmAccountingEntry::query()
+            ->where('source_key', 'maintenance_payment')
+            ->where('category', PmAccountingEntry::CATEGORY_LIABILITY)
+            ->where('entry_type', PmAccountingEntry::TYPE_DEBIT)
+            ->whereIn('reference', $references)
+            ->pluck('reference')
+            ->flip();
+        $paymentEntries = PmAccountingEntry::query()
+            ->where('source_key', 'maintenance_payment')
+            ->where('category', PmAccountingEntry::CATEGORY_LIABILITY)
+            ->where('entry_type', PmAccountingEntry::TYPE_DEBIT)
+            ->whereIn('reference', $references)
+            ->orderByDesc('entry_date')
+            ->orderByDesc('id')
+            ->get();
+        $allocatedAmount = (float) $jobs
+            ->filter(fn (PmMaintenanceJob $j) => isset($allocatedRefs['MNT-'.$j->id]))
+            ->sum(fn (PmMaintenanceJob $j) => (float) ($j->quote_amount ?? 0));
+        $paidAmount = (float) $paymentEntries->sum(fn (PmAccountingEntry $e) => (float) $e->amount);
+        $outstandingAmount = max(0.0, $allocatedAmount - $paidAmount);
+        $recorderNames = User::query()
+            ->whereIn('id', $paymentEntries->pluck('recorded_by_user_id')->filter()->unique()->values())
+            ->pluck('name', 'id');
+
+        $rows = $jobs->map(function (PmMaintenanceJob $j) use ($allocatedRefs, $paidRefs, $vendor) {
+            $ref = 'MNT-'.$j->id;
+            $allocated = isset($allocatedRefs[$ref]);
+            $paid = isset($paidRefs[$ref]);
+            $status = ucfirst(str_replace('_', ' ', (string) $j->status));
+            $allocationState = $allocated
+                ? new HtmlString('<span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Allocated</span>')
+                : new HtmlString('<span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Not allocated</span>');
+            $payoutState = $paid
+                ? new HtmlString('<span class="inline-flex items-center rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700">Paid</span>')
+                : new HtmlString('<span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">Unpaid</span>');
+            $action = '—';
+            if ($allocated && ! $paid && $j->status === 'done' && (float) ($j->quote_amount ?? 0) > 0) {
+                $action = new HtmlString(
+                    '<form method="POST" action="'.route('property.vendors.jobs.mark_paid', ['vendor' => $vendor, 'job' => $j], false).'" class="inline-flex flex-wrap items-center gap-1" data-swal-title="Mark job as paid?" data-swal-confirm="This will post settlement entries for job #'.$j->id.'. Continue?" data-swal-confirm-text="Yes, mark paid">'
+                    .csrf_field()
+                    .'<input type="date" name="paid_date" value="'.now()->toDateString().'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" />'
+                    .'<input type="text" name="payment_note" placeholder="Ref / note (optional)" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" />'
+                    .'<button type="submit" class="rounded border border-blue-300 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50">Mark paid</button>'
+                    .'</form>'
+                );
+            }
+
+            return [
+                '#'.$j->id,
+                optional($j->request?->unit?->property)->name.'/'.(optional($j->request?->unit)->label ?? '—'),
+                $j->request?->category ?? '—',
+                $j->quote_amount !== null ? PropertyMoney::kes((float) $j->quote_amount) : '—',
+                $status,
+                $j->completed_at?->format('Y-m-d') ?? '—',
+                $allocationState,
+                $payoutState,
+                $action,
+            ];
+        })->all();
+
+        return view('property.agent.vendors.show', [
+            'vendor' => $vendor,
+            'stats' => [
+                ['label' => 'Total jobs', 'value' => (string) $jobs->count(), 'hint' => 'All statuses'],
+                ['label' => 'Completed jobs', 'value' => (string) $completed->count(), 'hint' => 'Done'],
+                ['label' => 'Completed earnings', 'value' => PropertyMoney::kes($completedAmount), 'hint' => 'Quoted totals'],
+                ['label' => 'Allocated entries', 'value' => (string) $jobs->filter(fn (PmMaintenanceJob $j) => isset($allocatedRefs['MNT-'.$j->id]))->count(), 'hint' => 'Payables posted'],
+                ['label' => 'Paid jobs', 'value' => (string) $jobs->filter(fn (PmMaintenanceJob $j) => isset($paidRefs['MNT-'.$j->id]))->count(), 'hint' => 'Vendor settled'],
+                ['label' => 'Paid amount', 'value' => PropertyMoney::kes($paidAmount), 'hint' => 'Settled to vendor'],
+                ['label' => 'Outstanding payable', 'value' => PropertyMoney::kes($outstandingAmount), 'hint' => 'Allocated minus paid'],
+            ],
+            'columns' => ['Job', 'Unit', 'Category', 'Quote', 'Status', 'Completed', 'Allocation', 'Payout', 'Actions'],
+            'tableRows' => $rows,
+            'paymentEntries' => $paymentEntries,
+            'recorderNames' => $recorderNames,
+        ]);
+    }
+
+    public function markJobPaid(Request $request, PmVendor $vendor, PmMaintenanceJob $job): RedirectResponse
+    {
+        $data = $request->validate([
+            'paid_date' => ['nullable', 'date'],
+            'payment_note' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        if ((int) $job->pm_vendor_id !== (int) $vendor->id) {
+            return back()->withErrors(['vendor' => 'This job is not assigned to the selected vendor.']);
+        }
+
+        $amount = (float) ($job->quote_amount ?? 0);
+        if ($amount <= 0 || $job->status !== 'done') {
+            return back()->withErrors(['job' => 'Only completed jobs with quote amount can be marked paid.']);
+        }
+
+        $reference = 'MNT-'.$job->id;
+        $allocatedExists = PmAccountingEntry::query()
+            ->where('source_key', 'maintenance_expense')
+            ->where('category', PmAccountingEntry::CATEGORY_LIABILITY)
+            ->where('entry_type', PmAccountingEntry::TYPE_CREDIT)
+            ->where('reference', $reference)
+            ->exists();
+        if (! $allocatedExists) {
+            return back()->withErrors(['job' => 'This job is not allocated yet. Allocate expense before marking paid.']);
+        }
+
+        $alreadyPaid = PmAccountingEntry::query()
+            ->where('source_key', 'maintenance_payment')
+            ->where('category', PmAccountingEntry::CATEGORY_LIABILITY)
+            ->where('entry_type', PmAccountingEntry::TYPE_DEBIT)
+            ->where('reference', $reference)
+            ->exists();
+        if ($alreadyPaid) {
+            return back()->with('success', 'Vendor payment was already marked.');
+        }
+
+        $entryDate = ! empty($data['paid_date']) ? (string) $data['paid_date'] : now()->toDateString();
+        $note = trim((string) ($data['payment_note'] ?? ''));
+        $description = 'Vendor payment settled'.($note !== '' ? ' - '.$note : '');
+
+        PmAccountingEntry::query()->create([
+            'entry_date' => $entryDate,
+            'property_id' => optional(optional($job->request)->unit)->property_id,
+            'recorded_by_user_id' => $request->user()->id,
+            'account_name' => 'Accounts Payable',
+            'category' => PmAccountingEntry::CATEGORY_LIABILITY,
+            'entry_type' => PmAccountingEntry::TYPE_DEBIT,
+            'amount' => $amount,
+            'reference' => $reference,
+            'description' => $description,
+            'source_key' => 'maintenance_payment',
+        ]);
+        PmAccountingEntry::query()->create([
+            'entry_date' => $entryDate,
+            'property_id' => optional(optional($job->request)->unit)->property_id,
+            'recorded_by_user_id' => $request->user()->id,
+            'account_name' => 'Cash / Bank',
+            'category' => PmAccountingEntry::CATEGORY_ASSET,
+            'entry_type' => PmAccountingEntry::TYPE_CREDIT,
+            'amount' => $amount,
+            'reference' => $reference,
+            'description' => $description,
+            'source_key' => 'maintenance_payment',
+        ]);
+
+        return back()->with('success', 'Vendor marked as paid for job #'.$job->id.'.');
+    }
+
+    public function payOutstanding(Request $request, PmVendor $vendor): RedirectResponse
+    {
+        $data = $request->validate([
+            'paid_date' => ['nullable', 'date'],
+            'payment_note' => ['nullable', 'string', 'max:255'],
+            'confirm_phrase' => ['required', 'string'],
+        ]);
+        if (strtoupper(trim((string) $data['confirm_phrase'])) !== 'PAY') {
+            return back()->withErrors(['confirm_phrase' => 'Type PAY to confirm bulk settlement.'])->withInput();
+        }
+
+        $entryDate = ! empty($data['paid_date']) ? (string) $data['paid_date'] : now()->toDateString();
+        $note = trim((string) ($data['payment_note'] ?? ''));
+        $description = 'Vendor payment settled (bulk)'.($note !== '' ? ' - '.$note : '');
+
+        $jobs = PmMaintenanceJob::query()
+            ->with('request.unit')
+            ->where('pm_vendor_id', $vendor->id)
+            ->where('status', 'done')
+            ->whereNotNull('quote_amount')
+            ->get()
+            ->filter(fn (PmMaintenanceJob $j) => (float) ($j->quote_amount ?? 0) > 0);
+
+        if ($jobs->isEmpty()) {
+            return back()->withErrors(['vendor' => 'No completed quoted jobs available to settle.']);
+        }
+
+        $references = $jobs->map(fn (PmMaintenanceJob $j) => 'MNT-'.$j->id)->values();
+        $allocatedRefs = PmAccountingEntry::query()
+            ->where('source_key', 'maintenance_expense')
+            ->where('category', PmAccountingEntry::CATEGORY_LIABILITY)
+            ->where('entry_type', PmAccountingEntry::TYPE_CREDIT)
+            ->whereIn('reference', $references)
+            ->pluck('reference')
+            ->flip();
+        $paidRefs = PmAccountingEntry::query()
+            ->where('source_key', 'maintenance_payment')
+            ->where('category', PmAccountingEntry::CATEGORY_LIABILITY)
+            ->where('entry_type', PmAccountingEntry::TYPE_DEBIT)
+            ->whereIn('reference', $references)
+            ->pluck('reference')
+            ->flip();
+
+        $eligible = $jobs->filter(function (PmMaintenanceJob $j) use ($allocatedRefs, $paidRefs) {
+            $ref = 'MNT-'.$j->id;
+            return isset($allocatedRefs[$ref]) && ! isset($paidRefs[$ref]);
+        })->values();
+
+        if ($eligible->isEmpty()) {
+            return back()->withErrors(['vendor' => 'No outstanding allocated jobs found to settle.']);
+        }
+
+        foreach ($eligible as $job) {
+            $amount = (float) ($job->quote_amount ?? 0);
+            $reference = 'MNT-'.$job->id;
+            $propertyId = optional(optional($job->request)->unit)->property_id;
+
+            PmAccountingEntry::query()->create([
+                'entry_date' => $entryDate,
+                'property_id' => $propertyId,
+                'recorded_by_user_id' => $request->user()->id,
+                'account_name' => 'Accounts Payable',
+                'category' => PmAccountingEntry::CATEGORY_LIABILITY,
+                'entry_type' => PmAccountingEntry::TYPE_DEBIT,
+                'amount' => $amount,
+                'reference' => $reference,
+                'description' => $description,
+                'source_key' => 'maintenance_payment',
+            ]);
+            PmAccountingEntry::query()->create([
+                'entry_date' => $entryDate,
+                'property_id' => $propertyId,
+                'recorded_by_user_id' => $request->user()->id,
+                'account_name' => 'Cash / Bank',
+                'category' => PmAccountingEntry::CATEGORY_ASSET,
+                'entry_type' => PmAccountingEntry::TYPE_CREDIT,
+                'amount' => $amount,
+                'reference' => $reference,
+                'description' => $description,
+                'source_key' => 'maintenance_payment',
+            ]);
+        }
+
+        return back()->with('success', 'Settled '.count($eligible).' outstanding vendor job payment(s).');
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
@@ -72,9 +328,39 @@ class PmVendorWebController extends Controller
             'rating' => ['nullable', 'numeric', 'between:0,5'],
         ]);
 
-        PmVendor::query()->create($data);
+        $vendor = PmVendor::query()->create($data);
 
-        return back()->with('success', 'Vendor saved.');
+        $nextSteps = [
+            'title' => 'Vendor saved',
+            'message' => 'Next, assign this vendor to maintenance jobs or include them when preparing RFQs.',
+            'vendor' => [
+                'id' => $vendor->id,
+                'name' => $vendor->name,
+                'category' => $vendor->category,
+                'phone' => $vendor->phone,
+                'email' => $vendor->email,
+            ],
+            'actions' => [
+                [
+                    'label' => 'Create RFQ draft',
+                    'href' => route('property.vendors.bidding_create', absolute: false),
+                    'kind' => 'primary',
+                    'icon' => 'fa-solid fa-file-pen',
+                    'turbo_frame' => 'property-main',
+                ],
+                [
+                    'label' => 'View maintenance jobs',
+                    'href' => route('property.vendors.work_records', absolute: false),
+                    'kind' => 'secondary',
+                    'icon' => 'fa-solid fa-screwdriver-wrench',
+                    'turbo_frame' => 'property-main',
+                ],
+            ],
+        ];
+
+        return back()
+            ->with('success', 'Vendor saved.')
+            ->with('next_steps', $nextSteps);
     }
 
     public function storeJson(Request $request)

@@ -7,6 +7,7 @@ use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
+use App\Support\TabularExport;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
@@ -14,17 +15,101 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PmPaymentController extends Controller
 {
-    public function payments(): View
+    public function payments(Request $request): View|StreamedResponse
     {
-        $payments = PmPayment::query()
-            ->with(['tenant', 'allocations.invoice'])
-            ->orderByDesc('paid_at')
-            ->orderByDesc('id')
-            ->limit(200)
-            ->get();
+        $filters = [
+            'q' => trim((string) $request->query('q', '')),
+            'status' => strtolower(trim((string) $request->query('status', ''))),
+            'channel' => strtolower(trim((string) $request->query('channel', ''))),
+            'from' => (string) $request->query('from', ''),
+            'to' => (string) $request->query('to', ''),
+            'sort' => strtolower(trim((string) $request->query('sort', 'paid_at'))),
+            'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
+        ];
+        $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
+
+        $baseQuery = PmPayment::query()->with(['tenant', 'allocations.invoice']);
+        if ($filters['status'] !== '' && in_array($filters['status'], [
+            PmPayment::STATUS_PENDING,
+            PmPayment::STATUS_COMPLETED,
+            PmPayment::STATUS_FAILED,
+        ], true)) {
+            $baseQuery->where('status', $filters['status']);
+        }
+        if ($filters['channel'] !== '') {
+            $baseQuery->where('channel', $filters['channel']);
+        }
+        if ($filters['from'] !== '') {
+            $baseQuery->whereDate('created_at', '>=', $filters['from']);
+        }
+        if ($filters['to'] !== '') {
+            $baseQuery->whereDate('created_at', '<=', $filters['to']);
+        }
+        if ($filters['q'] !== '') {
+            $q = $filters['q'];
+            $baseQuery->where(function ($builder) use ($q) {
+                $builder->where('external_ref', 'like', '%'.$q.'%')
+                    ->orWhere('channel', 'like', '%'.$q.'%')
+                    ->orWhere('status', 'like', '%'.$q.'%')
+                    ->orWhere('id', $q)
+                    ->orWhereHas('tenant', fn ($tq) => $tq
+                        ->where('name', 'like', '%'.$q.'%')
+                        ->orWhere('phone', 'like', '%'.$q.'%'));
+            });
+        }
+        $sortMap = [
+            'paid_at' => 'paid_at',
+            'created_at' => 'created_at',
+            'amount' => 'amount',
+            'status' => 'status',
+            'id' => 'id',
+        ];
+        $sortBy = $sortMap[$filters['sort']] ?? 'paid_at';
+        $dir = in_array($filters['dir'], ['asc', 'desc'], true) ? $filters['dir'] : 'desc';
+        $baseQuery->orderBy($sortBy, $dir)->orderByDesc('id');
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $baseQuery)->limit(5000)->get();
+            return TabularExport::stream(
+                'property-payments-'.now()->format('Ymd_His'),
+                ['Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer ref', 'Allocated to', 'Status'],
+                function () use ($rows) {
+                    foreach ($rows as $p) {
+                        $allocatedTo = $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
+                        if ($allocatedTo === '' && $p->tenant) {
+                            $allocatedTo = $p->tenant->name;
+                        }
+                        $source = (string) data_get($p->meta, 'source', 'manual');
+                        $provider = (string) data_get($p->meta, 'provider', '');
+                        $sourceLabel = match ($source) {
+                            'equity_api' => 'Equity API',
+                            'sms_ingest' => 'SMS Forwarder'.($provider !== '' ? ' ('.strtoupper($provider).')' : ''),
+                            default => 'Manual / Legacy',
+                        };
+                        yield [
+                            'PAY-'.$p->id,
+                            $sourceLabel,
+                            $this->channelLabel($p->channel),
+                            number_format((float) $p->amount, 2, '.', ''),
+                            $p->paid_at?->format('Y-m-d H:i:s') ?? '',
+                            (string) ($p->external_ref ?? ''),
+                            $allocatedTo,
+                            ucfirst((string) $p->status),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $payments = (clone $baseQuery)->paginate($perPage)->withQueryString();
+
+        $pageCollection = $payments->getCollection();
 
         $mtdCompleted = (float) PmPayment::query()
             ->where('status', PmPayment::STATUS_COMPLETED)
@@ -34,13 +119,20 @@ class PmPaymentController extends Controller
 
         $stats = [
             ['label' => 'Completed (MTD)', 'value' => PropertyMoney::kes($mtdCompleted), 'hint' => 'All payments'],
-            ['label' => 'All-time count', 'value' => (string) $payments->count(), 'hint' => 'Rows shown'],
-            ['label' => 'Pending', 'value' => (string) $payments->where('status', PmPayment::STATUS_PENDING)->count(), 'hint' => ''],
-            ['label' => 'Failed', 'value' => (string) $payments->where('status', PmPayment::STATUS_FAILED)->count(), 'hint' => ''],
+            ['label' => 'All-time count', 'value' => (string) $payments->total(), 'hint' => 'Across pages'],
+            ['label' => 'Pending (this page)', 'value' => (string) $pageCollection->where('status', PmPayment::STATUS_PENDING)->count(), 'hint' => ''],
+            ['label' => 'Failed (this page)', 'value' => (string) $pageCollection->where('status', PmPayment::STATUS_FAILED)->count(), 'hint' => ''],
         ];
 
-        $rows = $payments->map(function (PmPayment $p) {
+        $rows = $pageCollection->map(function (PmPayment $p) {
             $allocatedTo = $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
+
+            // If we have no explicit invoice numbers but the payment is linked to a tenant,
+            // fall back to the tenant name so the "Allocated to" column is not blank.
+            if ($allocatedTo === '' && $p->tenant) {
+                $allocatedTo = $p->tenant->name;
+            }
+
             $source = $this->sourceBadge($p);
             $actions = '—';
             if ($p->status === PmPayment::STATUS_PENDING) {
@@ -63,9 +155,10 @@ class PmPaymentController extends Controller
             }
 
             return [
+                new HtmlString('<label class="inline-flex items-center"><input type="checkbox" name="ids[]" value="'.$p->id.'" form="property-payments-bulk-form" class="rounded border-slate-300"><span class="sr-only">Select</span></label>'),
                 'PAY-'.$p->id,
                 $source,
-                $p->channel,
+                $this->channelLabel($p->channel),
                 number_format((float) $p->amount, 2),
                 $p->paid_at?->format('Y-m-d H:i') ?? '—',
                 $p->external_ref ?? '—',
@@ -77,15 +170,41 @@ class PmPaymentController extends Controller
 
         return view('property.agent.revenue.payments', [
             'stats' => $stats,
-            'columns' => ['Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status', 'Actions'],
+            'columns' => ['Select', 'Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status', 'Actions'],
             'tableRows' => $rows,
-            'tenants' => PmTenant::query()->orderBy('name')->get(),
+            'paginator' => $payments,
+            'perPage' => $perPage,
+            'filters' => $filters,
             'openInvoices' => PmInvoice::query()
                 ->with('tenant')
                 ->whereColumn('amount_paid', '<', 'amount')
                 ->orderBy('due_date')
                 ->get(),
+            // Only show tenants that actually have an open invoice (this screen posts against invoices).
+            'tenants' => PmTenant::query()
+                ->whereHas('invoices', function ($q) {
+                    $q->whereColumn('amount_paid', '<', 'amount');
+                })
+                ->orderBy('name')
+                ->get(),
         ]);
+    }
+
+    private function channelLabel(?string $channel): string
+    {
+        $key = strtolower((string) $channel);
+
+        return match ($key) {
+            'mpesa' => 'M-Pesa',
+            'bank' => 'Bank',
+            'cash' => 'Cash',
+            'card' => 'Card',
+            'cheque' => 'Cheque',
+            'equity_paybill' => 'Equity Paybill',
+            'mpesa_sms_ingest' => 'M-Pesa (SMS Forwarder)',
+            'mpesa_stk' => 'M-Pesa (STK Push)',
+            default => ucfirst(str_replace('_', ' ', $key)),
+        };
     }
 
     private function sourceBadge(PmPayment $payment): HtmlString

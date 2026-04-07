@@ -40,6 +40,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
     Route::middleware(['property.portal:agent'])->prefix('property')->name('property.')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'commandCenter'])->name('dashboard');
         Route::get('/search', [PropertySearchController::class, 'index'])->name('search');
+        Route::get('/search/suggest', [PropertySearchController::class, 'suggest'])->name('search.suggest');
 
         Route::get('/workspace/forms/{form}', [AgentWorkspaceFormController::class, 'show'])
             ->where('form', '[a-z0-9\-]+')
@@ -53,8 +54,14 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/revenue/arrears/reminders', [RevenueController::class, 'sendArrearsReminders'])
             ->middleware('property.permission:communications.manage')
             ->name('revenue.arrears.reminders');
+        Route::post('/revenue/invoices/bulk', [RevenueController::class, 'invoicesBulk'])->name('revenue.invoices.bulk');
+        Route::post('/revenue/payments/bulk', [RevenueController::class, 'paymentsBulk'])->name('revenue.payments.bulk');
+        Route::post('/revenue/arrears/reminders/test-email', [RevenueController::class, 'sendArrearsTestEmail'])
+            ->middleware('property.permission:communications.manage')
+            ->name('revenue.arrears.reminders.test_email');
         Route::get('/revenue/invoices', [PmInvoiceController::class, 'invoices'])->name('revenue.invoices');
         Route::post('/revenue/invoices', [PmInvoiceController::class, 'store'])->name('invoices.store');
+        Route::get('/revenue/invoices/lease/{lease}/info', [PmInvoiceController::class, 'leaseInfo'])->name('invoices.lease_info');
         Route::get('/revenue/penalties', [RevenueController::class, 'penalties'])->name('revenue.penalties');
         Route::post('/revenue/penalties', [RevenueController::class, 'storePenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.store');
         Route::delete('/revenue/penalties/{penalty_rule}', [RevenueController::class, 'destroyPenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.destroy');
@@ -88,9 +95,15 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/revenue/equity/unmatched/{unassignedPayment}', [EquitySyncController::class, 'showUnmatchedPayment'])
             ->middleware('property.permission:payments.settle')
             ->name('equity.unmatched.show');
+        Route::post('/revenue/equity/unmatched/{unassignedPayment}/rematch', [EquitySyncController::class, 'rematchUnmatchedPayment'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.unmatched.rematch');
         Route::post('/revenue/equity/unmatched/{unassignedPayment}/assign', [EquitySyncController::class, 'assignUnmatchedPayment'])
             ->middleware('property.permission:payments.settle')
             ->name('equity.unmatched.assign');
+        Route::get('/revenue/equity/matched', [EquitySyncController::class, 'matchedPayments'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.matched');
         Route::get('/revenue/equity/all', [EquitySyncController::class, 'allPayments'])
             ->middleware('property.permission:payments.settle')
             ->name('equity.all');
@@ -234,6 +247,9 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/vendors/quotes/{job}/award', [PmVendorWebController::class, 'awardQuote'])->middleware('property.permission:vendors.manage')->name('vendors.quotes.award');
         Route::get('/vendors/performance', [PmVendorWebController::class, 'performance'])->name('vendors.performance');
         Route::get('/vendors/work-records', [PmVendorWebController::class, 'workRecords'])->name('vendors.work_records');
+        Route::post('/vendors/{vendor}/jobs/{job}/mark-paid', [PmVendorWebController::class, 'markJobPaid'])->middleware('property.permission:vendors.manage')->name('vendors.jobs.mark_paid');
+        Route::post('/vendors/{vendor}/pay-outstanding', [PmVendorWebController::class, 'payOutstanding'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding');
+        Route::get('/vendors/{vendor}', [PmVendorWebController::class, 'show'])->name('vendors.show');
         Route::view('/vendors', 'property.agent.vendors.index')->name('vendors.index');
 
         Route::get('/financials/income-expenses', [FinancialsController::class, 'incomeExpenses'])->name('financials.income_expenses');
@@ -247,6 +263,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/accounting/entries/export', [PropertyAccountingController::class, 'exportEntriesCsv'])->name('accounting.entries.export');
         Route::post('/accounting/entries', [PropertyAccountingController::class, 'storeEntry'])->middleware('property.permission:accounting.entries.manage')->name('accounting.entries.store');
         Route::post('/accounting/entries/{entry}/reverse', [PropertyAccountingController::class, 'reverseEntry'])->middleware('property.permission:accounting.entries.manage')->name('accounting.entries.reverse');
+        Route::post('/accounting/entries/bulk', [PropertyAccountingController::class, 'bulkEntries'])->middleware('property.permission:accounting.entries.manage')->name('accounting.entries.bulk');
         Route::post('/accounting/settings/account-map', [PropertyAccountingController::class, 'saveAccountMap'])->name('accounting.settings.account_map.save');
         Route::get('/accounting/audit-trail', [PropertyAccountingController::class, 'auditTrail'])->name('accounting.audit_trail');
         Route::get('/accounting/audit-trail/export', [PropertyAccountingController::class, 'exportAuditTrailCsv'])->name('accounting.audit_trail.export');
@@ -273,6 +290,8 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::view('/performance', 'property.agent.performance.index')->name('performance.index');
 
         Route::get('/notifications', [PropertyCommunicationsWebController::class, 'notifications'])->name('notifications');
+        Route::post('/notifications/bulk', [PropertyCommunicationsWebController::class, 'notificationsBulk'])->name('notifications.bulk');
+        Route::get('/notifications/export', [PropertyCommunicationsWebController::class, 'notificationsExport'])->name('notifications.export');
         Route::get('/communications/messages', [PropertyCommunicationsWebController::class, 'messages'])->name('communications.messages');
         Route::get('/communications/messages/export', [PropertyCommunicationsWebController::class, 'messagesExport'])->name('communications.messages.export');
         Route::get('/communications/messages/{log}', [PropertyCommunicationsWebController::class, 'showMessage'])->name('communications.messages.show');
@@ -315,8 +334,8 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::patch('/listings/applications/{application}', [PropertyListingsPipelineController::class, 'updateApplicationStatus'])->middleware('property.permission:listings.manage')->name('listings.applications.update');
         Route::get('/listings', [AgentPublicListingController::class, 'hub'])->name('listings.index');
 
-        Route::get('/settings/roles', [PropertySettingsWebController::class, 'roles'])->name('settings.roles');
-        Route::get('/settings/permissions', [PropertySettingsWebController::class, 'permissions'])->name('settings.permissions');
+        Route::get('/settings/roles', [PropertySettingsWebController::class, 'roles'])->middleware('superadmin')->name('settings.roles');
+        Route::get('/settings/permissions', [PropertySettingsWebController::class, 'permissions'])->middleware('superadmin')->name('settings.permissions');
         Route::get('/settings/commission', [PropertySettingsStoreWebController::class, 'commission'])->name('settings.commission');
         Route::post('/settings/commission', [PropertySettingsStoreWebController::class, 'storeCommission'])->middleware('property.permission:settings.manage')->name('settings.commission.store');
         Route::get('/settings/payments', [PropertySettingsStoreWebController::class, 'payments'])->name('settings.payments');
@@ -325,22 +344,22 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/settings/branding', [PropertySettingsStoreWebController::class, 'storeBranding'])->middleware('property.permission:settings.manage')->name('settings.branding.store');
         Route::get('/settings/rules', [PropertySettingsStoreWebController::class, 'rules'])->name('settings.rules');
         Route::post('/settings/rules', [PropertySettingsStoreWebController::class, 'storeRules'])->middleware('property.permission:settings.manage')->name('settings.rules.store');
-        Route::get('/settings/system-setup', [PropertySettingsStoreWebController::class, 'systemSetup'])->name('settings.system_setup');
-        Route::get('/settings/system-setup/forms', [PropertySettingsStoreWebController::class, 'systemSetupForms'])->name('settings.system_setup.forms');
-        Route::post('/settings/system-setup/forms', [PropertySettingsStoreWebController::class, 'storeSystemSetupForms'])->middleware('property.permission:settings.manage')->name('settings.system_setup.forms.store');
-        Route::get('/settings/system-setup/workflows', [PropertySettingsStoreWebController::class, 'systemSetupWorkflows'])->name('settings.system_setup.workflows');
-        Route::post('/settings/system-setup/workflows', [PropertySettingsStoreWebController::class, 'storeSystemSetupWorkflows'])->middleware('property.permission:settings.manage')->name('settings.system_setup.workflows.store');
-        Route::get('/settings/system-setup/templates', [PropertySettingsStoreWebController::class, 'systemSetupTemplates'])->name('settings.system_setup.templates');
-        Route::post('/settings/system-setup/templates', [PropertySettingsStoreWebController::class, 'storeSystemSetupTemplates'])->middleware('property.permission:settings.manage')->name('settings.system_setup.templates.store');
-        Route::get('/settings/system-setup/access', [PropertySettingsStoreWebController::class, 'systemSetupAccess'])->name('settings.system_setup.access');
-        Route::post('/settings/system-setup/access/roles', [PropertySettingsStoreWebController::class, 'storeSystemSetupRole'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.roles.store');
-        Route::post('/settings/system-setup/access/roles/clone', [PropertySettingsStoreWebController::class, 'storeSystemSetupRoleClone'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.roles.clone');
-        Route::post('/settings/system-setup/access/permissions', [PropertySettingsStoreWebController::class, 'storeSystemSetupPermission'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.permissions.store');
-        Route::patch('/settings/system-setup/access/permissions/{pmPermission}', [PropertySettingsStoreWebController::class, 'updateSystemSetupPermission'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.permissions.update');
-        Route::delete('/settings/system-setup/access/permissions/{pmPermission}', [PropertySettingsStoreWebController::class, 'destroySystemSetupPermission'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.permissions.destroy');
-        Route::post('/settings/system-setup/access/roles/{pmRole}/permissions', [PropertySettingsStoreWebController::class, 'storeSystemSetupRolePermissions'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.roles.permissions.store');
-        Route::post('/settings/system-setup/access/users/{user}/roles', [PropertySettingsStoreWebController::class, 'storeSystemSetupUserRoles'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.users.roles.store');
-        Route::post('/settings/system-setup/access/users/{user}/permissions', [PropertySettingsStoreWebController::class, 'storeSystemSetupUserPermissions'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.users.permissions.store');
+        Route::get('/settings/system-setup', [PropertySettingsStoreWebController::class, 'systemSetup'])->middleware('superadmin')->name('settings.system_setup');
+        Route::get('/settings/system-setup/forms', [PropertySettingsStoreWebController::class, 'systemSetupForms'])->middleware('superadmin')->name('settings.system_setup.forms');
+        Route::post('/settings/system-setup/forms', [PropertySettingsStoreWebController::class, 'storeSystemSetupForms'])->middleware(['superadmin', 'property.permission:settings.manage'])->name('settings.system_setup.forms.store');
+        Route::get('/settings/system-setup/workflows', [PropertySettingsStoreWebController::class, 'systemSetupWorkflows'])->middleware('superadmin')->name('settings.system_setup.workflows');
+        Route::post('/settings/system-setup/workflows', [PropertySettingsStoreWebController::class, 'storeSystemSetupWorkflows'])->middleware(['superadmin', 'property.permission:settings.manage'])->name('settings.system_setup.workflows.store');
+        Route::get('/settings/system-setup/templates', [PropertySettingsStoreWebController::class, 'systemSetupTemplates'])->middleware('superadmin')->name('settings.system_setup.templates');
+        Route::post('/settings/system-setup/templates', [PropertySettingsStoreWebController::class, 'storeSystemSetupTemplates'])->middleware(['superadmin', 'property.permission:settings.manage'])->name('settings.system_setup.templates.store');
+        Route::get('/settings/system-setup/access', [PropertySettingsStoreWebController::class, 'systemSetupAccess'])->middleware('superadmin')->name('settings.system_setup.access');
+        Route::post('/settings/system-setup/access/roles', [PropertySettingsStoreWebController::class, 'storeSystemSetupRole'])->middleware(['superadmin', 'property.permission:settings.access.manage'])->name('settings.system_setup.access.roles.store');
+        Route::post('/settings/system-setup/access/roles/clone', [PropertySettingsStoreWebController::class, 'storeSystemSetupRoleClone'])->middleware(['superadmin', 'property.permission:settings.access.manage'])->name('settings.system_setup.access.roles.clone');
+        Route::post('/settings/system-setup/access/permissions', [PropertySettingsStoreWebController::class, 'storeSystemSetupPermission'])->middleware(['superadmin', 'property.permission:settings.access.manage'])->name('settings.system_setup.access.permissions.store');
+        Route::patch('/settings/system-setup/access/permissions/{pmPermission}', [PropertySettingsStoreWebController::class, 'updateSystemSetupPermission'])->middleware(['superadmin', 'property.permission:settings.access.manage'])->name('settings.system_setup.access.permissions.update');
+        Route::delete('/settings/system-setup/access/permissions/{pmPermission}', [PropertySettingsStoreWebController::class, 'destroySystemSetupPermission'])->middleware(['superadmin', 'property.permission:settings.access.manage'])->name('settings.system_setup.access.permissions.destroy');
+        Route::post('/settings/system-setup/access/roles/{pmRole}/permissions', [PropertySettingsStoreWebController::class, 'storeSystemSetupRolePermissions'])->middleware(['superadmin', 'property.permission:settings.access.manage'])->name('settings.system_setup.access.roles.permissions.store');
+        Route::post('/settings/system-setup/access/users/{user}/roles', [PropertySettingsStoreWebController::class, 'storeSystemSetupUserRoles'])->middleware(['superadmin', 'property.permission:settings.access.manage'])->name('settings.system_setup.access.users.roles.store');
+        Route::post('/settings/system-setup/access/users/{user}/permissions', [PropertySettingsStoreWebController::class, 'storeSystemSetupUserPermissions'])->middleware(['superadmin', 'property.permission:settings.access.manage'])->name('settings.system_setup.access.users.permissions.store');
         Route::view('/settings', 'property.agent.settings.index')->name('settings.index');
 
         Route::get('/advisor', [PropertyAdvisorWebController::class, 'show'])->name('advisor');
@@ -419,7 +438,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
             ->where('form', '[a-z0-9\-]+')
             ->name('workspace.form.store');
         Route::get('/lease', [TenantPortalController::class, 'lease'])->name('lease');
-        Route::view('/maintenance', 'property.tenant.maintenance.index')->name('maintenance.index');
+        Route::get('/maintenance', [TenantPortalController::class, 'maintenanceIndex'])->name('maintenance.index');
         Route::get('/maintenance/report', [TenantPortalController::class, 'maintenanceReport'])->name('maintenance.report');
         Route::post('/maintenance/report', [TenantPortalController::class, 'maintenanceReportSubmit'])->name('maintenance.report.store');
         Route::get('/requests', [TenantPortalController::class, 'requestsPage'])->name('requests');

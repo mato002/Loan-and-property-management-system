@@ -41,7 +41,7 @@
         <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
             <div>
                 <div class="flex items-center gap-3 mb-2">
-                    <span class="bg-indigo-100 text-indigo-800 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">For Rent</span>
+                    <span class="bg-amber-100 text-amber-800 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider">For Rent</span>
                     <span class="text-gray-500 font-medium text-sm">
                         <svg class="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         Updated {{ $unit->updated_at->diffForHumans() }}
@@ -49,12 +49,12 @@
                 </div>
                 <h1 class="text-4xl sm:text-5xl font-black text-gray-900 tracking-tight">{{ $title }}</h1>
                 <p class="text-lg text-gray-500 mt-2 flex items-center gap-1.5 font-medium">
-                    <svg class="w-5 h-5 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <svg class="w-5 h-5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     {{ $addr }}
                 </p>
             </div>
             <div class="text-left md:text-right">
-                <p class="text-4xl font-black text-indigo-600">{{ $rentDisplay }} <span class="text-xl text-gray-500 font-medium tracking-normal">/ mo</span></p>
+                <p class="text-4xl font-black text-amber-600">{{ $rentDisplay }} <span class="text-xl text-gray-500 font-medium tracking-normal">/ mo</span></p>
             </div>
         </div>
 
@@ -164,16 +164,16 @@
                         <div class="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8 text-gray-700 font-bold text-sm">
                             @foreach ($unit->amenities as $am)
                                 <div class="flex items-center gap-3">
-                                    <svg class="w-5 h-5 text-indigo-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    <svg class="w-5 h-5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                                     <span>{{ $am->name }}@if ($am->category)<span class="text-gray-400 font-medium"> · {{ $am->category }}</span>@endif</span>
                                 </div>
                             @endforeach
                         </div>
                     @else
                         <div class="grid grid-cols-2 md:grid-cols-3 gap-y-6 gap-x-8 text-gray-700 font-bold text-sm">
-                            <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Professionally managed</div>
-                            <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Vacant &amp; available</div>
-                            <div class="flex items-center gap-3"><svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Online applications</div>
+                            <div class="flex items-center gap-3"><svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Professionally managed</div>
+                            <div class="flex items-center gap-3"><svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Vacant &amp; available</div>
+                            <div class="flex items-center gap-3"><svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Online applications</div>
                         </div>
                     @endif
                 </div>
@@ -181,10 +181,10 @@
                 <div class="mb-12">
                     <h2 class="text-2xl font-black text-gray-900 mb-6">Location Map</h2>
                     <div class="bg-gray-50 w-full min-h-[16rem] rounded-3xl border border-gray-200 shadow-inner flex flex-col items-center justify-center px-8 py-10 text-center">
-                        <svg class="w-10 h-10 text-indigo-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        <svg class="w-10 h-10 text-emerald-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                         <p class="text-gray-700 font-bold mb-1">{{ $addr }}</p>
                         <p class="text-sm text-gray-500 mb-6 max-w-md">Open in Google Maps for directions and street view.</p>
-                        <a href="{{ $mapsUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black px-8 py-3 rounded-2xl shadow-lg shadow-indigo-600/25 transition-colors">
+                        <a href="{{ $mapsUrl }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black px-8 py-3 rounded-2xl shadow-lg shadow-emerald-600/25 transition-colors">
                             Open in Maps
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                         </a>
@@ -206,11 +206,11 @@
             <div class="w-full lg:w-1/3">
                 <div class="bg-white border border-gray-100 p-8 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] sticky top-28">
                     <div class="flex items-center gap-5 mb-8 pb-8 border-b border-gray-100">
-                        <div class="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 font-black text-xl border border-indigo-100">PM</div>
+                        <div class="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 font-black text-xl border border-emerald-100">PM</div>
                         <div>
                             <p class="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Property Management</p>
                             <p class="text-xl font-black text-gray-900">{{ config('app.name') }}</p>
-                            <p class="text-sm font-bold text-indigo-600 mt-1">Ask about this unit</p>
+                            <p class="text-sm font-bold text-emerald-600 mt-1">Ask about this unit</p>
                         </div>
                     </div>
 
@@ -227,7 +227,7 @@
                         </a>
                     </div>
 
-                    <a href="{{ route('public.apply', ['property_unit' => $unit->id]) }}" class="flex items-center justify-center gap-2 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black text-lg py-5 rounded-2xl transition-all hover:-translate-y-1 shadow-xl shadow-indigo-600/30">
+                    <a href="{{ route('public.apply', ['property_unit' => $unit->id]) }}" class="flex items-center justify-center gap-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-lg py-5 rounded-2xl transition-all hover:-translate-y-1 shadow-xl shadow-emerald-600/30">
                         Apply Online Now
                         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                     </a>

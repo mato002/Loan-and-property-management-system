@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmMaintenanceRequest;
+use App\Models\PmMessageLog;
+use App\Models\PmMessageRead;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenantPortalRequest;
@@ -19,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\Rule;
 use Illuminate\Http\JsonResponse;
@@ -27,6 +30,81 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TenantPortalController extends Controller
 {
+    public function notifications(Request $request): View
+    {
+        $userId = (int) $request->user()->id;
+        $logs = PmMessageLog::query()
+            ->where('user_id', $userId)
+            ->where('channel', 'system')
+            ->latest('id')
+            ->limit(200)
+            ->get();
+
+        $readMap = collect();
+        if (Schema::hasTable('pm_message_reads') && $logs->isNotEmpty()) {
+            $readMap = PmMessageRead::query()
+                ->where('user_id', $userId)
+                ->whereIn('pm_message_log_id', $logs->pluck('id'))
+                ->get()
+                ->keyBy('pm_message_log_id');
+        }
+
+        return view('property.tenant.notifications', [
+            'logs' => $logs,
+            'readMap' => $readMap,
+        ]);
+    }
+
+    public function notificationsReadAll(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('pm_message_reads')) {
+            return back();
+        }
+
+        $userId = (int) $request->user()->id;
+        $logs = PmMessageLog::query()
+            ->where('user_id', $userId)
+            ->where('channel', 'system')
+            ->latest('id')
+            ->limit(500)
+            ->get(['id']);
+        if ($logs->isEmpty()) {
+            return back();
+        }
+
+        $now = now();
+        $rows = $logs->map(fn (PmMessageLog $log) => [
+            'pm_message_log_id' => (int) $log->id,
+            'user_id' => $userId,
+            'read_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ])->all();
+        PmMessageRead::query()->upsert(
+            $rows,
+            ['pm_message_log_id', 'user_id'],
+            ['read_at', 'updated_at']
+        );
+
+        return back()->with('success', 'All notifications marked as read.');
+    }
+
+    public function notificationsReadOne(Request $request, PmMessageLog $log): RedirectResponse
+    {
+        if (! Schema::hasTable('pm_message_reads')) {
+            return back();
+        }
+
+        $userId = (int) $request->user()->id;
+        abort_unless((int) $log->user_id === $userId, 403);
+        PmMessageRead::query()->updateOrCreate(
+            ['pm_message_log_id' => (int) $log->id, 'user_id' => $userId],
+            ['read_at' => now()]
+        );
+
+        return back()->with('success', 'Notification marked as read.');
+    }
+
     public function home(Request $request): View
     {
         $tenant = $request->user()->pmTenantProfile;
@@ -887,6 +965,22 @@ class TenantPortalController extends Controller
             'leaseUnits' => $leaseUnits,
             'propertyOptions' => $propertyOptions,
             'unitsByProperty' => $unitsByProperty,
+        ]);
+    }
+
+    public function maintenanceIndex(Request $request): View
+    {
+        $userId = (int) $request->user()->id;
+        $requests = PmMaintenanceRequest::query()
+            ->with(['unit.property', 'jobs.vendor'])
+            ->where('reported_by_user_id', $userId)
+            ->latest('updated_at')
+            ->latest('id')
+            ->limit(40)
+            ->get();
+
+        return view('property.tenant.maintenance.index', [
+            'requests' => $requests,
         ]);
     }
 

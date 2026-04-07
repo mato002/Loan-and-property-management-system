@@ -39,16 +39,27 @@
                     <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
                 </div>
 
+                <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Per page</label>
+                    <select name="per_page" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        @foreach ([10, 30, 50, 100, 200] as $size)
+                            <option value="{{ $size }}" @selected((int) ($perPage ?? request('per_page', 20)) === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
                 <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
                 <a href="{{ route('loan.accounting.utilities.index') }}" class="h-10 inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reset</a>
             </div>
         </form>
 
-        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <form method="post" action="{{ route('loan.accounting.utilities.bulk') }}" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden" data-swal-confirm="Apply bulk action to selected utility payments?">
+            @csrf
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm">
                     <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
+                            <th class="px-5 py-3"><input type="checkbox" onclick="document.querySelectorAll('.util-row').forEach(cb=>cb.checked=this.checked)"></th>
                             <th class="px-5 py-3">Type</th>
                             <th class="px-5 py-3">Provider</th>
                             <th class="px-5 py-3">Paid on</th>
@@ -60,6 +71,7 @@
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($rows as $r)
                             <tr class="hover:bg-slate-50/80">
+                                <td class="px-5 py-3"><input type="checkbox" name="ids[]" value="{{ $r->id }}" class="util-row"></td>
                                 <td class="px-5 py-3 text-slate-800 capitalize">{{ str_replace('_', ' ', $r->utility_type) }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $r->provider ?? '—' }}</td>
                                 <td class="px-5 py-3 whitespace-nowrap">{{ $r->paid_on->format('Y-m-d') }}</td>
@@ -82,9 +94,18 @@
                     </tbody>
                 </table>
             </div>
-            @if ($rows->hasPages())
-                <div class="px-5 py-4 border-t border-slate-100">{{ $rows->links() }}</div>
-            @endif
-        </div>
+            <div class="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+                <div class="flex items-center gap-2">
+                    <select name="action" class="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700">
+                        <option value="">Bulk action</option>
+                        <option value="delete">Delete</option>
+                    </select>
+                    <button type="submit" class="h-9 rounded-lg bg-red-600 px-3 text-xs font-semibold uppercase tracking-wide text-white shadow-sm hover:bg-red-700">Apply</button>
+                </div>
+                @if ($rows->hasPages())
+                    <div>{{ $rows->links() }}</div>
+                @endif
+            </div>
+        </form>
     </x-loan.page>
 </x-loan-layout>

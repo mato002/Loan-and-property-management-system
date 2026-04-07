@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property;
 
 use App\Http\Controllers\Controller;
+use App\Services\Property\LoginActivityLogger;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -51,6 +52,17 @@ class PropertyPortalGuestLoginController extends Controller
 
         if (! Auth::attempt($request->only('email', 'password'), $request->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey($request, $requiredRole));
+            app(LoginActivityLogger::class)->log(
+                null,
+                'failed',
+                ucfirst($requiredRole).' portal login failed',
+                (string) $request->input('email'),
+                [
+                    'portal' => $requiredRole,
+                    'ip' => (string) $request->ip(),
+                    'user_agent' => (string) $request->userAgent(),
+                ]
+            );
 
             throw ValidationException::withMessages([
                 'email' => trans('auth.failed'),
@@ -61,6 +73,17 @@ class PropertyPortalGuestLoginController extends Controller
 
         $user = Auth::user();
         if (($user->property_portal_role ?? null) !== $requiredRole) {
+            app(LoginActivityLogger::class)->log(
+                (int) $user->id,
+                'failed',
+                ucfirst($requiredRole).' portal login blocked (wrong role)',
+                (string) $user->email,
+                [
+                    'portal' => $requiredRole,
+                    'actual_role' => (string) ($user->property_portal_role ?? 'unknown'),
+                    'ip' => (string) $request->ip(),
+                ]
+            );
             Auth::logout();
 
             $request->session()->invalidate();
@@ -75,6 +98,16 @@ class PropertyPortalGuestLoginController extends Controller
 
         // Block property portal access until the user is approved for the property module.
         if (! $user->isModuleApproved('property')) {
+            app(LoginActivityLogger::class)->log(
+                (int) $user->id,
+                'failed',
+                ucfirst($requiredRole).' portal login blocked (module not approved)',
+                (string) $user->email,
+                [
+                    'portal' => $requiredRole,
+                    'ip' => (string) $request->ip(),
+                ]
+            );
             Auth::logout();
 
             $request->session()->invalidate();
@@ -87,6 +120,17 @@ class PropertyPortalGuestLoginController extends Controller
 
         $request->session()->regenerate();
         $request->session()->put('active_system', 'property');
+        app(LoginActivityLogger::class)->log(
+            (int) $user->id,
+            'sent',
+            ucfirst($requiredRole).' portal login successful',
+            (string) $user->email,
+            [
+                'portal' => $requiredRole,
+                'ip' => (string) $request->ip(),
+                'user_agent' => (string) $request->userAgent(),
+            ]
+        );
 
         return redirect()->intended(route($successRoute, absolute: false));
     }

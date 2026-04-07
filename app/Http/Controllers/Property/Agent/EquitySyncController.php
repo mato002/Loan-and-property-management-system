@@ -10,6 +10,7 @@ use App\Models\PmTenant;
 use App\Models\UnassignedPayment;
 use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
+use App\Services\PaymentMatchingService;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -23,17 +24,125 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EquitySyncController extends Controller
 {
-    public function syncStatus(): View
+    public function syncStatus(Request $request): View|StreamedResponse
     {
         if (! Schema::hasTable('equity_sync_runs')) {
             return $this->notReadyView('Equity sync runs table is missing. Run migrations first.');
         }
 
-        $runs = EquitySyncRun::query()->latest('id')->paginate(20);
+        $q = trim((string) $request->query('q', ''));
+        $status = strtolower(trim((string) $request->query('status', '')));
+        $trigger = strtolower(trim((string) $request->query('trigger', '')));
+        $from = (string) $request->query('from', '');
+        $to = (string) $request->query('to', '');
+        $sort = strtolower(trim((string) $request->query('sort', 'started_at')));
+        $dir = strtolower(trim((string) $request->query('dir', 'desc')));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+
+        $query = EquitySyncRun::query();
+        if ($status !== '') {
+            $query->where('status', $status);
+        }
+        if ($trigger !== '') {
+            $query->where('trigger', $trigger);
+        }
+        if ($from !== '') {
+            $query->whereDate('started_at', '>=', $from);
+        }
+        if ($to !== '') {
+            $query->whereDate('started_at', '<=', $to);
+        }
+        if ($q !== '') {
+            $query->where(function (Builder $inner) use ($q) {
+                $inner->where('message', 'like', '%'.$q.'%')
+                    ->orWhere('status', 'like', '%'.$q.'%')
+                    ->orWhere('trigger', 'like', '%'.$q.'%')
+                    ->orWhere('id', $q);
+            });
+        }
+        $sortMap = [
+            'started_at' => 'started_at',
+            'finished_at' => 'finished_at',
+            'status' => 'status',
+            'fetched_count' => 'fetched_count',
+            'matched_count' => 'matched_count',
+            'unmatched_count' => 'unmatched_count',
+            'error_count' => 'error_count',
+            'id' => 'id',
+        ];
+        $sortBy = $sortMap[$sort] ?? 'started_at';
+        $sortDir = in_array($dir, ['asc', 'desc'], true) ? $dir : 'desc';
+        $query->orderBy($sortBy, $sortDir)->orderByDesc('id');
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'equity-sync-runs-'.now()->format('Ymd_His'),
+                ['Started', 'Finished', 'Trigger', 'Status', 'Fetched', 'Matched', 'Unmatched', 'Duplicates', 'Errors', 'Message'],
+                function () use ($rows) {
+                    foreach ($rows as $run) {
+                        yield [
+                            optional($run->started_at)->format('Y-m-d H:i:s'),
+                            optional($run->finished_at)->format('Y-m-d H:i:s'),
+                            ucfirst((string) $run->trigger),
+                            ucfirst((string) $run->status),
+                            (string) ($run->fetched_count ?? 0),
+                            (string) ($run->matched_count ?? 0),
+                            (string) ($run->unmatched_count ?? 0),
+                            (string) ($run->duplicate_count ?? 0),
+                            (string) ($run->error_count ?? 0),
+                            (string) ($run->message ?? ''),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $runs = (clone $query)->paginate($perPage)->withQueryString();
+        $latest = EquitySyncRun::query()
+            ->orderByDesc('started_at')
+            ->orderByDesc('id')
+            ->first();
+        $latestSuccess = EquitySyncRun::query()
+            ->where('status', 'success')
+            ->orderByDesc('started_at')
+            ->orderByDesc('id')
+            ->first();
+        $liveStats = [
+            'fetched' => 0,
+            'matched' => 0,
+            'unmatched' => 0,
+            'duplicates' => 0,
+        ];
+        if (Schema::hasTable('payments')) {
+            $liveStats['fetched'] = (int) Payment::query()->count();
+            $liveStats['matched'] = (int) Payment::query()->whereIn('status', ['matched', 'completed'])->count();
+            $liveStats['duplicates'] = (int) Payment::query()->where('status', 'duplicate')->count();
+        }
+        if (Schema::hasTable('unassigned_payments')) {
+            $liveStats['unmatched'] = (int) UnassignedPayment::query()->count();
+        } elseif (Schema::hasTable('payments')) {
+            $liveStats['unmatched'] = (int) Payment::query()->where('status', 'unmatched')->count();
+        }
 
         return view('property.agent.equity.sync_status', [
             'runs' => $runs,
-            'latest' => $runs->first(),
+            'latest' => $latest,
+            'latestSuccess' => $latestSuccess,
+            'liveStats' => $liveStats,
+            'filters' => [
+                'q' => $q,
+                'status' => $status,
+                'trigger' => $trigger,
+                'from' => $from,
+                'to' => $to,
+                'sort' => $sortBy,
+                'dir' => $sortDir,
+                'per_page' => (string) $perPage,
+            ],
         ]);
     }
 
@@ -291,11 +400,94 @@ class EquitySyncController extends Controller
             ->with('success', 'Payment assigned and posted successfully.');
     }
 
-    public function allPayments(Request $request): View
+    public function rematchUnmatchedPayment(
+        UnassignedPayment $unassignedPayment,
+        EquityPaymentRepository $payments,
+        PaymentMatchingService $matcher,
+        PaymentAuditLogRepository $auditLogs
+    ): RedirectResponse {
+        if (! Schema::hasTable('unassigned_payments') || ! Schema::hasTable('payments')) {
+            return back()->withErrors(['payments' => 'Payments module is not ready. Run migrations first.']);
+        }
+
+        $tx = [
+            'transaction_id' => (string) $unassignedPayment->transaction_id,
+            'amount' => (float) $unassignedPayment->amount,
+            'account_number' => (string) ($unassignedPayment->account_number ?? ''),
+            'reference' => '',
+            'phone' => (string) ($unassignedPayment->phone ?? ''),
+            'transaction_date' => $unassignedPayment->created_at ?? now(),
+            'raw_payload' => [
+                'auto_rematch' => true,
+                'unassigned_payment_id' => (int) $unassignedPayment->id,
+                'reason' => (string) ($unassignedPayment->reason ?? ''),
+            ],
+        ];
+
+        $match = $matcher->match($tx);
+        $tenantId = (int) ($match['tenant_id'] ?? 0);
+        if ($tenantId <= 0) {
+            return back()->withErrors([
+                'payments' => 'Auto re-match did not find a tenant yet. Use Assign and choose tenant manually.',
+            ]);
+        }
+
+        $method = (string) ($unassignedPayment->payment_method ?: 'equity');
+        $isSms = $method === 'sms_forwarder';
+        $options = [
+            'payment_method' => $method,
+            'channel' => $isSms ? 'mpesa_sms_ingest' : 'equity_paybill',
+            'source' => $isSms ? 'sms_ingest' : 'equity_api',
+            'provider' => $isSms ? 'mpesa' : 'equity',
+            'message' => 'Automatically re-matched from unmatched queue.',
+        ];
+
+        Payment::query()
+            ->where('transaction_id', (string) $unassignedPayment->transaction_id)
+            ->where('status', 'unmatched')
+            ->delete();
+
+        $payment = $payments->storeMatched($tx, $tenantId, (string) ($match['matched_by'] ?? 'auto_rematch'), $options);
+
+        if ($isSms) {
+            PmSmsIngest::query()
+                ->where('provider_txn_code', (string) $unassignedPayment->transaction_id)
+                ->whereNull('pm_payment_id')
+                ->update([
+                    'matched_tenant_id' => $tenantId,
+                    'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0) ?: null,
+                    'match_status' => 'matched',
+                    'match_note' => 'Auto re-matched by updated matching logic.',
+                ]);
+        }
+
+        $auditLogs->decision('success', [
+            'stage' => 'auto_rematch',
+            'decision' => 'matched',
+            'unassigned_payment_id' => (int) $unassignedPayment->id,
+            'transaction_id' => (string) $unassignedPayment->transaction_id,
+            'tenant_id' => $tenantId,
+            'matched_by' => (string) ($match['matched_by'] ?? 'auto_rematch'),
+            'payment_id' => (int) $payment->id,
+            'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0),
+        ], 'auto_rematch_decision');
+
+        $unassignedPayment->delete();
+
+        return redirect()
+            ->route('property.equity.matched')
+            ->with('success', 'Payment re-matched and posted successfully.');
+    }
+
+    public function allPayments(Request $request): View|StreamedResponse
     {
         if (! Schema::hasTable('payments')) {
             return $this->notReadyView('Payments table is missing. Run migrations first.');
         }
+        $qText = trim((string) $request->query('q', ''));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $sort = strtolower(trim((string) $request->query('sort', 'transaction_date')));
+        $dir = strtolower(trim((string) $request->query('dir', 'desc')));
 
         $sourceStatsBase = Payment::query();
         if ($request->filled('from')) {
@@ -303,6 +495,14 @@ class EquitySyncController extends Controller
         }
         if ($request->filled('to')) {
             $sourceStatsBase->whereDate('transaction_date', '<=', (string) $request->query('to'));
+        }
+        if ($qText !== '') {
+            $sourceStatsBase->where(function (Builder $inner) use ($qText) {
+                $inner->where('transaction_id', 'like', '%'.$qText.'%')
+                    ->orWhere('account_number', 'like', '%'.$qText.'%')
+                    ->orWhere('phone', 'like', '%'.$qText.'%')
+                    ->orWhere('reference', 'like', '%'.$qText.'%');
+            });
         }
 
         $sourceStats = (clone $sourceStatsBase)
@@ -322,7 +522,7 @@ class EquitySyncController extends Controller
 
         $percent = static fn (float $amount) => $allAmount > 0 ? round(($amount / $allAmount) * 100, 1) : 0.0;
 
-        $query = Payment::query()->with('tenant')->latest('transaction_date')->latest('id');
+        $query = Payment::query()->with('tenant');
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->query('status'));
@@ -338,6 +538,55 @@ class EquitySyncController extends Controller
         }
         if ($request->filled('to')) {
             $query->whereDate('transaction_date', '<=', (string) $request->query('to'));
+        }
+        if ($qText !== '') {
+            $query->where(function (Builder $inner) use ($qText) {
+                $inner->where('transaction_id', 'like', '%'.$qText.'%')
+                    ->orWhere('account_number', 'like', '%'.$qText.'%')
+                    ->orWhere('phone', 'like', '%'.$qText.'%')
+                    ->orWhere('reference', 'like', '%'.$qText.'%')
+                    ->orWhereHas('tenant', fn (Builder $tq) => $tq->where('name', 'like', '%'.$qText.'%'));
+            });
+        }
+        $sortMap = [
+            'transaction_date' => 'transaction_date',
+            'amount' => 'amount',
+            'status' => 'status',
+            'transaction_id' => 'transaction_id',
+            'id' => 'id',
+        ];
+        $sortBy = $sortMap[$sort] ?? 'transaction_date';
+        $sortDir = in_array($dir, ['asc', 'desc'], true) ? $dir : 'desc';
+        $query->orderBy($sortBy, $sortDir)->orderByDesc('id');
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $query)->limit(10000)->get();
+
+            return TabularExport::stream(
+                'equity-payments-'.now()->format('Ymd_His'),
+                ['Date', 'Transaction', 'Source', 'Tenant', 'Amount', 'Account', 'Phone', 'Status'],
+                function () use ($rows) {
+                    foreach ($rows as $item) {
+                        $source = match ((string) $item->payment_method) {
+                            'equity' => 'Equity API',
+                            'sms_forwarder' => 'SMS Ingest',
+                            default => 'Manual / Legacy',
+                        };
+                        yield [
+                            optional($item->transaction_date)->format('Y-m-d H:i:s'),
+                            (string) $item->transaction_id,
+                            $source,
+                            (string) ($item->tenant?->name ?? ''),
+                            number_format((float) $item->amount, 2, '.', ''),
+                            (string) ($item->account_number ?? ''),
+                            (string) ($item->phone ?? ''),
+                            ucfirst((string) $item->status),
+                        ];
+                    }
+                },
+                $export
+            );
         }
 
         $trendFrom = now()->startOfDay()->subDays(6);
@@ -376,7 +625,7 @@ class EquitySyncController extends Controller
         }
 
         return view('property.agent.equity.all_payments', [
-            'items' => $query->paginate(30)->withQueryString(),
+            'items' => $query->paginate($perPage)->withQueryString(),
             'tenants' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
             'sourceStats' => [
                 'equity' => [
@@ -406,8 +655,20 @@ class EquitySyncController extends Controller
                 'tenant_id' => (string) $request->query('tenant_id', ''),
                 'from' => (string) $request->query('from', ''),
                 'to' => (string) $request->query('to', ''),
+                'q' => $qText,
+                'per_page' => (string) $perPage,
+                'sort' => $sortBy,
+                'dir' => $sortDir,
             ],
         ]);
+    }
+
+    public function matchedPayments(Request $request): View
+    {
+        // Dedicated page: defaults to `status=matched` while still allowing further filtering.
+        $request->query->set('status', $request->query->get('status', 'matched') ?: 'matched');
+
+        return $this->allPayments($request);
     }
 
     private function notReadyView(string $reason): View
@@ -461,7 +722,7 @@ class EquitySyncController extends Controller
             ->get(['provider_txn_code', 'provider'])
             ->mapWithKeys(function (PmSmsIngest $ingest) {
                 $provider = strtolower((string) ($ingest->provider ?? ''));
-                $label = $provider !== '' ? 'SMS Forwarder ('.strtoupper($provider).')' : 'SMS Forwarder';
+                $label = $provider !== '' ? 'SMS Ingest ('.strtoupper($provider).')' : 'SMS Ingest';
 
                 return [(string) $ingest->provider_txn_code => $label];
             })
@@ -477,7 +738,7 @@ class EquitySyncController extends Controller
             return $smsSourceMap[$transactionId];
         }
         if ($paymentMethod === 'sms_forwarder') {
-            return 'SMS Forwarder';
+            return 'SMS Ingest';
         }
 
         return 'Equity';

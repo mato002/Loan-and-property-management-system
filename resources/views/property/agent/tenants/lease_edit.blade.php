@@ -39,8 +39,9 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">End</label>
-                <input type="date" name="end_date" value="{{ old('end_date', $lease->end_date->format('Y-m-d')) }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="date" name="end_date" value="{{ old('end_date', $lease->end_date?->format('Y-m-d')) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('end_date')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                <p class="mt-1 text-xs text-slate-500">Optional for open-ended leases.</p>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Monthly rent</label>
@@ -51,6 +52,21 @@
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Deposit</label>
                 <input type="number" name="deposit_amount" value="{{ old('deposit_amount', $lease->deposit_amount) }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('deposit_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Utility expense type (optional)</label>
+                <select name="utility_expense_type" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <option value="">None</option>
+                    <option value="water" @selected(old('utility_expense_type', $lease->utility_expense_type) === 'water')>Water</option>
+                    <option value="electricity" @selected(old('utility_expense_type', $lease->utility_expense_type) === 'electricity')>Electricity</option>
+                    <option value="other" @selected(old('utility_expense_type', $lease->utility_expense_type) === 'other')>Other</option>
+                </select>
+                @error('utility_expense_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Utility expense amount paid (optional)</label>
+                <input type="number" name="utility_expense_amount" value="{{ old('utility_expense_amount', $lease->utility_expense_amount) }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. 2500" />
+                @error('utility_expense_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
@@ -64,14 +80,24 @@
             </div>
         </div>
         <div>
-            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Units</label>
-            @php $selectedUnits = collect(old('property_unit_ids', $lease->units->pluck('id')->all())); @endphp
-            <select name="property_unit_ids[]" multiple size="6" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                @foreach ($units as $u)
-                    <option value="{{ $u->id }}" @selected($selectedUnits->contains($u->id))>{{ $u->property->name }} / {{ $u->label }}</option>
+            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property (with vacant/linked units)</label>
+            <select id="lease-property-select" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <option value="">All properties</option>
+                @foreach (($vacantProperties ?? []) as $property)
+                    <option value="{{ $property->id }}">{{ $property->name }}</option>
                 @endforeach
             </select>
-            <p class="mt-1 text-xs text-slate-500">Hold Ctrl (Windows) or ⌘ to select multiple.</p>
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
+            @php $selectedUnitId = (string) collect(old('property_unit_ids', $lease->units->pluck('id')->all()))->first(); @endphp
+            <select id="lease-unit-select" name="property_unit_ids[]" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <option value="">Select unit...</option>
+                @foreach ($units as $u)
+                    <option value="{{ $u->id }}" data-property-id="{{ $u->property_id }}" @selected($selectedUnitId === (string) $u->id)>{{ $u->property->name }} / {{ $u->label }}</option>
+                @endforeach
+            </select>
+            <p class="mt-1 text-xs text-slate-500">A tenant can only be assigned one unit.</p>
             @error('property_unit_ids')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             @error('property_unit_ids.*')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
@@ -85,5 +111,33 @@
             <a href="{{ route('property.tenants.leases') }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Back</a>
         </div>
     </form>
+    <script>
+        (function () {
+            const propertySelect = document.getElementById('lease-property-select');
+            const unitSelect = document.getElementById('lease-unit-select');
+            if (!propertySelect || !unitSelect) return;
+
+            const filterUnits = () => {
+                const propertyId = (propertySelect.value || '').toString();
+                let visibleCount = 0;
+                Array.from(unitSelect.options).forEach((opt) => {
+                    const optPropertyId = (opt.getAttribute('data-property-id') || '').toString();
+                    const selected = opt.selected;
+                    const shouldShow = propertyId === '' || optPropertyId === propertyId || selected;
+                    opt.hidden = !shouldShow;
+                    if (shouldShow) visibleCount++;
+                });
+
+                if (visibleCount === 0 && propertyId !== '') {
+                    unitSelect.title = 'No vacant units under selected property.';
+                } else {
+                    unitSelect.title = '';
+                }
+            };
+
+            propertySelect.addEventListener('change', filterUnits);
+            filterUnits();
+        })();
+    </script>
 </x-property.workspace>
 
