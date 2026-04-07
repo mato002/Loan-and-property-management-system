@@ -11,23 +11,23 @@
     <x-slot name="actions">
         <div class="flex flex-wrap items-end gap-2">
             <form id="arrears-reminder-form" method="post" action="{{ route('property.revenue.arrears.reminders', absolute: false) }}" class="flex flex-wrap items-end gap-2">
-                @csrf
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Template</label>
-                    <select name="template_key" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-                        <option value="friendly">Friendly reminder</option>
-                        <option value="firm">Firm follow-up</option>
-                        <option value="final">Final notice</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Channel</label>
-                    <select name="channel" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-                        <option value="sms">SMS only</option>
-                        <option value="email">Email only</option>
-                        <option value="both" selected>SMS + Email</option>
-                    </select>
-                </div>
+            @csrf
+            <div>
+                <label class="block text-xs font-medium text-slate-600">Template</label>
+                <select name="template_key" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <option value="friendly">Friendly reminder</option>
+                    <option value="firm">Firm follow-up</option>
+                    <option value="final">Final notice</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600">Channel</label>
+                <select name="channel" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                    <option value="sms">SMS only</option>
+                    <option value="email">Email only</option>
+                    <option value="both" selected>SMS + Email</option>
+                </select>
+            </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600">Send to</label>
                     <select id="arrears-target-mode" name="target_mode" class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
@@ -58,7 +58,7 @@
                 <button type="submit" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">
                     Send test email to me
                 </button>
-            </form>
+        </form>
         </div>
         @error('arrears_test_email')
             <p class="mt-2 text-xs text-red-600">{{ $message }}</p>
