@@ -5,8 +5,11 @@ namespace App\Http\Controllers\Loan;
 use App\Http\Controllers\Controller;
 use App\Models\LoanBookApplication;
 use App\Models\LoanClient;
+use App\Models\PmInvoice;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class LoanBookApplicationsController extends Controller
@@ -39,18 +42,49 @@ class LoanBookApplicationsController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
+        if ($this->tenantHasPropertyArrears($request)) {
+            abort(403, 'Clear property arrears before creating a loan application.');
+        }
+
+        $selectedClientId = null;
+        if ((string) $request->query('prefill') === 'portal') {
+            $selectedClientId = $this->resolvePortalClientId($request);
+        }
+        $portalRole = strtolower(trim((string) $request->query('portal_role', '')));
+        $defaultProductName = match ($portalRole) {
+            'tenant' => 'Tenant personal loan',
+            'landlord' => 'Landlord property improvement loan',
+            default => '',
+        };
+        $defaultPurpose = match ($portalRole) {
+            'tenant' => 'Personal or household financing request via tenant portal.',
+            'landlord' => 'Property-related financing request via landlord portal.',
+            default => '',
+        };
+
         return view('loan.book.applications.create', [
             'title' => 'Create application',
             'subtitle' => 'Start a new LoanBook file for an onboarded client.',
             'clients' => LoanClient::query()->clients()->orderBy('last_name')->orderBy('first_name')->get(),
             'stages' => $this->stageOptions(),
+            'selectedClientId' => $selectedClientId,
+            'defaultProductName' => $defaultProductName,
+            'defaultPurpose' => $defaultPurpose,
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        if ($this->tenantHasPropertyArrears($request)) {
+            return redirect()
+                ->route('property.tenant.loans')
+                ->withErrors([
+                    'loan' => 'Clear your rent arrears first before applying for a loan.',
+                ]);
+        }
+
         $validated = $request->validate([
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
             'product_name' => ['required', 'string', 'max:160'],
@@ -61,6 +95,7 @@ class LoanBookApplicationsController extends Controller
             'branch' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+        $validated['submission_source'] = 'manual_internal';
 
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
         if (empty($validated['branch'])) {
@@ -101,6 +136,9 @@ class LoanBookApplicationsController extends Controller
             'branch' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+        if (empty($loan_book_application->submission_source)) {
+            $validated['submission_source'] = 'manual_internal';
+        }
 
         LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
         $loan_book_application->update($validated);
@@ -137,5 +175,80 @@ class LoanBookApplicationsController extends Controller
             LoanBookApplication::STAGE_DECLINED => 'Declined',
             LoanBookApplication::STAGE_DISBURSED => 'Disbursed',
         ];
+    }
+
+    private function resolvePortalClientId(Request $request): ?int
+    {
+        $user = $request->user();
+        if (! $user) {
+            return null;
+        }
+
+        $role = (string) ($user->property_portal_role ?? '');
+        if (! in_array($role, ['tenant', 'landlord'], true)) {
+            return null;
+        }
+
+        $email = trim((string) ($user->email ?? ''));
+        $phone = '';
+        if (Schema::hasColumn('users', 'phone')) {
+            $phone = trim((string) ($user->phone ?? ''));
+        }
+
+        $existing = null;
+        if ($email !== '') {
+            $existing = LoanClient::query()->clients()->where('email', $email)->first();
+        }
+        if (! $existing && $phone !== '') {
+            $existing = LoanClient::query()->clients()->where('phone', $phone)->first();
+        }
+        if ($existing) {
+            return (int) $existing->id;
+        }
+
+        $name = trim((string) ($user->name ?? ''));
+        $parts = preg_split('/\s+/', $name) ?: [];
+        $firstName = trim((string) ($parts[0] ?? 'Portal'));
+        $lastName = trim((string) (count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : ucfirst($role)));
+
+        $seed = $email !== '' ? Str::lower($email) : ('u'.$user->id);
+        $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.$seed), 0, 8));
+        while (LoanClient::query()->where('client_number', $clientNumber)->exists()) {
+            $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.$seed.'|'.Str::random(6)), 0, 8));
+        }
+
+        $client = LoanClient::query()->create([
+            'client_number' => $clientNumber,
+            'kind' => LoanClient::KIND_CLIENT,
+            'first_name' => $firstName !== '' ? $firstName : 'Portal',
+            'last_name' => $lastName !== '' ? $lastName : ucfirst($role),
+            'phone' => $phone !== '' ? $phone : null,
+            'email' => $email !== '' ? $email : null,
+            'client_status' => 'active',
+            'notes' => 'Auto-created from '.$role.' portal handoff.',
+        ]);
+
+        return (int) $client->id;
+    }
+
+    private function tenantHasPropertyArrears(Request $request): bool
+    {
+        $user = $request->user();
+        if (! $user || (string) ($user->property_portal_role ?? '') !== 'tenant') {
+            return false;
+        }
+
+        $tenant = $user->pmTenantProfile;
+        if (! $tenant) {
+            return false;
+        }
+
+        $arrears = (float) (PmInvoice::query()
+            ->where('pm_tenant_id', $tenant->id)
+            ->whereColumn('amount_paid', '<', 'amount')
+            ->selectRaw('COALESCE(SUM(amount - amount_paid), 0) as arrears')
+            ->value('arrears') ?? 0.0);
+
+        return $arrears > 0;
     }
 }

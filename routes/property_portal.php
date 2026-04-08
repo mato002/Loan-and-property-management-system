@@ -37,6 +37,10 @@ use Illuminate\Support\Facades\Route;
 // Keep auth + module access + active system checks, but do not block by `verified`.
 Route::middleware(['auth', 'module.access:property', 'property.system'])->group(function () {
 
+    // Impersonation "stop" must be available even while impersonating (landlord/tenant).
+    Route::post('/property/impersonation/stop', [PropertyPortfolioController::class, 'stopImpersonation'])
+        ->name('property.impersonation.stop');
+
     Route::middleware(['property.portal:agent'])->prefix('property')->name('property.')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'commandCenter'])->name('dashboard');
         Route::get('/search', [PropertySearchController::class, 'index'])->name('search');
@@ -199,6 +203,9 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/landlords', [PropertyPortfolioController::class, 'landlordsIndex'])->name('landlords.index');
         Route::get('/landlords/{landlord}', [PropertyPortfolioController::class, 'landlordsShow'])->whereNumber('landlord')->name('landlords.show');
         Route::get('/landlords/{landlord}/statement', [PropertyPortfolioController::class, 'landlordsStatement'])->whereNumber('landlord')->name('landlords.statement');
+        Route::post('/landlords/{landlord}/impersonate', [PropertyPortfolioController::class, 'impersonateLandlord'])
+            ->whereNumber('landlord')
+            ->name('landlords.impersonate');
         Route::get('/properties/units', [PropertyPortfolioController::class, 'unitList'])->name('properties.units');
         Route::get('/properties/units/export', [PropertyPortfolioController::class, 'unitListExport'])->name('properties.units.export');
         Route::post('/units', [PropertyPortfolioController::class, 'storeUnit'])->middleware('property.permission:properties.manage')->name('units.store');
@@ -389,6 +396,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/earnings/history', [LandlordPortalController::class, 'history'])->name('earnings.history');
         Route::get('/earnings/history/export', [LandlordPortalController::class, 'exportHistoryCsv'])->name('earnings.history.export');
         Route::get('/properties', [LandlordPortalController::class, 'properties'])->name('properties');
+        Route::get('/properties/{property}', [LandlordPortalController::class, 'propertyShow'])->whereNumber('property')->name('properties.show');
         Route::get('/properties/export', [LandlordPortalController::class, 'exportPropertiesCsv'])->name('properties.export');
         Route::get('/reports/income', [LandlordPortalController::class, 'reportIncome'])->name('reports.income');
         Route::get('/reports/income/export', [LandlordPortalController::class, 'exportIncomeReportCsv'])->name('reports.income.export');
@@ -406,6 +414,9 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/documents', [LandlordPortalController::class, 'documents'])->name('documents');
         Route::get('/audit-trail', [LandlordPortalController::class, 'auditTrail'])->name('audit_trail');
         Route::get('/audit-trail/export', [LandlordPortalController::class, 'exportAuditTrailCsv'])->name('audit_trail.export');
+        Route::get('/loans', [LandlordPortalController::class, 'loans'])->name('loans');
+        Route::post('/loans/apply', [LandlordPortalController::class, 'applyLoan'])->name('loans.apply');
+        Route::post('/loans/repay', [LandlordPortalController::class, 'repayLoan'])->name('loans.repay');
         Route::view('/opportunities', 'property.landlord.opportunities')->name('opportunities');
 
         Route::get('/quick-action', function () {
@@ -446,6 +457,9 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/notifications', [TenantPortalController::class, 'notifications'])->name('notifications');
         Route::post('/notifications/read-all', [TenantPortalController::class, 'notificationsReadAll'])->name('notifications.read_all');
         Route::post('/notifications/{log}/read', [TenantPortalController::class, 'notificationsReadOne'])->whereNumber('log')->name('notifications.read_one');
+        Route::get('/loans', [TenantPortalController::class, 'loans'])->name('loans');
+        Route::post('/loans/apply', [TenantPortalController::class, 'applyLoan'])->name('loans.apply');
+        Route::post('/loans/repay', [TenantPortalController::class, 'repayLoan'])->name('loans.repay');
         Route::get('/explore', [TenantPortalController::class, 'explore'])->name('explore');
 
         Route::get('/quick-action', function () {

@@ -19,6 +19,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -30,6 +31,62 @@ use Throwable;
 
 class PropertyPortfolioController extends Controller
 {
+    private const IMPERSONATOR_SESSION_KEY = 'pm_impersonator_id';
+
+    public function impersonateLandlord(Request $request, User $landlord): RedirectResponse
+    {
+        $actor = Auth::user();
+        if (! $actor || (! $actor->hasPmPermission('users.impersonate'))) {
+            abort(403);
+        }
+
+        if ((string) $landlord->property_portal_role !== 'landlord') {
+            return back()->with('error', 'Selected user is not a landlord portal account.');
+        }
+
+        // If not already impersonating, store who initiated it.
+        if (! $request->session()->has(self::IMPERSONATOR_SESSION_KEY)) {
+            $request->session()->put(self::IMPERSONATOR_SESSION_KEY, (int) $actor->id);
+        }
+
+        Auth::login($landlord);
+
+        Log::info('property_impersonation_started', [
+            'impersonator_id' => (int) ($request->session()->get(self::IMPERSONATOR_SESSION_KEY) ?? 0),
+            'impersonated_user_id' => (int) $landlord->id,
+        ]);
+
+        return redirect()
+            ->route('property.landlord.portfolio')
+            ->with('success', 'Now viewing the portal as '.$landlord->name.'.');
+    }
+
+    public function stopImpersonation(Request $request): RedirectResponse
+    {
+        $impersonatorId = (int) $request->session()->get(self::IMPERSONATOR_SESSION_KEY, 0);
+        if ($impersonatorId <= 0) {
+            return back();
+        }
+
+        $impersonator = User::query()->find($impersonatorId);
+        $request->session()->forget(self::IMPERSONATOR_SESSION_KEY);
+
+        if (! $impersonator) {
+            Auth::logout();
+            return redirect()->route('login')->with('success', 'Impersonation ended. Please log in again.');
+        }
+
+        Auth::login($impersonator);
+
+        Log::info('property_impersonation_stopped', [
+            'impersonator_id' => (int) $impersonator->id,
+        ]);
+
+        return redirect()
+            ->route('property.landlords.index')
+            ->with('success', 'Impersonation ended.');
+    }
+
     private function generateUniquePropertyCode(string $name): string
     {
         $base = strtoupper(Str::of($name)->slug('')->substr(0, 6)->toString());

@@ -3,11 +3,16 @@
 namespace App\Http\Controllers\Property\Landlord;
 
 use App\Http\Controllers\Controller;
+use App\Models\LoanBookApplication;
+use App\Models\LoanBookLoan;
+use App\Models\LoanBookPayment;
+use App\Models\LoanClient;
 use App\Models\PmInvoice;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmPortalAction;
+use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Services\Property\LandlordLedger;
@@ -15,8 +20,10 @@ use App\Services\Property\LandlordPortalNotifications;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Support\Collection;
+use Illuminate\Support\HtmlString;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -36,15 +43,28 @@ class LandlordPortalController extends Controller
         $noticeUnits = $units->where('status', PropertyUnit::STATUS_NOTICE)->count();
         $occRate = $totalU > 0 ? round(100 * $occupiedUnits / $totalU, 1) : null;
 
+        // Billed MTD: invoices due this month (more intuitive for landlords than issue_date)
         $mtdInvoicesBase = $unitIds->isNotEmpty()
             ? PmInvoice::query()
                 ->whereIn('property_unit_id', $unitIds)
-                ->whereYear('issue_date', now()->year)
-                ->whereMonth('issue_date', now()->month)
+                ->whereYear('due_date', now()->year)
+                ->whereMonth('due_date', now()->month)
             : null;
-
         $gross = $mtdInvoicesBase ? (float) (clone $mtdInvoicesBase)->sum('amount') : 0.0;
-        $mtdCollected = $mtdInvoicesBase ? (float) (clone $mtdInvoicesBase)->sum('amount_paid') : 0.0;
+
+        // Collected MTD: allocations whose payment was completed this month (paid_at or created_at as fallback)
+        // Use joins (more robust than relationship whereHas when debugging schema differences).
+        $mtdCollected = $unitIds->isNotEmpty()
+            ? (float) DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->where('p.status', \App\Models\PmPayment::STATUS_COMPLETED)
+                ->whereIn('i.property_unit_id', $unitIds)
+                ->whereRaw('YEAR(COALESCE(p.paid_at, p.created_at)) = ?', [now()->year])
+                ->whereRaw('MONTH(COALESCE(p.paid_at, p.created_at)) = ?', [now()->month])
+                ->sum('a.amount')
+            : 0.0;
+
         $collectionRate = $gross > 0 ? round(($mtdCollected / $gross) * 100, 1) : null;
 
         $arrears = $unitIds->isNotEmpty()
@@ -94,8 +114,8 @@ class LandlordPortalController extends Controller
             $pMtdBilled = $pUnitIds->isNotEmpty()
                 ? (float) PmInvoice::query()
                     ->whereIn('property_unit_id', $pUnitIds)
-                    ->whereYear('issue_date', now()->year)
-                    ->whereMonth('issue_date', now()->month)
+                    ->whereYear('due_date', now()->year)
+                    ->whereMonth('due_date', now()->month)
                     ->sum('amount')
                 : 0.0;
 
@@ -114,6 +134,44 @@ class LandlordPortalController extends Controller
 
         $digest = LandlordPortalNotifications::recent($user, 99);
 
+        // Build 6-month billed vs collected series
+        $months = [];
+        $billedSeries = [];
+        $collectedSeries = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $ref = now()->copy()->subMonths($i);
+            $label = $ref->format('M');
+            $months[] = $label;
+            if ($unitIds->isNotEmpty()) {
+                $billed = (float) PmInvoice::query()
+                    ->whereIn('property_unit_id', $unitIds)
+                    ->whereYear('due_date', $ref->year)
+                    ->whereMonth('due_date', $ref->month)
+                    ->sum('amount');
+                $collected = (float) DB::table('pm_payment_allocations as a')
+                    ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
+                    ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                    ->where('p.status', \App\Models\PmPayment::STATUS_COMPLETED)
+                    ->whereIn('i.property_unit_id', $unitIds)
+                    ->whereRaw('YEAR(COALESCE(p.paid_at, p.created_at)) = ?', [$ref->year])
+                    ->whereRaw('MONTH(COALESCE(p.paid_at, p.created_at)) = ?', [$ref->month])
+                    ->sum('a.amount');
+            } else {
+                $billed = 0.0;
+                $collected = 0.0;
+            }
+            $billedSeries[] = $billed;
+            $collectedSeries[] = $collected;
+        }
+
+        // Occupancy per property miniature bar values
+        $occPerProperty = $properties->map(function ($p) {
+            $total = $p->units->count();
+            $occ = $p->units->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
+            $rate = $total > 0 ? round(($occ / $total) * 100) : 0;
+            return ['name' => $p->name, 'rate' => $rate];
+        })->sortByDesc('rate')->take(8)->values();
+
         return view('property.landlord.portfolio', [
             'incomeMonth' => PropertyMoney::kes($gross),
             'incomeCollectedMonth' => PropertyMoney::kes($mtdCollected),
@@ -131,6 +189,10 @@ class LandlordPortalController extends Controller
             'propertyBreakdown' => $propertyBreakdown,
             'recentInvoices' => $recentInvoices,
             'digestCount' => count($digest),
+            'chartMonths' => $months,
+            'chartBilled' => $billedSeries,
+            'chartCollected' => $collectedSeries,
+            'occPerProperty' => $occPerProperty,
         ]);
     }
 
@@ -383,24 +445,107 @@ class LandlordPortalController extends Controller
         ]);
     }
 
+    public function propertyShow(Request $request, Property $property): View
+    {
+        $allowed = $this->landlordPropertyIds($request->user());
+        abort_unless($allowed->contains((int) $property->id), 404);
+
+        $property->loadMissing(['units']);
+        $rows = $property->units
+            ->sortBy('label')
+            ->map(function (PropertyUnit $u) {
+                $status = ucfirst(str_replace('_', ' ', (string) $u->status));
+                $badge = match ($u->status) {
+                    PropertyUnit::STATUS_OCCUPIED => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+                    PropertyUnit::STATUS_NOTICE => 'bg-amber-50 text-amber-700 ring-amber-200',
+                    default => 'bg-slate-100 text-slate-700 ring-slate-200',
+                };
+                $summary = new HtmlString(
+                    '<div class="flex items-center gap-2">'.
+                    '<span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 '.$badge.'">'.e($status).'</span>'.
+                    '<span class="text-xs text-slate-500">'.e($u->unitTypeLabel()).'</span>'.
+                    '</div>'
+                );
+                $actions = new HtmlString(
+                    '<div class="flex flex-wrap gap-2">'.
+                    '<a href="'.route('property.landlord.maintenance', ['property_id' => $u->property_id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Maintenance</a>'.
+                    '<a href="'.route('property.landlord.reports.income', ['property_id' => $u->property_id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Income</a>'.
+                    '</div>'
+                );
+                return [
+                    'Unit '.$u->label,
+                    $summary,
+                    PropertyMoney::kes((float) ($u->rent_amount ?? 0)),
+                    $actions,
+                ];
+            })->values()->all();
+
+        return view('property.landlord.property_show', [
+            'property' => $property,
+            'columns' => ['Unit', 'Summary', 'Rent', 'Actions'],
+            'tableRows' => $rows,
+        ]);
+    }
+
     public function properties(Request $request): View
     {
         $user = $request->user();
-        $properties = $user->landlordProperties()->with('units')->withCount('units')->get();
+        $properties = $user->landlordProperties()->with('units')->withCount('units')->orderBy('name')->get();
         $rows = $properties->map(function ($p) {
             $units = $p->units;
             $occ = $units->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
             $vac = $units->where('status', PropertyUnit::STATUS_VACANT)->count();
             $gross = (float) $units->sum(fn ($u) => (float) $u->rent_amount);
+            $notice = $units->where('status', PropertyUnit::STATUS_NOTICE)->count();
+
+            $unitLines = $units
+                ->sortBy('label')
+                ->take(6)
+                ->map(function (PropertyUnit $u): string {
+                    $status = strtolower((string) $u->status);
+                    $badgeClass = match ($status) {
+                        PropertyUnit::STATUS_OCCUPIED => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+                        PropertyUnit::STATUS_NOTICE => 'bg-amber-50 text-amber-700 ring-amber-200',
+                        default => 'bg-slate-100 text-slate-700 ring-slate-200',
+                    };
+                    $rent = PropertyMoney::kes((float) ($u->rent_amount ?? 0));
+
+                    return '<div class="mb-1 flex items-center justify-between gap-2">'.
+                        '<span class="truncate text-xs font-medium text-slate-700">'.e('Unit '.$u->label).'</span>'.
+                        '<span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 '.$badgeClass.'">'.e(ucfirst($status ?: 'unknown')).'</span>'.
+                        '<span class="text-[11px] text-slate-500">'.$rent.'</span>'.
+                        '</div>';
+                })
+                ->implode('');
+            if ($units->count() > 6) {
+                $unitLines .= '<div class="text-xs text-slate-500">+'.($units->count() - 6).' more unit(s)</div>';
+            }
+            if ($unitLines === '') {
+                $unitLines = '<span class="text-xs text-slate-500">No units linked</span>';
+            }
+
+            $propertyMeta = new HtmlString(
+                '<div class="font-medium text-slate-800"><a href="'.route('property.landlord.properties.show', $p).'" data-turbo-frame="property-main" class="hover:underline">'.e((string) $p->name).'</a></div>'.
+                '<div class="text-xs text-slate-500">'.e(collect([$p->code, $p->city])->filter()->implode(' • ') ?: '—').'</div>'
+            );
+            $unitSummary = new HtmlString($unitLines);
+            $actionLinks = new HtmlString(
+                '<div class="flex flex-wrap gap-2">'.
+                    '<a href="'.route('property.landlord.reports.income', ['property_id' => $p->id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Income</a>'.
+                    '<a href="'.route('property.landlord.reports.statement', ['property_id' => $p->id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Statement</a>'.
+                    '<a href="'.route('property.landlord.maintenance', ['property_id' => $p->id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Maintenance</a>'.
+                '</div>'
+            );
 
             return [
-                $p->name,
+                $propertyMeta,
                 (string) $units->count(),
                 (string) $occ,
                 (string) $vac,
+                (string) $notice,
                 PropertyMoney::kes($gross),
-                '—',
-                '—',
+                $unitSummary,
+                $actionLinks,
             ];
         })->all();
 
@@ -408,8 +553,10 @@ class LandlordPortalController extends Controller
             'stats' => [
                 ['label' => 'Properties', 'value' => (string) $properties->count(), 'hint' => ''],
                 ['label' => 'Units', 'value' => (string) $properties->sum('units_count'), 'hint' => ''],
+                ['label' => 'Occupied', 'value' => (string) $properties->sum(fn ($p) => $p->units->where('status', PropertyUnit::STATUS_OCCUPIED)->count()), 'hint' => ''],
+                ['label' => 'Vacant/Notice', 'value' => (string) $properties->sum(fn ($p) => $p->units->whereIn('status', [PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_NOTICE])->count()), 'hint' => ''],
             ],
-            'columns' => ['Property', 'Units', 'Occupied', 'Vacant', 'Gross rent', 'NOI (est)', 'Actions'],
+            'columns' => ['Property', 'Units', 'Occupied', 'Vacant', 'Notice', 'Gross rent', 'Units under property', 'Actions'],
             'tableRows' => $rows,
         ]);
     }
@@ -465,6 +612,10 @@ class LandlordPortalController extends Controller
     {
         $user = $request->user();
         $propIds = $this->landlordPropertyIds($user);
+        $selectedPropertyId = $request->integer('property_id');
+        if ($selectedPropertyId > 0 && $propIds->contains($selectedPropertyId)) {
+            $propIds = collect([$selectedPropertyId]);
+        }
         $unitIds = PropertyUnit::query()->whereIn('property_id', $propIds)->pluck('id');
 
         $threshold = (float) ($this->latestActionContext($user, 'landlord_maintenance_threshold')['approval_threshold'] ?? 15000);
@@ -491,6 +642,7 @@ class LandlordPortalController extends Controller
             'jobs' => $jobs,
             'approvalThreshold' => $threshold,
             'pendingOnly' => $pendingOnly,
+            'selectedPropertyId' => $selectedPropertyId > 0 ? $selectedPropertyId : null,
         ]);
     }
 
@@ -553,67 +705,134 @@ class LandlordPortalController extends Controller
     public function reportIncome(Request $request): View
     {
         $user = $request->user();
+        $month = $request->string('month')->toString() ?: now()->format('Y-m');
+        [$year, $monthNum] = array_pad(explode('-', $month), 2, null);
+        $year = (int) $year;
+        $monthNum = (int) $monthNum;
+        if ($year < 2000 || $monthNum < 1 || $monthNum > 12) {
+            $year = (int) now()->format('Y');
+            $monthNum = (int) now()->format('m');
+            $month = sprintf('%04d-%02d', $year, $monthNum);
+        }
         $propIds = $user->landlordProperties()->pluck('properties.id');
+        $selectedPropertyId = $request->integer('property_id');
+        if ($selectedPropertyId > 0 && $propIds->contains($selectedPropertyId)) {
+            $propIds = collect([$selectedPropertyId]);
+        }
         $unitIds = PropertyUnit::query()->whereIn('property_id', $propIds)->pluck('id');
         $invoices = $unitIds->isNotEmpty()
-            ? PmInvoice::query()->with(['unit.property'])->whereIn('property_unit_id', $unitIds)->orderByDesc('issue_date')->limit(150)->get()
+            ? PmInvoice::query()
+                ->with(['unit.property'])
+                ->whereIn('property_unit_id', $unitIds)
+                ->whereYear('due_date', $year)
+                ->whereMonth('due_date', $monthNum)
+                ->orderByDesc('due_date')
+                ->limit(500)
+                ->get()
             : collect();
+
+        $collected = $unitIds->isNotEmpty()
+            ? (float) DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->where('p.status', \App\Models\PmPayment::STATUS_COMPLETED)
+                ->whereIn('i.property_unit_id', $unitIds)
+                ->whereRaw('YEAR(COALESCE(p.paid_at, p.created_at)) = ?', [$year])
+                ->whereRaw('MONTH(COALESCE(p.paid_at, p.created_at)) = ?', [$monthNum])
+                ->sum('a.amount')
+            : 0.0;
 
         $rows = $invoices->map(fn (PmInvoice $i) => [
             $i->invoice_no,
             $i->unit->property->name,
+            $i->due_date?->format('Y-m-d') ?? '—',
             PropertyMoney::kes((float) $i->amount),
+            PropertyMoney::kes((float) $i->amount_paid),
+            PropertyMoney::kes(max(0, (float) $i->amount - (float) $i->amount_paid)),
             ucfirst($i->status),
         ])->all();
 
         return view('property.landlord.reports.income', [
             'stats' => [
-                ['label' => 'Billed', 'value' => PropertyMoney::kes((float) $invoices->sum('amount')), 'hint' => 'Listed'],
+                ['label' => 'Billed', 'value' => PropertyMoney::kes((float) $invoices->sum('amount')), 'hint' => 'Due '.$month],
+                ['label' => 'Collected', 'value' => PropertyMoney::kes($collected), 'hint' => 'Paid '.$month],
             ],
-            'columns' => ['Invoice', 'Property', 'Amount', 'Status'],
+            'columns' => ['Invoice', 'Property', 'Due', 'Amount', 'Paid', 'Outstanding', 'Status'],
             'tableRows' => $rows,
+            'selectedPropertyId' => $selectedPropertyId > 0 ? $selectedPropertyId : null,
+            'month' => $month,
         ]);
     }
 
     public function reportExpenses(Request $request): View
     {
         $user = $request->user();
+        $month = $request->string('month')->toString() ?: now()->format('Y-m');
+        [$year, $monthNum] = array_pad(explode('-', $month), 2, null);
+        $year = (int) $year;
+        $monthNum = (int) $monthNum;
+        if ($year < 2000 || $monthNum < 1 || $monthNum > 12) {
+            $year = (int) now()->format('Y');
+            $monthNum = (int) now()->format('m');
+            $month = sprintf('%04d-%02d', $year, $monthNum);
+        }
         $propIds = $user->landlordProperties()->pluck('properties.id');
+        $selectedPropertyId = $request->integer('property_id');
+        if ($selectedPropertyId > 0 && $propIds->contains($selectedPropertyId)) {
+            $propIds = collect([$selectedPropertyId]);
+        }
         $unitIds = PropertyUnit::query()->whereIn('property_id', $propIds)->pluck('id');
         $reqIds = $unitIds->isNotEmpty()
             ? PmMaintenanceRequest::query()->whereIn('property_unit_id', $unitIds)->pluck('id')
             : collect();
 
         $jobs = $reqIds->isNotEmpty()
-            ? PmMaintenanceJob::query()->with(['request.unit.property', 'vendor'])->whereIn('pm_maintenance_request_id', $reqIds)->orderByDesc('id')->limit(100)->get()
+            ? PmMaintenanceJob::query()
+                ->with(['request.unit.property', 'vendor'])
+                ->whereIn('pm_maintenance_request_id', $reqIds)
+                ->whereYear('updated_at', $year)
+                ->whereMonth('updated_at', $monthNum)
+                ->orderByDesc('updated_at')
+                ->limit(500)
+                ->get()
             : collect();
 
         $rows = $jobs->map(fn (PmMaintenanceJob $j) => [
-            $j->completed_at?->format('Y-m-d') ?? '—',
+            $j->updated_at?->format('Y-m-d') ?? '—',
             $j->request->category,
             $j->request->unit->property->name,
             $j->vendor?->name ?? '—',
             $j->quote_amount !== null ? PropertyMoney::kes((float) $j->quote_amount) : '—',
-            '—',
             ucfirst(str_replace('_', ' ', $j->status)),
         ])->all();
 
         return view('property.landlord.reports.expenses', [
             'stats' => [
-                ['label' => 'Maintenance booked', 'value' => PropertyMoney::kes((float) $jobs->sum(fn ($j) => (float) ($j->quote_amount ?? 0))), 'hint' => ''],
+                ['label' => 'Maintenance booked', 'value' => PropertyMoney::kes((float) $jobs->sum(fn ($j) => (float) ($j->quote_amount ?? 0))), 'hint' => $month],
             ],
-            'columns' => ['Date', 'Category', 'Property', 'Vendor', 'Amount', 'Invoice', 'Status'],
+            'columns' => ['Date', 'Category', 'Property', 'Vendor', 'Amount', 'Status'],
             'tableRows' => $rows,
+            'month' => $month,
+            'selectedPropertyId' => $selectedPropertyId > 0 ? $selectedPropertyId : null,
         ]);
     }
 
     public function reportCashFlow(Request $request): View
     {
         $user = $request->user();
+        $month = $request->string('month')->toString() ?: now()->format('Y-m');
+        [$year, $monthNum] = array_pad(explode('-', $month), 2, null);
+        $year = (int) $year;
+        $monthNum = (int) $monthNum;
+        if ($year < 2000 || $monthNum < 1 || $monthNum > 12) {
+            $year = (int) now()->format('Y');
+            $monthNum = (int) now()->format('m');
+            $month = sprintf('%04d-%02d', $year, $monthNum);
+        }
         $mtdBase = PmLandlordLedgerEntry::query()
             ->where('user_id', $user->id)
-            ->whereYear('occurred_at', now()->year)
-            ->whereMonth('occurred_at', now()->month);
+            ->whereYear('occurred_at', $year)
+            ->whereMonth('occurred_at', $monthNum);
         $cashIn = (float) (clone $mtdBase)->where('direction', PmLandlordLedgerEntry::DIRECTION_CREDIT)->sum('amount');
         $cashOut = (float) (clone $mtdBase)->where('direction', PmLandlordLedgerEntry::DIRECTION_DEBIT)->sum('amount');
 
@@ -649,9 +868,9 @@ class LandlordPortalController extends Controller
 
         return view('property.landlord.reports.cash_flow', [
             'stats' => [
-                ['label' => 'Cash in (MTD)', 'value' => PropertyMoney::kes($cashIn), 'hint' => 'Credits'],
-                ['label' => 'Cash out (MTD)', 'value' => PropertyMoney::kes($cashOut), 'hint' => 'Debits'],
-                ['label' => 'Net (MTD)', 'value' => PropertyMoney::kes($cashIn - $cashOut), 'hint' => ''],
+                ['label' => 'Cash in', 'value' => PropertyMoney::kes($cashIn), 'hint' => $month],
+                ['label' => 'Cash out', 'value' => PropertyMoney::kes($cashOut), 'hint' => $month],
+                ['label' => 'Net', 'value' => PropertyMoney::kes($cashIn - $cashOut), 'hint' => $month],
                 ['label' => 'Balance', 'value' => PropertyMoney::kes(LandlordLedger::balance($user)), 'hint' => 'Ledger'],
             ],
             'columns' => ['Date', 'Description', 'Property', 'In', 'Out', 'Running cash'],
@@ -659,6 +878,7 @@ class LandlordPortalController extends Controller
             'cashNetBars' => $barSeries,
             'cashCumulative' => $cumul,
             'cashInOutDual' => $dualSeries,
+            'month' => $month,
         ]);
     }
 
@@ -676,6 +896,10 @@ class LandlordPortalController extends Controller
         }
 
         $propIds = $this->landlordPropertyIds($user);
+        $selectedPropertyId = $request->integer('property_id');
+        if ($selectedPropertyId > 0 && $propIds->contains($selectedPropertyId)) {
+            $propIds = collect([$selectedPropertyId]);
+        }
         $unitIds = PropertyUnit::query()->whereIn('property_id', $propIds)->pluck('id');
         $invoices = $unitIds->isNotEmpty()
             ? PmInvoice::query()->with('unit.property')
@@ -685,6 +909,16 @@ class LandlordPortalController extends Controller
                 ->orderBy('issue_date')
                 ->get()
             : collect();
+        $collected = $unitIds->isNotEmpty()
+            ? (float) DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
+                ->where('p.status', \App\Models\PmPayment::STATUS_COMPLETED)
+                ->whereIn('i.property_unit_id', $unitIds)
+                ->whereRaw('YEAR(COALESCE(p.paid_at, p.created_at)) = ?', [$year])
+                ->whereRaw('MONTH(COALESCE(p.paid_at, p.created_at)) = ?', [$monthNum])
+                ->sum('a.amount')
+            : 0.0;
         $jobs = $unitIds->isNotEmpty()
             ? PmMaintenanceJob::query()
                 ->with(['request.unit.property', 'vendor'])
@@ -711,10 +945,11 @@ class LandlordPortalController extends Controller
 
         return view('property.landlord.reports.statement', [
             'month' => $month,
+            'selectedPropertyId' => $selectedPropertyId > 0 ? $selectedPropertyId : null,
             'openingBalance' => PropertyMoney::kes($opening),
             'closingBalance' => PropertyMoney::kes($closing),
             'incomeBilled' => PropertyMoney::kes((float) $invoices->sum('amount')),
-            'incomeCollected' => PropertyMoney::kes((float) $invoices->sum('amount_paid')),
+            'incomeCollected' => PropertyMoney::kes($collected),
             'maintenanceBooked' => PropertyMoney::kes((float) $jobs->sum(fn ($j) => (float) ($j->quote_amount ?? 0))),
             'ledgerCredits' => PropertyMoney::kes($ledgerCredits),
             'ledgerDebits' => PropertyMoney::kes($ledgerDebits),
@@ -853,6 +1088,146 @@ class LandlordPortalController extends Controller
             $a->notes ?? '',
             is_array($a->context) ? json_encode($a->context, JSON_UNESCAPED_SLASHES) : '',
         ])->all());
+    }
+
+    public function loans(Request $request): View
+    {
+        return view('property.landlord.loans', [
+            'defaultProductName' => 'Landlord property improvement loan',
+            'defaultPurpose' => 'Property-related financing request from landlord portal.',
+            'portalLoans' => $this->portalLoansFor($request->user()),
+        ]);
+    }
+
+    public function applyLoan(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'product_name' => ['required', 'string', 'max:160'],
+            'amount_requested' => ['required', 'numeric', 'min:1'],
+            'term_months' => ['required', 'integer', 'min:1', 'max:600'],
+            'purpose' => ['nullable', 'string', 'max:2000'],
+            'branch' => ['nullable', 'string', 'max:120'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+        $user = $request->user();
+        $client = $this->resolveOrCreatePortalClient($user, 'landlord');
+
+        $next = (LoanBookApplication::query()->max('id') ?? 0) + 1;
+        LoanBookApplication::query()->create([
+            'loan_client_id' => $client->id,
+            'reference' => 'APP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT),
+            'product_name' => $validated['product_name'],
+            'amount_requested' => $validated['amount_requested'],
+            'term_months' => $validated['term_months'],
+            'purpose' => $validated['purpose'] ?? null,
+            'stage' => LoanBookApplication::STAGE_SUBMITTED,
+            'branch' => trim((string) ($validated['branch'] ?? '')) !== '' ? $validated['branch'] : $client->branch,
+            'notes' => trim((string) ($validated['notes'] ?? '')) !== '' ? $validated['notes'] : 'Submitted from landlord portal.',
+            'submission_source' => 'landlord_portal',
+            'submitted_at' => now(),
+        ]);
+
+        return back()->with('success', 'Loan request submitted successfully. It is now visible in the loan module applications queue.');
+    }
+
+    public function repayLoan(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'loan_id' => ['required', 'integer'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'channel' => ['required', 'in:cash,mpesa,bank,cheque,card'],
+            'transaction_at' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $loan = $this->portalLoansFor($request->user())
+            ->firstWhere('id', (int) $validated['loan_id']);
+        if (! $loan) {
+            return back()->withErrors(['loan' => 'Selected loan was not found in your portal profile.']);
+        }
+
+        $payment = LoanBookPayment::query()->create([
+            'reference' => null,
+            'loan_book_loan_id' => (int) $loan->id,
+            'amount' => (float) $validated['amount'],
+            'currency' => 'KES',
+            'channel' => $validated['channel'],
+            'status' => LoanBookPayment::STATUS_UNPOSTED,
+            'payment_kind' => LoanBookPayment::KIND_NORMAL,
+            'transaction_at' => $validated['transaction_at'],
+            'notes' => trim((string) ($validated['notes'] ?? '')) !== '' ? $validated['notes'] : 'Submitted from landlord portal repayment form.',
+            'created_by' => $request->user()->id,
+        ]);
+        $payment->update([
+            'reference' => 'PAY-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT),
+        ]);
+
+        return back()->with('success', 'Repayment submitted successfully. Reference: '.$payment->reference.'.');
+    }
+
+    private function resolveOrCreatePortalClient(User $user, string $role): LoanClient
+    {
+        $email = trim((string) ($user->email ?? ''));
+        $existing = $email !== '' ? LoanClient::query()->clients()->where('email', $email)->first() : null;
+        if ($existing) {
+            return $existing;
+        }
+
+        $name = trim((string) ($user->name ?? ''));
+        $parts = preg_split('/\s+/', $name) ?: [];
+        $firstName = trim((string) ($parts[0] ?? ucfirst($role)));
+        $lastName = trim((string) (count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : 'Portal'));
+
+        $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.($email !== '' ? strtolower($email) : 'u'.$user->id)), 0, 8));
+        while (LoanClient::query()->where('client_number', $clientNumber)->exists()) {
+            $clientNumber = 'PORTAL-'.strtoupper(substr(md5($clientNumber.'|'.microtime(true)), 0, 8));
+        }
+
+        return LoanClient::query()->create([
+            'client_number' => $clientNumber,
+            'kind' => LoanClient::KIND_CLIENT,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'phone' => null,
+            'email' => $email !== '' ? $email : null,
+            'client_status' => 'active',
+            'notes' => 'Auto-created from '.$role.' portal loan request.',
+        ]);
+    }
+
+    private function portalLoansFor(User $user)
+    {
+        $client = $this->resolveOrCreatePortalClient($user, 'landlord');
+        $loans = LoanBookLoan::query()
+            ->where('loan_client_id', $client->id)
+            ->whereIn('status', [
+                LoanBookLoan::STATUS_ACTIVE,
+                LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+                LoanBookLoan::STATUS_RESTRUCTURED,
+            ])
+            ->orderByDesc('id')
+            ->get();
+
+        if ($loans->isEmpty()) {
+            return $loans;
+        }
+
+        $paidMap = LoanBookPayment::query()
+            ->whereIn('loan_book_loan_id', $loans->pluck('id'))
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->where('amount', '>', 0)
+            ->selectRaw('loan_book_loan_id, COALESCE(SUM(amount),0) as paid')
+            ->groupBy('loan_book_loan_id')
+            ->pluck('paid', 'loan_book_loan_id');
+
+        return $loans->map(function (LoanBookLoan $loan) use ($paidMap) {
+            $fallbackOutstanding = (float) $loan->principal_outstanding + (float) $loan->interest_outstanding + (float) $loan->fees_outstanding;
+            $returnAmount = (float) $loan->balance > 0 ? (float) $loan->balance : max($fallbackOutstanding, 0.0);
+            $loan->setAttribute('return_amount', $returnAmount);
+            $loan->setAttribute('processed_paid_total', (float) ($paidMap[$loan->id] ?? 0));
+
+            return $loan;
+        });
     }
 
     private function landlordPropertyIds(User $user): Collection

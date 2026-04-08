@@ -10,6 +10,7 @@
             action="{{ route('property.tenant.maintenance.report.store') }}"
             class="space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm w-full min-w-0"
             enctype="multipart/form-data"
+            data-swal-confirm="Submit this maintenance request?"
         >
             @csrf
             @if ($errors->any())

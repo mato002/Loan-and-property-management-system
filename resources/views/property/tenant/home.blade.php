@@ -26,140 +26,107 @@
     >
         <x-property.module-status label="Tenant dashboard" class="mb-6" />
 
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white rounded-xl border border-gray-200 p-4">
+                <p class="text-sm font-medium text-gray-500">Outstanding balance</p>
+                <p class="text-2xl font-bold text-gray-900 mt-1">{{ \App\Services\Property\PropertyMoney::kes((float) ($balanceAmount ?? 0)) }}</p>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-200 p-4">
+                <p class="text-sm font-medium text-gray-500">Next due</p>
+                <p class="text-2xl font-bold text-gray-900 mt-1">{{ $nextDue ?? '—' }}</p>
+            </div>
+            <div class="bg-white rounded-xl border border-gray-200 p-4">
+                <p class="text-sm font-medium text-gray-500">Rent / Water balances</p>
+                <p class="text-sm font-semibold text-gray-900 mt-1">
+                    {{ \App\Services\Property\PropertyMoney::kes((float) ($rentBalanceAmount ?? 0)) }}
+                    <span class="text-gray-400 font-normal">/</span>
+                    {{ \App\Services\Property\PropertyMoney::kes((float) ($waterBalanceAmount ?? 0)) }}
+                </p>
+            </div>
+        </div>
+
         @php
-            $numericBalance = (float) ($balanceAmount ?? 0);
-            $isBalancePositive = $numericBalance > 0;
+            $statusCounts = $paymentStatusCounts ?? ['completed' => 0, 'pending' => 0, 'failed' => 0];
+            $statusMax = max(1, (int) max($statusCounts));
+            $channelCounts = $paymentChannelCounts ?? [];
+            $channelMax = max(1, (int) (count($channelCounts) ? max($channelCounts) : 1));
+            $trend = $monthlyPaidTrend ?? [];
+            $trendMax = max(1, (float) (collect($trend)->max('amount') ?? 1));
         @endphp
 
-        <!-- Stats Overview Row -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                <div class="flex items-center justify-between">
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-8">
+            <div class="bg-white rounded-xl border border-gray-200 p-4 xl:col-span-2">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide">Payment insights</h3>
+                    <a href="{{ route('property.tenant.payments.history') }}" class="text-xs text-teal-600 hover:text-teal-700 font-medium">Full history →</a>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                        <p class="text-sm font-medium text-gray-500">Current Balance</p>
-                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ \App\Services\Property\PropertyMoney::kes($numericBalance) }}</p>
-                        <p class="text-xs text-gray-400 mt-1">Due immediately</p>
+                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">By status</p>
+                        @foreach (['completed' => 'bg-emerald-500', 'pending' => 'bg-amber-500', 'failed' => 'bg-red-500'] as $key => $barClass)
+                            @php
+                                $v = (int) ($statusCounts[$key] ?? 0);
+                                $w = (int) round(($v / $statusMax) * 100);
+                            @endphp
+                            <div class="mb-2">
+                                <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                    <span>{{ ucfirst($key) }}</span>
+                                    <span>{{ $v }}</span>
+                                </div>
+                                <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
+                                    <div class="h-full {{ $barClass }}" style="width: {{ $w }}%"></div>
+                                </div>
+                            </div>
+                        @endforeach
                     </div>
-                    <div class="bg-orange-50 rounded-full p-3">
-                        <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
+                    <div>
+                        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">By channel</p>
+                        @forelse ($channelCounts as $label => $count)
+                            @php $w = (int) round((((int) $count) / $channelMax) * 100); @endphp
+                            <div class="mb-2">
+                                <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+                                    <span>{{ $label }}</span>
+                                    <span>{{ (int) $count }}</span>
+                                </div>
+                                <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
+                                    <div class="h-full bg-teal-500" style="width: {{ $w }}%"></div>
+                                </div>
+                            </div>
+                        @empty
+                            <p class="text-xs text-gray-500">No payment channel data yet.</p>
+                        @endforelse
                     </div>
                 </div>
-            </div>
-            
-            <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-500">Next Due Date</p>
-                        <p class="text-2xl font-bold text-gray-900 mt-1">{{ $nextDue ?? '—' }}</p>
-                        <p class="text-xs text-gray-400 mt-1">
-                            @if(isset($nextDueDate) && $nextDueDate && $nextDueDate <= now()->addDays(3))
-                                <span class="text-red-600">⚠️ Due soon</span>
-                            @elseif(isset($nextDueDate) && $nextDueDate)
-                                On track
-                            @else
-                                Not set
-                            @endif
-                        </p>
-                    </div>
-                    <div class="bg-blue-50 rounded-full p-3">
-                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-medium text-gray-500">Payment Status</p>
-                        <p class="text-2xl font-bold text-gray-900 mt-1">
-                            @if($isBalancePositive)
-                                Pending
-                            @else
-                                Paid
-                            @endif
-                        </p>
-                        <p class="text-xs text-gray-400 mt-1">
-                            @if($isBalancePositive)
-                                {{ \App\Services\Property\PropertyMoney::kes($numericBalance) }} remaining
-                            @else
-                                All caught up! 🎉
-                            @endif
-                        </p>
-                    </div>
-                    <div class="bg-green-50 rounded-full p-3">
-                        @if($isBalancePositive)
-                            <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                        @else
-                            <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                        @endif
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            <div class="bg-white rounded-xl border border-gray-200 p-4">
-                <p class="text-sm font-medium text-gray-500">Rent balance</p>
-                <p class="text-xl font-bold text-gray-900 mt-1">{{ \App\Services\Property\PropertyMoney::kes((float) ($rentBalanceAmount ?? 0)) }}</p>
             </div>
             <div class="bg-white rounded-xl border border-gray-200 p-4">
-                <p class="text-sm font-medium text-gray-500">Water balance</p>
-                <p class="text-xl font-bold text-gray-900 mt-1">{{ \App\Services\Property\PropertyMoney::kes((float) ($waterBalanceAmount ?? 0)) }}</p>
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Loan eligibility</p>
+                <p class="mt-2 text-lg font-semibold {{ ($loanEligible ?? false) ? 'text-emerald-700' : 'text-red-600' }}">
+                    {{ ($loanEligible ?? false) ? 'Eligible' : 'Blocked by arrears' }}
+                </p>
+                <p class="mt-1 text-xs text-gray-500">
+                    {{ ($loanEligible ?? false) ? 'You can submit a loan request from Loans.' : 'Clear arrears first to unlock loan requests.' }}
+                </p>
+                <a href="{{ route('property.tenant.loans') }}" class="inline-flex mt-3 rounded-lg bg-teal-600 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-700">
+                    Open loans
+                </a>
             </div>
         </div>
 
-        <!-- Payment Overview Card - Enhanced -->
-        <div class="rounded-2xl overflow-hidden border border-teal-200/50 bg-gradient-to-br from-teal-600 to-teal-800 text-white shadow-xl shadow-teal-900/20 mb-8">
-            <div class="p-6 relative">
-                <!-- Decorative elements -->
-                <div class="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mt-16 -mr-16"></div>
-                <div class="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full -mb-12 -ml-12"></div>
-                
-                <div class="relative">
-                    <div class="flex items-center justify-between mb-4">
-                        <p class="text-teal-100 text-sm font-medium uppercase tracking-wide">Current balance</p>
-                        <div class="bg-white/10 rounded-full px-3 py-1">
-                            <p class="text-xs font-medium">Rent cycle: Monthly</p>
+        <div class="bg-white rounded-xl border border-gray-200 p-4 mb-8">
+            <h3 class="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">6-month payment trend</h3>
+            @if (count($trend))
+                <div class="grid grid-cols-6 gap-3 items-end h-36">
+                    @foreach ($trend as $m)
+                        @php $h = (int) max(6, round((($m['amount'] ?? 0) / $trendMax) * 100)); @endphp
+                        <div class="flex flex-col items-center justify-end h-full">
+                            <div class="w-full rounded-t-md bg-teal-500/85 hover:bg-teal-600 transition-colors" style="height: {{ $h }}%"></div>
+                            <p class="mt-2 text-[11px] text-gray-500">{{ $m['label'] }}</p>
                         </div>
-                    </div>
-                    <p class="text-4xl sm:text-5xl font-bold tabular-nums tracking-tight">{{ \App\Services\Property\PropertyMoney::kes($numericBalance) }}</p>
-                    <div class="mt-4 flex items-center space-x-4">
-                        <div class="flex items-center space-x-2">
-                            <svg class="w-4 h-4 text-teal-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            <p class="text-teal-100 text-sm">
-                                Next due: 
-                                <span class="font-semibold text-white">{{ $nextDueDate ? $nextDueDate->format('M d, Y') : '—' }}</span>
-                            </p>
-                        </div>
-                        @if(isset($nextDueDate) && $nextDueDate && $nextDueDate <= now()->addDays(7))
-                            <span class="bg-red-500/20 text-red-100 text-xs px-2 py-1 rounded-full">Due soon</span>
-                        @endif
-                    </div>
+                    @endforeach
                 </div>
-            </div>
-            <div class="grid grid-cols-2 divide-x divide-white/20 border-t border-white/10 bg-white/10">
-                <a href="{{ route('property.tenant.payments.pay') }}" class="group px-4 py-4 text-sm font-semibold hover:bg-white/10 transition-all duration-200 text-center flex items-center justify-center space-x-2">
-                    <svg class="w-4 h-4 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                    </svg>
-                    <span>Pay now</span>
-                </a>
-                <a href="{{ route('property.tenant.payments.history') }}" class="group px-4 py-4 text-sm font-semibold hover:bg-white/10 transition-all duration-200 text-center flex items-center justify-center space-x-2">
-                    <svg class="w-4 h-4 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V7a2 2 0 00-2-2H7a2 2 0 00-2 2v2"></path>
-                    </svg>
-                    <span>Payment history</span>
-                </a>
-            </div>
+            @else
+                <p class="text-sm text-gray-500">No completed payment trend yet.</p>
+            @endif
         </div>
 
         <!-- Quick Actions Grid -->

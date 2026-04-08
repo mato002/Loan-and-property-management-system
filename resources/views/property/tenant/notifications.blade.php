@@ -6,7 +6,7 @@
         subtitle="Maintenance progress, reminders, confirmations, and announcements."
     >
         <div class="mb-3 flex justify-end">
-            <form method="post" action="{{ route('property.tenant.notifications.read_all') }}">
+            <form method="post" action="{{ route('property.tenant.notifications.read_all') }}" data-swal-confirm="Mark all notifications as read?">
                 @csrf
                 <button type="submit" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                     Mark all as read
@@ -27,7 +27,7 @@
                             <p class="text-sm font-semibold text-slate-900 dark:text-white">{{ $log->subject ?: 'Notification' }}</p>
                             <div class="flex items-center gap-2">
                                 @if (! $isRead)
-                                    <form method="post" action="{{ route('property.tenant.notifications.read_one', $log) }}">
+                                    <form method="post" action="{{ route('property.tenant.notifications.read_one', $log) }}" data-swal-confirm="Mark this notification as read?">
                                         @csrf
                                         <button type="submit" class="rounded-lg border border-emerald-300 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50">Mark read</button>
                                     </form>

@@ -21,6 +21,20 @@
         >Ledger (CSV)</a>
     </x-slot>
     <x-slot name="toolbar">
-        <input type="month" data-table-filter="parent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto" />
+        <form method="get" class="flex flex-wrap items-end gap-2">
+            <div>
+                <label class="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Month</label>
+                <input
+                    type="month"
+                    name="month"
+                    value="{{ request('month', $month ?? now()->format('Y-m')) }}"
+                    class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto"
+                />
+            </div>
+            @if (request()->filled('property_id'))
+                <input type="hidden" name="property_id" value="{{ request('property_id') }}" />
+            @endif
+            <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Apply</button>
+        </form>
     </x-slot>
 </x-property.workspace>

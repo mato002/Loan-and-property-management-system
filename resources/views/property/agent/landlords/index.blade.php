@@ -190,6 +190,21 @@
                                 <a href="{{ route('property.landlords.statement', ['landlord' => $u->id, 'month' => $monthValue, 'fy' => $fyValue], false) }}" data-turbo-frame="property-main" class="rounded border border-emerald-300 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50">Statement</a>
                                 <a href="{{ route('property.financials.owner_balances', ['month' => $monthValue, 'fy' => $fyValue], false) }}" data-turbo-frame="property-main" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Owner balances</a>
                                 <a href="{{ route('property.financials.commission', ['month' => $monthValue, 'fy' => $fyValue], false) }}" data-turbo-frame="property-main" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Commission</a>
+                                @if (auth()->check() && auth()->user()?->hasPmPermission('users.impersonate'))
+                                    <form
+                                        method="post"
+                                        action="{{ route('property.landlords.impersonate', ['landlord' => $u->id], false) }}"
+                                        class="inline-flex"
+                                        data-turbo="false"
+                                        data-turbo-frame="_top"
+                                        data-swal-title="Login as landlord?"
+                                        data-swal-confirm="You will temporarily view the portal as this landlord. Use “Stop impersonating” to return."
+                                        data-swal-confirm-text="Yes, continue"
+                                    >
+                                        @csrf
+                                        <button type="submit" class="rounded border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-50">Login as</button>
+                                    </form>
+                                @endif
                                 @if ($props->isNotEmpty())
                                     <a href="{{ route('property.properties.show', ['property' => $props->first()->id], false) }}" data-turbo-frame="_top" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Open property</a>
                                 @endif

@@ -72,6 +72,7 @@
                         x-data="{ method: 'mpesa_stk', submitting: false, scope: '{{ old('bill_scope', 'all') }}' }"
                         @submit="submitting = true"
                         data-turbo="false"
+                        data-swal-confirm="Send STK prompt to your phone and start payment?"
                     >
                         @csrf
                         <input type="hidden" name="payment_method" value="mpesa_stk" />

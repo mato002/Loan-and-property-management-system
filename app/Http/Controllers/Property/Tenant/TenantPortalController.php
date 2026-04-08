@@ -3,6 +3,10 @@
 namespace App\Http\Controllers\Property\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\LoanBookApplication;
+use App\Models\LoanBookLoan;
+use App\Models\LoanBookPayment;
+use App\Models\LoanClient;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmMaintenanceRequest;
@@ -114,6 +118,10 @@ class TenantPortalController extends Controller
         $due = null;
         $recentPayments = collect();
         $lastCompleted = null;
+        $statusCounts = ['completed' => 0, 'pending' => 0, 'failed' => 0];
+        $channelCounts = [];
+        $monthlyPaidTrend = [];
+        $loanEligible = false;
         if ($tenant) {
             $balance = (float) PmInvoice::query()
                 ->where('pm_tenant_id', $tenant->id)
@@ -139,6 +147,48 @@ class TenantPortalController extends Controller
                 ->orderByDesc('paid_at')
                 ->orderByDesc('id')
                 ->first();
+
+            $statusRows = PmPayment::query()
+                ->selectRaw('status, COUNT(*) as c')
+                ->where('pm_tenant_id', $tenant->id)
+                ->whereIn('status', [PmPayment::STATUS_COMPLETED, PmPayment::STATUS_PENDING, PmPayment::STATUS_FAILED])
+                ->groupBy('status')
+                ->pluck('c', 'status');
+            $statusCounts = [
+                'completed' => (int) ($statusRows[PmPayment::STATUS_COMPLETED] ?? 0),
+                'pending' => (int) ($statusRows[PmPayment::STATUS_PENDING] ?? 0),
+                'failed' => (int) ($statusRows[PmPayment::STATUS_FAILED] ?? 0),
+            ];
+
+            $channelRows = PmPayment::query()
+                ->selectRaw('LOWER(COALESCE(channel, "")) as channel_key, COUNT(*) as c')
+                ->where('pm_tenant_id', $tenant->id)
+                ->groupBy('channel_key')
+                ->pluck('c', 'channel_key');
+            $channelCounts = collect($channelRows)->mapWithKeys(function ($count, $channel) {
+                $label = $channel !== '' ? strtoupper((string) $channel) : 'UNKNOWN';
+                return [$label => (int) $count];
+            })->sortDesc()->all();
+
+            $months = collect(range(5, 0))
+                ->map(fn ($offset) => now()->copy()->subMonths((int) $offset)->format('Y-m'))
+                ->values()
+                ->all();
+            $paidRows = PmPayment::query()
+                ->selectRaw('DATE_FORMAT(COALESCE(paid_at, created_at), "%Y-%m") as ym, COALESCE(SUM(amount),0) as total')
+                ->where('pm_tenant_id', $tenant->id)
+                ->where('status', PmPayment::STATUS_COMPLETED)
+                ->whereRaw('COALESCE(paid_at, created_at) >= ?', [now()->copy()->subMonths(5)->startOfMonth()])
+                ->groupBy('ym')
+                ->pluck('total', 'ym');
+            $monthlyPaidTrend = collect($months)->map(function (string $ym) use ($paidRows) {
+                return [
+                    'label' => \Carbon\Carbon::createFromFormat('Y-m', $ym)->format('M'),
+                    'amount' => (float) ($paidRows[$ym] ?? 0),
+                ];
+            })->all();
+
+            $loanEligible = $balance <= 0;
         }
 
         return view('property.tenant.home', [
@@ -150,6 +200,10 @@ class TenantPortalController extends Controller
             'nextDueDate' => $due,
             'recentPayments' => $recentPayments,
             'lastCompletedPayment' => $lastCompleted,
+            'paymentStatusCounts' => $statusCounts,
+            'paymentChannelCounts' => $channelCounts,
+            'monthlyPaidTrend' => $monthlyPaidTrend,
+            'loanEligible' => $loanEligible,
         ]);
     }
 
@@ -1103,6 +1157,171 @@ class TenantPortalController extends Controller
         return view('property.tenant.explore', [
             'units' => $units,
             'leasePropertyIds' => $leasePropertyIds,
+        ]);
+    }
+
+    public function loans(Request $request): View
+    {
+        $arrearsOutstanding = $this->tenantArrearsOutstanding($request->user());
+        $portalLoans = $this->portalLoansFor($request->user());
+
+        return view('property.tenant.loans', [
+            'arrearsOutstanding' => $arrearsOutstanding,
+            'hasArrears' => $arrearsOutstanding > 0,
+            'defaultProductName' => 'Tenant personal loan',
+            'defaultPurpose' => 'Personal or household financing request via tenant portal.',
+            'portalLoans' => $portalLoans,
+        ]);
+    }
+
+    public function applyLoan(Request $request): RedirectResponse
+    {
+        $user = $request->user();
+        $arrearsOutstanding = $this->tenantArrearsOutstanding($user);
+        if ($arrearsOutstanding > 0) {
+            return back()->withErrors([
+                'loan' => 'Clear your rent arrears first before applying for a loan. Outstanding arrears: '.PropertyMoney::kes($arrearsOutstanding).'.',
+            ]);
+        }
+        $validated = $request->validate([
+            'product_name' => ['required', 'string', 'max:160'],
+            'amount_requested' => ['required', 'numeric', 'min:1'],
+            'term_months' => ['required', 'integer', 'min:1', 'max:600'],
+            'purpose' => ['nullable', 'string', 'max:2000'],
+            'branch' => ['nullable', 'string', 'max:120'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+        $client = $this->resolveOrCreatePortalClient($user, 'tenant');
+
+        $next = (LoanBookApplication::query()->max('id') ?? 0) + 1;
+        LoanBookApplication::query()->create([
+            'loan_client_id' => $client->id,
+            'reference' => 'APP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT),
+            'product_name' => $validated['product_name'],
+            'amount_requested' => $validated['amount_requested'],
+            'term_months' => $validated['term_months'],
+            'purpose' => $validated['purpose'] ?? null,
+            'stage' => LoanBookApplication::STAGE_SUBMITTED,
+            'branch' => trim((string) ($validated['branch'] ?? '')) !== '' ? $validated['branch'] : $client->branch,
+            'notes' => trim((string) ($validated['notes'] ?? '')) !== '' ? $validated['notes'] : 'Submitted from tenant portal.',
+            'submission_source' => 'tenant_portal',
+            'submitted_at' => now(),
+        ]);
+
+        return back()->with('success', 'Loan request submitted successfully. It is now visible in the loan module applications queue.');
+    }
+
+    public function repayLoan(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'loan_id' => ['required', 'integer'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'channel' => ['required', 'in:cash,mpesa,bank,cheque,card'],
+            'transaction_at' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $loan = $this->portalLoansFor($request->user())
+            ->firstWhere('id', (int) $validated['loan_id']);
+        if (! $loan) {
+            return back()->withErrors(['loan' => 'Selected loan was not found in your portal profile.']);
+        }
+
+        $payment = LoanBookPayment::query()->create([
+            'reference' => null,
+            'loan_book_loan_id' => (int) $loan->id,
+            'amount' => (float) $validated['amount'],
+            'currency' => 'KES',
+            'channel' => $validated['channel'],
+            'status' => LoanBookPayment::STATUS_UNPOSTED,
+            'payment_kind' => LoanBookPayment::KIND_NORMAL,
+            'transaction_at' => $validated['transaction_at'],
+            'notes' => trim((string) ($validated['notes'] ?? '')) !== '' ? $validated['notes'] : 'Submitted from tenant portal repayment form.',
+            'created_by' => $request->user()->id,
+        ]);
+        $payment->update([
+            'reference' => 'PAY-'.str_pad((string) $payment->id, 6, '0', STR_PAD_LEFT),
+        ]);
+
+        return back()->with('success', 'Repayment submitted successfully. Reference: '.$payment->reference.'.');
+    }
+
+    private function tenantArrearsOutstanding($user): float
+    {
+        $tenant = $user->pmTenantProfile;
+        if (! $tenant) {
+            return 0.0;
+        }
+
+        return (float) (PmInvoice::query()
+            ->where('pm_tenant_id', $tenant->id)
+            ->whereColumn('amount_paid', '<', 'amount')
+            ->selectRaw('COALESCE(SUM(amount - amount_paid), 0) as arrears')
+            ->value('arrears') ?? 0.0);
+    }
+
+    private function portalLoansFor($user)
+    {
+        $client = $this->resolveOrCreatePortalClient($user, 'tenant');
+        $loans = LoanBookLoan::query()
+            ->where('loan_client_id', $client->id)
+            ->whereIn('status', [
+                LoanBookLoan::STATUS_ACTIVE,
+                LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+                LoanBookLoan::STATUS_RESTRUCTURED,
+            ])
+            ->orderByDesc('id')
+            ->get();
+
+        if ($loans->isEmpty()) {
+            return $loans;
+        }
+
+        $paidMap = LoanBookPayment::query()
+            ->whereIn('loan_book_loan_id', $loans->pluck('id'))
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->where('amount', '>', 0)
+            ->selectRaw('loan_book_loan_id, COALESCE(SUM(amount),0) as paid')
+            ->groupBy('loan_book_loan_id')
+            ->pluck('paid', 'loan_book_loan_id');
+
+        return $loans->map(function (LoanBookLoan $loan) use ($paidMap) {
+            $fallbackOutstanding = (float) $loan->principal_outstanding + (float) $loan->interest_outstanding + (float) $loan->fees_outstanding;
+            $returnAmount = (float) $loan->balance > 0 ? (float) $loan->balance : max($fallbackOutstanding, 0.0);
+            $loan->setAttribute('return_amount', $returnAmount);
+            $loan->setAttribute('processed_paid_total', (float) ($paidMap[$loan->id] ?? 0));
+
+            return $loan;
+        });
+    }
+
+    private function resolveOrCreatePortalClient($user, string $role): LoanClient
+    {
+        $email = trim((string) ($user->email ?? ''));
+        $existing = $email !== '' ? LoanClient::query()->clients()->where('email', $email)->first() : null;
+        if ($existing) {
+            return $existing;
+        }
+
+        $name = trim((string) ($user->name ?? ''));
+        $parts = preg_split('/\s+/', $name) ?: [];
+        $firstName = trim((string) ($parts[0] ?? ucfirst($role)));
+        $lastName = trim((string) (count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : 'Portal'));
+
+        $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.($email !== '' ? strtolower($email) : 'u'.$user->id)), 0, 8));
+        while (LoanClient::query()->where('client_number', $clientNumber)->exists()) {
+            $clientNumber = 'PORTAL-'.strtoupper(substr(md5($clientNumber.'|'.microtime(true)), 0, 8));
+        }
+
+        return LoanClient::query()->create([
+            'client_number' => $clientNumber,
+            'kind' => LoanClient::KIND_CLIENT,
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'phone' => null,
+            'email' => $email !== '' ? $email : null,
+            'client_status' => 'active',
+            'notes' => 'Auto-created from '.$role.' portal loan request.',
         ]);
     }
 

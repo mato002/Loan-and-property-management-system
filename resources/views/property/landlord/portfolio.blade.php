@@ -9,14 +9,14 @@
 
         <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div class="rounded-2xl border border-emerald-200/70 dark:border-emerald-900/50 bg-gradient-to-br from-white to-emerald-50/50 dark:from-gray-900 dark:to-emerald-950/20 p-6 shadow-sm">
-                <p class="text-xs font-medium uppercase tracking-wide text-emerald-800/80 dark:text-emerald-300/80">Income this month</p>
+                <p class="text-xs font-medium uppercase tracking-wide text-emerald-800/80 dark:text-emerald-300/80">Billed (due) this month</p>
                 <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-white tabular-nums">{{ $incomeMonth }}</p>
-                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Gross billed on your units (invoice issue date this month).</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Sum of invoice amounts with due date in this month.</p>
             </div>
             <div class="rounded-2xl border border-emerald-200/70 dark:border-emerald-900/50 bg-white dark:bg-gray-800/80 p-6 shadow-sm">
-                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Collected this month</p>
+                <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Income received this month</p>
                 <p class="mt-2 text-3xl font-semibold text-slate-900 dark:text-white tabular-nums">{{ $incomeCollectedMonth }}</p>
-                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Collection rate: <span class="font-semibold">{{ $collectionRateDisplay }}</span></p>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">From completed payments this month (allocated to your units). Rate vs billed: <span class="font-semibold">{{ $collectionRateDisplay }}</span></p>
             </div>
             <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-6 shadow-sm">
                 <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Occupancy rate</p>
@@ -60,6 +60,22 @@
 
             <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/60 p-6 xl:col-span-2">
                 <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Property performance breakdown</h2>
+                @if (!empty($occPerProperty ?? []))
+                    <div class="mt-3">
+                        <div class="text-xs text-slate-500 dark:text-slate-400 mb-2">Occupancy by property</div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            @foreach ($occPerProperty as $o)
+                                <div class="flex items-center gap-3">
+                                    <div class="w-32 truncate text-xs text-slate-600 dark:text-slate-300">{{ $o['name'] }}</div>
+                                    <div class="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-900/50 overflow-hidden">
+                                        <div class="h-full bg-emerald-500" style="width: {{ max(0, min(100, (int) $o['rate'])) }}%"></div>
+                                    </div>
+                                    <div class="w-10 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">{{ (int) $o['rate'] }}%</div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
                 <div class="mt-4 overflow-x-auto">
                     <table class="min-w-full text-sm">
                         <thead class="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
@@ -138,6 +154,58 @@
                     <a href="{{ route('property.landlord.earnings.index') }}" class="inline-flex rounded-xl bg-emerald-600 text-white px-4 py-2 text-sm font-medium hover:bg-emerald-700 transition-colors">Earnings &amp; wallet</a>
                     <a href="{{ route('property.landlord.reports.index') }}" class="inline-flex rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors">Reports</a>
                     <a href="{{ route('property.landlord.maintenance') }}" class="inline-flex rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors">Maintenance</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 grid gap-4 lg:grid-cols-3">
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/60 p-6 lg:col-span-2">
+                <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Billed vs Collected (last 6 months)</h2>
+                @php
+                    $chartMonthsSafe = $chartMonths ?? [];
+                    $chartBilledSafe = $chartBilled ?? [];
+                    $chartCollectedSafe = $chartCollected ?? [];
+                    $mx = max(1.0, max(array_merge([0.0], array_map('floatval', $chartBilledSafe), array_map('floatval', $chartCollectedSafe))));
+                @endphp
+                @if (count($chartMonthsSafe) > 0)
+                    <div class="mt-4 rounded-xl border border-slate-100 dark:border-slate-700/70 bg-slate-50/60 dark:bg-slate-900/30 p-4">
+                        <div class="flex items-end gap-3 h-44">
+                            @foreach ($chartMonthsSafe as $idx => $m)
+                                @php
+                                    $b = (float) ($chartBilledSafe[$idx] ?? 0);
+                                    $c = (float) ($chartCollectedSafe[$idx] ?? 0);
+                                    $bh = max(2, (int) round(($b / $mx) * 100));
+                                    $ch = max(2, (int) round(($c / $mx) * 100));
+                                @endphp
+                                <div class="flex-1 min-w-0">
+                                    <div class="h-36 flex items-end justify-center gap-1">
+                                        <div class="w-3 sm:w-4 rounded-t bg-emerald-500/85" style="height: {{ $bh }}%" title="Billed: {{ \App\Services\Property\PropertyMoney::kes($b) }}"></div>
+                                        <div class="w-3 sm:w-4 rounded-t bg-amber-400/90" style="height: {{ $ch }}%" title="Collected: {{ \App\Services\Property\PropertyMoney::kes($c) }}"></div>
+                                    </div>
+                                    <div class="mt-2 text-center text-[11px] text-slate-600 dark:text-slate-400 truncate">{{ $m }}</div>
+                                </div>
+                            @endforeach
+                        </div>
+                        <div class="mt-3 flex items-center gap-4 text-xs text-slate-600 dark:text-slate-400">
+                            <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 bg-emerald-500/85 rounded-sm"></span> Billed</span>
+                            <span class="inline-flex items-center gap-1"><span class="inline-block w-3 h-3 bg-amber-400/90 rounded-sm"></span> Collected</span>
+                        </div>
+                    </div>
+                @else
+                    <p class="mt-3 text-sm text-slate-500 dark:text-slate-400">No monthly data yet.</p>
+                @endif
+            </div>
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/60 p-6">
+                <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Quick ratios</h2>
+                <div class="mt-4 space-y-3 text-sm">
+                    <div class="flex items-center justify-between">
+                        <span class="text-slate-500 dark:text-slate-400">Collection rate</span>
+                        <span class="font-semibold text-slate-900 dark:text-white">{{ $collectionRateDisplay }}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-slate-500 dark:text-slate-400">Occupancy</span>
+                        <span class="font-semibold text-slate-900 dark:text-white">{{ $occupancyDisplay }}</span>
+                    </div>
                 </div>
             </div>
         </div>

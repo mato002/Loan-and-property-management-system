@@ -5,7 +5,7 @@
         title="Notifications"
         subtitle="Derived from maintenance, leases, payments, and overdue invoices on your properties."
     >
-        <form method="post" action="{{ route('property.landlord.notifications.preferences.store') }}" class="mb-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-4">
+        <form method="post" action="{{ route('property.landlord.notifications.preferences.store') }}" class="mb-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-4" data-swal-confirm="Save notification preferences?">
             @csrf
             <p class="text-sm font-semibold text-slate-900 dark:text-white mb-3">Alert preferences</p>
             <div class="grid gap-3 sm:grid-cols-2">

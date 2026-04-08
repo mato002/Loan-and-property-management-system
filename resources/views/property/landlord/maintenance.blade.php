@@ -5,7 +5,7 @@
         title="Maintenance"
         subtitle="Transparency on requests, quotes, and spend — approve high-cost jobs when your agreement requires it."
     >
-        <form method="post" action="{{ route('property.landlord.maintenance.threshold.store') }}" class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-4 flex flex-wrap items-end gap-3">
+        <form method="post" action="{{ route('property.landlord.maintenance.threshold.store') }}" class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-4 flex flex-wrap items-end gap-3" data-swal-confirm="Save this approval threshold setting?">
             @csrf
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Approval threshold (KES)</label>
@@ -57,7 +57,7 @@
                                     <td class="py-2 pr-3">{{ \App\Services\Property\PropertyMoney::kes((float) ($job->quote_amount ?? 0)) }}</td>
                                     <td class="py-2 pr-3">{{ ucfirst(str_replace('_', ' ', (string) $job->status)) }}</td>
                                     <td class="py-2">
-                                        <form method="post" action="{{ route('property.landlord.maintenance.jobs.approval', $job) }}" class="flex flex-wrap items-center gap-2">
+                                        <form method="post" action="{{ route('property.landlord.maintenance.jobs.approval', $job) }}" class="flex flex-wrap items-center gap-2" data-swal-confirm="Confirm this maintenance decision?">
                                             @csrf
                                             <input type="hidden" name="approval_threshold" value="{{ (float) $approvalThreshold }}" />
                                             <input type="text" name="note" placeholder="Optional note" class="min-w-[150px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2 py-1 text-xs" />

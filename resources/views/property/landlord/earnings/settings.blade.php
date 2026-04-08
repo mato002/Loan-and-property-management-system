@@ -5,7 +5,7 @@
         title="Payout settings"
         subtitle="Configure your preferred destination and optional automatic payout schedule."
     >
-        <form method="post" action="{{ route('property.landlord.earnings.settings.store') }}" class="w-full space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm">
+        <form method="post" action="{{ route('property.landlord.earnings.settings.store') }}" class="w-full space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm" data-swal-confirm="Save payout settings changes?">
             @csrf
             <div class="grid gap-4 sm:grid-cols-2">
                 <div>

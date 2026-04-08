@@ -90,6 +90,21 @@
 @endphp
 
 <header class="property-topbar relative z-[5000] overflow-visible flex-shrink-0 shadow-md shadow-emerald-950/10">
+    @if (session()->has('pm_impersonator_id'))
+        <div class="bg-amber-200 text-amber-950 border-b border-amber-300">
+            <div class="px-3 sm:px-5 lg:px-6 py-2 flex items-center justify-between gap-3">
+                <p class="text-xs sm:text-sm font-semibold">
+                    You are impersonating a user for support/testing.
+                </p>
+                <form method="post" action="{{ route('property.impersonation.stop') }}" class="shrink-0">
+                    @csrf
+                    <button type="submit" class="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-950">
+                        Stop impersonating
+                    </button>
+                </form>
+            </div>
+        </div>
+    @endif
     <div class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 text-white overflow-visible">
         <div class="flex items-center justify-between h-[60px] sm:h-[64px] px-3 sm:px-5 lg:px-6 gap-2 sm:gap-4">
             <div class="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">

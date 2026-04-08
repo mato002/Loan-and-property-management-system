@@ -28,6 +28,7 @@ class LoanBookApplication extends Model
         'stage',
         'branch',
         'notes',
+        'submission_source',
         'submitted_at',
     ];
 

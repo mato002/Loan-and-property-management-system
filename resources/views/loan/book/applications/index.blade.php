@@ -21,6 +21,7 @@
                             <th class="px-5 py-3">Ref</th>
                             <th class="px-5 py-3">Client</th>
                             <th class="px-5 py-3">Product</th>
+                            <th class="px-5 py-3">Source</th>
                             <th class="px-5 py-3 text-right">Amount</th>
                             <th class="px-5 py-3">Stage</th>
                             <th class="px-5 py-3">Branch</th>
@@ -29,10 +30,29 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($applications as $app)
+                            @php
+                                $sourceLabel = match ((string) ($app->submission_source ?? '')) {
+                                    'tenant_portal' => 'Tenant portal',
+                                    'landlord_portal' => 'Landlord portal',
+                                    'manual_internal' => 'Manual/Internal',
+                                    default => (function () use ($app) {
+                                        $notes = strtolower((string) ($app->notes ?? ''));
+                                        return str_contains($notes, 'tenant portal')
+                                            ? 'Tenant portal'
+                                            : (str_contains($notes, 'landlord portal') ? 'Landlord portal' : 'Manual/Internal');
+                                    })(),
+                                };
+                                $sourceClass = str_contains($sourceLabel, 'portal')
+                                    ? 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+                                    : 'bg-slate-100 text-slate-700 ring-slate-200';
+                            @endphp
                             <tr class="hover:bg-slate-50/80">
                                 <td class="px-5 py-3 font-mono text-xs text-indigo-600 font-medium">{{ $app->reference }}</td>
                                 <td class="px-5 py-3 font-medium text-slate-900">{{ $app->loanClient->full_name }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $app->product_name }}</td>
+                                <td class="px-5 py-3">
+                                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 {{ $sourceClass }}">{{ $sourceLabel }}</span>
+                                </td>
                                 <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format((float) $app->amount_requested, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $app->stage) }}</td>
                                 <td class="px-5 py-3 text-slate-500">{{ $app->branch ?? '—' }}</td>
@@ -47,7 +67,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-5 py-12 text-center text-slate-500">No applications yet. Create one to start LoanBook.</td>
+                                <td colspan="8" class="px-5 py-12 text-center text-slate-500">No applications yet. Create one to start LoanBook.</td>
                             </tr>
                         @endforelse
                     </tbody>

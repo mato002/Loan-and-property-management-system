@@ -10,8 +10,11 @@
                 <label class="block text-xs font-medium text-slate-500 mb-1">Statement month</label>
                 <input type="month" name="month" value="{{ $month }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
             </div>
+            @if (!empty($selectedPropertyId))
+                <input type="hidden" name="property_id" value="{{ $selectedPropertyId }}" />
+            @endif
             <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Apply</button>
-            <a href="{{ route('property.landlord.reports.statement.export', ['month' => $month]) }}" class="rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60">Download CSV</a>
+            <a href="{{ route('property.landlord.reports.statement.export', array_filter(['month' => $month, 'property_id' => $selectedPropertyId ?? null])) }}" data-turbo="false" class="rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60">Download CSV</a>
         </form>
 
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

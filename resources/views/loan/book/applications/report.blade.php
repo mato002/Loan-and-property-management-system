@@ -17,6 +17,7 @@
                             <th class="px-5 py-3">Client #</th>
                             <th class="px-5 py-3">Name</th>
                             <th class="px-5 py-3">Product</th>
+                            <th class="px-5 py-3">Source</th>
                             <th class="px-5 py-3 text-right">Amount</th>
                             <th class="px-5 py-3">Term</th>
                             <th class="px-5 py-3">Stage</th>
@@ -25,11 +26,25 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($applications as $app)
+                            @php
+                                $sourceLabel = match ((string) ($app->submission_source ?? '')) {
+                                    'tenant_portal' => 'Tenant portal',
+                                    'landlord_portal' => 'Landlord portal',
+                                    'manual_internal' => 'Manual/Internal',
+                                    default => (function () use ($app) {
+                                        $notes = strtolower((string) ($app->notes ?? ''));
+                                        return str_contains($notes, 'tenant portal')
+                                            ? 'Tenant portal'
+                                            : (str_contains($notes, 'landlord portal') ? 'Landlord portal' : 'Manual/Internal');
+                                    })(),
+                                };
+                            @endphp
                             <tr class="hover:bg-slate-50/80">
                                 <td class="px-5 py-3 font-mono text-xs">{{ $app->reference }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $app->loanClient->client_number }}</td>
                                 <td class="px-5 py-3 font-medium text-slate-900">{{ $app->loanClient->full_name }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $app->product_name }}</td>
+                                <td class="px-5 py-3 text-slate-600">{{ $sourceLabel }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums">{{ number_format((float) $app->amount_requested, 2) }}</td>
                                 <td class="px-5 py-3 tabular-nums">{{ $app->term_months }} mo</td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $app->stage) }}</td>
@@ -37,7 +52,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="px-5 py-12 text-center text-slate-500">No data.</td>
+                                <td colspan="9" class="px-5 py-12 text-center text-slate-500">No data.</td>
                             </tr>
                         @endforelse
                     </tbody>

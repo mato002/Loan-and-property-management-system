@@ -18,6 +18,7 @@
         'Lease' => ['route' => 'property.tenant.lease', 'active' => 'property.tenant.lease', 'icon' => 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'],
         'Maintenance' => ['route' => 'property.tenant.maintenance.index', 'active' => 'property.tenant.maintenance.*', 'icon' => 'M14.121 14.121L19 19m-7-7l7-7m-7 7l-2.879 2.879M12 12L9.121 9.121m0 5.758a3 3 0 10-4.243-4.243 3 3 0 004.243 4.243z'],
         'Requests & notices' => ['route' => 'property.tenant.requests', 'active' => 'property.tenant.requests', 'icon' => 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z'],
+        'Loans' => ['route' => 'property.tenant.loans', 'active' => 'property.tenant.loans', 'icon' => 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z'],
         'Notifications' => ['route' => 'property.tenant.notifications', 'active' => 'property.tenant.notifications', 'icon' => 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9'],
         'Explore' => ['route' => 'property.tenant.explore', 'active' => 'property.tenant.explore', 'icon' => 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'],
     ];
@@ -37,7 +38,7 @@
 </div>
 
 <aside
-    class="property-sidebar fixed inset-y-0 left-0 z-50 w-[280px] sm:w-[288px] bg-[#2f4f4f] border-r border-[#264040] text-[#d4e4e3] text-base transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col min-h-0 shadow-xl shadow-black/20 lg:shadow-none overflow-hidden flex-shrink-0"
+    class="property-sidebar fixed inset-y-0 left-0 z-50 h-screen w-[280px] sm:w-[288px] bg-[#2f4f4f] border-r border-[#264040] text-[#d4e4e3] text-base transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col min-h-0 shadow-xl shadow-black/20 lg:shadow-none overflow-hidden flex-shrink-0"
     :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-lg:pointer-events-none'"
 >
     <div class="h-14 flex items-center justify-between px-4 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md lg:hidden shrink-0">
@@ -49,7 +50,8 @@
         </button>
     </div>
 
-    <nav class="flex-1 min-h-0 overflow-y-scroll py-4 px-2.5 space-y-1 custom-scrollbar">
+    <nav class="flex-1 min-h-0 overflow-y-auto overscroll-contain py-4 px-2.5 custom-scrollbar">
+        <div class="flex min-h-full flex-col space-y-1">
         @if (auth()->check() && (auth()->user()->is_super_admin ?? false))
             <a
                 href="{{ route('superadmin.users.index') }}"
@@ -95,7 +97,7 @@
             </a>
         @endforeach
 
-        <div class="pt-4 mt-4 border-t border-[#406866]/40">
+        <div class="mt-auto pt-4 border-t border-[#406866]/40">
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
                 <button type="submit" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border-l-[3px] border-transparent transition-all text-left group">
@@ -105,6 +107,7 @@
                     Log out
                 </button>
             </form>
+        </div>
         </div>
     </nav>
 

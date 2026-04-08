@@ -10,7 +10,7 @@
         @endif
 
         <div class="grid gap-4 lg:grid-cols-2 w-full min-w-0">
-            <form method="post" action="{{ route('property.tenant.requests.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm space-y-4">
+            <form method="post" action="{{ route('property.tenant.requests.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm space-y-4" data-swal-confirm="Submit this vacate notice?">
                 @csrf
                 <input type="hidden" name="type" value="vacate_notice" />
                 <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Vacate notice</h2>
@@ -29,7 +29,7 @@
                 <button type="submit" class="w-full rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700">Submit vacate notice</button>
             </form>
 
-            <form method="post" action="{{ route('property.tenant.requests.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm space-y-4">
+            <form method="post" action="{{ route('property.tenant.requests.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm space-y-4" data-swal-confirm="Submit this lease extension request?">
                 @csrf
                 <input type="hidden" name="type" value="lease_extension" />
                 <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Lease extension</h2>

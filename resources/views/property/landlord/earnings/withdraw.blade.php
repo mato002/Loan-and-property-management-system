@@ -17,7 +17,7 @@
             </div>
         </div>
 
-        <form method="post" action="{{ route('property.landlord.earnings.withdraw.store') }}" class="w-full min-w-0 space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm">
+        <form method="post" action="{{ route('property.landlord.earnings.withdraw.store') }}" class="w-full min-w-0 space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm" data-swal-confirm="Submit this withdrawal request?">
             @csrf
             <div>
                 <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Amount (KES)</label>
