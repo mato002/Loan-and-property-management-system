@@ -15,8 +15,7 @@
         <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700&display=swap" rel="stylesheet" />
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="h-screen overflow-hidden bg-[#e8ecf1] text-slate-900 antialiased selection:bg-emerald-200/80" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">
-        <x-swal-flash />
+    <body class="min-h-screen bg-[#e8ecf1] text-slate-900 antialiased overflow-x-hidden" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">        <x-swal-flash />
 
         <div class="h-screen flex overflow-hidden" x-data="{ saSidebarOpen: false, saProfileOpen: false }">
             {{-- Mobile sidebar overlay --}}
