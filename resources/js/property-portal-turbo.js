@@ -80,6 +80,24 @@ document.addEventListener('turbo:frame-load', (event) => {
     }
 });
 
+// If a frame navigation returns 403/401, the response usually won't include the expected <turbo-frame>.
+// Convert it to a full-page visit so the user sees the error page instead of a console exception.
+document.addEventListener('turbo:before-fetch-response', (event) => {
+    const fetchResponse = event.detail?.fetchResponse;
+    const status = fetchResponse?.response?.status;
+    if (status !== 401 && status !== 403) {
+        return;
+    }
+
+    const url = fetchResponse?.response?.url;
+    if (!url || !window.Turbo?.visit) {
+        return;
+    }
+
+    event.preventDefault();
+    window.Turbo.visit(url, { action: 'replace' });
+});
+
 // Some navigations / redirects can resolve as full Turbo visits instead of a frame-load.
 // Ensure Alpine and flash handlers are re-initialized in that case too.
 document.addEventListener('turbo:load', () => {

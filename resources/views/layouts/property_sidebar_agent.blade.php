@@ -614,6 +614,7 @@
                     'route' => 'property.settings.roles',
                     'active' => ['property.settings.roles'],
                     'badge' => null,
+                    'requires_superadmin' => true,
                 ],
                 [
                     'label' => 'Commission settings',
@@ -648,12 +649,35 @@
                         'property.settings.system_setup.workflows.store',
                         'property.settings.system_setup.templates',
                         'property.settings.system_setup.templates.store',
+                        'property.settings.system_setup.access',
+                        'property.settings.system_setup.access.roles.store',
+                        'property.settings.system_setup.access.roles.clone',
+                        'property.settings.system_setup.access.permissions.store',
+                        'property.settings.system_setup.access.permissions.update',
+                        'property.settings.system_setup.access.permissions.destroy',
+                        'property.settings.system_setup.access.roles.permissions.store',
+                        'property.settings.system_setup.access.users.roles.store',
+                        'property.settings.system_setup.access.users.permissions.store',
                     ],
                     'badge' => null,
+                    'requires_superadmin' => true,
                 ],
             ],
         ],
     ];
+
+    $propertyAgentIsSuperAdmin = auth()->check() && (auth()->user()->is_super_admin ?? false);
+    if (! $propertyAgentIsSuperAdmin) {
+        $sections = array_values(array_map(static function (array $section): array {
+            $section['items'] = array_values(array_filter(
+                $section['items'],
+                static fn (array $item): bool => empty($item['requires_superadmin'])
+            ));
+
+            return $section;
+        }, $sections));
+        $sections = array_values(array_filter($sections, static fn (array $section): bool => count($section['items']) > 0));
+    }
 
     // Keep related modules adjacent for faster navigation.
     $preferredSectionOrder = [
