@@ -74,6 +74,23 @@
         </form>
     </x-slot>
 
+    <div x-data="{ addUnitOpen: false }">
+    @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+        <div class="mt-1 mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center justify-between gap-2">
+            <p class="text-sm text-slate-700">
+                <span class="font-semibold">Units:</span> {{ count($units ?? []) }}
+                <span class="text-slate-500">· Manage additions/demolitions from here.</span>
+            </p>
+            <button
+                type="button"
+                class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                @click="addUnitOpen = true"
+            >
+                + Add unit
+            </button>
+        </div>
+    @endif
+
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 class="text-sm font-semibold text-slate-900">Property profile</h3>
@@ -148,7 +165,18 @@
 
     <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
         <div class="px-4 py-3 border-b border-slate-100">
-            <h3 class="text-sm font-semibold text-slate-900">Unit status & arrears</h3>
+            <div class="flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-slate-900">Unit status & arrears</h3>
+                @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+                    <button
+                        type="button"
+                        class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                        @click="addUnitOpen = true"
+                    >
+                        Add unit
+                    </button>
+                @endif
+            </div>
         </div>
         <table class="min-w-full text-sm">
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
@@ -157,6 +185,9 @@
                     <th class="px-4 py-3">Status</th>
                     <th class="px-4 py-3">Listed rent</th>
                     <th class="px-4 py-3">Arrears</th>
+                    @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+                        <th class="px-4 py-3">Actions</th>
+                    @endif
                 </tr>
             </thead>
             <tbody>
@@ -166,12 +197,84 @@
                         <td class="px-4 py-3 capitalize text-slate-700">{{ $u->status }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->rent_amount) }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
+                        @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+                            <td class="px-4 py-3">
+                                <form
+                                    method="post"
+                                    action="{{ route('property.units.destroy', ['unit' => $u->id], false) }}"
+                                    class="inline-flex"
+                                    data-swal-title="Remove this unit?"
+                                    data-swal-confirm="Use this for demolished/invalid units. Deletion is blocked if the unit has lease, invoice, utility, or maintenance history."
+                                    data-swal-confirm-text="Yes, remove unit"
+                                >
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50">Remove</button>
+                                </form>
+                            </td>
+                        @endif
                     </tr>
                 @empty
-                    <tr><td colspan="4" class="px-4 py-10 text-center text-slate-500">No units yet for this property.</td></tr>
+                    <tr><td colspan="{{ auth()->check() && auth()->user()?->hasPmPermission('properties.manage') ? 5 : 4 }}" class="px-4 py-10 text-center text-slate-500">No units yet for this property.</td></tr>
                 @endforelse
             </tbody>
         </table>
+
+        @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+            <div
+                x-show="addUnitOpen"
+                x-cloak
+                @keydown.escape.window="addUnitOpen = false"
+                class="fixed inset-0 z-[7000] flex items-center justify-center bg-slate-900/50 p-4"
+            >
+                <div class="w-full max-w-3xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" @click.outside="addUnitOpen = false">
+                    <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+                        <h3 class="text-base font-semibold text-slate-900">Add unit to {{ $property->name }}</h3>
+                        <button type="button" class="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" @click="addUnitOpen = false">Close</button>
+                    </div>
+                    <form method="post" action="{{ route('property.units.store', absolute: false) }}" class="p-5 space-y-4" data-turbo="false">
+                        @csrf
+                        <input type="hidden" name="property_id" value="{{ $property->id }}" />
+                        <input type="hidden" name="unit_count" value="1" />
+                        <input type="hidden" name="status_mode" value="single" />
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Unit label</label>
+                                <input type="text" name="label" required placeholder="e.g. A-12" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Type</label>
+                                <select name="unit_type" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                                    @foreach(\App\Models\PropertyUnit::typeOptions() as $key => $label)
+                                        <option value="{{ $key }}" @selected($key === \App\Models\PropertyUnit::TYPE_APARTMENT)>{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Bedrooms</label>
+                                <input type="number" name="bedrooms" value="1" min="0" max="20" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Rent amount</label>
+                                <input type="number" name="rent_amount" value="0" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Status</label>
+                                <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                                    <option value="vacant">Vacant</option>
+                                    <option value="occupied">Occupied</option>
+                                    <option value="notice">Notice</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between gap-2">
+                            <p class="text-xs text-slate-500">Use this when new units are added. For bulk additions, use the main Units page.</p>
+                            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save unit</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
     </div>
 
     <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
@@ -228,6 +331,7 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
     </div>
 </x-property.workspace>
 
