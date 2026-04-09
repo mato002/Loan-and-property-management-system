@@ -302,7 +302,7 @@ class PropertyTenantsOpsWebController extends Controller
             }
 
             return [
-                $n->tenant->name,
+                $n->tenant?->name ?? '—',
                 $n->unit ? $n->unit->property->name.'/'.$n->unit->label : '—',
                 str_replace('_', ' ', $n->notice_type),
                 ucfirst($n->status),
@@ -363,7 +363,7 @@ class PropertyTenantsOpsWebController extends Controller
                 foreach ($rows as $n) {
                     yield [
                         $n->id,
-                        $n->tenant->name,
+                        $n->tenant?->name,
                         $n->unit ? ($n->unit->property->name.'/'.$n->unit->label) : null,
                         $n->notice_type,
                         $n->status,

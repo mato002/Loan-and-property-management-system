@@ -39,6 +39,11 @@
                     </div>
                 </div>
                 <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Commission %</label>
+                    <input type="number" name="commission_percent" value="{{ old('commission_percent') }}" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional (uses default if empty)" />
+                    @error('commission_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Address</label>
                     <input
                         type="text"
@@ -134,6 +139,7 @@
                                 ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
                                 ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
                                 ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
+                                ['name' => 'commission_percent', 'label' => 'Commission % (optional)', 'required' => false, 'type' => 'number', 'step' => '0.01', 'min' => '0', 'max' => '100', 'span' => '2', 'placeholder' => 'Uses default if blank'],
                             ],
                         ]"
                     />
@@ -177,15 +183,15 @@
             <div class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Landlord links</h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400">Update ownership % or detach. New links are rejected if total ownership on a property would exceed 100%.</p>
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto overflow-y-auto max-h-80 pr-1">
                     <table class="min-w-full text-sm">
                         <thead>
                             <tr class="text-left text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-600">
-                                <th class="py-2 pr-4">Property</th>
-                                <th class="py-2 pr-4">Landlord</th>
-                                <th class="py-2 pr-4">Email</th>
-                                <th class="py-2 pr-4">Ownership %</th>
-                                <th class="py-2"></th>
+                                <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Property</th>
+                                <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Landlord</th>
+                                <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Email</th>
+                                <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Ownership %</th>
+                                <th class="sticky top-0 z-10 py-2 bg-white dark:bg-gray-800/95"></th>
                             </tr>
                         </thead>
                         <tbody>

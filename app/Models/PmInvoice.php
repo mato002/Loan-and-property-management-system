@@ -2,9 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 
 class PmInvoice extends Model
 {
@@ -46,6 +49,26 @@ class PmInvoice extends Model
             'amount' => 'decimal:2',
             'amount_paid' => 'decimal:2',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('agent_workspace', function (Builder $query) {
+            $user = Auth::user();
+            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+                return;
+            }
+            if (! Schema::hasColumn('properties', 'agent_user_id')) {
+                return;
+            }
+
+            $query->whereIn('property_unit_id', function ($sub) use ($user) {
+                $sub->select('pu.id')
+                    ->from('property_units as pu')
+                    ->join('properties as p', 'p.id', '=', 'pu.property_id')
+                    ->where('p.agent_user_id', $user->id);
+            });
+        });
     }
 
     public function lease(): BelongsTo
@@ -93,5 +116,24 @@ class PmInvoice extends Model
             $this->status = self::STATUS_SENT;
         }
         $this->saveQuietly();
+    }
+
+    public static function nextInvoiceNumber(): string
+    {
+        $next = (int) (static::query()->withoutGlobalScopes()->max('id') ?? 0) + 1;
+
+        while (true) {
+            $candidate = 'INV-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+            $exists = static::query()
+                ->withoutGlobalScopes()
+                ->where('invoice_no', $candidate)
+                ->exists();
+
+            if (! $exists) {
+                return $candidate;
+            }
+
+            $next++;
+        }
     }
 }

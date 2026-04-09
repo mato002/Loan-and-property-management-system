@@ -12,12 +12,57 @@ use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class PmLeaseWebController extends Controller
 {
+    /**
+     * @param  array<int,array<string,mixed>>  $rows
+     * @return array<int,array{label:string,amount:string}>
+     */
+    private function normalizeAdditionalDeposits(array $rows): array
+    {
+        $normalized = [];
+        foreach ($rows as $row) {
+            $label = trim((string) ($row['label'] ?? ''));
+            $amountRaw = $row['amount'] ?? null;
+
+            if ($label === '' && ($amountRaw === null || $amountRaw === '')) {
+                continue;
+            }
+            if ($label === '') {
+                continue;
+            }
+
+            $amount = is_numeric($amountRaw) ? (float) $amountRaw : 0.0;
+            $normalized[] = [
+                'label' => $label,
+                'amount' => number_format(max(0, $amount), 2, '.', ''),
+            ];
+        }
+
+        return $normalized;
+    }
+
+    private function selectableTenants(?PmLease $lease = null)
+    {
+        return PmTenant::query()
+            ->where(function ($query) use ($lease) {
+                $query->whereDoesntHave('leases', function ($leaseQuery) {
+                    $leaseQuery->where('status', PmLease::STATUS_ACTIVE);
+                });
+
+                if ($lease && $lease->pm_tenant_id) {
+                    $query->orWhere('id', $lease->pm_tenant_id);
+                }
+            })
+            ->orderBy('name')
+            ->get();
+    }
+
     /**
      * @param  array<int,int|string>  $unitIds
      * @return array<int,int>
@@ -182,6 +227,7 @@ class PmLeaseWebController extends Controller
 
         $rows = $leases->map(function (PmLease $l) {
             $units = $l->units->map(fn ($u) => $u->property->name.'/'.$u->label)->implode(', ');
+            $tenantName = $l->pmTenant?->name ?? '—';
             $expenseType = match ((string) ($l->utility_expense_type ?? '')) {
                 'water' => 'Water',
                 'electricity' => 'Electricity',
@@ -204,7 +250,7 @@ class PmLeaseWebController extends Controller
             
             return [
                 '#'.$l->id,
-                $l->pmTenant->name,
+                $tenantName,
                 $units !== '' ? $units : '—',
                 $l->start_date->format('Y-m-d'),
                 $l->end_date?->format('Y-m-d') ?? 'Open-ended',
@@ -222,7 +268,7 @@ class PmLeaseWebController extends Controller
             'stats' => $stats,
             'columns' => ['Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent', 'Deposit held', 'Expense paid', 'Status', 'Actions'],
             'tableRows' => $rows,
-            'tenants' => PmTenant::query()->orderBy('name')->get(),
+            'tenants' => $this->selectableTenants(),
             'vacantUnits' => $vacantUnits,
             'vacantProperties' => $vacantUnits
                 ->pluck('property')
@@ -248,6 +294,9 @@ class PmLeaseWebController extends Controller
             'terms_summary' => ['nullable', 'string', 'max:5000'],
             'property_unit_ids' => ['nullable', 'array', 'max:1'],
             'property_unit_ids.*' => ['integer', 'exists:property_units,id'],
+            'additional_deposits' => ['nullable', 'array', 'max:20'],
+            'additional_deposits.*.label' => ['nullable', 'string', 'max:100'],
+            'additional_deposits.*.amount' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         DB::transaction(function () use ($data) {
@@ -269,6 +318,9 @@ class PmLeaseWebController extends Controller
                 'terms_summary' => ($data['terms_summary'] ?? '') !== ''
                     ? $data['terms_summary']
                     : PropertyPortalSetting::getValue('template_lease_text', null),
+                'additional_deposits' => Schema::hasColumn('pm_leases', 'additional_deposits')
+                    ? $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []))
+                    : null,
             ]);
 
             $lease->load('pmTenant');
@@ -319,7 +371,7 @@ class PmLeaseWebController extends Controller
 
         return view('property.agent.tenants.lease_edit', [
             'lease' => $lease,
-            'tenants' => PmTenant::query()->orderBy('name')->get(),
+            'tenants' => $this->selectableTenants($lease),
             'units' => $this->leaseAssignableUnits($lease)->get(),
             'vacantProperties' => $this->leaseAssignableUnits($lease)->get()
                 ->pluck('property')
@@ -347,6 +399,9 @@ class PmLeaseWebController extends Controller
             'terms_summary' => ['nullable', 'string', 'max:5000'],
             'property_unit_ids' => ['nullable', 'array', 'max:1'],
             'property_unit_ids.*' => ['integer', 'exists:property_units,id'],
+            'additional_deposits' => ['nullable', 'array', 'max:20'],
+            'additional_deposits.*.label' => ['nullable', 'string', 'max:100'],
+            'additional_deposits.*.amount' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         DB::transaction(function () use ($data, $lease) {
@@ -369,6 +424,9 @@ class PmLeaseWebController extends Controller
                 'terms_summary' => ($data['terms_summary'] ?? '') !== ''
                     ? $data['terms_summary']
                     : PropertyPortalSetting::getValue('template_lease_text', null),
+                'additional_deposits' => Schema::hasColumn('pm_leases', 'additional_deposits')
+                    ? $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []))
+                    : null,
             ]);
 
             $lease->units()->sync($unitIds);
@@ -423,9 +481,10 @@ class PmLeaseWebController extends Controller
         $mapped = $leases->map(function (PmLease $l) {
             $units = $l->units->map(fn ($u) => $u->property->name.'/'.$u->label)->implode(', ') ?: '—';
             $daysLeft = $l->end_date->isBefore(today()) ? 0 : (int) today()->diffInDays($l->end_date);
+            $tenantName = $l->pmTenant?->name ?? '—';
 
             $filterParts = [
-                mb_strtolower($l->pmTenant->name),
+                mb_strtolower($tenantName),
                 mb_strtolower($units),
                 (string) $daysLeft,
             ];
@@ -442,7 +501,7 @@ class PmLeaseWebController extends Controller
             return [
                 'filter' => implode(' ', $filterParts),
                 'cells' => [
-                    $l->pmTenant->name,
+                    $tenantName,
                     $units,
                     $l->end_date->format('Y-m-d'),
                     (string) max(0, $daysLeft),

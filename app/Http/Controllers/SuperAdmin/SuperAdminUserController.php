@@ -13,23 +13,80 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use App\Support\TabularExport;
 
 class SuperAdminUserController extends Controller
 {
     public function index(Request $request): View
     {
         $q = trim((string) $request->string('q'));
+        $role = trim((string) $request->query('role', ''));
+        if (! in_array($role, ['', 'agent', 'landlord', 'tenant', 'super_admin', 'none'], true)) {
+            $role = '';
+        }
+        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
 
         $users = User::query()
             ->when($q !== '', fn ($query) => $query->where(function ($qq) use ($q) {
                 $qq->where('name', 'like', "%{$q}%")
                     ->orWhere('email', 'like', "%{$q}%");
             }))
+            ->when($role !== '', function ($query) use ($role) {
+                if ($role === 'super_admin') {
+                    $query->where('is_super_admin', true);
+                    return;
+                }
+                if ($role === 'none') {
+                    $query->whereNull('property_portal_role');
+                    return;
+                }
+                $query->where('property_portal_role', $role);
+            })
             ->orderByDesc('id')
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
-        return view('superadmin.users.index', compact('users', 'q'));
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = User::query()
+                ->when($q !== '', fn ($query) => $query->where(function ($qq) use ($q) {
+                    $qq->where('name', 'like', "%{$q}%")
+                        ->orWhere('email', 'like', "%{$q}%");
+                }))
+                ->when($role !== '', function ($query) use ($role) {
+                    if ($role === 'super_admin') {
+                        $query->where('is_super_admin', true);
+                        return;
+                    }
+                    if ($role === 'none') {
+                        $query->whereNull('property_portal_role');
+                        return;
+                    }
+                    $query->where('property_portal_role', $role);
+                })
+                ->orderByDesc('id')
+                ->limit(5000)
+                ->get(['name', 'email', 'is_super_admin', 'property_portal_role', 'created_at']);
+
+            return TabularExport::stream(
+                'superadmin-users-'.now()->format('Ymd_His'),
+                ['Name', 'Email', 'Super admin', 'Property role', 'Created'],
+                function () use ($rows) {
+                    foreach ($rows as $u) {
+                        yield [
+                            (string) $u->name,
+                            (string) $u->email,
+                            (bool) $u->is_super_admin ? 'Yes' : 'No',
+                            (string) ($u->property_portal_role ?? '—'),
+                            optional($u->created_at)->format('Y-m-d H:i:s') ?? '',
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        return view('superadmin.users.index', compact('users', 'q', 'role', 'perPage'));
     }
 
     public function create(): View
@@ -55,6 +112,8 @@ class SuperAdminUserController extends Controller
             'property_portal_role' => $validated['property_portal_role'] ?? null,
             'email_verified_at' => now(),
         ]);
+
+        $this->applyDefaultPropertyAccessOnCreate($user, $request->user()?->id);
 
         return redirect()
             ->route('superadmin.users.edit', $user)
@@ -155,6 +214,45 @@ class SuperAdminUserController extends Controller
             ['user_id' => $userId, 'module' => $module],
             $payload,
         );
+    }
+
+    private function applyDefaultPropertyAccessOnCreate(User $user, ?int $approvedBy): void
+    {
+        $portalRole = (string) ($user->property_portal_role ?? '');
+        if ($portalRole === '') {
+            return;
+        }
+
+        if (Schema::hasTable('user_module_accesses')) {
+            $this->upsertModuleAccess($user->id, 'property', UserModuleAccess::STATUS_APPROVED, $approvedBy);
+        }
+
+        if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_user_role')) {
+            return;
+        }
+
+        $defaultRoleSlugByPortalRole = [
+            'agent' => 'property_manager',
+            'landlord' => 'landlord_portal_user',
+            'tenant' => 'tenant_portal_user',
+        ];
+
+        $defaultRole = null;
+        $expectedSlug = $defaultRoleSlugByPortalRole[$portalRole] ?? null;
+        if ($expectedSlug !== null) {
+            $defaultRole = PmRole::query()->where('slug', $expectedSlug)->first();
+        }
+
+        if (! $defaultRole) {
+            $defaultRole = PmRole::query()
+                ->where('portal_scope', $portalRole)
+                ->orderBy('name')
+                ->first();
+        }
+
+        if ($defaultRole) {
+            $user->pmRoles()->syncWithoutDetaching([$defaultRole->id]);
+        }
     }
 }
 

@@ -70,6 +70,15 @@ document.addEventListener('change', (e) => {
     applyPropertyTableFilters(el);
 });
 
+function initPropertyTableFilters(root = document) {
+    const controls = root.querySelectorAll?.('input[data-table-filter], select[data-table-filter]') ?? [];
+    controls.forEach((el) => applyPropertyTableFilters(el));
+}
+
+document.addEventListener('DOMContentLoaded', () => initPropertyTableFilters(document));
+document.addEventListener('turbo:load', () => initPropertyTableFilters(document));
+document.addEventListener('turbo:frame-load', (e) => initPropertyTableFilters(e.target));
+
 function initKenyaAddressAutocomplete(root = document) {
     const inputs = root.querySelectorAll?.('input[data-ke-address-autocomplete]') ?? [];
     inputs.forEach((input) => {

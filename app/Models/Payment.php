@@ -36,5 +36,10 @@ class Payment extends Model
     {
         return $this->belongsTo(PmTenant::class, 'tenant_id');
     }
+
+    public function pmPayment(): BelongsTo
+    {
+        return $this->belongsTo(PmPayment::class, 'pm_payment_id');
+    }
 }
 

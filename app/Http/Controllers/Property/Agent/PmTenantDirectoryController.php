@@ -156,7 +156,10 @@ class PmTenantDirectoryController extends Controller
                     $tenant->update($payload);
                     $updated++;
                 } else {
-                    PmTenant::query()->create($payload);
+                    PmTenant::query()->create([
+                        ...$payload,
+                        'agent_user_id' => (int) auth()->id(),
+                    ]);
                     $created++;
                 }
             } catch (\Throwable $e) {
@@ -283,6 +286,7 @@ class PmTenantDirectoryController extends Controller
 
         $tenant = PmTenant::query()->create([
             'user_id' => $user?->id,
+            'agent_user_id' => (int) $request->user()->id,
             'name' => $data['name'],
             'phone' => $data['phone'] ?? null,
             'email' => $createPortal ? Str::lower($data['email']) : ($data['email'] ?? null),
@@ -360,6 +364,7 @@ class PmTenantDirectoryController extends Controller
 
         $tenant = PmTenant::query()->create([
             'user_id' => null,
+            'agent_user_id' => (int) $request->user()->id,
             'name' => $data['name'],
             'phone' => $data['phone'] ?? null,
             'email' => isset($data['email']) && trim((string) $data['email']) !== '' ? Str::lower($data['email']) : null,

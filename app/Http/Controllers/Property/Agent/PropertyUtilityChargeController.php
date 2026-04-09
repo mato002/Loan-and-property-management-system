@@ -209,8 +209,7 @@ class PropertyUtilityChargeController extends Controller
                     continue;
                 }
 
-                $next = (int) (PmInvoice::query()->max('id') ?? 0) + 1 + $created;
-                $invoiceNo = 'INV-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+                $invoiceNo = PmInvoice::nextInvoiceNumber();
                 $amount = (float) $reading->amount;
 
                 $invoice = PmInvoice::query()->create([

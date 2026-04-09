@@ -328,7 +328,10 @@ class PmVendorWebController extends Controller
             'rating' => ['nullable', 'numeric', 'between:0,5'],
         ]);
 
-        $vendor = PmVendor::query()->create($data);
+        $vendor = PmVendor::query()->create([
+            ...$data,
+            'agent_user_id' => (int) $request->user()->id,
+        ]);
 
         $nextSteps = [
             'title' => 'Vendor saved',
@@ -376,6 +379,7 @@ class PmVendorWebController extends Controller
             ...$data,
             'status' => 'active',
             'rating' => null,
+            'agent_user_id' => (int) $request->user()->id,
         ]);
 
         return response()->json([
@@ -460,6 +464,7 @@ class PmVendorWebController extends Controller
     {
         $rfqs = PmPortalAction::query()
             ->where('action_key', 'create_vendor_rfq')
+            ->where('user_id', $request->user()->id)
             ->with('user')
             ->orderByDesc('id')
             ->limit(100)

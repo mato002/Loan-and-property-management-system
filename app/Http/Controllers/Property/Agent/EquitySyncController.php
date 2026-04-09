@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -522,7 +523,30 @@ class EquitySyncController extends Controller
 
         $percent = static fn (float $amount) => $allAmount > 0 ? round(($amount / $allAmount) * 100, 1) : 0.0;
 
-        $query = Payment::query()->with('tenant');
+        $query = Payment::query()->with(['tenant', 'pmPayment.tenant']);
+
+        $user = $request->user();
+        if ($user && ! ($user->is_super_admin ?? false) && (string) ($user->property_portal_role ?? '') === 'agent') {
+            $query->where(function (Builder $scope) use ($user) {
+                // Keep non-matched rows visible for reconciliation workflows.
+                $scope->where('status', '!=', 'matched');
+
+                if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+                    $scope->orWhereExists(function ($sub) use ($user) {
+                        $sub->selectRaw('1')
+                            ->from('pm_tenants as t')
+                            ->whereColumn('t.id', 'payments.tenant_id')
+                            ->where('t.agent_user_id', $user->id);
+                    })->orWhereExists(function ($sub) use ($user) {
+                        $sub->selectRaw('1')
+                            ->from('pm_payments as pp')
+                            ->join('pm_tenants as t', 't.id', '=', 'pp.pm_tenant_id')
+                            ->whereColumn('pp.id', 'payments.pm_payment_id')
+                            ->where('t.agent_user_id', $user->id);
+                    });
+                }
+            });
+        }
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->query('status'));
@@ -625,7 +649,49 @@ class EquitySyncController extends Controller
         }
 
         return view('property.agent.equity.all_payments', [
-            'items' => $query->paginate($perPage)->withQueryString(),
+            'items' => tap($query->paginate($perPage)->withQueryString(), function ($paginator) {
+                $paginator->setCollection(
+                    $paginator->getCollection()->map(function (Payment $item) {
+                        $resolvedTenant = $item->tenant ?? $item->pmPayment?->tenant;
+                        $resolvedTenantRow = null;
+
+                        if (! $resolvedTenant && (int) ($item->tenant_id ?? 0) > 0) {
+                            $resolvedTenantRow = DB::table('pm_tenants')
+                                ->where('id', (int) $item->tenant_id)
+                                ->select(['id', 'name', 'account_number'])
+                                ->first();
+                        }
+
+                        if (! $resolvedTenant && ! $resolvedTenantRow && strtolower((string) $item->status) === 'matched') {
+                            $phone = preg_replace('/\D+/', '', (string) ($item->phone ?? '')) ?? '';
+                            $account = strtoupper(trim((string) ($item->account_number ?? '')));
+
+                            $fallback = DB::table('pm_tenants')
+                                ->when($phone !== '', function ($q) use ($phone) {
+                                    $q->whereRaw('REPLACE(REPLACE(REPLACE(phone, " ", ""), "-", ""), "+", "") = ?', [$phone]);
+                                    if (str_starts_with($phone, '254') && strlen($phone) >= 12) {
+                                        $q->orWhereRaw('REPLACE(REPLACE(REPLACE(phone, " ", ""), "-", ""), "+", "") = ?', ['0'.substr($phone, 3)]);
+                                    } elseif (str_starts_with($phone, '0') && strlen($phone) >= 10) {
+                                        $q->orWhereRaw('REPLACE(REPLACE(REPLACE(phone, " ", ""), "-", ""), "+", "") = ?', ['254'.substr($phone, 1)]);
+                                    }
+                                })
+                                ->when($account !== '', fn ($q) => $q->orWhereRaw('UPPER(REPLACE(account_number, " ", "")) = ?', [str_replace(' ', '', $account)]))
+                                ->orderBy('id')
+                                ->select(['id', 'name', 'account_number'])
+                                ->first();
+
+                            if ($fallback) {
+                                $resolvedTenantRow = $fallback;
+                            }
+                        }
+
+                        $item->setAttribute('resolved_tenant_name', $resolvedTenantRow->name ?? $resolvedTenant?->name);
+                        $item->setAttribute('resolved_tenant_account', $resolvedTenantRow->account_number ?? $resolvedTenant?->account_number);
+
+                        return $item;
+                    })
+                );
+            }),
             'tenants' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
             'sourceStats' => [
                 'equity' => [

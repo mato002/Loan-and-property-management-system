@@ -213,29 +213,28 @@ class PropertyReportsController extends Controller
         $stamp = now()->format('Ymd_His');
 
         if ($format === 'pdf') {
-            $filename = 'tenant-statements-'.$stamp.'.pdf';
-
-            return response()->streamDownload(function () use ($columns, $rows) {
-                echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Tenant statements</title>';
-                echo '<style>body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:12px;margin:24px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;}th{background:#f8fafc;font-weight:600;font-size:11px;text-transform:uppercase;}</style>';
-                echo '</head><body>';
-                echo '<h1>Tenant Statements</h1>';
-                echo '<table><thead><tr>';
-                foreach ($columns as $col) {
-                    echo '<th>'.e($col).'</th>';
-                }
-                echo '</tr></thead><tbody>';
-                foreach ($rows as $row) {
-                    echo '<tr>';
-                    foreach ($row as $cell) {
-                        echo '<td>'.e((string) $cell).'</td>';
+            $totals = [
+                'Total invoiced (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[6] ?? 0), $rows)), 2),
+                'Total collected (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[7] ?? 0), $rows)), 2),
+                'Total pending (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[8] ?? 0), $rows)), 2),
+                'Total outstanding (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[9] ?? 0), $rows)), 2),
+            ];
+            return TabularExport::stream(
+                'tenant-statements-'.$stamp,
+                $columns,
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield $row;
                     }
-                    echo '</tr>';
-                }
-                echo '</tbody></table></body></html>';
-            }, $filename, [
-                'Content-Type' => 'text/html; charset=UTF-8',
-            ]);
+                },
+                TabularExport::FORMAT_PDF,
+                [
+                    'filename_base' => 'tenant-statements-'.$stamp,
+                    'title' => 'Tenant Statements',
+                    'subtitle' => 'Allocation and collection summary',
+                    'summary' => $totals,
+                ]
+            );
         }
 
         $delimiter = $format === 'xls' ? "\t" : ',';
@@ -538,29 +537,29 @@ class PropertyReportsController extends Controller
         $stamp = now()->format('Ymd_His');
 
         if ($format === 'pdf') {
-            $filename = 'landlord-statements-'.$stamp.'.pdf';
-
-            return response()->streamDownload(function () use ($columns, $rows) {
-                echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Landlord statements</title>';
-                echo '<style>body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:12px;margin:24px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;}th{background:#f8fafc;font-weight:600;font-size:11px;text-transform:uppercase;}</style>';
-                echo '</head><body>';
-                echo '<h1>Landlord Statements</h1>';
-                echo '<table><thead><tr>';
-                foreach ($columns as $col) {
-                    echo '<th>'.e($col).'</th>';
-                }
-                echo '</tr></thead><tbody>';
-                foreach ($rows as $row) {
-                    echo '<tr>';
-                    foreach ($row as $cell) {
-                        echo '<td>'.e((string) $cell).'</td>';
+            $totals = [
+                'Total income collected (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[2] ?? 0), $rows)), 2),
+                'Total commission (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[3] ?? 0), $rows)), 2),
+                'Total gross payable (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[4] ?? 0), $rows)), 2),
+                'Total expense share (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[5] ?? 0), $rows)), 2),
+                'Total net payable (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[6] ?? 0), $rows)), 2),
+            ];
+            return TabularExport::stream(
+                'landlord-statements-'.$stamp,
+                $columns,
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield $row;
                     }
-                    echo '</tr>';
-                }
-                echo '</tbody></table></body></html>';
-            }, $filename, [
-                'Content-Type' => 'text/html; charset=UTF-8',
-            ]);
+                },
+                TabularExport::FORMAT_PDF,
+                [
+                    'filename_base' => 'landlord-statements-'.$stamp,
+                    'title' => 'Landlord Statements',
+                    'subtitle' => 'Rent, commission, expenses and net payable',
+                    'summary' => $totals,
+                ]
+            );
         }
 
         $delimiter = $format === 'xls' ? "\t" : ',';
@@ -592,33 +591,29 @@ class PropertyReportsController extends Controller
         $safeName = preg_replace('/[^a-z0-9\-]+/i', '-', strtolower($landlordName)) ?: 'landlord';
 
         if ($format === 'pdf') {
-            $filename = 'landlord-expenses-'.$safeName.'-'.$stamp.'.pdf';
-
-            return response()->streamDownload(function () use ($columns, $rows, $landlordName) {
-                echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Landlord expense breakdown</title>';
-                echo '<style>body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:12px;margin:24px;}table{width:100%;border-collapse:collapse;margin-top:12px;}th,td{border:1px solid #e2e8f0;padding:6px 8px;text-align:left;}th{background:#f8fafc;font-weight:600;font-size:11px;text-transform:uppercase;}</style>';
-                echo '</head><body>';
-                echo '<h1>Landlord Expense Breakdown</h1>';
-                echo '<p><strong>Landlord:</strong> '.e($landlordName).'</p>';
-                echo '<table><thead><tr>';
-                foreach ($columns as $col) {
-                    echo '<th>'.e($col).'</th>';
-                }
-                echo '</tr></thead><tbody>';
-                foreach ($rows as $row) {
-                    echo '<tr>';
-                    foreach ($row as $cell) {
-                        echo '<td>'.e((string) $cell).'</td>';
+            $totals = [
+                'Landlord' => $landlordName,
+                'Total utilities (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[2] ?? 0), $rows)), 2),
+                'Total maintenance (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[3] ?? 0), $rows)), 2),
+                'Total other (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[4] ?? 0), $rows)), 2),
+                'Total owner expense share (KES)' => number_format(array_sum(array_map(static fn ($r) => (float) ($r[6] ?? 0), $rows)), 2),
+            ];
+            return TabularExport::stream(
+                'landlord-expenses-'.$safeName.'-'.$stamp,
+                $columns,
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield $row;
                     }
-                    echo '</tr>';
-                }
-                if (count($rows) === 0) {
-                    echo '<tr><td colspan="4">No expense rows in this period.</td></tr>';
-                }
-                echo '</tbody></table></body></html>';
-            }, $filename, [
-                'Content-Type' => 'text/html; charset=UTF-8',
-            ]);
+                },
+                TabularExport::FORMAT_PDF,
+                [
+                    'filename_base' => 'landlord-expenses-'.$safeName.'-'.$stamp,
+                    'title' => 'Landlord Expense Breakdown',
+                    'subtitle' => 'Detailed property expense allocation',
+                    'summary' => $totals,
+                ]
+            );
         }
 
         $filename = 'landlord-expenses-'.$safeName.'-'.$stamp.'.csv';

@@ -52,6 +52,11 @@
                     <datalist id="ke-address-suggestions"></datalist>
                     @error('address_line')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Commission %</label>
+                    <input type="number" name="commission_percent" value="{{ old('commission_percent', $propertyCommissionPercent ?? null) }}" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional (uses default if empty)" />
+                    @error('commission_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save changes</button>
             </form>
 

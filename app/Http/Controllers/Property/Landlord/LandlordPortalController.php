@@ -895,12 +895,22 @@ class LandlordPortalController extends Controller
             $month = sprintf('%04d-%02d', $year, $monthNum);
         }
 
-        $propIds = $this->landlordPropertyIds($user);
+        $allowedProperties = $user->landlordProperties()
+            ->with(['units' => fn ($q) => $q->orderBy('label')])
+            ->orderBy('name')
+            ->get();
+        $propIds = $allowedProperties->pluck('id');
         $selectedPropertyId = $request->integer('property_id');
         if ($selectedPropertyId > 0 && $propIds->contains($selectedPropertyId)) {
             $propIds = collect([$selectedPropertyId]);
         }
         $unitIds = PropertyUnit::query()->whereIn('property_id', $propIds)->pluck('id');
+        $selectedUnitId = $request->integer('unit_id');
+        if ($selectedUnitId > 0 && $unitIds->contains($selectedUnitId)) {
+            $unitIds = collect([$selectedUnitId]);
+        } else {
+            $selectedUnitId = null;
+        }
         $invoices = $unitIds->isNotEmpty()
             ? PmInvoice::query()->with('unit.property')
                 ->whereIn('property_unit_id', $unitIds)
@@ -946,6 +956,27 @@ class LandlordPortalController extends Controller
         return view('property.landlord.reports.statement', [
             'month' => $month,
             'selectedPropertyId' => $selectedPropertyId > 0 ? $selectedPropertyId : null,
+            'selectedUnitId' => $selectedUnitId,
+            'filterProperties' => $allowedProperties,
+            'filterUnits' => ($selectedPropertyId > 0
+                ? $allowedProperties->firstWhere('id', $selectedPropertyId)?->units?->values() ?? collect()
+                : $allowedProperties->map(function ($property) {
+                    return $property->units->map(function ($unit) use ($property) {
+                        $unit->setAttribute('filter_property_name', $property->name);
+
+                        return $unit;
+                    });
+                })->flatten(1)->sortBy('label')->values()
+            )->map(function ($unit) use ($selectedPropertyId, $allowedProperties) {
+                if (! $unit->getAttribute('filter_property_name')) {
+                    $propertyName = $selectedPropertyId > 0
+                        ? $allowedProperties->firstWhere('id', $selectedPropertyId)?->name
+                        : null;
+                    $unit->setAttribute('filter_property_name', $propertyName);
+                }
+
+                return $unit;
+            }),
             'openingBalance' => PropertyMoney::kes($opening),
             'closingBalance' => PropertyMoney::kes($closing),
             'incomeBilled' => PropertyMoney::kes((float) $invoices->sum('amount')),
@@ -967,7 +998,15 @@ class LandlordPortalController extends Controller
         $monthNum = (int) $monthNum;
 
         $propIds = $this->landlordPropertyIds($user);
+        $selectedPropertyId = $request->integer('property_id');
+        if ($selectedPropertyId > 0 && $propIds->contains($selectedPropertyId)) {
+            $propIds = collect([$selectedPropertyId]);
+        }
         $unitIds = PropertyUnit::query()->whereIn('property_id', $propIds)->pluck('id');
+        $selectedUnitId = $request->integer('unit_id');
+        if ($selectedUnitId > 0 && $unitIds->contains($selectedUnitId)) {
+            $unitIds = collect([$selectedUnitId]);
+        }
         $invoices = $unitIds->isNotEmpty()
             ? PmInvoice::query()->with('unit.property')
                 ->whereIn('property_unit_id', $unitIds)

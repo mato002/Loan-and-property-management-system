@@ -13,19 +13,39 @@
     </div>
 
     <form method="get" class="mb-6">
-        <div class="flex flex-col sm:flex-row gap-3">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <input
                 type="text"
                 name="q"
                 value="{{ $q }}"
                 placeholder="Search name or email…"
-                class="w-full sm:max-w-md rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 lg:col-span-2"
             />
-            <button class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                Search
-            </button>
+            <select name="role" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <option value="">All roles</option>
+                <option value="super_admin" @selected(($role ?? '') === 'super_admin')>Super Admin</option>
+                <option value="agent" @selected(($role ?? '') === 'agent')>Agent</option>
+                <option value="landlord" @selected(($role ?? '') === 'landlord')>Landlord</option>
+                <option value="tenant" @selected(($role ?? '') === 'tenant')>Tenant</option>
+                <option value="none" @selected(($role ?? '') === 'none')>No property role</option>
+            </select>
+            <select name="per_page" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                @foreach ([10, 20, 50, 100, 200] as $size)
+                    <option value="{{ $size }}" @selected((int) ($perPage ?? 20) === $size)>{{ $size }} / page</option>
+                @endforeach
+            </select>
+            <div class="flex items-center gap-2">
+                <button class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Apply</button>
+                <a href="{{ route('superadmin.users.index') }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
+            </div>
         </div>
     </form>
+
+    <div class="mb-4 flex items-center gap-2">
+        <a href="{{ route('superadmin.users.index', array_merge(request()->query(), ['export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+        <a href="{{ route('superadmin.users.index', array_merge(request()->query(), ['export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+        <a href="{{ route('superadmin.users.index', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+    </div>
 
     <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <table class="w-full text-sm">

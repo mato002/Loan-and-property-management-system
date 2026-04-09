@@ -22,6 +22,7 @@ use App\Http\Controllers\Property\PropertyPaymentWebhookController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicController;
 use App\Http\Controllers\Auth\ChooseModuleController;
+use App\Http\Controllers\SuperAdmin\SuperAdminConsoleController;
 use App\Http\Controllers\SuperAdmin\SuperAdminUserController;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Schema;
@@ -161,6 +162,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('choose_module.activate');
 
     Route::middleware('superadmin')->prefix('superadmin')->name('superadmin.')->group(function () {
+        Route::get('/', [SuperAdminConsoleController::class, 'dashboard'])->name('dashboard');
+        Route::get('/access-approvals', [SuperAdminConsoleController::class, 'accessApprovals'])->name('access_approvals');
+        Route::patch('/access-approvals/{access}', [SuperAdminConsoleController::class, 'updateAccessApproval'])->name('access_approvals.update');
+        Route::post('/access-approvals/bulk', [SuperAdminConsoleController::class, 'bulkAccessApprovals'])->name('access_approvals.bulk');
+        Route::get('/roles-permissions', [SuperAdminConsoleController::class, 'rolesPermissions'])->name('roles_permissions');
+        Route::get('/agent-workspaces', [SuperAdminConsoleController::class, 'agentWorkspaces'])->name('agent_workspaces');
+        Route::get('/audit-trail', [SuperAdminConsoleController::class, 'auditTrail'])->name('audit_trail');
+
         Route::get('/users', [SuperAdminUserController::class, 'index'])->name('users.index');
         Route::get('/users/create', [SuperAdminUserController::class, 'create'])->name('users.create');
         Route::post('/users', [SuperAdminUserController::class, 'store'])->name('users.store');

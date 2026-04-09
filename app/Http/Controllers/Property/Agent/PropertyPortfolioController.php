@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -39,10 +40,7 @@ class PropertyPortfolioController extends Controller
         if (! $actor || (! $actor->hasPmPermission('users.impersonate'))) {
             abort(403);
         }
-
-        if ((string) $landlord->property_portal_role !== 'landlord') {
-            return back()->with('error', 'Selected user is not a landlord portal account.');
-        }
+        $this->ensureLandlordVisibleForActor($actor, $landlord);
 
         // If not already impersonating, store who initiated it.
         if (! $request->session()->has(self::IMPERSONATOR_SESSION_KEY)) {
@@ -188,6 +186,8 @@ class PropertyPortfolioController extends Controller
             ];
         })->all();
 
+        $actor = $request->user();
+
         $landlordLinks = DB::table('property_landlord')
             ->join('properties', 'properties.id', '=', 'property_landlord.property_id')
             ->join('users', 'users.id', '=', 'property_landlord.user_id')
@@ -199,7 +199,11 @@ class PropertyPortfolioController extends Controller
                 'users.name as user_name',
                 'users.email as user_email',
                 'property_landlord.ownership_percent',
-            ])
+            ]);
+        if ($actor && $this->isAgentActor($actor)) {
+            $landlordLinks->where('properties.agent_user_id', (int) $actor->id);
+        }
+        $landlordLinks = $landlordLinks
             ->orderBy('properties.name')
             ->orderBy('users.name')
             ->get();
@@ -213,7 +217,7 @@ class PropertyPortfolioController extends Controller
             'stats' => $stats,
             'columns' => ['Name', 'Code', 'Address', 'Units', 'City', 'Landlord(s)', 'Status', 'Actions'],
             'tableRows' => $rows,
-            'landlordUsers' => User::query()->where('property_portal_role', 'landlord')->orderBy('name')->get(),
+            'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
             'properties' => $portfolio,
             'linkableProperties' => $linkableProperties,
             'landlordLinks' => $landlordLinks,
@@ -626,7 +630,8 @@ class PropertyPortfolioController extends Controller
 
         return view('property.agent.properties.edit', [
             'property' => $property,
-            'landlordUsers' => User::query()->where('property_portal_role', 'landlord')->orderBy('name')->get(),
+            'propertyCommissionPercent' => $this->propertyCommissionPercent((int) $property->id),
+            'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
         ]);
     }
 
@@ -637,9 +642,13 @@ class PropertyPortfolioController extends Controller
             'code' => ['nullable', 'string', 'max:64', 'unique:properties,code,'.$property->id],
             'address_line' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:128'],
+            'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
+        $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
+        unset($data['commission_percent']);
 
         $property->update($data);
+        $this->setPropertyCommissionOverride((int) $property->id, $commissionPercent);
 
         return back()->with('success', 'Property updated.');
     }
@@ -931,8 +940,7 @@ class PropertyPortfolioController extends Controller
             'share_level' => (string) $request->query('share_level', 'all'),
         ];
 
-        $landlords = User::query()
-            ->where('property_portal_role', 'landlord')
+        $landlords = $this->landlordUsersQueryForActor($request->user())
             ->with(['landlordProperties' => fn ($q) => $q->orderBy('name')])
             ->orderBy('name')
             ->get();
@@ -1275,7 +1283,7 @@ class PropertyPortfolioController extends Controller
 
     public function landlordsShow(Request $request, User $landlord): View|StreamedResponse
     {
-        abort_unless($landlord->property_portal_role === 'landlord', 404);
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
 
         $month = (string) $request->query('month', '');
         $fy = (int) $request->query('fy', now()->year);
@@ -1315,7 +1323,7 @@ class PropertyPortfolioController extends Controller
 
     public function landlordsStatement(Request $request, User $landlord): View
     {
-        abort_unless($landlord->property_portal_role === 'landlord', 404);
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
 
         $month = (string) $request->query('month', '');
         $fy = (int) $request->query('fy', now()->year);
@@ -1344,6 +1352,9 @@ class PropertyPortfolioController extends Controller
             'password' => Hash::make($plainPassword),
             'property_portal_role' => 'landlord',
         ]);
+        if ($this->isAgentActor($request->user()) && Schema::hasColumn('users', 'agent_user_id')) {
+            $landlord->forceFill(['agent_user_id' => (int) $request->user()->id])->save();
+        }
 
         if (! empty($data['property_id'])) {
             $property = Property::query()->findOrFail((int) $data['property_id']);
@@ -1424,6 +1435,9 @@ class PropertyPortfolioController extends Controller
             'password' => Hash::make($plainPassword),
             'property_portal_role' => 'landlord',
         ]);
+        if ($this->isAgentActor($request->user()) && Schema::hasColumn('users', 'agent_user_id')) {
+            $landlord->forceFill(['agent_user_id' => (int) $request->user()->id])->save();
+        }
 
         // Email sending is best-effort; UI will still proceed even if mail isn't configured.
         $mailOk = true;
@@ -1459,13 +1473,18 @@ class PropertyPortfolioController extends Controller
             'code' => ['nullable', 'string', 'max:64', 'unique:properties,code'],
             'address_line' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:128'],
+            'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
+        $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
+        unset($data['commission_percent']);
 
         if (!isset($data['code']) || trim((string) $data['code']) === '') {
             $data['code'] = $this->generateUniquePropertyCode($data['name']);
         }
+        $data['agent_user_id'] = (int) $request->user()->id;
 
         $property = Property::query()->create($data);
+        $this->setPropertyCommissionOverride((int) $property->id, $commissionPercent);
 
         return back()
             ->with('success', 'Property saved.')
@@ -1505,13 +1524,18 @@ class PropertyPortfolioController extends Controller
             'code' => ['nullable', 'string', 'max:64', 'unique:properties,code'],
             'address_line' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:128'],
+            'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
+        $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
+        unset($data['commission_percent']);
 
         if (!isset($data['code']) || trim((string) $data['code']) === '') {
             $data['code'] = $this->generateUniquePropertyCode($data['name']);
         }
+        $data['agent_user_id'] = (int) $request->user()->id;
 
         $property = Property::query()->create($data);
+        $this->setPropertyCommissionOverride((int) $property->id, $commissionPercent);
 
         return response()->json([
             'ok' => true,
@@ -1660,6 +1684,95 @@ class PropertyPortfolioController extends Controller
             'unitTypes' => PropertyUnit::typeOptions(),
             'filters' => $filters,
         ]);
+    }
+
+    private function propertyCommissionPercent(int $propertyId): float
+    {
+        $defaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
+        $defaultPct = is_numeric($defaultRaw) ? max(0.0, (float) $defaultRaw) : 10.0;
+
+        $overridesRaw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+        $overrides = json_decode($overridesRaw, true);
+        $overrides = is_array($overrides) ? $overrides : [];
+
+        $value = $overrides[(string) $propertyId] ?? null;
+        if (! is_numeric($value)) {
+            return $defaultPct;
+        }
+
+        return max(0.0, (float) $value);
+    }
+
+    private function setPropertyCommissionOverride(int $propertyId, ?float $percent): void
+    {
+        $raw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+        $overrides = json_decode($raw, true);
+        $overrides = is_array($overrides) ? $overrides : [];
+
+        if ($percent === null) {
+            unset($overrides[(string) $propertyId]);
+        } else {
+            $overrides[(string) $propertyId] = max(0.0, round($percent, 2));
+        }
+
+        PropertyPortalSetting::setValue(
+            'commission_property_overrides_json',
+            json_encode($overrides, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+    }
+
+    private function isAgentActor(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return ! (bool) ($user->is_super_admin ?? false)
+            && (string) ($user->property_portal_role ?? '') === 'agent';
+    }
+
+    private function landlordUsersQueryForActor(?User $actor)
+    {
+        $query = User::query()->where('property_portal_role', 'landlord');
+        if (! $this->isAgentActor($actor)) {
+            return $query;
+        }
+
+        $agentId = (int) $actor->id;
+        if (Schema::hasColumn('users', 'agent_user_id')) {
+            return $query->where('agent_user_id', $agentId);
+        }
+
+        return $query->whereExists(function ($sub) use ($agentId) {
+            $sub->selectRaw('1')
+                ->from('property_landlord as pl')
+                ->join('properties as p', 'p.id', '=', 'pl.property_id')
+                ->whereColumn('pl.user_id', 'users.id')
+                ->where('p.agent_user_id', $agentId);
+        });
+    }
+
+    private function ensureLandlordVisibleForActor(?User $actor, User $landlord): void
+    {
+        if ((string) $landlord->property_portal_role !== 'landlord') {
+            abort(404);
+        }
+        if (! $this->isAgentActor($actor)) {
+            return;
+        }
+
+        $agentId = (int) $actor->id;
+        if (Schema::hasColumn('users', 'agent_user_id')) {
+            abort_unless((int) ($landlord->agent_user_id ?? 0) === $agentId, 404);
+            return;
+        }
+
+        $visible = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id')
+            ->where('pl.user_id', $landlord->id)
+            ->where('p.agent_user_id', $agentId)
+            ->exists();
+        abort_unless($visible, 404);
     }
 
     public function unitListExport(Request $request)
@@ -2170,6 +2283,15 @@ class PropertyPortfolioController extends Controller
             return redirect()
                 ->route('property.properties.list')
                 ->withErrors(['property_id' => __('This property is already linked to a landlord.')])
+                ->withInput();
+        }
+        $landlordAllowed = $this->landlordUsersQueryForActor($request->user())
+            ->whereKey((int) $data['user_id'])
+            ->exists();
+        if (! $landlordAllowed) {
+            return redirect()
+                ->route('property.properties.edit', $property->id)
+                ->withErrors(['user_id' => __('You can only link landlord accounts in your workspace.')])
                 ->withInput();
         }
         $pct = (float) ($data['ownership_percent'] ?? 100);

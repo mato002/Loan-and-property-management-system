@@ -60,8 +60,7 @@ class PmInvoiceController extends Controller
             'billing_period' => ['nullable', 'date_format:Y-m'],
         ]);
 
-        $next = (int) (PmInvoice::query()->max('id') ?? 0) + 1;
-        $invoiceNo = 'INV-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+        $invoiceNo = PmInvoice::nextInvoiceNumber();
 
         $invoice = PmInvoice::query()->create([
             ...$data,

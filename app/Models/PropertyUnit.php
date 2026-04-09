@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Schema;
 
 class PropertyUnit extends Model
 {
@@ -45,6 +47,25 @@ class PropertyUnit extends Model
             'vacant_since' => 'date',
             'public_listing_published' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('agent_workspace', function (Builder $query) {
+            $user = Auth::user();
+            if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
+                return;
+            }
+            if (! Schema::hasColumn('properties', 'agent_user_id')) {
+                return;
+            }
+
+            $query->whereIn('property_id', function ($sub) use ($user) {
+                $sub->select('id')
+                    ->from('properties')
+                    ->where('agent_user_id', $user->id);
+            });
+        });
     }
 
     /**

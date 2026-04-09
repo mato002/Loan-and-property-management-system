@@ -163,6 +163,13 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     @forelse ($items as $item)
+                        @php
+                            $resolvedTenant = $item->tenant ?? $item->pmPayment?->tenant;
+                            $isMatched = strtolower((string) ($item->status ?? '')) === 'matched';
+                            $displayTenantName = $item->resolved_tenant_name ?? $resolvedTenant?->name ?? '—';
+                            $displayAccount = $item->account_number
+                                ?: ($isMatched ? (($item->resolved_tenant_account ?? $resolvedTenant?->account_number) ?? '—') : '—');
+                        @endphp
                         <tr>
                             <td class="px-4 py-3">{{ optional($item->transaction_date)->format('Y-m-d H:i') }}</td>
                             <td class="px-4 py-3">{{ $item->transaction_id }}</td>
@@ -175,9 +182,9 @@
                                     <span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">Manual / Legacy</span>
                                 @endif
                             </td>
-                            <td class="px-4 py-3">{{ $item->tenant?->name ?? '—' }}</td>
+                            <td class="px-4 py-3">{{ $displayTenantName }}</td>
                             <td class="px-4 py-3 text-right">{{ number_format((float) $item->amount, 2) }}</td>
-                            <td class="px-4 py-3">{{ $item->account_number ?: '—' }}</td>
+                            <td class="px-4 py-3">{{ $displayAccount }}</td>
                             <td class="px-4 py-3">{{ $item->phone ?: '—' }}</td>
                             <td class="px-4 py-3">{{ ucfirst($item->status) }}</td>
                         </tr>

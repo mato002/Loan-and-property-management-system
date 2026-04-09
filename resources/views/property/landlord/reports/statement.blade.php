@@ -5,17 +5,52 @@
         title="Monthly statement"
         subtitle="Owner statement pack with opening/closing balances, invoice performance, and maintenance spend."
     >
-        <form method="get" class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-4 flex flex-wrap items-end gap-3">
+        <form method="get" id="statement-filters" class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-4 flex flex-wrap items-end gap-3">
             <div>
                 <label class="block text-xs font-medium text-slate-500 mb-1">Statement month</label>
                 <input type="month" name="month" value="{{ $month }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
             </div>
-            @if (!empty($selectedPropertyId))
-                <input type="hidden" name="property_id" value="{{ $selectedPropertyId }}" />
-            @endif
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Property</label>
+                <select name="property_id" id="statement-property" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm min-w-[200px]">
+                    <option value="">All properties</option>
+                    @foreach($filterProperties as $property)
+                        <option value="{{ $property->id }}" @selected((int)($selectedPropertyId ?? 0) === (int)$property->id)>{{ $property->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-500 mb-1">Unit</label>
+                <select name="unit_id" id="statement-unit" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm min-w-[220px]">
+                    <option value="">All units</option>
+                    @foreach($filterUnits as $unit)
+                        <option value="{{ $unit->id }}" @selected((int)($selectedUnitId ?? 0) === (int)$unit->id)>
+                            {{ $unit->filter_property_name ?? 'Property' }} / {{ $unit->label }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
             <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Apply</button>
-            <a href="{{ route('property.landlord.reports.statement.export', array_filter(['month' => $month, 'property_id' => $selectedPropertyId ?? null])) }}" data-turbo="false" class="rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60">Download CSV</a>
+            <a href="{{ route('property.landlord.reports.statement.export', array_filter(['month' => $month, 'property_id' => $selectedPropertyId ?? null, 'unit_id' => $selectedUnitId ?? null])) }}" data-turbo="false" class="rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60">Download CSV</a>
         </form>
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const form = document.getElementById('statement-filters');
+                const propertySelect = document.getElementById('statement-property');
+                const unitSelect = document.getElementById('statement-unit');
+
+                if (!form || !propertySelect || !unitSelect) return;
+
+                propertySelect.addEventListener('change', function () {
+                    unitSelect.value = '';
+                    form.submit();
+                });
+
+                unitSelect.addEventListener('change', function () {
+                    form.submit();
+                });
+            });
+        </script>
 
         <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4"><p class="text-xs text-slate-500">Opening balance</p><p class="text-lg font-semibold">{{ $openingBalance }}</p></div>

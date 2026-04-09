@@ -72,8 +72,7 @@ class GenerateMonthlyRentInvoices extends Command
                 }
 
                 DB::transaction(function () use ($lease, $unit, $issueDate, $dueDate, $perUnitAmount, &$created) {
-                    $next = (int) (PmInvoice::query()->max('id') ?? 0) + 1;
-                    $invoiceNo = 'INV-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+                    $invoiceNo = PmInvoice::nextInvoiceNumber();
 
                     $inv = PmInvoice::query()->create([
                         'pm_lease_id' => $lease->id,
