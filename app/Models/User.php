@@ -148,6 +148,47 @@ class User extends Authenticatable
         return $this->pmPermissions()->where('key', $permissionKey)->exists();
     }
 
+    public function agentSubscription(): ?AgentSubscription
+    {
+        if (! Schema::hasTable('agent_subscriptions') || $this->property_portal_role !== 'agent') {
+            return null;
+        }
+
+        return AgentSubscription::getActiveSubscriptionForUser($this->id);
+    }
+
+    public function hasActiveSubscription(): bool
+    {
+        return $this->agentSubscription() !== null;
+    }
+
+    public function subscriptionStatus(): string
+    {
+        $subscription = $this->agentSubscription();
+        
+        if (!$subscription) {
+            return 'none';
+        }
+
+        if ($subscription->isExpired()) {
+            return 'expired';
+        }
+
+        if ($subscription->status === AgentSubscription::STATUS_SUSPENDED) {
+            return 'suspended';
+        }
+
+        if (!$subscription->price_paid || $subscription->payment_method === null) {
+            return 'payment_pending';
+        }
+
+        if ($subscription->ends_at && $subscription->ends_at->diffInDays(now()) <= 7) {
+            return 'expiring';
+        }
+
+        return 'active';
+    }
+
     /**
      * Get the attributes that should be cast.
      *

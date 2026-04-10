@@ -7,6 +7,7 @@
         <p class="mt-1 text-sm text-slate-600">Ownership footprint per agent account.</p>
     </div>
 
+    {{-- SEARCH FORM --}}
     <form method="get" class="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         <input
             type="text"
@@ -26,17 +27,19 @@
             @endforeach
         </select>
         <div class="flex items-center gap-2">
-            <button class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Apply</button>
+            <button type="submit" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Apply</button>
             <a href="{{ route('superadmin.agent_workspaces') }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
         </div>
-    </div>
+    </form> {{-- FIXED: Changed from </div> to </form> --}}
 
+    {{-- EXPORT BUTTONS --}}
     <div class="mb-4 flex items-center gap-2">
         <a href="{{ route('superadmin.agent_workspaces', array_merge(request()->query(), ['export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
         <a href="{{ route('superadmin.agent_workspaces', array_merge(request()->query(), ['export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
         <a href="{{ route('superadmin.agent_workspaces', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
-    </form>
+    </div> {{-- FIXED: Added closing </div> and removed stray </form> --}}
 
+    {{-- DATA TABLE --}}
     <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <table class="w-full text-sm">
             <thead class="bg-slate-50 text-slate-600">
@@ -62,8 +65,8 @@
             </tbody>
         </table>
     </div>
+
     <div class="mt-6">
         {{ $agents->links() }}
     </div>
 @endsection
-

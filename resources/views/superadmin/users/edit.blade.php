@@ -7,7 +7,7 @@
             <h1 class="text-2xl font-black tracking-tight text-slate-900">Manage user</h1>
             <p class="mt-1 text-sm text-slate-600">{{ $user->name }} · {{ $user->email }}</p>
         </div>
-        <a href="{{ route('superadmin.users.index') }}" class="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+        <a href="{{ route('superadmin.users.index') }}" class="w-full lg:w-auto text-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
             Back to users
         </a>
     </div>

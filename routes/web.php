@@ -154,12 +154,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
         return redirect()->route('loan.dashboard');
     })->name('dashboard');
 
-    Route::get('/choose-module', [ChooseModuleController::class, 'show'])
-        ->name('choose_module');
+    Route::get('/choose-module', [ChooseModuleController::class, 'index'])->name('choose_module');
+    Route::post('/choose-module/activate', [ChooseModuleController::class, 'activate'])->name('choose_module.activate');
 
-    Route::post('/choose-module/{module}', [ChooseModuleController::class, 'activate'])
-        ->whereIn('module', ['property', 'loan'])
-        ->name('choose_module.activate');
+    Route::get('/subscription/required', function () {
+        return view('subscription.none');
+    })->name('subscription.required');
+
+    Route::get('/subscription/expired', function () {
+        return view('subscription.expired');
+    })->name('subscription.expired');
+
+    Route::get('/subscription/payment', function () {
+        return view('subscription.payment_pending');
+    })->name('subscription.payment');
+
+    Route::get('/subscription/renewal', function () {
+        return view('subscription.renewal');
+    })->name('subscription.renewal');
 
     Route::middleware('superadmin')->prefix('superadmin')->name('superadmin.')->group(function () {
         Route::get('/', [SuperAdminConsoleController::class, 'dashboard'])->name('dashboard');
@@ -169,6 +181,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/roles-permissions', [SuperAdminConsoleController::class, 'rolesPermissions'])->name('roles_permissions');
         Route::get('/agent-workspaces', [SuperAdminConsoleController::class, 'agentWorkspaces'])->name('agent_workspaces');
         Route::get('/audit-trail', [SuperAdminConsoleController::class, 'auditTrail'])->name('audit_trail');
+        
+        Route::get('/packages', [SuperAdminConsoleController::class, 'subscriptionPackages'])->name('console.packages');
+        Route::post('/packages', [SuperAdminConsoleController::class, 'storeSubscriptionPackage'])->name('console.packages.store');
+        Route::patch('/packages/{package}', [SuperAdminConsoleController::class, 'updateSubscriptionPackage'])->name('console.packages.update');
+        Route::delete('/packages/{package}', [SuperAdminConsoleController::class, 'deleteSubscriptionPackage'])->name('console.packages.delete');
+        
+        Route::get('/subscriptions', [SuperAdminConsoleController::class, 'agentSubscriptions'])->name('console.subscriptions');
+        Route::post('/subscriptions', [SuperAdminConsoleController::class, 'storeAgentSubscription'])->name('console.subscriptions.store');
+        Route::delete('/subscriptions/{subscription}', [SuperAdminConsoleController::class, 'deleteAgentSubscription'])->name('console.subscriptions.delete');
 
         Route::get('/users', [SuperAdminUserController::class, 'index'])->name('users.index');
         Route::get('/users/create', [SuperAdminUserController::class, 'create'])->name('users.create');

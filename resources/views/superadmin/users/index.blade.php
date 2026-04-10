@@ -47,8 +47,9 @@
         <a href="{{ route('superadmin.users.index', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
     </div>
 
-    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table class="w-full text-sm">
+    <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm whitespace-nowrap lg:whitespace-normal">
             <thead class="bg-slate-50 text-slate-600">
                 <tr>
                     <th class="px-5 py-3 text-left font-bold">User</th>
@@ -85,7 +86,8 @@
                     </tr>
                 @endforelse
             </tbody>
-        </table>
+            </table>
+        </div>
     </div>
 
     <div class="mt-6">

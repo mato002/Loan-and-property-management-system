@@ -3,12 +3,14 @@
 namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AgentSubscription;
 use App\Models\PmPermission;
 use App\Models\PmPortalAction;
 use App\Models\PmRole;
 use App\Models\PmTenant;
 use App\Models\Property;
 use App\Models\PropertyUnit;
+use App\Models\SubscriptionPackage;
 use App\Models\UnassignedPayment;
 use App\Models\User;
 use App\Models\UserModuleAccess;
@@ -35,8 +37,11 @@ class SuperAdminConsoleController extends Controller
                 ? (int) UserModuleAccess::query()->where('status', UserModuleAccess::STATUS_PENDING)->count()
                 : 0,
         ];
+        $recentActivities = Schema::hasTable('pm_portal_actions') 
+            ? PmPortalAction::query()->with('user:id,name,email')->latest('id')->limit(5)->get() 
+            : collect();
 
-        return view('superadmin.console.dashboard', compact('stats'));
+        return view('superadmin.console.dashboard', compact('stats', 'recentActivities'));
     }
 
     public function accessApprovals(Request $request)
@@ -331,6 +336,194 @@ class SuperAdminConsoleController extends Controller
             'perPage' => $perPage,
             'tablesReady' => Schema::hasTable('pm_portal_actions'),
         ]);
+    }
+
+    public function subscriptionPackages(Request $request)
+    {
+        $packages = Schema::hasTable('subscription_packages')
+            ? SubscriptionPackage::query()->ordered()->get()
+            : collect();
+
+        return view('superadmin.console.subscription_packages', [
+            'packages' => $packages,
+            'tablesReady' => Schema::hasTable('subscription_packages'),
+        ]);
+    }
+
+    public function storeSubscriptionPackage(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('subscription_packages')) {
+            return back()->withErrors(['error' => 'Subscription packages table is not ready.']);
+        }
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'min_units' => ['required', 'integer', 'min:1'],
+            'max_units' => ['nullable', 'integer', 'min:1'],
+            'monthly_price_ksh' => ['required', 'numeric', 'min:0'],
+            'annual_price_ksh' => ['nullable', 'numeric', 'min:0'],
+            'is_active' => ['boolean'],
+            'sort_order' => ['integer', 'min:0'],
+            'features' => ['nullable', 'array'],
+        ]);
+
+        if (isset($data['max_units']) && $data['max_units'] < $data['min_units']) {
+            return back()->withErrors(['max_units' => 'Maximum units must be greater than or equal to minimum units.']);
+        }
+
+        SubscriptionPackage::create($data);
+
+        return back()->with('success', 'Subscription package created successfully.');
+    }
+
+    public function updateSubscriptionPackage(Request $request, SubscriptionPackage $package): RedirectResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'min_units' => ['required', 'integer', 'min:1'],
+            'max_units' => ['nullable', 'integer', 'min:1'],
+            'monthly_price_ksh' => ['required', 'numeric', 'min:0'],
+            'annual_price_ksh' => ['nullable', 'numeric', 'min:0'],
+            'is_active' => ['boolean'],
+            'sort_order' => ['integer', 'min:0'],
+            'features' => ['nullable', 'array'],
+        ]);
+
+        if (isset($data['max_units']) && $data['max_units'] < $data['min_units']) {
+            return back()->withErrors(['max_units' => 'Maximum units must be greater than or equal to minimum units.']);
+        }
+
+        $package->update($data);
+
+        return back()->with('success', 'Subscription package updated successfully.');
+    }
+
+    public function deleteSubscriptionPackage(SubscriptionPackage $package): RedirectResponse
+    {
+        if ($package->agentSubscriptions()->exists()) {
+            return back()->withErrors(['error' => 'Cannot delete package with existing subscriptions.']);
+        }
+
+        $package->delete();
+
+        return back()->with('success', 'Subscription package deleted successfully.');
+    }
+
+    public function agentSubscriptions(Request $request)
+    {
+        $q = trim((string) $request->query('q', ''));
+        $status = $request->query('status', '');
+        $package = $request->query('package', '');
+        $perPage = min(200, max(10, (int) $request->query('per_page', 25)));
+
+        $query = Schema::hasTable('agent_subscriptions')
+            ? AgentSubscription::query()
+                ->with(['user:id,name,email', 'subscriptionPackage:id,name,monthly_price_ksh'])
+                ->when($q !== '', function ($builder) use ($q) {
+                    $builder->whereHas('user', function ($userQuery) use ($q) {
+                        $userQuery->where('name', 'like', '%'.$q.'%')
+                            ->orWhere('email', 'like', '%'.$q.'%');
+                    });
+                })
+                ->when($status !== '', fn ($builder) => $builder->where('status', $status))
+                ->when($package !== '', fn ($builder) => $builder->where('subscription_package_id', $package))
+                ->latest('id')
+            : null;
+
+        $export = strtolower((string) $request->query('export', ''));
+        if ($query && in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'superadmin-agent-subscriptions-'.now()->format('Ymd_His'),
+                ['Agent', 'Email', 'Package', 'Status', 'Start Date', 'End Date', 'Price Paid', 'Payment Method'],
+                function () use ($rows) {
+                    foreach ($rows as $item) {
+                        yield [
+                            (string) ($item->user?->name ?? '—'),
+                            (string) ($item->user?->email ?? '—'),
+                            (string) ($item->subscriptionPackage?->name ?? '—'),
+                            ucfirst((string) $item->status),
+                            $item->starts_at?->format('Y-m-d') ?? '',
+                            $item->ends_at?->format('Y-m-d') ?? '',
+                            (string) ($item->price_paid ?? ''),
+                            (string) ($item->payment_method ?? ''),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $items = $query ? $query->paginate($perPage)->withQueryString() : collect();
+
+        $packages = Schema::hasTable('subscription_packages')
+            ? SubscriptionPackage::active()->ordered()->pluck('name', 'id')
+            : collect();
+        
+        $agents = Schema::hasTable('users')
+            ? User::where('property_portal_role', 'agent')->orderBy('name')->get(['id', 'name', 'email'])
+            : collect();
+
+        return view('superadmin.console.agent_subscriptions', [
+            'items' => $items,
+            'packages' => $packages,
+            'agents' => $agents,
+            'q' => $q,
+            'status' => $status,
+            'package' => $package,
+            'perPage' => $perPage,
+            'tablesReady' => Schema::hasTable('agent_subscriptions'),
+        ]);
+    }
+
+    public function storeAgentSubscription(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('agent_subscriptions')) {
+            return back()->withErrors(['error' => 'Agent subscriptions table is not ready.']);
+        }
+
+        $data = $request->validate([
+            'user_id' => ['required', 'exists:users,id'],
+            'subscription_package_id' => ['required', 'exists:subscription_packages,id'],
+            'status' => ['required', 'in:active,inactive,suspended,cancelled'],
+            'starts_at' => ['required', 'date'],
+            'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
+            'price_paid' => ['nullable', 'numeric', 'min:0'],
+            'payment_method' => ['nullable', 'string', 'max:255'],
+            'payment_reference' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        AgentSubscription::create($data);
+
+        return back()->with('success', 'Agent subscription created successfully.');
+    }
+
+    public function updateAgentSubscription(Request $request, AgentSubscription $subscription): RedirectResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', 'in:active,inactive,suspended,cancelled'],
+            'starts_at' => ['required', 'date'],
+            'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
+            'price_paid' => ['nullable', 'numeric', 'min:0'],
+            'payment_method' => ['nullable', 'string', 'max:255'],
+            'payment_reference' => ['nullable', 'string', 'max:255'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $subscription->update($data);
+
+        return back()->with('success', 'Agent subscription updated successfully.');
+    }
+
+    public function deleteAgentSubscription(AgentSubscription $subscription): RedirectResponse
+    {
+        $subscription->delete();
+
+        return back()->with('success', 'Agent subscription deleted successfully.');
     }
 }
 

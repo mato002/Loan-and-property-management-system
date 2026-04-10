@@ -49,9 +49,9 @@
             </div>
         </div>
 
-        <div class="flex items-center gap-3">
-            <button class="rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-700">Create user</button>
-            <a href="{{ route('superadmin.users.index') }}" class="rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</a>
+        <div class="flex flex-col sm:flex-row items-center gap-3">
+            <button class="w-full sm:w-auto rounded-xl bg-indigo-600 px-6 py-3 text-sm font-bold text-white hover:bg-indigo-700">Create user</button>
+            <a href="{{ route('superadmin.users.index') }}" class="w-full sm:w-auto text-center rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</a>
         </div>
     </form>
 @endsection
