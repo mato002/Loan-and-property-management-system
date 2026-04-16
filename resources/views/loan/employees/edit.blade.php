@@ -42,12 +42,22 @@
                     </div>
                     <div>
                         <x-input-label for="department" value="Department" />
-                        <x-text-input id="department" name="department" type="text" class="mt-1 block w-full" :value="old('department', $employee->department)" />
+                        <select id="department" name="department" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Select department</option>
+                            @foreach (($departmentNames ?? collect()) as $departmentName)
+                                <option value="{{ $departmentName }}" @selected(old('department', $employee->department) === $departmentName)>{{ $departmentName }}</option>
+                            @endforeach
+                        </select>
                         <x-input-error class="mt-2" :messages="$errors->get('department')" />
                     </div>
                     <div>
                         <x-input-label for="job_title" value="Job title" />
-                        <x-text-input id="job_title" name="job_title" type="text" class="mt-1 block w-full" :value="old('job_title', $employee->job_title)" />
+                        <select id="job_title" name="job_title" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Select job title</option>
+                            @foreach (($jobTitleOptions ?? collect()) as $title)
+                                <option value="{{ $title }}" @selected(old('job_title', $employee->job_title) === $title)>{{ $title }}</option>
+                            @endforeach
+                        </select>
                         <x-input-error class="mt-2" :messages="$errors->get('job_title')" />
                     </div>
                     <div>

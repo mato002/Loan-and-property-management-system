@@ -4,6 +4,10 @@ namespace App\Http\Controllers\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\AgentSubscription;
+use App\Models\LoanBookApplication;
+use App\Models\LoanBookLoan;
+use App\Models\LoanBookPayment;
+use App\Models\LoanClient;
 use App\Models\PmPermission;
 use App\Models\PmPortalAction;
 use App\Models\PmRole;
@@ -19,11 +23,89 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use App\Support\TabularExport;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SuperAdminConsoleController extends Controller
 {
+    /**
+     * System-wide loan book snapshot (super admin, not portfolio-scoped).
+     *
+     * @return array<string, mixed>
+     */
+    private function buildGlobalLoanStats(): array
+    {
+        $bookReady = Schema::hasTable('loan_book_loans');
+        $paymentsReady = Schema::hasTable('loan_book_payments');
+        $clientsReady = Schema::hasTable('loan_clients');
+        $applicationsReady = Schema::hasTable('loan_book_applications');
+
+        $loanStats = [
+            'tables_ready' => $bookReady || $paymentsReady || $clientsReady || $applicationsReady,
+            'book_ready' => $bookReady,
+            'active_loans' => 0,
+            'total_loans' => 0,
+            'outstanding' => 0.0,
+            'npl_count' => 0,
+            'clients' => 0,
+            'leads' => 0,
+            'pipeline' => 0,
+            'credit_review' => 0,
+            'mtd_collections' => 0.0,
+            'unposted_payments' => 0,
+            'pending_loan_access' => 0,
+        ];
+
+        if ($bookReady) {
+            $portfolioStatuses = [
+                LoanBookLoan::STATUS_ACTIVE,
+                LoanBookLoan::STATUS_RESTRUCTURED,
+                LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+            ];
+            $loanStats['active_loans'] = (int) LoanBookLoan::query()->where('status', LoanBookLoan::STATUS_ACTIVE)->count();
+            $loanStats['total_loans'] = (int) LoanBookLoan::query()->count();
+            $loanStats['outstanding'] = (float) LoanBookLoan::query()->whereIn('status', $portfolioStatuses)->sum('balance');
+            $loanStats['npl_count'] = (int) LoanBookLoan::query()
+                ->where('status', LoanBookLoan::STATUS_ACTIVE)
+                ->where('dpd', '>', 30)
+                ->count();
+        }
+
+        if ($clientsReady) {
+            $loanStats['clients'] = (int) LoanClient::query()->where('kind', LoanClient::KIND_CLIENT)->count();
+            $loanStats['leads'] = (int) LoanClient::query()->where('kind', LoanClient::KIND_LEAD)->count();
+        }
+
+        if ($applicationsReady) {
+            $loanStats['pipeline'] = (int) LoanBookApplication::query()
+                ->whereNotIn('stage', [LoanBookApplication::STAGE_DISBURSED, LoanBookApplication::STAGE_DECLINED])
+                ->count();
+            $loanStats['credit_review'] = (int) LoanBookApplication::query()
+                ->where('stage', LoanBookApplication::STAGE_CREDIT_REVIEW)
+                ->count();
+        }
+
+        if ($paymentsReady) {
+            $loanStats['mtd_collections'] = (float) LoanBookPayment::query()
+                ->where('status', LoanBookPayment::STATUS_PROCESSED)
+                ->whereNull('merged_into_payment_id')
+                ->whereBetween('transaction_at', [now()->startOfMonth(), now()->endOfMonth()])
+                ->sum('amount');
+            $loanStats['unposted_payments'] = (int) LoanBookPayment::query()->unpostedQueue()->count();
+        }
+
+        if (Schema::hasTable('user_module_accesses')) {
+            $loanStats['pending_loan_access'] = (int) UserModuleAccess::query()
+                ->where('module', 'loan')
+                ->where('status', UserModuleAccess::STATUS_PENDING)
+                ->count();
+        }
+
+        return $loanStats;
+    }
+
     public function dashboard(): View
     {
         $stats = [
@@ -41,7 +123,15 @@ class SuperAdminConsoleController extends Controller
             ? PmPortalAction::query()->with('user:id,name,email')->latest('id')->limit(5)->get() 
             : collect();
 
-        return view('superadmin.console.dashboard', compact('stats', 'recentActivities'));
+        $loanStats = $this->buildGlobalLoanStats();
+        $showTenantFinancialAggregates = (bool) config('superadmin.show_tenant_financial_aggregates', false);
+
+        return view('superadmin.console.dashboard', compact(
+            'stats',
+            'recentActivities',
+            'loanStats',
+            'showTenantFinancialAggregates',
+        ));
     }
 
     public function accessApprovals(Request $request)
@@ -52,10 +142,14 @@ class SuperAdminConsoleController extends Controller
             $module = '';
         }
         $perPage = min(200, max(10, (int) $request->query('per_page', 25)));
+        $status = strtolower(trim((string) $request->query('status', '')));
+        if (! in_array($status, ['', 'pending', 'approved', 'revoked'], true)) {
+            $status = '';
+        }
         $query = Schema::hasTable('user_module_accesses')
             ? UserModuleAccess::query()
                 ->with('user:id,name,email')
-                ->where('status', UserModuleAccess::STATUS_PENDING)
+                ->when($status !== '', fn ($builder) => $builder->where('status', $status))
                 ->when($module !== '', fn ($builder) => $builder->where('module', $module))
                 ->when($q !== '', function ($builder) use ($q) {
                     $builder->whereHas('user', function ($userQuery) use ($q) {
@@ -74,7 +168,7 @@ class SuperAdminConsoleController extends Controller
 
             return TabularExport::stream(
                 'superadmin-access-approvals-'.now()->format('Ymd_His'),
-                ['User', 'Email', 'Module', 'Status', 'Requested at'],
+                ['User', 'Email', 'Module', 'Status', 'Requested at', 'Approved at'],
                 function () use ($rows) {
                     foreach ($rows as $item) {
                         yield [
@@ -83,6 +177,7 @@ class SuperAdminConsoleController extends Controller
                             strtoupper((string) $item->module),
                             ucfirst((string) $item->status),
                             optional($item->created_at)->format('Y-m-d H:i:s') ?? '',
+                            optional($item->approved_at)->format('Y-m-d H:i:s') ?? '',
                         ];
                     }
                 },
@@ -97,6 +192,7 @@ class SuperAdminConsoleController extends Controller
             'tablesReady' => Schema::hasTable('user_module_accesses'),
             'q' => $q,
             'module' => $module,
+            'status' => $status,
             'perPage' => $perPage,
         ]);
     }
@@ -131,10 +227,26 @@ class SuperAdminConsoleController extends Controller
         }
 
         $data = $request->validate([
-            'action' => ['required', 'in:approve,revoke'],
+            'bulk_mode' => ['required', 'in:filter,selected'],
+            'action' => ['required', 'in:approve,revoke,pending'],
             'q' => ['nullable', 'string', 'max:255'],
             'module' => ['nullable', 'string', 'max:32'],
+            'ids' => ['required_if:bulk_mode,selected', 'array', 'max:500'],
+            'ids.*' => ['integer', 'min:1'],
         ]);
+
+        if ($data['bulk_mode'] === 'selected') {
+            $selectedIds = array_values(array_unique(array_filter(
+                array_map('intval', $data['ids'] ?? []),
+                fn (int $id) => $id > 0
+            )));
+
+            return $this->bulkAccessApprovalsForSelectedIds($request, $data['action'], $selectedIds);
+        }
+
+        if ($data['action'] === 'pending') {
+            return back()->withErrors(['access' => 'Use row actions or “selected rows” bulk actions to set records back to pending.']);
+        }
 
         $status = $data['action'] === 'approve'
             ? UserModuleAccess::STATUS_APPROVED
@@ -169,6 +281,51 @@ class SuperAdminConsoleController extends Controller
         UserModuleAccess::query()->whereIn('id', $ids)->update($payload);
 
         return back()->with('success', 'Updated '.count($ids).' access request(s).');
+    }
+
+    /**
+     * Bulk update for explicitly selected rows (same transition rules as single-row actions).
+     *
+     * @param  list<int>  $ids
+     */
+    private function bulkAccessApprovalsForSelectedIds(Request $request, string $action, array $ids): RedirectResponse
+    {
+        $userId = $request->user()?->id;
+
+        if ($action === 'approve') {
+            $affected = UserModuleAccess::query()
+                ->whereIn('id', $ids)
+                ->whereIn('status', [UserModuleAccess::STATUS_PENDING, UserModuleAccess::STATUS_REVOKED])
+                ->update([
+                    'status' => UserModuleAccess::STATUS_APPROVED,
+                    'approved_by' => $userId,
+                    'approved_at' => now(),
+                ]);
+        } elseif ($action === 'revoke') {
+            $affected = UserModuleAccess::query()
+                ->whereIn('id', $ids)
+                ->whereIn('status', [UserModuleAccess::STATUS_PENDING, UserModuleAccess::STATUS_APPROVED])
+                ->update([
+                    'status' => UserModuleAccess::STATUS_REVOKED,
+                    'approved_by' => null,
+                    'approved_at' => null,
+                ]);
+        } else {
+            $affected = UserModuleAccess::query()
+                ->whereIn('id', $ids)
+                ->whereIn('status', [UserModuleAccess::STATUS_APPROVED, UserModuleAccess::STATUS_REVOKED])
+                ->update([
+                    'status' => UserModuleAccess::STATUS_PENDING,
+                    'approved_by' => null,
+                    'approved_at' => null,
+                ]);
+        }
+
+        if ($affected === 0) {
+            return back()->with('success', 'No selected rows were eligible for that action (status may not allow it).');
+        }
+
+        return back()->with('success', 'Updated '.$affected.' access record(s).');
     }
 
     public function rolesPermissions(): View
@@ -524,6 +681,177 @@ class SuperAdminConsoleController extends Controller
         $subscription->delete();
 
         return back()->with('success', 'Agent subscription deleted successfully.');
+    }
+
+    public function bulkAgentSubscriptions(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('agent_subscriptions')) {
+            return back()->withErrors(['error' => 'Agent subscriptions table is not ready.']);
+        }
+
+        $data = $request->validate([
+            'bulk_action' => ['required', Rule::in(['delete', 'set_status'])],
+            'status' => ['required_if:bulk_action,set_status', 'nullable', Rule::in(['active', 'inactive', 'suspended', 'cancelled'])],
+            'ids' => ['required', 'array', 'max:300'],
+            'ids.*' => ['integer', 'exists:agent_subscriptions,id'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+
+        if ($data['bulk_action'] === 'delete') {
+            $deleted = AgentSubscription::query()->whereIn('id', $ids)->delete();
+
+            return back()->with('success', 'Deleted '.(int) $deleted.' subscription(s).');
+        }
+
+        $status = (string) $data['status'];
+        $updated = AgentSubscription::query()->whereIn('id', $ids)->update(['status' => $status]);
+
+        return back()->with('success', 'Updated '.(int) $updated.' subscription(s) to '.ucfirst($status).'.');
+    }
+
+    public function bulkSubscriptionPackages(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('subscription_packages')) {
+            return back()->withErrors(['error' => 'Subscription packages table is not ready.']);
+        }
+
+        $data = $request->validate([
+            'bulk_action' => ['required', Rule::in(['delete', 'set_active'])],
+            'is_active' => ['required_if:bulk_action,set_active', 'nullable', 'boolean'],
+            'ids' => ['required', 'array', 'max:200'],
+            'ids.*' => ['integer', 'exists:subscription_packages,id'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+
+        if ($data['bulk_action'] === 'set_active') {
+            $flag = (bool) $data['is_active'];
+            $updated = SubscriptionPackage::query()->whereIn('id', $ids)->update(['is_active' => $flag]);
+
+            return back()->with('success', 'Updated '.(int) $updated.' package(s) to '.($flag ? 'active' : 'inactive').'.');
+        }
+
+        $deleted = 0;
+        $skipped = 0;
+        $packages = SubscriptionPackage::query()->whereIn('id', $ids)->get();
+        foreach ($packages as $package) {
+            if ($package->agentSubscriptions()->exists()) {
+                $skipped++;
+
+                continue;
+            }
+            $package->delete();
+            $deleted++;
+        }
+
+        $msg = 'Deleted '.$deleted.' package(s).';
+        if ($skipped > 0) {
+            $msg .= ' Skipped '.$skipped.' in-use package(s).';
+        }
+
+        return back()->with('success', $msg);
+    }
+
+    public function auditTrailExportSelected(Request $request): RedirectResponse|StreamedResponse
+    {
+        if (! Schema::hasTable('pm_portal_actions')) {
+            return back()->withErrors(['error' => 'Audit table is not ready.']);
+        }
+
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'max:2000'],
+            'ids.*' => ['integer', 'min:1'],
+            'format' => ['nullable', Rule::in(['csv', 'xls', 'pdf'])],
+        ]);
+
+        $format = $data['format'] ?? 'csv';
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+
+        $rows = PmPortalAction::query()
+            ->whereIn('id', $ids)
+            ->with('user:id,name,email')
+            ->latest('id')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return back()->withErrors(['export' => 'No matching audit rows found for the selection.']);
+        }
+
+        return TabularExport::stream(
+            'superadmin-audit-selected-'.now()->format('Ymd_His'),
+            ['When', 'User', 'Email', 'Role', 'Action key', 'Notes'],
+            function () use ($rows) {
+                foreach ($rows as $item) {
+                    yield [
+                        optional($item->created_at)->format('Y-m-d H:i:s') ?? '',
+                        (string) ($item->user?->name ?? '—'),
+                        (string) ($item->user?->email ?? ''),
+                        (string) ($item->portal_role ?? ''),
+                        (string) ($item->action_key ?? ''),
+                        (string) ($item->notes ?? ''),
+                    ];
+                }
+            },
+            $format
+        );
+    }
+
+    public function agentWorkspacesExportSelected(Request $request): RedirectResponse|StreamedResponse
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'max:500'],
+            'ids.*' => ['integer', 'exists:users,id'],
+            'format' => ['nullable', Rule::in(['csv', 'xls', 'pdf'])],
+        ]);
+
+        $format = $data['format'] ?? 'csv';
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+
+        $agents = User::query()
+            ->whereIn('id', $ids)
+            ->where('property_portal_role', 'agent')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        if ($agents->isEmpty()) {
+            return back()->withErrors(['export' => 'Select at least one agent row.']);
+        }
+
+        $propertyCounts = Schema::hasTable('properties')
+            ? DB::table('properties')
+                ->selectRaw('agent_user_id, COUNT(*) as c')
+                ->whereNotNull('agent_user_id')
+                ->whereIn('agent_user_id', $agents->pluck('id')->all())
+                ->groupBy('agent_user_id')
+                ->pluck('c', 'agent_user_id')
+            : collect();
+
+        $unitCounts = Schema::hasTable('properties') && Schema::hasTable('property_units')
+            ? DB::table('property_units as u')
+                ->join('properties as p', 'p.id', '=', 'u.property_id')
+                ->selectRaw('p.agent_user_id, COUNT(*) as c')
+                ->whereNotNull('p.agent_user_id')
+                ->whereIn('p.agent_user_id', $agents->pluck('id')->all())
+                ->groupBy('p.agent_user_id')
+                ->pluck('c', 'p.agent_user_id')
+            : collect();
+
+        return TabularExport::stream(
+            'superadmin-agents-selected-'.now()->format('Ymd_His'),
+            ['Agent', 'Email', 'Properties', 'Units'],
+            function () use ($agents, $propertyCounts, $unitCounts) {
+                foreach ($agents as $agent) {
+                    yield [
+                        (string) $agent->name,
+                        (string) $agent->email,
+                        (string) ((int) ($propertyCounts[$agent->id] ?? 0)),
+                        (string) ((int) ($unitCounts[$agent->id] ?? 0)),
+                    ];
+                }
+            },
+            $format
+        );
     }
 }
 

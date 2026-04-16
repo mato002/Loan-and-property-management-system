@@ -9,15 +9,81 @@
             </a>
         </x-slot>
 
+        <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Employee name / number..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Employee</label>
+                    <select name="employee_id" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        <option value="">All</option>
+                        @foreach ($employees as $employee)
+                            <option value="{{ $employee->id }}" @selected((int) ($employeeId ?? 0) === (int) $employee->id)>{{ $employee->full_name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Leave type</label>
+                    <select name="leave_type" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        <option value="">All</option>
+                        @foreach (($leaveTypes ?? []) as $type)
+                            <option value="{{ $type }}" @selected(($leaveType ?? '') === $type)>{{ $type }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Status</label>
+                    <select name="status" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        <option value="">All</option>
+                        @foreach (['pending', 'approved', 'rejected'] as $rowStatus)
+                            <option value="{{ $rowStatus }}" @selected(($status ?? '') === $rowStatus)>{{ ucfirst($rowStatus) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
+                    <select name="per_page" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        @foreach ([10, 20, 30, 50, 100, 200] as $size)
+                            <option value="{{ $size }}" @selected((int) ($perPage ?? 20) === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.employees.leaves') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reset</a>
+                <div class="ml-auto flex flex-wrap items-center gap-2">
+                    <a href="{{ route('loan.employees.leaves', array_merge(request()->query(), ['export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                    <a href="{{ route('loan.employees.leaves', array_merge(request()->query(), ['export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+                    <a href="{{ route('loan.employees.leaves', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+                </div>
+            </div>
+        </form>
+
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
                 <h2 class="text-sm font-semibold text-slate-700">All requests</h2>
                 <p class="text-xs text-slate-500">{{ $leaves->total() }} record(s)</p>
             </div>
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+
+            <form id="leave-bulk-status-form" method="post" action="{{ route('loan.employees.leaves.bulk_status') }}" class="border-b border-slate-100 px-5 py-3" data-swal-confirm="Apply status to selected leave rows?">
+                @csrf
+                <div class="flex flex-wrap items-center gap-2">
+                    <select name="status" class="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700">
+                        <option value="">Bulk status</option>
+                        @foreach (['pending', 'approved', 'rejected'] as $rowStatus)
+                            <option value="{{ $rowStatus }}">{{ ucfirst($rowStatus) }}</option>
+                        @endforeach
+                    </select>
+                    <button type="submit" class="h-9 rounded-lg bg-slate-800 px-3 text-xs font-semibold uppercase tracking-wide text-white shadow-sm hover:bg-slate-700">Apply</button>
+                </div>
+            </form>
+
+            <div class="mt-3 overflow-x-auto">
+                    <table class="min-w-full text-sm">
                     <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
+                            <th class="px-5 py-3"><input type="checkbox" onclick="document.querySelectorAll('.leave-row').forEach(cb => cb.checked = this.checked)"></th>
                             <th class="px-5 py-3">Employee</th>
                             <th class="px-5 py-3">Type</th>
                             <th class="px-5 py-3">From</th>
@@ -30,6 +96,7 @@
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($leaves as $leave)
                             <tr class="hover:bg-slate-50/80">
+                                <td class="px-5 py-3"><input type="checkbox" class="leave-row" name="ids[]" value="{{ $leave->id }}" form="leave-bulk-status-form"></td>
                                 <td class="px-5 py-3 font-medium text-slate-900">{{ $leave->employee->full_name }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $leave->leave_type }}</td>
                                 <td class="px-5 py-3 text-slate-600 tabular-nums">{{ $leave->start_date->format('Y-m-d') }}</td>
@@ -67,14 +134,14 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-5 py-12 text-center text-slate-500">
+                                <td colspan="8" class="px-5 py-12 text-center text-slate-500">
                                     No leave records. Add employees first, then create a <a href="{{ route('loan.employees.leaves.create') }}" class="text-indigo-600 font-medium hover:underline">leave request</a>.
                                 </td>
                             </tr>
                         @endforelse
                     </tbody>
-                </table>
-            </div>
+                    </table>
+                </div>
             @if ($leaves->hasPages())
                 <div class="px-5 py-4 border-t border-slate-100">
                     {{ $leaves->links() }}

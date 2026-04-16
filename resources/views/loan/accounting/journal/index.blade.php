@@ -61,11 +61,17 @@
                                 <td class="px-5 py-3 text-slate-600 text-xs">{{ $e->createdByUser?->name ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('loan.accounting.journal.show', $e) }}" class="text-indigo-600 font-medium text-sm mr-3">View</a>
-                                    <form method="post" action="{{ route('loan.accounting.journal.destroy', $e) }}" class="inline" data-swal-confirm="Delete this journal entry and all lines?">
-                                        @csrf
-                                        @method('delete')
-                                        <button type="submit" class="text-red-600 font-medium text-sm">Delete</button>
-                                    </form>
+                                    <button
+                                        type="submit"
+                                        formaction="{{ route('loan.accounting.journal.destroy', $e) }}"
+                                        formmethod="post"
+                                        name="_method"
+                                        value="delete"
+                                        class="text-red-600 font-medium text-sm"
+                                        data-swal-confirm="Delete this journal entry and all lines?"
+                                    >
+                                        Delete
+                                    </button>
                                 </td>
                             </tr>
                         @empty

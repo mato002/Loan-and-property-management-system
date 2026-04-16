@@ -15,8 +15,8 @@
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div class="sm:col-span-2">
-                        <x-input-label for="client_number" value="Client number" />
-                        <x-text-input id="client_number" name="client_number" type="text" class="mt-1 block w-full" :value="old('client_number')" required autocomplete="off" />
+                        <x-input-label value="Client number" />
+                        <div class="mt-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Auto-assigned when you save</div>
                         <x-input-error class="mt-2" :messages="$errors->get('client_number')" />
                     </div>
                     <div>
@@ -45,9 +45,12 @@
                         <x-input-error class="mt-2" :messages="$errors->get('id_number')" />
                     </div>
                     <div>
-                        <x-input-label for="branch" value="Branch" />
-                        <x-text-input id="branch" name="branch" type="text" class="mt-1 block w-full" :value="old('branch')" />
-                        <x-input-error class="mt-2" :messages="$errors->get('branch')" />
+                        @include('loan.clients.partials.branch-select-with-modal', [
+                            'fieldId' => 'branch',
+                            'selectedValue' => old('branch'),
+                            'branchOptions' => ($branchOptions ?? []),
+                            'storeUrl' => route('loan.clients.branches.store'),
+                        ])
                     </div>
                     <div class="sm:col-span-2">
                         <x-input-label for="address" value="Address" />
@@ -73,6 +76,9 @@
                         </select>
                         <x-input-error class="mt-2" :messages="$errors->get('client_status')" />
                     </div>
+
+                    @include('loan.clients.partials.guarantor-fields', ['client' => null])
+
                     <div class="sm:col-span-2">
                         <x-input-label for="notes" value="Notes" />
                         <textarea id="notes" name="notes" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('notes') }}</textarea>

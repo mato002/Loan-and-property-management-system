@@ -130,7 +130,7 @@ class LoanBookGlPostingService
         }
 
         $cashId = $this->resolveCashAccountIdFromMethod((string) $disbursement->method);
-        $loanDr = $rule->credit_account_id;
+        $loanDr = $this->resolveCreditAccountId($rule);
         $cashCr = $rule->debit_account_id ?? $cashId;
 
         if (! $loanDr) {
@@ -204,7 +204,7 @@ class LoanBookGlPostingService
     private function resolveInflowDebitCredit(AccountingPostingRule $rule, ?int $cashId): array
     {
         $ruleDr = $rule->debit_account_id;
-        $ruleCr = $rule->credit_account_id;
+        $ruleCr = $this->resolveCreditAccountId($rule);
 
         if (! $ruleCr) {
             throw new \RuntimeException('Set the credit account on the posting rule (loan portfolio / receivable).');
@@ -224,7 +224,7 @@ class LoanBookGlPostingService
     private function resolveReversalDebitCredit(AccountingPostingRule $rule, ?int $cashId): array
     {
         $ruleDr = $rule->debit_account_id;
-        $ruleCr = $rule->credit_account_id;
+        $ruleCr = $this->resolveCreditAccountId($rule);
 
         if (! $ruleCr) {
             throw new \RuntimeException('Set the credit account on the posting rule (loan portfolio / receivable).');
@@ -263,6 +263,41 @@ class LoanBookGlPostingService
     private function resolveCashAccountIdFromMethod(string $method): ?int
     {
         return $this->resolveCashAccountId($method);
+    }
+
+    private function resolveCreditAccountId(AccountingPostingRule $rule): ?int
+    {
+        if ($rule->credit_account_id) {
+            return (int) $rule->credit_account_id;
+        }
+
+        if ($rule->rule_key !== self::RULE_LOAN_LEDGER) {
+            return null;
+        }
+
+        $fallback = AccountingChartAccount::query()
+            ->where('is_active', true)
+            ->where('account_type', 'asset')
+            ->where(function ($q) {
+                $q->where('name', 'like', '%receivable%')
+                    ->orWhere('name', 'like', '%loan portfolio%')
+                    ->orWhere('name', 'like', '%loan book%')
+                    ->orWhere('name', 'like', '%loan asset%')
+                    ->orWhere('code', 'like', '12%')
+                    ->orWhere('code', 'like', '13%');
+            })
+            ->orderBy('code')
+            ->value('id');
+
+        if ($fallback) {
+            AccountingPostingRule::query()
+                ->where('id', $rule->id)
+                ->update(['credit_account_id' => (int) $fallback]);
+
+            return (int) $fallback;
+        }
+
+        return null;
     }
 
     private function persistEntry(

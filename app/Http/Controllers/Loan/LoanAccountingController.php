@@ -222,6 +222,13 @@ class LoanAccountingController extends Controller
             'credit_account_id' => ['nullable', 'integer', 'exists:accounting_chart_accounts,id'],
         ]);
 
+        if ($accounting_posting_rule->rule_key === \App\Services\LoanBookGlPostingService::RULE_LOAN_LEDGER
+            && empty($validated['credit_account_id'])) {
+            return back()->withErrors([
+                'credit_account_id' => 'Loan Ledger requires a credit account (loan portfolio / receivable).',
+            ]);
+        }
+
         $accounting_posting_rule->update([
             'debit_account_id' => $validated['debit_account_id'] ?? null,
             'credit_account_id' => $validated['credit_account_id'] ?? null,

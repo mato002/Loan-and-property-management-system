@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MpesaPlatformTransaction;
 use App\Models\PmPayment;
 use App\Services\Property\PropertyPaymentSettlementService;
+use App\Services\LoanBook\LoanDisbursementPayoutService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -177,6 +178,9 @@ class MpesaDarajaWebhookController extends Controller
         } else {
             MpesaPlatformTransaction::query()->create($data);
         }
+
+        // If this B2C callback belongs to a loan disbursement initiation, update that row too.
+        app(LoanDisbursementPayoutService::class)->applyB2cCallbackToDisbursement($payload, $map, $status);
 
         return response()->json(['ok' => true]);
     }

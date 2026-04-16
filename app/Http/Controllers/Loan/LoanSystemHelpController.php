@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Models\LoanAccessLog;
+use App\Models\LoanDepartment;
+use App\Models\LoanJobTitle;
+use App\Models\LoanRole;
 use App\Models\LoanSupportTicket;
 use App\Models\LoanSupportTicketReply;
 use App\Models\LoanSystemSetting;
@@ -11,6 +14,9 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class LoanSystemHelpController extends Controller
@@ -24,6 +30,7 @@ class LoanSystemHelpController extends Controller
         'company_email',
         'company_website',
         'logo_url',
+        'favicon_url',
         'about_us',
         'support_contact_email',
     ];
@@ -238,9 +245,21 @@ class LoanSystemHelpController extends Controller
                 'icon' => 'building',
             ],
             [
+                'title' => 'Departments',
+                'desc' => 'Add, activate, or remove employee departments',
+                'href' => route('loan.system.setup.departments'),
+                'icon' => 'org',
+            ],
+            [
+                'title' => 'Job Titles',
+                'desc' => 'Manage standard organization job titles',
+                'href' => route('loan.system.setup.job_titles'),
+                'icon' => 'users',
+            ],
+            [
                 'title' => 'System Access & User roles',
                 'desc' => 'Set login OTP & user access permissions in the system',
-                'href' => $formSetup('access'),
+                'href' => route('loan.system.setup.access_roles'),
                 'icon' => 'access',
             ],
             [
@@ -360,6 +379,484 @@ class LoanSystemHelpController extends Controller
         return $this->persistSettingsSubset($request, self::PREFERENCES_SETTING_KEYS, 'loan.system.setup.preferences');
     }
 
+    public function setupDepartments(): View
+    {
+        abort_unless(Schema::hasTable('loan_departments'), 404, 'Loan departments table not found. Run migrations.');
+
+        return view('loan.system.setup.departments', [
+            'title' => 'Departments',
+            'subtitle' => 'Master list used on employee forms and HR records.',
+            'departments' => LoanDepartment::query()->orderByDesc('is_active')->orderBy('name')->get(),
+        ]);
+    }
+
+    public function setupDepartmentsStore(Request $request): RedirectResponse
+    {
+        abort_unless(Schema::hasTable('loan_departments'), 404, 'Loan departments table not found. Run migrations.');
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:160'],
+            'code' => ['nullable', 'string', 'max:40'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'is_active' => ['nullable', 'in:0,1'],
+        ]);
+
+        $name = trim((string) $validated['name']);
+        $code = $this->resolveDepartmentCode($validated['code'] ?? null, $name);
+
+        LoanDepartment::query()->updateOrCreate(
+            ['name' => $name],
+            [
+                'code' => $code,
+                'description' => filled($validated['description'] ?? null) ? trim((string) $validated['description']) : null,
+                'is_active' => ($validated['is_active'] ?? '1') === '1',
+            ]
+        );
+
+        return redirect()->route('loan.system.setup.departments')->with('status', 'Department saved.');
+    }
+
+    public function setupDepartmentsUpdate(Request $request, LoanDepartment $loan_department): RedirectResponse
+    {
+        abort_unless(Schema::hasTable('loan_departments'), 404, 'Loan departments table not found. Run migrations.');
+
+        $validated = $request->validate([
+            'is_active' => ['required', 'in:0,1'],
+        ]);
+
+        $loan_department->update(['is_active' => $validated['is_active'] === '1']);
+
+        return redirect()->route('loan.system.setup.departments')->with('status', 'Department status updated.');
+    }
+
+    public function setupDepartmentsDestroy(LoanDepartment $loan_department): RedirectResponse
+    {
+        $inUse = \App\Models\Employee::query()->where('department', $loan_department->name)->exists();
+        if ($inUse) {
+            $loan_department->update(['is_active' => false]);
+
+            return redirect()->route('loan.system.setup.departments')
+                ->with('status', 'Department is in use; it was deactivated instead of deleted.');
+        }
+
+        $loan_department->delete();
+
+        return redirect()->route('loan.system.setup.departments')->with('status', 'Department removed.');
+    }
+
+    public function setupDepartmentsSync(): RedirectResponse
+    {
+        abort_unless(Schema::hasTable('loan_departments'), 404, 'Loan departments table not found. Run migrations.');
+
+        $names = \App\Models\Employee::query()
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->distinct()
+            ->orderBy('department')
+            ->pluck('department');
+
+        $added = 0;
+        foreach ($names as $departmentName) {
+            $name = trim((string) $departmentName);
+            if ($name === '') {
+                continue;
+            }
+
+            $model = LoanDepartment::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'code' => $this->resolveDepartmentCode(null, $name),
+                    'is_active' => true,
+                ]
+            );
+
+            if ($model->wasRecentlyCreated) {
+                $added++;
+                continue;
+            }
+
+            $updates = [];
+            if (! $model->is_active) {
+                $updates['is_active'] = true;
+            }
+            if (! filled($model->code)) {
+                $updates['code'] = $this->resolveDepartmentCode(null, $name);
+            }
+            if ($updates !== []) {
+                $model->update($updates);
+            }
+        }
+
+        return redirect()
+            ->route('loan.system.setup.departments')
+            ->with('status', "Sync complete. {$added} department(s) added from employee records.");
+    }
+
+    private function resolveDepartmentCode(?string $inputCode, string $name): string
+    {
+        $candidate = strtoupper(trim((string) $inputCode));
+        $candidate = preg_replace('/[^A-Z0-9]+/', '_', $candidate ?? '') ?? '';
+        $candidate = trim($candidate, '_');
+
+        if ($candidate === '') {
+            $words = preg_split('/\s+/', strtoupper($name)) ?: [];
+            $letters = '';
+            foreach ($words as $word) {
+                $ch = substr(preg_replace('/[^A-Z0-9]/', '', $word) ?? '', 0, 1);
+                if ($ch !== '') {
+                    $letters .= $ch;
+                }
+            }
+            if ($letters === '') {
+                $letters = substr(preg_replace('/[^A-Z0-9]/', '', strtoupper($name)) ?? 'DEPT', 0, 4);
+            }
+            $candidate = substr($letters, 0, 12);
+        }
+
+        if ($candidate === '') {
+            $candidate = 'DEPT';
+        }
+
+        $base = substr($candidate, 0, 32);
+        $final = $base;
+        $i = 1;
+        while (LoanDepartment::query()->where('code', $final)->exists()) {
+            $suffix = '_'.$i;
+            $final = substr($base, 0, max(1, 40 - strlen($suffix))).$suffix;
+            $i++;
+        }
+
+        return $final;
+    }
+
+    public function setupJobTitles(): View
+    {
+        abort_unless(Schema::hasTable('loan_job_titles'), 404, 'Loan job titles table not found. Run migrations.');
+
+        return view('loan.system.setup.job_titles', [
+            'title' => 'Job Titles',
+            'subtitle' => 'Master list used on employee forms and HR records.',
+            'jobTitles' => LoanJobTitle::query()->orderByDesc('is_active')->orderBy('name')->get(),
+        ]);
+    }
+
+    public function setupJobTitlesStore(Request $request): RedirectResponse
+    {
+        abort_unless(Schema::hasTable('loan_job_titles'), 404, 'Loan job titles table not found. Run migrations.');
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:160'],
+            'code' => ['nullable', 'string', 'max:40'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'is_active' => ['nullable', 'in:0,1'],
+        ]);
+
+        LoanJobTitle::query()->updateOrCreate(
+            ['name' => trim((string) $validated['name'])],
+            [
+                'code' => filled($validated['code'] ?? null) ? trim((string) $validated['code']) : null,
+                'description' => filled($validated['description'] ?? null) ? trim((string) $validated['description']) : null,
+                'is_active' => ($validated['is_active'] ?? '1') === '1',
+            ]
+        );
+
+        return redirect()->route('loan.system.setup.job_titles')->with('status', 'Job title saved.');
+    }
+
+    public function setupJobTitlesUpdate(Request $request, LoanJobTitle $loan_job_title): RedirectResponse
+    {
+        abort_unless(Schema::hasTable('loan_job_titles'), 404, 'Loan job titles table not found. Run migrations.');
+
+        $validated = $request->validate([
+            'is_active' => ['required', 'in:0,1'],
+        ]);
+
+        $loan_job_title->update(['is_active' => $validated['is_active'] === '1']);
+
+        return redirect()->route('loan.system.setup.job_titles')->with('status', 'Job title status updated.');
+    }
+
+    public function setupJobTitlesDestroy(LoanJobTitle $loan_job_title): RedirectResponse
+    {
+        $inUse = \App\Models\Employee::query()->where('job_title', $loan_job_title->name)->exists();
+        if ($inUse) {
+            $loan_job_title->update(['is_active' => false]);
+
+            return redirect()->route('loan.system.setup.job_titles')
+                ->with('status', 'Job title is in use; it was deactivated instead of deleted.');
+        }
+
+        $loan_job_title->delete();
+
+        return redirect()->route('loan.system.setup.job_titles')->with('status', 'Job title removed.');
+    }
+
+    public function setupJobTitlesSync(): RedirectResponse
+    {
+        abort_unless(Schema::hasTable('loan_job_titles'), 404, 'Loan job titles table not found. Run migrations.');
+
+        $titles = \App\Models\Employee::query()
+            ->whereNotNull('job_title')
+            ->where('job_title', '!=', '')
+            ->distinct()
+            ->orderBy('job_title')
+            ->pluck('job_title');
+
+        $added = 0;
+        foreach ($titles as $title) {
+            $name = trim((string) $title);
+            if ($name === '') {
+                continue;
+            }
+
+            $model = LoanJobTitle::query()->firstOrCreate(
+                ['name' => $name],
+                ['is_active' => true]
+            );
+
+            if ($model->wasRecentlyCreated) {
+                $added++;
+            } elseif (! $model->is_active) {
+                $model->update(['is_active' => true]);
+            }
+        }
+
+        return redirect()
+            ->route('loan.system.setup.job_titles')
+            ->with('status', "Sync complete. {$added} job title(s) added from employee records.");
+    }
+
+    public function setupAccessRoles(): View
+    {
+        $rbacReady = Schema::hasTable('loan_roles') && Schema::hasTable('loan_user_role');
+
+        return view('loan.system.setup.access_roles', [
+            'title' => 'Loan roles & permissions',
+            'subtitle' => 'Create custom access roles, choose permissions, and assign to users.',
+            'rbacReady' => $rbacReady,
+            'roles' => $rbacReady ? LoanRole::query()->orderByDesc('is_active')->orderBy('name')->get() : collect(),
+            'users' => $rbacReady ? User::query()->orderBy('name')->get(['id', 'name', 'email']) : collect(),
+            'permissionCatalog' => $this->loanPermissionCatalog(),
+            'defaultPermissionsByBaseRole' => $this->defaultPermissionsByBaseRole(),
+        ]);
+    }
+
+    public function setupAccessRolesStore(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('loan_roles')) {
+            return redirect()->route('loan.system.setup.access_roles')
+                ->with('error', 'Loan roles tables are missing. Run migrations first.');
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'base_role' => ['required', 'in:admin,manager,accountant,officer,applicant,user'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'permissions' => ['array'],
+            'permissions.*' => ['string', 'in:'.implode(',', array_keys($this->loanPermissionCatalog()))],
+            'is_active' => ['nullable', 'in:0,1'],
+        ]);
+
+        $name = trim((string) $validated['name']);
+        $slug = Str::slug($name);
+        if ($slug === '') {
+            $slug = 'role-'.now()->format('YmdHis');
+        }
+        $baseSlug = $slug;
+        $i = 1;
+        while (LoanRole::query()->where('slug', $slug)->exists()) {
+            $slug = Str::limit($baseSlug, 100, '').'-'.$i;
+            $i++;
+        }
+
+        $permissions = $request->has('permissions')
+            ? array_values(array_unique($validated['permissions'] ?? []))
+            : ($this->defaultPermissionsByBaseRole()[$validated['base_role']] ?? []);
+
+        LoanRole::query()->create([
+            'name' => $name,
+            'slug' => $slug,
+            'base_role' => $validated['base_role'],
+            'description' => filled($validated['description'] ?? null) ? trim((string) $validated['description']) : null,
+            'permissions' => $permissions,
+            'is_active' => ($validated['is_active'] ?? '1') === '1',
+        ]);
+
+        return redirect()->route('loan.system.setup.access_roles')->with('status', 'Loan access role created.');
+    }
+
+    public function setupAccessRolesUpdate(Request $request, LoanRole $loan_role): RedirectResponse
+    {
+        if (! Schema::hasTable('loan_roles')) {
+            return redirect()->route('loan.system.setup.access_roles')
+                ->with('error', 'Loan roles table is missing. Run migrations first.');
+        }
+
+        $catalog = array_keys($this->loanPermissionCatalog());
+        $validated = $request->validate([
+            'base_role' => ['required', 'in:admin,manager,accountant,officer,applicant,user'],
+            'permissions' => ['array'],
+            'permissions.*' => ['string', 'in:'.implode(',', $catalog)],
+            'is_active' => ['nullable', 'in:0,1'],
+        ]);
+
+        $permissions = $request->has('permissions')
+            ? array_values(array_unique($validated['permissions'] ?? []))
+            : ($this->defaultPermissionsByBaseRole()[$validated['base_role']] ?? []);
+
+        $loan_role->update([
+            'base_role' => $validated['base_role'],
+            'permissions' => $permissions,
+            'is_active' => ($validated['is_active'] ?? '1') === '1',
+        ]);
+
+        return redirect()->route('loan.system.setup.access_roles')->with('status', 'Role permissions updated.');
+    }
+
+    public function setupAccessRolesAssign(Request $request, LoanRole $loan_role): RedirectResponse
+    {
+        if (! Schema::hasTable('loan_user_role')) {
+            return redirect()->route('loan.system.setup.access_roles')
+                ->with('error', 'Loan role assignment table is missing. Run migrations first.');
+        }
+
+        $validated = $request->validate([
+            'user_ids' => ['array'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $validated['user_ids'] ?? [])));
+
+        \Illuminate\Support\Facades\DB::table('loan_user_role')
+            ->where('loan_role_id', $loan_role->id)
+            ->whereNotIn('user_id', $ids)
+            ->delete();
+
+        foreach ($ids as $userId) {
+            \Illuminate\Support\Facades\DB::table('loan_user_role')
+                ->where('user_id', $userId)
+                ->delete();
+
+            \Illuminate\Support\Facades\DB::table('loan_user_role')->insert([
+                'loan_role_id' => $loan_role->id,
+                'user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return redirect()->route('loan.system.setup.access_roles')->with('status', 'Role assignments updated.');
+    }
+
+    public function setupAccessRolesDestroy(LoanRole $loan_role): RedirectResponse
+    {
+        $loan_role->users()->detach();
+        $loan_role->delete();
+
+        return redirect()->route('loan.system.setup.access_roles')->with('status', 'Loan role removed.');
+    }
+
+    public function setupAccessRolesSync(): RedirectResponse
+    {
+        if (! Schema::hasTable('loan_roles') || ! Schema::hasTable('loan_user_role')) {
+            return redirect()->route('loan.system.setup.access_roles')
+                ->with('error', 'Loan roles tables are missing. Run migrations first.');
+        }
+
+        $legacyRoles = User::query()
+            ->whereNotNull('loan_role')
+            ->where('loan_role', '!=', '')
+            ->distinct()
+            ->pluck('loan_role')
+            ->map(fn ($r) => strtolower(trim((string) $r)))
+            ->filter(fn ($r) => in_array($r, ['admin', 'manager', 'accountant', 'officer', 'applicant', 'user'], true))
+            ->values();
+
+        $created = 0;
+        $assigned = 0;
+        foreach ($legacyRoles as $baseRole) {
+            $name = match ($baseRole) {
+                'admin' => 'Loan Administrators',
+                'manager' => 'Loan Managers',
+                'accountant' => 'Loan Accountants',
+                'officer' => 'Loan Officers',
+                'applicant' => 'Loan Applicants',
+                default => 'Loan Users',
+            };
+            $slug = 'legacy-'.$baseRole;
+
+            $role = LoanRole::query()->firstOrCreate(
+                ['slug' => $slug],
+                [
+                    'name' => $name,
+                    'base_role' => $baseRole,
+                    'description' => 'Imported from existing users.loan_role values.',
+                    'permissions' => $this->defaultPermissionsByBaseRole()[$baseRole] ?? [],
+                    'is_active' => true,
+                ]
+            );
+
+            if ($role->wasRecentlyCreated) {
+                $created++;
+            }
+
+            $userIds = User::query()
+                ->whereRaw('LOWER(loan_role) = ?', [$baseRole])
+                ->pluck('id')
+                ->all();
+
+            foreach ($userIds as $userId) {
+                \Illuminate\Support\Facades\DB::table('loan_user_role')->where('user_id', $userId)->delete();
+                \Illuminate\Support\Facades\DB::table('loan_user_role')->insert([
+                    'loan_role_id' => $role->id,
+                    'user_id' => $userId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $assigned++;
+            }
+        }
+
+        return redirect()->route('loan.system.setup.access_roles')
+            ->with('status', "Sync complete. {$created} role(s) prepared, {$assigned} user assignment(s) imported.");
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function loanPermissionCatalog(): array
+    {
+        return [
+            'dashboard.view' => 'Dashboard',
+            'employees.view' => 'Employees',
+            'clients.view' => 'Clients',
+            'loanbook.view' => 'LoanBook',
+            'payments.view' => 'Payments',
+            'accounting.view' => 'Accounting',
+            'financial.view' => 'Financial',
+            'branches.view' => 'Branches & Regions',
+            'analytics.view' => 'Business Analytics',
+            'bulksms.view' => 'Bulk SMS',
+            'my_account.view' => 'My Account',
+            'system.help.view' => 'System & Help',
+        ];
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function defaultPermissionsByBaseRole(): array
+    {
+        return [
+            'admin' => array_keys($this->loanPermissionCatalog()),
+            'manager' => array_keys($this->loanPermissionCatalog()),
+            'accountant' => ['dashboard.view', 'accounting.view', 'financial.view', 'payments.view', 'clients.view', 'my_account.view', 'system.help.view'],
+            'officer' => ['dashboard.view', 'employees.view', 'clients.view', 'loanbook.view', 'payments.view', 'bulksms.view', 'branches.view', 'my_account.view', 'system.help.view'],
+            'applicant' => ['dashboard.view', 'my_account.view', 'system.help.view'],
+            'user' => ['dashboard.view', 'clients.view', 'loanbook.view', 'payments.view', 'bulksms.view', 'my_account.view', 'system.help.view'],
+        ];
+    }
+
     /**
      * @param  list<string>  $keys
      */
@@ -381,11 +878,33 @@ class LoanSystemHelpController extends Controller
         foreach ($keys as $key) {
             $rules['settings.'.$key] = ['nullable', 'string', 'max:20000'];
         }
+        if ($keys === self::COMPANY_SETTING_KEYS) {
+            $rules['logo_file'] = ['nullable', 'image', 'max:3072'];
+            $rules['favicon_file'] = ['nullable', 'file', 'mimetypes:image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml', 'max:2048'];
+            $rules['remove_logo'] = ['nullable', 'in:0,1'];
+            $rules['remove_favicon'] = ['nullable', 'in:0,1'];
+        }
         $validated = $request->validate($rules);
 
         foreach ($keys as $key) {
             $val = $validated['settings'][$key] ?? null;
             LoanSystemSetting::query()->where('key', $key)->update(['value' => $val]);
+        }
+
+        if ($keys === self::COMPANY_SETTING_KEYS) {
+            if (($validated['remove_logo'] ?? '0') === '1') {
+                LoanSystemSetting::setValue('logo_url', '', 'Logo URL (or path)', 'company');
+            } elseif ($request->hasFile('logo_file')) {
+                $path = $request->file('logo_file')->store('loan/branding', 'public');
+                LoanSystemSetting::setValue('logo_url', Storage::url($path), 'Logo URL (or path)', 'company');
+            }
+
+            if (($validated['remove_favicon'] ?? '0') === '1') {
+                LoanSystemSetting::setValue('favicon_url', '', 'Favicon URL (or path)', 'company');
+            } elseif ($request->hasFile('favicon_file')) {
+                $path = $request->file('favicon_file')->store('loan/branding', 'public');
+                LoanSystemSetting::setValue('favicon_url', Storage::url($path), 'Favicon URL (or path)', 'company');
+            }
         }
 
         return redirect()->route($redirectRouteName)->with('status', 'Settings saved.');
@@ -430,6 +949,7 @@ class LoanSystemHelpController extends Controller
             ['key' => 'company_email', 'label' => 'Main email', 'group' => 'company', 'value' => ''],
             ['key' => 'company_website', 'label' => 'Website URL', 'group' => 'company', 'value' => ''],
             ['key' => 'logo_url', 'label' => 'Logo URL (or path)', 'group' => 'company', 'value' => ''],
+            ['key' => 'favicon_url', 'label' => 'Favicon URL (or path)', 'group' => 'company', 'value' => ''],
             ['key' => 'about_us', 'label' => 'About us (public / reports)', 'group' => 'company', 'value' => ''],
             ['key' => 'support_contact_email', 'label' => 'Support contact email', 'group' => 'company', 'value' => ''],
             ['key' => 'default_timezone', 'label' => 'Default timezone', 'group' => 'preferences', 'value' => config('app.timezone', 'UTC')],

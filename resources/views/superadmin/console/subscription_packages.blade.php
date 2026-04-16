@@ -81,10 +81,38 @@
                     <p class="mt-1 text-sm text-slate-500">Get started by creating your first subscription package.</p>
                 </div>
             @else
-                <div class="overflow-x-auto">
-                    <table class="w-full">
+                <form id="packages-bulk-form" method="post" action="{{ route('superadmin.console.packages.bulk') }}" class="border-b border-slate-200 bg-slate-50/60 px-6 py-4">
+                    @csrf
+                    <div id="packages-bulk-ids"></div>
+                    <p class="text-xs font-semibold text-slate-600 mb-3">Bulk actions — selected rows on this page</p>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                        <div>
+                            <label for="packages-bulk-action" class="block text-xs font-medium text-slate-600">Action</label>
+                            <select name="bulk_action" id="packages-bulk-action" class="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="set_active">Set active / inactive</option>
+                                <option value="delete">Delete</option>
+                            </select>
+                        </div>
+                        <div id="packages-bulk-active-wrap">
+                            <label for="packages-bulk-is-active" class="block text-xs font-medium text-slate-600">Active</label>
+                            <select name="is_active" id="packages-bulk-is-active" class="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="1">Yes (active)</option>
+                                <option value="0">No (inactive)</option>
+                            </select>
+                        </div>
+                        <button type="button" id="packages-bulk-apply" class="rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">
+                            Apply to selected
+                        </button>
+                    </div>
+                </form>
+                <div class="overflow-x-auto overscroll-x-contain">
+                    <table class="min-w-[720px] w-full">
                         <thead class="bg-slate-50 border-b border-slate-200">
                             <tr>
+                                <th class="w-10 px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider" scope="col">
+                                    <span class="sr-only">Select</span>
+                                    <input type="checkbox" id="packages-select-page" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" title="Select all on this page" aria-label="Select all packages on this page">
+                                </th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Package</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Unit Range</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Monthly Price</th>
@@ -96,6 +124,9 @@
                         <tbody class="divide-y divide-slate-200">
                             @foreach ($packages as $package)
                                 <tr class="hover:bg-slate-50">
+                                    <td class="px-3 py-4 align-middle">
+                                        <input type="checkbox" value="{{ $package->id }}" class="packages-row-cb rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" aria-label="Select package {{ $package->name }}">
+                                    </td>
                                     <td class="px-6 py-4">
                                         <div>
                                             <div class="text-sm font-medium text-slate-900">{{ $package->name }}</div>
@@ -136,6 +167,95 @@
                         </tbody>
                     </table>
                 </div>
+
+                <script>
+                    (function () {
+                        const form = document.getElementById('packages-bulk-form');
+                        const idsWrap = document.getElementById('packages-bulk-ids');
+                        const actionEl = document.getElementById('packages-bulk-action');
+                        const activeWrap = document.getElementById('packages-bulk-active-wrap');
+                        const activeSelect = document.getElementById('packages-bulk-is-active');
+                        const master = document.getElementById('packages-select-page');
+                        const applyBtn = document.getElementById('packages-bulk-apply');
+                        if (!form || !idsWrap || !actionEl || !activeWrap || !master || !applyBtn) return;
+
+                        function rowCheckboxes() {
+                            return document.querySelectorAll('.packages-row-cb');
+                        }
+
+                        function syncActiveVisibility() {
+                            const del = actionEl.value === 'delete';
+                            activeWrap.classList.toggle('hidden', del);
+                            if (activeSelect) {
+                                activeSelect.disabled = del;
+                                if (del) {
+                                    activeSelect.removeAttribute('name');
+                                } else {
+                                    activeSelect.setAttribute('name', 'is_active');
+                                }
+                            }
+                        }
+
+                        actionEl.addEventListener('change', syncActiveVisibility);
+                        syncActiveVisibility();
+
+                        master.addEventListener('change', function () {
+                            master.indeterminate = false;
+                            rowCheckboxes().forEach(function (cb) {
+                                cb.checked = master.checked;
+                            });
+                        });
+
+                        rowCheckboxes().forEach(function (cb) {
+                            cb.addEventListener('change', function () {
+                                const all = Array.from(rowCheckboxes());
+                                master.checked = all.length > 0 && all.every(function (x) { return x.checked; });
+                                master.indeterminate = all.some(function (x) { return x.checked; }) && !master.checked;
+                            });
+                        });
+
+                        applyBtn.addEventListener('click', function () {
+                            const checked = Array.from(rowCheckboxes()).filter(function (cb) { return cb.checked; });
+                            if (checked.length === 0) {
+                                if (window.Swal && typeof window.Swal.fire === 'function') {
+                                    window.Swal.fire({ icon: 'info', title: 'No rows selected', text: 'Select at least one package.' });
+                                } else {
+                                    window.alert('Select at least one package.');
+                                }
+                                return;
+                            }
+                            const isDelete = actionEl.value === 'delete';
+                            const msg = isDelete
+                                ? 'Delete ' + checked.length + ' package(s)? In-use packages will be skipped.'
+                                : 'Update active flag for ' + checked.length + ' package(s)?';
+                            idsWrap.innerHTML = '';
+                            checked.forEach(function (cb) {
+                                const h = document.createElement('input');
+                                h.type = 'hidden';
+                                h.name = 'ids[]';
+                                h.value = cb.value;
+                                idsWrap.appendChild(h);
+                            });
+                            function doSubmit() {
+                                HTMLFormElement.prototype.submit.call(form);
+                            }
+                            if (window.Swal && typeof window.Swal.fire === 'function') {
+                                window.Swal.fire({
+                                    icon: isDelete ? 'warning' : 'question',
+                                    title: isDelete ? 'Confirm delete' : 'Confirm update',
+                                    text: msg,
+                                    showCancelButton: true,
+                                    confirmButtonText: isDelete ? 'Yes, delete' : 'Yes, apply',
+                                    cancelButtonText: 'Cancel',
+                                }).then(function (res) {
+                                    if (res.isConfirmed) doSubmit();
+                                });
+                            } else if (window.confirm(msg)) {
+                                doSubmit();
+                            }
+                        });
+                    })();
+                </script>
             @endif
         </div>
     @endif

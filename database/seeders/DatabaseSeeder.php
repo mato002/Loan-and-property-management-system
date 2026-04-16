@@ -114,6 +114,7 @@ class DatabaseSeeder extends Seeder
         }
 
         $this->call(EmployeeModuleSeeder::class);
+        $this->call(LoanAccountPageSeeder::class);
         $this->call(LoanPortfolioDemoSeeder::class);
         $this->call(PropertyModuleDemoSeeder::class);
     }

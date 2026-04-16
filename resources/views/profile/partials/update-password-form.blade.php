@@ -9,25 +9,40 @@
         </p>
     </header>
 
-    <form method="post" action="{{ route('password.update') }}" class="mt-6 space-y-6">
+    <form method="post" action="{{ route('password.update') }}" class="mt-6 space-y-6" x-data="{ showCurrent:false, showNew:false, showConfirm:false }">
         @csrf
         @method('put')
 
         <div>
             <x-input-label for="update_password_current_password" :value="__('Current Password')" class="text-slate-600 text-xs font-semibold uppercase tracking-wide" />
-            <x-text-input id="update_password_current_password" name="current_password" type="password" class="mt-1 block w-full rounded-xl border-slate-200 bg-white text-slate-900 focus:border-[#4d8d82] focus:ring-[#4d8d82]" autocomplete="current-password" />
+            <div class="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 focus-within:border-[#4d8d82] focus-within:ring-1 focus-within:ring-[#4d8d82]">
+                <x-text-input id="update_password_current_password" name="current_password" x-bind:type="showCurrent ? 'text' : 'password'" class="block w-full border-0 bg-transparent px-0 py-2.5 text-slate-900 focus:ring-0" autocomplete="current-password" />
+                <button type="button" class="text-xs font-semibold text-slate-500 hover:text-slate-700" @click="showCurrent = !showCurrent">
+                    <span x-text="showCurrent ? 'Hide' : 'Show'"></span>
+                </button>
+            </div>
             <x-input-error :messages="$errors->updatePassword->get('current_password')" class="mt-2" />
         </div>
 
         <div>
             <x-input-label for="update_password_password" :value="__('New Password')" class="text-slate-600 text-xs font-semibold uppercase tracking-wide" />
-            <x-text-input id="update_password_password" name="password" type="password" class="mt-1 block w-full rounded-xl border-slate-200 bg-white text-slate-900 focus:border-[#4d8d82] focus:ring-[#4d8d82]" autocomplete="new-password" />
+            <div class="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 focus-within:border-[#4d8d82] focus-within:ring-1 focus-within:ring-[#4d8d82]">
+                <x-text-input id="update_password_password" name="password" x-bind:type="showNew ? 'text' : 'password'" class="block w-full border-0 bg-transparent px-0 py-2.5 text-slate-900 focus:ring-0" autocomplete="new-password" />
+                <button type="button" class="text-xs font-semibold text-slate-500 hover:text-slate-700" @click="showNew = !showNew">
+                    <span x-text="showNew ? 'Hide' : 'Show'"></span>
+                </button>
+            </div>
             <x-input-error :messages="$errors->updatePassword->get('password')" class="mt-2" />
         </div>
 
         <div>
             <x-input-label for="update_password_password_confirmation" :value="__('Confirm Password')" class="text-slate-600 text-xs font-semibold uppercase tracking-wide" />
-            <x-text-input id="update_password_password_confirmation" name="password_confirmation" type="password" class="mt-1 block w-full rounded-xl border-slate-200 bg-white text-slate-900 focus:border-[#4d8d82] focus:ring-[#4d8d82]" autocomplete="new-password" />
+            <div class="mt-1 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 focus-within:border-[#4d8d82] focus-within:ring-1 focus-within:ring-[#4d8d82]">
+                <x-text-input id="update_password_password_confirmation" name="password_confirmation" x-bind:type="showConfirm ? 'text' : 'password'" class="block w-full border-0 bg-transparent px-0 py-2.5 text-slate-900 focus:ring-0" autocomplete="new-password" />
+                <button type="button" class="text-xs font-semibold text-slate-500 hover:text-slate-700" @click="showConfirm = !showConfirm">
+                    <span x-text="showConfirm ? 'Hide' : 'Show'"></span>
+                </button>
+            </div>
             <x-input-error :messages="$errors->updatePassword->get('password_confirmation')" class="mt-2" />
         </div>
 

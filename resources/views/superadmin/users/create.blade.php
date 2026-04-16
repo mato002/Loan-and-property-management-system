@@ -4,7 +4,7 @@
 @section('content')
     <div class="mb-6">
         <h1 class="text-2xl font-black tracking-tight text-slate-900">Add user</h1>
-        <p class="mt-1 text-sm text-slate-600">Create a staff account. You can approve module access and assign roles after creating.</p>
+        <p class="mt-1 text-sm text-slate-600">Create a staff account, set loan role for loan staff, and approve Property / Loan module access as needed.</p>
     </div>
 
     <form method="post" action="{{ route('superadmin.users.store') }}" class="max-w-2xl space-y-6">
@@ -40,13 +40,59 @@
                     </select>
                     @error('property_portal_role')<p class="text-sm text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div class="flex items-end">
-                    <label class="inline-flex items-center gap-2 text-sm font-bold text-slate-700">
-                        <input type="checkbox" name="is_super_admin" value="1" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                        Super admin (full access)
-                    </label>
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">Loan role (optional)</label>
+                    <select name="loan_role" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">None</option>
+                        @foreach ([
+                            'admin' => 'Administrator',
+                            'manager' => 'Manager',
+                            'officer' => 'Loan officer',
+                            'accountant' => 'Accountant',
+                            'applicant' => 'Applicant',
+                            'user' => 'General user',
+                        ] as $k => $lbl)
+                            <option value="{{ $k }}" @selected(old('loan_role') === $k)>{{ $lbl }}</option>
+                        @endforeach
+                    </select>
+                    @error('loan_role')<p class="text-sm text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
             </div>
+
+            <div class="flex items-end">
+                <label class="inline-flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <input type="checkbox" name="is_super_admin" value="1" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" @checked(old('is_super_admin')) />
+                    Super admin (full access)
+                </label>
+            </div>
+
+            @if ($hasModuleAccessTable)
+                @php($statuses = ['approved' => 'Approved', 'pending' => 'Pending', 'revoked' => 'Revoked'])
+                <div class="rounded-xl border border-slate-100 bg-slate-50 p-4 space-y-4">
+                    <h2 class="text-sm font-black text-slate-900">Module access</h2>
+                    <p class="text-xs text-slate-600">Loan staff need <span class="font-semibold">Loan module</span> set to Approved (and usually a loan role above).</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-2">Property module</label>
+                            <select name="module_property" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                @foreach ($statuses as $k => $lbl)
+                                    <option value="{{ $k }}" @selected(old('module_property', 'pending') === $k)>{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                            @error('module_property')<p class="text-sm text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-2">Loan module</label>
+                            <select name="module_loan" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                @foreach ($statuses as $k => $lbl)
+                                    <option value="{{ $k }}" @selected(old('module_loan', 'approved') === $k)>{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                            @error('module_loan')<p class="text-sm text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+                </div>
+            @endif
         </div>
 
         <div class="flex flex-col sm:flex-row items-center gap-3">

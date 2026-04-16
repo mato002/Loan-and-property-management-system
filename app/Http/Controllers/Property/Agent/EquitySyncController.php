@@ -480,6 +480,106 @@ class EquitySyncController extends Controller
             ->with('success', 'Payment re-matched and posted successfully.');
     }
 
+    public function rematchAllUnmatchedPayments(
+        Request $request,
+        EquityPaymentRepository $payments,
+        PaymentMatchingService $matcher,
+        PaymentAuditLogRepository $auditLogs
+    ): RedirectResponse {
+        if (! Schema::hasTable('unassigned_payments') || ! Schema::hasTable('payments')) {
+            return back()->withErrors(['payments' => 'Payments module is not ready. Run migrations first.']);
+        }
+
+        $hasPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
+        $rows = $this->buildUnmatchedQuery($request, $hasPaymentMethod)
+            ->orderBy('id')
+            ->limit(1000)
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return back()->withErrors(['payments' => 'No unmatched payments found for the current filters.']);
+        }
+
+        $matched = 0;
+        $failed = 0;
+        $skipped = 0;
+
+        foreach ($rows as $unassignedPayment) {
+            try {
+                $tx = [
+                    'transaction_id' => (string) $unassignedPayment->transaction_id,
+                    'amount' => (float) $unassignedPayment->amount,
+                    'account_number' => (string) ($unassignedPayment->account_number ?? ''),
+                    'reference' => '',
+                    'phone' => (string) ($unassignedPayment->phone ?? ''),
+                    'transaction_date' => $unassignedPayment->created_at ?? now(),
+                    'raw_payload' => [
+                        'auto_rematch' => true,
+                        'bulk_rematch' => true,
+                        'unassigned_payment_id' => (int) $unassignedPayment->id,
+                        'reason' => (string) ($unassignedPayment->reason ?? ''),
+                    ],
+                ];
+
+                $match = $matcher->match($tx);
+                $tenantId = (int) ($match['tenant_id'] ?? 0);
+                if ($tenantId <= 0) {
+                    $skipped++;
+                    continue;
+                }
+
+                $method = (string) ($unassignedPayment->payment_method ?: 'equity');
+                $isSms = $method === 'sms_forwarder';
+                $options = [
+                    'payment_method' => $method,
+                    'channel' => $isSms ? 'mpesa_sms_ingest' : 'equity_paybill',
+                    'source' => $isSms ? 'sms_ingest' : 'equity_api',
+                    'provider' => $isSms ? 'mpesa' : 'equity',
+                    'message' => 'Automatically re-matched from unmatched queue (bulk).',
+                ];
+
+                Payment::query()
+                    ->where('transaction_id', (string) $unassignedPayment->transaction_id)
+                    ->where('status', 'unmatched')
+                    ->delete();
+
+                $payment = $payments->storeMatched($tx, $tenantId, (string) ($match['matched_by'] ?? 'auto_rematch'), $options);
+
+                if ($isSms) {
+                    PmSmsIngest::query()
+                        ->where('provider_txn_code', (string) $unassignedPayment->transaction_id)
+                        ->whereNull('pm_payment_id')
+                        ->update([
+                            'matched_tenant_id' => $tenantId,
+                            'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0) ?: null,
+                            'match_status' => 'matched',
+                            'match_note' => 'Auto re-matched by bulk matching action.',
+                        ]);
+                }
+
+                $auditLogs->decision('success', [
+                    'stage' => 'auto_rematch_bulk',
+                    'decision' => 'matched',
+                    'unassigned_payment_id' => (int) $unassignedPayment->id,
+                    'transaction_id' => (string) $unassignedPayment->transaction_id,
+                    'tenant_id' => $tenantId,
+                    'matched_by' => (string) ($match['matched_by'] ?? 'auto_rematch'),
+                    'payment_id' => (int) $payment->id,
+                    'pm_payment_id' => (int) ($payment->pm_payment_id ?? 0),
+                ], 'auto_rematch_bulk_decision');
+
+                $unassignedPayment->delete();
+                $matched++;
+            } catch (\Throwable $e) {
+                $failed++;
+            }
+        }
+
+        $summary = "Bulk auto re-match complete. Matched: {$matched}, Skipped: {$skipped}, Failed: {$failed}.";
+
+        return back()->with($failed > 0 ? 'status' : 'success', $summary);
+    }
+
     public function allPayments(Request $request): View|StreamedResponse
     {
         if (! Schema::hasTable('payments')) {

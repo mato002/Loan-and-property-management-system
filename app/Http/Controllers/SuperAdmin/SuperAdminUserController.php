@@ -13,11 +13,13 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Illuminate\Support\Facades\DB;
 use App\Support\TabularExport;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SuperAdminUserController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request): View|StreamedResponse
     {
         $q = trim((string) $request->string('q'));
         $role = trim((string) $request->query('role', ''));
@@ -26,7 +28,7 @@ class SuperAdminUserController extends Controller
         }
         $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
 
-        $users = User::query()
+        $userQuery = User::query()
             ->when($q !== '', fn ($query) => $query->where(function ($qq) use ($q) {
                 $qq->where('name', 'like', "%{$q}%")
                     ->orWhere('email', 'like', "%{$q}%");
@@ -42,9 +44,24 @@ class SuperAdminUserController extends Controller
                 }
                 $query->where('property_portal_role', $role);
             })
-            ->orderByDesc('id')
-            ->paginate($perPage)
-            ->withQueryString();
+            ->orderByDesc('id');
+
+        if (Schema::hasTable('user_module_accesses')) {
+            $userQuery->with([
+                'moduleAccesses' => fn ($q) => $q->select('id', 'user_id', 'module', 'status'),
+            ]);
+        }
+
+        $users = $userQuery->paginate($perPage)->withQueryString();
+
+        $loanRoleLabels = [
+            'admin' => 'Administrator',
+            'manager' => 'Manager',
+            'officer' => 'Loan officer',
+            'accountant' => 'Accountant',
+            'applicant' => 'Applicant',
+            'user' => 'General user',
+        ];
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
@@ -66,11 +83,11 @@ class SuperAdminUserController extends Controller
                 })
                 ->orderByDesc('id')
                 ->limit(5000)
-                ->get(['name', 'email', 'is_super_admin', 'property_portal_role', 'created_at']);
+                ->get(['name', 'email', 'is_super_admin', 'property_portal_role', 'loan_role', 'created_at']);
 
             return TabularExport::stream(
                 'superadmin-users-'.now()->format('Ymd_His'),
-                ['Name', 'Email', 'Super admin', 'Property role', 'Created'],
+                ['Name', 'Email', 'Super admin', 'Property role', 'Loan role', 'Created'],
                 function () use ($rows) {
                     foreach ($rows as $u) {
                         yield [
@@ -78,6 +95,7 @@ class SuperAdminUserController extends Controller
                             (string) $u->email,
                             (bool) $u->is_super_admin ? 'Yes' : 'No',
                             (string) ($u->property_portal_role ?? '—'),
+                            (string) ($u->loan_role ?? '—'),
                             optional($u->created_at)->format('Y-m-d H:i:s') ?? '',
                         ];
                     }
@@ -86,23 +104,97 @@ class SuperAdminUserController extends Controller
             );
         }
 
-        return view('superadmin.users.index', compact('users', 'q', 'role', 'perPage'));
+        return view('superadmin.users.index', [
+            'users' => $users,
+            'q' => $q,
+            'role' => $role,
+            'perPage' => $perPage,
+            'loanRoleLabels' => $loanRoleLabels,
+            'hasModuleAccessTable' => Schema::hasTable('user_module_accesses'),
+        ]);
+    }
+
+    public function bulk(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'bulk_kind' => ['required', Rule::in(['property_role', 'module_property', 'module_loan'])],
+            'bulk_value' => ['required', 'string', 'max:32'],
+            'ids' => ['required', 'array', 'max:300'],
+            'ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        $ids = array_values(array_unique(array_map('intval', $data['ids'])));
+        $actorId = $request->user()?->id;
+
+        if ($data['bulk_kind'] === 'property_role') {
+            $allowed = ['agent', 'landlord', 'tenant', 'none'];
+            if (! in_array($data['bulk_value'], $allowed, true)) {
+                return back()->withErrors(['bulk' => 'Invalid property portal role.']);
+            }
+            $portalRole = $data['bulk_value'] === 'none' ? null : $data['bulk_value'];
+            $updated = User::query()->whereIn('id', $ids)->update(['property_portal_role' => $portalRole]);
+
+            return back()->with('success', 'Updated property portal role for '.(int) $updated.' user(s).');
+        }
+
+        if (! Schema::hasTable('user_module_accesses')) {
+            return back()->withErrors(['bulk' => 'Module access table is not ready.']);
+        }
+
+        $module = $data['bulk_kind'] === 'module_property' ? 'property' : 'loan';
+        if (! in_array($data['bulk_value'], [
+            UserModuleAccess::STATUS_APPROVED,
+            UserModuleAccess::STATUS_PENDING,
+            UserModuleAccess::STATUS_REVOKED,
+        ], true)) {
+            return back()->withErrors(['bulk' => 'Invalid module access status.']);
+        }
+
+        $status = $data['bulk_value'];
+        $count = 0;
+
+        DB::transaction(function () use ($ids, $module, $status, $actorId, &$count) {
+            foreach ($ids as $userId) {
+                $this->upsertModuleAccess((int) $userId, $module, $status, $actorId);
+                $count++;
+            }
+        });
+
+        return back()->with('success', 'Updated '.$module.' module access for '.$count.' user(s).');
     }
 
     public function create(): View
     {
-        return view('superadmin.users.create');
+        return view('superadmin.users.create', [
+            'hasModuleAccessTable' => Schema::hasTable('user_module_accesses'),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
+        $rules = [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:6'],
             'is_super_admin' => ['nullable', 'boolean'],
             'property_portal_role' => ['nullable', 'string', Rule::in(['agent', 'landlord', 'tenant'])],
-        ]);
+            'loan_role' => ['nullable', 'string', Rule::in(self::loanRoleOptions())],
+        ];
+
+        if (Schema::hasTable('user_module_accesses')) {
+            $rules['module_property'] = ['required', Rule::in([
+                UserModuleAccess::STATUS_APPROVED,
+                UserModuleAccess::STATUS_PENDING,
+                UserModuleAccess::STATUS_REVOKED,
+            ])];
+            $rules['module_loan'] = ['required', Rule::in([
+                UserModuleAccess::STATUS_APPROVED,
+                UserModuleAccess::STATUS_PENDING,
+                UserModuleAccess::STATUS_REVOKED,
+            ])];
+        }
+
+        $validated = $request->validate($rules);
 
         $user = User::query()->create([
             'name' => $validated['name'],
@@ -110,10 +202,17 @@ class SuperAdminUserController extends Controller
             'password' => Hash::make($validated['password']),
             'is_super_admin' => (bool) ($validated['is_super_admin'] ?? false),
             'property_portal_role' => $validated['property_portal_role'] ?? null,
+            'loan_role' => $validated['loan_role'] ?? null,
             'email_verified_at' => now(),
         ]);
 
-        $this->applyDefaultPropertyAccessOnCreate($user, $request->user()?->id);
+        if (Schema::hasTable('user_module_accesses')) {
+            $approverId = $request->user()?->id;
+            $this->upsertModuleAccess($user->id, 'property', $validated['module_property'], $approverId);
+            $this->upsertModuleAccess($user->id, 'loan', $validated['module_loan'], $approverId);
+        }
+
+        $this->applyDefaultPropertyRolesOnCreate($user);
 
         return redirect()
             ->route('superadmin.users.edit', $user)
@@ -123,8 +222,8 @@ class SuperAdminUserController extends Controller
     public function edit(User $user): View
     {
         $moduleAccess = [
-            'property' => $user->moduleAccessStatus('property') ?? UserModuleAccess::STATUS_PENDING,
-            'loan' => $user->moduleAccessStatus('loan') ?? UserModuleAccess::STATUS_PENDING,
+            'property' => $user->resolvedModuleAccessStatusForAdmin('property'),
+            'loan' => $user->resolvedModuleAccessStatusForAdmin('loan'),
         ];
 
         $pmRoles = Schema::hasTable('pm_roles')
@@ -140,6 +239,13 @@ class SuperAdminUserController extends Controller
         $selectedRoleIds = $user->pmRoles->pluck('id')->all();
         $selectedPermissionIds = $user->pmPermissions->pluck('id')->all();
 
+        $suggestedPropertyPmRoleIds = $moduleAccess['property'] === UserModuleAccess::STATUS_APPROVED
+            ? $this->defaultPropertyPmRoleIdsForPortalRole($user->property_portal_role)
+            : [];
+        $propertyPmRoleCheckboxDefaults = $selectedRoleIds !== []
+            ? $selectedRoleIds
+            : $suggestedPropertyPmRoleIds;
+
         return view('superadmin.users.edit', compact(
             'user',
             'moduleAccess',
@@ -147,6 +253,7 @@ class SuperAdminUserController extends Controller
             'pmPermissions',
             'selectedRoleIds',
             'selectedPermissionIds',
+            'propertyPmRoleCheckboxDefaults',
         ));
     }
 
@@ -158,6 +265,7 @@ class SuperAdminUserController extends Controller
             'password' => ['nullable', 'string', 'min:6'],
             'is_super_admin' => ['nullable', 'boolean'],
             'property_portal_role' => ['nullable', 'string', Rule::in(['agent', 'landlord', 'tenant'])],
+            'loan_role' => ['nullable', 'string', Rule::in(self::loanRoleOptions())],
 
             'module_property' => ['required', Rule::in([UserModuleAccess::STATUS_APPROVED, UserModuleAccess::STATUS_PENDING, UserModuleAccess::STATUS_REVOKED])],
             'module_loan' => ['required', Rule::in([UserModuleAccess::STATUS_APPROVED, UserModuleAccess::STATUS_PENDING, UserModuleAccess::STATUS_REVOKED])],
@@ -173,6 +281,7 @@ class SuperAdminUserController extends Controller
             'email' => $validated['email'],
             'is_super_admin' => (bool) ($validated['is_super_admin'] ?? false),
             'property_portal_role' => $validated['property_portal_role'] ?? null,
+            'loan_role' => $validated['loan_role'] ?? null,
         ]);
 
         if (! empty($validated['password'])) {
@@ -188,6 +297,9 @@ class SuperAdminUserController extends Controller
 
         if (Schema::hasTable('pm_roles') && Schema::hasTable('pm_user_role')) {
             $roleIds = array_values(array_unique(array_map('intval', $validated['pm_role_ids'] ?? [])));
+            if ($validated['module_property'] === UserModuleAccess::STATUS_APPROVED && $roleIds === []) {
+                $roleIds = $this->defaultPropertyPmRoleIdsForPortalRole($validated['property_portal_role'] ?? null);
+            }
             $user->pmRoles()->sync($roleIds);
         }
 
@@ -216,42 +328,62 @@ class SuperAdminUserController extends Controller
         );
     }
 
-    private function applyDefaultPropertyAccessOnCreate(User $user, ?int $approvedBy): void
+    /**
+     * @return list<string>
+     */
+    private static function loanRoleOptions(): array
     {
-        $portalRole = (string) ($user->property_portal_role ?? '');
-        if ($portalRole === '') {
-            return;
+        return ['admin', 'officer', 'manager', 'applicant', 'accountant', 'user'];
+    }
+
+    /**
+     * Default Property RBAC role slugs per portal role (common operational bundle for agents).
+     *
+     * @return list<string>
+     */
+    private function defaultPropertyPmRoleSlugsForPortalRole(?string $portalRole): array
+    {
+        $portalRole = $portalRole !== null ? strtolower(trim($portalRole)) : '';
+
+        return match ($portalRole) {
+            'agent' => ['property_manager', 'leasing_officer', 'finance_clerk'],
+            'landlord' => ['landlord_portal_user'],
+            'tenant' => ['tenant_portal_user'],
+            default => [],
+        };
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function defaultPropertyPmRoleIdsForPortalRole(?string $portalRole): array
+    {
+        if (! Schema::hasTable('pm_roles')) {
+            return [];
         }
 
-        if (Schema::hasTable('user_module_accesses')) {
-            $this->upsertModuleAccess($user->id, 'property', UserModuleAccess::STATUS_APPROVED, $approvedBy);
+        $slugs = $this->defaultPropertyPmRoleSlugsForPortalRole($portalRole);
+        if ($slugs === []) {
+            return [];
         }
 
+        $ids = PmRole::query()->whereIn('slug', $slugs)->pluck('id')->all();
+
+        return array_values(array_unique(array_map('intval', $ids)));
+    }
+
+    /**
+     * Assign default Property RBAC roles when a portal role is set. Module approval is set only via the form.
+     */
+    private function applyDefaultPropertyRolesOnCreate(User $user): void
+    {
         if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_user_role')) {
             return;
         }
 
-        $defaultRoleSlugByPortalRole = [
-            'agent' => 'property_manager',
-            'landlord' => 'landlord_portal_user',
-            'tenant' => 'tenant_portal_user',
-        ];
-
-        $defaultRole = null;
-        $expectedSlug = $defaultRoleSlugByPortalRole[$portalRole] ?? null;
-        if ($expectedSlug !== null) {
-            $defaultRole = PmRole::query()->where('slug', $expectedSlug)->first();
-        }
-
-        if (! $defaultRole) {
-            $defaultRole = PmRole::query()
-                ->where('portal_scope', $portalRole)
-                ->orderBy('name')
-                ->first();
-        }
-
-        if ($defaultRole) {
-            $user->pmRoles()->syncWithoutDetaching([$defaultRole->id]);
+        $ids = $this->defaultPropertyPmRoleIdsForPortalRole($user->property_portal_role);
+        if ($ids !== []) {
+            $user->pmRoles()->syncWithoutDetaching($ids);
         }
     }
 }

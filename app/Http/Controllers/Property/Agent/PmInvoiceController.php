@@ -18,6 +18,100 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PmInvoiceController extends Controller
 {
+    public function show(PmInvoice $invoice): View
+    {
+        $invoice->loadMissing([
+            'tenant:id,name,phone,email',
+            'unit:id,label,property_id',
+            'unit.property:id,name',
+            'allocations.payment:id,payment_ref,paid_at,status,amount,payment_method',
+        ]);
+
+        return view('property.agent.revenue.invoices_show', [
+            'invoice' => $invoice,
+        ]);
+    }
+
+    public function edit(PmInvoice $invoice): View
+    {
+        $invoice->loadMissing(['tenant:id,name', 'unit:id,label,property_id', 'unit.property:id,name']);
+
+        return view('property.agent.revenue.invoices_edit', [
+            'invoice' => $invoice,
+        ]);
+    }
+
+    public function update(Request $request, PmInvoice $invoice): RedirectResponse
+    {
+        $data = $request->validate([
+            'issue_date' => ['required', 'date'],
+            'due_date' => ['required', 'date'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'status' => ['required', 'in:draft,sent,cancelled'],
+        ]);
+
+        if ((string) $invoice->status === PmInvoice::STATUS_PAID) {
+            return back()->withErrors(['status' => 'Paid invoices cannot be edited manually.'])->withInput();
+        }
+
+        $amountPaid = (float) $invoice->amount_paid;
+        if ((float) $data['amount'] < $amountPaid) {
+            return back()->withErrors(['amount' => 'Amount cannot be less than already paid value (KES '.number_format($amountPaid, 2).').'])->withInput();
+        }
+
+        if ((string) $data['status'] === PmInvoice::STATUS_CANCELLED && $amountPaid > 0) {
+            return back()->withErrors(['status' => 'Cannot cancel an invoice that already has payments.'])->withInput();
+        }
+
+        $invoice->update([
+            'issue_date' => $data['issue_date'],
+            'due_date' => $data['due_date'],
+            'amount' => $data['amount'],
+            'description' => $data['description'] ?? null,
+            'status' => $data['status'],
+        ]);
+
+        return redirect()
+            ->route('property.revenue.invoices', absolute: false)
+            ->with('success', 'Invoice '.$invoice->invoice_no.' updated.');
+    }
+
+    public function destroy(PmInvoice $invoice): RedirectResponse
+    {
+        if ((float) $invoice->amount_paid > 0 || $invoice->allocations()->exists()) {
+            return back()->withErrors([
+                'invoice' => 'Cannot delete an invoice that already has payment allocations.',
+            ]);
+        }
+
+        $invoiceNo = (string) $invoice->invoice_no;
+        $invoice->delete();
+
+        return back()->with('success', 'Invoice '.$invoiceNo.' deleted.');
+    }
+
+    public function updateStatus(Request $request, PmInvoice $invoice): RedirectResponse
+    {
+        $data = $request->validate([
+            'status' => ['required', 'in:draft,sent,cancelled'],
+        ]);
+
+        // Keep paid invoices immutable from manual status edits.
+        if ((string) $invoice->status === PmInvoice::STATUS_PAID) {
+            return back()->withErrors(['status' => 'Paid invoices cannot be changed manually.']);
+        }
+
+        $target = (string) $data['status'];
+        if ($target === PmInvoice::STATUS_CANCELLED && (float) $invoice->amount_paid > 0) {
+            return back()->withErrors(['status' => 'Cannot cancel an invoice that already has payments.']);
+        }
+
+        $invoice->update(['status' => $target]);
+
+        return back()->with('success', 'Invoice '.$invoice->invoice_no.' status updated to '.ucfirst($target).'.');
+    }
+
     public function leaseInfo(PmLease $lease)
     {
         $lease->loadMissing(['pmTenant:id,name', 'units:id,property_id,label', 'units.property:id,name']);
@@ -172,8 +266,39 @@ class PmInvoiceController extends Controller
 
         $rows = $invoices->getCollection()->map(function (PmInvoice $i) {
             $channel = $i->status === PmInvoice::STATUS_PAID ? 'Settled' : 'Open';
+            $csrf = csrf_token();
+            $statusAction = route('property.revenue.invoices.status', $i, false);
+            $showAction = route('property.revenue.invoices.show', $i, false);
+            $editAction = route('property.revenue.invoices.edit', $i, false);
+            $destroyAction = route('property.revenue.invoices.destroy', $i, false);
+            $options = collect([
+                PmInvoice::STATUS_DRAFT => 'Draft',
+                PmInvoice::STATUS_SENT => 'Sent',
+                PmInvoice::STATUS_CANCELLED => 'Cancelled',
+            ])->map(function (string $label, string $value) use ($i): string {
+                $selected = (string) $i->status === $value ? ' selected' : '';
+
+                return '<option value="'.$value.'"'.$selected.'>'.$label.'</option>';
+            })->implode('');
             $actions = new HtmlString(
-                '<a href="'.route('property.revenue.payments').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Apply payment</a>'
+                '<div class="flex flex-wrap items-center gap-2">'.
+                    '<a href="'.$showAction.'" class="text-slate-700 hover:text-slate-900 font-medium">Show</a>'.
+                    '<a href="'.$editAction.'" class="text-slate-700 hover:text-slate-900 font-medium">Edit</a>'.
+                    '<a href="'.route('property.revenue.payments').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Apply payment</a>'.
+                    '<form method="post" action="'.$statusAction.'" class="inline-flex items-center gap-1">'.
+                        '<input type="hidden" name="_token" value="'.$csrf.'">'.
+                        '<input type="hidden" name="_method" value="patch">'.
+                        '<select name="status" class="rounded border border-slate-300 px-1.5 py-0.5 text-xs">'.
+                            $options.
+                        '</select>'.
+                        '<button type="submit" class="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-slate-700">Save</button>'.
+                    '</form>'.
+                    '<form method="post" action="'.$destroyAction.'" class="inline" data-swal-confirm="Delete this invoice? This only works for invoices without payments.">'.
+                        '<input type="hidden" name="_token" value="'.$csrf.'">'.
+                        '<input type="hidden" name="_method" value="delete">'.
+                        '<button type="submit" class="text-red-600 hover:text-red-700 font-medium">Delete</button>'.
+                    '</form>'.
+                '</div>'
             );
 
             return [

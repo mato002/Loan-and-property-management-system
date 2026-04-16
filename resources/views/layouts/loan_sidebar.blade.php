@@ -1,17 +1,31 @@
 <!-- Mobile Sidebar Backdrop -->
 <div x-show="sidebarOpen" x-transition.opacity class="fixed inset-0 z-40 bg-gray-900/80 backdrop-blur-sm md:hidden" @click="sidebarOpen = false" x-cloak></div>
 
+@php
+    $loanLogoRaw = trim((string) \App\Models\LoanSystemSetting::getValue('logo_url', ''));
+    $loanLogoUrl = match (true) {
+        $loanLogoRaw === '' => '',
+        \Illuminate\Support\Str::startsWith($loanLogoRaw, ['http://', 'https://', '//']) => $loanLogoRaw,
+        default => asset(ltrim($loanLogoRaw, '/')),
+    };
+    $loanAppName = \App\Models\LoanSystemSetting::getValue('app_display_name', 'Loan Manager');
+@endphp
+
 <!-- Sidebar Elements -->
-<aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-md:pointer-events-none'" class="fixed inset-y-0 left-0 z-50 w-72 bg-[#2f4f4f] border-r border-[#264040] flex flex-col min-h-0 transition-transform duration-300 md:relative md:translate-x-0 overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none">
+<aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-md:pointer-events-none'" class="fixed inset-y-0 left-0 z-50 w-[280px] sm:w-[288px] bg-[#2f4f4f] border-r border-[#264040] flex flex-col min-h-0 transition-transform duration-300 md:relative md:translate-x-0 md:w-72 md:max-w-72 overflow-y-auto md:overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none">
     <!-- Header -->
     <div class="h-16 flex items-center justify-between px-6 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md">
-        <a href="{{ route('dashboard') }}" class="text-xl font-bold text-white flex items-center gap-3">
-            <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            </div>
-            Loan Manager
+        <a href="{{ route('dashboard') }}" class="text-xl font-bold text-white flex items-center gap-3 min-w-0">
+            @if (trim((string) $loanLogoUrl) !== '')
+                <img src="{{ $loanLogoUrl }}" alt="Logo" class="h-8 w-auto max-w-[130px] object-contain rounded bg-white/90 p-1 shadow-lg">
+            @else
+                <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                    <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+            @endif
+            <span class="truncate">{{ $loanAppName }}</span>
         </a>
         <button @click="sidebarOpen = false" class="md:hidden p-2 rounded-md text-[#8db1af] hover:text-white hover:bg-[#406866] transition-colors">
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -21,7 +35,7 @@
     </div>
 
     <!-- Navigation List -->
-    <nav class="flex-1 min-h-0 overflow-y-scroll py-6 px-4 space-y-6 custom-scrollbar">
+    <nav class="flex-1 min-h-0 overflow-y-auto py-6 px-4 space-y-6 custom-scrollbar" @click="if (window.innerWidth < 768 && $event.target.closest('a')) sidebarOpen = false">
 
         <!-- Dashboard Link -->
         <div>
@@ -45,9 +59,7 @@
         @endif
 
         @php
-            $loanRole = auth()->user()?->loan_role;
-            $isSuperAdmin = (bool) (auth()->user()?->is_super_admin ?? false);
-            $isAccountantOnly = ! $isSuperAdmin && $loanRole === 'accountant';
+            use App\Support\LoanNavigation;
 
             $menu = [
                 'Employees' => [
@@ -122,17 +134,17 @@
                     'icon' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>',
                     'items' => [
                         ['label' => 'Create Application', 'route' => 'loan.book.applications.create', 'active_pattern' => 'loan.book.applications.create'],
-                        ['label' => 'Loan Applications', 'route' => 'loan.book.applications.index', 'active_patterns' => ['loan.book.applications.index', 'loan.book.applications.edit']],
-                        ['label' => 'Collection MTD', 'route' => 'loan.book.collection_mtd', 'active_pattern' => 'loan.book.collection_mtd'],
-                        ['label' => 'Disbursements', 'route' => 'loan.book.disbursements.index', 'active_pattern' => 'loan.book.disbursements.*'],
+                        ['label' => 'Loan Applications', 'route' => 'loan.book.applications.index', 'active_patterns' => ['loan.book.applications.index', 'loan.book.applications.show', 'loan.book.applications.edit']],
+                        ['label' => 'View Loans', 'route' => 'loan.book.loans.index', 'active_patterns' => ['loan.book.loans.index', 'loan.book.loans.show', 'loan.book.loans.edit', 'loan.book.loans.create']],
+                        ['label' => 'Disbursements', 'route' => 'loan.book.disbursements.index', 'active_patterns' => ['loan.book.disbursements.index', 'loan.book.disbursements.show', 'loan.book.disbursements.create', 'loan.book.disbursements.store', 'loan.book.disbursements.destroy']],
                         ['label' => 'Collection sheet', 'route' => 'loan.book.collection_sheet.index', 'active_pattern' => 'loan.book.collection_sheet.*'],
-                        ['label' => 'Collection Reports', 'route' => 'loan.book.collection_reports', 'active_pattern' => 'loan.book.collection_reports'],
-                        ['label' => 'Collection Rates', 'route' => 'loan.book.collection_rates.index', 'active_pattern' => 'loan.book.collection_rates.*'],
-                        ['label' => 'Collection Agents', 'route' => 'loan.book.collection_agents.index', 'active_pattern' => 'loan.book.collection_agents.*'],
+                        ['label' => 'Collection MTD', 'route' => 'loan.book.collection_mtd', 'active_pattern' => 'loan.book.collection_mtd'],
                         ['label' => 'Loan Arrears', 'route' => 'loan.book.loan_arrears', 'active_pattern' => 'loan.book.loan_arrears'],
-                        ['label' => 'App Loans Report', 'route' => 'loan.book.app_loans_report', 'active_pattern' => 'loan.book.app_loans_report'],
                         ['label' => 'Checkoff Loans', 'route' => 'loan.book.checkoff_loans', 'active_pattern' => 'loan.book.checkoff_loans'],
-                        ['label' => 'View Loans', 'route' => 'loan.book.loans.index', 'active_patterns' => ['loan.book.loans.index', 'loan.book.loans.edit', 'loan.book.loans.create']],
+                        ['label' => 'Collection Agents', 'route' => 'loan.book.collection_agents.index', 'active_pattern' => 'loan.book.collection_agents.*'],
+                        ['label' => 'Collection Rates', 'route' => 'loan.book.collection_rates.index', 'active_pattern' => 'loan.book.collection_rates.*'],
+                        ['label' => 'Collection Reports', 'route' => 'loan.book.collection_reports', 'active_pattern' => 'loan.book.collection_reports'],
+                        ['label' => 'App Loans Report', 'route' => 'loan.book.app_loans_report', 'active_pattern' => 'loan.book.app_loans_report'],
                     ],
                 ],
                 'Payments' => [
@@ -203,15 +215,12 @@
                     ],
                 ],
             ];
+
+            $menu = LoanNavigation::filterSidebarMenu(auth()->user(), $menu);
         @endphp
 
         <div class="space-y-3">
             @foreach($menu as $groupName => $data)
-            @php
-                if ($isAccountantOnly && ! in_array($groupName, ['Accounting', 'Financial', 'My Account', 'System & Help'], true)) {
-                    continue;
-                }
-            @endphp
             <div x-data="{ open: {{ (
                 ($groupName === 'Employees' && request()->routeIs('loan.employees.*')) ||
                 ($groupName === 'Accounting' && request()->routeIs('loan.accounting.*')) ||

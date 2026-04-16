@@ -22,8 +22,8 @@ class EnsureLoanRole
             return $next($request);
         }
 
-        // Legacy-safe: if role column isn't populated, don't block existing installs.
-        $userRole = (string) ($user->loan_role ?? '');
+        // Role can be explicit (users.loan_role) or derived from employee job title setup.
+        $userRole = (string) ($user->effectiveLoanRole() ?? '');
         if ($userRole === '') {
             return $next($request);
         }

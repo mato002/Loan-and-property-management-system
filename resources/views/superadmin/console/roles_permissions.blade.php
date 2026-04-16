@@ -11,11 +11,12 @@
         <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">RBAC tables are not ready (`pm_roles`, `pm_permissions`).</div>
     @else
         <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden min-w-0">
                 <div class="px-5 py-4 border-b border-slate-200">
                     <h2 class="text-sm font-black text-slate-900">Roles</h2>
                 </div>
-                <table class="w-full text-sm">
+                <div class="overflow-x-auto overscroll-x-contain">
+                <table class="min-w-[480px] w-full text-sm">
                     <thead class="bg-slate-50 text-slate-600">
                         <tr>
                             <th class="px-5 py-3 text-left font-bold">Role</th>
@@ -38,9 +39,10 @@
                         @endforelse
                     </tbody>
                 </table>
+                </div>
             </div>
 
-            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden min-w-0">
                 <div class="px-5 py-4 border-b border-slate-200">
                     <h2 class="text-sm font-black text-slate-900">Permissions by group</h2>
                 </div>

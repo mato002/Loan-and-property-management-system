@@ -15,6 +15,7 @@ use App\Http\Controllers\Loan\LoanEmployeesController;
 use App\Http\Controllers\Loan\LoanFinancialController;
 use App\Http\Controllers\Loan\LoanFormSetupController;
 use App\Http\Controllers\Loan\LoanOrganizationController;
+use App\Http\Controllers\Loan\LoanPaymentWebhookController;
 use App\Http\Controllers\Loan\LoanPaymentsController;
 use App\Http\Controllers\Loan\LoanSystemHelpController;
 use App\Http\Controllers\Integrations\MpesaDarajaWebhookController;
@@ -123,6 +124,9 @@ Route::post('/webhooks/property/payments/stk-callback', [PropertyPaymentWebhookC
 Route::post('/webhooks/property/payments/sms-ingest', [PropertyPaymentWebhookController::class, 'smsIngest'])
     ->withoutMiddleware([PreventRequestForgery::class])
     ->name('webhooks.property.payments.sms_ingest');
+Route::post('/webhooks/loan/payments/sms-ingest', [LoanPaymentWebhookController::class, 'smsIngest'])
+    ->withoutMiddleware([PreventRequestForgery::class])
+    ->name('webhooks.loan.payments.sms_ingest');
 
 // Safaricom Daraja STK callback (raw Daraja format)
 Route::post('/webhooks/mpesa/stk-callback', [MpesaDarajaWebhookController::class, 'stkCallback'])
@@ -151,11 +155,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
             };
         }
 
-        return redirect()->route('loan.dashboard');
+        $loanRole = auth()->user()?->effectiveLoanRole() ?? '';
+
+        return match ($loanRole) {
+            'accountant' => redirect()->route('loan.accounting.books'),
+            'applicant' => redirect()->route('loan.account.show'),
+            default => redirect()->route('loan.dashboard'),
+        };
     })->name('dashboard');
 
-    Route::get('/choose-module', [ChooseModuleController::class, 'index'])->name('choose_module');
-    Route::post('/choose-module/activate', [ChooseModuleController::class, 'activate'])->name('choose_module.activate');
+    Route::get('/choose-module', [ChooseModuleController::class, 'show'])->name('choose_module');
+    Route::post('/choose-module/activate/{module}', [ChooseModuleController::class, 'activate'])
+        ->where('module', 'property|loan')
+        ->name('choose_module.activate');
 
     Route::get('/subscription/required', function () {
         return view('subscription.none');
@@ -181,17 +193,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/roles-permissions', [SuperAdminConsoleController::class, 'rolesPermissions'])->name('roles_permissions');
         Route::get('/agent-workspaces', [SuperAdminConsoleController::class, 'agentWorkspaces'])->name('agent_workspaces');
         Route::get('/audit-trail', [SuperAdminConsoleController::class, 'auditTrail'])->name('audit_trail');
-        
+        Route::post('/audit-trail/export-selected', [SuperAdminConsoleController::class, 'auditTrailExportSelected'])->name('audit_trail.export_selected');
+        Route::post('/agent-workspaces/export-selected', [SuperAdminConsoleController::class, 'agentWorkspacesExportSelected'])->name('agent_workspaces.export_selected');
+
         Route::get('/packages', [SuperAdminConsoleController::class, 'subscriptionPackages'])->name('console.packages');
         Route::post('/packages', [SuperAdminConsoleController::class, 'storeSubscriptionPackage'])->name('console.packages.store');
         Route::patch('/packages/{package}', [SuperAdminConsoleController::class, 'updateSubscriptionPackage'])->name('console.packages.update');
         Route::delete('/packages/{package}', [SuperAdminConsoleController::class, 'deleteSubscriptionPackage'])->name('console.packages.delete');
-        
+        Route::post('/packages/bulk', [SuperAdminConsoleController::class, 'bulkSubscriptionPackages'])->name('console.packages.bulk');
+
         Route::get('/subscriptions', [SuperAdminConsoleController::class, 'agentSubscriptions'])->name('console.subscriptions');
         Route::post('/subscriptions', [SuperAdminConsoleController::class, 'storeAgentSubscription'])->name('console.subscriptions.store');
+        Route::post('/subscriptions/bulk', [SuperAdminConsoleController::class, 'bulkAgentSubscriptions'])->name('console.subscriptions.bulk');
         Route::delete('/subscriptions/{subscription}', [SuperAdminConsoleController::class, 'deleteAgentSubscription'])->name('console.subscriptions.delete');
 
         Route::get('/users', [SuperAdminUserController::class, 'index'])->name('users.index');
+        Route::post('/users/bulk', [SuperAdminUserController::class, 'bulk'])->name('users.bulk');
         Route::get('/users/create', [SuperAdminUserController::class, 'create'])->name('users.create');
         Route::post('/users', [SuperAdminUserController::class, 'store'])->name('users.store');
         Route::get('/users/{user}/edit', [SuperAdminUserController::class, 'edit'])->name('users.edit');
@@ -254,6 +271,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('loan/clients')->name('loan.clients.')->group(function () {
         Route::get('/', [LoanClientsController::class, 'index'])->name('index');
         Route::get('/create', [LoanClientsController::class, 'create'])->name('create');
+        Route::post('/branches', [LoanClientsController::class, 'branchStore'])->name('branches.store');
         Route::post('/', [LoanClientsController::class, 'store'])->name('store');
 
         Route::get('/leads', [LoanClientsController::class, 'leads'])->name('leads');
@@ -291,10 +309,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/', [LoanEmployeesController::class, 'index'])->name('index');
         Route::get('/create', [LoanEmployeesController::class, 'create'])->name('create');
         Route::post('/', [LoanEmployeesController::class, 'store'])->name('store');
+        Route::post('/departments', [LoanEmployeesController::class, 'departmentsStore'])->name('departments.store');
+        Route::post('/branches', [LoanEmployeesController::class, 'branchesStore'])->name('branches.store');
+        Route::post('/bulk-delete', [LoanEmployeesController::class, 'employeesBulkDelete'])->name('bulk_delete');
 
         Route::get('/leaves/create', [LoanEmployeesController::class, 'leavesCreate'])->name('leaves.create');
         Route::post('/leaves', [LoanEmployeesController::class, 'leavesStore'])->name('leaves.store');
         Route::patch('/leaves/{staff_leave}/status', [LoanEmployeesController::class, 'leavesUpdateStatus'])->name('leaves.status');
+        Route::post('/leaves/bulk-status', [LoanEmployeesController::class, 'leavesBulkStatus'])->name('leaves.bulk_status');
         Route::get('/leaves', [LoanEmployeesController::class, 'leaves'])->name('leaves');
 
         Route::get('/groups/create', [LoanEmployeesController::class, 'groupsCreate'])->name('groups.create');
@@ -307,6 +329,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/portfolios/create', [LoanEmployeesController::class, 'portfoliosCreate'])->name('portfolios.create');
         Route::post('/portfolios', [LoanEmployeesController::class, 'portfoliosStore'])->name('portfolios.store');
+        Route::post('/portfolios/bulk-delete', [LoanEmployeesController::class, 'portfoliosBulkDelete'])->name('portfolios.bulk_delete');
         Route::get('/portfolios', [LoanEmployeesController::class, 'portfolios'])->name('portfolios');
         Route::get('/portfolios/{staff_portfolio}/edit', [LoanEmployeesController::class, 'portfoliosEdit'])->name('portfolios.edit');
         Route::patch('/portfolios/{staff_portfolio}', [LoanEmployeesController::class, 'portfoliosUpdate'])->name('portfolios.update');
@@ -314,11 +337,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/loan-applications/create', [LoanEmployeesController::class, 'loanApplicationsCreate'])->name('loan_applications.create');
         Route::post('/loan-applications', [LoanEmployeesController::class, 'loanApplicationsStore'])->name('loan_applications.store');
+        Route::post('/loan-applications/bulk-status', [LoanEmployeesController::class, 'loanApplicationsBulkStatus'])->name('loan_applications.bulk_status');
         Route::get('/loan-applications', [LoanEmployeesController::class, 'loanApplications'])->name('loan_applications');
         Route::patch('/loan-applications/{staff_loan_application}', [LoanEmployeesController::class, 'loanApplicationsUpdate'])->name('loan_applications.update');
 
         Route::get('/staff-loans/create', [LoanEmployeesController::class, 'staffLoansCreate'])->name('staff_loans.create');
         Route::post('/staff-loans', [LoanEmployeesController::class, 'staffLoansStore'])->name('staff_loans.store');
+        Route::post('/staff-loans/bulk', [LoanEmployeesController::class, 'staffLoansBulk'])->name('staff_loans.bulk');
         Route::get('/staff-loans', [LoanEmployeesController::class, 'staffLoans'])->name('staff_loans');
         Route::get('/staff-loans/{staff_loan}/edit', [LoanEmployeesController::class, 'staffLoansEdit'])->name('staff_loans.edit');
         Route::patch('/staff-loans/{staff_loan}', [LoanEmployeesController::class, 'staffLoansUpdate'])->name('staff_loans.update');
@@ -329,6 +354,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/workplan/items/{workplan_item}', [LoanEmployeesController::class, 'workplanItemDestroy'])->name('workplan.items.destroy');
         Route::get('/workplan', [LoanEmployeesController::class, 'workplan'])->name('workplan');
 
+        Route::get('/{employee}', [LoanEmployeesController::class, 'show'])->name('show');
+        Route::post('/{employee}/resend-login', [LoanEmployeesController::class, 'resendLoginCredentials'])->name('resend_login');
         Route::get('/{employee}/edit', [LoanEmployeesController::class, 'edit'])->name('edit');
         Route::patch('/{employee}', [LoanEmployeesController::class, 'update'])->name('update');
         Route::delete('/{employee}', [LoanEmployeesController::class, 'destroy'])->name('destroy');
@@ -495,8 +522,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('loan/book')->name('loan.book.')->group(function () {
         Route::get('/app-loans-report', [LoanBookApplicationsController::class, 'report'])->name('app_loans_report');
         Route::get('/applications/create', [LoanBookApplicationsController::class, 'create'])->name('applications.create');
+        Route::post('/applications/products', [LoanBookApplicationsController::class, 'storeProduct'])->name('applications.products.store');
         Route::post('/applications', [LoanBookApplicationsController::class, 'store'])->name('applications.store');
         Route::get('/applications', [LoanBookApplicationsController::class, 'index'])->name('applications.index');
+        Route::get('/applications/{loan_book_application}', [LoanBookApplicationsController::class, 'show'])->name('applications.show');
         Route::get('/applications/{loan_book_application}/edit', [LoanBookApplicationsController::class, 'edit'])->name('applications.edit');
         Route::patch('/applications/{loan_book_application}', [LoanBookApplicationsController::class, 'update'])->name('applications.update');
         Route::delete('/applications/{loan_book_application}', [LoanBookApplicationsController::class, 'destroy'])->name('applications.destroy');
@@ -506,6 +535,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/loans', [LoanBookLoansController::class, 'index'])->name('loans.index');
         Route::get('/loan-arrears', [LoanBookLoansController::class, 'arrears'])->name('loan_arrears');
         Route::get('/checkoff-loans', [LoanBookLoansController::class, 'checkoff'])->name('checkoff_loans');
+        Route::get('/loans/{loan_book_loan}', [LoanBookLoansController::class, 'show'])->name('loans.show');
         Route::get('/loans/{loan_book_loan}/edit', [LoanBookLoansController::class, 'edit'])->name('loans.edit');
         Route::patch('/loans/{loan_book_loan}', [LoanBookLoansController::class, 'update'])->name('loans.update');
         Route::delete('/loans/{loan_book_loan}', [LoanBookLoansController::class, 'destroy'])->name('loans.destroy');
@@ -513,6 +543,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/disbursements/create', [LoanBookOperationsController::class, 'disbursementsCreate'])->name('disbursements.create');
         Route::post('/disbursements', [LoanBookOperationsController::class, 'disbursementsStore'])->name('disbursements.store');
         Route::get('/disbursements', [LoanBookOperationsController::class, 'disbursementsIndex'])->name('disbursements.index');
+        Route::get('/disbursements/{loan_book_disbursement}', [LoanBookOperationsController::class, 'disbursementsShow'])->name('disbursements.show');
+        Route::post('/disbursements/{loan_book_disbursement}/retry-payout', [LoanBookOperationsController::class, 'disbursementsRetryPayout'])->name('disbursements.retry_payout');
         Route::delete('/disbursements/{loan_book_disbursement}', [LoanBookOperationsController::class, 'disbursementsDestroy'])->name('disbursements.destroy');
 
         Route::get('/collection-sheet', [LoanBookOperationsController::class, 'collectionSheet'])->name('collection_sheet.index');
@@ -619,6 +651,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/setup/company', [LoanSystemHelpController::class, 'setupCompanyUpdate'])->name('setup.company.update');
         Route::get('/setup/preferences', [LoanSystemHelpController::class, 'setupPreferences'])->name('setup.preferences');
         Route::post('/setup/preferences', [LoanSystemHelpController::class, 'setupPreferencesUpdate'])->name('setup.preferences.update');
+        Route::get('/setup/departments', [LoanSystemHelpController::class, 'setupDepartments'])->name('setup.departments');
+        Route::post('/setup/departments', [LoanSystemHelpController::class, 'setupDepartmentsStore'])->name('setup.departments.store');
+        Route::post('/setup/departments/sync', [LoanSystemHelpController::class, 'setupDepartmentsSync'])->name('setup.departments.sync');
+        Route::patch('/setup/departments/{loan_department}', [LoanSystemHelpController::class, 'setupDepartmentsUpdate'])->name('setup.departments.update');
+        Route::delete('/setup/departments/{loan_department}', [LoanSystemHelpController::class, 'setupDepartmentsDestroy'])->name('setup.departments.destroy');
+        Route::get('/setup/job-titles', [LoanSystemHelpController::class, 'setupJobTitles'])->name('setup.job_titles');
+        Route::post('/setup/job-titles', [LoanSystemHelpController::class, 'setupJobTitlesStore'])->name('setup.job_titles.store');
+        Route::post('/setup/job-titles/sync', [LoanSystemHelpController::class, 'setupJobTitlesSync'])->name('setup.job_titles.sync');
+        Route::patch('/setup/job-titles/{loan_job_title}', [LoanSystemHelpController::class, 'setupJobTitlesUpdate'])->name('setup.job_titles.update');
+        Route::delete('/setup/job-titles/{loan_job_title}', [LoanSystemHelpController::class, 'setupJobTitlesDestroy'])->name('setup.job_titles.destroy');
+        Route::get('/setup/access-roles', [LoanSystemHelpController::class, 'setupAccessRoles'])->middleware('loan.role:admin,manager')->name('setup.access_roles');
+        Route::post('/setup/access-roles/sync', [LoanSystemHelpController::class, 'setupAccessRolesSync'])->middleware('loan.role:admin,manager')->name('setup.access_roles.sync');
+        Route::post('/setup/access-roles', [LoanSystemHelpController::class, 'setupAccessRolesStore'])->middleware('loan.role:admin,manager')->name('setup.access_roles.store');
+        Route::patch('/setup/access-roles/{loan_role}', [LoanSystemHelpController::class, 'setupAccessRolesUpdate'])->middleware('loan.role:admin,manager')->name('setup.access_roles.update');
+        Route::post('/setup/access-roles/{loan_role}/assign', [LoanSystemHelpController::class, 'setupAccessRolesAssign'])->middleware('loan.role:admin,manager')->name('setup.access_roles.assign');
+        Route::delete('/setup/access-roles/{loan_role}', [LoanSystemHelpController::class, 'setupAccessRolesDestroy'])->middleware('loan.role:admin,manager')->name('setup.access_roles.destroy');
 
         Route::get('/setup/loan-form/client', [LoanFormSetupController::class, 'clientForm'])->name('form_setup.client');
         Route::post('/setup/loan-form/client', [LoanFormSetupController::class, 'clientFormSave'])->name('form_setup.client.save');
@@ -643,6 +691,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile/devices/others', [ProfileController::class, 'removeOtherDevices'])->name('profile.devices.others.destroy');
+    Route::delete('/profile/devices/{sessionId}', [ProfileController::class, 'removeDevice'])->name('profile.devices.destroy');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 

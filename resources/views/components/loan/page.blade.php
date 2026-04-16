@@ -1,6 +1,7 @@
 @props([
     'title',
     'subtitle' => null,
+    'showQuickLinks' => true,
 ])
 
 <div {{ $attributes->merge(['class' => 'max-w-[1600px] mx-auto w-full space-y-6']) }}>
@@ -20,6 +21,9 @@
                 @endif
             @endisset
         </div>
+        @if ($showQuickLinks)
+            @include('loan.partials.quick-links-strip')
+        @endif
         @isset($banner)
             <div class="w-full">
                 {{ $banner }}

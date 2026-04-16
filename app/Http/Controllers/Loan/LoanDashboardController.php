@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\AccountingJournalEntry;
 use App\Models\AccountingRequisition;
 use App\Models\AccountingSalaryAdvance;
@@ -13,12 +14,16 @@ use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
 use App\Models\LoanClient;
 use App\Models\LoanSupportTicket;
+use App\Models\PropertyPortalSetting;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class LoanDashboardController extends Controller
 {
+    use ScopesLoanPortfolioAccess;
+
     public function index(): View
     {
         $bookReady = Schema::hasTable('loan_book_loans');
@@ -60,6 +65,11 @@ class LoanDashboardController extends Controller
 
         $opsStrip = $this->buildOpsStrip();
 
+        $currencyCode = 'KES';
+        if (Schema::hasTable('property_portal_settings')) {
+            $currencyCode = trim((string) PropertyPortalSetting::getValue('loan_currency_code', 'KES')) ?: 'KES';
+        }
+
         return view('loan_dashboard', [
             'kpis' => $kpis,
             'charts' => $charts,
@@ -68,20 +78,25 @@ class LoanDashboardController extends Controller
             'opsStrip' => $opsStrip,
             'bookReady' => $bookReady,
             'paymentsReady' => $paymentsReady,
+            'disbursementsReady' => $disbursementsReady,
+            'applicationsReady' => $applicationsReady,
+            'clientsReady' => $clientsReady,
+            'currencyCode' => $currencyCode,
+            'generatedAt' => now(),
         ]);
     }
 
     private function buildKpis(bool $book, bool $payments, bool $clients, bool $applications): array
     {
         $activeLoans = $book
-            ? LoanBookLoan::query()->where('status', LoanBookLoan::STATUS_ACTIVE)->count()
+            ? $this->loanQuery()->where('status', LoanBookLoan::STATUS_ACTIVE)->count()
             : 0;
 
         $createdThisMonth = $book
-            ? LoanBookLoan::query()->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->count()
+            ? $this->loanQuery()->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])->count()
             : 0;
         $createdLastMonth = $book
-            ? LoanBookLoan::query()->whereBetween('created_at', [now()->subMonth()->startOfMonth(), now()->subMonth()->endOfMonth()])->count()
+            ? $this->loanQuery()->whereBetween('created_at', [now()->subMonth()->startOfMonth(), now()->subMonth()->endOfMonth()])->count()
             : 0;
         $loanDelta = $createdThisMonth - $createdLastMonth;
 
@@ -91,44 +106,61 @@ class LoanDashboardController extends Controller
             LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
         ];
         $outstanding = $book
-            ? (float) LoanBookLoan::query()->whereIn('status', $portfolioStatuses)->sum('balance')
+            ? (float) $this->loanQuery()->whereIn('status', $portfolioStatuses)->sum('balance')
             : 0.0;
 
         $pipeline = $applications
-            ? LoanBookApplication::query()
+            ? $this->applicationQuery()
                 ->whereNotIn('stage', [LoanBookApplication::STAGE_DISBURSED, LoanBookApplication::STAGE_DECLINED])
                 ->count()
             : 0;
 
         $creditReview = $applications
-            ? LoanBookApplication::query()->where('stage', LoanBookApplication::STAGE_CREDIT_REVIEW)->count()
+            ? $this->applicationQuery()->where('stage', LoanBookApplication::STAGE_CREDIT_REVIEW)->count()
             : 0;
 
         $mtdCollections = 0.0;
         if ($payments) {
             $mtdCollections = (float) LoanBookPayment::query()
-                ->where('status', LoanBookPayment::STATUS_PROCESSED)
-                ->whereNull('merged_into_payment_id')
+                ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user(), 'loan.loanClient'))
+                ->processedQueue()
                 ->whereBetween('transaction_at', [now()->startOfMonth(), now()->endOfMonth()])
                 ->sum('amount');
         }
 
+        $mtdDisbursements = 0.0;
+        if ($book && Schema::hasTable('loan_book_disbursements')) {
+            $mtdDisbursements = (float) LoanBookDisbursement::query()
+                ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user(), 'loan.loanClient'))
+                ->whereBetween('disbursed_at', [
+                    now()->startOfMonth()->toDateString(),
+                    now()->endOfMonth()->toDateString(),
+                ])
+                ->sum('amount');
+        }
+
+        $pendingDisbursementLoans = $book
+            ? $this->loanQuery()
+                ->where('status', LoanBookLoan::STATUS_PENDING_DISBURSEMENT)
+                ->count()
+            : 0;
+
         $unposted = $payments
-            ? LoanBookPayment::query()->unpostedQueue()->count()
+            ? $this->paymentQuery()->unpostedQueue()->count()
             : 0;
 
         $nplCount = $book
-            ? LoanBookLoan::query()
+            ? $this->loanQuery()
                 ->where('status', LoanBookLoan::STATUS_ACTIVE)
                 ->where('dpd', '>', 30)
                 ->count()
             : 0;
 
         $clientsCount = $clients
-            ? LoanClient::query()->where('kind', LoanClient::KIND_CLIENT)->count()
+            ? $this->clientQuery()->where('kind', LoanClient::KIND_CLIENT)->count()
             : 0;
         $leadsCount = $clients
-            ? LoanClient::query()->where('kind', LoanClient::KIND_LEAD)->count()
+            ? $this->clientQuery()->where('kind', LoanClient::KIND_LEAD)->count()
             : 0;
 
         $openTickets = Schema::hasTable('loan_support_tickets')
@@ -143,14 +175,14 @@ class LoanDashboardController extends Controller
             : 0;
 
         $arrearsTotal = $book
-            ? (float) LoanBookLoan::query()
+            ? (float) $this->loanQuery()
                 ->where('dpd', '>', 0)
                 ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_RESTRUCTURED])
                 ->sum('balance')
             : 0.0;
 
         $arrearsAccounts = $book
-            ? LoanBookLoan::query()
+            ? $this->loanQuery()
                 ->where('dpd', '>', 0)
                 ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_RESTRUCTURED])
                 ->count()
@@ -164,6 +196,8 @@ class LoanDashboardController extends Controller
             'pipeline' => $pipeline,
             'credit_review' => $creditReview,
             'mtd_collections' => $mtdCollections,
+            'mtd_disbursements' => $mtdDisbursements,
+            'pending_disbursement_loans' => $pendingDisbursementLoans,
             'unposted_payments' => $unposted,
             'npl_count' => $nplCount,
             'clients' => $clientsCount,
@@ -177,7 +211,7 @@ class LoanDashboardController extends Controller
 
     private function topArrears(): Collection
     {
-        return LoanBookLoan::query()
+        return $this->loanQuery()
             ->with('loanClient')
             ->where('dpd', '>', 0)
             ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_RESTRUCTURED])
@@ -188,7 +222,7 @@ class LoanDashboardController extends Controller
 
     private function recentApplications(): Collection
     {
-        return LoanBookApplication::query()
+        return $this->applicationQuery()
             ->with('loanClient')
             ->whereNotIn('stage', [LoanBookApplication::STAGE_DISBURSED, LoanBookApplication::STAGE_DECLINED])
             ->orderByDesc('submitted_at')
@@ -214,13 +248,14 @@ class LoanDashboardController extends Controller
             $end = $d->copy()->endOfMonth()->endOfDay();
 
             $paymentTotals[] = (float) LoanBookPayment::query()
-                ->where('status', LoanBookPayment::STATUS_PROCESSED)
-                ->whereNull('merged_into_payment_id')
+                ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user(), 'loan.loanClient'))
+                ->processedQueue()
                 ->whereBetween('transaction_at', [$start, $end])
                 ->sum('amount');
 
             $sheetTotals[] = $hasCollectionTable
                 ? (float) LoanBookCollectionEntry::query()
+                    ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user(), 'loan.loanClient'))
                     ->whereBetween('collected_on', [$start->toDateString(), $end->toDateString()])
                     ->sum('amount')
                 : 0.0;
@@ -254,6 +289,7 @@ class LoanDashboardController extends Controller
             $from = $d->copy()->startOfMonth()->toDateString();
             $to = $d->copy()->endOfMonth()->toDateString();
             $values[] = (float) LoanBookDisbursement::query()
+                ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user(), 'loan.loanClient'))
                 ->whereBetween('disbursed_at', [$from, $to])
                 ->sum('amount');
         }
@@ -293,7 +329,7 @@ class LoanDashboardController extends Controller
      */
     private function dpdBuckets(): array
     {
-        $base = LoanBookLoan::query()->where('status', LoanBookLoan::STATUS_ACTIVE);
+        $base = $this->loanQuery()->where('status', LoanBookLoan::STATUS_ACTIVE);
 
         $current = (clone $base)->whereBetween('dpd', [0, 5])->count();
         $watch = (clone $base)->whereBetween('dpd', [6, 30])->count();
@@ -310,7 +346,7 @@ class LoanDashboardController extends Controller
      */
     private function loansByStatus(): array
     {
-        $rows = LoanBookLoan::query()
+        $rows = $this->loanQuery()
             ->selectRaw('status, COUNT(*) as c')
             ->groupBy('status')
             ->orderByDesc('c')
@@ -331,7 +367,7 @@ class LoanDashboardController extends Controller
      */
     private function applicationsByStage(): array
     {
-        $rows = LoanBookApplication::query()
+        $rows = $this->applicationQuery()
             ->selectRaw('stage, COUNT(*) as c')
             ->groupBy('stage')
             ->orderByDesc('c')
@@ -388,5 +424,37 @@ class LoanDashboardController extends Controller
             LoanBookApplication::STAGE_DISBURSED => 'Disbursed',
             default => str_replace('_', ' ', ucfirst($stage)),
         };
+    }
+
+    private function loanQuery(): Builder
+    {
+        $query = LoanBookLoan::query();
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+
+        return $query;
+    }
+
+    private function applicationQuery(): Builder
+    {
+        $query = LoanBookApplication::query();
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+
+        return $query;
+    }
+
+    private function paymentQuery(): Builder
+    {
+        $query = LoanBookPayment::query();
+        $this->scopeByAssignedLoanClient($query, auth()->user(), 'loan.loanClient');
+
+        return $query;
+    }
+
+    private function clientQuery(): Builder
+    {
+        $query = LoanClient::query();
+        $this->scopeLoanClientsToUser($query, auth()->user());
+
+        return $query;
     }
 }

@@ -17,7 +17,8 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div class="sm:col-span-2">
                         <x-input-label for="client_number" value="Client / lead number" />
-                        <x-text-input id="client_number" name="client_number" type="text" class="mt-1 block w-full" :value="old('client_number', $loan_client->client_number)" required autocomplete="off" />
+                        <x-text-input id="client_number" name="client_number" type="text" class="mt-1 block w-full bg-slate-50 text-slate-600" :value="old('client_number', $loan_client->client_number)" required readonly autocomplete="off" />
+                        <p class="mt-1 text-xs text-slate-500">Auto-assigned ID (cannot be changed).</p>
                         <x-input-error class="mt-2" :messages="$errors->get('client_number')" />
                     </div>
                     <div>
@@ -46,9 +47,12 @@
                         <x-input-error class="mt-2" :messages="$errors->get('id_number')" />
                     </div>
                     <div>
-                        <x-input-label for="branch" value="Branch" />
-                        <x-text-input id="branch" name="branch" type="text" class="mt-1 block w-full" :value="old('branch', $loan_client->branch)" />
-                        <x-input-error class="mt-2" :messages="$errors->get('branch')" />
+                        @include('loan.clients.partials.branch-select-with-modal', [
+                            'fieldId' => 'branch',
+                            'selectedValue' => old('branch', $loan_client->branch),
+                            'branchOptions' => ($branchOptions ?? []),
+                            'storeUrl' => route('loan.clients.branches.store'),
+                        ])
                     </div>
                     <div class="sm:col-span-2">
                         <x-input-label for="address" value="Address" />
@@ -86,6 +90,9 @@
                             <x-input-error class="mt-2" :messages="$errors->get('client_status')" />
                         </div>
                     @endif
+
+                    @include('loan.clients.partials.guarantor-fields', ['client' => $loan_client])
+
                     <div class="sm:col-span-2">
                         <x-input-label for="notes" value="Notes" />
                         <textarea id="notes" name="notes" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('notes', $loan_client->notes) }}</textarea>

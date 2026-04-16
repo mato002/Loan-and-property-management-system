@@ -4,6 +4,9 @@
             <form method="get" action="{{ route('loan.book.collection_sheet.index') }}" class="flex flex-wrap items-center gap-2">
                 <label class="text-xs font-semibold text-slate-600">Date</label>
                 <input type="date" name="date" value="{{ $filterDate }}" class="rounded-lg border-slate-200 text-sm" />
+                <input type="hidden" name="q" value="{{ $q ?? '' }}">
+                <input type="hidden" name="channel" value="{{ $channel ?? '' }}">
+                <input type="hidden" name="per_page" value="{{ $perPage ?? 25 }}">
                 <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors">Go</button>
             </form>
             <a href="{{ route('loan.book.collection_mtd') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">MTD</a>
@@ -12,6 +15,40 @@
         @error('accounting')
             <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ $message }}</div>
         @enderror
+
+        <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <input type="hidden" name="date" value="{{ $filterDate }}">
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan #, client..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Channel</label>
+                    <select name="channel" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">All</option>
+                        @foreach (($channels ?? []) as $ch)
+                            <option value="{{ $ch }}" @selected(($channel ?? '') === $ch)>{{ ucfirst($ch) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
+                    <select name="per_page" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        @foreach ([10, 25, 50, 100, 200] as $size)
+                            <option value="{{ $size }}" @selected((int) ($perPage ?? 25) === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.book.collection_sheet.index', ['date' => $filterDate]) }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
+                <div class="ml-auto flex items-center gap-2">
+                    <a href="{{ route('loan.book.collection_sheet.index', array_merge(request()->query(), ['date' => $filterDate, 'export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                    <a href="{{ route('loan.book.collection_sheet.index', array_merge(request()->query(), ['date' => $filterDate, 'export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+                    <a href="{{ route('loan.book.collection_sheet.index', array_merge(request()->query(), ['date' => $filterDate, 'export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+                </div>
+            </div>
+        </form>
 
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div class="xl:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -64,7 +101,7 @@
                     </table>
                 </div>
                 @if ($entries->hasPages())
-                    <div class="px-5 py-3 border-t border-slate-100">{{ $entries->links() }}</div>
+                    <div class="px-5 py-3 border-t border-slate-100">{{ $entries->withQueryString()->links() }}</div>
                 @endif
             </div>
 

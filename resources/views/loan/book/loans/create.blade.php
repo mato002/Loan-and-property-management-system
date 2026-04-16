@@ -115,3 +115,68 @@
         </div>
     </x-loan.page>
 </x-loan-layout>
+
+@php
+    $applicationAutofillData = $applications->mapWithKeys(function ($application) {
+        return [
+            (string) $application->id => [
+                'id' => (int) $application->id,
+                'reference' => (string) $application->reference,
+                'loan_client_id' => (int) $application->loan_client_id,
+                'product_name' => (string) $application->product_name,
+                'amount_requested' => (float) $application->amount_requested,
+                'term_months' => (int) ($application->term_months ?? 0),
+                'branch' => (string) ($application->branch ?? ''),
+            ],
+        ];
+    });
+@endphp
+
+<script>
+    (() => {
+        const applicationData = @json($applicationAutofillData);
+
+        const form = document.querySelector('form[action="{{ route('loan.book.loans.store') }}"]');
+        if (!form) return;
+
+        const applicationSelect = form.querySelector('#loan_book_application_id');
+        const clientSelect = form.querySelector('#loan_client_id');
+        const productInput = form.querySelector('#product_name');
+        const principalInput = form.querySelector('#principal');
+        const balanceInput = form.querySelector('#balance');
+        const statusSelect = form.querySelector('#status');
+        const maturityInput = form.querySelector('#maturity_date');
+        const branchInput = form.querySelector('#branch');
+        const notesInput = form.querySelector('#notes');
+
+        const calculateMaturityDate = (months) => {
+            const parsedMonths = Number(months || 0);
+            if (parsedMonths <= 0) return '';
+            const date = new Date();
+            date.setMonth(date.getMonth() + parsedMonths);
+            return date.toISOString().slice(0, 10);
+        };
+
+        const applyApplicationDefaults = () => {
+            const selectedId = applicationSelect?.value ? String(applicationSelect.value) : '';
+            if (!selectedId || !applicationData[selectedId]) return;
+
+            const selected = applicationData[selectedId];
+            const amount = Number(selected.amount_requested || 0);
+            const formattedAmount = amount > 0 ? amount.toFixed(2) : '';
+
+            if (clientSelect) clientSelect.value = String(selected.loan_client_id || '');
+            if (productInput) productInput.value = selected.product_name || '';
+            if (principalInput) principalInput.value = formattedAmount;
+            if (balanceInput && !balanceInput.value) balanceInput.value = formattedAmount;
+            if (branchInput && !branchInput.value) branchInput.value = selected.branch || '';
+            if (statusSelect) statusSelect.value = '{{ \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT }}';
+            if (maturityInput && !maturityInput.value) maturityInput.value = calculateMaturityDate(selected.term_months);
+            if (notesInput && !notesInput.value) notesInput.value = 'Booked from application ' + (selected.reference || '') + '.';
+        };
+
+        if (applicationSelect) {
+            applicationSelect.addEventListener('change', applyApplicationDefaults);
+        }
+    })();
+</script>

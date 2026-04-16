@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
+use App\Support\TabularExport;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +18,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LoanPaymentsController extends Controller
 {
+    use ScopesLoanPortfolioAccess;
+
     private function assignReference(LoanBookPayment $payment): void
     {
         $payment->update([
@@ -22,93 +27,128 @@ class LoanPaymentsController extends Controller
         ]);
     }
 
-    public function unposted(): View
+    public function unposted(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $payments = LoanBookPayment::query()
-            ->with('loan.loanClient')
-            ->unpostedQueue()
-            ->orderByDesc('transaction_at')
-            ->paginate(20);
+        $query = LoanBookPayment::query()->with('loan.loanClient')->unpostedQueue();
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $filters = $this->applyListFilters($query, $request);
+        if ($export = $this->exportIfRequested((clone $query)->orderByDesc('transaction_at'), $request, 'payments-unposted')) {
+            return $export;
+        }
+        $payments = $query->orderByDesc('transaction_at')->paginate($filters['perPage'])->withQueryString();
 
-        return view('loan.payments.unposted', compact('payments'));
+        return view('loan.payments.unposted', array_merge(compact('payments'), $filters));
     }
 
-    public function processed(): View
+    public function processed(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $payments = LoanBookPayment::query()
+        $query = LoanBookPayment::query()
             ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'accountingJournalEntry'])
-            ->processedQueue()
+            ->processedQueue();
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $filters = $this->applyListFilters($query, $request);
+        if ($export = $this->exportIfRequested((clone $query)->orderByDesc('posted_at')->orderByDesc('transaction_at'), $request, 'payments-processed')) {
+            return $export;
+        }
+        $payments = $query
             ->orderByDesc('posted_at')
             ->orderByDesc('transaction_at')
-            ->paginate(20);
+            ->paginate($filters['perPage'])
+            ->withQueryString();
 
-        return view('loan.payments.processed', compact('payments'));
+        return view('loan.payments.processed', array_merge(compact('payments'), $filters));
     }
 
-    public function prepayments(): View
+    public function prepayments(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $payments = LoanBookPayment::query()
+        $query = LoanBookPayment::query()
             ->with('loan.loanClient')
             ->where('payment_kind', LoanBookPayment::KIND_PREPAYMENT)
-            ->notMergedChild()
-            ->orderByDesc('transaction_at')
-            ->paginate(20);
+            ->notMergedChild();
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $filters = $this->applyListFilters($query, $request, true);
+        if ($export = $this->exportIfRequested((clone $query)->orderByDesc('transaction_at'), $request, 'payments-prepayments')) {
+            return $export;
+        }
+        $payments = $query->orderByDesc('transaction_at')->paginate($filters['perPage'])->withQueryString();
 
-        return view('loan.payments.prepayments', compact('payments'));
+        return view('loan.payments.prepayments', array_merge(compact('payments'), $filters));
     }
 
-    public function overpayments(): View
+    public function overpayments(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $payments = LoanBookPayment::query()
+        $query = LoanBookPayment::query()
             ->with('loan.loanClient')
             ->where('payment_kind', LoanBookPayment::KIND_OVERPAYMENT)
-            ->notMergedChild()
-            ->orderByDesc('transaction_at')
-            ->paginate(20);
+            ->notMergedChild();
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $filters = $this->applyListFilters($query, $request, true);
+        if ($export = $this->exportIfRequested((clone $query)->orderByDesc('transaction_at'), $request, 'payments-overpayments')) {
+            return $export;
+        }
+        $payments = $query->orderByDesc('transaction_at')->paginate($filters['perPage'])->withQueryString();
 
-        return view('loan.payments.overpayments', compact('payments'));
+        return view('loan.payments.overpayments', array_merge(compact('payments'), $filters));
     }
 
-    public function merged(): View
+    public function merged(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $payments = LoanBookPayment::query()
+        $query = LoanBookPayment::query()
             ->with(['loan.loanClient', 'mergedChildren'])
             ->where('payment_kind', LoanBookPayment::KIND_MERGED)
-            ->notMergedChild()
-            ->orderByDesc('created_at')
-            ->paginate(20);
+            ->notMergedChild();
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $filters = $this->applyListFilters($query, $request, true);
+        if ($export = $this->exportIfRequested((clone $query)->orderByDesc('created_at'), $request, 'payments-merged')) {
+            return $export;
+        }
+        $payments = $query->orderByDesc('created_at')->paginate($filters['perPage'])->withQueryString();
 
-        return view('loan.payments.merged', compact('payments'));
+        return view('loan.payments.merged', array_merge(compact('payments'), $filters));
     }
 
-    public function c2bReversals(): View
+    public function c2bReversals(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $payments = LoanBookPayment::query()
+        $query = LoanBookPayment::query()
             ->with('loan.loanClient')
             ->where('payment_kind', LoanBookPayment::KIND_C2B_REVERSAL)
-            ->notMergedChild()
-            ->orderByDesc('transaction_at')
-            ->paginate(20);
+            ->notMergedChild();
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $filters = $this->applyListFilters($query, $request, true);
+        if ($export = $this->exportIfRequested((clone $query)->orderByDesc('transaction_at'), $request, 'payments-c2b-reversals')) {
+            return $export;
+        }
+        $payments = $query->orderByDesc('transaction_at')->paginate($filters['perPage'])->withQueryString();
 
-        return view('loan.payments.c2b-reversals', compact('payments'));
+        return view('loan.payments.c2b-reversals', array_merge(compact('payments'), $filters));
     }
 
-    public function receipts(): View
+    public function receipts(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $payments = LoanBookPayment::query()
+        $query = LoanBookPayment::query()
             ->with('loan.loanClient')
             ->whereNotNull('mpesa_receipt_number')
-            ->notMergedChild()
-            ->orderByDesc('transaction_at')
-            ->paginate(20);
+            ->notMergedChild();
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $filters = $this->applyListFilters($query, $request, true);
+        if ($export = $this->exportIfRequested((clone $query)->orderByDesc('transaction_at'), $request, 'payments-receipts')) {
+            return $export;
+        }
+        $payments = $query->orderByDesc('transaction_at')->paginate($filters['perPage'])->withQueryString();
 
-        return view('loan.payments.receipts', compact('payments'));
+        return view('loan.payments.receipts', array_merge(compact('payments'), $filters));
     }
 
-    public function payinSummary(Request $request): View
+    public function payinSummary(Request $request): View|StreamedResponse
     {
         $from = $request->date('from') ?: now()->startOfMonth()->toDateString();
         $to = $request->date('to') ?: now()->endOfMonth()->toDateString();
+        $channel = trim((string) $request->query('channel', ''));
+
+        $format = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($format, ['csv', 'xls', 'pdf'], true)) {
+            return $this->streamPayinSummaryExport($request, $format);
+        }
 
         $base = LoanBookPayment::query()
             ->where('status', LoanBookPayment::STATUS_PROCESSED)
@@ -117,6 +157,8 @@ class LoanPaymentsController extends Controller
                 $from.' 00:00:00',
                 $to.' 23:59:59',
             ]);
+        $this->scopeByAssignedLoanClient($base, $request->user(), 'loan.loanClient');
+        $base->when($channel !== '', fn (Builder $q) => $q->where('channel', $channel));
 
         $byChannel = (clone $base)
             ->selectRaw('channel, SUM(amount) as total_amount, COUNT(*) as payment_count')
@@ -129,56 +171,135 @@ class LoanPaymentsController extends Controller
             'count' => (clone $base)->count(),
         ];
 
-        return view('loan.payments.payin-summary', compact('from', 'to', 'byChannel', 'totals'));
+        return view('loan.payments.payin-summary', compact('from', 'to', 'byChannel', 'totals', 'channel'));
     }
 
-    public function report(Request $request): View
+    private function streamPayinSummaryExport(Request $request, string $format): StreamedResponse
     {
+        $from = $request->date('from') ?: now()->startOfMonth()->toDateString();
+        $to = $request->date('to') ?: now()->endOfMonth()->toDateString();
+        $channel = trim((string) $request->query('channel', ''));
+
+        $base = LoanBookPayment::query()
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->notMergedChild()
+            ->whereBetween('transaction_at', [
+                $from.' 00:00:00',
+                $to.' 23:59:59',
+            ]);
+        $this->scopeByAssignedLoanClient($base, $request->user(), 'loan.loanClient');
+        $base->when($channel !== '', fn (Builder $q) => $q->where('channel', $channel));
+
+        $byChannel = (clone $base)
+            ->selectRaw('channel, SUM(amount) as total_amount, COUNT(*) as payment_count')
+            ->groupBy('channel')
+            ->orderByDesc('total_amount')
+            ->get();
+
+        $totals = [
+            'amount' => (clone $base)->sum('amount'),
+            'count' => (clone $base)->count(),
+        ];
+
+        return TabularExport::stream(
+            'payin-summary-'.now()->format('Ymd_His'),
+            ['Channel', 'Total amount', 'Payment count'],
+            function () use ($byChannel) {
+                foreach ($byChannel as $row) {
+                    yield [
+                        (string) $row->channel,
+                        number_format((float) $row->total_amount, 2, '.', ''),
+                        (string) $row->payment_count,
+                    ];
+                }
+            },
+            $format,
+            [
+                'title' => 'Pay-in summary',
+                'filename_base' => 'payin-summary',
+                'subtitle' => $from.' → '.$to.($channel !== '' ? ' · Channel: '.$channel : ' · All channels'),
+                'summary' => [
+                    'Total amount' => number_format((float) $totals['amount'], 2),
+                    'Payment count' => (string) $totals['count'],
+                ],
+            ]
+        );
+    }
+
+    public function report(Request $request): View|StreamedResponse
+    {
+        $format = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($format, ['csv', 'xls', 'pdf'], true)) {
+            return $this->streamReportExport($request, $format);
+        }
+
         $query = $this->reportQuery($request);
+        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
         $payments = (clone $query)
             ->with(['loan.loanClient', 'postedByUser'])
             ->orderByDesc('transaction_at')
-            ->paginate(30)
+            ->paginate($perPage)
             ->withQueryString();
 
-        return view('loan.payments.report', compact('payments'));
+        return view('loan.payments.report', compact('payments', 'perPage'));
     }
 
+    /**
+     * Legacy URL: /payments/report/export?… — same filters, default CSV (supports format=csv|xls|pdf).
+     */
     public function reportExport(Request $request): StreamedResponse
     {
+        $format = strtolower(trim((string) $request->query('format', $request->query('export', 'csv'))));
+        if (! in_array($format, ['csv', 'xls', 'pdf'], true)) {
+            $format = 'csv';
+        }
+
+        return $this->streamReportExport($request, $format);
+    }
+
+    private function streamReportExport(Request $request, string $format): StreamedResponse
+    {
         $rows = $this->reportQuery($request)
-            ->with('loan')
+            ->with(['loan.loanClient', 'postedByUser'])
             ->orderByDesc('transaction_at')
+            ->limit(5000)
             ->get();
 
-        $filename = 'payments-report-'.now()->format('Y-m-d-His').'.csv';
-
-        return response()->streamDownload(function () use ($rows) {
-            $out = fopen('php://output', 'w');
-            fputcsv($out, ['Reference', 'Date', 'Loan', 'Amount', 'Channel', 'Status', 'Kind', 'Receipt', 'Posted at']);
-            foreach ($rows as $p) {
-                fputcsv($out, [
-                    $p->reference,
-                    $p->transaction_at->format('Y-m-d H:i'),
-                    $p->loan?->loan_number ?? '',
-                    $p->amount,
-                    $p->channel,
-                    $p->status,
-                    $p->payment_kind,
-                    $p->mpesa_receipt_number ?? '',
-                    $p->posted_at?->format('Y-m-d H:i') ?? '',
-                ]);
-            }
-            fclose($out);
-        }, $filename, [
-            'Content-Type' => 'text/csv',
-        ]);
+        return TabularExport::stream(
+            'payments-report-'.now()->format('Ymd_His'),
+            ['Reference', 'Date', 'Loan #', 'Client #', 'Client Name', 'Amount', 'Channel', 'Status', 'Kind', 'Receipt', 'Posted at', 'Posted by'],
+            function () use ($rows) {
+                foreach ($rows as $payment) {
+                    yield [
+                        (string) ($payment->reference ?? ''),
+                        (string) optional($payment->transaction_at)->format('Y-m-d H:i'),
+                        (string) ($payment->loan?->loan_number ?? ''),
+                        (string) ($payment->loan?->loanClient?->client_number ?? ''),
+                        (string) ($payment->loan?->loanClient?->full_name ?? ''),
+                        number_format((float) $payment->amount, 2, '.', ''),
+                        (string) ($payment->channel ?? ''),
+                        (string) ($payment->status ?? ''),
+                        (string) ($payment->payment_kind ?? ''),
+                        (string) ($payment->mpesa_receipt_number ?? ''),
+                        (string) (optional($payment->posted_at)->format('Y-m-d H:i') ?? ''),
+                        (string) ($payment->postedByUser?->name ?? ''),
+                    ];
+                }
+            },
+            $format,
+            [
+                'title' => 'Payments report',
+                'filename_base' => 'payments-report',
+                'subtitle' => 'Filtered payment register',
+            ]
+        );
     }
 
     private function reportQuery(Request $request)
     {
         $q = LoanBookPayment::query()->notMergedChild();
+        $this->scopeByAssignedLoanClient($q, $request->user(), 'loan.loanClient');
 
         if ($request->filled('status')) {
             $q->where('status', $request->string('status'));
@@ -222,6 +343,7 @@ class LoanPaymentsController extends Controller
         if (! $payment) {
             return back()->withErrors(['lookup' => 'No payment found for that reference or receipt.'])->withInput();
         }
+        $this->ensureLoanClientOwner($payment->loan?->loanClient, $request->user());
 
         if ($payment->status !== LoanBookPayment::STATUS_PROCESSED) {
             return back()->withErrors(['lookup' => 'Only processed payments can be validated.'])->withInput();
@@ -237,16 +359,20 @@ class LoanPaymentsController extends Controller
             ->with('status', 'Payment '.$payment->reference.' validated.');
     }
 
-    public function mergeForm(): View
+    public function mergeForm(Request $request): View|StreamedResponse
     {
-        $candidates = LoanBookPayment::query()
+        $query = LoanBookPayment::query()
             ->with('loan.loanClient')
             ->unpostedQueue()
-            ->where('payment_kind', '!=', LoanBookPayment::KIND_MERGED)
-            ->orderBy('transaction_at')
-            ->get();
+            ->where('payment_kind', '!=', LoanBookPayment::KIND_MERGED);
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $filters = $this->applyListFilters($query, $request, false);
+        if ($export = $this->exportIfRequested((clone $query)->orderBy('transaction_at'), $request, 'payments-merge-candidates')) {
+            return $export;
+        }
+        $candidates = $query->orderBy('transaction_at')->paginate($filters['perPage'])->withQueryString();
 
-        return view('loan.payments.merge', compact('candidates'));
+        return view('loan.payments.merge', array_merge(compact('candidates'), $filters));
     }
 
     public function mergeStore(Request $request): RedirectResponse
@@ -261,6 +387,7 @@ class LoanPaymentsController extends Controller
         $rows = LoanBookPayment::query()->whereIn('id', $ids)->get();
 
         foreach ($rows as $row) {
+            $this->ensureLoanClientOwner($row->loan?->loanClient, $request->user());
             if (! $row->canEdit() || $row->payment_kind === LoanBookPayment::KIND_MERGED) {
                 return back()->withErrors(['payment_ids' => 'One or more payments cannot be merged.'])->withInput();
             }
@@ -296,11 +423,12 @@ class LoanPaymentsController extends Controller
 
     public function create(): View
     {
-        $loans = LoanBookLoan::query()
+        $query = LoanBookLoan::query()
             ->with('loanClient')
             ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_PENDING_DISBURSEMENT])
-            ->orderBy('loan_number')
-            ->get();
+            ->orderBy('loan_number');
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+        $loans = $query->get();
 
         return view('loan.payments.create', compact('loans'));
     }
@@ -328,6 +456,9 @@ class LoanPaymentsController extends Controller
             }
         }
 
+        $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
+        $this->ensureLoanClientOwner($loan->loanClient, $request->user());
+
         $payment = LoanBookPayment::create([
             'reference' => null,
             'loan_book_loan_id' => $validated['loan_book_loan_id'] ?? null,
@@ -351,18 +482,22 @@ class LoanPaymentsController extends Controller
 
     public function reversalCreate(Request $request): View
     {
-        $loans = LoanBookLoan::query()
+        $loanQuery = LoanBookLoan::query()
             ->with('loanClient')
             ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE])
-            ->orderBy('loan_number')
-            ->get();
+            ->orderBy('loan_number');
+        $this->scopeByAssignedLoanClient($loanQuery, $request->user());
+        $loans = $loanQuery->get();
 
         $original = null;
         if ($request->filled('from')) {
             $original = LoanBookPayment::query()
-                ->with('loan')
+                ->with('loan.loanClient')
                 ->where('status', LoanBookPayment::STATUS_PROCESSED)
                 ->find($request->integer('from'));
+            if ($original) {
+                $this->ensureLoanClientOwner($original->loan?->loanClient, $request->user());
+            }
         }
 
         return view('loan.payments.reversal-create', compact('loans', 'original'));
@@ -379,6 +514,9 @@ class LoanPaymentsController extends Controller
             'original_payment_id' => ['nullable', 'exists:loan_book_payments,id'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
+        $this->ensureLoanClientOwner($loan->loanClient, $request->user());
 
         $payment = LoanBookPayment::create([
             'reference' => null,
@@ -403,19 +541,24 @@ class LoanPaymentsController extends Controller
 
     public function edit(LoanBookPayment $loan_book_payment): View
     {
+        $loan_book_payment->load('loan.loanClient');
+        $this->ensureLoanClientOwner($loan_book_payment->loan?->loanClient);
         abort_unless($loan_book_payment->canEdit(), 403);
 
-        $loans = LoanBookLoan::query()
+        $query = LoanBookLoan::query()
             ->with('loanClient')
             ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_PENDING_DISBURSEMENT])
-            ->orderBy('loan_number')
-            ->get();
+            ->orderBy('loan_number');
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+        $loans = $query->get();
 
         return view('loan.payments.edit', ['payment' => $loan_book_payment, 'loans' => $loans]);
     }
 
     public function update(Request $request, LoanBookPayment $loan_book_payment): RedirectResponse
     {
+        $loan_book_payment->load('loan.loanClient');
+        $this->ensureLoanClientOwner($loan_book_payment->loan?->loanClient, $request->user());
         abort_unless($loan_book_payment->canEdit(), 403);
 
         $validated = $request->validate([
@@ -439,6 +582,9 @@ class LoanPaymentsController extends Controller
             }
         }
 
+        $targetLoan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
+        $this->ensureLoanClientOwner($targetLoan->loanClient, $request->user());
+
         $loan_book_payment->update($validated);
 
         return redirect()
@@ -448,6 +594,8 @@ class LoanPaymentsController extends Controller
 
     public function destroy(LoanBookPayment $loan_book_payment): RedirectResponse
     {
+        $loan_book_payment->load('loan.loanClient');
+        $this->ensureLoanClientOwner($loan_book_payment->loan?->loanClient);
         abort_unless($loan_book_payment->canEdit(), 403);
 
         $loan_book_payment->delete();
@@ -459,12 +607,16 @@ class LoanPaymentsController extends Controller
 
     public function post(Request $request, LoanBookPayment $loan_book_payment): RedirectResponse
     {
+        $loan_book_payment->load('loan.loanClient');
+        $this->ensureLoanClientOwner($loan_book_payment->loan?->loanClient, $request->user());
         abort_unless($loan_book_payment->status === LoanBookPayment::STATUS_UNPOSTED, 403);
         abort_unless($loan_book_payment->merged_into_payment_id === null, 403);
 
         try {
             DB::transaction(function () use ($request, $loan_book_payment) {
                 $payment = LoanBookPayment::query()->lockForUpdate()->findOrFail($loan_book_payment->id);
+                $payment->load('loan.loanClient');
+                $this->ensureLoanClientOwner($payment->loan?->loanClient, $request->user());
                 if ($payment->accounting_journal_entry_id) {
                     throw new \RuntimeException('This payment is already linked to a journal entry.');
                 }
@@ -491,5 +643,74 @@ class LoanPaymentsController extends Controller
         return redirect()
             ->back()
             ->with('status', 'Payment posted as processed and recorded in the general ledger.');
+    }
+
+    /**
+     * @return array{q:string,channel:string,status:string,from:string,to:string,perPage:int}
+     */
+    private function applyListFilters(Builder $query, Request $request, bool $allowStatus = true): array
+    {
+        $q = trim((string) $request->query('q', ''));
+        $channel = trim((string) $request->query('channel', ''));
+        $status = $allowStatus ? trim((string) $request->query('status', '')) : '';
+        $from = trim((string) $request->query('from', ''));
+        $to = trim((string) $request->query('to', ''));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+
+        $query
+            ->when($q !== '', function (Builder $builder) use ($q): void {
+                $builder->where(function (Builder $inner) use ($q): void {
+                    $inner->where('reference', 'like', '%'.$q.'%')
+                        ->orWhere('mpesa_receipt_number', 'like', '%'.$q.'%')
+                        ->orWhere('payer_msisdn', 'like', '%'.$q.'%')
+                        ->orWhereHas('loan', function (Builder $loan) use ($q): void {
+                            $loan->where('loan_number', 'like', '%'.$q.'%')
+                                ->orWhere('product_name', 'like', '%'.$q.'%')
+                                ->orWhereHas('loanClient', function (Builder $client) use ($q): void {
+                                    $client->where('client_number', 'like', '%'.$q.'%')
+                                        ->orWhere('first_name', 'like', '%'.$q.'%')
+                                        ->orWhere('last_name', 'like', '%'.$q.'%');
+                                });
+                        });
+                });
+            })
+            ->when($channel !== '', fn (Builder $builder) => $builder->where('channel', $channel))
+            ->when($allowStatus && $status !== '', fn (Builder $builder) => $builder->where('status', $status))
+            ->when($from !== '', fn (Builder $builder) => $builder->where('transaction_at', '>=', $from.' 00:00:00'))
+            ->when($to !== '', fn (Builder $builder) => $builder->where('transaction_at', '<=', $to.' 23:59:59'));
+
+        return compact('q', 'channel', 'status', 'from', 'to', 'perPage');
+    }
+
+    private function exportIfRequested(Builder $query, Request $request, string $basename): ?StreamedResponse
+    {
+        $format = strtolower(trim((string) $request->query('export', '')));
+        if (! in_array($format, ['csv', 'xls', 'pdf'], true)) {
+            return null;
+        }
+
+        $rows = $query->with(['loan.loanClient'])->limit(5000)->get();
+
+        return TabularExport::stream(
+            $basename.'-'.now()->format('Ymd_His'),
+            ['Reference', 'Date', 'Loan #', 'Client #', 'Client Name', 'Amount', 'Channel', 'Status', 'Kind', 'Receipt'],
+            function () use ($rows) {
+                foreach ($rows as $payment) {
+                    yield [
+                        (string) ($payment->reference ?? ''),
+                        (string) optional($payment->transaction_at)->format('Y-m-d H:i'),
+                        (string) ($payment->loan?->loan_number ?? ''),
+                        (string) ($payment->loan?->loanClient?->client_number ?? ''),
+                        (string) ($payment->loan?->loanClient?->full_name ?? ''),
+                        number_format((float) $payment->amount, 2, '.', ''),
+                        (string) ($payment->channel ?? ''),
+                        (string) ($payment->status ?? ''),
+                        (string) ($payment->payment_kind ?? ''),
+                        (string) ($payment->mpesa_receipt_number ?? ''),
+                    ];
+                }
+            },
+            $format
+        );
     }
 }

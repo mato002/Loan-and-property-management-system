@@ -94,21 +94,25 @@
                     @error('label_start')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit type <span class="text-red-600">*</span></label>
+                    <div class="flex items-center justify-between gap-2">
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit type <span class="text-red-600">*</span></label>
+                        <button type="button" data-unit-meta-open="type" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add unit type</button>
+                    </div>
                     <select id="unit_type" name="unit_type" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">Select unit type...</option>
                         @foreach ($unitTypes as $typeValue => $typeLabel)
-                            <option value="{{ $typeValue }}" @selected(old('unit_type', 'apartment') === $typeValue)>{{ $typeLabel }}</option>
+                            <option value="{{ $typeValue }}" @selected(old('unit_type') === $typeValue)>{{ $typeLabel }}</option>
                         @endforeach
                     </select>
                     @error('unit_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div id="bedrooms_wrapper">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bedrooms / room setup <span class="text-red-600">*</span></label>
+                    <div class="flex items-center justify-between gap-2">
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bedrooms / room setup <span class="text-red-600">*</span></label>
+                        <button type="button" data-unit-meta-open="bedrooms" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add bedroom count</button>
+                    </div>
                     <select id="bedrooms" name="bedrooms" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="0" @selected((string) old('bedrooms', '1') === '0')>No separate bedroom</option>
-                        @for ($b = 1; $b <= 10; $b++)
-                            <option value="{{ $b }}" @selected((string) old('bedrooms', '1') === (string) $b)>{{ $b }} {{ Str::plural('bedroom', $b) }}</option>
-                        @endfor
+                        <option value="">Select bedroom setup...</option>
                     </select>
                     @error('bedrooms')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Use Unit type to distinguish Single room, Bedsitter, and Studio.</p>
@@ -175,7 +179,7 @@
         <div
             x-data="{
                 rows: [
-                    { unit_count: 1, label_prefix: 'A', label_start: 1, unit_type: 'apartment', bedrooms: 1, rent_amount: '', status: 'vacant', public_listing_description: '' }
+                    { unit_count: 1, label_prefix: 'A', label_start: 1, unit_type: '', bedrooms: '', rent_amount: '', status: 'vacant', public_listing_description: '' }
                 ],
                 addRow() {
                     const last = this.rows[this.rows.length - 1] || { label_prefix: '', label_start: 1, unit_count: 1 };
@@ -184,11 +188,16 @@
                         unit_count: 1,
                         label_prefix: String(last.label_prefix || ''),
                         label_start: nextStart,
-                        unit_type: 'apartment',
-                        bedrooms: 1,
+                        unit_type: '',
+                        bedrooms: '',
                         rent_amount: '',
                         status: 'vacant',
                         public_listing_description: ''
+                    });
+                    queueMicrotask(() => {
+                        if (typeof window.applyCustomUnitMetaOptions === 'function') {
+                            window.applyCustomUnitMetaOptions();
+                        }
                     });
                 },
                 removeRow(i) {
@@ -205,9 +214,11 @@
                     <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Mixed units mode (recommended for mixed properties)</h3>
                     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Add multiple categories in one submit (e.g. 1BR vacant + 2BR occupied + studios).</p>
                 </div>
+                <div class="flex items-center gap-2">
                 <button type="button" @click="addRow()" class="rounded-xl border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80">
                     + Add group
                 </button>
+                </div>
             </div>
 
             <form method="post" action="{{ route('property.units.store') }}" class="space-y-4">
@@ -219,6 +230,17 @@
                         name="property_id"
                         :required="true"
                         :options="collect($properties)->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id', request('property_id')) === (string) $p->id])->all()"
+                        :create="[
+                            'mode' => 'ajax',
+                            'title' => 'Create property',
+                            'endpoint' => route('property.properties.store_json'),
+                            'fields' => [
+                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
+                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
+                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
+                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
+                            ],
+                        ]"
                     />
                 </div>
 
@@ -242,19 +264,24 @@
                                 <input x-model.number="row.label_start" :name="'unit_groups['+idx+'][label_start]'" type="number" min="1" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                             </div>
                             <div>
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit type <span class="text-red-600">*</span></label>
+                                <div class="flex items-center justify-between gap-2">
+                                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit type <span class="text-red-600">*</span></label>
+                                    <button type="button" data-unit-meta-open="type" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add type</button>
+                                </div>
                                 <select x-model="row.unit_type" :name="'unit_groups['+idx+'][unit_type]'" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                    <option value="">Select type...</option>
                                     @foreach ($unitTypes as $typeValue => $typeLabel)
                                         <option value="{{ $typeValue }}">{{ $typeLabel }}</option>
                                     @endforeach
                                 </select>
                             </div>
                             <div x-show="!noBedroom(row.unit_type)">
-                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bedrooms <span class="text-red-600">*</span></label>
-                                <select x-model.number="row.bedrooms" :name="'unit_groups['+idx+'][bedrooms]'" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                                    @for ($b = 0; $b <= 10; $b++)
-                                        <option value="{{ $b }}">{{ $b === 0 ? 'No separate bedroom' : $b.' '.Str::plural('bedroom', $b) }}</option>
-                                    @endfor
+                                <div class="flex items-center justify-between gap-2">
+                                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bedrooms <span class="text-red-600">*</span></label>
+                                    <button type="button" data-unit-meta-open="bedrooms" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add bedrooms</button>
+                                </div>
+                                <select x-model.number="row.bedrooms" :name="'unit_groups['+idx+'][bedrooms]'" :required="!noBedroom(row.unit_type)" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                    <option value="">Select bedrooms...</option>
                                 </select>
                             </div>
                             <input x-show="noBedroom(row.unit_type)" type="hidden" :name="'unit_groups['+idx+'][bedrooms]'" value="0" />
@@ -336,6 +363,39 @@
             </div>
         @endisset
     </x-slot>
+    <div id="unit_meta_modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/40" data-unit-meta-close></div>
+        <div class="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+            <div class="flex items-center justify-between">
+                <h3 id="unit_meta_modal_title" class="text-base font-semibold text-slate-900">Add option</h3>
+                <button type="button" class="text-slate-500 hover:text-slate-700" data-unit-meta-close>&times;</button>
+            </div>
+            <p id="unit_meta_modal_hint" class="mt-1 text-xs text-slate-500">These options are added to the current page immediately and saved when you submit units.</p>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                <div id="modal_type_label_wrap" class="sm:col-span-2">
+                    <label for="modal_unit_type_label" class="block text-xs font-medium text-slate-600">Unit type label <span class="text-red-600">*</span></label>
+                    <input id="modal_unit_type_label" type="text" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="e.g. Penthouse Duplex" />
+                </div>
+                <div id="modal_bedrooms_type_wrap" class="sm:col-span-2 hidden">
+                    <label for="modal_bedrooms_unit_type" class="block text-xs font-medium text-slate-600">Apply to unit type <span class="text-red-600">*</span></label>
+                    <select id="modal_bedrooms_unit_type" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                        <option value="">Select unit type...</option>
+                    </select>
+                </div>
+                <div id="modal_bedrooms_value_wrap" class="hidden">
+                    <label for="modal_bedrooms_value" class="block text-xs font-medium text-slate-600">Bedrooms count <span class="text-red-600">*</span></label>
+                    <input id="modal_bedrooms_value" type="number" min="0" max="20" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="e.g. 3" />
+                </div>
+            </div>
+            <p id="unit_meta_modal_error" class="mt-2 hidden text-xs text-red-600"></p>
+            <div class="mt-4 flex justify-end gap-2">
+                <button type="button" id="unit_meta_clear_btn" class="rounded-lg border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50">Clear saved options</button>
+                <button type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700" data-unit-meta-close>Cancel</button>
+                <button type="button" id="unit_meta_save_btn" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Add option</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         window.initUnitTypeBedroomsDependency = window.initUnitTypeBedroomsDependency || function () {
             const unitCount = document.getElementById('unit_count');
@@ -356,6 +416,194 @@
             }
 
             const noBedroomTypes = new Set(['single_room', 'bedsitter', 'studio']);
+            let bedroomOptionsByType = @json($bedroomOptionsByType ?? []);
+            const metaModal = document.getElementById('unit_meta_modal');
+            const metaModalError = document.getElementById('unit_meta_modal_error');
+            const metaSaveBtn = document.getElementById('unit_meta_save_btn');
+            const metaClearBtn = document.getElementById('unit_meta_clear_btn');
+            const metaTitle = document.getElementById('unit_meta_modal_title');
+            const metaHint = document.getElementById('unit_meta_modal_hint');
+            const modalTypeLabelWrap = document.getElementById('modal_type_label_wrap');
+            const modalBedroomsTypeWrap = document.getElementById('modal_bedrooms_type_wrap');
+            const modalBedroomsValueWrap = document.getElementById('modal_bedrooms_value_wrap');
+            const modalTypeLabel = document.getElementById('modal_unit_type_label');
+            const modalBedroomsUnitType = document.getElementById('modal_bedrooms_unit_type');
+            const modalBedroomsValue = document.getElementById('modal_bedrooms_value');
+            const storageKey = 'property_unit_meta_options_v1';
+            let metaMode = 'type';
+
+            const slugify = (text) => String(text || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+
+            const bedroomText = (count) => {
+                if (count === 0) return 'No separate bedroom';
+                return `${count} ${count === 1 ? 'bedroom' : 'bedrooms'}`;
+            };
+
+            const ensureOption = (select, value, label) => {
+                if (!select || !value) return;
+                if ([...select.options].some((o) => o.value === String(value))) return;
+                const option = document.createElement('option');
+                option.value = String(value);
+                option.textContent = label;
+                select.appendChild(option);
+            };
+
+            const allUnitTypeSelects = () => Array.from(document.querySelectorAll('select[name="unit_type"], select[name$="[unit_type]"]'));
+            const allBedroomsSelects = () => Array.from(document.querySelectorAll('select[name="bedrooms"], select[name$="[bedrooms]"]'));
+            const oldSingleBedrooms = @json((string) old('bedrooms', ''));
+
+            const readStoredMeta = () => {
+                try {
+                    const raw = window.localStorage ? window.localStorage.getItem(storageKey) : null;
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    const types = Array.isArray(parsed?.types) ? parsed.types : [];
+                    const bedroomsByType = parsed?.bedroomsByType && typeof parsed.bedroomsByType === 'object'
+                        ? parsed.bedroomsByType
+                        : {};
+                    return { types, bedroomsByType };
+                } catch (_) {
+                    return { types: [], bedroomsByType: {} };
+                }
+            };
+
+            const writeStoredMeta = (payload) => {
+                try {
+                    if (!window.localStorage) return;
+                    window.localStorage.setItem(storageKey, JSON.stringify(payload));
+                } catch (_) {
+                    // Ignore storage write failures (private mode/full quota).
+                }
+            };
+
+            const clearStoredMeta = () => {
+                try {
+                    if (!window.localStorage) return;
+                    window.localStorage.removeItem(storageKey);
+                } catch (_) {
+                    // Ignore storage failures.
+                }
+            };
+
+            const saveMetaOption = (typeValue, typeLabel, bedroomsValue) => {
+                const state = readStoredMeta();
+                const cleanTypeValue = String(typeValue || '').trim();
+                const cleanTypeLabel = String(typeLabel || '').trim();
+                const cleanBedrooms = Number.parseInt(String(bedroomsValue), 10);
+                if (cleanTypeValue !== '' && cleanTypeLabel !== '' && !state.types.some((t) => String(t?.value) === cleanTypeValue)) {
+                    state.types.push({ value: cleanTypeValue, label: cleanTypeLabel });
+                }
+                if (Number.isFinite(cleanBedrooms) && cleanBedrooms >= 0 && cleanBedrooms <= 20 && cleanTypeValue !== '') {
+                    const values = Array.isArray(state.bedroomsByType?.[cleanTypeValue]) ? state.bedroomsByType[cleanTypeValue] : [];
+                    if (!values.includes(cleanBedrooms)) {
+                        values.push(cleanBedrooms);
+                        values.sort((a, b) => a - b);
+                    }
+                    state.bedroomsByType[cleanTypeValue] = values;
+                }
+                writeStoredMeta(state);
+            };
+
+            const applyStoredOptions = () => {
+                const state = readStoredMeta();
+                state.types.forEach((entry) => {
+                    const value = String(entry?.value || '');
+                    const label = String(entry?.label || '').trim();
+                    if (value !== '' && label !== '') {
+                        allUnitTypeSelects().forEach((select) => ensureOption(select, value, label));
+                    }
+                });
+                Object.entries(state.bedroomsByType || {}).forEach(([typeValue, counts]) => {
+                    if (!Array.isArray(counts)) return;
+                    bedroomOptionsByType[typeValue] = bedroomOptionsByType[typeValue] || {};
+                    counts.forEach((count) => {
+                        const numeric = Number.parseInt(String(count), 10);
+                        if (!Number.isFinite(numeric) || numeric < 0 || numeric > 20) return;
+                        bedroomOptionsByType[typeValue][numeric] = bedroomText(numeric);
+                    });
+                });
+            };
+
+            window.applyCustomUnitMetaOptions = applyStoredOptions;
+
+            const renderBedroomsOptions = (select, typeValue, selectedValue = '') => {
+                if (!select) return;
+                const normalizedType = String(typeValue || '').trim();
+                const currentSelected = String(selectedValue ?? '');
+                select.innerHTML = '<option value="">Select bedroom setup...</option>';
+                const options = bedroomOptionsByType[normalizedType] || {};
+                Object.keys(options)
+                    .map((value) => Number.parseInt(String(value), 10))
+                    .filter((value) => Number.isFinite(value))
+                    .sort((a, b) => a - b)
+                    .forEach((value) => {
+                        ensureOption(select, value, options[String(value)] || bedroomText(value));
+                    });
+                if (currentSelected !== '' && [...select.options].some((o) => o.value === currentSelected)) {
+                    select.value = currentSelected;
+                }
+            };
+
+            const syncGroupBedroomsForTypeSelect = (typeSelect) => {
+                const rowGrid = typeSelect ? typeSelect.closest('.grid') : null;
+                if (!rowGrid) return;
+                const rowBedrooms = rowGrid.querySelector('select[name$="[bedrooms]"]');
+                if (!rowBedrooms) return;
+                renderBedroomsOptions(rowBedrooms, typeSelect.value, rowBedrooms.value);
+            };
+
+            const openMetaModal = () => {
+                if (!metaModal) return;
+                const typeMode = metaMode === 'type';
+                if (metaTitle) {
+                    metaTitle.textContent = typeMode ? 'Add unit type' : 'Add bedroom count';
+                }
+                if (metaHint) {
+                    metaHint.textContent = typeMode
+                        ? 'Add a unit type option only.'
+                        : 'Select an existing unit type, then add a bedroom count option.';
+                }
+                if (modalTypeLabelWrap) modalTypeLabelWrap.classList.toggle('hidden', !typeMode);
+                if (modalBedroomsTypeWrap) modalBedroomsTypeWrap.classList.toggle('hidden', typeMode);
+                if (modalBedroomsValueWrap) modalBedroomsValueWrap.classList.toggle('hidden', typeMode);
+
+                if (!typeMode && modalBedroomsUnitType) {
+                    modalBedroomsUnitType.innerHTML = '<option value="">Select unit type...</option>';
+                    const seen = new Set();
+                    allUnitTypeSelects().forEach((select) => {
+                        [...select.options].forEach((opt) => {
+                            const value = String(opt.value || '').trim();
+                            const label = String(opt.textContent || '').trim();
+                            if (value === '' || seen.has(value)) return;
+                            seen.add(value);
+                            ensureOption(modalBedroomsUnitType, value, label);
+                        });
+                    });
+                }
+                metaModal.classList.remove('hidden');
+                metaModal.classList.add('flex');
+                if (metaModalError) {
+                    metaModalError.classList.add('hidden');
+                    metaModalError.textContent = '';
+                }
+                if (typeMode && modalTypeLabel) {
+                    modalTypeLabel.focus();
+                } else if (!typeMode && modalBedroomsUnitType) {
+                    modalBedroomsUnitType.focus();
+                }
+            };
+
+            const closeMetaModal = () => {
+                if (!metaModal) return;
+                metaModal.classList.add('hidden');
+                metaModal.classList.remove('flex');
+                if (modalTypeLabel) modalTypeLabel.value = '';
+                if (modalBedroomsUnitType) modalBedroomsUnitType.value = '';
+                if (modalBedroomsValue) modalBedroomsValue.value = '';
+            };
 
             const syncLabel = () => {
                 const count = parseInt(unitCount.value || '1', 10);
@@ -378,10 +626,74 @@
                     bedrooms.disabled = true;
                     bedroomsWrapper.classList.add('hidden');
                 } else {
+                    renderBedroomsOptions(bedrooms, unitType.value, bedrooms.value || oldSingleBedrooms);
                     bedrooms.disabled = false;
                     bedroomsWrapper.classList.remove('hidden');
                 }
             };
+
+            if (metaSaveBtn) {
+                metaSaveBtn.addEventListener('click', () => {
+                    if (metaMode === 'type') {
+                        const rawTypeLabel = modalTypeLabel ? modalTypeLabel.value : '';
+                        const typeValue = slugify(rawTypeLabel);
+                        if (!typeValue) {
+                            if (metaModalError) {
+                                metaModalError.textContent = 'Enter a unit type label.';
+                                metaModalError.classList.remove('hidden');
+                            }
+                            return;
+                        }
+                        allUnitTypeSelects().forEach((select) => ensureOption(select, typeValue, rawTypeLabel.trim()));
+                        saveMetaOption(typeValue, rawTypeLabel.trim(), NaN);
+                        if (unitType) {
+                            unitType.value = typeValue;
+                            unitType.dispatchEvent(new Event('change'));
+                        }
+                    } else {
+                        const selectedType = String(modalBedroomsUnitType ? modalBedroomsUnitType.value : '').trim();
+                        const bedroomsValue = Number.parseInt(modalBedroomsValue ? modalBedroomsValue.value : '', 10);
+                        if (!selectedType) {
+                            if (metaModalError) {
+                                metaModalError.textContent = 'Select unit type first.';
+                                metaModalError.classList.remove('hidden');
+                            }
+                            return;
+                        }
+                        if (!Number.isFinite(bedroomsValue) || bedroomsValue < 0 || bedroomsValue > 20) {
+                            if (metaModalError) {
+                                metaModalError.textContent = 'Bedrooms count must be between 0 and 20.';
+                                metaModalError.classList.remove('hidden');
+                            }
+                            return;
+                        }
+                        allBedroomsSelects().forEach((select) => ensureOption(select, bedroomsValue, bedroomText(bedroomsValue)));
+                        bedroomOptionsByType[selectedType] = bedroomOptionsByType[selectedType] || {};
+                        bedroomOptionsByType[selectedType][bedroomsValue] = bedroomText(bedroomsValue);
+                        saveMetaOption(selectedType, '', bedroomsValue);
+                        if (unitType && unitType.value === selectedType && bedrooms && !noBedroomTypes.has(selectedType)) {
+                            renderBedroomsOptions(bedrooms, selectedType, String(bedroomsValue));
+                            bedrooms.value = String(bedroomsValue);
+                        }
+                        document.querySelectorAll('select[name$="[unit_type]"]').forEach((groupTypeSelect) => {
+                            if ((groupTypeSelect).value === selectedType) {
+                                syncGroupBedroomsForTypeSelect(groupTypeSelect);
+                            }
+                        });
+                    }
+                    closeMetaModal();
+                });
+            }
+
+            if (metaClearBtn) {
+                metaClearBtn.addEventListener('click', () => {
+                    clearStoredMeta();
+                    if (metaModalError) {
+                        metaModalError.textContent = 'Saved custom options cleared for this browser.';
+                        metaModalError.classList.remove('hidden');
+                    }
+                });
+            }
 
             const syncStatusMode = () => {
                 const split = statusMode.value === 'split';
@@ -445,9 +757,14 @@
 
             unitCount.addEventListener('input', syncLabel);
             syncLabel();
+            applyStoredOptions();
             unitCount.addEventListener('input', syncSplitValidation);
             unitType.addEventListener('change', syncBedrooms);
             syncBedrooms();
+            document.querySelectorAll('select[name$="[unit_type]"]').forEach((groupTypeSelect) => {
+                groupTypeSelect.addEventListener('change', () => syncGroupBedroomsForTypeSelect(groupTypeSelect));
+                syncGroupBedroomsForTypeSelect(groupTypeSelect);
+            });
             statusMode.addEventListener('change', syncStatusMode);
             syncStatusMode();
             statusMode.addEventListener('change', syncSplitValidation);
@@ -455,6 +772,16 @@
             occupiedCount.addEventListener('input', syncSplitValidation);
             noticeCount.addEventListener('input', syncSplitValidation);
             syncSplitValidation();
+
+            document.querySelectorAll('[data-unit-meta-open]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    metaMode = button.getAttribute('data-unit-meta-open') === 'bedrooms' ? 'bedrooms' : 'type';
+                    openMetaModal();
+                });
+            });
+            document.querySelectorAll('[data-unit-meta-close]').forEach((button) => {
+                button.addEventListener('click', closeMetaModal);
+            });
         };
 
         // Prevent duplicate global listeners when Turbo re-renders this frame.

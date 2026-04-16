@@ -86,7 +86,7 @@
 
         {{-- Filters --}}
         <div class="rounded-2xl bg-white p-6 shadow-sm mb-8">
-            <form method="GET" class="flex flex-wrap gap-4 items-end">
+            <form method="GET" data-sa-auto-filter class="flex flex-wrap gap-4 items-end">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 mb-1">Search</label>
                     <input type="text" name="q" value="{{ $q }}" placeholder="Agent name or email..." class="rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
@@ -121,9 +121,9 @@
 
         {{-- Subscriptions List --}}
         <div class="rounded-2xl bg-white shadow-sm">
-            <div class="p-6 border-b border-slate-200 flex justify-between items-center">
-                <h2 class="text-lg font-bold tracking-tight text-slate-900">Subscriptions ({{ $items->total() }})</h2>
-                <div class="flex gap-2">
+            <div class="p-6 border-b border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 class="text-lg font-bold tracking-tight text-slate-900 min-w-0">Subscriptions ({{ $items->total() }})</h2>
+                <div class="flex flex-wrap gap-2 shrink-0">
                     @foreach (['csv', 'xls', 'pdf'] as $format)
                         <a href="?{{ http_build_query(array_merge(request()->query(), ['export' => $format])) }}" 
                            class="px-3 py-1 text-sm bg-slate-100 text-slate-700 rounded hover:bg-slate-200 transition-colors">
@@ -141,10 +141,40 @@
                     <p class="mt-1 text-sm text-slate-500">Get started by creating your first agent subscription.</p>
                 </div>
             @else
-                <div class="overflow-x-auto">
-                    <table class="w-full">
+                <form id="subs-bulk-form" method="post" action="{{ route('superadmin.console.subscriptions.bulk') }}" class="border-b border-slate-200 bg-slate-50/60 px-6 py-4">
+                    @csrf
+                    <div id="subs-bulk-ids"></div>
+                    <p class="text-xs font-semibold text-slate-600 mb-3">Bulk actions — selected rows on this page</p>
+                    <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+                        <div>
+                            <label for="subs-bulk-action" class="block text-xs font-medium text-slate-600">Action</label>
+                            <select name="bulk_action" id="subs-bulk-action" class="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="set_status">Set status</option>
+                                <option value="delete">Delete</option>
+                            </select>
+                        </div>
+                        <div id="subs-bulk-status-wrap">
+                            <label for="subs-bulk-status" class="block text-xs font-medium text-slate-600">Status</label>
+                            <select name="status" id="subs-bulk-status" class="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="active">Active</option>
+                                <option value="inactive">Inactive</option>
+                                <option value="suspended">Suspended</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                        <button type="button" id="subs-bulk-apply" class="rounded-lg bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-900">
+                            Apply to selected
+                        </button>
+                    </div>
+                </form>
+                <div class="overflow-x-auto overscroll-x-contain">
+                    <table class="min-w-[900px] w-full">
                         <thead class="bg-slate-50 border-b border-slate-200">
                             <tr>
+                                <th class="w-10 px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider" scope="col">
+                                    <span class="sr-only">Select</span>
+                                    <input type="checkbox" id="subs-select-page" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" title="Select all on this page" aria-label="Select all subscriptions on this page">
+                                </th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Agent</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Package</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
@@ -156,6 +186,9 @@
                         <tbody class="divide-y divide-slate-200">
                             @foreach ($items as $subscription)
                                 <tr class="hover:bg-slate-50">
+                                    <td class="px-3 py-4 align-middle">
+                                        <input type="checkbox" value="{{ $subscription->id }}" class="subs-row-cb rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" aria-label="Select subscription {{ $subscription->id }}">
+                                    </td>
                                     <td class="px-6 py-4">
                                         <div>
                                             <div class="text-sm font-medium text-slate-900">{{ $subscription->user->name }}</div>
@@ -221,6 +254,96 @@
                     </table>
                 </div>
                 {{ $items->links() }}
+
+                <script>
+                    (function () {
+                        const form = document.getElementById('subs-bulk-form');
+                        const idsWrap = document.getElementById('subs-bulk-ids');
+                        const actionEl = document.getElementById('subs-bulk-action');
+                        const statusWrap = document.getElementById('subs-bulk-status-wrap');
+                        const master = document.getElementById('subs-select-page');
+                        const applyBtn = document.getElementById('subs-bulk-apply');
+                        if (!form || !idsWrap || !actionEl || !statusWrap || !master || !applyBtn) return;
+
+                        function rowCheckboxes() {
+                            return document.querySelectorAll('.subs-row-cb');
+                        }
+
+                        const statusSelect = document.getElementById('subs-bulk-status');
+
+                        function syncStatusVisibility() {
+                            const del = actionEl.value === 'delete';
+                            statusWrap.classList.toggle('hidden', del);
+                            if (statusSelect) {
+                                statusSelect.disabled = del;
+                                if (del) {
+                                    statusSelect.removeAttribute('name');
+                                } else {
+                                    statusSelect.setAttribute('name', 'status');
+                                }
+                            }
+                        }
+
+                        actionEl.addEventListener('change', syncStatusVisibility);
+                        syncStatusVisibility();
+
+                        master.addEventListener('change', function () {
+                            master.indeterminate = false;
+                            rowCheckboxes().forEach(function (cb) {
+                                cb.checked = master.checked;
+                            });
+                        });
+
+                        rowCheckboxes().forEach(function (cb) {
+                            cb.addEventListener('change', function () {
+                                const all = Array.from(rowCheckboxes());
+                                master.checked = all.length > 0 && all.every(function (x) { return x.checked; });
+                                master.indeterminate = all.some(function (x) { return x.checked; }) && !master.checked;
+                            });
+                        });
+
+                        applyBtn.addEventListener('click', function () {
+                            const checked = Array.from(rowCheckboxes()).filter(function (cb) { return cb.checked; });
+                            if (checked.length === 0) {
+                                if (window.Swal && typeof window.Swal.fire === 'function') {
+                                    window.Swal.fire({ icon: 'info', title: 'No rows selected', text: 'Select at least one subscription.' });
+                                } else {
+                                    window.alert('Select at least one subscription.');
+                                }
+                                return;
+                            }
+                            const isDelete = actionEl.value === 'delete';
+                            const msg = isDelete
+                                ? 'Delete ' + checked.length + ' subscription(s)? This cannot be undone.'
+                                : 'Update status for ' + checked.length + ' subscription(s)?';
+                            idsWrap.innerHTML = '';
+                            checked.forEach(function (cb) {
+                                const h = document.createElement('input');
+                                h.type = 'hidden';
+                                h.name = 'ids[]';
+                                h.value = cb.value;
+                                idsWrap.appendChild(h);
+                            });
+                            function doSubmit() {
+                                HTMLFormElement.prototype.submit.call(form);
+                            }
+                            if (window.Swal && typeof window.Swal.fire === 'function') {
+                                window.Swal.fire({
+                                    icon: isDelete ? 'warning' : 'question',
+                                    title: isDelete ? 'Confirm delete' : 'Confirm update',
+                                    text: msg,
+                                    showCancelButton: true,
+                                    confirmButtonText: isDelete ? 'Yes, delete' : 'Yes, apply',
+                                    cancelButtonText: 'Cancel',
+                                }).then(function (res) {
+                                    if (res.isConfirmed) doSubmit();
+                                });
+                            } else if (window.confirm(msg)) {
+                                doSubmit();
+                            }
+                        });
+                    })();
+                </script>
             @endif
         </div>
     @endif

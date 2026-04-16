@@ -43,6 +43,10 @@ return [
         'secret' => env('PROPERTY_SMS_INGEST_SECRET'),
     ],
 
+    'loan_sms_ingest' => [
+        'secret' => env('LOAN_SMS_INGEST_SECRET'),
+    ],
+
     'property_banks' => [
         'timeout_seconds' => (int) env('PROPERTY_BANK_TIMEOUT', 20),
         'providers' => [

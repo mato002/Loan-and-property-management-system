@@ -114,11 +114,17 @@
                                     @if ($r->status !== \App\Models\AccountingSalaryAdvance::STATUS_SETTLED)
                                         <a href="{{ route('loan.accounting.advances.edit', $r) }}" class="text-indigo-600 font-medium text-sm mr-2">Edit</a>
                                     @endif
-                                    <form method="post" action="{{ route('loan.accounting.advances.destroy', $r) }}" class="inline" data-swal-confirm="Remove this advance record?">
-                                        @csrf
-                                        @method('delete')
-                                        <button type="submit" class="text-red-600 font-medium text-sm">Delete</button>
-                                    </form>
+                                    <button
+                                        type="submit"
+                                        formaction="{{ route('loan.accounting.advances.destroy', $r) }}"
+                                        formmethod="post"
+                                        name="_method"
+                                        value="delete"
+                                        class="text-red-600 font-medium text-sm"
+                                        data-swal-confirm="Remove this advance record?"
+                                    >
+                                        Delete
+                                    </button>
                                 </td>
                             </tr>
                         @empty

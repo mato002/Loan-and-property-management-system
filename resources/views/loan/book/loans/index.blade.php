@@ -6,6 +6,48 @@
             <a href="{{ route('loan.book.loans.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Create loan</a>
         </x-slot>
 
+        <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan #, client, product..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Status</label>
+                    <select name="status" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">All</option>
+                        @foreach (($statuses ?? []) as $k => $lbl)
+                            <option value="{{ $k }}" @selected(($status ?? '') === $k)>{{ $lbl }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Branch</label>
+                    <select name="branch" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">All</option>
+                        @foreach (($branches ?? []) as $b)
+                            <option value="{{ $b }}" @selected(($branch ?? '') === $b)>{{ $b }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
+                    <select name="per_page" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        @foreach ([10, 15, 25, 50, 100, 200] as $size)
+                            <option value="{{ $size }}" @selected((int) ($perPage ?? 15) === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.book.loans.index') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
+                <div class="ml-auto flex items-center gap-2">
+                    <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                    <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+                    <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+                </div>
+            </div>
+        </form>
+
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
                 <h2 class="text-sm font-semibold text-slate-700">Loan register</h2>
@@ -28,12 +70,16 @@
                         @forelse ($loans as $loan)
                             <tr class="hover:bg-slate-50/80">
                                 <td class="px-5 py-3 font-mono text-xs text-indigo-600 font-medium">{{ $loan->loan_number }}</td>
-                                <td class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient->full_name }}</td>
+                                <td class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient->full_name ?? 'Client record missing' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $loan->product_name }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format((float) $loan->balance, 2) }}</td>
                                 <td class="px-5 py-3 tabular-nums {{ $loan->dpd > 0 ? 'text-red-600 font-semibold' : 'text-slate-600' }}">{{ $loan->dpd }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $loan->status) }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
+                                    @if ($loan->status === \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT)
+                                        <a href="{{ route('loan.book.disbursements.create', ['loan_book_loan_id' => $loan->id]) }}" class="text-emerald-700 font-medium text-sm hover:underline mr-3">Disburse</a>
+                                    @endif
+                                    <a href="{{ route('loan.book.loans.show', $loan) }}" class="text-slate-700 font-medium text-sm hover:underline mr-3">View</a>
                                     <a href="{{ route('loan.book.loans.edit', $loan) }}" class="text-indigo-600 font-medium text-sm hover:underline mr-3">Edit</a>
                                     <form method="post" action="{{ route('loan.book.loans.destroy', $loan) }}" class="inline" data-swal-confirm="Delete this loan? No disbursements or collections may exist.">
                                         @csrf
@@ -51,7 +97,7 @@
                 </table>
             </div>
             @if ($loans->hasPages())
-                <div class="px-5 py-3 border-t border-slate-100">{{ $loans->links() }}</div>
+                <div class="px-5 py-3 border-t border-slate-100">{{ $loans->withQueryString()->links() }}</div>
             @endif
         </div>
     </x-loan.page>

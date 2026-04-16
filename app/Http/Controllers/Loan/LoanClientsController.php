@@ -3,18 +3,26 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\ClientInteraction;
 use App\Models\ClientTransfer;
 use App\Models\DefaultClientGroup;
 use App\Models\Employee;
+use App\Models\LoanBranch;
 use App\Models\LoanClient;
+use App\Models\LoanRegion;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class LoanClientsController extends Controller
 {
+    use ScopesLoanPortfolioAccess;
+
     public function index(Request $request): View
     {
         $q = LoanClient::query()
@@ -22,6 +30,7 @@ class LoanClientsController extends Controller
             ->with('assignedEmployee')
             ->orderBy('last_name')
             ->orderBy('first_name');
+        $this->scopeLoanClientsToUser($q, $request->user());
 
         if ($search = trim((string) $request->get('q'))) {
             $q->where(function ($query) use ($search) {
@@ -43,14 +52,22 @@ class LoanClientsController extends Controller
     {
         $employees = $this->employeesForSelect();
 
-        return view('loan.clients.create', compact('employees'));
+        return view('loan.clients.create', [
+            'employees' => $employees,
+            'branchOptions' => $this->branchOptions(),
+        ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         $validated = $this->validateClientPayload($request, null, LoanClient::KIND_CLIENT);
+        $validated['client_number'] = $this->generateClientNumber();
         $validated['kind'] = LoanClient::KIND_CLIENT;
         $validated['lead_status'] = null;
+        $validated['assigned_employee_id'] = $this->resolveAssignedEmployeeForCreate(
+            $request,
+            $validated['assigned_employee_id'] ?? null
+        );
         if (empty($validated['client_status'])) {
             $validated['client_status'] = 'active';
         }
@@ -64,6 +81,8 @@ class LoanClientsController extends Controller
 
     public function show(LoanClient $loan_client): View
     {
+        $this->ensureLoanClientAccessible($loan_client);
+
         $loan_client->load([
             'assignedEmployee',
             'defaultGroups',
@@ -75,14 +94,24 @@ class LoanClientsController extends Controller
 
     public function edit(LoanClient $loan_client): View
     {
+        $this->ensureLoanClientAccessible($loan_client);
+
         $employees = $this->employeesForSelect();
 
-        return view('loan.clients.edit', compact('loan_client', 'employees'));
+        return view('loan.clients.edit', [
+            'loan_client' => $loan_client,
+            'employees' => $employees,
+            'branchOptions' => $this->branchOptions(),
+        ]);
     }
 
     public function update(Request $request, LoanClient $loan_client): RedirectResponse
     {
+        $this->ensureLoanClientAccessible($loan_client);
+
         $validated = $this->validateClientPayload($request, $loan_client, $loan_client->kind);
+        // Client numbers are system-assigned and immutable after creation.
+        $validated['client_number'] = $loan_client->client_number;
         $loan_client->update($validated);
 
         $route = $loan_client->kind === LoanClient::KIND_LEAD
@@ -96,6 +125,8 @@ class LoanClientsController extends Controller
 
     public function destroy(LoanClient $loan_client): RedirectResponse
     {
+        $this->ensureLoanClientAccessible($loan_client);
+
         $wasLead = $loan_client->kind === LoanClient::KIND_LEAD;
         $loan_client->delete();
 
@@ -110,6 +141,7 @@ class LoanClientsController extends Controller
             ->leads()
             ->with('assignedEmployee')
             ->orderByDesc('created_at');
+        $this->scopeLoanClientsToUser($q, $request->user());
 
         if ($search = trim((string) $request->get('q'))) {
             $q->where(function ($query) use ($search) {
@@ -130,14 +162,22 @@ class LoanClientsController extends Controller
     {
         $employees = $this->employeesForSelect();
 
-        return view('loan.clients.leads-create', compact('employees'));
+        return view('loan.clients.leads-create', [
+            'employees' => $employees,
+            'branchOptions' => $this->branchOptions(),
+        ]);
     }
 
     public function leadsStore(Request $request): RedirectResponse
     {
         $validated = $this->validateClientPayload($request, null, LoanClient::KIND_LEAD);
+        $validated['client_number'] = $this->generateClientNumber('LD');
         $validated['kind'] = LoanClient::KIND_LEAD;
         $validated['client_status'] = 'n/a';
+        $validated['assigned_employee_id'] = $this->resolveAssignedEmployeeForCreate(
+            $request,
+            $validated['assigned_employee_id'] ?? null
+        );
         if (empty($validated['lead_status'])) {
             $validated['lead_status'] = 'new';
         }
@@ -149,8 +189,51 @@ class LoanClientsController extends Controller
             ->with('status', 'Lead captured.');
     }
 
+    public function branchStore(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:160'],
+        ]);
+
+        $name = trim((string) $validated['name']);
+        if ($name === '') {
+            return response()->json([
+                'ok' => false,
+                'message' => 'Branch name is required.',
+            ], 422);
+        }
+
+        if (Schema::hasTable('loan_branches') && Schema::hasTable('loan_regions')) {
+            $region = LoanRegion::query()->orderBy('name')->first();
+            if (! $region) {
+                $region = LoanRegion::query()->create([
+                    'name' => 'Default Region',
+                    'description' => 'Auto-created for quick branch setup.',
+                    'is_active' => true,
+                ]);
+            }
+
+            LoanBranch::query()->firstOrCreate(
+                ['name' => $name],
+                [
+                    'loan_region_id' => $region->id,
+                    'is_active' => true,
+                ]
+            );
+        }
+
+        return response()->json([
+            'ok' => true,
+            'branch' => [
+                'name' => $name,
+            ],
+        ]);
+    }
+
     public function leadsConvert(LoanClient $loan_client): RedirectResponse
     {
+        $this->ensureLoanClientAccessible($loan_client);
+
         if ($loan_client->kind !== LoanClient::KIND_LEAD) {
             return back()->with('status', 'Only leads can be converted.');
         }
@@ -171,6 +254,7 @@ class LoanClientsController extends Controller
     {
         $clients = LoanClient::query()
             ->clients()
+            ->when(! $this->canAccessAllLoanData(auth()->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId(auth()->user())))
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get();
@@ -196,6 +280,7 @@ class LoanClientsController extends Controller
         ]);
 
         $client = LoanClient::query()->findOrFail($validated['loan_client_id']);
+        $this->ensureLoanClientAccessible($client);
         if ($client->kind !== LoanClient::KIND_CLIENT) {
             return back()->withErrors(['loan_client_id' => 'Transfers apply to clients only.'])->withInput();
         }
@@ -321,6 +406,7 @@ class LoanClientsController extends Controller
         $q = ClientInteraction::query()
             ->with(['loanClient', 'user'])
             ->orderByDesc('interacted_at');
+        $this->scopeByAssignedLoanClient($q, $request->user());
 
         if ($type = trim((string) $request->get('type'))) {
             $q->where('interaction_type', $type);
@@ -334,6 +420,7 @@ class LoanClientsController extends Controller
     public function interactionsCreate(): View
     {
         $people = LoanClient::query()
+            ->when(! $this->canAccessAllLoanData(auth()->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId(auth()->user())))
             ->orderBy('kind')
             ->orderBy('last_name')
             ->orderBy('first_name')
@@ -368,11 +455,15 @@ class LoanClientsController extends Controller
 
     public function interactionCreateForClient(LoanClient $loan_client): View
     {
+        $this->ensureLoanClientAccessible($loan_client);
+
         return view('loan.clients.interaction-for-client', compact('loan_client'));
     }
 
     public function interactionStoreForClient(Request $request, LoanClient $loan_client): RedirectResponse
     {
+        $this->ensureLoanClientAccessible($loan_client);
+
         $validated = $request->validate([
             'interaction_type' => ['required', 'string', 'max:40'],
             'subject' => ['nullable', 'string', 'max:255'],
@@ -403,7 +494,7 @@ class LoanClientsController extends Controller
 
         $rules = [
             'client_number' => [
-                'required',
+                $existing ? 'required' : 'nullable',
                 'string',
                 'max:50',
                 'unique:loan_clients,client_number'.($id ? ','.$id.',id' : ''),
@@ -417,6 +508,16 @@ class LoanClientsController extends Controller
             'branch' => ['nullable', 'string', 'max:120'],
             'assigned_employee_id' => ['nullable', 'exists:employees,id'],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'guarantor_1_full_name' => ['nullable', 'string', 'max:200'],
+            'guarantor_1_phone' => ['nullable', 'string', 'max:40'],
+            'guarantor_1_id_number' => ['nullable', 'string', 'max:80'],
+            'guarantor_1_relationship' => ['nullable', 'string', 'max:80'],
+            'guarantor_1_address' => ['nullable', 'string', 'max:2000'],
+            'guarantor_2_full_name' => ['nullable', 'string', 'max:200'],
+            'guarantor_2_phone' => ['nullable', 'string', 'max:40'],
+            'guarantor_2_id_number' => ['nullable', 'string', 'max:80'],
+            'guarantor_2_relationship' => ['nullable', 'string', 'max:80'],
+            'guarantor_2_address' => ['nullable', 'string', 'max:2000'],
         ];
 
         if ($kind === LoanClient::KIND_LEAD) {
@@ -430,6 +531,54 @@ class LoanClientsController extends Controller
         return $request->validate($rules);
     }
 
+    private function generateClientNumber(string $prefix = 'CL'): string
+    {
+        $prefix = strtoupper(trim($prefix));
+        if ($prefix === '') {
+            $prefix = 'CL';
+        }
+
+        $seed = ((int) LoanClient::query()->max('id')) + 1;
+        $number = $prefix.'-'.str_pad((string) $seed, 6, '0', STR_PAD_LEFT);
+
+        while (LoanClient::query()->where('client_number', $number)->exists()) {
+            $seed++;
+            $number = $prefix.'-'.str_pad((string) $seed, 6, '0', STR_PAD_LEFT);
+        }
+
+        return $number;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function branchOptions(): array
+    {
+        $fromDirectory = (Schema::hasTable('loan_branches')
+            ? LoanBranch::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->pluck('name')
+                ->all()
+            : []);
+
+        $fromClients = LoanClient::query()
+            ->whereNotNull('branch')
+            ->where('branch', '!=', '')
+            ->distinct()
+            ->orderBy('branch')
+            ->pluck('branch')
+            ->all();
+
+        $options = array_values(array_unique(array_filter(array_map(
+            static fn ($name) => trim((string) $name),
+            array_merge($fromDirectory, $fromClients)
+        ))));
+        sort($options, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $options;
+    }
+
     /**
      * @return Collection<int, Employee>
      */
@@ -440,4 +589,19 @@ class LoanClientsController extends Controller
             ->orderBy('first_name')
             ->get();
     }
+
+    /**
+     * Keep ownership consistent with portfolio scoping on create.
+     */
+    private function resolveAssignedEmployeeForCreate(Request $request, mixed $requested): ?int
+    {
+        if ($this->canAccessAllLoanData($request->user())) {
+            return $requested !== null && $requested !== '' ? (int) $requested : null;
+        }
+
+        $employeeId = $this->resolveLoanEmployeeId($request->user());
+
+        return $employeeId ? (int) $employeeId : null;
+    }
+
 }

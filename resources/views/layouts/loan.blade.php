@@ -1,11 +1,25 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full">
     <head>
+        @php
+            $appDisplayName = \App\Models\LoanSystemSetting::getValue('app_display_name', config('app.name', 'Loan Management System'));
+            $faviconUrl = \App\Models\LoanSystemSetting::getValue('favicon_url', '');
+            $faviconRaw = trim((string) $faviconUrl);
+            $faviconHref = match (true) {
+                $faviconRaw === '' => asset('favicon.ico'),
+                \Illuminate\Support\Str::startsWith($faviconRaw, ['http://', 'https://', '//']) => $faviconRaw,
+                default => asset(ltrim($faviconRaw, '/')),
+            };
+            $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
+        @endphp
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>Loan Management System</title>
+        <title>{{ $appDisplayName }}</title>
+        <link rel="icon" href="{{ $faviconVersioned }}">
+        <link rel="shortcut icon" href="{{ $faviconVersioned }}">
+        <link rel="apple-touch-icon" href="{{ $faviconVersioned }}">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
@@ -51,7 +65,7 @@
                 @include('layouts.loan_topbar')
 
                 <!-- Scrollable Content Area (Topbar/Footer remain constant) -->
-                <main class="flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar">
+                <main class="flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar overscroll-contain">
                     <div class="p-4 sm:p-6 lg:p-8">
                         {{ $slot }}
                     </div>

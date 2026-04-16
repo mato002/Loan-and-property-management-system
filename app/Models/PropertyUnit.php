@@ -182,7 +182,13 @@ class PropertyUnit extends Model
 
     public function unitTypeLabel(): string
     {
-        return self::typeOptions()[$this->unit_type] ?? ucfirst((string) $this->unit_type);
+        if (isset(self::typeOptions()[$this->unit_type])) {
+            return self::typeOptions()[$this->unit_type];
+        }
+
+        return (string) \Illuminate\Support\Str::of((string) $this->unit_type)
+            ->replace(['_', '-'], ' ')
+            ->title();
     }
 
     public function bedroomsLabel(): string

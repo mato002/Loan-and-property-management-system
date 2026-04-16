@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\UserModuleAccess;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -27,12 +26,7 @@ class EnsureModuleAccess
             return $next($request);
         }
 
-        $approved = $user->moduleAccesses()
-            ->where('module', $module)
-            ->where('status', UserModuleAccess::STATUS_APPROVED)
-            ->exists();
-
-        if ($approved) {
+        if ($user->isModuleApproved($module)) {
             return $next($request);
         }
 

@@ -11,12 +11,12 @@ use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
 use App\Services\PaymentMatchingService;
 use App\Services\Property\PropertyPaymentSettlementService;
+use App\Support\MpesaSmsForwarderParser;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 
 class PropertyPaymentWebhookController extends Controller
 {
@@ -50,19 +50,19 @@ class PropertyPaymentWebhookController extends Controller
             'payload' => ['nullable'],
         ]);
 
-        $payload = $this->normalizePayload($data['payload'] ?? null);
-        $paidAt = $this->normalizePaidAt($data['paid_at'] ?? null);
+        $payload = MpesaSmsForwarderParser::normalizePayload($data['payload'] ?? null);
+        $paidAt = MpesaSmsForwarderParser::normalizePaidAt($data['paid_at'] ?? null);
 
         $rawMessage = (string) ($data['raw_message'] ?? '');
         $provider = strtolower(trim((string) ($data['provider'] ?? '')));
-        if (! $this->isAllowedSmsProvider($provider, $rawMessage)) {
+        if (! MpesaSmsForwarderParser::isAllowedSmsProvider($provider, $rawMessage)) {
             return response()->json([
                 'ok' => true,
                 'status' => 'ignored',
                 'message' => 'SMS ignored: provider is not allowed for ingest (allowed: mpesa, equity).',
             ]);
         }
-        if (! $this->isLikelyIncomingPaymentMessage($rawMessage)) {
+        if (! MpesaSmsForwarderParser::isLikelyIncomingPaymentMessage($rawMessage)) {
             return response()->json([
                 'ok' => true,
                 'status' => 'ignored',
@@ -70,9 +70,9 @@ class PropertyPaymentWebhookController extends Controller
             ]);
         }
 
-        $parsed = $this->extractMpesaFields($rawMessage);
+        $parsed = MpesaSmsForwarderParser::extractMpesaFields($rawMessage);
         // Prefer payment timestamp parsed from SMS content over forwarder metadata timestamp.
-        $paidAt = $this->extractMpesaPaidAt($rawMessage) ?? $paidAt;
+        $paidAt = MpesaSmsForwarderParser::extractMpesaPaidAt($rawMessage) ?? $paidAt;
         // Prefer transaction code extracted from SMS body, since some forwarders may send altered ref ids.
         $providerTxnCode = (string) ($parsed['provider_txn_code'] ?? $data['provider_txn_code'] ?? '');
         if ($providerTxnCode === '') {
@@ -344,202 +344,12 @@ class PropertyPaymentWebhookController extends Controller
         ]);
     }
 
-    /**
-     * Attempt to extract transaction code and amount from raw M-Pesa confirmation SMS.
-     *
-     * @return array{provider_txn_code?:string,amount?:float}
-     */
-    private function extractMpesaFields(string $message): array
-    {
-        if (trim($message) === '') {
-            return [];
-        }
-
-        $out = [];
-
-        // Prefer explicit reference markers first (e.g. "Ref. UDV..."/"M-Pesa Ref. UCV...").
-        if (preg_match('/\b(?:m-?pesa\s+)?ref(?:erence)?\.?\s*[:\-]?\s*([A-Z0-9]{8,12})\b/iu', $message, $m) === 1) {
-            $candidate = strtoupper((string) $m[1]);
-            if ($this->isLikelyTxnCode($candidate)) {
-                $out['provider_txn_code'] = $candidate;
-            }
-        }
-
-        // Prefer the token immediately before "Confirmed", which matches common M-Pesa confirmation format.
-        if (! isset($out['provider_txn_code']) && preg_match('/\b([A-Z0-9]{8,12})\s+Confirmed\b/iu', $message, $m) === 1) {
-            $candidate = strtoupper((string) $m[1]);
-            if ($this->isLikelyTxnCode($candidate)) {
-                $out['provider_txn_code'] = $candidate;
-            }
-        } elseif (! isset($out['provider_txn_code']) && preg_match('/\b([A-Z0-9]{8,12})\b/u', $message, $m) === 1) {
-            $candidate = strtoupper((string) $m[1]);
-            if ($this->isLikelyTxnCode($candidate)) {
-                $out['provider_txn_code'] = $candidate;
-            }
-        }
-
-        // Match amount formats like "Ksh1,250.00", "KES 1250", "KES. 6,300.00".
-        if (preg_match('/(?:KSH|KES)\.?\s*([0-9,]+(?:\.[0-9]{1,2})?)/iu', $message, $m) === 1) {
-            $value = str_replace(',', '', (string) $m[1]);
-            $out['amount'] = (float) $value;
-        }
-
-        // Extract phone number from text: 07xxxxxxxx, 01xxxxxxxx, +2547xxxxxxx, 2547xxxxxxx
-        if (preg_match('/\b(\+?2547\d{8}|\+?2541\d{8}|07\d{8}|01\d{8})\b/u', $message, $m) === 1) {
-            $out['phone'] = (string) $m[1];
-        }
-
-        return $out;
-    }
-
-    private function extractMpesaPaidAt(string $message): ?Carbon
-    {
-        if (trim($message) === '') {
-            return null;
-        }
-
-        $day = $month = $year = $hour = $minute = null;
-        // Example: "... on 30/3/26 at 3:43 PM."
-        if (preg_match('/\bon\s+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\s+at\s+(\d{1,2}):(\d{2})\s*(AM|PM)\b/iu', $message, $m) === 1) {
-            $day = (int) $m[1];
-            $month = (int) $m[2];
-            $year = (int) $m[3];
-            $hour = (int) $m[4];
-            $minute = (int) $m[5];
-            $meridiem = strtoupper((string) $m[6]);
-            if ($year < 100) {
-                $year += 2000;
-            }
-            if ($meridiem === 'PM' && $hour < 12) {
-                $hour += 12;
-            }
-            if ($meridiem === 'AM' && $hour === 12) {
-                $hour = 0;
-            }
-        } elseif (preg_match('/\bon\s+(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\s+at\s+(\d{1,2}):(\d{2})\b/u', $message, $m) === 1) {
-            // Example: "... on 01-04-2026 at 10:24"
-            $day = (int) $m[1];
-            $month = (int) $m[2];
-            $year = (int) $m[3];
-            $hour = (int) $m[4];
-            $minute = (int) $m[5];
-            if ($year < 100) {
-                $year += 2000;
-            }
-        } else {
-            return null;
-        }
-
-        try {
-            return Carbon::create($year, $month, $day, $hour, $minute, 0, 'Africa/Nairobi')->utc();
-        } catch (\Throwable) {
-            return null;
-        }
-    }
-
-    private function isLikelyTxnCode(string $value): bool
-    {
-        // M-Pesa transaction codes are alphanumeric; avoid matching plain phone numbers.
-        return preg_match('/^(?=.*[A-Z])(?=.*\d)[A-Z0-9]{8,12}$/', $value) === 1;
-    }
-
     private function isDuplicateKey(QueryException $e): bool
     {
         $sqlState = (string) ($e->errorInfo[0] ?? '');
         $driverCode = (int) ($e->errorInfo[1] ?? 0);
 
         return $sqlState === '23000' || $driverCode === 1062;
-    }
-
-    private function isLikelyIncomingPaymentMessage(string $message): bool
-    {
-        $text = Str::lower(trim($message));
-        if ($text === '') {
-            return false;
-        }
-
-        // Exclude known non-payment or outgoing transaction notifications.
-        $negativeSignals = [
-            ' sent to ',
-            'fuliza',
-            'airtime',
-            'withdraw',
-            'withdrawn',
-            'moved from your m-pesa account',
-            'okoa jahazi',
-        ];
-        foreach ($negativeSignals as $signal) {
-            if (str_contains($text, $signal)) {
-                return false;
-            }
-        }
-
-        // Accept common incoming-payment style SMS patterns.
-        $positiveSignals = [
-            'received',
-            'received from',
-            'you have received',
-            'paid',
-            'payment received',
-            'confirmed',
-        ];
-        foreach ($positiveSignals as $signal) {
-            if (str_contains($text, $signal)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function isAllowedSmsProvider(string $provider, string $message): bool
-    {
-        $p = strtolower(trim($provider));
-        if (in_array($p, ['mpesa', 'equity'], true)) {
-            return true;
-        }
-
-        $text = Str::lower(trim($message));
-        if ($text === '') {
-            return false;
-        }
-
-        // If provider is missing from payload, infer only from trusted keywords.
-        return str_contains($text, 'm-pesa')
-            || str_contains($text, 'mpesa')
-            || str_contains($text, 'equity');
-    }
-
-    /**
-     * @return array<string,mixed>|null
-     */
-    private function normalizePayload(mixed $payload): ?array
-    {
-        if (is_array($payload)) {
-            return $payload;
-        }
-        if (is_string($payload) && trim($payload) !== '') {
-            $decoded = json_decode($payload, true);
-            if (is_array($decoded)) {
-                return $decoded;
-            }
-        }
-
-        return null;
-    }
-
-    private function normalizePaidAt(mixed $value): ?Carbon
-    {
-        if (! is_string($value) || trim($value) === '') {
-            return null;
-        }
-
-        try {
-            return Carbon::parse($value);
-        } catch (\Throwable) {
-            // Accept forwarder-specific date formats by falling back to now.
-            return null;
-        }
     }
 
     private function findTenantByPhone(string $normalizedPhone): ?PmTenant

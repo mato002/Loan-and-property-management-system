@@ -6,6 +6,7 @@ use App\Models\PropertyPortalSetting;
 use Closure;
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -38,20 +39,58 @@ class TabularExport
      */
     private static function streamPdf(string $filename, array $headers, Closure $rows, array $options = []): StreamedResponse
     {
-        $html = self::htmlTable($headers, $rows, $options);
+        $render = static function (bool $omitImages) use ($filename, $headers, $rows, $options): StreamedResponse {
+            $opts = array_merge($options, ['omit_images' => $omitImages]);
 
-        return response()->streamDownload(function () use ($html) {
-            $options = new Options();
-            $options->set('isRemoteEnabled', true);
-            $options->set('defaultFont', 'DejaVu Sans');
+            return self::renderDompdfResponse($filename, self::htmlTable($headers, $rows, $opts));
+        };
 
-            $dompdf = new Dompdf($options);
-            $dompdf->loadHtml($html, 'UTF-8');
-            $dompdf->setPaper('A4', 'portrait');
-            $dompdf->render();
-            echo $dompdf->output();
+        try {
+            return $render(false);
+        } catch (\Throwable) {
+            try {
+                return $render(true);
+            } catch (\Throwable) {
+                $html = self::htmlTable($headers, $rows, array_merge($options, ['omit_images' => true]));
+
+                return self::streamPdfFallbackDoc($filename, $html);
+            }
+        }
+    }
+
+    private static function renderDompdfResponse(string $filename, string $html): StreamedResponse
+    {
+        $pdfOptions = new Options();
+        $pdfOptions->set('isRemoteEnabled', true);
+        $pdfOptions->set('defaultFont', 'DejaVu Sans');
+
+        $dompdf = new Dompdf($pdfOptions);
+        $dompdf->loadHtml($html, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+        $pdfBinary = $dompdf->output();
+
+        return response()->streamDownload(function () use ($pdfBinary) {
+            echo $pdfBinary;
         }, $filename, [
             'Content-Type' => 'application/pdf',
+        ]);
+    }
+
+    /**
+     * Same table/letterhead HTML as a .doc when PDF (Dompdf/GD) is not available.
+     */
+    private static function streamPdfFallbackDoc(string $pdfFilename, string $html): StreamedResponse
+    {
+        $docFilename = preg_replace('/\.pdf$/i', '.doc', $pdfFilename);
+        if ($docFilename === $pdfFilename) {
+            $docFilename = $pdfFilename.'.doc';
+        }
+
+        return response()->streamDownload(function () use ($html) {
+            echo $html;
+        }, $docFilename, [
+            'Content-Type' => 'application/msword; charset=UTF-8',
         ]);
     }
 
@@ -63,7 +102,7 @@ class TabularExport
      */
     private static function streamWordHtml(string $filename, array $headers, Closure $rows): StreamedResponse
     {
-        $html = self::htmlTable($headers, $rows);
+        $html = self::htmlTable($headers, $rows, []);
 
         return response()->streamDownload(function () use ($html) {
             echo $html;
@@ -80,18 +119,22 @@ class TabularExport
     private static function htmlTable(array $headers, Closure $rows, array $options = []): string
     {
         $esc = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $brandName = trim((string) PropertyPortalSetting::getValue('company_name', ''));
+        $settingsReady = Schema::hasTable('property_portal_settings');
+        $brandName = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_name', '')) : '';
         if ($brandName === '') {
             $brandName = (string) config('app.name', 'Property Management System');
         }
-        $brandTagline = trim((string) PropertyPortalSetting::getValue('company_tagline', ''));
-        $brandLogo = trim((string) PropertyPortalSetting::getValue('company_logo_url', ''));
-        $logoSrc = self::resolveLogoSrc($brandLogo);
-        $contactParts = array_values(array_filter([
-            trim((string) PropertyPortalSetting::getValue('contact_phone', '')),
-            trim((string) PropertyPortalSetting::getValue('contact_email_primary', '')),
-            trim((string) PropertyPortalSetting::getValue('contact_address', '')),
-        ], static fn ($v) => $v !== ''));
+        $brandTagline = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_tagline', '')) : '';
+        $brandLogo = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_logo_url', '')) : '';
+        $omitImages = (bool) ($options['omit_images'] ?? false);
+        $logoSrc = $omitImages ? '' : self::resolveLogoSrc($brandLogo);
+        $contactParts = $settingsReady
+            ? array_values(array_filter([
+                trim((string) PropertyPortalSetting::getValue('contact_phone', '')),
+                trim((string) PropertyPortalSetting::getValue('contact_email_primary', '')),
+                trim((string) PropertyPortalSetting::getValue('contact_address', '')),
+            ], static fn ($v) => $v !== ''))
+            : [];
         $generatedAt = now()->format('d M Y, h:i A');
         $copyright = 'Copyright © '.now()->format('Y').' '.$brandName.'. All rights reserved.';
         $reportTitle = trim((string) ($options['title'] ?? Str::headline(str_replace('-', ' ', pathinfo((string) ($options['filename_base'] ?? ''), PATHINFO_FILENAME)))));

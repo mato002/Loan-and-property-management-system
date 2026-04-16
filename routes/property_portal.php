@@ -65,7 +65,12 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
             ->name('revenue.arrears.reminders.test_email');
         Route::get('/revenue/invoices', [PmInvoiceController::class, 'invoices'])->name('revenue.invoices');
         Route::post('/revenue/invoices', [PmInvoiceController::class, 'store'])->name('invoices.store');
+        Route::get('/revenue/invoices/{invoice}/edit', [PmInvoiceController::class, 'edit'])->name('revenue.invoices.edit');
+        Route::put('/revenue/invoices/{invoice}', [PmInvoiceController::class, 'update'])->name('revenue.invoices.update');
+        Route::patch('/revenue/invoices/{invoice}/status', [PmInvoiceController::class, 'updateStatus'])->name('revenue.invoices.status');
         Route::get('/revenue/invoices/lease/{lease}/info', [PmInvoiceController::class, 'leaseInfo'])->name('invoices.lease_info');
+        Route::get('/revenue/invoices/{invoice}', [PmInvoiceController::class, 'show'])->name('revenue.invoices.show');
+        Route::delete('/revenue/invoices/{invoice}', [PmInvoiceController::class, 'destroy'])->name('revenue.invoices.destroy');
         Route::get('/revenue/penalties', [RevenueController::class, 'penalties'])->name('revenue.penalties');
         Route::post('/revenue/penalties', [RevenueController::class, 'storePenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.store');
         Route::delete('/revenue/penalties/{penalty_rule}', [RevenueController::class, 'destroyPenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.destroy');
@@ -99,6 +104,9 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/revenue/equity/unmatched/{unassignedPayment}', [EquitySyncController::class, 'showUnmatchedPayment'])
             ->middleware('property.permission:payments.settle')
             ->name('equity.unmatched.show');
+        Route::post('/revenue/equity/unmatched/rematch-all', [EquitySyncController::class, 'rematchAllUnmatchedPayments'])
+            ->middleware('property.permission:payments.settle')
+            ->name('equity.unmatched.rematch_all');
         Route::post('/revenue/equity/unmatched/{unassignedPayment}/rematch', [EquitySyncController::class, 'rematchUnmatchedPayment'])
             ->middleware('property.permission:payments.settle')
             ->name('equity.unmatched.rematch');
@@ -210,6 +218,8 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/properties/units/export', [PropertyPortfolioController::class, 'unitListExport'])->name('properties.units.export');
         Route::post('/units', [PropertyPortfolioController::class, 'storeUnit'])->middleware('property.permission:properties.manage')->name('units.store');
         Route::post('/units/create-json', [PropertyPortfolioController::class, 'storeUnitJson'])->middleware('property.permission:properties.manage')->name('units.store_json');
+        Route::get('/units/{unit}/edit', [PropertyPortfolioController::class, 'editUnit'])->middleware('property.permission:properties.manage')->name('units.edit');
+        Route::patch('/units/{unit}', [PropertyPortfolioController::class, 'updateUnit'])->middleware('property.permission:properties.manage')->name('units.update');
         Route::post('/units/{unit}/status', [PropertyPortfolioController::class, 'updateUnitStatus'])->middleware('property.permission:properties.manage')->name('units.status');
         Route::delete('/units/{unit}', [PropertyPortfolioController::class, 'destroyUnit'])->middleware('property.permission:properties.manage')->name('units.destroy');
         Route::get('/properties/occupancy', [PropertyPortfolioController::class, 'occupancy'])->name('properties.occupancy');

@@ -3,9 +3,15 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\LoanBookApplication;
+use App\Models\LoanBranch;
 use App\Models\LoanClient;
+use App\Models\LoanProduct;
 use App\Models\PmInvoice;
+use App\Support\TabularExport;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -14,31 +20,155 @@ use Illuminate\View\View;
 
 class LoanBookApplicationsController extends Controller
 {
-    public function index(): View
+    use ScopesLoanPortfolioAccess;
+
+    public function index(Request $request)
     {
-        $applications = LoanBookApplication::query()
-            ->with('loanClient')
-            ->orderByDesc('created_at')
-            ->paginate(15);
+        $query = LoanBookApplication::query()->with('loanClient');
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+        $q = trim((string) $request->query('q', ''));
+        $stage = trim((string) $request->query('stage', ''));
+        $branch = trim((string) $request->query('branch', ''));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 15)));
+
+        $query
+            ->when($q !== '', function (Builder $builder) use ($q): void {
+                $builder->where(function (Builder $inner) use ($q): void {
+                    $inner->where('reference', 'like', '%'.$q.'%')
+                        ->orWhere('product_name', 'like', '%'.$q.'%')
+                        ->orWhere('branch', 'like', '%'.$q.'%')
+                        ->orWhereHas('loanClient', function (Builder $client) use ($q): void {
+                            $client->where('client_number', 'like', '%'.$q.'%')
+                                ->orWhere('first_name', 'like', '%'.$q.'%')
+                                ->orWhere('last_name', 'like', '%'.$q.'%')
+                                ->orWhere('email', 'like', '%'.$q.'%')
+                                ->orWhere('phone', 'like', '%'.$q.'%');
+                        });
+                });
+            })
+            ->when($stage !== '', fn (Builder $builder) => $builder->where('stage', $stage))
+            ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch));
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $query)->orderByDesc('created_at')->limit(5000)->get();
+
+            return TabularExport::stream(
+                'loanbook-applications-'.now()->format('Ymd_His'),
+                ['Reference', 'Client #', 'Client Name', 'Product', 'Source', 'Amount', 'Term Months', 'Stage', 'Branch', 'Submitted'],
+                function () use ($rows) {
+                    foreach ($rows as $app) {
+                        yield [
+                            (string) $app->reference,
+                            (string) ($app->loanClient->client_number ?? ''),
+                            (string) ($app->loanClient->full_name ?? ''),
+                            (string) $app->product_name,
+                            (string) ($app->submission_source ?? ''),
+                            number_format((float) $app->amount_requested, 2, '.', ''),
+                            (string) $app->term_months,
+                            (string) $app->stage,
+                            (string) ($app->branch ?? ''),
+                            (string) optional($app->submitted_at)->format('Y-m-d'),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $applications = $query->orderByDesc('created_at')->paginate($perPage)->withQueryString();
+        $branches = LoanBookApplication::query()
+            ->whereNotNull('branch')
+            ->where('branch', '!=', '')
+            ->distinct()
+            ->orderBy('branch')
+            ->pluck('branch');
 
         return view('loan.book.applications.index', [
             'title' => 'Loan applications',
             'subtitle' => 'Customer LoanBook pipeline — from submission to disbursement.',
             'applications' => $applications,
+            'q' => $q,
+            'stage' => $stage,
+            'branch' => $branch,
+            'perPage' => $perPage,
+            'stages' => $this->stageOptions(),
+            'branches' => $branches,
         ]);
     }
 
-    public function report(): View
+    public function report(Request $request)
     {
-        $applications = LoanBookApplication::query()
-            ->with('loanClient')
-            ->orderByDesc('created_at')
-            ->paginate(25);
+        $query = LoanBookApplication::query()->with('loanClient');
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+        $q = trim((string) $request->query('q', ''));
+        $stage = trim((string) $request->query('stage', ''));
+        $branch = trim((string) $request->query('branch', ''));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 25)));
+
+        $query
+            ->when($q !== '', function (Builder $builder) use ($q): void {
+                $builder->where(function (Builder $inner) use ($q): void {
+                    $inner->where('reference', 'like', '%'.$q.'%')
+                        ->orWhere('product_name', 'like', '%'.$q.'%')
+                        ->orWhere('branch', 'like', '%'.$q.'%')
+                        ->orWhereHas('loanClient', function (Builder $client) use ($q): void {
+                            $client->where('client_number', 'like', '%'.$q.'%')
+                                ->orWhere('first_name', 'like', '%'.$q.'%')
+                                ->orWhere('last_name', 'like', '%'.$q.'%')
+                                ->orWhere('email', 'like', '%'.$q.'%')
+                                ->orWhere('phone', 'like', '%'.$q.'%');
+                        });
+                });
+            })
+            ->when($stage !== '', fn (Builder $builder) => $builder->where('stage', $stage))
+            ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch));
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $query)->orderByDesc('created_at')->limit(5000)->get();
+
+            return TabularExport::stream(
+                'loanbook-application-report-'.now()->format('Ymd_His'),
+                ['Reference', 'Client #', 'Client Name', 'Product', 'Source', 'Amount', 'Term Months', 'Stage', 'Branch', 'Submitted'],
+                function () use ($rows) {
+                    foreach ($rows as $app) {
+                        yield [
+                            (string) $app->reference,
+                            (string) ($app->loanClient->client_number ?? ''),
+                            (string) ($app->loanClient->full_name ?? ''),
+                            (string) $app->product_name,
+                            (string) ($app->submission_source ?? ''),
+                            number_format((float) $app->amount_requested, 2, '.', ''),
+                            (string) $app->term_months,
+                            (string) $app->stage,
+                            (string) ($app->branch ?? ''),
+                            (string) optional($app->submitted_at)->format('Y-m-d'),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $applications = $query->orderByDesc('created_at')->paginate($perPage)->withQueryString();
+        $branches = LoanBookApplication::query()
+            ->whereNotNull('branch')
+            ->where('branch', '!=', '')
+            ->distinct()
+            ->orderBy('branch')
+            ->pluck('branch');
 
         return view('loan.book.applications.report', [
             'title' => 'Application loans report',
             'subtitle' => 'Export-style listing for committee and MIS.',
             'applications' => $applications,
+            'q' => $q,
+            'stage' => $stage,
+            'branch' => $branch,
+            'perPage' => $perPage,
+            'stages' => $this->stageOptions(),
+            'branches' => $branches,
         ]);
     }
 
@@ -67,11 +197,18 @@ class LoanBookApplicationsController extends Controller
         return view('loan.book.applications.create', [
             'title' => 'Create application',
             'subtitle' => 'Start a new LoanBook file for an onboarded client.',
-            'clients' => LoanClient::query()->clients()->orderBy('last_name')->orderBy('first_name')->get(),
+            'clients' => LoanClient::query()
+                ->clients()
+                ->when(! $this->canAccessAllLoanData($request->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId($request->user())))
+                ->orderBy('last_name')
+                ->orderBy('first_name')
+                ->get(),
             'stages' => $this->stageOptions(),
             'selectedClientId' => $selectedClientId,
             'defaultProductName' => $defaultProductName,
             'defaultPurpose' => $defaultPurpose,
+            'productOptions' => $this->productOptions($defaultProductName),
+            'branchOptions' => $this->branchOptions(),
         ]);
     }
 
@@ -94,13 +231,22 @@ class LoanBookApplicationsController extends Controller
             'stage' => ['required', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
             'branch' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'applicant_pin_location_code' => ['nullable', 'string', 'max:120'],
+            'applicant_signature_name' => ['nullable', 'string', 'max:200'],
+            'guarantor_full_name' => ['nullable', 'string', 'max:200'],
+            'guarantor_id_number' => ['nullable', 'string', 'max:80'],
+            'guarantor_phone' => ['nullable', 'string', 'max:40'],
+            'guarantor_signature_name' => ['nullable', 'string', 'max:200'],
         ]);
         $validated['submission_source'] = 'manual_internal';
+        $validated['repayment_agreement_accepted'] = $request->boolean('repayment_agreement_accepted');
 
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
+        $this->mergeLoanDepartmentGuarantorFromClient($validated, $client);
         if (empty($validated['branch'])) {
             $validated['branch'] = $client->branch;
         }
+        $validated['product_name'] = $this->ensureProductRegistered((string) $validated['product_name']);
 
         $next = (LoanBookApplication::query()->max('id') ?? 0) + 1;
         $validated['reference'] = 'APP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
@@ -113,19 +259,72 @@ class LoanBookApplicationsController extends Controller
             ->with('status', __('Application saved.'));
     }
 
+    public function storeProduct(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:160'],
+            'description' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $name = trim((string) $validated['name']);
+        $description = trim((string) ($validated['description'] ?? ''));
+
+        $product = LoanProduct::query()->firstOrCreate(
+            ['name' => $name],
+            [
+                'description' => $description !== '' ? $description : null,
+                'is_active' => true,
+            ]
+        );
+
+        return response()->json([
+            'ok' => true,
+            'product' => [
+                'id' => $product->id,
+                'name' => $product->name,
+            ],
+        ]);
+    }
+
     public function edit(LoanBookApplication $loan_book_application): View
     {
+        $this->ensureLoanClientOwner($loan_book_application->loanClient);
+
         return view('loan.book.applications.edit', [
             'title' => 'Edit application',
             'subtitle' => $loan_book_application->reference,
             'application' => $loan_book_application,
-            'clients' => LoanClient::query()->clients()->orderBy('last_name')->orderBy('first_name')->get(),
+            'clients' => LoanClient::query()
+                ->clients()
+                ->when(! $this->canAccessAllLoanData(auth()->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId(auth()->user())))
+                ->orderBy('last_name')
+                ->orderBy('first_name')
+                ->get(),
             'stages' => $this->stageOptions(),
+            'productOptions' => $this->productOptions($loan_book_application->product_name),
+            'branchOptions' => $this->branchOptions(),
+        ]);
+    }
+
+    public function show(LoanBookApplication $loan_book_application): View
+    {
+        $loan_book_application->load([
+            'loanClient',
+            'loan',
+        ]);
+        $this->ensureLoanClientOwner($loan_book_application->loanClient);
+
+        return view('loan.book.applications.show', [
+            'title' => 'Application details',
+            'subtitle' => $loan_book_application->reference,
+            'application' => $loan_book_application,
         ]);
     }
 
     public function update(Request $request, LoanBookApplication $loan_book_application): RedirectResponse
     {
+        $this->ensureLoanClientOwner($loan_book_application->loanClient);
+
         $validated = $request->validate([
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
             'product_name' => ['required', 'string', 'max:160'],
@@ -135,12 +334,21 @@ class LoanBookApplicationsController extends Controller
             'stage' => ['required', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
             'branch' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'applicant_pin_location_code' => ['nullable', 'string', 'max:120'],
+            'applicant_signature_name' => ['nullable', 'string', 'max:200'],
+            'guarantor_full_name' => ['nullable', 'string', 'max:200'],
+            'guarantor_id_number' => ['nullable', 'string', 'max:80'],
+            'guarantor_phone' => ['nullable', 'string', 'max:40'],
+            'guarantor_signature_name' => ['nullable', 'string', 'max:200'],
         ]);
         if (empty($loan_book_application->submission_source)) {
             $validated['submission_source'] = 'manual_internal';
         }
+        $validated['repayment_agreement_accepted'] = $request->boolean('repayment_agreement_accepted');
+        $validated['product_name'] = $this->ensureProductRegistered((string) $validated['product_name']);
 
-        LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
+        $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
+        $this->mergeLoanDepartmentGuarantorFromClient($validated, $client);
         $loan_book_application->update($validated);
 
         return redirect()
@@ -150,6 +358,8 @@ class LoanBookApplicationsController extends Controller
 
     public function destroy(LoanBookApplication $loan_book_application): RedirectResponse
     {
+        $this->ensureLoanClientOwner($loan_book_application->loanClient);
+
         if ($loan_book_application->loan()->exists()) {
             return redirect()
                 ->route('loan.book.applications.index')
@@ -164,6 +374,25 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
+     * If guarantor lines are left blank on the application, copy the primary guarantor from the client record.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function mergeLoanDepartmentGuarantorFromClient(array &$validated, LoanClient $client): void
+    {
+        $map = [
+            'guarantor_full_name' => 'guarantor_1_full_name',
+            'guarantor_id_number' => 'guarantor_1_id_number',
+            'guarantor_phone' => 'guarantor_1_phone',
+        ];
+        foreach ($map as $appField => $clientField) {
+            if (blank($validated[$appField] ?? null) && filled($client->{$clientField} ?? null)) {
+                $validated[$appField] = $client->{$clientField};
+            }
+        }
+    }
+
+    /**
      * @return array<string, string>
      */
     private function stageOptions(): array
@@ -175,6 +404,102 @@ class LoanBookApplicationsController extends Controller
             LoanBookApplication::STAGE_DECLINED => 'Declined',
             LoanBookApplication::STAGE_DISBURSED => 'Disbursed',
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function productOptions(?string $defaultProductName = null): array
+    {
+        $saved = Schema::hasTable('loan_products')
+            ? LoanProduct::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->pluck('name')
+                ->map(fn ($name) => trim((string) $name))
+                ->filter()
+                ->values()
+                ->all()
+            : [];
+
+        $historic = LoanBookApplication::query()
+            ->select('product_name')
+            ->whereNotNull('product_name')
+            ->where('product_name', '!=', '')
+            ->distinct()
+            ->orderBy('product_name')
+            ->pluck('product_name')
+            ->map(fn ($name) => trim((string) $name))
+            ->filter()
+            ->values()
+            ->all();
+
+        $merged = array_values(array_unique(array_merge($saved, $historic)));
+        sort($merged, SORT_NATURAL | SORT_FLAG_CASE);
+
+        $default = trim((string) ($defaultProductName ?? ''));
+        if ($default !== '' && ! in_array($default, $merged, true)) {
+            $merged[] = $default;
+            sort($merged, SORT_NATURAL | SORT_FLAG_CASE);
+        }
+
+        return $merged;
+    }
+
+    private function ensureProductRegistered(string $productName): string
+    {
+        $name = trim($productName);
+
+        if ($name === '') {
+            return $name;
+        }
+
+        if (Schema::hasTable('loan_products')) {
+            LoanProduct::query()->firstOrCreate(
+                ['name' => $name],
+                ['is_active' => true]
+            );
+        }
+
+        return $name;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function branchOptions(): array
+    {
+        $fromDirectory = Schema::hasTable('loan_branches')
+            ? LoanBranch::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->pluck('name')
+                ->all()
+            : [];
+
+        $fromClients = LoanClient::query()
+            ->whereNotNull('branch')
+            ->where('branch', '!=', '')
+            ->distinct()
+            ->orderBy('branch')
+            ->pluck('branch')
+            ->all();
+
+        $fromApplications = LoanBookApplication::query()
+            ->whereNotNull('branch')
+            ->where('branch', '!=', '')
+            ->distinct()
+            ->orderBy('branch')
+            ->pluck('branch')
+            ->all();
+
+        $options = array_values(array_unique(array_filter(array_map(
+            static fn ($name) => trim((string) $name),
+            array_merge($fromDirectory, $fromClients, $fromApplications)
+        ))));
+        sort($options, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $options;
     }
 
     private function resolvePortalClientId(Request $request): ?int
@@ -251,4 +576,5 @@ class LoanBookApplicationsController extends Controller
 
         return $arrears > 0;
     }
+
 }

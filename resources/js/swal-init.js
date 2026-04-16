@@ -51,7 +51,8 @@ document.addEventListener(
         if (!(form instanceof HTMLFormElement)) {
             return;
         }
-        let msg = form.getAttribute('data-swal-confirm');
+        const submitter = e.submitter instanceof HTMLElement ? e.submitter : null;
+        let msg = submitter?.getAttribute('data-swal-confirm') || form.getAttribute('data-swal-confirm');
         if (!msg) {
             const onsubmitRaw = form.getAttribute('onsubmit') || '';
             const match = onsubmitRaw.match(/confirm\((['"])(.*?)\1\)/);
@@ -65,7 +66,7 @@ document.addEventListener(
         e.preventDefault();
         e.stopPropagation();
 
-        const title = form.getAttribute('data-swal-title') || 'Are you sure?';
+        const title = submitter?.getAttribute('data-swal-title') || form.getAttribute('data-swal-title') || 'Are you sure?';
 
         Swal.fire({
             icon: 'warning',
@@ -74,14 +75,24 @@ document.addEventListener(
             showCancelButton: true,
             confirmButtonColor: '#2f4f4f',
             cancelButtonColor: '#64748b',
-            confirmButtonText: form.getAttribute('data-swal-confirm-text') || 'Yes, continue',
-            cancelButtonText: form.getAttribute('data-swal-cancel-text') || 'Cancel',
+            confirmButtonText: submitter?.getAttribute('data-swal-confirm-text') || form.getAttribute('data-swal-confirm-text') || 'Yes, continue',
+            cancelButtonText: submitter?.getAttribute('data-swal-cancel-text') || form.getAttribute('data-swal-cancel-text') || 'Cancel',
         }).then((result) => {
             if (result.isConfirmed) {
                 form.removeAttribute('data-swal-confirm');
                 form.removeAttribute('data-swal-title');
                 form.removeAttribute('data-swal-confirm-text');
                 form.removeAttribute('data-swal-cancel-text');
+                submitter?.removeAttribute('data-swal-confirm');
+                submitter?.removeAttribute('data-swal-title');
+                submitter?.removeAttribute('data-swal-confirm-text');
+                submitter?.removeAttribute('data-swal-cancel-text');
+
+                if (submitter && typeof form.requestSubmit === 'function') {
+                    form.requestSubmit(submitter);
+                    return;
+                }
+
                 form.submit();
             }
         });

@@ -24,19 +24,19 @@ return new class extends Migration
         }
 
         // Backfill known tenants by linked property ownership (invoice path).
-        DB::statement("
-            UPDATE pm_tenants t
-            JOIN (
-                SELECT i.pm_tenant_id AS tenant_id, MIN(p.agent_user_id) AS agent_user_id
+        // Correlated subquery works on MySQL and SQLite (UPDATE…JOIN is MySQL-only).
+        DB::statement('
+            UPDATE pm_tenants
+            SET agent_user_id = (
+                SELECT MIN(p.agent_user_id)
                 FROM pm_invoices i
-                JOIN property_units pu ON pu.id = i.property_unit_id
-                JOIN properties p ON p.id = pu.property_id
-                WHERE p.agent_user_id IS NOT NULL
-                GROUP BY i.pm_tenant_id
-            ) x ON x.tenant_id = t.id
-            SET t.agent_user_id = x.agent_user_id
-            WHERE t.agent_user_id IS NULL
-        ");
+                INNER JOIN property_units pu ON pu.id = i.property_unit_id
+                INNER JOIN properties p ON p.id = pu.property_id
+                WHERE i.pm_tenant_id = pm_tenants.id
+                  AND p.agent_user_id IS NOT NULL
+            )
+            WHERE agent_user_id IS NULL
+        ');
 
         // Leave unresolved rows null for manual review/reassignment.
     }

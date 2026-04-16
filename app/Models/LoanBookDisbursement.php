@@ -15,6 +15,17 @@ class LoanBookDisbursement extends Model
         'disbursed_at',
         'notes',
         'accounting_journal_entry_id',
+        'payout_status',
+        'payout_provider',
+        'payout_phone',
+        'payout_conversation_id',
+        'payout_originator_conversation_id',
+        'payout_transaction_id',
+        'payout_result_code',
+        'payout_result_desc',
+        'payout_requested_at',
+        'payout_completed_at',
+        'payout_meta',
     ];
 
     protected function casts(): array
@@ -22,6 +33,9 @@ class LoanBookDisbursement extends Model
         return [
             'amount' => 'decimal:2',
             'disbursed_at' => 'date',
+            'payout_requested_at' => 'datetime',
+            'payout_completed_at' => 'datetime',
+            'payout_meta' => 'array',
         ];
     }
 

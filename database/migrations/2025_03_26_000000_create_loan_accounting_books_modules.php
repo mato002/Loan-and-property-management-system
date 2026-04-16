@@ -88,7 +88,11 @@ return new class extends Migration
         if (! Schema::hasTable('accounting_bank_reconciliations')) {
             Schema::create('accounting_bank_reconciliations', function (Blueprint $table) {
                 $table->id();
-                $table->foreignId('accounting_chart_account_id')->constrained('accounting_chart_accounts')->restrictOnDelete();
+                $table->foreignId('accounting_chart_account_id');
+                $table->foreign('accounting_chart_account_id', 'acct_br_chart_fk')
+                    ->references('id')
+                    ->on('accounting_chart_accounts')
+                    ->restrictOnDelete();
                 $table->date('statement_date');
                 $table->decimal('statement_balance', 14, 2);
                 $table->decimal('adjustment_amount', 14, 2)->default(0);

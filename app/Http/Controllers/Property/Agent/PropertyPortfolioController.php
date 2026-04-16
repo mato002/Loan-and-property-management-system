@@ -624,7 +624,7 @@ class PropertyPortfolioController extends Controller
         ]);
     }
 
-    public function editProperty(Property $property): View
+    public function editProperty(Request $request, Property $property): View
     {
         $property->load(['landlords' => fn ($q) => $q->orderBy('name')]);
 
@@ -1582,7 +1582,7 @@ class PropertyPortfolioController extends Controller
         }
 
         $unitType = trim((string) ($filters['unit_type'] ?? ''));
-        if ($unitType !== '' && array_key_exists($unitType, PropertyUnit::typeOptions())) {
+        if ($unitType !== '') {
             $query->where('unit_type', $unitType);
         }
 
@@ -1628,6 +1628,7 @@ class PropertyPortfolioController extends Controller
             $activeTenantName = (string) ($activeLease?->pmTenant?->name ?? '');
             $actions = [
                 '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">View property</a>',
+                '<a href="'.route('property.units.edit', $u, absolute: false).'" data-turbo="false" class="rounded border border-blue-300 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50">Edit unit</a>',
                 // Quick path to onboarding or takeover: create a lease (often future-dated) for this unit
                 '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id], absolute: false).'" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Add lease</a>',
             ];
@@ -1681,7 +1682,8 @@ class PropertyPortfolioController extends Controller
                 ->orderBy('name')
                 ->get(),
             'allProperties' => Property::query()->orderBy('name')->get(['id', 'name']),
-            'unitTypes' => PropertyUnit::typeOptions(),
+            'unitTypes' => $this->propertyUnitTypeOptions(),
+            'bedroomOptionsByType' => $this->propertyBedroomOptionsByType(),
             'filters' => $filters,
         ]);
     }
@@ -1807,7 +1809,7 @@ class PropertyPortfolioController extends Controller
             $query->where('status', $status);
         }
         $unitType = trim((string) ($filters['unit_type'] ?? ''));
-        if ($unitType !== '' && array_key_exists($unitType, PropertyUnit::typeOptions())) {
+        if ($unitType !== '') {
             $query->where('unit_type', $unitType);
         }
         if (is_numeric($filters['beds_min'] ?? null)) {
@@ -1864,7 +1866,7 @@ class PropertyPortfolioController extends Controller
             'occupied_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
             'notice_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
             'status_mode' => ['nullable', 'in:single,split'],
-            'unit_type' => ['required', 'string', 'in:'.implode(',', array_keys(PropertyUnit::typeOptions()))],
+            'unit_type' => ['required', 'string', 'max:64'],
             // Bedrooms is conditional: some unit types have no separate bedroom and the UI disables the field.
             'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'rent_amount' => ['required', 'numeric', 'min:0'],
@@ -1874,6 +1876,8 @@ class PropertyPortfolioController extends Controller
             ],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
+
+        $data['unit_type'] = $this->normalizeUnitTypeValue((string) $data['unit_type']);
 
         $desc = isset($data['public_listing_description']) && trim((string) $data['public_listing_description']) !== ''
             ? $data['public_listing_description']
@@ -2079,12 +2083,80 @@ class PropertyPortfolioController extends Controller
         return back()->with('success', 'Unit status updated.');
     }
 
+    public function editUnit(PropertyUnit $unit): View
+    {
+        $unit->loadMissing('property');
+
+        return view('property.agent.properties.edit_unit', [
+            'unit' => $unit,
+            'unitTypes' => $this->propertyUnitTypeOptions((string) $unit->unit_type),
+            'bedroomOptionsByType' => $this->propertyBedroomOptionsByType((string) $unit->unit_type, (int) $unit->bedrooms),
+        ]);
+    }
+
+    public function updateUnit(Request $request, PropertyUnit $unit): RedirectResponse
+    {
+        $data = $request->validate([
+            'label' => [
+                'required',
+                'string',
+                'max:64',
+                Rule::unique('property_units', 'label')
+                    ->where(fn ($q) => $q->where('property_id', $unit->property_id))
+                    ->ignore($unit->id),
+            ],
+            'unit_type' => ['required', 'string', 'max:64'],
+            'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
+            'rent_amount' => ['required', 'numeric', 'min:0'],
+            'status' => ['required', 'in:vacant,occupied,notice'],
+            'public_listing_description' => ['nullable', 'string', 'max:20000'],
+        ]);
+
+        $data['unit_type'] = $this->normalizeUnitTypeValue((string) $data['unit_type']);
+        $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
+        $requiresNoBedroom = in_array($data['unit_type'], $noBedroomTypes, true);
+        if ($requiresNoBedroom) {
+            $data['bedrooms'] = 0;
+        } elseif (! isset($data['bedrooms'])) {
+            return back()
+                ->withErrors(['bedrooms' => __('The bedrooms field is required.')])
+                ->withInput();
+        }
+
+        $status = (string) $data['status'];
+        $hasActiveLease = $unit->leases()->where('pm_leases.status', PmLease::STATUS_ACTIVE)->exists();
+        if ($status === PropertyUnit::STATUS_OCCUPIED && ! $hasActiveLease) {
+            return back()->withErrors([
+                'status' => 'Cannot mark unit occupied without an active lease. Create/activate a lease first.',
+            ])->withInput();
+        }
+        if ($status === PropertyUnit::STATUS_VACANT && $hasActiveLease) {
+            return back()->withErrors([
+                'status' => 'Cannot mark unit vacant while it still has an active lease.',
+            ])->withInput();
+        }
+
+        $data['vacant_since'] = $status === PropertyUnit::STATUS_VACANT
+            ? ($unit->vacant_since?->toDateString() ?? now()->toDateString())
+            : null;
+
+        $unit->update($data);
+
+        if ($status !== PropertyUnit::STATUS_VACANT && $unit->public_listing_published) {
+            $unit->update(['public_listing_published' => false]);
+        }
+
+        return redirect()
+            ->route('property.properties.units', ['property_id' => $unit->property_id], absolute: false)
+            ->with('success', 'Unit updated.');
+    }
+
     public function storeUnitJson(Request $request)
     {
         $data = $request->validate([
             'property_id' => ['required', 'integer', 'exists:properties,id'],
             'label' => ['required', 'string', 'max:64'],
-            'unit_type' => ['nullable', 'string', 'in:'.implode(',', array_keys(PropertyUnit::typeOptions()))],
+            'unit_type' => ['nullable', 'string', 'max:64'],
             'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'rent_amount' => ['nullable', 'numeric', 'min:0'],
             'status' => ['nullable', 'in:vacant,occupied,notice'],
@@ -2104,7 +2176,7 @@ class PropertyPortfolioController extends Controller
             ], 422);
         }
 
-        $unitType = (string) ($data['unit_type'] ?? PropertyUnit::TYPE_APARTMENT);
+        $unitType = $this->normalizeUnitTypeValue((string) ($data['unit_type'] ?? PropertyUnit::TYPE_APARTMENT));
         $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
         $bedrooms = in_array($unitType, $noBedroomTypes, true)
             ? 0
@@ -2168,7 +2240,7 @@ class PropertyPortfolioController extends Controller
             'unit_groups.*.unit_count' => ['required', 'integer', 'min:1', 'max:5000'],
             'unit_groups.*.label_prefix' => ['required', 'string', 'max:32'],
             'unit_groups.*.label_start' => ['required', 'integer', 'min:1', 'max:1000000'],
-            'unit_groups.*.unit_type' => ['required', 'string', 'in:'.implode(',', array_keys(PropertyUnit::typeOptions()))],
+            'unit_groups.*.unit_type' => ['required', 'string', 'max:64'],
             'unit_groups.*.bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'unit_groups.*.rent_amount' => ['required', 'numeric', 'min:0'],
             'unit_groups.*.status' => ['required', 'in:vacant,occupied,notice'],
@@ -2188,7 +2260,7 @@ class PropertyPortfolioController extends Controller
             $prefix = trim((string) ($group['label_prefix'] ?? ''));
             $start = (int) ($group['label_start'] ?? 1);
             $numericOnlyLabels = false;
-            $unitType = (string) ($group['unit_type'] ?? '');
+            $unitType = $this->normalizeUnitTypeValue((string) ($group['unit_type'] ?? ''));
             $status = (string) ($group['status'] ?? '');
             $rentAmount = (float) ($group['rent_amount'] ?? 0);
             $desc = isset($group['public_listing_description']) && trim((string) $group['public_listing_description']) !== ''
@@ -2263,6 +2335,81 @@ class PropertyPortfolioController extends Controller
         });
 
         return back()->with('success', 'Units saved: '.count($toCreate).'.');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function propertyUnitTypeOptions(?string $forceInclude = null): array
+    {
+        $options = [];
+
+        $customTypes = PropertyUnit::query()
+            ->select('unit_type')
+            ->distinct()
+            ->pluck('unit_type')
+            ->map(fn ($value) => $this->normalizeUnitTypeValue((string) $value))
+            ->filter()
+            ->unique()
+            ->values();
+
+        foreach ($customTypes as $type) {
+            $options[$type] = (string) Str::of($type)->replace(['_', '-'], ' ')->title();
+        }
+
+        $forced = $this->normalizeUnitTypeValue((string) $forceInclude);
+        if ($forced !== '' && ! isset($options[$forced])) {
+            $options[$forced] = (string) Str::of($forced)->replace(['_', '-'], ' ')->title();
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function propertyBedroomOptionsByType(?string $forceType = null, ?int $forceBedroom = null): array
+    {
+        $map = [];
+        $rows = PropertyUnit::query()
+            ->select(['unit_type', 'bedrooms'])
+            ->whereNotNull('unit_type')
+            ->whereNotNull('bedrooms')
+            ->distinct()
+            ->get()
+            ->all();
+
+        foreach ($rows as $row) {
+            $type = $this->normalizeUnitTypeValue((string) ($row->unit_type ?? ''));
+            $count = (int) ($row->bedrooms ?? -1);
+            if ($type === '' || $count < 0 || $count > 20) {
+                continue;
+            }
+            $map[$type] ??= [];
+            $map[$type][$count] = $count === 0 ? 'No separate bedroom' : $count.' '.Str::plural('bedroom', $count);
+        }
+
+        $forcedTypeValue = $this->normalizeUnitTypeValue((string) $forceType);
+        if ($forcedTypeValue !== '' && $forceBedroom !== null && $forceBedroom >= 0 && $forceBedroom <= 20) {
+            $map[$forcedTypeValue] ??= [];
+            $map[$forcedTypeValue][$forceBedroom] = $forceBedroom === 0
+                ? 'No separate bedroom'
+                : $forceBedroom.' '.Str::plural('bedroom', $forceBedroom);
+        }
+
+        foreach ($map as $type => $options) {
+            ksort($options);
+            $map[$type] = $options;
+        }
+
+        return $map;
+    }
+
+    private function normalizeUnitTypeValue(string $value): string
+    {
+        $normalized = (string) Str::of($value)->trim()->lower()->replaceMatches('/\s+/', '_');
+
+        return trim($normalized, '_');
     }
 
     public function attachLandlord(Request $request): RedirectResponse

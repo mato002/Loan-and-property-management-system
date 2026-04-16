@@ -18,9 +18,10 @@ return new class extends Migration
         });
 
         // Backfill property-level tags from existing unit-level amenity links.
+        // Use CURRENT_TIMESTAMP so this migration runs on SQLite (tests) and MySQL.
         DB::statement('
             INSERT INTO pm_amenity_property (pm_amenity_id, property_id, created_at, updated_at)
-            SELECT DISTINCT pau.pm_amenity_id, pu.property_id, NOW(), NOW()
+            SELECT DISTINCT pau.pm_amenity_id, pu.property_id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             FROM pm_amenity_unit pau
             INNER JOIN property_units pu ON pu.id = pau.property_unit_id
         ');

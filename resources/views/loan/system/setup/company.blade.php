@@ -6,7 +6,7 @@
         @include('loan.accounting.partials.flash')
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm max-w-3xl p-6">
-            <form method="post" action="{{ route('loan.system.setup.company.update') }}" class="space-y-5">
+            <form method="post" action="{{ route('loan.system.setup.company.update') }}" class="space-y-5" enctype="multipart/form-data">
                 @csrf
                 @include('loan.system.setup._fields', ['settings' => $settings])
                 <button type="submit" class="rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#264040]">Save company settings</button>

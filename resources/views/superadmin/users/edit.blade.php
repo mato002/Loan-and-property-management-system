@@ -16,7 +16,7 @@
         @csrf
         @method('PUT')
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 min-w-0">
             <div class="lg:col-span-2 space-y-6">
                 <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
                     <h2 class="text-lg font-black text-slate-900">Account</h2>
@@ -50,6 +50,23 @@
                             </select>
                             @error('property_portal_role')<p class="text-sm text-red-600 mt-1">{{ $message }}</p>@enderror
                         </div>
+                        <div class="sm:col-span-2">
+                            <label class="block text-sm font-bold text-slate-700 mb-2">Loan role</label>
+                            <select name="loan_role" class="w-full rounded-xl border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <option value="">None</option>
+                                @foreach ([
+                                    'admin' => 'Administrator',
+                                    'manager' => 'Manager',
+                                    'officer' => 'Loan officer',
+                                    'accountant' => 'Accountant',
+                                    'applicant' => 'Applicant',
+                                    'user' => 'General user',
+                                ] as $k => $lbl)
+                                    <option value="{{ $k }}" @selected(old('loan_role', $user->loan_role) === $k)>{{ $lbl }}</option>
+                                @endforeach
+                            </select>
+                            @error('loan_role')<p class="text-sm text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
                     </div>
 
                     <label class="inline-flex items-center gap-2 text-sm font-bold text-slate-700">
@@ -60,7 +77,7 @@
 
                 <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
                     <h2 class="text-lg font-black text-slate-900">Module approvals</h2>
-                    <p class="text-sm text-slate-600">Set which modules this user can access. Anything other than “approved” will block login.</p>
+                    <p class="text-sm text-slate-600">Set which modules this user can access. <span class="font-semibold text-slate-700">Revoked</span> is the only status that always blocks. If a user already has a Property portal role (agent/landlord/tenant) or a Loan role, they are treated as allowed for that module until you revoke or clear those roles—even when the database row is still “pending”.</p>
 
                     @php($statuses = ['approved' => 'Approved', 'pending' => 'Pending', 'revoked' => 'Revoked'])
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -87,7 +104,7 @@
 
                 <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
                     <h2 class="text-lg font-black text-slate-900">Property RBAC</h2>
-                    <p class="text-sm text-slate-600">Assign Property module roles and/or direct permissions.</p>
+                    <p class="text-sm text-slate-600">Assign Property module roles and/or direct permissions. When <span class="font-semibold text-slate-800">Property module</span> is Approved and this user has no roles saved yet, common roles for their <span class="font-semibold text-slate-800">Property portal role</span> are pre-selected (agents: Property Manager, Leasing Officer, Finance Clerk; landlords/tenants: their portal role).</p>
 
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <div>
@@ -103,7 +120,7 @@
                                                 name="pm_role_ids[]"
                                                 value="{{ $role->id }}"
                                                 class="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                                @checked(in_array($role->id, old('pm_role_ids', $selectedRoleIds)))
+                                                @checked(in_array($role->id, old('pm_role_ids', $propertyPmRoleCheckboxDefaults ?? $selectedRoleIds)))
                                             />
                                             <span>
                                                 <span class="font-bold text-slate-900">{{ $role->name }}</span>

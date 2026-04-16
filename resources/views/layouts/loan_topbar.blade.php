@@ -1,4 +1,6 @@
 @php
+    use App\Support\LoanNavigation;
+
     $hour = (int) now()->format('H');
     $greeting = 'morning';
     if ($hour >= 12 && $hour < 17) {
@@ -7,19 +9,13 @@
         $greeting = 'evening';
     }
     $firstName = Auth::check() ? explode(' ', Auth::user()->name ?? 'User')[0] : 'User';
-    $quickLinks = [
-        ['route' => 'loan.dashboard', 'label' => 'Dashboard', 'active' => request()->routeIs('loan.dashboard')],
-        ['route' => 'loan.book.applications.index', 'label' => 'Applications', 'active' => request()->routeIs('loan.book.applications*')],
-        ['route' => 'loan.payments.unposted', 'label' => 'Pay-ins', 'active' => request()->routeIs('loan.payments*')],
-        ['route' => 'loan.accounting.books', 'label' => 'Books', 'active' => request()->routeIs('loan.accounting*')],
-        ['route' => 'loan.clients.index', 'label' => 'Clients', 'active' => request()->routeIs('loan.clients*')],
-    ];
+    $quickLinks = LoanNavigation::quickLinksForUser(Auth::user());
 @endphp
 
-<header class="sticky top-0 z-50 flex-shrink-0 border-b border-slate-200/90 bg-gradient-to-b from-white via-slate-50 to-white shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/90">
+<header class="relative md:sticky md:top-0 z-30 md:z-50 flex-shrink-0 border-b border-slate-200/90 bg-gradient-to-b from-white via-slate-50 to-white shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/90">
     <div class="px-4 sm:px-6 lg:px-8">
         {{-- Primary row --}}
-        <div class="flex flex-wrap items-center justify-between gap-3 py-3 sm:py-3.5 min-h-[4.25rem]">
+        <div class="flex items-center justify-between gap-3 py-3 sm:py-3.5 min-h-[4.25rem]">
             <div class="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                 <button type="button" @click="sidebarOpen = true" class="md:hidden shrink-0 p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-[#2f4f4f]/30" aria-label="Open menu">
                     <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -48,7 +44,7 @@
                 </div>
             </div>
 
-            <div class="flex items-center gap-2 sm:gap-3 shrink-0 w-full sm:w-auto justify-between sm:justify-end">
+            <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0 justify-end">
                 {{-- Quick nav (tablet+) --}}
                 <nav class="hidden lg:flex items-center gap-0.5 rounded-xl bg-white/80 border border-slate-200/80 p-1 shadow-sm" aria-label="Quick navigation">
                     @foreach ($quickLinks as $link)
@@ -64,10 +60,12 @@
                 </nav>
 
                 <div class="flex items-center gap-2 sm:gap-2">
-                    <a href="{{ route('loan.system.setup') }}" class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100 transition-colors" title="System setup">
-                        <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                        Setup
-                    </a>
+                    @if (LoanNavigation::canOpenLoanSystemSetup(Auth::user()))
+                        <a href="{{ route('loan.system.setup') }}" class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100 transition-colors" title="System setup">
+                            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            Setup
+                        </a>
+                    @endif
 
                     <a href="{{ route('loan.system.tickets.create') }}" class="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors" title="Support">
                         <svg class="w-4 h-4 shrink-0 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/></svg>

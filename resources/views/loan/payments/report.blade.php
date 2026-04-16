@@ -3,12 +3,8 @@
         title="Payments report"
         subtitle="Filter and export the payment register."
     >
-        <x-slot name="actions">
-            <a href="{{ route('loan.payments.report.export', request()->query()) }}" data-turbo="false" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Export CSV</a>
-        </x-slot>
-
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mb-6">
-            <form method="get" action="{{ route('loan.payments.report') }}" class="px-5 py-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 items-end">
+            <form method="get" action="{{ route('loan.payments.report') }}" class="px-5 py-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 items-end [&>div:last-child]:col-span-full">
                 <div>
                     <label for="status" class="block text-xs font-semibold text-slate-600 mb-1">Status</label>
                     <select id="status" name="status" class="w-full rounded-lg border-slate-200 text-sm">
@@ -42,9 +38,25 @@
                     <label for="to" class="block text-xs font-semibold text-slate-600 mb-1">To</label>
                     <input id="to" name="to" type="date" value="{{ request('to') }}" class="w-full rounded-lg border-slate-200 text-sm" />
                 </div>
-                <div class="flex gap-2">
-                    <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
-                    <a href="{{ route('loan.payments.report') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reset</a>
+                <div>
+                    <label for="per_page" class="block text-xs font-semibold text-slate-600 mb-1">Per page</label>
+                    <select id="per_page" name="per_page" class="w-full rounded-lg border-slate-200 text-sm">
+                        @foreach ([10, 20, 25, 30, 50, 100, 200] as $size)
+                            <option value="{{ $size }}" @selected((int) ($perPage ?? 30) === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="flex flex-wrap items-end gap-2 justify-between w-full">
+                    <div class="flex flex-wrap items-end gap-2">
+                        <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                        <a href="{{ route('loan.payments.report') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Reset</a>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="text-[11px] font-semibold uppercase text-slate-500 mr-1">Export</span>
+                        <a href="{{ route('loan.payments.report', array_merge(request()->except('export'), ['export' => 'csv'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                        <a href="{{ route('loan.payments.report', array_merge(request()->except('export'), ['export' => 'xls'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+                        <a href="{{ route('loan.payments.report', array_merge(request()->except('export'), ['export' => 'pdf'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+                    </div>
                 </div>
             </form>
         </div>

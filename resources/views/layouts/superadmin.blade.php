@@ -15,9 +15,10 @@
         <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700&display=swap" rel="stylesheet" />
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="min-h-screen bg-[#e8ecf1] text-slate-900 antialiased overflow-x-hidden" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">        <x-swal-flash />
+    <body class="h-screen min-h-0 overflow-hidden bg-[#e8ecf1] text-slate-900 antialiased" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">
+        <x-swal-flash />
 
-        <div class="h-screen flex overflow-hidden" x-data="{ saSidebarOpen: false, saProfileOpen: false }">
+        <div class="h-full min-h-0 flex overflow-hidden" x-data="{ saSidebarOpen: false, saProfileOpen: false }">
             {{-- Mobile sidebar overlay --}}
             <div
                 x-show="saSidebarOpen"
@@ -41,6 +42,7 @@
                         <div class="leading-tight">
                             <div class="text-sm font-black text-slate-900">{{ $displayName }}</div>
                             <div class="text-xs font-bold text-slate-500 uppercase tracking-widest">Super Admin</div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">Platform control</div>
                         </div>
                     </div>
                     <button type="button" class="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-700" @click="saSidebarOpen = false">
@@ -57,7 +59,7 @@
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
                         </svg>
-                        Overview
+                        Platform overview
                     </a>
 
                     <a
@@ -126,6 +128,7 @@
                         <div class="leading-tight">
                             <div class="text-sm font-black text-slate-900">{{ $displayName }}</div>
                             <div class="text-xs font-bold text-slate-500 uppercase tracking-widest">Super Admin</div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">Platform control</div>
                         </div>
                     </div>
                 </div>
@@ -139,7 +142,7 @@
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
                         </svg>
-                        Overview
+                        Platform overview
                     </a>
 
                     <a
@@ -218,12 +221,12 @@
             </aside>
 
             {{-- Main --}}
-            <div class="flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
+            <div class="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
                 {{-- Header --}}
-                <header class="h-16 border-b border-emerald-700/20 bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 sticky top-0 z-20 shrink-0 text-white">
-                    <div class="h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-                        <div class="flex items-center gap-3 min-w-0">
-                            <div class="lg:hidden">
+                <header class="min-h-16 border-b border-emerald-700/20 bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 z-20 shrink-0 text-white">
+                    <div class="min-h-16 px-3 sm:px-6 lg:px-8 py-2 sm:py-0 flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                            <div class="lg:hidden shrink-0">
                                 <button
                                     type="button"
                                     class="inline-flex items-center rounded-xl bg-white/15 ring-1 ring-white/30 px-3 py-2 text-sm font-black text-white"
@@ -232,15 +235,15 @@
                                     SA
                                 </button>
                             </div>
-                            <div class="min-w-0">
-                                <div class="text-sm font-bold text-emerald-100 uppercase tracking-widest">Super Admin</div>
-                                <div class="text-lg font-black text-white truncate">{{ $title ?? 'Console' }}</div>
+                            <div class="min-w-0 flex-1">
+                                <div class="text-[10px] sm:text-sm font-bold text-emerald-100 uppercase tracking-widest">Super Admin</div>
+                                <div class="text-sm sm:text-lg font-black text-white leading-snug break-words">{{ $title ?? 'Console' }}</div>
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
                             @if (request()->routeIs('superadmin.users.index'))
-                                <a href="{{ route('superadmin.users.create') }}" class="inline-flex items-center rounded-xl bg-white text-emerald-700 px-4 py-2.5 text-sm font-bold hover:bg-emerald-50">
+                                <a href="{{ route('superadmin.users.create') }}" class="inline-flex items-center whitespace-nowrap rounded-xl bg-white text-emerald-700 px-2.5 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm font-bold hover:bg-emerald-50">
                                     Add user
                                 </a>
                             @endif
@@ -295,10 +298,20 @@
                 </header>
 
                 {{-- Content --}}
-                <main class="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-8 bg-[#f4f7fa]">
+                <main class="flex-1 min-w-0 overflow-y-auto overflow-x-auto overscroll-x-contain px-4 sm:px-6 lg:px-8 py-8 bg-[#f4f7fa]">
                     @if (session('success'))
                         <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
                             {{ session('success') }}
+                        </div>
+                    @endif
+
+                    @if ($errors->any())
+                        <div class="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-800 text-sm">
+                            <ul class="list-disc list-inside space-y-1">
+                                @foreach ($errors->all() as $message)
+                                    <li>{{ $message }}</li>
+                                @endforeach
+                            </ul>
                         </div>
                     @endif
 
@@ -307,9 +320,9 @@
 
                 {{-- Footer --}}
                 <footer class="border-t border-slate-200 bg-white shrink-0">
-                    <div class="px-4 sm:px-6 lg:px-8 py-4 text-xs text-slate-500 flex items-center justify-between">
-                        <span>© {{ date('Y') }} {{ $displayName }}</span>
-                        <span class="font-semibold text-slate-400">Super Admin Console</span>
+                    <div class="px-4 sm:px-6 lg:px-8 py-4 text-xs text-slate-500 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
+                        <span class="break-words">© {{ date('Y') }} {{ $displayName }}</span>
+                        <span class="font-semibold text-slate-400 shrink-0">Super Admin Console</span>
                     </div>
                 </footer>
             </div>

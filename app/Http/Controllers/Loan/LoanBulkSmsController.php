@@ -3,9 +3,8 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
-use App\Models\PmLease;
-use App\Models\PmTenant;
-use App\Models\Property;
+use App\Models\Employee;
+use App\Models\LoanClient;
 use App\Models\SmsLog;
 use App\Models\SmsSchedule;
 use App\Models\SmsTemplate;
@@ -14,7 +13,6 @@ use App\Services\BulkSmsService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class LoanBulkSmsController extends Controller
@@ -32,40 +30,42 @@ class LoanBulkSmsController extends Controller
             }
         }
 
-        $activeTenantRows = DB::table('pm_tenants as t')
-            ->join('pm_leases as l', 'l.pm_tenant_id', '=', 't.id')
-            ->join('pm_lease_unit as lu', 'lu.pm_lease_id', '=', 'l.id')
-            ->join('property_units as u', 'u.id', '=', 'lu.property_unit_id')
-            ->join('properties as p', 'p.id', '=', 'u.property_id')
-            ->where('l.status', PmLease::STATUS_ACTIVE)
-            ->whereNotNull('t.phone')
-            ->where('t.phone', '!=', '')
-            ->selectRaw('t.id as tenant_id, t.name as tenant_name, t.phone as tenant_phone, p.id as property_id, p.name as property_name, u.label as unit_label')
-            ->orderBy('p.name')
-            ->orderBy('t.name')
-            ->get();
+        $clients = LoanClient::query()
+            ->whereNotNull('phone')
+            ->where('phone', '!=', '')
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get(['id', 'kind', 'client_number', 'first_name', 'last_name', 'phone']);
 
-        $propertyOptions = Property::query()
-            ->whereIn('id', $activeTenantRows->pluck('property_id')->filter()->unique()->values()->all())
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        $employees = Employee::query()
+            ->whereNotNull('phone')
+            ->where('phone', '!=', '')
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get(['id', 'employee_number', 'first_name', 'last_name', 'phone']);
 
-        $tenantOptions = $activeTenantRows
-            ->groupBy('tenant_id')
-            ->map(function ($rows, $tenantId) {
-                $first = $rows->first();
-                $propertyIds = $rows->pluck('property_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
-                $unitLabels = $rows->pluck('unit_label')->filter()->unique()->values()->all();
+        $contactOptions = collect()
+            ->merge($clients->map(function (LoanClient $client): array {
+                $name = trim($client->first_name.' '.$client->last_name);
 
                 return [
-                    'id' => (int) $tenantId,
-                    'name' => (string) ($first->tenant_name ?? 'Tenant'),
-                    'phone' => (string) ($first->tenant_phone ?? ''),
-                    'property_ids' => $propertyIds,
-                    'property_names' => $rows->pluck('property_name')->filter()->unique()->values()->all(),
-                    'units' => $unitLabels,
+                    'key' => 'client:'.$client->id,
+                    'name' => ($name !== '' ? $name : 'Client').' ('.strtoupper((string) $client->kind).')',
+                    'phone' => (string) ($client->phone ?? ''),
+                    'meta' => (string) ($client->client_number ?? 'Client'),
                 ];
-            })
+            }))
+            ->merge($employees->map(function (Employee $employee): array {
+                $name = trim($employee->first_name.' '.$employee->last_name);
+
+                return [
+                    'key' => 'employee:'.$employee->id,
+                    'name' => ($name !== '' ? $name : 'Employee').' (EMPLOYEE)',
+                    'phone' => (string) ($employee->phone ?? ''),
+                    'meta' => (string) ($employee->employee_number ?? 'Employee'),
+                ];
+            }))
+            ->sortBy('name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
         return view('loan.bulksms.compose', [
@@ -75,20 +75,17 @@ class LoanBulkSmsController extends Controller
             'costPerSms' => $bulkSms->costPerSms(),
             'prefillBody' => $prefillBody,
             'prefillTemplateId' => $prefillTemplateId,
-            'propertyOptions' => $propertyOptions,
-            'tenantOptions' => $tenantOptions,
+            'contactOptions' => $contactOptions,
         ]);
     }
 
     public function composeStore(Request $request, BulkSmsService $bulkSms): RedirectResponse
     {
         $validated = $request->validate([
-            'recipient_source' => ['nullable', 'in:manual,all_tenants,property_tenants'],
+            'recipient_source' => ['nullable', 'in:manual,all_clients,all_employees,selected_contacts'],
             'recipients' => ['nullable', 'string'],
-            'property_id' => ['nullable', 'integer', 'exists:properties,id'],
-            'tenant_selection_mode' => ['nullable', 'in:all,selected'],
-            'tenant_ids' => ['nullable', 'array'],
-            'tenant_ids.*' => ['integer', 'exists:pm_tenants,id'],
+            'contact_keys' => ['nullable', 'array'],
+            'contact_keys.*' => ['string', 'max:40'],
             'message' => ['required', 'string', 'max:1000'],
             'schedule_at' => ['nullable', 'date', 'after:now'],
             'sms_template_id' => ['nullable', 'exists:sms_templates,id'],
@@ -96,49 +93,74 @@ class LoanBulkSmsController extends Controller
 
         $recipientSource = (string) ($validated['recipient_source'] ?? 'manual');
         $phones = [];
-        if ($recipientSource === 'all_tenants') {
-            $phones = PmTenant::query()
-                ->whereHas('leases', fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE))
+        if ($recipientSource === 'all_clients') {
+            $phones = LoanClient::query()
                 ->whereNotNull('phone')
                 ->where('phone', '!=', '')
                 ->pluck('phone')
                 ->map(fn ($p) => (string) $p)
                 ->all();
-        } elseif ($recipientSource === 'property_tenants') {
-            $propertyId = (int) ($validated['property_id'] ?? 0);
-            if ($propertyId <= 0) {
-                return back()->withInput()->withErrors(['property_id' => 'Select a property for property tenants.']);
-            }
-
-            $tenantSelectionMode = (string) ($validated['tenant_selection_mode'] ?? 'all');
-            $baseTenantQuery = PmTenant::query()
-                ->whereHas('leases', function ($q) use ($propertyId) {
-                    $q->where('status', PmLease::STATUS_ACTIVE)
-                        ->whereHas('units', fn ($uq) => $uq->where('property_id', $propertyId));
-                })
+        } elseif ($recipientSource === 'all_employees') {
+            $phones = Employee::query()
                 ->whereNotNull('phone')
-                ->where('phone', '!=', '');
+                ->where('phone', '!=', '')
+                ->pluck('phone')
+                ->map(fn ($p) => (string) $p)
+                ->all();
+        } elseif ($recipientSource === 'selected_contacts') {
+            $keys = collect((array) ($validated['contact_keys'] ?? []))
+                ->map(fn ($v) => trim((string) $v))
+                ->filter()
+                ->unique()
+                ->values();
 
-            if ($tenantSelectionMode === 'selected') {
-                $tenantIds = collect((array) ($validated['tenant_ids'] ?? []))
-                    ->map(fn ($id) => (int) $id)
-                    ->filter()
-                    ->unique()
-                    ->values()
-                    ->all();
-                if ($tenantIds === []) {
-                    return back()->withInput()->withErrors(['tenant_ids' => 'Select at least one tenant for the chosen property.']);
-                }
-                $baseTenantQuery->whereIn('id', $tenantIds);
+            if ($keys->isEmpty()) {
+                return back()->withInput()->withErrors(['contact_keys' => 'Select at least one contact.']);
             }
 
-            $phones = $baseTenantQuery->pluck('phone')->map(fn ($p) => (string) $p)->all();
+            $clientIds = $keys
+                ->filter(fn ($k) => str_starts_with($k, 'client:'))
+                ->map(fn ($k) => (int) substr($k, 7))
+                ->filter(fn ($id) => $id > 0)
+                ->values()
+                ->all();
+
+            $employeeIds = $keys
+                ->filter(fn ($k) => str_starts_with($k, 'employee:'))
+                ->map(fn ($k) => (int) substr($k, 9))
+                ->filter(fn ($id) => $id > 0)
+                ->values()
+                ->all();
+
+            $phones = collect();
+
+            if ($clientIds !== []) {
+                $phones = $phones->merge(
+                    LoanClient::query()
+                        ->whereIn('id', $clientIds)
+                        ->whereNotNull('phone')
+                        ->where('phone', '!=', '')
+                        ->pluck('phone')
+                );
+            }
+
+            if ($employeeIds !== []) {
+                $phones = $phones->merge(
+                    Employee::query()
+                        ->whereIn('id', $employeeIds)
+                        ->whereNotNull('phone')
+                        ->where('phone', '!=', '')
+                        ->pluck('phone')
+                );
+            }
+
+            $phones = $phones->map(fn ($p) => (string) $p)->all();
         } else {
             $rawRecipients = (string) ($validated['recipients'] ?? '');
             if (trim($rawRecipients) === '') {
                 return back()
                     ->withInput()
-                    ->withErrors(['recipients' => 'Enter at least one phone number or choose a tenant source.']);
+                    ->withErrors(['recipients' => 'Enter at least one phone number or choose a contact source.']);
             }
             $phones = $bulkSms->normalizeRecipientList($rawRecipients);
         }

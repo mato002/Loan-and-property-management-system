@@ -15,6 +15,42 @@
             </div>
         @endif
 
+        <form method="get" action="{{ route('loan.payments.merge') }}" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, loan, client..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Channel</label>
+                    <input type="text" name="channel" value="{{ $channel ?? '' }}" placeholder="e.g. mpesa" class="h-10 w-40 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">From</label>
+                    <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">To</label>
+                    <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
+                    <select name="per_page" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        @foreach ([10, 20, 25, 50, 100, 200] as $size)
+                            <option value="{{ $size }}" @selected((int) ($perPage ?? 20) === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.payments.merge') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
+                <div class="ml-auto flex flex-wrap items-center gap-2">
+                    <a href="{{ route('loan.payments.merge', array_merge(request()->except('export'), ['export' => 'csv'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                    <a href="{{ route('loan.payments.merge', array_merge(request()->except('export'), ['export' => 'xls'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+                    <a href="{{ route('loan.payments.merge', array_merge(request()->except('export'), ['export' => 'pdf'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+                </div>
+            </div>
+        </form>
+
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <form method="post" action="{{ route('loan.payments.merge.store') }}" class="divide-y divide-slate-100">
                 @csrf
@@ -61,6 +97,11 @@
                     <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Create merged payment</button>
                 </div>
             </form>
+            @if ($candidates->hasPages())
+                <div class="px-5 py-4 border-t border-slate-100">
+                    {{ $candidates->links() }}
+                </div>
+            @endif
         </div>
     </x-loan.page>
 </x-loan-layout>

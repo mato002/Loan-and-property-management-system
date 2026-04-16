@@ -17,6 +17,8 @@ class PmInvoice extends Model
 
     public const STATUS_SENT = 'sent';
 
+    public const STATUS_CANCELLED = 'cancelled';
+
     public const STATUS_PARTIAL = 'partial';
 
     public const STATUS_PAID = 'paid';

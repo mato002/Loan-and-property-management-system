@@ -8,14 +8,19 @@
             <form method="post" action="{{ route('loan.book.disbursements.store') }}" class="px-5 py-6 space-y-4">
                 @csrf
                 @error('accounting')
-                    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ $message }}</div>
+                    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        <p>{{ $message }}</p>
+                        <a href="{{ route('loan.accounting.books.chart_rules') }}" class="mt-2 inline-flex items-center rounded-md border border-red-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50">
+                            Open Loan Ledger chart rules
+                        </a>
+                    </div>
                 @enderror
                 <div>
                     <label for="loan_book_loan_id" class="block text-xs font-semibold text-slate-600 mb-1">Loan account</label>
                     <select id="loan_book_loan_id" name="loan_book_loan_id" required class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="">Select…</option>
                         @foreach ($loans as $l)
-                            <option value="{{ $l->id }}" @selected(old('loan_book_loan_id') == $l->id)>{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
+                            <option value="{{ $l->id }}" @selected((string) old('loan_book_loan_id', request()->query('loan_book_loan_id', '')) === (string) $l->id)>{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
                         @endforeach
                     </select>
                     @error('loan_book_loan_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -37,6 +42,7 @@
                             <option value="{{ $v }}" @selected(old('method') === $v)>{{ $lab }}</option>
                         @endforeach
                     </select>
+                    <p class="mt-1 text-xs text-slate-500">Choosing M-Pesa sends a live B2C payout request and waits for callback before posting to GL.</p>
                     @error('method')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -54,3 +60,72 @@
         </div>
     </x-loan.page>
 </x-loan-layout>
+
+@php
+    $loanAutofillData = $loans->mapWithKeys(function ($loan) {
+        return [
+            (string) $loan->id => [
+                'id' => (int) $loan->id,
+                'loan_number' => (string) $loan->loan_number,
+                'client_name' => (string) ($loan->loanClient->full_name ?? ''),
+                'balance' => (float) ($loan->balance ?? 0),
+                'principal' => (float) ($loan->principal ?? 0),
+            ],
+        ];
+    });
+@endphp
+
+<script>
+    (() => {
+        const loanData = @json($loanAutofillData);
+        const form = document.querySelector('form[action="{{ route('loan.book.disbursements.store') }}"]');
+        if (!form) return;
+
+        const loanSelect = form.querySelector('#loan_book_loan_id');
+        const amountInput = form.querySelector('#amount');
+        const referenceInput = form.querySelector('#reference');
+        const notesInput = form.querySelector('#notes');
+        const dateInput = form.querySelector('#disbursed_at');
+
+        const initialAmount = amountInput?.value ?? '';
+        const initialReference = referenceInput?.value ?? '';
+        const initialNotes = notesInput?.value ?? '';
+
+        const formatDateYmd = (rawDate) => {
+            if (rawDate) return rawDate;
+            const today = new Date();
+            return today.toISOString().slice(0, 10);
+        };
+
+        const applyLoanDefaults = () => {
+            const selectedId = loanSelect?.value ? String(loanSelect.value) : '';
+            if (!selectedId || !loanData[selectedId]) return;
+
+            const selectedLoan = loanData[selectedId];
+            const suggestedAmount = Number(selectedLoan.balance || 0) > 0
+                ? Number(selectedLoan.balance)
+                : Number(selectedLoan.principal || 0);
+            const amountText = suggestedAmount > 0 ? suggestedAmount.toFixed(2) : '';
+            const ymd = formatDateYmd(dateInput?.value);
+            const compactDate = ymd.replace(/-/g, '');
+            const generatedRef = `DISB-${selectedLoan.loan_number}-${compactDate}`;
+
+            if (amountInput && (amountInput.value === '' || amountInput.value === initialAmount)) {
+                amountInput.value = amountText;
+            }
+            if (referenceInput && (referenceInput.value === '' || referenceInput.value === initialReference)) {
+                referenceInput.value = generatedRef;
+            }
+            if (notesInput && (notesInput.value === '' || notesInput.value === initialNotes)) {
+                notesInput.value = `Loan disbursement for ${selectedLoan.loan_number} - ${selectedLoan.client_name}.`;
+            }
+        };
+
+        if (loanSelect) {
+            loanSelect.addEventListener('change', applyLoanDefaults);
+            if (loanSelect.value) {
+                applyLoanDefaults();
+            }
+        }
+    })();
+</script>

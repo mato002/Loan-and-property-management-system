@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\LoanBookApplication;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBranch;
 use App\Models\LoanClient;
+use App\Support\TabularExport;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -15,48 +18,204 @@ use Illuminate\View\View;
 
 class LoanBookLoansController extends Controller
 {
-    public function index(): View
+    use ScopesLoanPortfolioAccess;
+
+    public function index(Request $request)
     {
-        $loans = LoanBookLoan::query()
-            ->with(['loanClient', 'application'])
-            ->orderByDesc('created_at')
-            ->paginate(15);
+        $query = LoanBookLoan::query()->with(['loanClient', 'application']);
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+        $q = trim((string) $request->query('q', ''));
+        $status = trim((string) $request->query('status', ''));
+        $branch = trim((string) $request->query('branch', ''));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 15)));
+
+        $query
+            ->when($q !== '', function (Builder $builder) use ($q): void {
+                $builder->where(function (Builder $inner) use ($q): void {
+                    $inner->where('loan_number', 'like', '%'.$q.'%')
+                        ->orWhere('product_name', 'like', '%'.$q.'%')
+                        ->orWhere('checkoff_employer', 'like', '%'.$q.'%')
+                        ->orWhere('branch', 'like', '%'.$q.'%')
+                        ->orWhereHas('loanClient', function (Builder $client) use ($q): void {
+                            $client->where('client_number', 'like', '%'.$q.'%')
+                                ->orWhere('first_name', 'like', '%'.$q.'%')
+                                ->orWhere('last_name', 'like', '%'.$q.'%')
+                                ->orWhere('email', 'like', '%'.$q.'%')
+                                ->orWhere('phone', 'like', '%'.$q.'%');
+                        });
+                });
+            })
+            ->when($status !== '', fn (Builder $builder) => $builder->where('status', $status))
+            ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch));
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $query)->orderByDesc('created_at')->limit(5000)->get();
+
+            return TabularExport::stream(
+                'loanbook-loans-'.now()->format('Ymd_His'),
+                ['Loan #', 'Client #', 'Client Name', 'Product', 'Principal', 'Balance', 'Interest Rate', 'DPD', 'Status', 'Branch'],
+                function () use ($rows) {
+                    foreach ($rows as $loan) {
+                        yield [
+                            (string) $loan->loan_number,
+                            (string) ($loan->loanClient->client_number ?? ''),
+                            (string) ($loan->loanClient->full_name ?? ''),
+                            (string) $loan->product_name,
+                            number_format((float) $loan->principal, 2, '.', ''),
+                            number_format((float) $loan->balance, 2, '.', ''),
+                            number_format((float) $loan->interest_rate, 2, '.', ''),
+                            (string) $loan->dpd,
+                            (string) $loan->status,
+                            (string) ($loan->branch ?? ''),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $loans = $query->orderByDesc('created_at')->paginate($perPage)->withQueryString();
+        $branches = LoanBookLoan::query()->whereNotNull('branch')->where('branch', '!=', '')->distinct()->orderBy('branch')->pluck('branch');
 
         return view('loan.book.loans.index', [
             'title' => 'View loans',
             'subtitle' => 'Active and closed facilities in LoanBook.',
             'loans' => $loans,
+            'q' => $q,
+            'status' => $status,
+            'branch' => $branch,
+            'perPage' => $perPage,
+            'statuses' => $this->statusOptions(),
+            'branches' => $branches,
         ]);
     }
 
-    public function arrears(): View
+    public function arrears(Request $request)
     {
-        $loans = LoanBookLoan::query()
-            ->with(['loanClient'])
+        $query = LoanBookLoan::query()->with(['loanClient']);
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+        $q = trim((string) $request->query('q', ''));
+        $branch = trim((string) $request->query('branch', ''));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $query = $query
             ->where('status', LoanBookLoan::STATUS_ACTIVE)
             ->where('dpd', '>', 0)
-            ->orderByDesc('dpd')
-            ->paginate(20);
+            ->when($q !== '', function (Builder $builder) use ($q): void {
+                $builder->where(function (Builder $inner) use ($q): void {
+                    $inner->where('loan_number', 'like', '%'.$q.'%')
+                        ->orWhere('product_name', 'like', '%'.$q.'%')
+                        ->orWhere('branch', 'like', '%'.$q.'%')
+                        ->orWhereHas('loanClient', function (Builder $client) use ($q): void {
+                            $client->where('client_number', 'like', '%'.$q.'%')
+                                ->orWhere('first_name', 'like', '%'.$q.'%')
+                                ->orWhere('last_name', 'like', '%'.$q.'%');
+                        });
+                });
+            })
+            ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch));
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $query)->orderByDesc('dpd')->limit(5000)->get();
+
+            return TabularExport::stream(
+                'loanbook-arrears-'.now()->format('Ymd_His'),
+                ['Loan #', 'Client #', 'Client Name', 'Balance', 'DPD', 'Branch', 'Status'],
+                function () use ($rows) {
+                    foreach ($rows as $loan) {
+                        yield [
+                            (string) $loan->loan_number,
+                            (string) ($loan->loanClient->client_number ?? ''),
+                            (string) ($loan->loanClient->full_name ?? ''),
+                            number_format((float) $loan->balance, 2, '.', ''),
+                            (string) $loan->dpd,
+                            (string) ($loan->branch ?? ''),
+                            (string) $loan->status,
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $loans = $query->orderByDesc('dpd')->paginate($perPage)->withQueryString();
+        $branches = LoanBookLoan::query()->whereNotNull('branch')->where('branch', '!=', '')->distinct()->orderBy('branch')->pluck('branch');
 
         return view('loan.book.loans.arrears', [
             'title' => 'Loan arrears',
             'subtitle' => 'Active accounts with days past due.',
             'loans' => $loans,
+            'q' => $q,
+            'branch' => $branch,
+            'perPage' => $perPage,
+            'branches' => $branches,
         ]);
     }
 
-    public function checkoff(): View
+    public function checkoff(Request $request)
     {
-        $loans = LoanBookLoan::query()
-            ->with(['loanClient'])
+        $query = LoanBookLoan::query()->with(['loanClient']);
+        $this->scopeByAssignedLoanClient($query, auth()->user());
+        $q = trim((string) $request->query('q', ''));
+        $status = trim((string) $request->query('status', ''));
+        $branch = trim((string) $request->query('branch', ''));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+
+        $query = $query
             ->where('is_checkoff', true)
-            ->orderByDesc('balance')
-            ->paginate(20);
+            ->when($q !== '', function (Builder $builder) use ($q): void {
+                $builder->where(function (Builder $inner) use ($q): void {
+                    $inner->where('loan_number', 'like', '%'.$q.'%')
+                        ->orWhere('checkoff_employer', 'like', '%'.$q.'%')
+                        ->orWhere('branch', 'like', '%'.$q.'%')
+                        ->orWhereHas('loanClient', function (Builder $client) use ($q): void {
+                            $client->where('client_number', 'like', '%'.$q.'%')
+                                ->orWhere('first_name', 'like', '%'.$q.'%')
+                                ->orWhere('last_name', 'like', '%'.$q.'%');
+                        });
+                });
+            })
+            ->when($status !== '', fn (Builder $builder) => $builder->where('status', $status))
+            ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch));
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $query)->orderByDesc('balance')->limit(5000)->get();
+
+            return TabularExport::stream(
+                'loanbook-checkoff-'.now()->format('Ymd_His'),
+                ['Loan #', 'Client #', 'Client Name', 'Employer', 'Balance', 'Status', 'Branch'],
+                function () use ($rows) {
+                    foreach ($rows as $loan) {
+                        yield [
+                            (string) $loan->loan_number,
+                            (string) ($loan->loanClient->client_number ?? ''),
+                            (string) ($loan->loanClient->full_name ?? ''),
+                            (string) ($loan->checkoff_employer ?? ''),
+                            number_format((float) $loan->balance, 2, '.', ''),
+                            (string) $loan->status,
+                            (string) ($loan->branch ?? ''),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $loans = $query->orderByDesc('balance')->paginate($perPage)->withQueryString();
+        $branches = LoanBookLoan::query()->whereNotNull('branch')->where('branch', '!=', '')->distinct()->orderBy('branch')->pluck('branch');
 
         return view('loan.book.loans.checkoff', [
             'title' => 'Checkoff loans',
             'subtitle' => 'Salary-checkoff and employer-deduct facilities.',
             'loans' => $loans,
+            'q' => $q,
+            'status' => $status,
+            'branch' => $branch,
+            'perPage' => $perPage,
+            'statuses' => $this->statusOptions(),
+            'branches' => $branches,
         ]);
     }
 
@@ -65,11 +224,17 @@ class LoanBookLoansController extends Controller
         return view('loan.book.loans.create', [
             'title' => 'Create loan',
             'subtitle' => 'Book a new facility (manual or from an approved application).',
-            'clients' => LoanClient::query()->clients()->orderBy('last_name')->orderBy('first_name')->get(),
+            'clients' => LoanClient::query()
+                ->clients()
+                ->when(! $this->canAccessAllLoanData(auth()->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId(auth()->user())))
+                ->orderBy('last_name')
+                ->orderBy('first_name')
+                ->get(),
             'applications' => LoanBookApplication::query()
                 ->whereIn('stage', [LoanBookApplication::STAGE_APPROVED, LoanBookApplication::STAGE_DISBURSED])
                 ->whereDoesntHave('loan')
                 ->with('loanClient')
+                ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user()))
                 ->orderByDesc('created_at')
                 ->get(),
             'statuses' => $this->statusOptions(),
@@ -115,13 +280,21 @@ class LoanBookLoansController extends Controller
 
     public function edit(LoanBookLoan $loan_book_loan): View
     {
+        $this->ensureLoanClientOwner($loan_book_loan->loanClient);
+
         return view('loan.book.loans.edit', [
             'title' => 'Edit loan',
             'subtitle' => $loan_book_loan->loan_number,
             'loan' => $loan_book_loan,
-            'clients' => LoanClient::query()->clients()->orderBy('last_name')->orderBy('first_name')->get(),
+            'clients' => LoanClient::query()
+                ->clients()
+                ->when(! $this->canAccessAllLoanData(auth()->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId(auth()->user())))
+                ->orderBy('last_name')
+                ->orderBy('first_name')
+                ->get(),
             'applications' => LoanBookApplication::query()
                 ->with('loanClient')
+                ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user()))
                 ->orderByDesc('created_at')
                 ->limit(100)
                 ->get(),
@@ -130,8 +303,27 @@ class LoanBookLoansController extends Controller
         ]);
     }
 
+    public function show(LoanBookLoan $loan_book_loan): View
+    {
+        $loan_book_loan->load([
+            'loanClient',
+            'application',
+            'disbursements' => fn ($query) => $query->orderByDesc('disbursed_at')->orderByDesc('id'),
+            'collectionEntries' => fn ($query) => $query->orderByDesc('collected_on')->orderByDesc('id')->limit(20),
+        ]);
+        $this->ensureLoanClientOwner($loan_book_loan->loanClient);
+
+        return view('loan.book.loans.show', [
+            'title' => 'Loan details',
+            'subtitle' => $loan_book_loan->loan_number,
+            'loan' => $loan_book_loan,
+        ]);
+    }
+
     public function update(Request $request, LoanBookLoan $loan_book_loan): RedirectResponse
     {
+        $this->ensureLoanClientOwner($loan_book_loan->loanClient);
+
         $validated = $this->validatedLoan($request, false);
         $validated['is_checkoff'] = $request->boolean('is_checkoff');
         if (empty($validated['loan_book_application_id'])) {
@@ -147,6 +339,8 @@ class LoanBookLoansController extends Controller
 
     public function destroy(LoanBookLoan $loan_book_loan): RedirectResponse
     {
+        $this->ensureLoanClientOwner($loan_book_loan->loanClient);
+
         if ($loan_book_loan->disbursements()->exists() || $loan_book_loan->collectionEntries()->exists()) {
             return redirect()
                 ->route('loan.book.loans.index')
@@ -227,4 +421,5 @@ class LoanBookLoansController extends Controller
             $validated['branch'] = $branch->name;
         }
     }
+
 }

@@ -53,6 +53,7 @@ final class PropertyDashboardStats
                 PmInvoice::STATUS_PARTIAL,
                 PmInvoice::STATUS_OVERDUE,
             ])
+            ->where('status', '!=', PmInvoice::STATUS_CANCELLED)
             ->selectRaw('SUM(amount - amount_paid) as t')
             ->value('t') ?? 0;
     }
@@ -80,6 +81,7 @@ final class PropertyDashboardStats
     {
         $q = PmInvoice::query()
             ->whereIn('status', [PmInvoice::STATUS_OVERDUE, PmInvoice::STATUS_PARTIAL, PmInvoice::STATUS_SENT])
+            ->where('status', '!=', PmInvoice::STATUS_CANCELLED)
             ->whereColumn('amount_paid', '<', 'amount')
             ->where('due_date', '<=', now()->subDays($minDays));
 

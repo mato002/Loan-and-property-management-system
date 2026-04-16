@@ -70,10 +70,10 @@
             ];
         @endphp
 
-        <div class="grid gap-4 sm:grid-cols-2 max-w-5xl">
+        <div class="grid gap-3 sm:gap-4 sm:grid-cols-2 max-w-5xl">
             @foreach ($cards as $c)
-                <a href="{{ $c['href'] }}" class="flex gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group">
-                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
+                <a href="{{ $c['href'] }}" class="flex items-start gap-3 sm:gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group">
+                    <div class="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
                         @switch($c['icon'])
                             @case('plus')
                                 <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -108,7 +108,7 @@
                         @endswitch
                     </div>
                     <div class="min-w-0">
-                        <h2 class="text-sm font-bold text-slate-900 group-hover:text-blue-800 transition-colors">{{ $c['title'] }}</h2>
+                        <h2 class="text-sm sm:text-[15px] font-bold text-slate-900 group-hover:text-blue-800 transition-colors">{{ $c['title'] }}</h2>
                         <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{{ $c['desc'] }}</p>
                     </div>
                 </a>

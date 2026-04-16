@@ -79,11 +79,17 @@
                                 <td class="px-5 py-3 text-slate-600">{{ $r->payment_method }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('loan.accounting.utilities.edit', $r) }}" class="text-indigo-600 font-medium text-sm mr-2">Edit</a>
-                                    <form method="post" action="{{ route('loan.accounting.utilities.destroy', $r) }}" class="inline" data-swal-confirm="Remove this record?">
-                                        @csrf
-                                        @method('delete')
-                                        <button type="submit" class="text-red-600 font-medium text-sm">Delete</button>
-                                    </form>
+                                    <button
+                                        type="submit"
+                                        formaction="{{ route('loan.accounting.utilities.destroy', $r) }}"
+                                        formmethod="post"
+                                        name="_method"
+                                        value="delete"
+                                        class="text-red-600 font-medium text-sm"
+                                        data-swal-confirm="Remove this record?"
+                                    >
+                                        Delete
+                                    </button>
                                 </td>
                             </tr>
                         @empty

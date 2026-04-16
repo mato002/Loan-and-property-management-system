@@ -23,51 +23,34 @@
                                 <select id="recipient_source" name="recipient_source"
                                     class="mt-2 w-full rounded-lg border-slate-200 text-sm shadow-sm focus:border-[#2f4f4f] focus:ring-[#2f4f4f]">
                                     <option value="manual" @selected(old('recipient_source', 'manual') === 'manual')>Manual phone numbers</option>
-                                    <option value="all_tenants" @selected(old('recipient_source') === 'all_tenants')>All active tenants</option>
-                                    <option value="property_tenants" @selected(old('recipient_source') === 'property_tenants')>Tenants of a specific property</option>
+                                    <option value="all_clients" @selected(old('recipient_source') === 'all_clients')>All clients & leads</option>
+                                    <option value="all_employees" @selected(old('recipient_source') === 'all_employees')>All employees</option>
+                                    <option value="selected_contacts" @selected(old('recipient_source') === 'selected_contacts')>Select specific contacts</option>
                                 </select>
-                            </div>
-                            <div id="property-wrap" class="hidden">
-                                <label for="property_id" class="block text-sm font-medium text-slate-700">Property</label>
-                                <select id="property_id" name="property_id"
-                                    class="mt-2 w-full rounded-lg border-slate-200 text-sm shadow-sm focus:border-[#2f4f4f] focus:ring-[#2f4f4f]">
-                                    <option value="">— Select property —</option>
-                                    @foreach (($propertyOptions ?? collect()) as $p)
-                                        <option value="{{ $p->id }}" @selected((string) old('property_id') === (string) $p->id)>{{ $p->name }}</option>
-                                    @endforeach
-                                </select>
-                                @error('property_id')
-                                    <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
-                                @enderror
                             </div>
                         </div>
-                        <div id="tenant-selection-wrap" class="hidden">
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label for="tenant_selection_mode" class="block text-sm font-medium text-slate-700">Tenant selection</label>
-                                    <select id="tenant_selection_mode" name="tenant_selection_mode"
-                                        class="mt-2 w-full rounded-lg border-slate-200 text-sm shadow-sm focus:border-[#2f4f4f] focus:ring-[#2f4f4f]">
-                                        <option value="all" @selected(old('tenant_selection_mode', 'all') === 'all')>All tenants in selected property</option>
-                                        <option value="selected" @selected(old('tenant_selection_mode') === 'selected')>Select specific tenants</option>
-                                    </select>
+                        <div id="contacts-selection-wrap" class="hidden">
+                            <div id="contacts-list-wrap" class="mt-3">
+                                <label for="contact_keys" class="block text-sm font-medium text-slate-700">Choose contacts</label>
+                                <div class="mt-2 flex flex-wrap items-center gap-2">
+                                    <button type="button" id="contacts-select-all" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Select all</button>
+                                    <button type="button" id="contacts-clear-selection" class="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Clear selection</button>
                                 </div>
-                            </div>
-                            <div id="tenant-list-wrap" class="hidden mt-3">
-                                <label for="tenant_ids" class="block text-sm font-medium text-slate-700">Choose tenants</label>
-                                <select id="tenant_ids" name="tenant_ids[]" multiple
+                                <select id="contact_keys" name="contact_keys[]" multiple
                                     class="mt-2 w-full rounded-lg border-slate-200 text-sm shadow-sm focus:border-[#2f4f4f] focus:ring-[#2f4f4f] min-h-[160px]">
-                                    @foreach (($tenantOptions ?? collect()) as $tenant)
+                                    @foreach (($contactOptions ?? collect()) as $contact)
                                         <option
-                                            value="{{ $tenant['id'] }}"
-                                            data-property-ids="{{ implode(',', $tenant['property_ids'] ?? []) }}"
-                                            @selected(collect(old('tenant_ids', []))->contains((string) $tenant['id']) || collect(old('tenant_ids', []))->contains((int) $tenant['id']))
+                                            value="{{ $contact['key'] }}"
+                                            data-contact-type="{{ str_starts_with($contact['key'], 'employee:') ? 'employee' : 'client' }}"
+                                            data-phone="{{ $contact['phone'] }}"
+                                            @selected(collect(old('contact_keys', []))->contains($contact['key']))
                                         >
-                                            {{ $tenant['name'] }} ({{ $tenant['phone'] }})
+                                            {{ $contact['name'] }} · {{ $contact['meta'] }} ({{ $contact['phone'] }})
                                         </option>
                                     @endforeach
                                 </select>
-                                <p class="text-xs text-slate-500 mt-1">Hold Ctrl/Cmd to select multiple tenants.</p>
-                                @error('tenant_ids')
+                                <p class="text-xs text-slate-500 mt-1">Click any contact to toggle selection. Use Select all / Clear selection for quick edits.</p>
+                                @error('contact_keys')
                                     <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                 @enderror
                             </div>
@@ -100,7 +83,11 @@
                                     class="mt-2 w-full rounded-lg border-slate-200 text-sm shadow-sm focus:border-[#2f4f4f] focus:ring-[#2f4f4f]">
                                     <option value="">— None —</option>
                                     @foreach ($templates as $t)
-                                        <option value="{{ $t->id }}" @selected((string) old('sms_template_id', $prefillTemplateId) === (string) $t->id)>{{ $t->name }}</option>
+                                        <option
+                                            value="{{ $t->id }}"
+                                            data-template-body="{{ e((string) $t->body) }}"
+                                            @selected((string) old('sms_template_id', $prefillTemplateId) === (string) $t->id)
+                                        >{{ $t->name }}</option>
                                     @endforeach
                                 </select>
                                 <p class="text-xs text-slate-500 mt-1">For reporting only; paste or edit the message above.</p>
@@ -152,18 +139,20 @@
         <script>
             (() => {
                 const source = document.getElementById('recipient_source');
-                const propertyWrap = document.getElementById('property-wrap');
-                const propertySelect = document.getElementById('property_id');
-                const tenantSelectionWrap = document.getElementById('tenant-selection-wrap');
-                const tenantMode = document.getElementById('tenant_selection_mode');
-                const tenantListWrap = document.getElementById('tenant-list-wrap');
-                const tenantSelect = document.getElementById('tenant_ids');
+                const contactsSelectionWrap = document.getElementById('contacts-selection-wrap');
+                const contactsSelect = document.getElementById('contact_keys');
+                const contactsSelectAllBtn = document.getElementById('contacts-select-all');
+                const contactsClearBtn = document.getElementById('contacts-clear-selection');
                 const recipients = document.getElementById('recipients');
+                const templateSelect = document.getElementById('sms_template_id');
+                const messageInput = document.getElementById('message');
                 const preview = document.getElementById('recipient-preview');
 
                 if (!source || !recipients) {
                     return;
                 }
+
+                let manualDraft = String(recipients.value || '');
 
                 const parseManualCount = () => {
                     const raw = String(recipients.value || '');
@@ -178,15 +167,51 @@
                     return normalized.size;
                 };
 
-                const visibleTenantOptions = () => {
-                    if (!tenantSelect) {
+                const visibleContactOptions = () => {
+                    if (!contactsSelect) {
                         return [];
                     }
-                    return [...tenantSelect.options].filter((opt) => !opt.hidden);
+                    return [...contactsSelect.options].filter((opt) => !opt.hidden);
                 };
 
-                const selectedVisibleTenantOptions = () => {
-                    return visibleTenantOptions().filter((opt) => opt.selected);
+                const selectedVisibleContactOptions = () => {
+                    return visibleContactOptions().filter((opt) => opt.selected);
+                };
+
+                const normalizedPhoneSet = (phones) => {
+                    const bag = new Set();
+                    for (const raw of phones) {
+                        const digits = String(raw || '').replace(/\D+/g, '');
+                        if (digits.length >= 9) {
+                            bag.add(digits);
+                        }
+                    }
+                    return bag;
+                };
+
+                const autoDerivedPhoneSet = (src) => {
+                    const all = visibleContactOptions();
+                    if (src === 'all_clients') {
+                        return normalizedPhoneSet(
+                            all
+                                .filter((opt) => String(opt.dataset.contactType || '') === 'client')
+                                .map((opt) => opt.dataset.phone || '')
+                        );
+                    }
+                    if (src === 'all_employees') {
+                        return normalizedPhoneSet(
+                            all
+                                .filter((opt) => String(opt.dataset.contactType || '') === 'employee')
+                                .map((opt) => opt.dataset.phone || '')
+                        );
+                    }
+                    if (src === 'selected_contacts') {
+                        return normalizedPhoneSet(
+                            selectedVisibleContactOptions().map((opt) => opt.dataset.phone || '')
+                        );
+                    }
+
+                    return new Set();
                 };
 
                 const updatePreview = () => {
@@ -195,72 +220,97 @@
                     }
                     const src = source.value || 'manual';
                     if (src === 'manual') {
+                        manualDraft = recipients.value;
                         const manualCount = parseManualCount();
                         preview.textContent = `${manualCount} phone number(s) selected.`;
                         return;
                     }
-                    if (src === 'all_tenants') {
-                        const allCount = [...(tenantSelect?.options || [])].length;
-                        preview.textContent = `${allCount} active tenant phone(s) will be used.`;
+                    if (src === 'all_clients') {
+                        const phones = autoDerivedPhoneSet(src);
+                        preview.textContent = `${phones.size} client/lead phone number(s) will be used.`;
+                        return;
+                    }
+                    if (src === 'all_employees') {
+                        const phones = autoDerivedPhoneSet(src);
+                        preview.textContent = `${phones.size} employee phone number(s) will be used.`;
                         return;
                     }
 
-                    const mode = tenantMode?.value || 'all';
-                    if (mode === 'selected') {
-                        const selectedCount = selectedVisibleTenantOptions().length;
-                        preview.textContent = `${selectedCount} selected tenant phone(s) will be used.`;
-                        return;
-                    }
-                    const propertyCount = visibleTenantOptions().length;
-                    preview.textContent = `${propertyCount} tenant phone(s) in selected property will be used.`;
-                };
-
-                const filterTenantOptions = () => {
-                    if (!tenantSelect) {
-                        return;
-                    }
-                    const propertyId = String(propertySelect?.value || '');
-                    [...tenantSelect.options].forEach((opt) => {
-                        const propIds = String(opt.dataset.propertyIds || '').split(',').filter(Boolean);
-                        const visible = !propertyId || propIds.includes(propertyId);
-                        opt.hidden = !visible;
-                        if (!visible) {
-                            opt.selected = false;
-                        }
-                    });
-                    updatePreview();
+                    const selectedPhones = autoDerivedPhoneSet(src);
+                    preview.textContent = `${selectedPhones.size} selected contact phone(s) will be used.`;
                 };
 
                 const sync = () => {
                     const src = source.value || 'manual';
-                    const propertyMode = src === 'property_tenants';
-                    const allTenantMode = src === 'all_tenants';
+                    const selectedContactsMode = src === 'selected_contacts';
+                    const autoContactMode = src === 'all_clients' || src === 'all_employees' || selectedContactsMode;
                     const manualMode = src === 'manual';
 
-                    propertyWrap?.classList.toggle('hidden', !propertyMode);
-                    tenantSelectionWrap?.classList.toggle('hidden', !propertyMode);
-                    const showTenantList = propertyMode && (tenantMode?.value === 'selected');
-                    tenantListWrap?.classList.toggle('hidden', !showTenantList);
+                    contactsSelectionWrap?.classList.toggle('hidden', !selectedContactsMode);
 
                     recipients.required = manualMode;
-                    recipients.disabled = !manualMode;
+                    recipients.readOnly = !manualMode;
                     recipients.classList.toggle('bg-slate-100', !manualMode);
-                    recipients.classList.toggle('cursor-not-allowed', !manualMode);
 
-                    if (allTenantMode || propertyMode) {
-                        recipients.placeholder = 'Recipients are auto-derived from tenant records based on your selection above.';
+                    if (autoContactMode) {
+                        const phones = autoDerivedPhoneSet(src);
+                        recipients.value = [...phones].join('\n');
+                        recipients.placeholder = 'Recipients are auto-derived from loan contact records based on your selection above.';
                     } else {
+                        recipients.value = manualDraft;
                         recipients.placeholder = '';
                     }
 
-                    filterTenantOptions();
                     updatePreview();
                 };
 
                 source.addEventListener('change', sync);
-                tenantMode?.addEventListener('change', sync);
-                propertySelect?.addEventListener('change', sync);
-                tenantSelect?.addEventListener('change', updatePreview);
+                contactsSelect?.addEventListener('change', updatePreview);
+                contactsSelect?.addEventListener('mousedown', (event) => {
+                    const target = event.target;
+                    if (!(target instanceof HTMLOptionElement)) {
+                        return;
+                    }
+
+                    // Toggle option on click without requiring Ctrl/Cmd.
+                    event.preventDefault();
+                    target.selected = !target.selected;
+                    contactsSelect.focus();
+                    updatePreview();
+                    sync();
+                });
+                contactsSelectAllBtn?.addEventListener('click', () => {
+                    if (!contactsSelect) {
+                        return;
+                    }
+                    [...contactsSelect.options].forEach((opt) => {
+                        opt.selected = true;
+                    });
+                    updatePreview();
+                    sync();
+                });
+                contactsClearBtn?.addEventListener('click', () => {
+                    if (!contactsSelect) {
+                        return;
+                    }
+                    [...contactsSelect.options].forEach((opt) => {
+                        opt.selected = false;
+                    });
+                    updatePreview();
+                    sync();
+                });
+                templateSelect?.addEventListener('change', () => {
+                    if (!messageInput || !templateSelect) {
+                        return;
+                    }
+
+                    const selectedOption = templateSelect.options[templateSelect.selectedIndex];
+                    const body = String(selectedOption?.dataset.templateBody || '');
+
+                    if (body !== '') {
+                        messageInput.value = body;
+                    }
+                });
                 recipients.addEventListener('input', updatePreview);
                 sync();
             })();

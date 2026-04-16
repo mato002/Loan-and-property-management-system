@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\View\Compilers\AppBladeCompiler;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\View\DynamicComponent;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -12,7 +14,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->extend('blade.compiler', function ($_compiler, $app) {
+            $blade = new AppBladeCompiler(
+                $app['files'],
+                $app['config']['view.compiled'],
+                $app['config']->get('view.relative_hash', false) ? $app->basePath() : '',
+                $app['config']->get('view.cache', true),
+                $app['config']->get('view.compiled_extension', 'php'),
+                $app['config']->get('view.check_cache_timestamps', true),
+            );
+
+            $blade->component('dynamic-component', DynamicComponent::class);
+
+            return $blade;
+        });
     }
 
     /**

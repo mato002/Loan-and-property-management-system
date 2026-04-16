@@ -43,6 +43,42 @@
                             @endif
                         @endif
                     </dl>
+
+                    @php
+                        $guarantorAttrs = [
+                            'guarantor_1_full_name', 'guarantor_1_phone', 'guarantor_1_id_number', 'guarantor_1_relationship', 'guarantor_1_address',
+                            'guarantor_2_full_name', 'guarantor_2_phone', 'guarantor_2_id_number', 'guarantor_2_relationship', 'guarantor_2_address',
+                        ];
+                        $hasGuarantorInfo = collect($guarantorAttrs)->contains(fn ($a) => filled($loan_client->{$a}));
+                    @endphp
+                    @if ($hasGuarantorInfo)
+                        <div class="mt-4 pt-4 border-t border-slate-100">
+                            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Guarantors</h3>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                                @if (collect(['guarantor_1_full_name', 'guarantor_1_phone', 'guarantor_1_id_number', 'guarantor_1_relationship', 'guarantor_1_address'])->contains(fn ($a) => filled($loan_client->{$a})))
+                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4 space-y-2">
+                                        <p class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Guarantor 1</p>
+                                        @if (filled($loan_client->guarantor_1_full_name))<div><span class="text-slate-500">Name</span><p class="text-slate-900">{{ $loan_client->guarantor_1_full_name }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_1_phone))<div><span class="text-slate-500">Phone</span><p class="text-slate-900">{{ $loan_client->guarantor_1_phone }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_1_id_number))<div><span class="text-slate-500">ID / registration</span><p class="text-slate-900">{{ $loan_client->guarantor_1_id_number }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_1_relationship))<div><span class="text-slate-500">Relationship</span><p class="text-slate-900">{{ $loan_client->guarantor_1_relationship }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_1_address))<div class="sm:col-span-2"><span class="text-slate-500">Address</span><p class="text-slate-900 whitespace-pre-line">{{ $loan_client->guarantor_1_address }}</p></div>@endif
+                                    </div>
+                                @endif
+                                @if (collect(['guarantor_2_full_name', 'guarantor_2_phone', 'guarantor_2_id_number', 'guarantor_2_relationship', 'guarantor_2_address'])->contains(fn ($a) => filled($loan_client->{$a})))
+                                    <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4 space-y-2">
+                                        <p class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Guarantor 2</p>
+                                        @if (filled($loan_client->guarantor_2_full_name))<div><span class="text-slate-500">Name</span><p class="text-slate-900">{{ $loan_client->guarantor_2_full_name }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_2_phone))<div><span class="text-slate-500">Phone</span><p class="text-slate-900">{{ $loan_client->guarantor_2_phone }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_2_id_number))<div><span class="text-slate-500">ID / registration</span><p class="text-slate-900">{{ $loan_client->guarantor_2_id_number }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_2_relationship))<div><span class="text-slate-500">Relationship</span><p class="text-slate-900">{{ $loan_client->guarantor_2_relationship }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_2_address))<div class="sm:col-span-2"><span class="text-slate-500">Address</span><p class="text-slate-900 whitespace-pre-line">{{ $loan_client->guarantor_2_address }}</p></div>@endif
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+                    @endif
+
                     @if ($loan_client->notes)
                         <div class="mt-4 pt-4 border-t border-slate-100">
                             <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Notes</p>

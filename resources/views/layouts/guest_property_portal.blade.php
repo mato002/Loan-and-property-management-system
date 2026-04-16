@@ -1,6 +1,7 @@
 @php
     $isTenant = $portal === 'tenant';
     $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Application');
+    $companyLogoUrl = trim((string) \App\Models\PropertyPortalSetting::getValue('company_logo_url', ''));
     $displayName = strtolower($companyName) === 'laravel' ? 'Property Management System' : $companyName;
     $heroImage = $isTenant
         ? 'https://images.unsplash.com/photo-1560185007-cde436f6a4d0?auto=format&fit=crop&w=1800&q=80'
@@ -29,8 +30,8 @@
     </head>
     <body class="font-sans antialiased text-slate-900 bg-[#eef5f3]">
         <x-swal-flash />
-        <div class="min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
-            <aside class="relative overflow-hidden flex min-h-[140px] lg:min-h-screen">
+        <div class="relative min-h-screen overflow-hidden">
+            <div class="absolute inset-0">
                 <div class="absolute inset-0">
                     <img
                         src="{{ $heroImage }}"
@@ -43,7 +44,10 @@
                 <div class="absolute inset-0 bg-gradient-to-br from-[#6fa79f]/85 via-[#4d8d82]/88 to-[#2f4f4f]/90"></div>
                 <div class="absolute -top-24 -left-20 h-72 w-72 rounded-full bg-white/15 blur-2xl"></div>
                 <div class="absolute bottom-10 left-8 h-44 w-44 rounded-full bg-emerald-200/30 blur-2xl"></div>
-                <div class="hidden lg:block absolute -right-8 top-1/2 -translate-y-1/2 h-[84%] w-24 rounded-l-[999px] bg-[#eef5f3]"></div>
+            </div>
+
+            <div class="relative z-10 min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
+                <aside class="relative overflow-hidden flex min-h-[140px] lg:min-h-screen">
 
                 <div class="relative z-10 flex w-full flex-col justify-between px-5 py-4 lg:px-12 lg:py-12 text-white">
                     <div>
@@ -60,28 +64,40 @@
                         <p class="mt-1 text-sm text-white/80">{{ __('Secure role-based access for your account area.') }}</p>
                     </div>
                 </div>
-            </aside>
+                </aside>
 
-            <div class="relative z-10 flex items-center justify-center px-6 py-10 sm:px-10 lg:px-14 xl:px-20 lg:-ml-8">
-                <div class="w-full max-w-md rounded-[2rem] bg-white px-7 py-8 shadow-[0_20px_45px_rgba(47,79,79,0.14)] ring-1 ring-[#dbe8e4] sm:px-9 sm:py-10">
-                    <div class="text-center mb-7">
-                        <p class="{{ $badgeClass }}">{{ $isTenant ? __('Resident access') : __('Owner access') }}</p>
-                        <h1 class="mt-4 text-2xl font-bold tracking-tight text-slate-900">{{ $pageTitle }}</h1>
-                        <p class="mt-2 text-sm leading-relaxed text-slate-500">{{ $pageSubtitle }}</p>
-                    </div>
-
-                    {{ $slot }}
-
-                    <div class="mt-8 text-center text-xs text-slate-500 space-y-2">
-                        <p>
-                            @if ($isTenant)
-                                <a href="{{ route('property.landlord.login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Landlord sign-in') }}</a>
+                <div class="relative z-10 flex items-center justify-center px-6 py-10 sm:px-10 lg:px-14 xl:px-20 lg:-ml-8">
+                    <div class="w-full max-w-md overflow-hidden rounded-[2rem] bg-white shadow-[0_20px_45px_rgba(47,79,79,0.14)] ring-1 ring-[#dbe8e4]">
+                        <div class="h-24 w-full overflow-hidden rounded-t-[2rem] border-b border-[#dbe8e4] bg-gradient-to-r from-[#f4faf8] to-[#eaf4f1]">
+                            @if ($companyLogoUrl !== '')
+                                <img src="{{ $companyLogoUrl }}" alt="{{ $displayName }}" class="block h-full w-full object-fill" />
                             @else
-                                <a href="{{ route('property.tenant.login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Tenant sign-in') }}</a>
+                                <div class="flex h-full w-full items-center justify-center bg-[#4d8d82]/10 text-base font-bold text-[#2f4f4f]">
+                                    {{ $displayName }}
+                                </div>
                             @endif
-                            <span class="text-slate-300 mx-2" aria-hidden="true">·</span>
-                            <a href="{{ route('login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Staff / loan system') }}</a>
-                        </p>
+                        </div>
+                        <div class="px-7 py-8 sm:px-9 sm:py-10">
+                            <div class="text-center mb-7">
+                                <p class="{{ $badgeClass }}">{{ $isTenant ? __('Resident access') : __('Owner access') }}</p>
+                                <h1 class="mt-4 text-2xl font-bold tracking-tight text-slate-900">{{ $pageTitle }}</h1>
+                                <p class="mt-2 text-sm leading-relaxed text-slate-500">{{ $pageSubtitle }}</p>
+                            </div>
+
+                            {{ $slot }}
+
+                            <div class="mt-8 text-center text-xs text-slate-500 space-y-2">
+                                <p>
+                                    @if ($isTenant)
+                                        <a href="{{ route('property.landlord.login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Landlord sign-in') }}</a>
+                                    @else
+                                        <a href="{{ route('property.tenant.login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Tenant sign-in') }}</a>
+                                    @endif
+                                    <span class="text-slate-300 mx-2" aria-hidden="true">·</span>
+                                    <a href="{{ route('login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Staff / loan system') }}</a>
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

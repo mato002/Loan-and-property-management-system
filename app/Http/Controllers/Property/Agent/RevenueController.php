@@ -140,7 +140,7 @@ class RevenueController extends Controller
             ->with(['tenant', 'unit.property'])
             ->whereColumn('amount_paid', '<', 'amount')
             ->where('due_date', '<', now()->toDateString())
-            ->where('status', '!=', PmInvoice::STATUS_DRAFT);
+            ->whereNotIn('status', [PmInvoice::STATUS_DRAFT, PmInvoice::STATUS_CANCELLED]);
         if ($filters['q'] !== '') {
             $q = $filters['q'];
             $query->where(function ($inner) use ($q) {
@@ -302,7 +302,7 @@ class RevenueController extends Controller
 
         $invoicesQuery = PmInvoice::query()
             ->with(['tenant:id,name,email,phone', 'unit:id,label,property_id', 'unit.property:id,name'])
-            ->where('status', '!=', PmInvoice::STATUS_DRAFT)
+            ->whereNotIn('status', [PmInvoice::STATUS_DRAFT, PmInvoice::STATUS_CANCELLED])
             ->whereColumn('amount_paid', '<', 'amount')
             ->where('due_date', '<=', now()->toDateString());
 

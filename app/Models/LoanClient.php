@@ -27,6 +27,16 @@ class LoanClient extends Model
         'lead_status',
         'client_status',
         'notes',
+        'guarantor_1_full_name',
+        'guarantor_1_phone',
+        'guarantor_1_id_number',
+        'guarantor_1_relationship',
+        'guarantor_1_address',
+        'guarantor_2_full_name',
+        'guarantor_2_phone',
+        'guarantor_2_id_number',
+        'guarantor_2_relationship',
+        'guarantor_2_address',
         'converted_at',
     ];
 

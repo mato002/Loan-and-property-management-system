@@ -43,6 +43,15 @@
         </form>
 
         <div class="mb-4 flex flex-wrap items-center gap-2">
+            <form method="post" action="{{ route('property.equity.unmatched.rematch_all', request()->query()) }}" data-swal-confirm="Auto re-match all currently filtered unmatched payments?">
+                @csrf
+                <button
+                    type="submit"
+                    class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+                >
+                    Auto re-match all
+                </button>
+            </form>
             <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'csv'])) }}" data-turbo="false" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 Export CSV
             </a>

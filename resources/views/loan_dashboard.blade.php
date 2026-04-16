@@ -1,5 +1,6 @@
 @php
-    $fmt = fn (float|int $n) => 'Ksh ' . number_format((float) $n, 2);
+    $currencyCode = $currencyCode ?? 'KES';
+    $fmt = fn (float|int $n) => $currencyCode . ' ' . number_format((float) $n, 2);
     $fmtInt = fn (int $n) => number_format($n);
     $colMeta = $charts['collections']['meta'] ?? ['total' => 0, 'average' => 0, 'peak_month' => null, 'peak_value' => 0, 'is_empty' => true, 'payments_6mo' => 0, 'sheet_6mo' => 0];
     $disbMeta = $charts['disbursements']['meta'] ?? ['total' => 0, 'average' => 0, 'peak_month' => null, 'peak_value' => 0, 'is_empty' => true];
@@ -17,11 +18,12 @@
             <div>
                 <h1 class="text-2xl font-semibold text-slate-900 tracking-tight">Operations dashboard</h1>
                 <p class="text-sm text-slate-500 mt-1 max-w-3xl">
-                    Live metrics from LoanBook, payments, clients, and accounting. Charts use the last six months of activity where dates apply.
+                    Live metrics from LoanBook, payments, clients, and accounting (scoped to your portfolio unless you have full access). Charts use the last six months of activity where dates apply.
                 </p>
             </div>
-            <div class="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                <span class="font-medium text-slate-400 uppercase tracking-wide">{{ now()->format('l, M j, Y') }}</span>
+            <div class="flex flex-col items-end gap-2 text-xs text-slate-500">
+                @include('loan.partials.quick-links-strip')
+                <span class="font-medium text-slate-400 uppercase tracking-wide">{{ ($generatedAt ?? now())->timezone(config('app.timezone'))->format('l, M j, Y · H:i') }}</span>
                 @if ($bookReady)
                     <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100 px-2.5 py-1 font-semibold">LoanBook connected</span>
                 @else
@@ -36,8 +38,8 @@
             </div>
         @endif
 
-        {{-- KPI row --}}
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
+        {{-- KPI grid --}}
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex gap-4">
                 <div class="w-11 h-11 rounded-lg bg-[#2f4f4f]/10 flex items-center justify-center flex-shrink-0">
                     <svg class="w-6 h-6 text-[#2f4f4f]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
@@ -88,6 +90,18 @@
             </div>
 
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex gap-4">
+                <div class="w-11 h-11 rounded-lg bg-sky-500/15 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-sky-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Disbursements (MTD)</p>
+                    <p class="text-2xl font-bold text-slate-900 tabular-nums mt-1 truncate" title="{{ $fmt($kpis['mtd_disbursements']) }}">{{ $fmt($kpis['mtd_disbursements']) }}</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Cash out this month (posted disbursements)</p>
+                    <a href="{{ route('loan.book.disbursements.index') }}" class="text-xs font-semibold text-indigo-600 hover:underline mt-1 inline-block">Disbursements →</a>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex gap-4">
                 <div class="w-11 h-11 rounded-lg bg-violet-500/10 flex items-center justify-center flex-shrink-0">
                     <svg class="w-6 h-6 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 </div>
@@ -96,6 +110,18 @@
                     <p class="text-2xl font-bold text-slate-900 tabular-nums mt-1">{{ $fmtInt($kpis['unposted_payments']) }}</p>
                     <p class="text-xs text-slate-500 mt-0.5">Awaiting posting / validation</p>
                     <a href="{{ route('loan.payments.unposted') }}" class="text-xs font-semibold text-indigo-600 hover:underline mt-1 inline-block">Open queue →</a>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex gap-4">
+                <div class="w-11 h-11 rounded-lg bg-orange-500/15 flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-orange-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Pending disbursement</p>
+                    <p class="text-2xl font-bold text-slate-900 tabular-nums mt-1">{{ $fmtInt($kpis['pending_disbursement_loans']) }}</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Loans approved / booked, awaiting first cash-out</p>
+                    <a href="{{ route('loan.book.loans.index', ['status' => 'pending_disbursement']) }}" class="text-xs font-semibold text-indigo-600 hover:underline mt-1 inline-block">View loans →</a>
                 </div>
             </div>
 
@@ -122,7 +148,7 @@
                             <div class="min-w-0">
                                 <h2 class="text-lg font-semibold text-slate-900 tracking-tight">Processed collections</h2>
                                 <p class="text-sm text-slate-600 mt-1 max-w-xl leading-snug">
-                                    Posted pay-ins plus <span class="font-medium text-slate-800">collection sheet</span> entries, grouped by calendar month (last 6 months).
+                                    <span class="font-medium text-slate-800">Processed</span> pay-ins only (posted to the ledger), by transaction month. Collection sheet totals are shown in the split for reference (last 6 months).
                                 </p>
                             </div>
                             <a href="{{ route('loan.payments.processed') }}" class="inline-flex items-center gap-1.5 shrink-0 rounded-lg bg-white border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50 transition-colors">
@@ -292,7 +318,7 @@
                     </div>
                     @forelse ($topArrears as $loan)
                         <div class="flex justify-between items-center gap-3 bg-slate-50/80 p-3 rounded-lg border border-slate-100 mb-2 last:mb-0">
-                            <a href="{{ route('loan.book.loans.edit', $loan) }}" class="text-indigo-600 font-medium hover:underline text-sm min-w-0 truncate" title="{{ $loan->loan_number }}">
+                            <a href="{{ route('loan.book.loans.show', $loan) }}" class="text-indigo-600 font-medium hover:underline text-sm min-w-0 truncate" title="{{ $loan->loan_number }}">
                                 {{ $loan->loan_number }} · {{ $loan->loanClient?->full_name ?? 'Client' }}
                                 <span class="text-slate-500 font-normal"> · {{ $loan->dpd }} DPD</span>
                             </a>
@@ -327,7 +353,7 @@
                             @endphp
                             <div class="pb-3 border-b border-slate-100 last:border-0 last:pb-0">
                                 <div class="flex flex-wrap items-center gap-2 mb-1">
-                                    <a href="{{ route('loan.book.applications.edit', $app) }}" class="text-indigo-600 font-semibold hover:underline text-sm">{{ $fmt((float) $app->amount_requested) }}</a>
+                                    <a href="{{ route('loan.book.applications.show', $app) }}" class="text-indigo-600 font-semibold hover:underline text-sm">{{ $fmt((float) $app->amount_requested) }}</a>
                                     <span class="text-xs font-medium rounded-full px-2 py-0.5 border {{ $stageClass }}">{{ str_replace('_', ' ', ucfirst($app->stage)) }}</span>
                                 </div>
                                 <p class="text-sm text-slate-800">{{ \Illuminate\Support\Str::limit($app->product_name, 48) }}</p>
@@ -397,6 +423,7 @@
                 <a href="{{ route('loan.book.disbursements.create') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">New disbursement</a>
                 <a href="{{ route('loan.accounting.chart.index') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">Chart of accounts</a>
                 <a href="{{ route('loan.book.loan_arrears') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-[#2f4f4f] bg-[#2f4f4f] px-3 py-2 text-xs font-semibold text-white hover:bg-[#264040] transition-colors">Loan arrears</a>
+                <a href="{{ route('loan.payments.report') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">Payments report</a>
             </div>
         </div>
     </div>
@@ -407,6 +434,7 @@
             if (typeof Chart === 'undefined') return;
 
             const charts = @json($charts);
+            const currencyCode = @json($currencyCode ?? 'KES');
 
             const gridColor = 'rgba(15, 23, 42, 0.07)';
             const tickColor = '#475569';
@@ -416,9 +444,9 @@
                 callback: function (value) {
                     const n = Number(value);
                     if (!Number.isFinite(n)) return '';
-                    if (n >= 1e6) return 'Ksh ' + (n / 1e6).toFixed(1) + 'M';
-                    if (n >= 1e3) return 'Ksh ' + (n / 1e3).toFixed(0) + 'k';
-                    return 'Ksh ' + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                    if (n >= 1e6) return currencyCode + ' ' + (n / 1e6).toFixed(1) + 'M';
+                    if (n >= 1e3) return currencyCode + ' ' + (n / 1e3).toFixed(0) + 'k';
+                    return currencyCode + ' ' + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
                 },
             };
 
@@ -427,7 +455,7 @@
                     label: function (ctx) {
                         const v = ctx.parsed.y ?? ctx.parsed;
                         const n = typeof v === 'number' ? v : (v != null ? Number(v) : 0);
-                        return ' Ksh ' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        return ' ' + currencyCode + ' ' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                     },
                 },
             };

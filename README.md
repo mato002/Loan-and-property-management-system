@@ -113,6 +113,26 @@ curl -X POST "http://127.0.0.1:8000/webhooks/property/payments/sms-ingest" \
 - `status: duplicate` -> transaction already processed; no re-post.
 - `status: ignored` -> SMS skipped (unsupported provider or non-payment message).
 
+## Loan SMS Ingest Webhook
+
+Point the same SMS forwarder app at the loan endpoint when you want collections to land in **Loan book → Payments (unposted)** instead of property.
+
+- `POST /webhooks/loan/payments/sms-ingest`
+- Header: `X-Loan-Sms-Secret: <LOAN_SMS_INGEST_SECRET>` (or `secret` in query/body, same as property)
+
+```env
+LOAN_SMS_INGEST_SECRET=replace-with-a-long-random-secret
+```
+
+The JSON body matches the property examples (`provider`, `source_device`, `raw_message`, optional `amount`, `paid_at`, `payer_phone`, `payload`). When the payer phone matches a **loan client** phone and that client has an **active** or **pending disbursement** loan, an **unposted** `loan_book_payments` row is created (`channel` `mpesa`, receipt = transaction code). Otherwise the ingest row is stored as **unmatched** for follow-up.
+
+### Response outcomes (loan)
+
+- `status: matched` -> unposted loan payment created; staff can post from the loan portal.
+- `status: unmatched` -> ingest logged; no payment (no matching client phone / no eligible loan).
+- `status: duplicate` -> receipt already linked to a loan payment or this ingest was already processed.
+- `status: ignored` -> same rules as property (non-payment SMS or unsupported provider).
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
