@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Models\LoanAccessLog;
+use App\Models\LoanBookLoan;
 use App\Models\LoanDepartment;
 use App\Models\LoanJobTitle;
+use App\Models\LoanProduct;
 use App\Models\LoanRole;
 use App\Models\LoanSupportTicket;
 use App\Models\LoanSupportTicketReply;
@@ -15,8 +17,10 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class LoanSystemHelpController extends Controller
@@ -271,7 +275,7 @@ class LoanSystemHelpController extends Controller
             [
                 'title' => 'Loans Products',
                 'desc' => 'Setup loan products, interest rates, duty fees & prepayments',
-                'href' => $formSetup('loan-products'),
+                'href' => route('loan.system.setup.loan_products'),
                 'icon' => 'briefcase',
             ],
             [
@@ -377,6 +381,197 @@ class LoanSystemHelpController extends Controller
     public function setupPreferencesUpdate(Request $request): RedirectResponse
     {
         return $this->persistSettingsSubset($request, self::PREFERENCES_SETTING_KEYS, 'loan.system.setup.preferences');
+    }
+
+    public function setupLoanProducts(): View
+    {
+        abort_unless(Schema::hasTable('loan_products'), 404, 'Loan products table not found. Run migrations.');
+
+        $activeLoanCounts = LoanBookLoan::query()
+            ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_RESTRUCTURED])
+            ->selectRaw('product_name, COUNT(*) as c')
+            ->groupBy('product_name')
+            ->pluck('c', 'product_name')
+            ->map(fn ($count) => (int) $count)
+            ->all();
+
+        return view('loan.system.setup.loan_products', [
+            'title' => 'Loan products',
+            'subtitle' => 'Set default interest rates and repayment periods per product.',
+            'products' => LoanProduct::query()->orderByDesc('is_active')->orderBy('name')->get(),
+            'activeLoanCounts' => $activeLoanCounts,
+        ]);
+    }
+
+    public function setupLoanProductsStore(Request $request): RedirectResponse
+    {
+        abort_unless(Schema::hasTable('loan_products'), 404, 'Loan products table not found. Run migrations.');
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:160'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'is_active' => ['nullable', 'in:0,1'],
+        ]);
+
+        $name = trim((string) $validated['name']);
+
+        LoanProduct::query()->updateOrCreate(
+            ['name' => $name],
+            [
+                'description' => filled($validated['description'] ?? null) ? trim((string) $validated['description']) : null,
+                'default_interest_rate' => isset($validated['default_interest_rate']) && $validated['default_interest_rate'] !== ''
+                    ? (float) $validated['default_interest_rate']
+                    : null,
+                'default_term_months' => isset($validated['default_term_months']) && $validated['default_term_months'] !== ''
+                    ? (int) $validated['default_term_months']
+                    : null,
+                'is_active' => ($validated['is_active'] ?? '1') === '1',
+            ]
+        );
+
+        return redirect()->route('loan.system.setup.loan_products')->with('status', 'Loan product saved.');
+    }
+
+    public function setupLoanProductsUpdate(Request $request, LoanProduct $loan_product): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:160', Rule::unique('loan_products', 'name')->ignore($loan_product->id)],
+            'description' => ['nullable', 'string', 'max:500'],
+            'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'is_active' => ['required', 'in:0,1'],
+            'apply_to_existing_active_loans' => ['nullable', 'in:0,1'],
+            'repricing_effective_date' => ['nullable', 'date'],
+            'repricing_note' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $newDefaultInterestRate = isset($validated['default_interest_rate']) && $validated['default_interest_rate'] !== ''
+            ? (float) $validated['default_interest_rate']
+            : null;
+
+        $oldName = (string) $loan_product->name;
+        $newName = trim((string) $validated['name']);
+
+        $loan_product->update([
+            'name' => $newName,
+            'description' => filled($validated['description'] ?? null) ? trim((string) $validated['description']) : null,
+            'default_interest_rate' => $newDefaultInterestRate,
+            'default_term_months' => isset($validated['default_term_months']) && $validated['default_term_months'] !== ''
+                ? (int) $validated['default_term_months']
+                : null,
+            'is_active' => $validated['is_active'] === '1',
+        ]);
+
+        if ($newName !== $oldName) {
+            $renameAudit = '[Product rename '.now()->format('Y-m-d H:i').'] Product name changed from "'.$oldName.'" to "'.$newName.'" by '
+                .trim((string) ($request->user()?->name ?? 'System')).'.';
+
+            LoanBookLoan::query()
+                ->where('product_name', $oldName)
+                ->orderBy('id')
+                ->chunkById(200, function ($loans) use ($newName, $renameAudit): void {
+                    foreach ($loans as $loan) {
+                        $existingNotes = trim((string) ($loan->notes ?? ''));
+                        $loan->update([
+                            'product_name' => $newName,
+                            'notes' => $existingNotes !== '' ? $existingNotes."\n".$renameAudit : $renameAudit,
+                        ]);
+                    }
+                });
+
+            \App\Models\LoanBookApplication::query()
+                ->where('product_name', $oldName)
+                ->update(['product_name' => $newName]);
+        }
+
+        $applyToExisting = ($validated['apply_to_existing_active_loans'] ?? '0') === '1';
+        if (! $applyToExisting || $newDefaultInterestRate === null) {
+            return redirect()->route('loan.system.setup.loan_products')->with('status', 'Loan product updated.');
+        }
+
+        $effectiveDate = filled($validated['repricing_effective_date'] ?? null)
+            ? (string) $validated['repricing_effective_date']
+            : now()->toDateString();
+        $extraNote = trim((string) ($validated['repricing_note'] ?? ''));
+        $actor = trim((string) ($request->user()?->name ?? 'System'));
+        $auditNote = '[Rate update '.now()->format('Y-m-d H:i').'] Product "'.$loan_product->name.'" default rate changed to '
+            .number_format($newDefaultInterestRate, 4).'% (effective '.$effectiveDate.') by '.$actor
+            .($extraNote !== '' ? '. Note: '.$extraNote : '.');
+        $targetProductName = (string) $loan_product->name;
+
+        $affected = 0;
+
+        DB::transaction(function () use ($targetProductName, $newDefaultInterestRate, $auditNote, &$affected): void {
+            LoanBookLoan::query()
+                ->where('product_name', $targetProductName)
+                ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_RESTRUCTURED])
+                ->orderBy('id')
+                ->chunkById(200, function ($loans) use ($newDefaultInterestRate, $auditNote, &$affected): void {
+                    foreach ($loans as $loan) {
+                        $principalOutstanding = max(0.0, (float) $loan->principal_outstanding);
+                        if ($principalOutstanding <= 0.0) {
+                            $principalOutstanding = max(0.0, (float) $loan->balance);
+                        }
+                        $recomputedInterest = $this->estimateInterestOutstandingForLoan(
+                            $principalOutstanding,
+                            $newDefaultInterestRate,
+                            $loan->disbursed_at,
+                            $loan->maturity_date
+                        );
+                        $existingNotes = trim((string) ($loan->notes ?? ''));
+                        $loan->update([
+                            'interest_rate' => $newDefaultInterestRate,
+                            'principal_outstanding' => $principalOutstanding,
+                            'interest_outstanding' => $recomputedInterest,
+                            'balance' => round($principalOutstanding + $recomputedInterest + max(0.0, (float) $loan->fees_outstanding), 2),
+                            'notes' => $existingNotes !== '' ? $existingNotes."\n".$auditNote : $auditNote,
+                        ]);
+                        $affected++;
+                    }
+                });
+        });
+
+        return redirect()
+            ->route('loan.system.setup.loan_products')
+            ->with('status', 'Loan product updated. Repriced '.$affected.' active loan(s).');
+    }
+
+    private function estimateInterestOutstandingForLoan(float $principal, float $annualRate, mixed $disbursedAt, mixed $maturityDate): float
+    {
+        if ($principal <= 0 || $annualRate <= 0) {
+            return 0.0;
+        }
+
+        $months = 12;
+        if ($disbursedAt && $maturityDate) {
+            try {
+                $from = \Illuminate\Support\Carbon::parse($disbursedAt)->startOfDay();
+                $to = \Illuminate\Support\Carbon::parse($maturityDate)->startOfDay();
+                $months = max(1, $from->diffInMonths($to));
+            } catch (\Throwable $e) {
+                $months = 12;
+            }
+        }
+
+        return round($principal * ($annualRate / 100) * ($months / 12), 2);
+    }
+
+    public function setupLoanProductsDestroy(LoanProduct $loan_product): RedirectResponse
+    {
+        $inUseOnLoans = \App\Models\LoanBookLoan::query()->where('product_name', $loan_product->name)->exists();
+        $inUseOnApplications = \App\Models\LoanBookApplication::query()->where('product_name', $loan_product->name)->exists();
+        if ($inUseOnLoans || $inUseOnApplications) {
+            $loan_product->update(['is_active' => false]);
+
+            return redirect()->route('loan.system.setup.loan_products')
+                ->with('status', 'Product is in use; it was deactivated instead of deleted.');
+        }
+
+        $loan_product->delete();
+
+        return redirect()->route('loan.system.setup.loan_products')->with('status', 'Loan product removed.');
     }
 
     public function setupDepartments(): View

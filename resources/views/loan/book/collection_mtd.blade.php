@@ -46,7 +46,7 @@
                         <li class="px-5 py-3 text-sm">
                             <span class="font-mono text-xs text-indigo-600">{{ $row->loan->loan_number }}</span>
                             <span class="text-slate-800"> · {{ $row->loan->loanClient->full_name }}</span>
-                            <span class="block text-xs text-slate-500 mt-0.5">{{ $row->collected_on->format('Y-m-d') }} · {{ number_format((float) $row->amount, 2) }} · {{ $row->channel }}</span>
+                            <span class="block text-xs text-slate-500 mt-0.5">{{ optional($row->transaction_at ?? $row->collected_on)->format('Y-m-d') }} · {{ number_format((float) $row->amount, 2) }} · {{ $row->channel }}</span>
                         </li>
                     @empty
                         <li class="px-5 py-8 text-center text-slate-500 text-sm">No data.</li>

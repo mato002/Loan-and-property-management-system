@@ -51,6 +51,25 @@ document.addEventListener(
         if (!(form instanceof HTMLFormElement)) {
             return;
         }
+        const action = form.getAttribute('action') || '';
+        if (action.includes('/loan/book/applications/undefined')) {
+            const currentPath = window.location.pathname.replace(/\/+$/, '');
+            const repairedPath = currentPath.replace(/\/edit$/, '');
+            const canRepair = /^\/loan\/book\/applications\/\d+$/.test(repairedPath);
+            if (canRepair) {
+                form.setAttribute('action', repairedPath);
+            } else {
+                e.preventDefault();
+                e.stopPropagation();
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Invalid application target',
+                    text: 'The form target was invalid (undefined). Please reload this page and try again.',
+                    confirmButtonColor: '#2f4f4f',
+                });
+                return;
+            }
+        }
         const submitter = e.submitter instanceof HTMLElement ? e.submitter : null;
         let msg = submitter?.getAttribute('data-swal-confirm') || form.getAttribute('data-swal-confirm');
         if (!msg) {

@@ -44,6 +44,21 @@
                     <a href="{{ route('loan.payments.unposted', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
                 </div>
             </div>
+            <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Quick filters</span>
+                <a
+                    href="{{ route('loan.payments.unposted', array_merge(request()->except('page'), ['channel' => 'mpesa_sms_unmatched'])) }}"
+                    class="rounded-full border px-3 py-1 text-xs font-semibold {{ ($channel ?? '') === 'mpesa_sms_unmatched' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }}"
+                >SMS unmatched repayments</a>
+                <a
+                    href="{{ route('loan.payments.unposted', array_merge(request()->except('page'), ['channel' => 'mpesa_sms_disbursement_unmatched'])) }}"
+                    class="rounded-full border px-3 py-1 text-xs font-semibold {{ ($channel ?? '') === 'mpesa_sms_disbursement_unmatched' ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }}"
+                >SMS unmatched disbursements</a>
+                <a
+                    href="{{ route('loan.payments.unposted', array_merge(request()->except('page'), ['channel' => ''])) }}"
+                    class="rounded-full border px-3 py-1 text-xs font-semibold {{ ($channel ?? '') === '' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50' }}"
+                >All channels</a>
+            </div>
         </form>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -74,11 +89,30 @@
                                 <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loan_number ?? '—' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loanClient?->full_name ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums font-medium text-slate-900">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $p->channel }}</td>
+                                <td class="px-5 py-3 text-slate-600">
+                                    <div class="flex items-center gap-2">
+                                        <span>{{ $p->channel }}</span>
+                                        @if (str_starts_with((string) $p->channel, 'mpesa_sms_'))
+                                            <span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">SMS Forwarder</span>
+                                        @endif
+                                    </div>
+                                </td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $p->payment_kind) }}</td>
                                 <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $p->transaction_at->format('Y-m-d H:i') }}</td>
                                 <td class="px-5 py-3 font-mono text-xs text-slate-600">{{ $p->mpesa_receipt_number ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
+                                    @if (in_array((string) $p->channel, ['mpesa_sms_unmatched', 'mpesa_sms_disbursement_unmatched'], true) && is_null($p->loan_book_loan_id))
+                                        <form method="post" action="{{ route('loan.payments.assign_loan', $p) }}" class="mb-2 inline-flex items-center gap-2">
+                                            @csrf
+                                            <select name="loan_book_loan_id" required class="h-8 rounded-lg border border-amber-300 bg-amber-50 px-2 text-xs text-slate-700">
+                                                <option value="">Assign loan...</option>
+                                                @foreach (($assignableLoanOptions ?? collect()) as $loanId => $loanLabel)
+                                                    <option value="{{ $loanId }}" @selected((int) ($suggestedLoanByPayment[$p->id] ?? 0) === (int) $loanId)>{{ $loanLabel }}</option>
+                                                @endforeach
+                                            </select>
+                                            <button type="submit" class="h-8 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700">Assign</button>
+                                        </form>
+                                    @endif
                                     <form method="post" action="{{ route('loan.payments.post', $p) }}" class="inline mr-2">
                                         @csrf
                                         <button type="submit" class="text-[#2f4f4f] hover:text-[#264040] font-medium text-sm">Post</button>

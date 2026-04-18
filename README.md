@@ -124,6 +124,14 @@ Point the same SMS forwarder app at the loan endpoint when you want collections 
 LOAN_SMS_INGEST_SECRET=replace-with-a-long-random-secret
 ```
 
+### Feeding both Property + Loan from one source
+
+- If the forwarder posts to **either** property or loan SMS ingest endpoint, the app mirrors the same payload to the other module.
+- To avoid double loops, mirroring uses an internal guard header and remains idempotent by transaction code.
+- Secret behavior:
+  - Recommended: set both `PROPERTY_SMS_INGEST_SECRET` and `LOAN_SMS_INGEST_SECRET`.
+  - Shortcut: if `LOAN_SMS_INGEST_SECRET` is blank, Loan ingest falls back to `PROPERTY_SMS_INGEST_SECRET`.
+
 The JSON body matches the property examples (`provider`, `source_device`, `raw_message`, optional `amount`, `paid_at`, `payer_phone`, `payload`). When the payer phone matches a **loan client** phone and that client has an **active** or **pending disbursement** loan, an **unposted** `loan_book_payments` row is created (`channel` `mpesa`, receipt = transaction code). Otherwise the ingest row is stored as **unmatched** for follow-up.
 
 ### Response outcomes (loan)

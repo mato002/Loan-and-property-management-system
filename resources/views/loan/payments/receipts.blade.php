@@ -25,6 +25,21 @@
                     <input type="text" name="channel" value="{{ $channel ?? '' }}" placeholder="mpesa..." class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Source</label>
+                    <select name="source" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">All</option>
+                        <option value="sms_forwarder" @selected(($source ?? '') === 'sms_forwarder')>SMS Forwarder</option>
+                        <option value="manual" @selected(($source ?? '') === 'manual')>Manual/Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Duplicates</label>
+                    <select name="duplicates_only" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="0" @selected(!($duplicatesOnly ?? false))>All receipts</option>
+                        <option value="1" @selected(($duplicatesOnly ?? false))>Only duplicates</option>
+                    </select>
+                </div>
+                <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
                     <select name="per_page" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                         @foreach ([10, 20, 25, 50, 100, 200] as $size)
@@ -38,6 +53,9 @@
                     <a href="{{ route('loan.payments.receipts', array_merge(request()->query(), ['export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
                     <a href="{{ route('loan.payments.receipts', array_merge(request()->query(), ['export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
                     <a href="{{ route('loan.payments.receipts', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+                    <a href="{{ route('loan.payments.receipts', array_merge(request()->query(), ['duplicates_only' => 1, 'export' => 'csv'])) }}" class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100">Dup CSV</a>
+                    <a href="{{ route('loan.payments.receipts', array_merge(request()->query(), ['duplicates_only' => 1, 'export' => 'xls'])) }}" class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100">Dup Excel</a>
+                    <a href="{{ route('loan.payments.receipts', array_merge(request()->query(), ['duplicates_only' => 1, 'export' => 'pdf'])) }}" class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100">Dup PDF</a>
                 </div>
             </div>
         </form>
@@ -63,9 +81,19 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($payments as $p)
-                            <tr class="hover:bg-slate-50/80">
+                            @php $isDuplicateReceipt = isset(($duplicateReceipts ?? [])[$p->mpesa_receipt_number]); @endphp
+                            <tr class="{{ $isDuplicateReceipt ? 'bg-red-50/40 hover:bg-red-50' : 'hover:bg-slate-50/80' }}">
                                 <td class="px-5 py-3 font-mono text-xs text-slate-700">{{ $p->reference }}</td>
-                                <td class="px-5 py-3 font-mono text-xs text-slate-800 font-medium">{{ $p->mpesa_receipt_number }}</td>
+                                <td class="px-5 py-3 font-mono text-xs text-slate-800 font-medium">
+                                    <div class="flex items-center gap-2">
+                                        <span>{{ $p->mpesa_receipt_number }}</span>
+                                        @if ($isDuplicateReceipt)
+                                            <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-800">
+                                                Duplicate x{{ (int) (($duplicateReceipts ?? [])[$p->mpesa_receipt_number] ?? 1) }}
+                                            </span>
+                                        @endif
+                                    </div>
+                                </td>
                                 <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loan_number ?? '—' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loanClient?->full_name ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums font-medium text-slate-900">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>

@@ -6,7 +6,7 @@
 
         <div
             class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden max-w-3xl"
-            x-data="loanProductPicker()"
+            x-data="loanProductPicker(@js($productMetaByName ?? []))"
             data-products-store-url="{{ route('loan.book.applications.products.store') }}"
         >
             <form method="post" action="{{ route('loan.book.applications.store') }}" class="px-5 py-6 space-y-4">
@@ -55,6 +55,7 @@
                         >+</button>
                     </div>
                     @error('product_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <p class="mt-1 text-xs text-slate-500" x-text="selectedProductHint"></p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -193,6 +194,16 @@
                             <label for="new_product_description" class="block text-xs font-semibold text-slate-600 mb-1">Description (optional)</label>
                             <textarea id="new_product_description" x-model.trim="newProductDescription" rows="3" class="w-full rounded-lg border-slate-200 text-sm"></textarea>
                         </div>
+                        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <div>
+                                <label for="new_product_interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Default interest % p.a. (optional)</label>
+                                <input id="new_product_interest_rate" x-model.trim="newProductInterestRate" type="number" step="0.0001" min="0" max="100" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                            </div>
+                            <div>
+                                <label for="new_product_term_months" class="block text-xs font-semibold text-slate-600 mb-1">Default term months (optional)</label>
+                                <input id="new_product_term_months" x-model.trim="newProductTermMonths" type="number" min="1" max="600" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                            </div>
+                        </div>
                     </div>
 
                     <p x-show="productModalError" x-text="productModalError" class="mt-3 text-xs text-red-600"></p>
@@ -239,11 +250,15 @@
 </x-loan-layout>
 
 <script>
-    function loanProductPicker() {
+    function loanProductPicker(productMetaByName = {}) {
+        const productStoreUrl = @json(route('loan.book.applications.products.store'));
         return {
+            productMetaByName,
             showProductModal: false,
             newProductName: '',
             newProductDescription: '',
+            newProductInterestRate: '',
+            newProductTermMonths: '',
             productModalError: '',
             isSavingProduct: false,
             showBranchModal: false,
@@ -257,9 +272,13 @@
                 idNumber: '',
                 address: '',
             },
+            selectedProductHint: '',
             init() {
                 this.$nextTick(() => {
                     this.autofillFromSelectedClient();
+                    this.applyProductDefaults();
+                    const productSelect = this.$el.querySelector('#product_name');
+                    productSelect?.addEventListener('change', () => this.applyProductDefaults());
                 });
             },
             openProductModal() {
@@ -271,7 +290,39 @@
                 this.showProductModal = false;
                 this.newProductName = '';
                 this.newProductDescription = '';
+                this.newProductInterestRate = '';
+                this.newProductTermMonths = '';
                 this.productModalError = '';
+            },
+            applyProductDefaults() {
+                const productSelect = this.$el.querySelector('#product_name');
+                const termInput = this.$el.querySelector('#term_months');
+                const name = (productSelect?.value ?? '').trim();
+                if (!name) {
+                    this.selectedProductHint = '';
+                    return;
+                }
+
+                const meta = this.productMetaByName[name] ?? null;
+                if (!meta) {
+                    this.selectedProductHint = '';
+                    return;
+                }
+
+                const parts = [];
+                if (meta.default_interest_rate !== null && meta.default_interest_rate !== undefined) {
+                    parts.push(`Default interest: ${Number(meta.default_interest_rate).toFixed(4)}% p.a.`);
+                }
+                if (meta.default_term_months) {
+                    parts.push(`Default term: ${meta.default_term_months} months.`);
+                    const current = (termInput?.value ?? '').trim();
+                    if (termInput && (current === '' || current === '12')) {
+                        termInput.value = String(meta.default_term_months);
+                        termInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        termInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                this.selectedProductHint = parts.join(' ');
             },
             openBranchModal() {
                 this.branchModalError = '';
@@ -345,10 +396,14 @@
                     this.productModalError = 'Product name is required.';
                     return;
                 }
+                if (!productStoreUrl || String(productStoreUrl).includes('/undefined')) {
+                    this.productModalError = 'Product endpoint is invalid. Reload page and try again.';
+                    return;
+                }
 
                 this.isSavingProduct = true;
                 try {
-                    const response = await fetch(this.$el.dataset.productsStoreUrl, {
+                    const response = await fetch(productStoreUrl, {
                         method: 'POST',
                         headers: {
                             'Accept': 'application/json',
@@ -358,6 +413,8 @@
                         body: JSON.stringify({
                             name: this.newProductName,
                             description: this.newProductDescription,
+                            default_interest_rate: this.newProductInterestRate,
+                            default_term_months: this.newProductTermMonths,
                         }),
                     });
 
@@ -375,6 +432,10 @@
                     } else {
                         existingOption.selected = true;
                     }
+                    this.productMetaByName[data.product.name] = {
+                        default_interest_rate: data.product.default_interest_rate ?? null,
+                        default_term_months: data.product.default_term_months ?? null,
+                    };
                     productSelect.dispatchEvent(new Event('change'));
                     this.closeProductModal();
                 } catch (error) {

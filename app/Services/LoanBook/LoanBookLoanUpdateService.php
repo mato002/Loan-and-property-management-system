@@ -35,6 +35,15 @@ class LoanBookLoanUpdateService
             if ((float) $loan->principal_outstanding <= 0 && (float) $loan->principal > 0) {
                 $loan->principal_outstanding = (float) $loan->principal;
             }
+            if ((float) $loan->interest_outstanding <= 0 && (float) $loan->principal_outstanding > 0 && (float) $loan->interest_rate > 0) {
+                $loan->interest_outstanding = $this->estimateInterestOutstanding(
+                    (float) $loan->principal_outstanding,
+                    (float) $loan->interest_rate,
+                    $loan->disbursed_at,
+                    $loan->maturity_date
+                );
+            }
+            $loan->balance = round(max(0.0, (float) $loan->principal_outstanding + (float) $loan->interest_outstanding + (float) $loan->fees_outstanding), 2);
 
             $loan->save();
 
@@ -137,6 +146,26 @@ class LoanBookLoanUpdateService
         }
 
         return $order;
+    }
+
+    private function estimateInterestOutstanding(float $principal, float $annualRate, mixed $disbursedAt, mixed $maturityDate): float
+    {
+        if ($principal <= 0 || $annualRate <= 0) {
+            return 0.0;
+        }
+
+        $months = 12;
+        if ($disbursedAt && $maturityDate) {
+            try {
+                $from = \Illuminate\Support\Carbon::parse($disbursedAt)->startOfDay();
+                $to = \Illuminate\Support\Carbon::parse($maturityDate)->startOfDay();
+                $months = max(1, $from->diffInMonths($to));
+            } catch (\Throwable $e) {
+                $months = 12;
+            }
+        }
+
+        return round($principal * ($annualRate / 100) * ($months / 12), 2);
     }
 }
 

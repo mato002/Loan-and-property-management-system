@@ -208,6 +208,7 @@ class LoanBookApplicationsController extends Controller
             'defaultProductName' => $defaultProductName,
             'defaultPurpose' => $defaultPurpose,
             'productOptions' => $this->productOptions($defaultProductName),
+            'productMetaByName' => $this->productMetaByName(),
             'branchOptions' => $this->branchOptions(),
         ]);
     }
@@ -264,6 +265,8 @@ class LoanBookApplicationsController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'description' => ['nullable', 'string', 'max:500'],
+            'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
         ]);
 
         $name = trim((string) $validated['name']);
@@ -273,6 +276,12 @@ class LoanBookApplicationsController extends Controller
             ['name' => $name],
             [
                 'description' => $description !== '' ? $description : null,
+                'default_interest_rate' => isset($validated['default_interest_rate']) && $validated['default_interest_rate'] !== ''
+                    ? (float) $validated['default_interest_rate']
+                    : null,
+                'default_term_months' => isset($validated['default_term_months']) && $validated['default_term_months'] !== ''
+                    ? (int) $validated['default_term_months']
+                    : null,
                 'is_active' => true,
             ]
         );
@@ -282,6 +291,8 @@ class LoanBookApplicationsController extends Controller
             'product' => [
                 'id' => $product->id,
                 'name' => $product->name,
+                'default_interest_rate' => $product->default_interest_rate,
+                'default_term_months' => $product->default_term_months,
             ],
         ]);
     }
@@ -302,6 +313,7 @@ class LoanBookApplicationsController extends Controller
                 ->get(),
             'stages' => $this->stageOptions(),
             'productOptions' => $this->productOptions($loan_book_application->product_name),
+            'productMetaByName' => $this->productMetaByName(),
             'branchOptions' => $this->branchOptions(),
         ]);
     }
@@ -462,6 +474,27 @@ class LoanBookApplicationsController extends Controller
         }
 
         return $name;
+    }
+
+    /**
+     * @return array<string, array{default_interest_rate: ?float, default_term_months: ?int}>
+     */
+    private function productMetaByName(): array
+    {
+        if (! Schema::hasTable('loan_products')) {
+            return [];
+        }
+
+        return LoanProduct::query()
+            ->select(['name', 'default_interest_rate', 'default_term_months'])
+            ->get()
+            ->mapWithKeys(fn (LoanProduct $product) => [
+                trim((string) $product->name) => [
+                    'default_interest_rate' => $product->default_interest_rate !== null ? (float) $product->default_interest_rate : null,
+                    'default_term_months' => $product->default_term_months !== null ? (int) $product->default_term_months : null,
+                ],
+            ])
+            ->all();
     }
 
     /**

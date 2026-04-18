@@ -1,9 +1,57 @@
 <x-loan-layout>
     <x-loan.page :title="$title" :subtitle="$subtitle">
+        @php
+            $paid = (float) $loan->payments->sum('amount');
+            $remaining = max(0, (float) $loan->balance);
+            $totalRepayable = $paid + $remaining;
+            $progress = $totalRepayable > 0 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
+            $isFullyPaid = $remaining <= 0.01 || $loan->status === \App\Models\LoanBookLoan::STATUS_CLOSED;
+            $principalDisbursed = (float) $loan->disbursements->sum('amount');
+            $realizedProfit = $paid - $principalDisbursed;
+            $estimatedTotalProfit = $totalRepayable - $principalDisbursed;
+        @endphp
         <x-slot name="actions">
             <a href="{{ route('loan.book.loans.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
+            <form method="post" action="{{ route('loan.book.loans.rebuild_snapshot', $loan) }}" class="inline" data-swal-confirm="Rebuild this loan snapshot from disbursements and processed payments?">
+                @csrf
+                <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 shadow-sm hover:bg-amber-100 transition-colors">Rebuild snapshot</button>
+            </form>
             <a href="{{ route('loan.book.loans.edit', $loan) }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Edit loan</a>
         </x-slot>
+
+        <div class="mb-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 class="text-sm font-semibold text-slate-700">Repayment snapshot</h2>
+            <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-4 text-sm">
+                <div>
+                    <p class="text-slate-500">Total due</p>
+                    <p class="font-semibold tabular-nums text-slate-900">{{ number_format($totalRepayable, 2) }}</p>
+                </div>
+                <div>
+                    <p class="text-slate-500">Paid</p>
+                    <p class="font-semibold tabular-nums text-emerald-700">{{ number_format($paid, 2) }}</p>
+                </div>
+                <div>
+                    <p class="text-slate-500">Remaining</p>
+                    <p class="font-semibold tabular-nums text-slate-900">{{ number_format($remaining, 2) }}</p>
+                </div>
+                <div>
+                    <p class="text-slate-500">Completion</p>
+                    <p class="font-semibold text-slate-900">{{ number_format($progress, 1) }}% {{ $isFullyPaid ? '· Fully paid' : '· In progress' }}</p>
+                </div>
+                <div>
+                    <p class="text-slate-500">Principal disbursed</p>
+                    <p class="font-semibold tabular-nums text-slate-900">{{ number_format($principalDisbursed, 2) }}</p>
+                </div>
+                <div>
+                    <p class="text-slate-500">Realized profit</p>
+                    <p class="font-semibold tabular-nums {{ $realizedProfit >= 0 ? 'text-emerald-700' : 'text-red-600' }}">{{ number_format($realizedProfit, 2) }}</p>
+                </div>
+                <div>
+                    <p class="text-slate-500">Estimated total profit</p>
+                    <p class="font-semibold tabular-nums {{ $estimatedTotalProfit >= 0 ? 'text-emerald-700' : 'text-red-600' }}">{{ number_format($estimatedTotalProfit, 2) }}</p>
+                </div>
+            </div>
+        </div>
 
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div class="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -92,7 +140,7 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
-                            @forelse ($loan->collectionEntries as $entry)
+                            @forelse (($recentCollections ?? collect()) as $entry)
                                 <tr>
                                     <td class="px-4 py-2 text-slate-700">{{ optional($entry->collected_on)->format('Y-m-d') }}</td>
                                     <td class="px-4 py-2 text-right tabular-nums text-slate-700">{{ number_format((float) $entry->amount, 2) }}</td>

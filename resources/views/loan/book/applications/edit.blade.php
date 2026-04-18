@@ -4,7 +4,7 @@
             <a href="{{ route('loan.book.applications.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
         </x-slot>
 
-        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden max-w-3xl">
+        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden max-w-3xl" x-data="loanProductEditMeta(@js($productMetaByName ?? []))" x-init="init()">
             <form method="post" action="{{ route('loan.book.applications.update', $application) }}" class="px-5 py-6 space-y-4">
                 @csrf
                 @method('patch')
@@ -19,13 +19,14 @@
                 </div>
                 <div>
                     <label for="product_name" class="block text-xs font-semibold text-slate-600 mb-1">Product</label>
-                    <select id="product_name" name="product_name" required class="w-full rounded-lg border-slate-200 text-sm">
+                    <select id="product_name" name="product_name" required class="w-full rounded-lg border-slate-200 text-sm" @change="applyProductDefaults">
                         <option value="">Select product...</option>
                         @foreach (($productOptions ?? []) as $productName)
                             <option value="{{ $productName }}" @selected(old('product_name', $application->product_name) === $productName)>{{ $productName }}</option>
                         @endforeach
                     </select>
                     @error('product_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <p class="mt-1 text-xs text-slate-500" x-text="selectedProductHint"></p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -123,3 +124,44 @@
         </div>
     </x-loan.page>
 </x-loan-layout>
+<script>
+    function loanProductEditMeta(productMetaByName = {}) {
+        return {
+            productMetaByName,
+            selectedProductHint: '',
+            init() {
+                this.applyProductDefaults();
+            },
+            applyProductDefaults() {
+                const productSelect = this.$el.querySelector('#product_name');
+                const termInput = this.$el.querySelector('#term_months');
+                const name = (productSelect?.value ?? '').trim();
+                if (!name) {
+                    this.selectedProductHint = '';
+                    return;
+                }
+
+                const meta = this.productMetaByName[name] ?? null;
+                if (!meta) {
+                    this.selectedProductHint = '';
+                    return;
+                }
+
+                const parts = [];
+                if (meta.default_interest_rate !== null && meta.default_interest_rate !== undefined) {
+                    parts.push(`Default interest: ${Number(meta.default_interest_rate).toFixed(4)}% p.a.`);
+                }
+                if (meta.default_term_months) {
+                    parts.push(`Default term: ${meta.default_term_months} months.`);
+                    const current = (termInput?.value ?? '').trim();
+                    if (termInput && current === '') {
+                        termInput.value = String(meta.default_term_months);
+                        termInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        termInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                this.selectedProductHint = parts.join(' ');
+            },
+        };
+    }
+</script>

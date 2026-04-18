@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Loan\LoanPaymentWebhookController;
 use App\Models\PmPayment;
 use App\Models\PmSmsIngest;
 use App\Models\PmTenant;
@@ -16,6 +17,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class PropertyPaymentWebhookController extends Controller
@@ -38,6 +40,8 @@ class PropertyPaymentWebhookController extends Controller
         if ($secret === '' || ! hash_equals($secret, $providedSecret)) {
             return response()->json(['ok' => false, 'message' => 'Unauthorized webhook'], 401);
         }
+
+        $this->mirrorToLoanIngest($request);
 
         $data = $request->validate([
             'provider' => ['nullable', 'string', 'max:32'],
@@ -360,6 +364,35 @@ class PropertyPaymentWebhookController extends Controller
         return PmTenant::query()
             ->whereIn('phone', [$normalizedPhone, $compact, $local])
             ->first();
+    }
+
+    private function mirrorToLoanIngest(Request $request): void
+    {
+        // Guard to prevent property->loan->property recursion.
+        if ((string) $request->header('X-Payments-Mirrored', '') === '1') {
+            return;
+        }
+
+        $loanSecret = (string) config('services.loan_sms_ingest.secret', '');
+        if ($loanSecret === '') {
+            $loanSecret = (string) config('services.property_sms_ingest.secret', '');
+        }
+        if ($loanSecret === '') {
+            return;
+        }
+
+        try {
+            $mirrored = $request->duplicate();
+            $mirrored->headers->set('X-Loan-Sms-Secret', $loanSecret);
+            $mirrored->headers->set('X-Payments-Mirrored', '1');
+            app()->call([app(LoanPaymentWebhookController::class), 'smsIngest'], [
+                'request' => $mirrored,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Property->Loan SMS ingest mirror failed', [
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function stkCallback(Request $request): JsonResponse

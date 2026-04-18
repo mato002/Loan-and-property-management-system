@@ -536,6 +536,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/loan-arrears', [LoanBookLoansController::class, 'arrears'])->name('loan_arrears');
         Route::get('/checkoff-loans', [LoanBookLoansController::class, 'checkoff'])->name('checkoff_loans');
         Route::get('/loans/{loan_book_loan}', [LoanBookLoansController::class, 'show'])->name('loans.show');
+        Route::post('/loans/{loan_book_loan}/rebuild-snapshot', [LoanBookLoansController::class, 'rebuildSnapshot'])->name('loans.rebuild_snapshot');
         Route::get('/loans/{loan_book_loan}/edit', [LoanBookLoansController::class, 'edit'])->name('loans.edit');
         Route::patch('/loans/{loan_book_loan}', [LoanBookLoansController::class, 'update'])->name('loans.update');
         Route::delete('/loans/{loan_book_loan}', [LoanBookLoansController::class, 'destroy'])->name('loans.destroy');
@@ -605,12 +606,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/report', [LoanPaymentsController::class, 'report'])->name('report');
         Route::get('/validate', [LoanPaymentsController::class, 'validateForm'])->name('validate');
         Route::post('/validate', [LoanPaymentsController::class, 'validateStore'])->name('validate.store');
+        Route::post('/{loan_book_payment}/validate', [LoanPaymentsController::class, 'validateSingle'])->name('validate.single');
         Route::get('/merge', [LoanPaymentsController::class, 'mergeForm'])->name('merge');
         Route::post('/merge', [LoanPaymentsController::class, 'mergeStore'])->name('merge.store');
         Route::get('/reversal/create', [LoanPaymentsController::class, 'reversalCreate'])->name('reversal.create');
         Route::post('/reversal', [LoanPaymentsController::class, 'reversalStore'])->name('reversal.store');
         Route::get('/create', [LoanPaymentsController::class, 'create'])->name('create');
         Route::post('/', [LoanPaymentsController::class, 'store'])->name('store');
+        Route::post('/{loan_book_payment}/assign-loan', [LoanPaymentsController::class, 'assignLoan'])->name('assign_loan');
         Route::post('/{loan_book_payment}/post', [LoanPaymentsController::class, 'post'])->name('post');
         Route::get('/{loan_book_payment}/edit', [LoanPaymentsController::class, 'edit'])->name('edit');
         Route::patch('/{loan_book_payment}', [LoanPaymentsController::class, 'update'])->name('update');
@@ -651,6 +654,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/setup/company', [LoanSystemHelpController::class, 'setupCompanyUpdate'])->name('setup.company.update');
         Route::get('/setup/preferences', [LoanSystemHelpController::class, 'setupPreferences'])->name('setup.preferences');
         Route::post('/setup/preferences', [LoanSystemHelpController::class, 'setupPreferencesUpdate'])->name('setup.preferences.update');
+        Route::get('/setup/loan-products', [LoanSystemHelpController::class, 'setupLoanProducts'])->name('setup.loan_products');
+        Route::post('/setup/loan-products', [LoanSystemHelpController::class, 'setupLoanProductsStore'])->name('setup.loan_products.store');
+        Route::patch('/setup/loan-products/{loan_product}', [LoanSystemHelpController::class, 'setupLoanProductsUpdate'])->name('setup.loan_products.update');
+        Route::delete('/setup/loan-products/{loan_product}', [LoanSystemHelpController::class, 'setupLoanProductsDestroy'])->name('setup.loan_products.destroy');
         Route::get('/setup/departments', [LoanSystemHelpController::class, 'setupDepartments'])->name('setup.departments');
         Route::post('/setup/departments', [LoanSystemHelpController::class, 'setupDepartmentsStore'])->name('setup.departments.store');
         Route::post('/setup/departments/sync', [LoanSystemHelpController::class, 'setupDepartmentsSync'])->name('setup.departments.sync');

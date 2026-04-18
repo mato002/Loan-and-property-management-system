@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Property\PropertyPaymentWebhookController;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
 use App\Models\LoanBookPaymentSmsIngest;
+use App\Models\LoanBookDisbursement;
 use App\Models\LoanClient;
 use App\Models\PropertyPortalSetting;
 use App\Repositories\Equity\PaymentAuditLogRepository;
@@ -16,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -27,6 +30,10 @@ class LoanPaymentWebhookController extends Controller
         PaymentAuditLogRepository $auditLogs,
     ): JsonResponse {
         $secret = (string) config('services.loan_sms_ingest.secret', '');
+        if ($secret === '') {
+            // Fallback lets one forwarder secret feed both modules by default.
+            $secret = (string) config('services.property_sms_ingest.secret', '');
+        }
         $providedSecret = (string) $request->header('X-Loan-Sms-Secret', '');
         if ($providedSecret === '') {
             $providedSecret = (string) ($request->query('secret', $request->input('secret', '')));
@@ -35,6 +42,8 @@ class LoanPaymentWebhookController extends Controller
         if ($secret === '' || ! hash_equals($secret, $providedSecret)) {
             return response()->json(['ok' => false, 'message' => 'Unauthorized webhook'], 401);
         }
+
+        $this->mirrorToPropertyIngest($request);
 
         $data = $request->validate([
             'provider' => ['nullable', 'string', 'max:32'],
@@ -59,11 +68,12 @@ class LoanPaymentWebhookController extends Controller
                 'message' => 'SMS ignored: provider is not allowed for ingest (allowed: mpesa, equity).',
             ]);
         }
-        if (! MpesaSmsForwarderParser::isLikelyIncomingPaymentMessage($rawMessage)) {
+        $smsDirection = $this->detectSmsDirection($rawMessage);
+        if ($smsDirection === null) {
             return response()->json([
                 'ok' => true,
                 'status' => 'ignored',
-                'message' => 'SMS ignored: not a recognized incoming payment confirmation.',
+                'message' => 'SMS ignored: not a recognized payment/disbursement confirmation.',
             ]);
         }
 
@@ -154,15 +164,32 @@ class LoanPaymentWebhookController extends Controller
             ]);
         }
 
+        $txnAt = $paidAt ?? now();
+        if ($txnAt instanceof Carbon) {
+            $txnAt = $txnAt->copy()->timezone(config('app.timezone', 'UTC'));
+        }
+
         $loan = $normalizedPhone ? $this->findLoanForPayerPhone($normalizedPhone) : null;
         if (! $loan) {
             $reason = $normalizedPhone
                 ? 'No active loan found for payer phone (matched loan client phone).'
                 : 'No payer phone in SMS or forwarder payload.';
+            $holding = $this->createUnpostedHoldingPayment(
+                $providerTxnCode,
+                $amount,
+                $txnAt,
+                $normalizedPhone,
+                $provider,
+                $data,
+                $payload,
+                $rawMessage,
+                $smsDirection,
+            );
 
             $ingest->update([
+                'loan_book_payment_id' => $holding->id,
                 'match_status' => 'unmatched',
-                'match_note' => $reason,
+                'match_note' => $reason.' Stored in unposted payments for manual assignment.',
             ]);
 
             $auditLogs->decision('success', [
@@ -170,21 +197,75 @@ class LoanPaymentWebhookController extends Controller
                 'decision' => 'unmatched',
                 'transaction_id' => $providerTxnCode,
                 'reason' => $reason,
+                'holding_payment_id' => $holding->id,
             ], 'sms_forwarder_decision');
 
             return response()->json([
                 'ok' => true,
                 'ingest_id' => $ingest->id,
                 'status' => 'unmatched',
+                'payment_id' => $holding->id,
             ]);
         }
 
-        $txnAt = $paidAt ?? now();
-        if ($txnAt instanceof Carbon) {
-            $txnAt = $txnAt->copy()->timezone(config('app.timezone', 'UTC'));
-        }
-
         $currency = $this->defaultLoanCurrency();
+
+        if ($smsDirection === 'outgoing') {
+            $disbursement = DB::transaction(function () use (
+                $loan,
+                $amount,
+                $providerTxnCode,
+                $txnAt,
+                $provider,
+                $data,
+                $payload,
+                $rawMessage,
+                $ingest,
+            ) {
+                $row = LoanBookDisbursement::query()->create([
+                    'loan_book_loan_id' => $loan->id,
+                    'amount' => $amount,
+                    'reference' => 'SMS-'.$providerTxnCode,
+                    'method' => 'mpesa_sms_ingest',
+                    'disbursed_at' => $txnAt instanceof Carbon ? $txnAt->toDateString() : now()->toDateString(),
+                    'notes' => $this->buildDisbursementNotes($provider, $data, $payload, $rawMessage),
+                    'payout_status' => 'completed',
+                    'payout_provider' => $provider !== '' ? $provider : 'mpesa',
+                    'payout_phone' => $data['payer_phone'] ?? null,
+                    'payout_transaction_id' => $providerTxnCode,
+                    'payout_completed_at' => now(),
+                    'payout_meta' => [
+                        'source' => 'sms_ingest',
+                        'raw_message' => $rawMessage,
+                        'payload' => $payload,
+                    ],
+                ]);
+
+                $ingest->update([
+                    'loan_book_loan_id' => $loan->id,
+                    'match_status' => 'matched',
+                    'match_note' => 'Outgoing disbursement SMS matched to loan client phone; disbursement captured.',
+                ]);
+
+                return $row;
+            });
+
+            $auditLogs->decision('success', [
+                'stage' => 'loan_sms_ingest',
+                'decision' => 'matched_disbursement',
+                'transaction_id' => $providerTxnCode,
+                'loan_id' => $loan->id,
+                'disbursement_id' => $disbursement->id,
+            ], 'sms_forwarder_decision');
+
+            return response()->json([
+                'ok' => true,
+                'ingest_id' => $ingest->id,
+                'status' => 'matched_disbursement',
+                'loan_book_loan_id' => $loan->id,
+                'disbursement_id' => $disbursement->id,
+            ]);
+        }
 
         $payment = DB::transaction(function () use (
             $loan,
@@ -242,6 +323,92 @@ class LoanPaymentWebhookController extends Controller
             'payment_id' => $payment->id,
             'loan_book_loan_id' => $loan->id,
         ]);
+    }
+
+    private function detectSmsDirection(string $rawMessage): ?string
+    {
+        if (MpesaSmsForwarderParser::isLikelyIncomingPaymentMessage($rawMessage)) {
+            return 'incoming';
+        }
+
+        $text = strtolower(trim($rawMessage));
+        if ($text === '') {
+            return null;
+        }
+
+        if (
+            str_contains($text, 'sent to')
+            || str_contains($text, 'withdrawn')
+            || str_contains($text, 'money has been sent')
+            || str_contains($text, 'transferred to')
+        ) {
+            return 'outgoing';
+        }
+
+        return null;
+    }
+
+    private function createUnpostedHoldingPayment(
+        string $providerTxnCode,
+        float $amount,
+        mixed $txnAt,
+        ?string $normalizedPhone,
+        string $provider,
+        array $data,
+        ?array $payload,
+        string $rawMessage,
+        string $smsDirection,
+    ): LoanBookPayment {
+        return DB::transaction(function () use (
+            $providerTxnCode,
+            $amount,
+            $txnAt,
+            $normalizedPhone,
+            $provider,
+            $data,
+            $payload,
+            $rawMessage,
+            $smsDirection,
+        ) {
+            $row = LoanBookPayment::query()->create([
+                'reference' => null,
+                'loan_book_loan_id' => null,
+                'amount' => $amount,
+                'currency' => $this->defaultLoanCurrency(),
+                'channel' => $smsDirection === 'outgoing' ? 'mpesa_sms_disbursement_unmatched' : 'mpesa_sms_unmatched',
+                'status' => LoanBookPayment::STATUS_UNPOSTED,
+                'payment_kind' => LoanBookPayment::KIND_NORMAL,
+                'mpesa_receipt_number' => $providerTxnCode,
+                'payer_msisdn' => $normalizedPhone,
+                'transaction_at' => $txnAt,
+                'notes' => $this->buildPaymentNotes($provider, $data, $payload, $rawMessage),
+                'created_by' => null,
+            ]);
+            $row->update([
+                'reference' => 'PAY-'.str_pad((string) $row->id, 6, '0', STR_PAD_LEFT),
+            ]);
+
+            return $row;
+        });
+    }
+
+    private function buildDisbursementNotes(string $provider, array $data, ?array $payload, string $rawMessage): string
+    {
+        $lines = ['Imported outgoing disbursement via SMS forwarder (loan).'];
+        if ($provider !== '') {
+            $lines[] = 'Provider: '.$provider;
+        }
+        if (! empty($data['source_device'])) {
+            $lines[] = 'Device: '.(string) $data['source_device'];
+        }
+        if ($payload) {
+            $lines[] = 'Payload: '.Str::limit(json_encode($payload), 500);
+        }
+        if ($rawMessage !== '') {
+            $lines[] = 'SMS: '.Str::limit(preg_replace('/\s+/', ' ', $rawMessage), 400);
+        }
+
+        return implode("\n", $lines);
     }
 
     private function buildPaymentNotes(string $provider, array $data, ?array $payload, string $rawMessage): string
@@ -329,5 +496,31 @@ class LoanPaymentWebhookController extends Controller
         $driverCode = (int) ($e->errorInfo[1] ?? 0);
 
         return $sqlState === '23000' || $driverCode === 1062;
+    }
+
+    private function mirrorToPropertyIngest(Request $request): void
+    {
+        // Guard to prevent loan->property->loan recursion.
+        if ((string) $request->header('X-Payments-Mirrored', '') === '1') {
+            return;
+        }
+
+        $propertySecret = (string) config('services.property_sms_ingest.secret', '');
+        if ($propertySecret === '') {
+            return;
+        }
+
+        try {
+            $mirrored = $request->duplicate();
+            $mirrored->headers->set('X-Property-Sms-Secret', $propertySecret);
+            $mirrored->headers->set('X-Payments-Mirrored', '1');
+            app()->call([app(PropertyPaymentWebhookController::class), 'smsIngest'], [
+                'request' => $mirrored,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Loan->Property SMS ingest mirror failed', [
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 }

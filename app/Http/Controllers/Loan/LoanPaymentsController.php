@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
+use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
 use App\Support\TabularExport;
@@ -36,8 +37,21 @@ class LoanPaymentsController extends Controller
             return $export;
         }
         $payments = $query->orderByDesc('transaction_at')->paginate($filters['perPage'])->withQueryString();
+        $assignableLoans = LoanBookLoan::query()
+            ->with('loanClient')
+            ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_PENDING_DISBURSEMENT])
+            ->orderBy('loan_number');
+        $this->scopeByAssignedLoanClient($assignableLoans, $request->user());
+        $assignableLoans = $assignableLoans
+            ->limit(500)
+            ->get();
+        $assignableLoanOptions = $assignableLoans
+            ->mapWithKeys(fn (LoanBookLoan $loan) => [
+                $loan->id => $loan->loan_number.' - '.($loan->loanClient?->full_name ?? 'Unknown client'),
+            ]);
+        $suggestedLoanByPayment = $this->buildSuggestedLoanMap($payments->getCollection(), $assignableLoans);
 
-        return view('loan.payments.unposted', array_merge(compact('payments'), $filters));
+        return view('loan.payments.unposted', array_merge(compact('payments', 'assignableLoanOptions', 'suggestedLoanByPayment'), $filters));
     }
 
     public function processed(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
@@ -46,7 +60,23 @@ class LoanPaymentsController extends Controller
             ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'accountingJournalEntry'])
             ->processedQueue();
         $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $source = trim((string) $request->query('source', ''));
         $filters = $this->applyListFilters($query, $request);
+        if ($source !== '') {
+            $query->where(function (Builder $builder) use ($source): void {
+                if ($source === 'sms_forwarder') {
+                    $builder->where('channel', 'like', 'mpesa_sms_%');
+
+                    return;
+                }
+                if ($source === 'manual') {
+                    $builder->where('channel', 'not like', 'mpesa_sms_%');
+
+                    return;
+                }
+                $builder->where('channel', $source);
+            });
+        }
         if ($export = $this->exportIfRequested((clone $query)->orderByDesc('posted_at')->orderByDesc('transaction_at'), $request, 'payments-processed')) {
             return $export;
         }
@@ -56,7 +86,7 @@ class LoanPaymentsController extends Controller
             ->paginate($filters['perPage'])
             ->withQueryString();
 
-        return view('loan.payments.processed', array_merge(compact('payments'), $filters));
+        return view('loan.payments.processed', array_merge(compact('payments', 'source'), $filters));
     }
 
     public function prepayments(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
@@ -130,13 +160,49 @@ class LoanPaymentsController extends Controller
             ->whereNotNull('mpesa_receipt_number')
             ->notMergedChild();
         $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $source = trim((string) $request->query('source', ''));
+        $duplicatesOnly = $request->boolean('duplicates_only');
         $filters = $this->applyListFilters($query, $request, true);
+        if ($source !== '') {
+            $query->where(function (Builder $builder) use ($source): void {
+                if ($source === 'sms_forwarder') {
+                    $builder->where('channel', 'like', 'mpesa_sms_%');
+
+                    return;
+                }
+                if ($source === 'manual') {
+                    $builder->where('channel', 'not like', 'mpesa_sms_%');
+
+                    return;
+                }
+                $builder->where('channel', $source);
+            });
+        }
+        if ($duplicatesOnly) {
+            $query->whereIn('mpesa_receipt_number', function ($sub) {
+                $sub->from('loan_book_payments')
+                    ->select('mpesa_receipt_number')
+                    ->whereNotNull('mpesa_receipt_number')
+                    ->groupBy('mpesa_receipt_number')
+                    ->havingRaw('COUNT(*) > 1');
+            });
+        }
         if ($export = $this->exportIfRequested((clone $query)->orderByDesc('transaction_at'), $request, 'payments-receipts')) {
             return $export;
         }
         $payments = $query->orderByDesc('transaction_at')->paginate($filters['perPage'])->withQueryString();
+        $receiptCounts = LoanBookPayment::query()
+            ->notMergedChild()
+            ->whereIn('mpesa_receipt_number', $payments->pluck('mpesa_receipt_number')->filter()->unique()->values())
+            ->selectRaw('mpesa_receipt_number, COUNT(*) as c')
+            ->groupBy('mpesa_receipt_number')
+            ->pluck('c', 'mpesa_receipt_number');
+        $duplicateReceipts = $receiptCounts
+            ->filter(fn ($count) => (int) $count > 1)
+            ->map(fn ($count) => (int) $count)
+            ->all();
 
-        return view('loan.payments.receipts', array_merge(compact('payments'), $filters));
+        return view('loan.payments.receipts', array_merge(compact('payments', 'source', 'duplicateReceipts', 'duplicatesOnly'), $filters));
     }
 
     public function payinSummary(Request $request): View|StreamedResponse
@@ -357,6 +423,27 @@ class LoanPaymentsController extends Controller
         return redirect()
             ->route('loan.payments.validate')
             ->with('status', 'Payment '.$payment->reference.' validated.');
+    }
+
+    public function validateSingle(Request $request, LoanBookPayment $loan_book_payment): RedirectResponse
+    {
+        $payment = $loan_book_payment;
+        $this->ensureLoanClientOwner($payment->loan?->loanClient, $request->user());
+
+        if ($payment->status !== LoanBookPayment::STATUS_PROCESSED) {
+            return back()->withErrors(['status' => 'Only processed payments can be validated.']);
+        }
+
+        if ($payment->validated_at) {
+            return back()->with('status', 'Payment '.$payment->reference.' is already validated.');
+        }
+
+        $payment->update([
+            'validated_at' => now(),
+            'validated_by' => $request->user()->id,
+        ]);
+
+        return back()->with('status', 'Payment '.$payment->reference.' validated.');
     }
 
     public function mergeForm(Request $request): View|StreamedResponse
@@ -632,6 +719,8 @@ class LoanPaymentsController extends Controller
                     'accounting_journal_entry_id' => $entry->id,
                 ]);
 
+                $this->syncCollectionEntryFromProcessedPayment($payment);
+
                 app(LoanBookLoanUpdateService::class)->onPaymentProcessed($payment->fresh());
             });
         } catch (\RuntimeException $e) {
@@ -643,6 +732,71 @@ class LoanPaymentsController extends Controller
         return redirect()
             ->back()
             ->with('status', 'Payment posted as processed and recorded in the general ledger.');
+    }
+
+    private function syncCollectionEntryFromProcessedPayment(LoanBookPayment $payment): void
+    {
+        if (! $payment->loan_book_loan_id) {
+            return;
+        }
+
+        $existing = LoanBookCollectionEntry::query()
+            ->where('loan_book_loan_id', $payment->loan_book_loan_id)
+            ->whereDate('collected_on', optional($payment->transaction_at)->toDateString() ?? now()->toDateString())
+            ->where('amount', $payment->amount)
+            ->where('channel', $payment->channel)
+            ->where(function ($q) use ($payment) {
+                if ($payment->accounting_journal_entry_id) {
+                    $q->where('accounting_journal_entry_id', $payment->accounting_journal_entry_id);
+                } else {
+                    $q->whereNull('accounting_journal_entry_id');
+                }
+            })
+            ->first();
+
+        if ($existing) {
+            return;
+        }
+
+        LoanBookCollectionEntry::query()->create([
+            'loan_book_loan_id' => $payment->loan_book_loan_id,
+            'collected_on' => optional($payment->transaction_at)->toDateString() ?? now()->toDateString(),
+            'amount' => $payment->amount,
+            'channel' => $payment->channel,
+            'collected_by_employee_id' => null,
+            'notes' => 'Auto-synced from processed payment '.($payment->reference ?? ('#'.$payment->id)),
+            'accounting_journal_entry_id' => $payment->accounting_journal_entry_id,
+        ]);
+    }
+
+    public function assignLoan(Request $request, LoanBookPayment $loan_book_payment): RedirectResponse
+    {
+        $loan_book_payment->load('loan.loanClient');
+        abort_unless($loan_book_payment->canEdit(), 403);
+        if ($loan_book_payment->loan_book_loan_id) {
+            $this->ensureLoanClientOwner($loan_book_payment->loan?->loanClient, $request->user());
+        }
+
+        $validated = $request->validate([
+            'loan_book_loan_id' => ['required', 'exists:loan_book_loans,id'],
+        ]);
+
+        $targetLoan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
+        $this->ensureLoanClientOwner($targetLoan->loanClient, $request->user());
+
+        $existingNotes = trim((string) ($loan_book_payment->notes ?? ''));
+        $assignmentNote = 'Assigned from unposted SMS unmatched queue on '.now()->format('Y-m-d H:i');
+
+        $loan_book_payment->update([
+            'loan_book_loan_id' => $targetLoan->id,
+            'notes' => $existingNotes !== ''
+                ? $existingNotes."\n".$assignmentNote
+                : $assignmentNote,
+        ]);
+
+        return redirect()
+            ->route('loan.payments.unposted')
+            ->with('status', 'Payment '.$loan_book_payment->reference.' assigned to '.$targetLoan->loan_number.'.');
     }
 
     /**
@@ -712,5 +866,63 @@ class LoanPaymentsController extends Controller
             },
             $format
         );
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, LoanBookPayment> $payments
+     * @param \Illuminate\Support\Collection<int, LoanBookLoan> $loans
+     * @return array<int,int>
+     */
+    private function buildSuggestedLoanMap($payments, $loans): array
+    {
+        $loanByPhone = [];
+        foreach ($loans as $loan) {
+            $phone = trim((string) ($loan->loanClient?->phone ?? ''));
+            if ($phone === '') {
+                continue;
+            }
+            foreach ($this->phoneVariants($phone) as $variant) {
+                if (! isset($loanByPhone[$variant])) {
+                    $loanByPhone[$variant] = (int) $loan->id;
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($payments as $payment) {
+            $payer = trim((string) ($payment->payer_msisdn ?? ''));
+            if ($payer === '') {
+                continue;
+            }
+            foreach ($this->phoneVariants($payer) as $variant) {
+                if (isset($loanByPhone[$variant])) {
+                    $out[(int) $payment->id] = (int) $loanByPhone[$variant];
+                    break;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function phoneVariants(string $phone): array
+    {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        if ($digits === '') {
+            return [];
+        }
+
+        $variants = [$digits];
+        if (str_starts_with($digits, '254') && strlen($digits) >= 12) {
+            $variants[] = '0'.substr($digits, 3);
+        }
+        if (str_starts_with($digits, '0') && strlen($digits) >= 10) {
+            $variants[] = '254'.substr($digits, 1);
+        }
+
+        return array_values(array_unique(array_filter($variants)));
     }
 }

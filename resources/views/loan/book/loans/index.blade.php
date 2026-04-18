@@ -31,6 +31,14 @@
                     </select>
                 </div>
                 <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Repayment</label>
+                    <select name="repayment" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">All</option>
+                        <option value="has_balance" @selected(($repayment ?? '') === 'has_balance')>Has balance</option>
+                        <option value="fully_paid" @selected(($repayment ?? '') === 'fully_paid')>Fully paid</option>
+                    </select>
+                </div>
+                <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
                     <select name="per_page" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                         @foreach ([10, 15, 25, 50, 100, 200] as $size)
@@ -48,6 +56,22 @@
             </div>
         </form>
 
+        <div class="mb-4 flex flex-wrap items-center gap-2">
+            <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Quick repayment filter:</span>
+            <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['repayment' => ''])) }}"
+               class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition-colors {{ ($repayment ?? '') === '' ? 'border-[#2f4f4f] bg-[#2f4f4f] text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' }}">
+                All
+            </a>
+            <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['repayment' => 'has_balance'])) }}"
+               class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition-colors {{ ($repayment ?? '') === 'has_balance' ? 'border-[#2f4f4f] bg-[#2f4f4f] text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' }}">
+                Has balance
+            </a>
+            <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['repayment' => 'fully_paid'])) }}"
+               class="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition-colors {{ ($repayment ?? '') === 'fully_paid' ? 'border-[#2f4f4f] bg-[#2f4f4f] text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' }}">
+                Fully paid
+            </a>
+        </div>
+
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
                 <h2 class="text-sm font-semibold text-slate-700">Loan register</h2>
@@ -60,7 +84,9 @@
                             <th class="px-5 py-3">Loan #</th>
                             <th class="px-5 py-3">Client</th>
                             <th class="px-5 py-3">Product</th>
-                            <th class="px-5 py-3 text-right">Balance</th>
+                            <th class="px-5 py-3 text-right">Paid</th>
+                            <th class="px-5 py-3 text-right">Remaining</th>
+                            <th class="px-5 py-3">Progress</th>
                             <th class="px-5 py-3">DPD</th>
                             <th class="px-5 py-3">Status</th>
                             <th class="px-5 py-3 text-right">Actions</th>
@@ -68,11 +94,19 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($loans as $loan)
+                            @php
+                                $paid = (float) ($loan->processed_paid_amount ?? 0);
+                                $remaining = max(0, (float) $loan->balance);
+                                $totalRepayable = $paid + $remaining;
+                                $progress = $totalRepayable > 0 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
+                            @endphp
                             <tr class="hover:bg-slate-50/80">
                                 <td class="px-5 py-3 font-mono text-xs text-indigo-600 font-medium">{{ $loan->loan_number }}</td>
                                 <td class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient->full_name ?? 'Client record missing' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $loan->product_name }}</td>
-                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format((float) $loan->balance, 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums text-emerald-700">{{ number_format($paid, 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format($remaining, 2) }}</td>
+                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ number_format($progress, 1) }}%</td>
                                 <td class="px-5 py-3 tabular-nums {{ $loan->dpd > 0 ? 'text-red-600 font-semibold' : 'text-slate-600' }}">{{ $loan->dpd }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $loan->status) }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
@@ -90,7 +124,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-5 py-12 text-center text-slate-500">No loans booked yet.</td>
+                                <td colspan="9" class="px-5 py-12 text-center text-slate-500">No loans booked yet.</td>
                             </tr>
                         @endforelse
                     </tbody>

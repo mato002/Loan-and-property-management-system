@@ -10,6 +10,7 @@ use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookCollectionRate;
 use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookLoan;
+use App\Models\LoanBookPayment;
 use App\Support\TabularExport;
 use App\Services\LoanBook\LoanDisbursementPayoutService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
@@ -400,27 +401,36 @@ class LoanBookOperationsController extends Controller
         $start = now()->startOfMonth()->toDateString();
         $end = now()->endOfMonth()->toDateString();
 
-        $totalsQuery = LoanBookCollectionEntry::query()
-            ->where('collected_on', '>=', $start)
-            ->where('collected_on', '<=', $end)
+        $totalsQuery = LoanBookPayment::query()
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->whereBetween('transaction_at', [
+                $start.' 00:00:00',
+                $end.' 23:59:59',
+            ])
             ->selectRaw('COUNT(*) as `receipt_count`, COALESCE(SUM(`amount`), 0) as `collected`');
         $this->scopeByAssignedLoanClient($totalsQuery, auth()->user(), 'loan.loanClient');
         $totals = $totalsQuery->first();
 
-        $byChannelQuery = LoanBookCollectionEntry::query()
-            ->where('collected_on', '>=', $start)
-            ->where('collected_on', '<=', $end)
+        $byChannelQuery = LoanBookPayment::query()
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->whereBetween('transaction_at', [
+                $start.' 00:00:00',
+                $end.' 23:59:59',
+            ])
             ->selectRaw('`channel`, COALESCE(SUM(`amount`), 0) as `total`')
             ->groupBy('channel')
             ->orderByDesc('total');
         $this->scopeByAssignedLoanClient($byChannelQuery, auth()->user(), 'loan.loanClient');
         $byChannel = $byChannelQuery->get();
 
-        $recentQuery = LoanBookCollectionEntry::query()
+        $recentQuery = LoanBookPayment::query()
             ->with(['loan.loanClient'])
-            ->where('collected_on', '>=', $start)
-            ->where('collected_on', '<=', $end)
-            ->orderByDesc('collected_on')
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->whereBetween('transaction_at', [
+                $start.' 00:00:00',
+                $end.' 23:59:59',
+            ])
+            ->orderByDesc('transaction_at')
             ->orderByDesc('id')
             ->limit(15);
         $this->scopeByAssignedLoanClient($recentQuery, auth()->user(), 'loan.loanClient');

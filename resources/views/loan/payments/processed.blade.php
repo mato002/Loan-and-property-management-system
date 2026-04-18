@@ -16,6 +16,14 @@
                     <input type="text" name="channel" value="{{ $channel ?? '' }}" placeholder="cash, mpesa..." class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Source</label>
+                    <select name="source" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">All</option>
+                        <option value="sms_forwarder" @selected(($source ?? '') === 'sms_forwarder')>SMS Forwarder</option>
+                        <option value="manual" @selected(($source ?? '') === 'manual')>Manual/Other</option>
+                    </select>
+                </div>
+                <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">From</label>
                     <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
@@ -60,6 +68,7 @@
                             <th class="px-5 py-3">Transaction</th>
                             <th class="px-5 py-3">Posted</th>
                             <th class="px-5 py-3">Validated</th>
+                            <th class="px-5 py-3">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
@@ -74,7 +83,16 @@
                                 <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loan_number ?? '—' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loanClient?->full_name ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums font-medium text-slate-900">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $p->channel }}</td>
+                                <td class="px-5 py-3 text-slate-600">
+                                    <div class="flex items-center gap-2">
+                                        <span>{{ $p->channel }}</span>
+                                        @if (str_starts_with((string) $p->channel, 'mpesa_sms_'))
+                                            <span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">SMS Forwarder</span>
+                                        @else
+                                            <span class="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700">Manual</span>
+                                        @endif
+                                    </div>
+                                </td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $p->payment_kind) }}</td>
                                 <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $p->transaction_at->format('Y-m-d H:i') }}</td>
                                 <td class="px-5 py-3 text-slate-600 text-xs">
@@ -97,10 +115,22 @@
                                         <span class="text-amber-700">Pending</span>
                                     @endif
                                 </td>
+                                <td class="px-5 py-3 text-xs">
+                                    @if (! $p->validated_at)
+                                        <form method="post" action="{{ route('loan.payments.validate.single', $p) }}">
+                                            @csrf
+                                            <button type="submit" class="inline-flex items-center rounded-md bg-emerald-600 px-2.5 py-1.5 font-semibold text-white hover:bg-emerald-700">
+                                                Validate
+                                            </button>
+                                        </form>
+                                    @else
+                                        <span class="text-slate-400">—</span>
+                                    @endif
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="px-5 py-12 text-center text-slate-500">No processed payments yet.</td>
+                                <td colspan="10" class="px-5 py-12 text-center text-slate-500">No processed payments yet.</td>
                             </tr>
                         @endforelse
                     </tbody>
