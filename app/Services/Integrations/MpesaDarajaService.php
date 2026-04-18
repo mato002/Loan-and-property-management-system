@@ -70,6 +70,36 @@ class MpesaDarajaService
         return $this->missingConfigKeys() === [];
     }
 
+    /**
+     * B2C payout (disbursements) requires extra Daraja credentials beyond STK.
+     *
+     * @return list<string>
+     */
+    public function missingB2cConfigKeys(): array
+    {
+        $cfg = $this->config();
+        $checks = [
+            'b2c_shortcode' => 'MPESA_B2C_SHORTCODE or MPESA_SHORTCODE',
+            'b2c_initiator_name' => 'MPESA_B2C_INITIATOR_NAME',
+            'b2c_security_credential' => 'MPESA_B2C_SECURITY_CREDENTIAL',
+            'b2c_result_url' => 'MPESA_B2C_RESULT_URL',
+            'b2c_timeout_url' => 'MPESA_B2C_TIMEOUT_URL',
+        ];
+        $missing = [];
+        foreach ($checks as $configKey => $envHint) {
+            if (trim((string) ($cfg[$configKey] ?? '')) === '') {
+                $missing[] = $envHint;
+            }
+        }
+
+        return $missing;
+    }
+
+    public function isB2cConfigured(): bool
+    {
+        return $this->missingB2cConfigKeys() === [];
+    }
+
     public function normalizeMsisdn(string $raw): string
     {
         $digits = preg_replace('/\D+/', '', $raw) ?? '';
@@ -271,7 +301,17 @@ class MpesaDarajaService
             $timeoutUrl = trim((string) ($cfg['b2c_timeout_url'] ?? ''));
 
             if ($shortcode === '' || $initiator === '' || $securityCredential === '' || $resultUrl === '' || $timeoutUrl === '') {
-                return ['ok' => false, 'status' => null, 'body' => null, 'message' => 'Daraja not configured for B2C (shortcode/initiator/security_credential/result_url/timeout_url).'];
+                $missing = $this->missingB2cConfigKeys();
+                $hint = $missing !== []
+                    ? 'Missing: '.implode('; ', $missing).'.'
+                    : '';
+
+                return [
+                    'ok' => false,
+                    'status' => null,
+                    'body' => null,
+                    'message' => 'Daraja B2C is not configured. Set the variables in `.env` (see `config/services.php` → `mpesa`). '.$hint,
+                ];
             }
 
             $token = $this->getAccessToken();

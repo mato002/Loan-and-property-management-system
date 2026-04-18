@@ -520,10 +520,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::prefix('loan/book')->name('loan.book.')->group(function () {
+        // Must stay before `disbursements/{loan_book_disbursement}`; `whereNumber` on that segment prevents "create" binding as an id.
+        Route::get('/disbursements/create', [LoanBookOperationsController::class, 'disbursementsCreate'])->name('disbursements.create');
+        Route::get('/disbursements/record', function () {
+            return redirect()->route('loan.book.disbursements.create', request()->query());
+        });
+
         Route::get('/app-loans-report', [LoanBookApplicationsController::class, 'report'])->name('app_loans_report');
         Route::get('/applications/create', [LoanBookApplicationsController::class, 'create'])->name('applications.create');
         Route::post('/applications/products', [LoanBookApplicationsController::class, 'storeProduct'])->name('applications.products.store');
         Route::post('/applications', [LoanBookApplicationsController::class, 'store'])->name('applications.store');
+        Route::patch('/applications/{loan_book_application}/stage', [LoanBookApplicationsController::class, 'updateStage'])->name('applications.update_stage');
         Route::get('/applications', [LoanBookApplicationsController::class, 'index'])->name('applications.index');
         Route::get('/applications/{loan_book_application}', [LoanBookApplicationsController::class, 'show'])->name('applications.show');
         Route::get('/applications/{loan_book_application}/edit', [LoanBookApplicationsController::class, 'edit'])->name('applications.edit');
@@ -541,12 +548,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::patch('/loans/{loan_book_loan}', [LoanBookLoansController::class, 'update'])->name('loans.update');
         Route::delete('/loans/{loan_book_loan}', [LoanBookLoansController::class, 'destroy'])->name('loans.destroy');
 
-        Route::get('/disbursements/create', [LoanBookOperationsController::class, 'disbursementsCreate'])->name('disbursements.create');
         Route::post('/disbursements', [LoanBookOperationsController::class, 'disbursementsStore'])->name('disbursements.store');
         Route::get('/disbursements', [LoanBookOperationsController::class, 'disbursementsIndex'])->name('disbursements.index');
-        Route::get('/disbursements/{loan_book_disbursement}', [LoanBookOperationsController::class, 'disbursementsShow'])->name('disbursements.show');
-        Route::post('/disbursements/{loan_book_disbursement}/retry-payout', [LoanBookOperationsController::class, 'disbursementsRetryPayout'])->name('disbursements.retry_payout');
-        Route::delete('/disbursements/{loan_book_disbursement}', [LoanBookOperationsController::class, 'disbursementsDestroy'])->name('disbursements.destroy');
+        Route::get('/disbursements/{loan_book_disbursement}', [LoanBookOperationsController::class, 'disbursementsShow'])
+            ->whereNumber('loan_book_disbursement')
+            ->name('disbursements.show');
+        Route::post('/disbursements/{loan_book_disbursement}/retry-payout', [LoanBookOperationsController::class, 'disbursementsRetryPayout'])
+            ->whereNumber('loan_book_disbursement')
+            ->name('disbursements.retry_payout');
+        Route::delete('/disbursements/{loan_book_disbursement}', [LoanBookOperationsController::class, 'disbursementsDestroy'])
+            ->whereNumber('loan_book_disbursement')
+            ->name('disbursements.destroy');
 
         Route::get('/collection-sheet', [LoanBookOperationsController::class, 'collectionSheet'])->name('collection_sheet.index');
         Route::post('/collection-sheet', [LoanBookOperationsController::class, 'collectionSheetStore'])->name('collection_sheet.store');

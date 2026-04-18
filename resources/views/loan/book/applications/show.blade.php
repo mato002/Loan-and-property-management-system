@@ -5,6 +5,39 @@
             <a href="{{ route('loan.book.applications.edit', $application) }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Edit application</a>
         </x-slot>
 
+        @php
+            $stage = (string) $application->stage;
+            $hasLoan = (bool) $application->loan;
+            $canBookLoan = in_array($stage, [\App\Models\LoanBookApplication::STAGE_APPROVED, \App\Models\LoanBookApplication::STAGE_DISBURSED], true) && ! $hasLoan;
+        @endphp
+
+        <div class="mb-4 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm">
+            <h2 class="text-sm font-semibold text-slate-800">Pipeline — what to do next</h2>
+            <p class="mt-1 text-xs text-slate-600">Typical flow: <span class="font-medium text-slate-700">submitted</span> → <span class="font-medium text-slate-700">credit review</span> → <span class="font-medium text-slate-700">approved</span> → <span class="font-medium text-slate-700">book loan</span> → disbursement &amp; collections.</p>
+            <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                @if ($stage === \App\Models\LoanBookApplication::STAGE_SUBMITTED)
+                    <p class="text-sm text-slate-700 flex-1"><span class="font-semibold text-slate-900">Credit review:</span> set the stage on the <a href="{{ route('loan.book.applications.index') }}" class="font-medium text-[#2f4f4f] hover:underline">Applications list</a> (dropdown + Update) or use <span class="font-medium">Edit application</span> for the full form.</p>
+                    <a href="{{ route('loan.book.applications.edit', $application) }}" class="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040]">Edit full form →</a>
+                @elseif ($stage === \App\Models\LoanBookApplication::STAGE_CREDIT_REVIEW)
+                    <p class="text-sm text-slate-700 flex-1"><span class="font-semibold text-slate-900">Decision:</span> move to <em>approved</em> or <em>declined</em> from the <a href="{{ route('loan.book.applications.index') }}" class="font-medium text-[#2f4f4f] hover:underline">Applications list</a> or use <span class="font-medium">Edit application</span> to adjust notes and other fields together.</p>
+                    <a href="{{ route('loan.book.applications.edit', $application) }}" class="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040]">Edit full form →</a>
+                @elseif ($canBookLoan)
+                    <p class="text-sm text-slate-700 flex-1"><span class="font-semibold text-slate-900">Book the facility:</span> this application is ready for a loan account. Open the booking form — client, amount, and product will be filled from this file.</p>
+                    <a href="{{ route('loan.book.loans.create', ['application' => $application->id]) }}" class="inline-flex shrink-0 items-center justify-center rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800">Book loan from this application</a>
+                @elseif ($hasLoan)
+                    <p class="text-sm text-slate-700 flex-1"><span class="font-semibold text-slate-900">Loan booked.</span> Open the loan to post disbursements, record repayments, or update status.</p>
+                    <a href="{{ route('loan.book.loans.show', $application->loan) }}" class="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040]">Open loan</a>
+                    <a href="{{ route('loan.book.disbursements.create') }}" class="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">Record disbursement</a>
+                @elseif ($stage === \App\Models\LoanBookApplication::STAGE_DECLINED)
+                    <p class="text-sm text-slate-700 flex-1"><span class="font-semibold text-slate-900">Declined.</span> No loan should be booked from this file unless your policy allows reopening — use Edit if the decision changes.</p>
+                    <a href="{{ route('loan.book.applications.edit', $application) }}" class="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">Edit application</a>
+                @else
+                    <p class="text-sm text-slate-700 flex-1">Update the stage from the <a href="{{ route('loan.book.applications.index') }}" class="font-medium text-[#2f4f4f] hover:underline">Applications list</a> or use <span class="font-medium">Edit application</span> for other fields; open the linked loan if one exists.</p>
+                    <a href="{{ route('loan.book.applications.edit', $application) }}" class="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50">Edit application</a>
+                @endif
+            </div>
+        </div>
+
         <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div class="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 class="text-sm font-semibold text-slate-700">Application snapshot</h2>
@@ -74,7 +107,11 @@
                     <a href="{{ route('loan.book.loans.show', $application->loan) }}" class="mt-4 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Open loan</a>
                 @else
                     <p class="mt-3 text-sm text-slate-600">No loan account has been created from this application yet.</p>
-                    <a href="{{ route('loan.book.loans.create') }}" class="mt-4 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Book loan now</a>
+                    @if ($canBookLoan)
+                        <a href="{{ route('loan.book.loans.create', ['application' => $application->id]) }}" class="mt-4 inline-flex items-center rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800">Book loan from this application</a>
+                    @else
+                        <a href="{{ route('loan.book.loans.create') }}" class="mt-4 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Book loan (manual)</a>
+                    @endif
                 @endif
             </div>
         </div>

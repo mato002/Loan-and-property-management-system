@@ -73,8 +73,11 @@
         </div>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
-                <h2 class="text-sm font-semibold text-slate-700">Loan register</h2>
+            <div class="px-5 py-4 border-b border-slate-100 flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center">
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-700">Loan register</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Paid includes unposted pay-ins until you post them from <a href="{{ route('loan.payments.unposted') }}" class="text-indigo-600 font-semibold hover:underline">Unposted</a>.</p>
+                </div>
                 <p class="text-xs text-slate-500">{{ $loans->total() }} account(s)</p>
             </div>
             <div class="overflow-x-auto">
@@ -95,16 +98,24 @@
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($loans as $loan)
                             @php
-                                $paid = (float) ($loan->processed_paid_amount ?? 0);
-                                $remaining = max(0, (float) $loan->balance);
+                                $posted = (float) ($loan->processed_repayments_sum_amount ?? 0);
+                                $unposted = (float) ($loan->unposted_repayments_sum_amount ?? 0);
+                                $paid = $posted + $unposted;
+                                $balance = (float) $loan->balance;
+                                $remaining = max(0, $balance - $unposted);
                                 $totalRepayable = $paid + $remaining;
-                                $progress = $totalRepayable > 0 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
+                                $progress = $totalRepayable > 0.00001 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
                             @endphp
                             <tr class="hover:bg-slate-50/80">
                                 <td class="px-5 py-3 font-mono text-xs text-indigo-600 font-medium">{{ $loan->loan_number }}</td>
                                 <td class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient->full_name ?? 'Client record missing' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $loan->product_name }}</td>
-                                <td class="px-5 py-3 text-right tabular-nums text-emerald-700">{{ number_format($paid, 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums text-emerald-700">
+                                    <span class="font-semibold">{{ number_format($paid, 2) }}</span>
+                                    @if ($unposted > 0.00001)
+                                        <span class="block text-[10px] font-normal text-amber-800 leading-tight mt-0.5">{{ number_format($posted, 2) }} posted · {{ number_format($unposted, 2) }} unposted</span>
+                                    @endif
+                                </td>
                                 <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format($remaining, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ number_format($progress, 1) }}%</td>
                                 <td class="px-5 py-3 tabular-nums {{ $loan->dpd > 0 ? 'text-red-600 font-semibold' : 'text-slate-600' }}">{{ $loan->dpd }}</td>

@@ -12,6 +12,7 @@ use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
 use App\Support\TabularExport;
+use App\Services\Integrations\MpesaDarajaService;
 use App\Services\LoanBook\LoanDisbursementPayoutService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
@@ -19,6 +20,7 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class LoanBookOperationsController extends Controller
@@ -65,9 +67,9 @@ class LoanBookOperationsController extends Controller
                     foreach ($rows as $d) {
                         yield [
                             (string) optional($d->disbursed_at)->format('Y-m-d'),
-                            (string) ($d->loan->loan_number ?? ''),
-                            (string) ($d->loan->loanClient->client_number ?? ''),
-                            (string) ($d->loan->loanClient->full_name ?? ''),
+                            (string) ($d->loan?->loan_number ?? ''),
+                            (string) ($d->loan?->loanClient?->client_number ?? ''),
+                            (string) ($d->loan?->loanClient?->full_name ?? ''),
                             number_format((float) $d->amount, 2, '.', ''),
                             (string) $d->method,
                             (string) ($d->payout_status ?? 'completed'),
@@ -118,6 +120,7 @@ class LoanBookOperationsController extends Controller
             'title' => 'Record disbursement',
             'subtitle' => 'Link a payout to an existing loan account.',
             'loans' => $loanQuery->get(),
+            'b2cPayoutConfigured' => app(MpesaDarajaService::class)->isB2cConfigured(),
         ]);
     }
 
@@ -128,6 +131,12 @@ class LoanBookOperationsController extends Controller
             'amount' => ['required', 'numeric', 'min:0.01'],
             'reference' => ['required', 'string', 'max:80'],
             'method' => ['required', 'string', 'max:40'],
+            'payout_transaction_id' => [
+                'nullable',
+                'string',
+                'max:80',
+                Rule::requiredIf(in_array($request->input('method'), ['mpesa', 'bank', 'cheque'], true)),
+            ],
             'disbursed_at' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
@@ -136,31 +145,18 @@ class LoanBookOperationsController extends Controller
         $this->ensureLoanClientOwner($loan->loanClient, $request->user());
 
         try {
-            if ($validated['method'] === 'mpesa') {
-                $disbursement = LoanBookDisbursement::query()->create(array_merge($validated, [
-                    'payout_status' => 'pending',
-                    'payout_provider' => 'mpesa',
-                ]));
-                $disbursement->load('loan.loanClient');
-                $result = app(LoanDisbursementPayoutService::class)->initiateMpesaPayout($disbursement, $loan);
-
-                if (! $result['ok']) {
-                    return redirect()
-                        ->route('loan.book.disbursements.show', $disbursement)
-                        ->withErrors(['disbursement' => 'M-Pesa payout initiation failed: '.($result['message'] ?: 'No response from provider.')]);
-                }
-
-                return redirect()
-                    ->route('loan.book.disbursements.show', $disbursement)
-                    ->with('status', __('Payout request sent to M-Pesa. Disbursement will post to GL after callback confirms success.'));
-            }
-
+            // All methods (including M-Pesa) are recorded as manual payouts: GL posts immediately.
+            // Daraja B2C is only used from "Retry M-Pesa payout" when B2C env is fully configured.
             DB::transaction(function () use ($validated, $request) {
+                $txnRef = trim((string) ($validated['payout_transaction_id'] ?? ''));
+                $needsTxnRef = in_array($validated['method'], ['mpesa', 'bank', 'cheque'], true);
+
                 $disbursement = LoanBookDisbursement::query()->create(array_merge($validated, [
                     'payout_status' => 'completed',
-                    'payout_provider' => null,
+                    'payout_provider' => $validated['method'] === 'mpesa' ? 'mpesa' : null,
                     'payout_requested_at' => now(),
                     'payout_completed_at' => now(),
+                    'payout_transaction_id' => $needsTxnRef && $txnRef !== '' ? $txnRef : null,
                 ]));
                 $disbursement->load('loan');
                 $entry = app(LoanBookGlPostingService::class)->postDisbursement($disbursement, $request->user());
@@ -212,6 +208,7 @@ class LoanBookOperationsController extends Controller
             'title' => 'Disbursement details',
             'subtitle' => (string) ($loan_book_disbursement->reference ?? 'Disbursement'),
             'disbursement' => $loan_book_disbursement,
+            'b2cPayoutConfigured' => app(MpesaDarajaService::class)->isB2cConfigured(),
         ]);
     }
 
@@ -236,6 +233,14 @@ class LoanBookOperationsController extends Controller
             return redirect()
                 ->route('loan.book.disbursements.show', $loan_book_disbursement)
                 ->withErrors(['disbursement' => __('Retry is only allowed when payout status is failed.')]);
+        }
+
+        if (! app(MpesaDarajaService::class)->isB2cConfigured()) {
+            return redirect()
+                ->route('loan.book.disbursements.show', $loan_book_disbursement)
+                ->withErrors([
+                    'disbursement' => __('Automatic M-Pesa B2C is not configured. Record payouts manually on this screen, or set MPESA_B2C_* variables in `.env` to enable API retry.'),
+                ]);
         }
 
         $result = app(LoanDisbursementPayoutService::class)->initiateMpesaPayout($loan_book_disbursement, $loan_book_disbursement->loan);

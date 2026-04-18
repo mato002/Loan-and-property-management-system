@@ -70,10 +70,12 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($disbursements as $d)
-                            <tr class="hover:bg-slate-50/80">
-                                <td class="px-5 py-3 text-slate-600 tabular-nums">{{ $d->disbursed_at->format('Y-m-d') }}</td>
-                                <td class="px-5 py-3 font-mono text-xs text-indigo-600">{{ $d->loan->loan_number }}</td>
-                                <td class="px-5 py-3 text-slate-800">{{ $d->loan->loanClient->full_name }}</td>
+                            <tr class="hover:bg-slate-50/80 @if (! $d->loan) bg-amber-50/60 @endif">
+                                <td class="px-5 py-3 text-slate-600 tabular-nums">{{ optional($d->disbursed_at)->format('Y-m-d') ?: '—' }}</td>
+                                <td class="px-5 py-3 font-mono text-xs {{ $d->loan ? 'text-indigo-600' : 'text-amber-800' }}" @if (! $d->loan) title="loan_book_loan_id={{ $d->loan_book_loan_id }}" @endif>
+                                    {{ $d->loan?->loan_number ?? __('Missing loan') }}
+                                </td>
+                                <td class="px-5 py-3 text-slate-800">{{ $d->loan?->loanClient?->full_name ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums font-medium">{{ number_format((float) $d->amount, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $d->method }}</td>
                                 <td class="px-5 py-3">

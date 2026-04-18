@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\FallbackPrimaryKeyWhenNoAutoIncrement;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class LoanBookApplication extends Model
 {
+    use FallbackPrimaryKeyWhenNoAutoIncrement;
+
     public const STAGE_SUBMITTED = 'submitted';
 
     public const STAGE_CREDIT_REVIEW = 'credit_review';

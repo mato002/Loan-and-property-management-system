@@ -31,19 +31,30 @@
                     @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label for="reference" class="block text-xs font-semibold text-slate-600 mb-1">Reference / voucher</label>
-                    <input id="reference" name="reference" value="{{ old('reference') }}" required class="w-full rounded-lg border-slate-200 text-sm" />
-                    @error('reference')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
                     <label for="method" class="block text-xs font-semibold text-slate-600 mb-1">Method</label>
                     <select id="method" name="method" required class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach (['cash' => 'Cash', 'mpesa' => 'M-Pesa', 'bank' => 'Bank / EFT', 'cheque' => 'Cheque'] as $v => $lab)
                             <option value="{{ $v }}" @selected(old('method') === $v)>{{ $lab }}</option>
                         @endforeach
                     </select>
-                    <p class="mt-1 text-xs text-slate-500">Choosing M-Pesa sends a live B2C payout request and waits for callback before posting to GL.</p>
+                    <p class="mt-1 text-xs text-slate-500">M-Pesa means you already sent funds (e.g. from your till or agent). This form only records the payout and posts to the ledger immediately — it does not call Safaricom B2C.</p>
+                    @if ($b2cPayoutConfigured ?? false)
+                        <p class="mt-1 text-xs text-slate-500">Daraja B2C is configured: if an API-initiated payout fails, you can retry from the disbursement detail page.</p>
+                    @endif
                     @error('method')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div id="payout_transaction_wrap" class="space-y-1 @if (! in_array((string) old('method', ''), ['mpesa', 'bank', 'cheque'], true)) hidden @endif">
+                    <label for="payout_transaction_id" class="block text-xs font-semibold text-slate-600 mb-1">
+                        <span id="payout_transaction_label">Transaction reference / ID</span>
+                    </label>
+                    <input id="payout_transaction_id" name="payout_transaction_id" type="text" value="{{ old('payout_transaction_id') }}" maxlength="80" autocomplete="off" class="w-full rounded-lg border-slate-200 text-sm" placeholder="" />
+                    <p id="payout_transaction_hint" class="text-xs text-slate-500"></p>
+                    @error('payout_transaction_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label for="reference" class="block text-xs font-semibold text-slate-600 mb-1">Reference / voucher</label>
+                    <input id="reference" name="reference" value="{{ old('reference') }}" required class="w-full rounded-lg border-slate-200 text-sm" />
+                    @error('reference')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label for="disbursed_at" class="block text-xs font-semibold text-slate-600 mb-1">Disbursement date</label>
@@ -86,6 +97,52 @@
         const referenceInput = form.querySelector('#reference');
         const notesInput = form.querySelector('#notes');
         const dateInput = form.querySelector('#disbursed_at');
+        const methodSelect = form.querySelector('#method');
+        const payoutWrap = form.querySelector('#payout_transaction_wrap');
+        const payoutInput = form.querySelector('#payout_transaction_id');
+        const payoutLabel = form.querySelector('#payout_transaction_label');
+        const payoutHint = form.querySelector('#payout_transaction_hint');
+
+        const methodsNeedTxnRef = new Set(['mpesa', 'bank', 'cheque']);
+        const payoutCopy = {
+            mpesa: {
+                label: 'M-Pesa confirmation / transaction ID',
+                hint: 'e.g. confirmation code from the SMS or transaction ID from your M-Pesa statement.',
+                placeholder: 'SBI… / receipt code',
+            },
+            bank: {
+                label: 'Bank / EFT reference',
+                hint: 'Transfer reference, FT number, or bank confirmation as shown on your statement.',
+                placeholder: 'FT / reference number',
+            },
+            cheque: {
+                label: 'Cheque number',
+                hint: 'The cheque serial number you issued for this payout.',
+                placeholder: 'Cheque #',
+            },
+        };
+
+        const syncPayoutTransactionField = () => {
+            const m = methodSelect?.value ?? '';
+            const show = methodsNeedTxnRef.has(m);
+            if (payoutWrap) {
+                payoutWrap.classList.toggle('hidden', !show);
+            }
+            if (payoutInput) {
+                if (show) {
+                    payoutInput.setAttribute('required', 'required');
+                    const copy = payoutCopy[m] || { label: 'Transaction reference / ID', hint: '', placeholder: '' };
+                    if (payoutLabel) payoutLabel.textContent = copy.label;
+                    if (payoutHint) payoutHint.textContent = copy.hint;
+                    payoutInput.placeholder = copy.placeholder || '';
+                } else {
+                    payoutInput.removeAttribute('required');
+                    if (payoutLabel) payoutLabel.textContent = 'Transaction reference / ID';
+                    if (payoutHint) payoutHint.textContent = '';
+                    payoutInput.placeholder = '';
+                }
+            }
+        };
 
         const initialAmount = amountInput?.value ?? '';
         const initialReference = referenceInput?.value ?? '';
@@ -126,6 +183,10 @@
             if (loanSelect.value) {
                 applyLoanDefaults();
             }
+        }
+        if (methodSelect) {
+            methodSelect.addEventListener('change', syncPayoutTransactionField);
+            syncPayoutTransactionField();
         }
     })();
 </script>

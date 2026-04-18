@@ -28,7 +28,8 @@ class LoanBookLoansController extends Controller
     {
         $query = LoanBookLoan::query()
             ->with(['loanClient', 'application'])
-            ->withSum(['payments as processed_paid_amount' => fn (Builder $builder) => $builder->processedQueue()], 'amount');
+            ->withSum('processedRepayments', 'amount')
+            ->withSum('unpostedRepayments', 'amount');
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $q = trim((string) $request->query('q', ''));
         $status = trim((string) $request->query('status', ''));
@@ -229,8 +230,25 @@ class LoanBookLoansController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
+        $applications = LoanBookApplication::query()
+            ->whereIn('stage', [LoanBookApplication::STAGE_APPROVED, LoanBookApplication::STAGE_DISBURSED])
+            ->whereDoesntHave('loan')
+            ->with('loanClient')
+            ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user()))
+            ->orderByDesc('created_at')
+            ->get();
+
+        $prefillApplicationId = null;
+        $rawApp = $request->query('application');
+        if ($rawApp !== null && $rawApp !== '') {
+            $candidate = (int) $rawApp;
+            if ($candidate > 0 && $applications->contains(fn (LoanBookApplication $a): bool => (int) $a->id === $candidate)) {
+                $prefillApplicationId = $candidate;
+            }
+        }
+
         return view('loan.book.loans.create', [
             'title' => 'Create loan',
             'subtitle' => 'Book a new facility (manual or from an approved application).',
@@ -240,13 +258,8 @@ class LoanBookLoansController extends Controller
                 ->orderBy('last_name')
                 ->orderBy('first_name')
                 ->get(),
-            'applications' => LoanBookApplication::query()
-                ->whereIn('stage', [LoanBookApplication::STAGE_APPROVED, LoanBookApplication::STAGE_DISBURSED])
-                ->whereDoesntHave('loan')
-                ->with('loanClient')
-                ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user()))
-                ->orderByDesc('created_at')
-                ->get(),
+            'applications' => $applications,
+            'prefillApplicationId' => $prefillApplicationId,
             'statuses' => $this->statusOptions(),
             'branches' => $this->branchOptions(),
         ]);

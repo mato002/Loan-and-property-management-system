@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\FallbackPrimaryKeyWhenNoAutoIncrement;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class LoanBookLoan extends Model
 {
+    use FallbackPrimaryKeyWhenNoAutoIncrement;
+
     public const STATUS_PENDING_DISBURSEMENT = 'pending_disbursement';
 
     public const STATUS_ACTIVE = 'active';
@@ -82,5 +85,16 @@ class LoanBookLoan extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(LoanBookPayment::class, 'loan_book_loan_id');
+    }
+
+    /** Used for loan-register aggregates (avoid duplicate `withSum` on `payments`). */
+    public function processedRepayments(): HasMany
+    {
+        return $this->hasMany(LoanBookPayment::class, 'loan_book_loan_id')->processedQueue();
+    }
+
+    public function unpostedRepayments(): HasMany
+    {
+        return $this->hasMany(LoanBookPayment::class, 'loan_book_loan_id')->unpostedQueue();
     }
 }

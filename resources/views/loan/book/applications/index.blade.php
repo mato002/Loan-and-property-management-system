@@ -52,9 +52,12 @@
         </form>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
-                <h2 class="text-sm font-semibold text-slate-700">Pipeline</h2>
-                <p class="text-xs text-slate-500">{{ $applications->total() }} file(s)</p>
+            <div class="px-5 py-4 border-b border-slate-100 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-700">Pipeline</h2>
+                    <p class="mt-1 text-xs text-slate-500 max-w-xl">Change an application’s <strong>stage</strong> here (dropdown + Update) or use <strong>Edit</strong> for the full form. <strong>View</strong> is read-only summary and next-step hints — you do not need it to move the pipeline.</p>
+                </div>
+                <p class="text-xs text-slate-500 shrink-0">{{ $applications->total() }} file(s)</p>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm">
@@ -96,9 +99,24 @@
                                     <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 {{ $sourceClass }}">{{ $sourceLabel }}</span>
                                 </td>
                                 <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format((float) $app->amount_requested, 2) }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $app->stage) }}</td>
+                                <td class="px-5 py-3 align-top">
+                                    <form method="post" action="{{ route('loan.book.applications.update_stage', $app) }}" class="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+                                        @csrf
+                                        @method('patch')
+                                        <label class="sr-only" for="stage-{{ $app->id }}">Stage for {{ $app->reference }}</label>
+                                        <select id="stage-{{ $app->id }}" name="stage" class="min-w-[10rem] max-w-[12rem] rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs font-medium text-slate-800 shadow-sm">
+                                            @foreach (($stages ?? []) as $value => $label)
+                                                <option value="{{ $value }}" @selected($app->stage === $value)>{{ $label }}</option>
+                                            @endforeach
+                                        </select>
+                                        <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-900 whitespace-nowrap">Update</button>
+                                    </form>
+                                </td>
                                 <td class="px-5 py-3 text-slate-500">{{ $app->branch ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
+                                    @if (in_array($app->stage, [\App\Models\LoanBookApplication::STAGE_APPROVED, \App\Models\LoanBookApplication::STAGE_DISBURSED], true) && ! $app->loan)
+                                        <a href="{{ route('loan.book.loans.create', ['application' => $app->id]) }}" class="text-emerald-700 font-semibold text-sm hover:underline mr-3">Book loan</a>
+                                    @endif
                                     <a href="{{ route('loan.book.applications.show', $app) }}" class="text-slate-700 font-medium text-sm hover:underline mr-3">View</a>
                                     <a href="{{ route('loan.book.applications.edit', $app) }}" class="text-indigo-600 font-medium text-sm hover:underline mr-3">Edit</a>
                                     <form method="post" action="{{ route('loan.book.applications.destroy', $app) }}" class="inline" data-swal-confirm="Delete this application? It must not have a loan yet.">

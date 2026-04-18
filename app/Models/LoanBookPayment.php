@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\FallbackPrimaryKeyWhenNoAutoIncrement;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class LoanBookPayment extends Model
 {
+    use FallbackPrimaryKeyWhenNoAutoIncrement;
+
     public const STATUS_UNPOSTED = 'unposted';
 
     public const STATUS_PROCESSED = 'processed';

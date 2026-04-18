@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\FallbackPrimaryKeyWhenNoAutoIncrement;
 use Illuminate\Database\Eloquent\Model;
 
 class LoanBookCollectionRate extends Model
 {
+    use FallbackPrimaryKeyWhenNoAutoIncrement;
+
     protected $fillable = [
         'branch',
         'year',

@@ -24,7 +24,7 @@ class LoanBookApplicationsController extends Controller
 
     public function index(Request $request)
     {
-        $query = LoanBookApplication::query()->with('loanClient');
+        $query = LoanBookApplication::query()->with(['loanClient', 'loan']);
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $q = trim((string) $request->query('q', ''));
         $stage = trim((string) $request->query('stage', ''));
@@ -99,7 +99,7 @@ class LoanBookApplicationsController extends Controller
 
     public function report(Request $request)
     {
-        $query = LoanBookApplication::query()->with('loanClient');
+        $query = LoanBookApplication::query()->with(['loanClient', 'loan']);
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $q = trim((string) $request->query('q', ''));
         $stage = trim((string) $request->query('stage', ''));
@@ -383,6 +383,24 @@ class LoanBookApplicationsController extends Controller
         return redirect()
             ->route('loan.book.applications.index')
             ->with('status', __('Application removed.'));
+    }
+
+    /**
+     * Update pipeline stage from the applications list without opening the full edit form.
+     */
+    public function updateStage(Request $request, LoanBookApplication $loan_book_application): RedirectResponse
+    {
+        $this->ensureLoanClientOwner($loan_book_application->loanClient);
+
+        $validated = $request->validate([
+            'stage' => ['required', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
+        ]);
+
+        $loan_book_application->update(['stage' => $validated['stage']]);
+
+        return redirect()
+            ->back()
+            ->with('status', __('Stage updated.'));
     }
 
     /**

@@ -15,8 +15,8 @@
                 <div><dt class="text-slate-500">Method</dt><dd class="font-medium text-slate-900">{{ $disbursement->method }}</dd></div>
                 <div><dt class="text-slate-500">Payout status</dt><dd class="font-medium text-slate-900">{{ ucfirst((string) ($disbursement->payout_status ?? 'completed')) }}</dd></div>
                 <div><dt class="text-slate-500">Amount</dt><dd class="font-medium text-slate-900 tabular-nums">{{ number_format((float) $disbursement->amount, 2) }}</dd></div>
-                <div><dt class="text-slate-500">Loan #</dt><dd class="font-medium text-slate-900">{{ $disbursement->loan->loan_number ?? '—' }}</dd></div>
-                <div><dt class="text-slate-500">Client</dt><dd class="font-medium text-slate-900">{{ $disbursement->loan->loanClient->full_name ?? '—' }}</dd></div>
+                <div><dt class="text-slate-500">Loan #</dt><dd class="font-medium text-slate-900">{{ $disbursement->loan?->loan_number ?? '—' }}</dd></div>
+                <div><dt class="text-slate-500">Client</dt><dd class="font-medium text-slate-900">{{ $disbursement->loan?->loanClient?->full_name ?? '—' }}</dd></div>
                 <div><dt class="text-slate-500">M-Pesa phone</dt><dd class="font-medium text-slate-900">{{ $disbursement->payout_phone ?: '—' }}</dd></div>
                 <div><dt class="text-slate-500">Payout transaction</dt><dd class="font-medium text-slate-900">{{ $disbursement->payout_transaction_id ?: '—' }}</dd></div>
                 <div><dt class="text-slate-500">Conversation ID</dt><dd class="font-medium text-slate-900">{{ $disbursement->payout_conversation_id ?: '—' }}</dd></div>
@@ -31,7 +31,7 @@
                 <a href="{{ route('loan.accounting.journal.show', $disbursement->accounting_journal_entry_id) }}" class="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Open journal entry</a>
             @else
                 <p class="mt-2 text-sm text-slate-600">No journal entry is linked yet.</p>
-                @if (($disbursement->method ?? '') === 'mpesa' && ($disbursement->payout_status ?? '') === 'failed')
+                @if (($disbursement->method ?? '') === 'mpesa' && ($disbursement->payout_status ?? '') === 'failed' && ($b2cPayoutConfigured ?? false))
                     <form method="post" action="{{ route('loan.book.disbursements.retry_payout', $disbursement) }}" class="mt-3" data-swal-confirm="Retry this M-Pesa payout request?">
                         @csrf
                         <button type="submit" class="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">Retry M-Pesa payout</button>

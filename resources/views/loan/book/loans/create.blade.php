@@ -12,7 +12,7 @@
                     <select id="loan_book_application_id" name="loan_book_application_id" class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="">— None —</option>
                         @foreach ($applications as $a)
-                            <option value="{{ $a->id }}" @selected(old('loan_book_application_id') == $a->id)>{{ $a->reference }} · {{ $a->loanClient->full_name }}</option>
+                            <option value="{{ $a->id }}" @selected(old('loan_book_application_id', $prefillApplicationId ?? null) == $a->id)>{{ $a->reference }} · {{ $a->loanClient->full_name }}</option>
                         @endforeach
                     </select>
                     @error('loan_book_application_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -177,6 +177,10 @@
 
         if (applicationSelect) {
             applicationSelect.addEventListener('change', applyApplicationDefaults);
+            const prefillId = @json($prefillApplicationId ?? null);
+            if (prefillId && String(applicationSelect.value) === String(prefillId)) {
+                applyApplicationDefaults();
+            }
         }
     })();
 </script>

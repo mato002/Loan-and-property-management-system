@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\FallbackPrimaryKeyWhenNoAutoIncrement;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class LoanBookCollectionEntry extends Model
 {
+    use FallbackPrimaryKeyWhenNoAutoIncrement;
+
     protected $fillable = [
         'loan_book_loan_id',
         'collected_on',
