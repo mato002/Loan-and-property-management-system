@@ -47,8 +47,10 @@
                     <div><dt class="text-slate-500">Client</dt><dd class="font-medium text-slate-900">{{ $application->loanClient->full_name ?? '—' }}</dd></div>
                     <div><dt class="text-slate-500">Client #</dt><dd class="font-medium text-slate-900">{{ $application->loanClient->client_number ?? '—' }}</dd></div>
                     <div><dt class="text-slate-500">Product</dt><dd class="font-medium text-slate-900">{{ $application->product_name }}</dd></div>
-                    <div><dt class="text-slate-500">Term</dt><dd class="font-medium text-slate-900">{{ $application->term_months }} months</dd></div>
+                    <div><dt class="text-slate-500">Term</dt><dd class="font-medium text-slate-900">{{ $application->term_value ?? $application->term_months }} {{ $application->term_unit ?? 'monthly' }}</dd></div>
+                    <div><dt class="text-slate-500">Term (months eq.)</dt><dd class="font-medium text-slate-900">{{ $application->term_months }}</dd></div>
                     <div><dt class="text-slate-500">Amount requested</dt><dd class="font-medium text-slate-900 tabular-nums">{{ number_format((float) $application->amount_requested, 2) }}</dd></div>
+                    <div><dt class="text-slate-500">Interest</dt><dd class="font-medium text-slate-900">{{ $application->interest_rate !== null ? number_format((float) $application->interest_rate, 4).' % per '.($application->interest_rate_period ?? 'annual') : '—' }}</dd></div>
                     <div><dt class="text-slate-500">Branch</dt><dd class="font-medium text-slate-900">{{ $application->branch ?: '—' }}</dd></div>
                     <div><dt class="text-slate-500">Submission source</dt><dd class="font-medium text-slate-900">{{ $application->submission_source ?: '—' }}</dd></div>
                     <div><dt class="text-slate-500">Submitted at</dt><dd class="font-medium text-slate-900">{{ optional($application->submitted_at)->format('Y-m-d H:i') ?: '—' }}</dd></div>

@@ -78,6 +78,7 @@
                             <th class="px-5 py-3">Channel</th>
                             <th class="px-5 py-3">Kind</th>
                             <th class="px-5 py-3">When</th>
+                            <th class="px-5 py-3">Payer number</th>
                             <th class="px-5 py-3">Receipt</th>
                             <th class="px-5 py-3 text-right">Actions</th>
                         </tr>
@@ -99,6 +100,7 @@
                                 </td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $p->payment_kind) }}</td>
                                 <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $p->transaction_at->format('Y-m-d H:i') }}</td>
+                                <td class="px-5 py-3 font-mono text-xs text-slate-600">{{ $p->payer_msisdn ?? '—' }}</td>
                                 <td class="px-5 py-3 font-mono text-xs text-slate-600">{{ $p->mpesa_receipt_number ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     @if (in_array((string) $p->channel, ['mpesa_sms_unmatched', 'mpesa_sms_disbursement_unmatched'], true) && is_null($p->loan_book_loan_id))
@@ -129,7 +131,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="px-5 py-12 text-center text-slate-500">
+                                <td colspan="10" class="px-5 py-12 text-center text-slate-500">
                                     No unposted payments. Use <span class="font-medium text-slate-700">Record payment</span> or <span class="font-medium text-slate-700">Merge payments</span>.
                                 </td>
                             </tr>

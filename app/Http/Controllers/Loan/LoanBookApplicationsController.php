@@ -227,7 +227,11 @@ class LoanBookApplicationsController extends Controller
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
             'product_name' => ['required', 'string', 'max:160'],
             'amount_requested' => ['required', 'numeric', 'min:0'],
-            'term_months' => ['required', 'integer', 'min:1', 'max:600'],
+            'term_value' => ['nullable', 'integer', 'min:1', 'max:3660'],
+            'term_unit' => ['nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
+            'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
             'purpose' => ['nullable', 'string', 'max:2000'],
             'stage' => ['required', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
             'branch' => ['nullable', 'string', 'max:120'],
@@ -241,6 +245,16 @@ class LoanBookApplicationsController extends Controller
         ]);
         $validated['submission_source'] = 'manual_internal';
         $validated['repayment_agreement_accepted'] = $request->boolean('repayment_agreement_accepted');
+        $termValue = (int) ($validated['term_value'] ?? 0);
+        $termUnit = (string) ($validated['term_unit'] ?? 'monthly');
+        if ($termValue <= 0) {
+            $termValue = max(1, (int) ($validated['term_months'] ?? 1));
+            $termUnit = 'monthly';
+        }
+        $validated['term_value'] = $termValue;
+        $validated['term_unit'] = $termUnit;
+        $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
+        $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
 
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
         $this->mergeLoanDepartmentGuarantorFromClient($validated, $client);
@@ -267,23 +281,35 @@ class LoanBookApplicationsController extends Controller
             'description' => ['nullable', 'string', 'max:500'],
             'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'default_term_unit' => ['nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
+            'default_interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
         ]);
 
         $name = trim((string) $validated['name']);
         $description = trim((string) ($validated['description'] ?? ''));
+        $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
+        $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
+
+        $createPayload = [
+            'description' => $description !== '' ? $description : null,
+            'default_interest_rate' => isset($validated['default_interest_rate']) && $validated['default_interest_rate'] !== ''
+                ? (float) $validated['default_interest_rate']
+                : null,
+            'default_term_months' => isset($validated['default_term_months']) && $validated['default_term_months'] !== ''
+                ? (int) $validated['default_term_months']
+                : null,
+            'is_active' => true,
+        ];
+        if ($hasDefaultTermUnit) {
+            $createPayload['default_term_unit'] = (string) ($validated['default_term_unit'] ?? 'monthly');
+        }
+        if ($hasDefaultRatePeriod) {
+            $createPayload['default_interest_rate_period'] = (string) ($validated['default_interest_rate_period'] ?? 'annual');
+        }
 
         $product = LoanProduct::query()->firstOrCreate(
             ['name' => $name],
-            [
-                'description' => $description !== '' ? $description : null,
-                'default_interest_rate' => isset($validated['default_interest_rate']) && $validated['default_interest_rate'] !== ''
-                    ? (float) $validated['default_interest_rate']
-                    : null,
-                'default_term_months' => isset($validated['default_term_months']) && $validated['default_term_months'] !== ''
-                    ? (int) $validated['default_term_months']
-                    : null,
-                'is_active' => true,
-            ]
+            $createPayload
         );
 
         return response()->json([
@@ -293,6 +319,8 @@ class LoanBookApplicationsController extends Controller
                 'name' => $product->name,
                 'default_interest_rate' => $product->default_interest_rate,
                 'default_term_months' => $product->default_term_months,
+                'default_term_unit' => $hasDefaultTermUnit ? ($product->default_term_unit ?? 'monthly') : 'monthly',
+                'default_interest_rate_period' => $hasDefaultRatePeriod ? ($product->default_interest_rate_period ?? 'annual') : 'annual',
             ],
         ]);
     }
@@ -341,7 +369,11 @@ class LoanBookApplicationsController extends Controller
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
             'product_name' => ['required', 'string', 'max:160'],
             'amount_requested' => ['required', 'numeric', 'min:0'],
-            'term_months' => ['required', 'integer', 'min:1', 'max:600'],
+            'term_value' => ['nullable', 'integer', 'min:1', 'max:3660'],
+            'term_unit' => ['nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
+            'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
             'purpose' => ['nullable', 'string', 'max:2000'],
             'stage' => ['required', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
             'branch' => ['nullable', 'string', 'max:120'],
@@ -357,6 +389,16 @@ class LoanBookApplicationsController extends Controller
             $validated['submission_source'] = 'manual_internal';
         }
         $validated['repayment_agreement_accepted'] = $request->boolean('repayment_agreement_accepted');
+        $termValue = (int) ($validated['term_value'] ?? 0);
+        $termUnit = (string) ($validated['term_unit'] ?? 'monthly');
+        if ($termValue <= 0) {
+            $termValue = max(1, (int) ($validated['term_months'] ?? $loan_book_application->term_months ?? 1));
+            $termUnit = 'monthly';
+        }
+        $validated['term_value'] = $termValue;
+        $validated['term_unit'] = $termUnit;
+        $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
+        $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
         $validated['product_name'] = $this->ensureProductRegistered((string) $validated['product_name']);
 
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
@@ -495,7 +537,12 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
-     * @return array<string, array{default_interest_rate: ?float, default_term_months: ?int}>
+     * @return array<string, array{
+     *     default_interest_rate: ?float,
+     *     default_term_months: ?int,
+     *     default_term_unit: string,
+     *     default_interest_rate_period: string
+     * }>
      */
     private function productMetaByName(): array
     {
@@ -503,16 +550,56 @@ class LoanBookApplicationsController extends Controller
             return [];
         }
 
+        $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
+        $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
+        $select = ['name', 'default_interest_rate', 'default_term_months'];
+        if ($hasDefaultTermUnit) {
+            $select[] = 'default_term_unit';
+        }
+        if ($hasDefaultRatePeriod) {
+            $select[] = 'default_interest_rate_period';
+        }
+
         return LoanProduct::query()
-            ->select(['name', 'default_interest_rate', 'default_term_months'])
+            ->select($select)
             ->get()
             ->mapWithKeys(fn (LoanProduct $product) => [
                 trim((string) $product->name) => [
                     'default_interest_rate' => $product->default_interest_rate !== null ? (float) $product->default_interest_rate : null,
                     'default_term_months' => $product->default_term_months !== null ? (int) $product->default_term_months : null,
+                    'default_term_unit' => $hasDefaultTermUnit ? (string) ($product->default_term_unit ?? 'monthly') : 'monthly',
+                    'default_interest_rate_period' => $hasDefaultRatePeriod ? (string) ($product->default_interest_rate_period ?? 'annual') : 'annual',
                 ],
             ])
             ->all();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function termUnitOptions(): array
+    {
+        return ['daily', 'weekly', 'monthly'];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function interestRatePeriodOptions(): array
+    {
+        return ['daily', 'weekly', 'monthly', 'annual'];
+    }
+
+    private function scheduleToMonths(int $termValue, string $termUnit): int
+    {
+        $value = max(1, $termValue);
+        $unit = strtolower(trim($termUnit));
+
+        return match ($unit) {
+            'daily' => max(1, (int) ceil($value / 30)),
+            'weekly' => max(1, (int) ceil($value / 4)),
+            default => min(600, $value),
+        };
     }
 
     /**

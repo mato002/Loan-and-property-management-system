@@ -8,10 +8,13 @@ use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
 use App\Models\LoanBookPaymentSmsIngest;
 use App\Models\LoanBookDisbursement;
+use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanClient;
 use App\Models\PropertyPortalSetting;
 use App\Repositories\Equity\PaymentAuditLogRepository;
 use App\Services\Integrations\MpesaDarajaService;
+use App\Services\LoanBook\LoanBookLoanUpdateService;
+use App\Services\LoanBookGlPostingService;
 use App\Support\MpesaSmsForwarderParser;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -79,6 +82,7 @@ class LoanPaymentWebhookController extends Controller
 
         $parsed = MpesaSmsForwarderParser::extractMpesaFields($rawMessage);
         $paidAt = MpesaSmsForwarderParser::extractMpesaPaidAt($rawMessage) ?? $paidAt;
+        $senderName = trim((string) ($parsed['sender_name'] ?? ''));
         $providerTxnCode = (string) ($parsed['provider_txn_code'] ?? $data['provider_txn_code'] ?? '');
         if ($providerTxnCode === '') {
             $providerTxnCode = 'SMS-'.strtoupper(substr(sha1($rawMessage.'|'.(string) ($data['paid_at'] ?? now()->toIso8601String())), 0, 20));
@@ -169,7 +173,7 @@ class LoanPaymentWebhookController extends Controller
             $txnAt = $txnAt->copy()->timezone(config('app.timezone', 'UTC'));
         }
 
-        $loan = $normalizedPhone ? $this->findLoanForPayerPhone($normalizedPhone) : null;
+        $loan = $this->findLoanForPayerIdentity($normalizedPhone, $senderName !== '' ? $senderName : null);
         if (! $loan) {
             $reason = $normalizedPhone
                 ? 'No active loan found for payer phone (matched loan client phone).'
@@ -302,7 +306,9 @@ class LoanPaymentWebhookController extends Controller
                 'loan_book_loan_id' => $loan->id,
                 'loan_book_payment_id' => $row->id,
                 'match_status' => 'matched',
-                'match_note' => 'Matched by loan client phone; created unposted payment.',
+                'match_note' => $senderName !== ''
+                    ? 'Matched by loan client phone+name; created unposted payment.'
+                    : 'Matched by loan client phone; created unposted payment.',
             ]);
 
             return $row;
@@ -315,6 +321,10 @@ class LoanPaymentWebhookController extends Controller
             'loan_id' => $loan->id,
             'payment_id' => $payment->id,
         ], 'sms_forwarder_decision');
+
+        if ($this->shouldAutoPostMatchedPayments()) {
+            $this->tryAutoPostMatchedPayment($payment, $ingest, $auditLogs, $providerTxnCode);
+        }
 
         return response()->json([
             'ok' => true,
@@ -444,22 +454,147 @@ class LoanPaymentWebhookController extends Controller
         }
     }
 
-    /**
-     * Prefer an active loan for a client whose phone matches the payer MSISDN (254… / 07… variants).
-     */
-    private function findLoanForPayerPhone(string $normalizedPhone): ?LoanBookLoan
+    private function shouldAutoPostMatchedPayments(): bool
     {
+        return (bool) config('services.loan_sms_ingest.auto_post_matched', false);
+    }
+
+    private function tryAutoPostMatchedPayment(
+        LoanBookPayment $payment,
+        LoanBookPaymentSmsIngest $ingest,
+        PaymentAuditLogRepository $auditLogs,
+        string $providerTxnCode
+    ): void {
+        try {
+            DB::transaction(function () use ($payment): void {
+                $locked = LoanBookPayment::query()->lockForUpdate()->find($payment->id);
+                if (! $locked || $locked->status !== LoanBookPayment::STATUS_UNPOSTED || $locked->merged_into_payment_id !== null) {
+                    return;
+                }
+                if ($locked->accounting_journal_entry_id) {
+                    return;
+                }
+
+                $entry = app(LoanBookGlPostingService::class)->postLoanPayment($locked, null);
+
+                $locked->update([
+                    'status' => LoanBookPayment::STATUS_PROCESSED,
+                    'posted_at' => now(),
+                    'posted_by' => null,
+                    'accounting_journal_entry_id' => $entry->id,
+                ]);
+
+                $this->syncCollectionEntryFromProcessedPayment($locked->fresh());
+                app(LoanBookLoanUpdateService::class)->onPaymentProcessed($locked->fresh());
+            });
+
+            $ingest->update([
+                'match_note' => trim((string) $ingest->match_note.' Auto-posted to processed queue.'),
+            ]);
+
+            $auditLogs->decision('success', [
+                'stage' => 'loan_sms_ingest',
+                'decision' => 'auto_posted',
+                'transaction_id' => $providerTxnCode,
+                'payment_id' => $payment->id,
+            ], 'sms_forwarder_decision');
+        } catch (\Throwable $e) {
+            $ingest->update([
+                'match_note' => trim((string) $ingest->match_note.' Auto-post failed; left unposted. '.$e->getMessage()),
+            ]);
+
+            $auditLogs->decision('error', [
+                'stage' => 'loan_sms_ingest',
+                'decision' => 'auto_post_failed',
+                'transaction_id' => $providerTxnCode,
+                'payment_id' => $payment->id,
+                'reason' => $e->getMessage(),
+            ], 'sms_forwarder_decision');
+        }
+    }
+
+    private function syncCollectionEntryFromProcessedPayment(LoanBookPayment $payment): void
+    {
+        if (! $payment->loan_book_loan_id) {
+            return;
+        }
+
+        $existing = LoanBookCollectionEntry::query()
+            ->where('loan_book_loan_id', $payment->loan_book_loan_id)
+            ->whereDate('collected_on', optional($payment->transaction_at)->toDateString() ?? now()->toDateString())
+            ->where('amount', $payment->amount)
+            ->where('channel', $payment->channel)
+            ->where(function ($q) use ($payment) {
+                if ($payment->accounting_journal_entry_id) {
+                    $q->where('accounting_journal_entry_id', $payment->accounting_journal_entry_id);
+                } else {
+                    $q->whereNull('accounting_journal_entry_id');
+                }
+            })
+            ->first();
+
+        if ($existing) {
+            return;
+        }
+
+        LoanBookCollectionEntry::query()->create([
+            'loan_book_loan_id' => $payment->loan_book_loan_id,
+            'collected_on' => optional($payment->transaction_at)->toDateString() ?? now()->toDateString(),
+            'amount' => $payment->amount,
+            'channel' => $payment->channel,
+            'collected_by_employee_id' => null,
+            'notes' => 'Auto-synced from processed payment '.($payment->reference ?? ('#'.$payment->id)),
+            'accounting_journal_entry_id' => $payment->accounting_journal_entry_id,
+        ]);
+    }
+
+    /**
+     * Prefer active loan by strict phone+name, fallback to phone-only.
+     */
+    private function findLoanForPayerIdentity(?string $normalizedPhone, ?string $senderName): ?LoanBookLoan
+    {
+        if (! $normalizedPhone) {
+            return null;
+        }
+
         $variants = $this->phoneVariants($normalizedPhone);
-        $clients = LoanClient::query()
+        $baseClients = LoanClient::query()
             ->clients()
             ->where(function ($q) use ($variants) {
                 foreach ($variants as $v) {
                     $q->orWhere('phone', $v);
                 }
-            })
-            ->orderBy('id')
-            ->get();
+            });
 
+        if ($senderName) {
+            $nameTokens = $this->nameTokens($senderName);
+            if ($nameTokens !== []) {
+                $strict = (clone $baseClients)
+                    ->where(function ($q) use ($nameTokens) {
+                        foreach ($nameTokens as $token) {
+                            $q->where(function ($inner) use ($token) {
+                                $inner->where('first_name', 'like', '%'.$token.'%')
+                                    ->orWhere('last_name', 'like', '%'.$token.'%');
+                            });
+                        }
+                    })
+                    ->orderBy('id')
+                    ->get();
+
+                $loan = $this->firstActiveLoanForClients($strict);
+                if ($loan) {
+                    return $loan;
+                }
+            }
+        }
+
+        $clients = $baseClients->orderBy('id')->get();
+
+        return $this->firstActiveLoanForClients($clients);
+    }
+
+    private function firstActiveLoanForClients($clients): ?LoanBookLoan
+    {
         foreach ($clients as $client) {
             $loan = LoanBookLoan::query()
                 ->where('loan_client_id', $client->id)
@@ -477,6 +612,22 @@ class LoanPaymentWebhookController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function nameTokens(string $name): array
+    {
+        $clean = strtolower(trim($name));
+        if ($clean === '') {
+            return [];
+        }
+        $clean = preg_replace('/[^a-z0-9\s]/', ' ', $clean) ?? $clean;
+        $parts = preg_split('/\s+/', $clean) ?: [];
+        $parts = array_values(array_filter($parts, static fn (string $p) => strlen($p) >= 3));
+
+        return array_slice(array_unique($parts), 0, 4);
     }
 
     /**

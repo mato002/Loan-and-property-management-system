@@ -64,9 +64,32 @@
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label for="term_months" class="block text-xs font-semibold text-slate-600 mb-1">Term (months)</label>
-                        <input id="term_months" name="term_months" type="number" min="1" value="{{ old('term_months', 12) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
-                        @error('term_months')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">Term length</label>
+                        <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', old('term_months', 12)) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                        @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">Term unit</label>
+                        <select id="term_unit" name="term_unit" required class="w-full rounded-lg border-slate-200 text-sm">
+                            @foreach (['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'] as $v => $lab)
+                                <option value="{{ $v }}" @selected(old('term_unit', 'monthly') === $v)>{{ $lab }}</option>
+                            @endforeach
+                        </select>
+                        @error('term_unit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label for="interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Interest rate (%)</label>
+                        <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="1000" value="{{ old('interest_rate') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                        @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label for="interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">Interest period</label>
+                        <select id="interest_rate_period" name="interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
+                            @foreach (['daily' => 'Per day', 'weekly' => 'Per week', 'monthly' => 'Per month', 'annual' => 'Per year'] as $v => $lab)
+                                <option value="{{ $v }}" @selected(old('interest_rate_period', 'annual') === $v)>{{ $lab }}</option>
+                            @endforeach
+                        </select>
+                        @error('interest_rate_period')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
                 <div>
@@ -196,12 +219,29 @@
                         </div>
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
-                                <label for="new_product_interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Default interest % p.a. (optional)</label>
+                                <label for="new_product_interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Default interest % (optional)</label>
                                 <input id="new_product_interest_rate" x-model.trim="newProductInterestRate" type="number" step="0.0001" min="0" max="100" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                             </div>
                             <div>
-                                <label for="new_product_term_months" class="block text-xs font-semibold text-slate-600 mb-1">Default term months (optional)</label>
+                                <label for="new_product_interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">Default interest period</label>
+                                <select id="new_product_interest_rate_period" x-model="newProductInterestRatePeriod" class="w-full rounded-lg border-slate-200 text-sm">
+                                    <option value="daily">Per day</option>
+                                    <option value="weekly">Per week</option>
+                                    <option value="monthly">Per month</option>
+                                    <option value="annual">Per year</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="new_product_term_months" class="block text-xs font-semibold text-slate-600 mb-1">Default term length (optional)</label>
                                 <input id="new_product_term_months" x-model.trim="newProductTermMonths" type="number" min="1" max="600" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                            </div>
+                            <div>
+                                <label for="new_product_term_unit" class="block text-xs font-semibold text-slate-600 mb-1">Default term unit</label>
+                                <select id="new_product_term_unit" x-model="newProductTermUnit" class="w-full rounded-lg border-slate-200 text-sm">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -259,6 +299,8 @@
             newProductDescription: '',
             newProductInterestRate: '',
             newProductTermMonths: '',
+            newProductTermUnit: 'monthly',
+            newProductInterestRatePeriod: 'annual',
             productModalError: '',
             isSavingProduct: false,
             showBranchModal: false,
@@ -292,11 +334,16 @@
                 this.newProductDescription = '';
                 this.newProductInterestRate = '';
                 this.newProductTermMonths = '';
+                this.newProductTermUnit = 'monthly';
+                this.newProductInterestRatePeriod = 'annual';
                 this.productModalError = '';
             },
             applyProductDefaults() {
                 const productSelect = this.$el.querySelector('#product_name');
-                const termInput = this.$el.querySelector('#term_months');
+                const termInput = this.$el.querySelector('#term_value');
+                const termUnitSelect = this.$el.querySelector('#term_unit');
+                const interestInput = this.$el.querySelector('#interest_rate');
+                const interestPeriodSelect = this.$el.querySelector('#interest_rate_period');
                 const name = (productSelect?.value ?? '').trim();
                 if (!name) {
                     this.selectedProductHint = '';
@@ -311,15 +358,37 @@
 
                 const parts = [];
                 if (meta.default_interest_rate !== null && meta.default_interest_rate !== undefined) {
-                    parts.push(`Default interest: ${Number(meta.default_interest_rate).toFixed(4)}% p.a.`);
+                    const defaultInterestPeriod = String(meta.default_interest_rate_period ?? 'annual').toLowerCase();
+                    const interestPeriodLabel = {
+                        daily: 'day',
+                        weekly: 'week',
+                        monthly: 'month',
+                        annual: 'year',
+                    }[defaultInterestPeriod] ?? defaultInterestPeriod;
+                    parts.push(`Default interest: ${Number(meta.default_interest_rate).toFixed(4)}% per ${interestPeriodLabel}.`);
+                    const currentRate = (interestInput?.value ?? '').trim();
+                    if (interestInput && currentRate === '') {
+                        interestInput.value = String(meta.default_interest_rate);
+                        interestInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        interestInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    if (interestPeriodSelect && (interestPeriodSelect.value ?? '') === 'annual') {
+                        interestPeriodSelect.value = defaultInterestPeriod;
+                        interestPeriodSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
                 }
                 if (meta.default_term_months) {
-                    parts.push(`Default term: ${meta.default_term_months} months.`);
+                    const defaultTermUnit = String(meta.default_term_unit ?? 'monthly').toLowerCase();
+                    parts.push(`Default term: ${meta.default_term_months} ${defaultTermUnit}.`);
                     const current = (termInput?.value ?? '').trim();
                     if (termInput && (current === '' || current === '12')) {
                         termInput.value = String(meta.default_term_months);
                         termInput.dispatchEvent(new Event('input', { bubbles: true }));
                         termInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    if (termUnitSelect && (termUnitSelect.value ?? '') === 'monthly') {
+                        termUnitSelect.value = defaultTermUnit;
+                        termUnitSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 }
                 this.selectedProductHint = parts.join(' ');
@@ -415,6 +484,8 @@
                             description: this.newProductDescription,
                             default_interest_rate: this.newProductInterestRate,
                             default_term_months: this.newProductTermMonths,
+                            default_term_unit: this.newProductTermUnit,
+                            default_interest_rate_period: this.newProductInterestRatePeriod,
                         }),
                     });
 
@@ -435,6 +506,8 @@
                     this.productMetaByName[data.product.name] = {
                         default_interest_rate: data.product.default_interest_rate ?? null,
                         default_term_months: data.product.default_term_months ?? null,
+                        default_term_unit: data.product.default_term_unit ?? 'monthly',
+                        default_interest_rate_period: data.product.default_interest_rate_period ?? 'annual',
                     };
                     productSelect.dispatchEvent(new Event('change'));
                     this.closeProductModal();

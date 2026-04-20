@@ -27,6 +27,10 @@ class LoanBookApplication extends Model
         'product_name',
         'amount_requested',
         'term_months',
+        'term_value',
+        'term_unit',
+        'interest_rate',
+        'interest_rate_period',
         'purpose',
         'stage',
         'branch',
@@ -46,6 +50,7 @@ class LoanBookApplication extends Model
     {
         return [
             'amount_requested' => 'decimal:2',
+            'interest_rate' => 'decimal:4',
             'submitted_at' => 'datetime',
             'repayment_agreement_accepted' => 'boolean',
         ];

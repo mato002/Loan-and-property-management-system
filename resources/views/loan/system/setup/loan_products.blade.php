@@ -6,19 +6,36 @@
 
         <div class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 class="text-sm font-semibold text-slate-700">Add / update product</h2>
-            <form method="post" action="{{ route('loan.system.setup.loan_products.store') }}" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-5">
+            <form method="post" action="{{ route('loan.system.setup.loan_products.store') }}" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-7">
                 @csrf
                 <div class="sm:col-span-2">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Product name</label>
                     <input name="name" value="{{ old('name') }}" required class="w-full rounded-lg border-slate-200 text-sm" />
                 </div>
                 <div>
-                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default interest % p.a.</label>
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default interest %</label>
                     <input name="default_interest_rate" type="number" step="0.0001" min="0" max="100" value="{{ old('default_interest_rate') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                 </div>
                 <div>
-                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default term (months)</label>
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default term length</label>
                     <input name="default_term_months" type="number" min="1" max="600" value="{{ old('default_term_months') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Term unit</label>
+                    <select name="default_term_unit" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="daily" @selected(old('default_term_unit') === 'daily')>Daily</option>
+                        <option value="weekly" @selected(old('default_term_unit') === 'weekly')>Weekly</option>
+                        <option value="monthly" @selected(old('default_term_unit', 'monthly') === 'monthly')>Monthly</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Interest period</label>
+                    <select name="default_interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="daily" @selected(old('default_interest_rate_period') === 'daily')>Per day</option>
+                        <option value="weekly" @selected(old('default_interest_rate_period') === 'weekly')>Per week</option>
+                        <option value="monthly" @selected(old('default_interest_rate_period') === 'monthly')>Per month</option>
+                        <option value="annual" @selected(old('default_interest_rate_period', 'annual') === 'annual')>Per year</option>
+                    </select>
                 </div>
                 <div>
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Active</label>
@@ -27,7 +44,7 @@
                         <option value="0" @selected(old('is_active') === '0')>No</option>
                     </select>
                 </div>
-                <div class="sm:col-span-4">
+                <div class="sm:col-span-6">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Description (optional)</label>
                     <input name="description" value="{{ old('description') }}" class="w-full rounded-lg border-slate-200 text-sm" />
                 </div>
@@ -49,7 +66,7 @@
                         <tr>
                             <th class="px-5 py-3">Product</th>
                             <th class="px-5 py-3">Description</th>
-                            <th class="px-5 py-3 text-right">Default interest %</th>
+                            <th class="px-5 py-3 text-right">Default interest</th>
                             <th class="px-5 py-3 text-right">Default term</th>
                             <th class="px-5 py-3">Active</th>
                             <th class="px-5 py-3 text-right">Actions</th>
@@ -60,14 +77,26 @@
                             <tr class="hover:bg-slate-50/80">
                                 <td class="px-5 py-3 font-medium text-slate-900">{{ $product->name }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $product->description ?: '—' }}</td>
-                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ $product->default_interest_rate !== null ? number_format((float) $product->default_interest_rate, 4) : '—' }}</td>
-                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ $product->default_term_months ?? '—' }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">
+                                    @if ($product->default_interest_rate !== null)
+                                        {{ number_format((float) $product->default_interest_rate, 4) }}% / {{ $product->default_interest_rate_period ?? 'annual' }}
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">
+                                    @if ($product->default_term_months !== null)
+                                        {{ $product->default_term_months }} {{ $product->default_term_unit ?? 'monthly' }}
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td class="px-5 py-3">{{ $product->is_active ? 'Yes' : 'No' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <form
                                         method="post"
                                         action="{{ route('loan.system.setup.loan_products.update', $product) }}"
-                                        class="mb-2 grid grid-cols-1 gap-1 sm:grid-cols-4 js-product-update-form"
+                                        class="mb-2 grid grid-cols-1 gap-1 sm:grid-cols-6 js-product-update-form"
                                         data-product-name="{{ $product->name }}"
                                         data-active-loans="{{ (int) (($activeLoanCounts[$product->name] ?? 0)) }}"
                                     >
@@ -77,6 +106,17 @@
                                         <input name="description" value="{{ $product->description }}" class="sm:col-span-2 rounded border-slate-200 px-2 py-1 text-xs" placeholder="Description" />
                                         <input name="default_interest_rate" type="number" step="0.0001" min="0" max="100" value="{{ $product->default_interest_rate }}" class="rounded border-slate-200 px-2 py-1 text-xs tabular-nums text-right" placeholder="Rate %" />
                                         <input name="default_term_months" type="number" min="1" max="600" value="{{ $product->default_term_months }}" class="rounded border-slate-200 px-2 py-1 text-xs tabular-nums text-right" placeholder="Months" />
+                                        <select name="default_interest_rate_period" class="rounded border-slate-200 px-2 py-1 text-xs">
+                                            <option value="daily" @selected(($product->default_interest_rate_period ?? 'annual') === 'daily')>Per day</option>
+                                            <option value="weekly" @selected(($product->default_interest_rate_period ?? 'annual') === 'weekly')>Per week</option>
+                                            <option value="monthly" @selected(($product->default_interest_rate_period ?? 'annual') === 'monthly')>Per month</option>
+                                            <option value="annual" @selected(($product->default_interest_rate_period ?? 'annual') === 'annual')>Per year</option>
+                                        </select>
+                                        <select name="default_term_unit" class="rounded border-slate-200 px-2 py-1 text-xs">
+                                            <option value="daily" @selected(($product->default_term_unit ?? 'monthly') === 'daily')>Daily</option>
+                                            <option value="weekly" @selected(($product->default_term_unit ?? 'monthly') === 'weekly')>Weekly</option>
+                                            <option value="monthly" @selected(($product->default_term_unit ?? 'monthly') === 'monthly')>Monthly</option>
+                                        </select>
                                         <label class="sm:col-span-2 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
                                             <input type="checkbox" name="apply_to_existing_active_loans" value="1" class="rounded border-amber-300 text-amber-700 focus:ring-amber-500 js-apply-existing" />
                                             Apply rate to existing active loans

@@ -12,7 +12,7 @@ use Illuminate\Support\Str;
 final class MpesaSmsForwarderParser
 {
     /**
-     * @return array{provider_txn_code?:string,amount?:float,phone?:string}
+     * @return array{provider_txn_code?:string,amount?:float,phone?:string,sender_name?:string}
      */
     public static function extractMpesaFields(string $message): array
     {
@@ -41,13 +41,19 @@ final class MpesaSmsForwarderParser
             }
         }
 
-        if (preg_match('/(?:KSH|KES)\.?\s*([0-9,]+(?:\.[0-9]{1,2})?)/iu', $message, $m) === 1) {
-            $value = str_replace(',', '', (string) $m[1]);
-            $out['amount'] = (float) $value;
+        // Prefer transaction amount phrases and avoid account balance amounts.
+        $amount = self::extractTransactionAmount($message);
+        if ($amount !== null && $amount > 0) {
+            $out['amount'] = $amount;
         }
 
         if (preg_match('/\b(\+?2547\d{8}|\+?2541\d{8}|07\d{8}|01\d{8})\b/u', $message, $m) === 1) {
             $out['phone'] = (string) $m[1];
+        }
+
+        $senderName = self::extractSenderName($message);
+        if ($senderName !== null) {
+            $out['sender_name'] = $senderName;
         }
 
         return $out;
@@ -186,5 +192,68 @@ final class MpesaSmsForwarderParser
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private static function extractTransactionAmount(string $message): ?float
+    {
+        // Common incoming/outgoing phrases where transaction amount is explicit.
+        $patterns = [
+            '/(?:KSH|KES)\.?\s*([0-9,]+(?:\.[0-9]{1,2})?)\s*(?:received|paid|sent|withdrawn|transferred|debited|credited)\b/iu',
+            '/\b(?:received|paid|sent|withdrawn|transferred|debited|credited)\b[^\.]{0,60}?(?:KSH|KES)\.?\s*([0-9,]+(?:\.[0-9]{1,2})?)/iu',
+            '/\bconfirmed[^\n]{0,80}?(?:KSH|KES)\.?\s*([0-9,]+(?:\.[0-9]{1,2})?)/iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $message, $m) === 1) {
+                $v = (float) str_replace(',', '', (string) $m[1]);
+                if ($v > 0) {
+                    return $v;
+                }
+            }
+        }
+
+        // Fallback: pick first money token that is not near a "balance" phrase.
+        if (preg_match_all('/(?:KSH|KES)\.?\s*([0-9,]+(?:\.[0-9]{1,2})?)/iu', $message, $matches, PREG_OFFSET_CAPTURE) === 1) {
+            foreach ($matches[1] as $tuple) {
+                [$raw, $offset] = $tuple;
+                $amount = (float) str_replace(',', '', (string) $raw);
+                if ($amount <= 0) {
+                    continue;
+                }
+
+                $start = max(0, ((int) $offset) - 30);
+                $len = 90;
+                $window = Str::lower(substr($message, $start, $len) ?: '');
+                if (str_contains($window, 'balance')) {
+                    continue;
+                }
+
+                return $amount;
+            }
+        }
+
+        return null;
+    }
+
+    private static function extractSenderName(string $message): ?string
+    {
+        $patterns = [
+            // "... received from 2547XXXXXXXX John Doe on ..."
+            '/\breceived\s+from\s+(?:\+?2547\d{8}|\+?2541\d{8}|07\d{8}|01\d{8})\s+([A-Za-z][A-Za-z\s\-\'.]{2,80}?)(?:\s+on\b|\.|,|$)/iu',
+            // "... paid by John Doe ..."
+            '/\bpaid\s+by\s+([A-Za-z][A-Za-z\s\-\'.]{2,80}?)(?:\s+on\b|\.|,|$)/iu',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $message, $m) === 1) {
+                $name = trim((string) $m[1]);
+                $name = preg_replace('/\s+/', ' ', $name) ?? $name;
+                if ($name !== '' && mb_strlen($name) >= 3) {
+                    return $name;
+                }
+            }
+        }
+
+        return null;
     }
 }

@@ -11,6 +11,8 @@ class LoanProduct extends Model
         'description',
         'default_interest_rate',
         'default_term_months',
+        'default_term_unit',
+        'default_interest_rate_period',
         'is_active',
     ];
 

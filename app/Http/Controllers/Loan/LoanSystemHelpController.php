@@ -406,29 +406,40 @@ class LoanSystemHelpController extends Controller
     public function setupLoanProductsStore(Request $request): RedirectResponse
     {
         abort_unless(Schema::hasTable('loan_products'), 404, 'Loan products table not found. Run migrations.');
+        $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
+        $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'description' => ['nullable', 'string', 'max:500'],
             'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'default_term_unit' => ['nullable', 'in:daily,weekly,monthly'],
+            'default_interest_rate_period' => ['nullable', 'in:daily,weekly,monthly,annual'],
             'is_active' => ['nullable', 'in:0,1'],
         ]);
 
         $name = trim((string) $validated['name']);
+        $payload = [
+            'description' => filled($validated['description'] ?? null) ? trim((string) $validated['description']) : null,
+            'default_interest_rate' => isset($validated['default_interest_rate']) && $validated['default_interest_rate'] !== ''
+                ? (float) $validated['default_interest_rate']
+                : null,
+            'default_term_months' => isset($validated['default_term_months']) && $validated['default_term_months'] !== ''
+                ? (int) $validated['default_term_months']
+                : null,
+            'is_active' => ($validated['is_active'] ?? '1') === '1',
+        ];
+        if ($hasDefaultTermUnit) {
+            $payload['default_term_unit'] = (string) ($validated['default_term_unit'] ?? 'monthly');
+        }
+        if ($hasDefaultRatePeriod) {
+            $payload['default_interest_rate_period'] = (string) ($validated['default_interest_rate_period'] ?? 'annual');
+        }
 
         LoanProduct::query()->updateOrCreate(
             ['name' => $name],
-            [
-                'description' => filled($validated['description'] ?? null) ? trim((string) $validated['description']) : null,
-                'default_interest_rate' => isset($validated['default_interest_rate']) && $validated['default_interest_rate'] !== ''
-                    ? (float) $validated['default_interest_rate']
-                    : null,
-                'default_term_months' => isset($validated['default_term_months']) && $validated['default_term_months'] !== ''
-                    ? (int) $validated['default_term_months']
-                    : null,
-                'is_active' => ($validated['is_active'] ?? '1') === '1',
-            ]
+            $payload
         );
 
         return redirect()->route('loan.system.setup.loan_products')->with('status', 'Loan product saved.');
@@ -436,11 +447,15 @@ class LoanSystemHelpController extends Controller
 
     public function setupLoanProductsUpdate(Request $request, LoanProduct $loan_product): RedirectResponse
     {
+        $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
+        $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:160', Rule::unique('loan_products', 'name')->ignore($loan_product->id)],
             'description' => ['nullable', 'string', 'max:500'],
             'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'default_term_unit' => ['nullable', 'in:daily,weekly,monthly'],
+            'default_interest_rate_period' => ['nullable', 'in:daily,weekly,monthly,annual'],
             'is_active' => ['required', 'in:0,1'],
             'apply_to_existing_active_loans' => ['nullable', 'in:0,1'],
             'repricing_effective_date' => ['nullable', 'date'],
@@ -454,7 +469,7 @@ class LoanSystemHelpController extends Controller
         $oldName = (string) $loan_product->name;
         $newName = trim((string) $validated['name']);
 
-        $loan_product->update([
+        $updatePayload = [
             'name' => $newName,
             'description' => filled($validated['description'] ?? null) ? trim((string) $validated['description']) : null,
             'default_interest_rate' => $newDefaultInterestRate,
@@ -462,7 +477,14 @@ class LoanSystemHelpController extends Controller
                 ? (int) $validated['default_term_months']
                 : null,
             'is_active' => $validated['is_active'] === '1',
-        ]);
+        ];
+        if ($hasDefaultTermUnit) {
+            $updatePayload['default_term_unit'] = (string) ($validated['default_term_unit'] ?? 'monthly');
+        }
+        if ($hasDefaultRatePeriod) {
+            $updatePayload['default_interest_rate_period'] = (string) ($validated['default_interest_rate_period'] ?? 'annual');
+        }
+        $loan_product->update($updatePayload);
 
         if ($newName !== $oldName) {
             $renameAudit = '[Product rename '.now()->format('Y-m-d H:i').'] Product name changed from "'.$oldName.'" to "'.$newName.'" by '
