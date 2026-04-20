@@ -24,6 +24,7 @@ class PublicController extends Controller
     {
         $featuredUnits = PropertyUnit::query()
             ->publiclyListed()
+            ->whereHas('property')
             ->with(['property', 'publicImages'])
             ->orderByDesc('public_listing_published')
             ->orderByDesc('updated_at')
@@ -53,6 +54,7 @@ class PublicController extends Controller
     {
         $query = PropertyUnit::query()
             ->publiclyListed()
+            ->whereHas('property')
             ->with(['property', 'publicImages']);
 
         if ($request->filled('city')) {
@@ -141,6 +143,7 @@ class PublicController extends Controller
     {
         $unit = PropertyUnit::query()
             ->publiclyListed()
+            ->whereHas('property')
             ->whereKey($id)
             ->with(['property', 'publicImages', 'amenities'])
             ->firstOrFail();
@@ -155,6 +158,7 @@ class PublicController extends Controller
 
         $similarUnits = PropertyUnit::query()
             ->publiclyListed()
+            ->whereHas('property')
             ->where('property_id', $unit->property_id)
             ->whereKeyNot($unit->id)
             ->with(['property', 'publicImages'])
@@ -233,6 +237,7 @@ class PublicController extends Controller
         if ($propertyUnitId) {
             $applyUnit = PropertyUnit::query()
                 ->publiclyListed()
+                ->whereHas('property')
                 ->whereKey($propertyUnitId)
                 ->with('property')
                 ->first();

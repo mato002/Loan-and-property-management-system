@@ -232,10 +232,10 @@ class RevenueController extends Controller
 
             return [
                 $selector,
-                $i->tenant->name,
-                $i->unit->property->name.'/'.$i->unit->label,
-                $i->invoice_no,
-                $i->due_date->format('Y-m-d'),
+                (string) ($i->tenant?->name ?? '—'),
+                trim(((string) ($i->unit?->property?->name ?? 'Unknown property')).'/'.((string) ($i->unit?->label ?? 'Unknown unit')), '/'),
+                (string) ($i->invoice_no ?? '—'),
+                $i->due_date?->format('Y-m-d') ?? '—',
                 (string) $days,
                 PropertyMoney::kes($bal),
                 $lastContact,
@@ -741,11 +741,11 @@ class RevenueController extends Controller
 
         $rows = $invoices->getCollection()->map(fn (PmInvoice $i) => [
             'RCP-'.$i->id,
-            $i->invoice_no,
-            $i->tenant->name,
+            (string) ($i->invoice_no ?? '—'),
+            (string) ($i->tenant?->name ?? '—'),
             PropertyMoney::kes((float) $i->amount),
             'KES 0.00',
-            $i->updated_at->format('Y-m-d'),
+            $i->updated_at?->format('Y-m-d') ?? '—',
             'Stub',
             new HtmlString('<a href="'.route('property.revenue.receipts').'" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'),
         ])->all();

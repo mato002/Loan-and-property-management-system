@@ -37,8 +37,10 @@
                             @php
                                 $unitIds = $l->units->pluck('id')->implode(',');
                                 $rent = (float) ($l->monthly_rent ?? 0);
+                                $leaseTenantId = $l->pmTenant?->id;
+                                $leaseTenantName = $l->pmTenant?->name ?? 'Unknown tenant';
                             @endphp
-                            <option value="{{ $l->id }}" data-tenant-id="{{ $l->pmTenant->id }}" data-unit-ids="{{ $unitIds }}" data-rent="{{ $rent }}" @selected(old('pm_lease_id') == $l->id)>#{{ $l->id }} · {{ $l->pmTenant->name }}</option>
+                            <option value="{{ $l->id }}" data-tenant-id="{{ $leaseTenantId }}" data-unit-ids="{{ $unitIds }}" data-rent="{{ $rent }}" @selected(old('pm_lease_id') == $l->id)>#{{ $l->id }} · {{ $leaseTenantName }}</option>
                         @endforeach
                     </select>
                     @error('pm_lease_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -49,13 +51,13 @@
                         id="invoice-unit"
                         name="property_unit_id"
                         :required="true"
-                        :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id, 'attrs' => ['data-rent' => (string) ($u->rent_amount ?? 0), 'data-unit-label' => $u->label]])->all()"
+                        :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => (($u->property?->name ?? 'Unknown property').' / '.$u->label), 'selected' => (string) old('property_unit_id') === (string) $u->id, 'attrs' => ['data-rent' => (string) ($u->rent_amount ?? 0), 'data-unit-label' => $u->label]])->all()"
                         :create="[
                             'mode' => 'ajax',
                             'title' => 'Add unit',
                             'endpoint' => route('property.units.store_json'),
                             'fields' => [
-                                ['name' => 'property_id', 'label' => 'Property', 'required' => true, 'span' => '2', 'type' => 'select', 'placeholder' => 'Select property', 'options' => collect($units)->map(fn($u) => ['value' => $u->property_id, 'label' => $u->property->name])->unique('value')->values()->all()],
+                                ['name' => 'property_id', 'label' => 'Property', 'required' => true, 'span' => '2', 'type' => 'select', 'placeholder' => 'Select property', 'options' => collect($units)->map(fn($u) => ['value' => $u->property_id, 'label' => ($u->property?->name ?? 'Unknown property')])->unique('value')->values()->all()],
                                 ['name' => 'label', 'label' => 'Unit label', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. A1'],
                                 ['name' => 'unit_type', 'label' => 'Unit type', 'required' => false, 'type' => 'select', 'options' => [['value' => 'apartment', 'label' => 'Apartment'], ['value' => 'single_room', 'label' => 'Single room'], ['value' => 'bedsitter', 'label' => 'Bedsitter'], ['value' => 'studio', 'label' => 'Studio'], ['value' => 'bungalow', 'label' => 'Bungalow'], ['value' => 'maisonette', 'label' => 'Maisonette'], ['value' => 'villa', 'label' => 'Villa'], ['value' => 'townhouse', 'label' => 'Townhouse'], ['value' => 'commercial', 'label' => 'Commercial']]],
                                 ['name' => 'status', 'label' => 'Status', 'required' => false, 'type' => 'select', 'options' => [['value' => 'vacant', 'label' => 'Vacant'], ['value' => 'occupied', 'label' => 'Occupied'], ['value' => 'notice', 'label' => 'Notice']]],

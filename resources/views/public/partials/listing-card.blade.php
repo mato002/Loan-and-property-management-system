@@ -2,8 +2,9 @@
     // Keep a single image size across all public listing cards for visual consistency.
     $imageHeight = 'h-64';
     $thumb = $unit->primaryPublicImageUrl() ?? $placeholderImage;
-    $title = $unit->property->name.' — Unit '.$unit->label;
-    $addr = trim(collect([$unit->property->address_line, $unit->property->city])->filter()->implode(', ')) ?: '—';
+    $propertyName = (string) ($unit->property?->name ?? 'Property');
+    $title = $propertyName.' — Unit '.$unit->label;
+    $addr = trim(collect([$unit->property?->address_line, $unit->property?->city])->filter()->implode(', ')) ?: '—';
     $rentLabel = 'KES '.number_format((float) $unit->rent_amount, 0).' / mo';
     $unitTypeLabel = $unit->unitTypeLabel();
     $bedroomsLabel = $unit->bedroomsLabel();
