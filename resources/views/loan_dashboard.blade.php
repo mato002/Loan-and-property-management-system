@@ -51,16 +51,22 @@
         @endif
 
         {{-- Profile + compact summary strip --}}
-        <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start" x-data="{ smsTopupOpen: {{ ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('reference')) ? 'true' : 'false' }} }">
-            <div class="xl:col-span-4 w-full max-w-sm bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" x-data="{ smsTopupOpen: {{ ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('reference')) ? 'true' : 'false' }} }">
+            <div class="lg:col-span-4 w-full max-w-sm lg:max-w-none bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
                     <h2 class="text-2xl font-semibold text-slate-800">Welcome {{ $profileCard['name'] ?? 'User' }}</h2>
                 </div>
                 <div class="p-3 space-y-3">
                     <div class="grid grid-cols-3 gap-3 items-start">
                         <div class="col-span-1">
-                            <div class="aspect-square w-full max-w-[110px] overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                                <img src="https://placehold.co/140x140/e2e8f0/475569?text=Profile" alt="Profile photo" class="h-full w-full object-cover">
+                            <div class="aspect-square w-full max-w-[110px] overflow-hidden rounded-md border border-slate-200 bg-slate-100 flex items-center justify-center">
+                                @if (filled(auth()->user()?->profile_photo_url))
+                                    <img src="{{ auth()->user()->profile_photo_url }}" alt="Profile photo" class="h-full w-full object-cover">
+                                @else
+                                    <span class="text-slate-500 font-semibold text-lg">
+                                        {{ strtoupper(substr((string) (auth()->user()?->name ?? 'U'), 0, 1)) }}
+                                    </span>
+                                @endif
                             </div>
                         </div>
                         <div class="col-span-2">
@@ -134,30 +140,30 @@
                 </div>
             </div>
 
-            <div class="xl:col-span-8 grid grid-cols-2 lg:grid-cols-3 gap-3">
-                <div class="rounded-xl border border-slate-200 bg-white p-3">
+            <div class="lg:col-span-8 grid grid-cols-2 xl:grid-cols-3 gap-2.5">
+                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">Total Clients</p>
-                    <p class="mt-1 text-3xl font-bold text-slate-800 tabular-nums">{{ number_format((int) ($summaryStrip['total_clients'] ?? 0)) }}</p>
+                    <p class="mt-1 text-2xl font-bold text-slate-800 tabular-nums">{{ number_format((int) ($summaryStrip['total_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-3">
+                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">Active Clients</p>
-                    <p class="mt-1 text-3xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['active_clients'] ?? 0)) }}</p>
+                    <p class="mt-1 text-2xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['active_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-3">
+                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">Dormant Clients</p>
-                    <p class="mt-1 text-3xl font-bold text-rose-600 tabular-nums">{{ number_format((int) ($summaryStrip['dormant_clients'] ?? 0)) }}</p>
+                    <p class="mt-1 text-2xl font-bold text-rose-600 tabular-nums">{{ number_format((int) ($summaryStrip['dormant_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-3">
+                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">Performing Loans</p>
-                    <p class="mt-1 text-3xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
+                    <p class="mt-1 text-2xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
                 </div>
-                <div class="rounded-xl border border-rose-200 bg-rose-400 text-white p-3">
+                <div class="rounded-xl border border-rose-200 bg-rose-400 text-white p-2.5">
                     <p class="text-xs font-semibold uppercase">Loan Arrears (Ksh)</p>
-                    <p class="mt-1 text-3xl font-bold tabular-nums">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
+                    <p class="mt-1 text-2xl font-bold tabular-nums">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-3">
+                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">PAR %</p>
-                    <p class="mt-1 text-3xl font-bold text-slate-800 tabular-nums">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
+                    <p class="mt-1 text-2xl font-bold text-slate-800 tabular-nums">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
                 </div>
             </div>
         </div>
