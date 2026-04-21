@@ -70,7 +70,7 @@
                                 <td class="px-5 py-3 text-right tabular-nums font-medium text-slate-900">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600 capitalize">{{ $p->status }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $p->channel }}</td>
-                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $p->transaction_at->format('Y-m-d H:i') }}</td>
+                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ optional($p->transaction_at)->format('Y-m-d H:i') ?? '—' }}</td>
                             </tr>
                         @empty
                             <tr>

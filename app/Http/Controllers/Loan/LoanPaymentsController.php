@@ -7,6 +7,7 @@ use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
+use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Support\TabularExport;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
@@ -566,6 +567,12 @@ class LoanPaymentsController extends Controller
         ]);
         $this->assignReference($payment);
 
+        $request->user()?->notify(new LoanWorkflowNotification(
+            'Payment created',
+            'Payment '.$payment->reference.' was created in unposted queue.',
+            route('loan.payments.unposted')
+        ));
+
         return redirect()
             ->route('loan.payments.unposted')
             ->with('status', 'Payment '.$payment->reference.' created (unposted).');
@@ -624,6 +631,12 @@ class LoanPaymentsController extends Controller
             'created_by' => $request->user()->id,
         ]);
         $this->assignReference($payment);
+
+        $request->user()?->notify(new LoanWorkflowNotification(
+            'C2B reversal created',
+            'Reversal '.$payment->reference.' was recorded and awaits posting.',
+            route('loan.payments.c2b_reversals')
+        ));
 
         return redirect()
             ->route('loan.payments.c2b_reversals')
@@ -747,6 +760,12 @@ class LoanPaymentsController extends Controller
                 ->back()
                 ->withErrors(['accounting' => $e->getMessage()]);
         }
+
+        $request->user()?->notify(new LoanWorkflowNotification(
+            'Payment posted',
+            'Payment '.$loan_book_payment->reference.' was posted and processed successfully.',
+            route('loan.payments.processed')
+        ));
 
         return redirect()
             ->back()

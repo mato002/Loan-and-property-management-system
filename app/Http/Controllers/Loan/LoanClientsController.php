@@ -11,6 +11,8 @@ use App\Models\Employee;
 use App\Models\LoanBranch;
 use App\Models\LoanClient;
 use App\Models\LoanRegion;
+use App\Notifications\Loan\LoanWorkflowNotification;
+use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -250,7 +252,7 @@ class LoanClientsController extends Controller
             ->with('status', 'Lead converted to client.');
     }
 
-    public function transfer(): View
+    public function transfer(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         $clients = LoanClient::query()
             ->clients()
@@ -260,6 +262,13 @@ class LoanClientsController extends Controller
             ->get();
 
         $employees = $this->employeesForSelect();
+        $sourceOfficerCounts = LoanClient::query()
+            ->clients()
+            ->selectRaw('assigned_employee_id, COUNT(*) as c')
+            ->whereNotNull('assigned_employee_id')
+            ->whereIn('client_status', ['active', 'dormant'])
+            ->groupBy('assigned_employee_id')
+            ->pluck('c', 'assigned_employee_id');
 
         $recentTransfers = ClientTransfer::query()
             ->with(['loanClient', 'fromEmployee', 'toEmployee', 'transferredByUser'])
@@ -267,11 +276,98 @@ class LoanClientsController extends Controller
             ->limit(25)
             ->get();
 
-        return view('loan.clients.transfer', compact('clients', 'employees', 'recentTransfers'));
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            return TabularExport::stream(
+                'loan-client-transfers-'.now()->format('Ymd_His'),
+                ['Date', 'Client', 'Client Number', 'From Branch', 'To Branch', 'From Officer', 'To Officer', 'Transferred By', 'Reason'],
+                function () use ($recentTransfers) {
+                    foreach ($recentTransfers as $t) {
+                        yield [
+                            (string) optional($t->created_at)->format('Y-m-d H:i:s'),
+                            (string) ($t->loanClient?->full_name ?? ''),
+                            (string) ($t->loanClient?->client_number ?? ''),
+                            (string) ($t->from_branch ?? ''),
+                            (string) ($t->to_branch ?? ''),
+                            (string) ($t->fromEmployee?->full_name ?? ''),
+                            (string) ($t->toEmployee?->full_name ?? ''),
+                            (string) ($t->transferredByUser?->name ?? ''),
+                            (string) ($t->reason ?? ''),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $branchOptions = $this->branchOptions();
+
+        return view('loan.clients.transfer', compact('clients', 'employees', 'recentTransfers', 'sourceOfficerCounts', 'branchOptions'));
     }
 
     public function transferStore(Request $request): RedirectResponse
     {
+        $mode = strtolower(trim((string) $request->input('mode', 'single')));
+
+        if ($mode === 'bulk_active') {
+            $validated = $request->validate([
+                'from_employee_id' => ['required', 'exists:employees,id'],
+                'to_employee_id' => ['required', 'exists:employees,id', 'different:from_employee_id'],
+                'include_dormant' => ['nullable', 'boolean'],
+                'reason' => ['nullable', 'string', 'max:2000'],
+            ]);
+
+            $fromEmployeeId = (int) $validated['from_employee_id'];
+            $toEmployeeId = (int) $validated['to_employee_id'];
+            $includeDormant = (bool) ($validated['include_dormant'] ?? false);
+            $currentEmployeeId = $this->resolveLoanEmployeeId($request->user());
+
+            if (! $this->canAccessAllLoanData($request->user()) && ($currentEmployeeId === null || $fromEmployeeId !== (int) $currentEmployeeId)) {
+                return back()
+                    ->withErrors(['from_employee_id' => 'You can only transfer clients from your own portfolio.'])
+                    ->withInput();
+            }
+
+            $clientsQuery = LoanClient::query()
+                ->clients()
+                ->where('assigned_employee_id', $fromEmployeeId)
+                ->whereIn('client_status', $includeDormant ? ['active', 'dormant'] : ['active']);
+            $this->scopeByAssignedLoanClient($clientsQuery, $request->user());
+            $clients = $clientsQuery->get();
+
+            if ($clients->isEmpty()) {
+                return back()
+                    ->withErrors(['from_employee_id' => 'No matching clients found for the selected source officer and status filter.'])
+                    ->withInput();
+            }
+
+            foreach ($clients as $client) {
+                ClientTransfer::create([
+                    'loan_client_id' => $client->id,
+                    'from_branch' => $client->branch,
+                    'to_branch' => $client->branch,
+                    'from_employee_id' => $client->assigned_employee_id,
+                    'to_employee_id' => $toEmployeeId,
+                    'reason' => $validated['reason'] ?? ($includeDormant ? 'Bulk transfer (active + dormant clients).' : 'Bulk transfer (active clients).'),
+                    'transferred_by' => $request->user()->id,
+                ]);
+
+                $client->update([
+                    'assigned_employee_id' => $toEmployeeId,
+                ]);
+            }
+
+            $request->user()?->notify(new LoanWorkflowNotification(
+                'Bulk transfer completed',
+                $clients->count().' client(s) were transferred successfully.',
+                route('loan.clients.transfer')
+            ));
+
+            return redirect()
+                ->route('loan.clients.transfer')
+                ->with('status', 'Bulk transfer complete. '.$clients->count().' client(s) moved.');
+        }
+
         $validated = $request->validate([
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
             'to_branch' => ['nullable', 'string', 'max:120'],
@@ -300,24 +396,49 @@ class LoanClientsController extends Controller
             'assigned_employee_id' => $validated['to_employee_id'] ?? $client->assigned_employee_id,
         ]);
 
+        $request->user()?->notify(new LoanWorkflowNotification(
+            'Client transfer completed',
+            'Client '.$client->full_name.' was transferred successfully.',
+            route('loan.clients.transfer')
+        ));
+
         return redirect()
             ->route('loan.clients.transfer')
             ->with('status', 'Client transfer recorded and portfolio updated.');
     }
 
-    public function defaultGroups(): View
+    public function defaultGroups(Request $request): View
     {
+        $q = trim((string) $request->query('q', ''));
+
         $groups = DefaultClientGroup::query()
             ->withCount('loanClients')
+            ->when($q !== '', function ($builder) use ($q) {
+                $builder->where(function ($inner) use ($q) {
+                    $inner->where('name', 'like', '%'.$q.'%')
+                        ->orWhere('description', 'like', '%'.$q.'%');
+                });
+            })
             ->orderBy('name')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
-        return view('loan.clients.default-groups', compact('groups'));
+        return view('loan.clients.default-groups', compact('groups', 'q'));
     }
 
     public function defaultGroupsCreate(): View
     {
-        return view('loan.clients.default-groups-create');
+        $baseClientQuery = LoanClient::query()
+            ->clients()
+            ->select(['id', 'client_number', 'first_name', 'last_name', 'phone', 'id_number'])
+            ->orderBy('last_name')
+            ->orderBy('first_name');
+        $this->scopeLoanClientsToUser($baseClientQuery, auth()->user());
+
+        return view('loan.clients.default-groups-create', [
+            'clientOptions' => (clone $baseClientQuery)->limit(5000)->get(),
+            'totalClientCount' => (clone $baseClientQuery)->count(),
+        ]);
     }
 
     public function defaultGroupsStore(Request $request): RedirectResponse
@@ -325,20 +446,91 @@ class LoanClientsController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'description' => ['nullable', 'string', 'max:2000'],
+            'select_all_clients' => ['nullable', 'boolean'],
+            'loan_client_ids' => ['nullable', 'array'],
+            'loan_client_ids.*' => ['integer', 'exists:loan_clients,id'],
         ]);
 
         $group = DefaultClientGroup::create($validated);
+
+        $selectAll = (bool) ($validated['select_all_clients'] ?? false);
+        $selectedIds = collect($validated['loan_client_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($selectAll) {
+            $attachQuery = LoanClient::query()->clients()->select('id');
+            $this->scopeLoanClientsToUser($attachQuery, $request->user());
+            $selectedIds = $attachQuery->pluck('id');
+        }
+        if ($selectedIds->isNotEmpty()) {
+            $group->loanClients()->syncWithoutDetaching($selectedIds->all());
+        }
 
         return redirect()
             ->route('loan.clients.default_groups.show', $group)
             ->with('status', 'Group created. Add members below.');
     }
 
-    public function defaultGroupsShow(DefaultClientGroup $default_client_group): View
+    public function defaultGroupsShow(Request $request, DefaultClientGroup $default_client_group): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $default_client_group->load([
-            'loanClients' => fn ($q) => $q->clients()->orderBy('last_name')->orderBy('first_name'),
-        ]);
+        $q = trim((string) $request->query('q', ''));
+        $employeeId = (int) $request->query('employee_id', 0);
+
+        $memberQuery = $default_client_group->loanClients()
+            ->clients()
+            ->with('assignedEmployee')
+            ->withSum(['loanBookLoans as total_balance' => function ($loan) {
+                $loan->whereIn('status', [
+                    \App\Models\LoanBookLoan::STATUS_ACTIVE,
+                    \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+                    \App\Models\LoanBookLoan::STATUS_RESTRUCTURED,
+                ]);
+            }], 'balance')
+            ->withMax(['loanBookLoans as max_dpd' => function ($loan) {
+                $loan->whereIn('status', [
+                    \App\Models\LoanBookLoan::STATUS_ACTIVE,
+                    \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+                    \App\Models\LoanBookLoan::STATUS_RESTRUCTURED,
+                ]);
+            }], 'dpd')
+            ->when($q !== '', function ($builder) use ($q) {
+                $builder->where(function ($inner) use ($q) {
+                    $inner->where('client_number', 'like', '%'.$q.'%')
+                        ->orWhere('first_name', 'like', '%'.$q.'%')
+                        ->orWhere('last_name', 'like', '%'.$q.'%')
+                        ->orWhere('phone', 'like', '%'.$q.'%')
+                        ->orWhere('id_number', 'like', '%'.$q.'%');
+                });
+            })
+            ->when($employeeId > 0, fn ($builder) => $builder->where('assigned_employee_id', $employeeId))
+            ->orderBy('last_name')
+            ->orderBy('first_name');
+
+        $members = $memberQuery->paginate(30)->withQueryString();
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $memberQuery)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'loan-client-group-members-'.now()->format('Ymd_His'),
+                ['Group', 'Client', 'Contact', 'ID Number', 'Loan Officer', 'Balance', 'Days'],
+                function () use ($rows, $default_client_group) {
+                    foreach ($rows as $client) {
+                        yield [
+                            (string) $default_client_group->name,
+                            (string) $client->full_name,
+                            (string) ($client->phone ?? ''),
+                            (string) ($client->id_number ?? ''),
+                            (string) ($client->assignedEmployee?->full_name ?? ''),
+                            number_format((float) ($client->total_balance ?? 0), 2, '.', ''),
+                            (string) ((int) ($client->max_dpd ?? 0)),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $default_client_group->loadCount('loanClients');
 
         $availableClients = LoanClient::query()
             ->clients()
@@ -347,12 +539,38 @@ class LoanClientsController extends Controller
             ->orderBy('first_name')
             ->get();
 
-        return view('loan.clients.default-groups-show', compact('default_client_group', 'availableClients'));
+        $groups = DefaultClientGroup::query()->orderBy('name')->get(['id', 'name']);
+        $employees = $this->employeesForSelect();
+
+        return view('loan.clients.default-groups-show', compact(
+            'default_client_group',
+            'availableClients',
+            'groups',
+            'employees',
+            'members',
+            'q',
+            'employeeId'
+        ));
     }
 
     public function defaultGroupsEdit(DefaultClientGroup $default_client_group): View
     {
-        return view('loan.clients.default-groups-edit', compact('default_client_group'));
+        $default_client_group->load('loanClients:id');
+        $selectedIds = $default_client_group->loanClients->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+        $baseClientQuery = LoanClient::query()
+            ->clients()
+            ->select(['id', 'client_number', 'first_name', 'last_name', 'phone', 'id_number'])
+            ->orderBy('last_name')
+            ->orderBy('first_name');
+        $this->scopeLoanClientsToUser($baseClientQuery, auth()->user());
+
+        return view('loan.clients.default-groups-edit', [
+            'default_client_group' => $default_client_group,
+            'clientOptions' => (clone $baseClientQuery)->limit(5000)->get(),
+            'totalClientCount' => (clone $baseClientQuery)->count(),
+            'selectedClientIds' => $selectedIds,
+        ]);
     }
 
     public function defaultGroupsUpdate(Request $request, DefaultClientGroup $default_client_group): RedirectResponse
@@ -360,9 +578,23 @@ class LoanClientsController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'description' => ['nullable', 'string', 'max:2000'],
+            'select_all_clients' => ['nullable', 'boolean'],
+            'loan_client_ids' => ['nullable', 'array'],
+            'loan_client_ids.*' => ['integer', 'exists:loan_clients,id'],
         ]);
 
         $default_client_group->update($validated);
+
+        $selectAll = (bool) ($validated['select_all_clients'] ?? false);
+        $selectedIds = collect($validated['loan_client_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        if ($selectAll) {
+            $attachQuery = LoanClient::query()->clients()->select('id');
+            $this->scopeLoanClientsToUser($attachQuery, $request->user());
+            $selectedIds = $attachQuery->pluck('id');
+        }
+        if ($selectedIds->isNotEmpty()) {
+            $default_client_group->loanClients()->sync($selectedIds->all());
+        }
 
         return redirect()
             ->route('loan.clients.default_groups.show', $default_client_group)
@@ -401,20 +633,109 @@ class LoanClientsController extends Controller
         return back()->with('status', 'Member removed from group.');
     }
 
-    public function interactions(Request $request): View
+    public function interactions(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $q = ClientInteraction::query()
-            ->with(['loanClient', 'user'])
+        $baseQuery = ClientInteraction::query()
+            ->with(['loanClient.assignedEmployee', 'user'])
             ->orderByDesc('interacted_at');
-        $this->scopeByAssignedLoanClient($q, $request->user());
+        $this->scopeByAssignedLoanClient($baseQuery, $request->user());
 
-        if ($type = trim((string) $request->get('type'))) {
-            $q->where('interaction_type', $type);
+        $type = trim((string) $request->get('type', ''));
+        $from = trim((string) $request->get('from', ''));
+        $to = trim((string) $request->get('to', ''));
+        $sourceUserId = (int) $request->get('source_user_id', 0);
+        $search = trim((string) $request->get('q', ''));
+
+        if ($type !== '') {
+            $baseQuery->where('interaction_type', $type);
+        }
+        if ($from !== '') {
+            $baseQuery->whereDate('interacted_at', '>=', $from);
+        }
+        if ($to !== '') {
+            $baseQuery->whereDate('interacted_at', '<=', $to);
+        }
+        if ($sourceUserId > 0) {
+            $baseQuery->where('user_id', $sourceUserId);
+        }
+        if ($search !== '') {
+            $baseQuery->whereHas('loanClient', function ($clientQ) use ($search) {
+                $clientQ->where('client_number', 'like', '%'.$search.'%')
+                    ->orWhere('first_name', 'like', '%'.$search.'%')
+                    ->orWhere('last_name', 'like', '%'.$search.'%')
+                    ->orWhere('phone', 'like', '%'.$search.'%');
+            });
+        }
+
+        // Show one row per client: the latest interaction after applying filters.
+        $latestPerClientIds = (clone $baseQuery)
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('loan_client_id');
+        $q = ClientInteraction::query()
+            ->with(['loanClient.assignedEmployee', 'user'])
+            ->whereIn('id', $latestPerClientIds)
+            ->orderByDesc('interacted_at');
+
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $q)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'loan-client-interactions-'.now()->format('Ymd_His'),
+                ['Client', 'Loan Officer', 'Comment', 'Source', 'Client Status', 'Type', 'Interaction Date'],
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield [
+                            (string) ($row->loanClient?->full_name ?? ''),
+                            (string) ($row->loanClient?->assignedEmployee?->full_name ?? ''),
+                            (string) ($row->notes ?: ($row->subject ?? '')),
+                            (string) ($row->user?->name ?? ''),
+                            ucfirst((string) ($row->loanClient?->client_status ?? 'n/a')),
+                            ucfirst((string) ($row->interaction_type ?? '')),
+                            (string) optional($row->interacted_at)->format('Y-m-d H:i:s'),
+                        ];
+                    }
+                },
+                $export
+            );
         }
 
         $interactions = $q->paginate(25)->withQueryString();
+        $sourceUsers = ClientInteraction::query()
+            ->select('user_id')
+            ->whereNotNull('user_id')
+            ->distinct()
+            ->with('user:id,name')
+            ->orderBy('user_id')
+            ->get()
+            ->map(fn (ClientInteraction $row) => $row->user)
+            ->filter()
+            ->unique('id')
+            ->values();
 
-        return view('loan.clients.interactions', compact('interactions'));
+        return view('loan.clients.interactions', compact(
+            'interactions',
+            'sourceUsers',
+            'type',
+            'from',
+            'to',
+            'sourceUserId',
+            'search'
+        ));
+    }
+
+    public function interactionsShow(ClientInteraction $client_interaction): View
+    {
+        $client_interaction->load(['loanClient.assignedEmployee', 'user']);
+        if (! $client_interaction->loanClient) {
+            abort(404);
+        }
+
+        $this->ensureLoanClientAccessible($client_interaction->loanClient);
+
+        return view('loan.clients.interactions-show', [
+            'interaction' => $client_interaction,
+        ]);
     }
 
     public function interactionsCreate(): View
@@ -448,6 +769,15 @@ class LoanClientsController extends Controller
             'interacted_at' => $validated['interacted_at'],
         ]);
 
+        $client = LoanClient::query()->find($validated['loan_client_id']);
+        if ($client) {
+            $request->user()?->notify(new LoanWorkflowNotification(
+                'Interaction posted',
+                'Interaction logged for '.$client->full_name.'.',
+                route('loan.clients.interactions.for_client.create', $client)
+            ));
+        }
+
         return redirect()
             ->route('loan.clients.interactions')
             ->with('status', 'Interaction logged.');
@@ -457,7 +787,14 @@ class LoanClientsController extends Controller
     {
         $this->ensureLoanClientAccessible($loan_client);
 
-        return view('loan.clients.interaction-for-client', compact('loan_client'));
+        $interactions = ClientInteraction::query()
+            ->with('user')
+            ->where('loan_client_id', $loan_client->id)
+            ->orderByDesc('interacted_at')
+            ->paginate(30)
+            ->withQueryString();
+
+        return view('loan.clients.interaction-for-client', compact('loan_client', 'interactions'));
     }
 
     public function interactionStoreForClient(Request $request, LoanClient $loan_client): RedirectResponse
@@ -465,23 +802,29 @@ class LoanClientsController extends Controller
         $this->ensureLoanClientAccessible($loan_client);
 
         $validated = $request->validate([
-            'interaction_type' => ['required', 'string', 'max:40'],
+            'interaction_type' => ['nullable', 'string', 'max:40'],
             'subject' => ['nullable', 'string', 'max:255'],
-            'notes' => ['nullable', 'string', 'max:5000'],
-            'interacted_at' => ['required', 'date'],
+            'notes' => ['required', 'string', 'max:5000'],
+            'interacted_at' => ['nullable', 'date'],
         ]);
 
         ClientInteraction::create([
             'loan_client_id' => $loan_client->id,
             'user_id' => $request->user()->id,
-            'interaction_type' => $validated['interaction_type'],
+            'interaction_type' => $validated['interaction_type'] ?? 'other',
             'subject' => $validated['subject'] ?? null,
             'notes' => $validated['notes'] ?? null,
-            'interacted_at' => $validated['interacted_at'],
+            'interacted_at' => $validated['interacted_at'] ?? now(),
         ]);
 
+        $request->user()?->notify(new LoanWorkflowNotification(
+            'Interaction posted',
+            'New comment posted for '.$loan_client->full_name.'.',
+            route('loan.clients.interactions.for_client.create', $loan_client)
+        ));
+
         return redirect()
-            ->route('loan.clients.show', $loan_client)
+            ->route('loan.clients.interactions.for_client.create', $loan_client)
             ->with('status', 'Interaction logged.');
     }
 

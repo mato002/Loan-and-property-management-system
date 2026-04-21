@@ -185,7 +185,7 @@
                             <td class="px-4 py-3">{{ $displayTenantName }}</td>
                             <td class="px-4 py-3 text-right">{{ number_format((float) $item->amount, 2) }}</td>
                             <td class="px-4 py-3">{{ $displayAccount }}</td>
-                            <td class="px-4 py-3">{{ $item->phone ?: '—' }}</td>
+                            <td class="px-4 py-3"><x-phone-link :value="$item->phone" /></td>
                             <td class="px-4 py-3">{{ ucfirst($item->status) }}</td>
                         </tr>
                     @empty

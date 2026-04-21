@@ -16,16 +16,21 @@
     :class="[
         sidebarOpen ? 'translate-x-0' : '-translate-x-full max-md:pointer-events-none',
         sidebarDesktopOpen
-            ? 'md:w-72 md:max-w-72 md:opacity-100 md:border-r md:border-[#264040]'
-            : 'md:w-0 md:max-w-0 md:opacity-0 md:border-r-0 md:pointer-events-none'
+            ? 'md:w-[18rem] md:max-w-[18rem] md:min-w-[18rem] md:opacity-100 md:border-r md:border-[#264040]'
+            : 'md:w-[5.5rem] md:max-w-[5.5rem] md:min-w-[5.5rem] md:opacity-100 md:border-r md:border-[#264040]'
     ]"
+    :style="window.matchMedia('(min-width: 768px)').matches
+        ? (sidebarDesktopOpen
+            ? 'width: 18rem; min-width: 18rem; max-width: 18rem;'
+            : 'width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem;')
+        : ''"
     class="fixed inset-y-0 left-0 z-50 w-[280px] sm:w-[288px] bg-[#2f4f4f] border-r border-[#264040] flex flex-col min-h-0 transition-all duration-300 md:relative md:translate-x-0 overflow-y-auto md:overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none"
 >
     <!-- Header -->
-    <div class="h-16 flex items-center justify-between px-6 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md">
-        <a href="{{ route('dashboard') }}" class="text-xl font-bold text-white flex items-center gap-3 min-w-0">
+    <div class="h-16 flex items-center justify-between px-4 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md">
+        <a href="{{ route('dashboard') }}" class="text-xl font-bold text-white flex items-center gap-3 min-w-0" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:w-full md:gap-0'">
             @if (trim((string) $loanLogoUrl) !== '')
-                <img src="{{ $loanLogoUrl }}" alt="Logo" class="h-8 w-auto max-w-[130px] object-contain rounded bg-white/90 p-1 shadow-lg">
+                <img src="{{ $loanLogoUrl }}" alt="Logo" class="rounded bg-white/90 p-1 shadow-lg object-contain" :class="sidebarDesktopOpen ? 'h-8 w-auto max-w-[130px]' : 'h-8 w-8'">
             @else
                 <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                     <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -33,35 +38,47 @@
                     </svg>
                 </div>
             @endif
-            <span class="truncate">{{ $loanAppName }}</span>
+            <span x-show="sidebarDesktopOpen" x-cloak class="truncate">{{ $loanAppName }}</span>
         </a>
         <button @click="sidebarOpen = false" class="md:hidden p-2 rounded-md text-[#8db1af] hover:text-white hover:bg-[#406866] transition-colors">
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
             </svg>
         </button>
+        <button
+            type="button"
+            @click="toggleDesktopSidebar()"
+            class="hidden md:inline-flex p-2 rounded-md text-[#8db1af] hover:text-white hover:bg-[#406866] transition-colors ml-1"
+            :aria-label="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+            :title="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+        >
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path x-show="sidebarDesktopOpen" stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                <path x-show="!sidebarDesktopOpen" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+        </button>
     </div>
 
     <!-- Navigation List -->
-    <nav class="flex-1 min-h-0 overflow-y-auto py-6 px-4 space-y-6 custom-scrollbar" @click="if (window.innerWidth < 768 && $event.target.closest('a')) sidebarOpen = false">
+    <nav class="flex-1 min-h-0 overflow-y-auto py-6 px-2 md:px-3 space-y-4 custom-scrollbar" @click="if (window.innerWidth < 768 && $event.target.closest('a')) sidebarOpen = false">
 
         <!-- Dashboard Link -->
         <div>
-            <a href="{{ route('dashboard') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-white/10 hover:text-white transition-all font-medium group">
+            <a href="{{ route('dashboard') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-white/10 hover:text-white transition-all font-medium group" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Dashboard'">
                 <svg class="w-5 h-5 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
                 </svg>
-                Dashboard
+                <span x-show="sidebarDesktopOpen" x-cloak>Dashboard</span>
             </a>
         </div>
 
         @if (auth()->check() && (auth()->user()->is_super_admin ?? false))
             <div>
-                <a href="{{ route('superadmin.users.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-white/10 hover:text-white transition-all font-medium group">
+                <a href="{{ route('superadmin.users.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-white/10 hover:text-white transition-all font-medium group" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Super Admin'">
                     <svg class="w-5 h-5 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m2 10H7a2 2 0 01-2-2V6a2 2 0 012-2h6l4 4v12a2 2 0 01-2 2z" />
                     </svg>
-                    Super Admin
+                    <span x-show="sidebarDesktopOpen" x-cloak>Super Admin</span>
                 </a>
             </div>
         @endif
@@ -243,18 +260,18 @@
                 ($groupName === 'My Account' && (request()->routeIs('loan.account.*') || request()->routeIs('profile.*'))) ||
                 ($groupName === 'System & Help' && request()->routeIs('loan.system.*'))
             ) ? 'true' : 'false' }} }">
-                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white transition-all group">
-                    <div class="flex items-center gap-3 w-4/5">
+                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white transition-all group" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : @js($groupName)">
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">
                         <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             {!! $data['icon'] !!}
                         </svg>
-                        <span class="font-medium truncate text-left">{{ $groupName }}</span>
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-medium truncate text-left">{{ $groupName }}</span>
                     </div>
-                    <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg x-show="sidebarDesktopOpen" x-cloak :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                     </svg>
                 </button>
-                <div x-show="open" 
+                <div x-show="sidebarDesktopOpen && open" 
                      x-transition:enter="transition ease-out duration-200"
                      x-transition:enter-start="opacity-0 -translate-y-2"
                      x-transition:enter-end="opacity-100 translate-y-0"
@@ -315,12 +332,12 @@
             <div class="pt-4 mt-4 border-t border-[#406866]/40">
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
-                    <button type="submit" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-all group">
-                        <div class="flex items-center gap-3 w-4/5">
+                    <button type="submit" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-all group" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Logout'">
+                        <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">
                             <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-red-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                             </svg>
-                            <span class="font-medium truncate text-left">Logout</span>
+                            <span x-show="sidebarDesktopOpen" x-cloak class="font-medium truncate text-left">Logout</span>
                         </div>
                     </button>
                 </form>
@@ -329,16 +346,18 @@
     </nav>
 
     <!-- User Profile Snippet -->
-    <div class="p-4 border-t border-slate-800 bg-slate-950/30 flex-shrink-0">
-        <a href="{{ route('profile.edit') }}" class="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-800 transition-colors">
+    <div class="p-3 border-t border-slate-800 bg-slate-950/30 flex-shrink-0">
+        <a href="{{ route('profile.edit') }}" class="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-800 transition-colors" :class="sidebarDesktopOpen ? '' : 'md:justify-center'" :title="sidebarDesktopOpen ? '' : 'Profile'">
             <div class="w-10 h-10 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold overflow-hidden flex-shrink-0">
-                @if(Auth::check() && Auth::user()->name)
+                @if(Auth::check() && filled(Auth::user()->profile_photo_url))
+                    <img src="{{ Auth::user()->profile_photo_url }}" alt="Profile image" class="h-full w-full object-cover">
+                @elseif(Auth::check() && Auth::user()->name)
                     {{ substr(Auth::user()->name, 0, 1) }}
                 @else
                     U
                 @endif
             </div>
-            <div class="flex flex-col overflow-hidden min-w-0">
+            <div x-show="sidebarDesktopOpen" x-cloak class="flex flex-col overflow-hidden min-w-0">
                 <span class="text-sm font-medium text-white truncate">{{ Auth::user()->name ?? 'Administrator' }}</span>
                 <span class="text-xs text-slate-400 truncate">{{ Auth::user()->email ?? 'admin@propertyloansystem' }}</span>
             </div>

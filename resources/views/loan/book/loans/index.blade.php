@@ -98,33 +98,82 @@
             </a>
         </div>
 
-        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100 flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center">
+        <div
+            class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden"
+            x-data="{
+                columnMenuOpen: false,
+                cols: {
+                    loanNo: true,
+                    client: true,
+                    contact: true,
+                    officer: true,
+                    disbursement: true,
+                    product: true,
+                    loan: true,
+                    toPay: true,
+                    paid: true,
+                    percent: true,
+                    balance: true,
+                    dpd: true,
+                    status: true,
+                    maturity: true,
+                    actions: true
+                }
+            }"
+        >
+            <div class="px-5 py-4 border-b border-slate-100 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start">
                 <div>
                     <h2 class="text-sm font-semibold text-slate-700">Loan register</h2>
                     <p class="text-xs text-slate-500 mt-0.5">Progress uses posted repayments only.</p>
                 </div>
-                <p class="text-xs text-slate-500">{{ $loans->total() }} account(s)</p>
+                <div class="flex items-center gap-2 shrink-0">
+                    <div class="relative" @click.outside="columnMenuOpen = false">
+                        <button type="button" @click="columnMenuOpen = !columnMenuOpen" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                            Columns
+                        </button>
+                        <div x-show="columnMenuOpen" x-cloak class="absolute right-0 mt-2 z-20 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Show / hide columns</p>
+                            <div class="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.loanNo" class="rounded border-slate-300">Loan #</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.client" class="rounded border-slate-300">Client</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.contact" class="rounded border-slate-300">Contact</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.officer" class="rounded border-slate-300">Loan officer</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.disbursement" class="rounded border-slate-300">Disbursement</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.product" class="rounded border-slate-300">Product</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.loan" class="rounded border-slate-300">Loan</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.toPay" class="rounded border-slate-300">To-pay</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.paid" class="rounded border-slate-300">Paid</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.percent" class="rounded border-slate-300">Percent</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.balance" class="rounded border-slate-300">Balance</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.dpd" class="rounded border-slate-300">DPD</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.status" class="rounded border-slate-300">Status</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.maturity" class="rounded border-slate-300">Maturity</label>
+                                <label class="text-xs text-slate-700 inline-flex items-center gap-2"><input type="checkbox" x-model="cols.actions" class="rounded border-slate-300">Actions</label>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-500">{{ $loans->total() }} account(s)</p>
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm">
                     <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
-                            <th class="px-5 py-3">Loan #</th>
-                            <th class="px-5 py-3">Client</th>
-                            <th class="px-5 py-3">Contact</th>
-                            <th class="px-5 py-3">Loan officer</th>
-                            <th class="px-5 py-3">Disbursement</th>
-                            <th class="px-5 py-3">Product</th>
-                            <th class="px-5 py-3 text-right">Loan</th>
-                            <th class="px-5 py-3 text-right">To-pay</th>
-                            <th class="px-5 py-3 text-right">Paid</th>
-                            <th class="px-5 py-3">Percent</th>
-                            <th class="px-5 py-3 text-right">Balance</th>
-                            <th class="px-5 py-3">DPD</th>
-                            <th class="px-5 py-3">Status</th>
-                            <th class="px-5 py-3">Maturity</th>
-                            <th class="px-5 py-3 text-right">Actions</th>
+                            <th x-show="cols.loanNo" class="px-5 py-3">Loan #</th>
+                            <th x-show="cols.client" class="px-5 py-3">Client</th>
+                            <th x-show="cols.contact" class="px-5 py-3">Contact</th>
+                            <th x-show="cols.officer" class="px-5 py-3">Loan officer</th>
+                            <th x-show="cols.disbursement" class="px-5 py-3">Disbursement</th>
+                            <th x-show="cols.product" class="px-5 py-3">Product</th>
+                            <th x-show="cols.loan" class="px-5 py-3 text-right">Loan</th>
+                            <th x-show="cols.toPay" class="px-5 py-3 text-right">To-pay</th>
+                            <th x-show="cols.paid" class="px-5 py-3 text-right">Paid</th>
+                            <th x-show="cols.percent" class="px-5 py-3">Percent</th>
+                            <th x-show="cols.balance" class="px-5 py-3 text-right">Balance</th>
+                            <th x-show="cols.dpd" class="px-5 py-3">DPD</th>
+                            <th x-show="cols.status" class="px-5 py-3">Status</th>
+                            <th x-show="cols.maturity" class="px-5 py-3">Maturity</th>
+                            <th x-show="cols.actions" class="px-5 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
@@ -136,7 +185,7 @@
                                 $remaining = max(0, $balance);
                                 $totalRepayable = $paid + $remaining;
                                 $progress = $totalRepayable > 0.00001 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
-                                $officerName = trim((string) ($loan->loanClient?->assignedEmployee?->name ?? ''));
+                                $officerName = trim((string) ($loan->loanClient?->assignedEmployee?->full_name ?? ''));
                                 $statusClasses = match ($loan->status) {
                                     \App\Models\LoanBookLoan::STATUS_ACTIVE => 'bg-emerald-100 text-emerald-700',
                                     \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT => 'bg-amber-100 text-amber-700',
@@ -147,27 +196,27 @@
                                 };
                             @endphp
                             <tr class="hover:bg-slate-50/80">
-                                <td class="px-5 py-3 font-mono text-xs text-indigo-600 font-medium">{{ $loan->loan_number }}</td>
-                                <td class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient->full_name ?? 'Client record missing' }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $loan->loanClient?->phone ?: '—' }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $officerName !== '' ? $officerName : '—' }}</td>
-                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $loan->disbursed_at?->format('d-m-Y') ?? '—' }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $loan->product_name }}</td>
-                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format((float) $loan->principal, 2) }}</td>
-                                <td class="px-5 py-3 text-right tabular-nums font-semibold text-slate-800">{{ number_format($totalRepayable, 2) }}</td>
-                                <td class="px-5 py-3 text-right tabular-nums text-emerald-700">
+                                <td x-show="cols.loanNo" class="px-5 py-3 font-mono text-xs text-indigo-600 font-medium">{{ $loan->loan_number }}</td>
+                                <td x-show="cols.client" class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient?->full_name ?? 'Client record missing' }}</td>
+                                <td x-show="cols.contact" class="px-5 py-3 text-slate-600"><x-phone-link :value="$loan->loanClient?->phone" /></td>
+                                <td x-show="cols.officer" class="px-5 py-3 text-slate-600">{{ $officerName !== '' ? $officerName : '—' }}</td>
+                                <td x-show="cols.disbursement" class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $loan->disbursed_at?->format('d-m-Y') ?? '—' }}</td>
+                                <td x-show="cols.product" class="px-5 py-3 text-slate-600">{{ $loan->product_name }}</td>
+                                <td x-show="cols.loan" class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format((float) $loan->principal, 2) }}</td>
+                                <td x-show="cols.toPay" class="px-5 py-3 text-right tabular-nums font-semibold text-slate-800">{{ number_format($totalRepayable, 2) }}</td>
+                                <td x-show="cols.paid" class="px-5 py-3 text-right tabular-nums text-emerald-700">
                                     <span class="font-semibold">{{ number_format($paid, 2) }}</span>
                                 </td>
-                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ number_format($progress, 1) }}%</td>
-                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format($remaining, 2) }}</td>
-                                <td class="px-5 py-3 tabular-nums {{ $loan->dpd > 0 ? 'text-red-600 font-semibold' : 'text-slate-600' }}">{{ $loan->dpd }}</td>
-                                <td class="px-5 py-3">
+                                <td x-show="cols.percent" class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ number_format($progress, 1) }}%</td>
+                                <td x-show="cols.balance" class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format($remaining, 2) }}</td>
+                                <td x-show="cols.dpd" class="px-5 py-3 tabular-nums {{ $loan->dpd > 0 ? 'text-red-600 font-semibold' : 'text-slate-600' }}">{{ $loan->dpd }}</td>
+                                <td x-show="cols.status" class="px-5 py-3">
                                     <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold {{ $statusClasses }}">
                                         {{ str_replace('_', ' ', $loan->status) }}
                                     </span>
                                 </td>
-                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $loan->maturity_date?->format('d-m-Y') ?? '—' }}</td>
-                                <td class="px-5 py-3 text-right whitespace-nowrap">
+                                <td x-show="cols.maturity" class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $loan->maturity_date?->format('d-m-Y') ?? '—' }}</td>
+                                <td x-show="cols.actions" class="px-5 py-3 text-right whitespace-nowrap">
                                     <details class="relative inline-block text-left">
                                         <summary class="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
                                             Actions

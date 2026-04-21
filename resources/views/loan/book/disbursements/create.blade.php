@@ -20,7 +20,7 @@
                     <select id="loan_book_loan_id" name="loan_book_loan_id" required class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="">Select…</option>
                         @foreach ($loans as $l)
-                            <option value="{{ $l->id }}" @selected((string) old('loan_book_loan_id', request()->query('loan_book_loan_id', '')) === (string) $l->id)>{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
+                            <option value="{{ $l->id }}" @selected((string) old('loan_book_loan_id', request()->query('loan_book_loan_id', '')) === (string) $l->id)>{{ $l->loan_number }} · {{ $l->loanClient?->full_name ?? '—' }}</option>
                         @endforeach
                     </select>
                     @error('loan_book_loan_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -78,7 +78,7 @@
             (string) $loan->id => [
                 'id' => (int) $loan->id,
                 'loan_number' => (string) $loan->loan_number,
-                'client_name' => (string) ($loan->loanClient->full_name ?? ''),
+                'client_name' => (string) ($loan->loanClient?->full_name ?? ''),
                 'balance' => (float) ($loan->balance ?? 0),
                 'principal' => (float) ($loan->principal ?? 0),
             ],

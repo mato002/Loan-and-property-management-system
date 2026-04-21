@@ -9,6 +9,8 @@
             $stage = (string) $application->stage;
             $hasLoan = (bool) $application->loan;
             $canBookLoan = in_array($stage, [\App\Models\LoanBookApplication::STAGE_APPROVED, \App\Models\LoanBookApplication::STAGE_DISBURSED], true) && ! $hasLoan;
+            $productMeta = ($productMetaByName ?? [])[$application->product_name] ?? null;
+            $chargesSummary = trim((string) ($productMeta['charges_summary'] ?? ''));
         @endphp
 
         <div class="mb-4 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-5 shadow-sm">
@@ -44,8 +46,8 @@
                 <dl class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
                     <div><dt class="text-slate-500">Reference</dt><dd class="font-medium text-slate-900">{{ $application->reference }}</dd></div>
                     <div><dt class="text-slate-500">Stage</dt><dd class="font-medium text-slate-900">{{ str_replace('_', ' ', $application->stage) }}</dd></div>
-                    <div><dt class="text-slate-500">Client</dt><dd class="font-medium text-slate-900">{{ $application->loanClient->full_name ?? '—' }}</dd></div>
-                    <div><dt class="text-slate-500">Client #</dt><dd class="font-medium text-slate-900">{{ $application->loanClient->client_number ?? '—' }}</dd></div>
+                    <div><dt class="text-slate-500">Client</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->full_name ?? '—' }}</dd></div>
+                    <div><dt class="text-slate-500">Client #</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->client_number ?? '—' }}</dd></div>
                     <div><dt class="text-slate-500">Product</dt><dd class="font-medium text-slate-900">{{ $application->product_name }}</dd></div>
                     <div><dt class="text-slate-500">Term</dt><dd class="font-medium text-slate-900">{{ $application->term_value ?? $application->term_months }} {{ $application->term_unit ?? 'monthly' }}</dd></div>
                     <div><dt class="text-slate-500">Term (months eq.)</dt><dd class="font-medium text-slate-900">{{ $application->term_months }}</dd></div>
@@ -54,6 +56,11 @@
                     <div><dt class="text-slate-500">Branch</dt><dd class="font-medium text-slate-900">{{ $application->branch ?: '—' }}</dd></div>
                     <div><dt class="text-slate-500">Submission source</dt><dd class="font-medium text-slate-900">{{ $application->submission_source ?: '—' }}</dd></div>
                     <div><dt class="text-slate-500">Submitted at</dt><dd class="font-medium text-slate-900">{{ optional($application->submitted_at)->format('Y-m-d H:i') ?: '—' }}</dd></div>
+                    <div><dt class="text-slate-500">Approved by</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->assignedEmployee?->full_name ?? 'None' }}</dd></div>
+                    <div><dt class="text-slate-500">Loan runs</dt><dd class="font-medium text-slate-900">0</dd></div>
+                    <div class="sm:col-span-2"><dt class="text-slate-500">Charges</dt><dd class="font-medium text-slate-900">{{ $chargesSummary !== '' ? $chargesSummary : '—' }}</dd></div>
+                    <div class="sm:col-span-2"><dt class="text-slate-500">Deductions</dt><dd class="font-medium text-slate-900">Checkoff(0), Prepayment(0)</dd></div>
+                    <div><dt class="text-slate-500">Attached media</dt><dd class="font-medium text-slate-900">—</dd></div>
                 </dl>
                 <div class="mt-4 grid grid-cols-1 gap-3">
                     <div>
@@ -72,13 +79,15 @@
                             <h3 class="text-sm font-semibold text-slate-800">Loan department form</h3>
                             <p class="mt-1 text-xs text-slate-500">Applicant identity and contact details from the client record.</p>
                         </div>
-                        <a href="{{ route('loan.clients.show', $application->loanClient) }}" class="shrink-0 text-xs font-semibold text-[#2f4f4f] hover:underline">Open client profile</a>
+                        @if ($application->loanClient)
+                            <a href="{{ route('loan.clients.show', $application->loanClient) }}" class="shrink-0 text-xs font-semibold text-[#2f4f4f] hover:underline">Open client profile</a>
+                        @endif
                     </div>
                     <dl class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
-                        <div><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $application->loanClient->full_name ?? '—' }}</dd></div>
-                        <div><dt class="text-slate-500">Tel no.</dt><dd class="font-medium text-slate-900">{{ $application->loanClient->phone ?? '—' }}</dd></div>
-                        <div><dt class="text-slate-500">ID no.</dt><dd class="font-medium text-slate-900">{{ $application->loanClient->id_number ?? '—' }}</dd></div>
-                        <div class="sm:col-span-2"><dt class="text-slate-500">Home address</dt><dd class="font-medium text-slate-900 whitespace-pre-line">{{ $application->loanClient->address ?: '—' }}</dd></div>
+                        <div><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->full_name ?? '—' }}</dd></div>
+                        <div><dt class="text-slate-500">Tel no.</dt><dd class="font-medium text-slate-900"><x-phone-link :value="$application->loanClient?->phone" /></dd></div>
+                        <div><dt class="text-slate-500">ID no.</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->id_number ?? '—' }}</dd></div>
+                        <div class="sm:col-span-2"><dt class="text-slate-500">Home address</dt><dd class="font-medium text-slate-900 whitespace-pre-line">{{ $application->loanClient?->address ?: '—' }}</dd></div>
                         <div class="sm:col-span-2"><dt class="text-slate-500">Home / business PIN location code</dt><dd class="font-medium text-slate-900">{{ $application->applicant_pin_location_code ?: '—' }}</dd></div>
                         <div class="sm:col-span-2"><dt class="text-slate-500">Applicant sign</dt><dd class="font-medium text-slate-900">{{ $application->applicant_signature_name ?: '—' }}</dd></div>
                     </dl>
@@ -86,8 +95,15 @@
                     <dl class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
                         <div><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $application->guarantor_full_name ?: '—' }}</dd></div>
                         <div><dt class="text-slate-500">ID no.</dt><dd class="font-medium text-slate-900">{{ $application->guarantor_id_number ?: '—' }}</dd></div>
-                        <div><dt class="text-slate-500">Tel no.</dt><dd class="font-medium text-slate-900">{{ $application->guarantor_phone ?: '—' }}</dd></div>
+                        <div><dt class="text-slate-500">Tel no.</dt><dd class="font-medium text-slate-900"><x-phone-link :value="$application->guarantor_phone" /></dd></div>
                         <div class="sm:col-span-2"><dt class="text-slate-500">Signature</dt><dd class="font-medium text-slate-900">{{ $application->guarantor_signature_name ?: '—' }}</dd></div>
+                    </dl>
+                    <h4 class="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-600">Guarantor2 details</h4>
+                    <dl class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+                        <div><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->guarantor_2_full_name ?: '—' }}</dd></div>
+                        <div><dt class="text-slate-500">ID no.</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->guarantor_2_id_number ?: '—' }}</dd></div>
+                        <div><dt class="text-slate-500">Tel no.</dt><dd class="font-medium text-slate-900"><x-phone-link :value="$application->loanClient?->guarantor_2_phone" /></dd></div>
+                        <div><dt class="text-slate-500">Relationship</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->guarantor_2_relationship ?: '—' }}</dd></div>
                     </dl>
                     <div class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 leading-relaxed">
                         <p class="font-semibold text-slate-800 mb-1">Repayment agreement</p>

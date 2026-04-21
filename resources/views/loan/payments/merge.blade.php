@@ -78,7 +78,7 @@
                                         <td class="px-4 py-2 text-slate-600">{{ $c->loan?->loan_number ?? '—' }}</td>
                                         <td class="px-4 py-2 text-slate-600">{{ $c->loan?->loanClient?->full_name ?? '—' }}</td>
                                         <td class="px-4 py-2 text-right tabular-nums">{{ $c->currency }} {{ number_format((float) $c->amount, 2) }}</td>
-                                        <td class="px-4 py-2 text-slate-600 whitespace-nowrap">{{ $c->transaction_at->format('Y-m-d H:i') }}</td>
+                                        <td class="px-4 py-2 text-slate-600 whitespace-nowrap">{{ optional($c->transaction_at)->format('Y-m-d H:i') ?? '—' }}</td>
                                     </tr>
                                 @empty
                                     <tr>

@@ -106,11 +106,37 @@
             }
         </style>
     </head>
-    <body class="font-sans antialiased h-screen overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif" x-data="{ sidebarOpen: false }">
+    <body
+        class="font-sans antialiased h-screen overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif"
+        x-data="{
+            sidebarOpen: false,
+            sidebarDesktopOpen: true,
+            init() {
+                const portal = @js($propertyPortal ?? 'agent');
+                const saved = window.localStorage.getItem(`property.sidebar.desktop.open.${portal}`);
+                if (saved !== null) {
+                    this.sidebarDesktopOpen = saved === '1';
+                }
+            },
+            toggleDesktopSidebar() {
+                this.sidebarDesktopOpen = !this.sidebarDesktopOpen;
+                const portal = @js($propertyPortal ?? 'agent');
+                window.localStorage.setItem(`property.sidebar.desktop.open.${portal}`, this.sidebarDesktopOpen ? '1' : '0');
+            }
+        }"
+    >
         <div class="h-full flex property-print-root">
             
             <!-- Property Module Dedicated Sidebar -->
-            <div class="property-print-hide h-full flex-shrink-0">
+            <div
+                class="property-print-hide h-full flex-shrink-0 transition-all duration-300"
+                :class="sidebarDesktopOpen ? 'lg:w-[18rem] lg:max-w-[18rem] lg:min-w-[18rem] lg:opacity-100' : 'lg:w-[5.5rem] lg:max-w-[5.5rem] lg:min-w-[5.5rem] lg:opacity-100'"
+                :style="window.matchMedia('(min-width: 1024px)').matches
+                    ? (sidebarDesktopOpen
+                        ? 'width: 18rem; min-width: 18rem; max-width: 18rem;'
+                        : 'width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem;')
+                    : ''"
+            >
                 @include('layouts.property_sidebar')
             </div>
 

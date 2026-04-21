@@ -14,11 +14,34 @@
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700&display=swap" rel="stylesheet" />
         @vite(['resources/css/app.css', 'resources/js/app.js'])
+        <style>
+            @media (min-width: 1024px) {
+                .superadmin-sidebar[data-collapsed="1"] .sa-collapse-text { display: none !important; }
+                .superadmin-sidebar[data-collapsed="1"] .sa-collapse-center { justify-content: center !important; }
+            }
+        </style>
     </head>
     <body class="h-screen min-h-0 overflow-hidden bg-[#e8ecf1] text-slate-900 antialiased" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">
         <x-swal-flash />
 
-        <div class="h-full min-h-0 flex overflow-hidden" x-data="{ saSidebarOpen: false, saProfileOpen: false }">
+        <div
+            class="h-full min-h-0 flex overflow-hidden"
+            x-data="{
+                saSidebarOpen: false,
+                saProfileOpen: false,
+                saSidebarDesktopOpen: true,
+                init() {
+                    const saved = window.localStorage.getItem('superadmin.sidebar.desktop.open');
+                    if (saved !== null) {
+                        this.saSidebarDesktopOpen = saved === '1';
+                    }
+                },
+                toggleSaDesktopSidebar() {
+                    this.saSidebarDesktopOpen = !this.saSidebarDesktopOpen;
+                    window.localStorage.setItem('superadmin.sidebar.desktop.open', this.saSidebarDesktopOpen ? '1' : '0');
+                }
+            }"
+        >
             {{-- Mobile sidebar overlay --}}
             <div
                 x-show="saSidebarOpen"
@@ -119,102 +142,123 @@
             </aside>
 
             {{-- Sidebar --}}
-            <aside class="w-72 hidden lg:flex flex-col border-r border-slate-200 bg-white sticky top-0 h-screen overflow-y-auto">
-                <div class="h-16 px-6 flex items-center justify-between border-b border-slate-200">
-                    <div class="flex items-center gap-3">
-                        <span class="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black">
+            <aside
+                class="superadmin-sidebar hidden lg:flex flex-col border-r border-[#264040] bg-[#2f4f4f] text-[#d4e4e3] sticky top-0 h-screen overflow-y-auto transition-all duration-300 shadow-xl shadow-black/15"
+                :class="saSidebarDesktopOpen ? 'w-[18rem] min-w-[18rem] max-w-[18rem] opacity-100' : 'w-[5.5rem] min-w-[5.5rem] max-w-[5.5rem] opacity-100'"
+                :style="window.matchMedia('(min-width: 1024px)').matches
+                    ? (saSidebarDesktopOpen
+                        ? 'width: 18rem; min-width: 18rem; max-width: 18rem;'
+                        : 'width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem;')
+                    : ''"
+                :data-collapsed="saSidebarDesktopOpen ? '0' : '1'"
+            >
+                <div class="h-16 px-4 flex items-center justify-between border-b border-[#264040] bg-[#243d3d]/55">
+                    <div class="flex items-center gap-3 sa-collapse-center">
+                        <span class="h-10 w-10 rounded-xl bg-emerald-500/25 border border-emerald-400/35 text-emerald-200 flex items-center justify-center font-black">
                             SA
                         </span>
-                        <div class="leading-tight">
-                            <div class="text-sm font-black text-slate-900">{{ $displayName }}</div>
-                            <div class="text-xs font-bold text-slate-500 uppercase tracking-widest">Super Admin</div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">Platform control</div>
+                        <div class="sa-collapse-text leading-tight">
+                            <div class="text-sm font-black text-white">{{ $displayName }}</div>
+                            <div class="text-xs font-bold text-[#8db1af] uppercase tracking-widest">Super Admin</div>
+                            <div class="text-[10px] text-[#8db1af]/90 mt-0.5">Platform control</div>
                         </div>
                     </div>
+                    <button
+                        type="button"
+                        class="inline-flex items-center justify-center rounded-lg p-2 text-[#8db1af] hover:text-white hover:bg-[#406866] transition-colors"
+                        @click="toggleSaDesktopSidebar()"
+                        :title="saSidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+                        :aria-label="saSidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+                    >
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path x-show="saSidebarDesktopOpen" x-cloak stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                            <path x-show="!saSidebarDesktopOpen" x-cloak stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
                 </div>
 
                 <nav class="flex-1 px-4 py-5 space-y-2">
                     <a
                         href="{{ route('superadmin.dashboard') }}"
-                        class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition
-                            {{ request()->routeIs('superadmin.dashboard') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}"
+                        class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center
+                            {{ request()->routeIs('superadmin.dashboard') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}"
                     >
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
                         </svg>
-                        Platform overview
+                        <span class="sa-collapse-text">Platform overview</span>
                     </a>
 
                     <a
                         href="{{ route('superadmin.users.index') }}"
-                        class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition
-                            {{ request()->routeIs('superadmin.users.*') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}"
+                        class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center
+                            {{ request()->routeIs('superadmin.users.*') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}"
                     >
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
-                        Users
+                        <span class="sa-collapse-text">Users</span>
                     </a>
 
-                    <a href="{{ route('superadmin.access_approvals') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.access_approvals') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
+                    <a href="{{ route('superadmin.access_approvals') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.access_approvals') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M7 4h10a2 2 0 012 2v12a2 2 0 01-2 2H7a2 2 0 01-2-2V6a2 2 0 012-2z" /></svg>
-                        Access approvals
+                        <span class="sa-collapse-text">Access approvals</span>
                     </a>
-                    <a href="{{ route('superadmin.roles_permissions') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.roles_permissions') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
+                    <a href="{{ route('superadmin.roles_permissions') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.roles_permissions') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" /></svg>
-                        Roles & permissions
+                        <span class="sa-collapse-text">Roles & permissions</span>
                     </a>
-                    <a href="{{ route('superadmin.agent_workspaces') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.agent_workspaces') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
+                    <a href="{{ route('superadmin.agent_workspaces') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.agent_workspaces') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7H4m16 0l-2 12H6L4 7m5 0V5a3 3 0 016 0v2" /></svg>
-                        Agent workspaces
+                        <span class="sa-collapse-text">Agent workspaces</span>
                     </a>
-                    <a href="{{ route('superadmin.audit_trail') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.audit_trail') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
+                    <a href="{{ route('superadmin.audit_trail') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.audit_trail') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        Audit trail
+                        <span class="sa-collapse-text">Audit trail</span>
                     </a>
 
-                    <div class="border-t border-slate-200 my-2"></div>
+                    <div class="border-t border-[#406866]/40 my-2"></div>
                     
-                    <div class="px-4 py-2">
-                        <div class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Subscriptions</div>
+                    <div class="px-4 py-2 sa-collapse-text">
+                        <div class="text-xs font-bold text-[#8db1af] uppercase tracking-widest mb-2">Subscriptions</div>
                     </div>
                     
-                    <a href="{{ route('superadmin.console.packages') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.console.packages*') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
+                    <a href="{{ route('superadmin.console.packages') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.console.packages*') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                        Subscription Packages
+                        <span class="sa-collapse-text">Subscription Packages</span>
                     </a>
                     
-                    <a href="{{ route('superadmin.console.subscriptions') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition {{ request()->routeIs('superadmin.console.subscriptions*') ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'text-slate-700 hover:bg-slate-50 border border-transparent' }}">
+                    <a href="{{ route('superadmin.console.subscriptions') }}" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition sa-collapse-center {{ request()->routeIs('superadmin.console.subscriptions*') ? 'bg-[#406866]/85 text-white border border-emerald-300/40' : 'text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent' }}">
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
-                        Agent Subscriptions
+                        <span class="sa-collapse-text">Agent Subscriptions</span>
                     </a>
 
                     <a
                         href="{{ route('dashboard') }}"
-                        class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 border border-transparent transition"
+                        class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border border-transparent transition sa-collapse-center"
                     >
                         <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                         </svg>
-                        Back to dashboard
+                        <span class="sa-collapse-text">Back to dashboard</span>
                     </a>
                 </nav>
 
-                <div class="border-t border-slate-200 px-6 py-5">
-                    <div class="flex items-center gap-3">
-                        <div class="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-700">
+                <div class="border-t border-[#264040] px-4 py-4 bg-[#243d3d]/45">
+                    <div class="flex items-center gap-3 sa-collapse-center">
+                        <div class="h-10 w-10 rounded-full bg-emerald-500/25 border border-emerald-400/35 flex items-center justify-center font-black text-emerald-200">
                             {{ auth()->check() && auth()->user()->name ? mb_substr(auth()->user()->name, 0, 1) : 'U' }}
                         </div>
-                        <div class="min-w-0">
-                            <div class="text-sm font-bold text-slate-900 truncate">{{ auth()->user()->name ?? 'User' }}</div>
-                            <div class="text-xs text-slate-500 truncate">{{ auth()->user()->email ?? '' }}</div>
+                        <div class="sa-collapse-text min-w-0">
+                            <div class="text-sm font-bold text-white truncate">{{ auth()->user()->name ?? 'User' }}</div>
+                            <div class="text-xs text-[#8db1af] truncate">{{ auth()->user()->email ?? '' }}</div>
                         </div>
                     </div>
 
                     <form method="POST" action="{{ route('logout') }}" class="mt-4">
                         @csrf
-                        <button class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
-                            Log out
+                        <button class="w-full rounded-xl border border-[#406866]/60 bg-[#2f4f4f] px-4 py-2.5 text-sm font-bold text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-colors">
+                            <span class="sa-collapse-text">Log out</span>
                         </button>
                     </form>
                 </div>

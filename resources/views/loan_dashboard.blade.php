@@ -38,6 +38,130 @@
             </div>
         @endif
 
+        @if (session('status'))
+            <div
+                x-data="{ open: true }"
+                x-show="open"
+                x-transition
+                class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center justify-between"
+            >
+                <span>{{ session('status') }}</span>
+                <button type="button" @click="open = false" class="text-emerald-700 hover:text-emerald-900">&times;</button>
+            </div>
+        @endif
+
+        {{-- Profile + compact summary strip --}}
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start" x-data="{ smsTopupOpen: {{ ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('reference')) ? 'true' : 'false' }} }">
+            <div class="xl:col-span-4 w-full max-w-sm bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
+                    <h2 class="text-2xl font-semibold text-slate-800">Welcome {{ $profileCard['name'] ?? 'User' }}</h2>
+                </div>
+                <div class="p-3 space-y-3">
+                    <div class="grid grid-cols-3 gap-3 items-start">
+                        <div class="col-span-1">
+                            <div class="aspect-square w-full max-w-[110px] overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                                <img src="https://placehold.co/140x140/e2e8f0/475569?text=Profile" alt="Profile photo" class="h-full w-full object-cover">
+                            </div>
+                        </div>
+                        <div class="col-span-2">
+                            <div class="space-y-1.5 text-xs">
+                                <div class="flex items-center gap-1.5 text-slate-700">
+                                    <span class="text-slate-400">&#128100;</span>
+                                    <span class="font-medium">{{ $profileCard['role'] ?? 'User' }}</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 text-slate-700">
+                                    <span class="text-slate-400">&#127970;</span>
+                                    <span class="font-medium">{{ $profileCard['branch'] ?? 'N/A' }} Branch</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 text-slate-700">
+                                    <span class="text-slate-400">&#128197;</span>
+                                    <span class="font-medium">{{ number_format((int) ($profileCard['leave_days'] ?? 0)) }} Leave Days</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 text-slate-700">
+                                    <span class="text-slate-400">&#128274;</span>
+                                    <span class="font-medium">Corporate Access</span>
+                                </div>
+                            </div>
+                            <div class="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs">
+                                <a href="{{ route('loan.employees.leaves.create') }}" class="text-sky-600 hover:underline font-medium">Apply Leave</a>
+                                <span class="text-slate-300">|</span>
+                                <a href="{{ route('loan.accounting.advances.create') }}" class="text-sky-600 hover:underline font-medium">Request Advance</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
+                        <p class="text-xs text-slate-600">Bulk SMS Balance</p>
+                        <div class="flex items-center gap-3">
+                            <p class="text-xl font-bold text-emerald-700 tabular-nums">{{ $currencyCode }} {{ number_format((float) ($profileCard['sms_balance'] ?? 0), 1) }}</p>
+                            <button type="button" @click="smsTopupOpen = true" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">Topup</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                x-show="smsTopupOpen"
+                x-cloak
+                x-transition.opacity
+                class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+                @keydown.escape.window="smsTopupOpen = false"
+            >
+                <div @click.away="smsTopupOpen = false" class="w-full max-w-xl rounded-xl bg-white p-6 shadow-2xl">
+                    <div class="mb-5 flex items-start justify-between">
+                        <h3 class="text-2xl font-semibold text-slate-800">Topup SMS Wallet</h3>
+                        <button type="button" @click="smsTopupOpen = false" class="text-3xl leading-none text-slate-400 hover:text-red-500">&times;</button>
+                    </div>
+                    <form method="post" action="{{ route('loan.dashboard.sms_topup') }}" class="space-y-4">
+                        @csrf
+                        @if ($errors->has('sms_topup'))
+                            <p class="text-sm text-red-600">{{ $errors->first('sms_topup') }}</p>
+                        @endif
+                        <div>
+                            <label for="sms_topup_phone" class="mb-1 block text-sm font-medium text-slate-700">Enter MPESA Phone Number</label>
+                            <input id="sms_topup_phone" name="reference" type="text" maxlength="120" value="{{ old('reference') }}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-[#2f4f4f] focus:outline-none" placeholder="07XXXXXXXX">
+                            @error('reference')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label for="sms_topup_amount" class="mb-1 block text-sm font-medium text-slate-700">Amount to topup</label>
+                            <input id="sms_topup_amount" name="amount" type="number" step="0.01" min="0.01" value="{{ old('amount') }}" required class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-[#2f4f4f] focus:outline-none" placeholder="0.00">
+                            @error('amount')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                        </div>
+                        <input type="hidden" name="notes" value="Dashboard SMS wallet topup">
+                        <div class="pt-2 flex justify-end">
+                            <button type="submit" class="rounded bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Pay Now</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="xl:col-span-8 grid grid-cols-2 lg:grid-cols-3 gap-3">
+                <div class="rounded-xl border border-slate-200 bg-white p-3">
+                    <p class="text-xs font-semibold uppercase text-slate-500">Total Clients</p>
+                    <p class="mt-1 text-3xl font-bold text-slate-800 tabular-nums">{{ number_format((int) ($summaryStrip['total_clients'] ?? 0)) }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white p-3">
+                    <p class="text-xs font-semibold uppercase text-slate-500">Active Clients</p>
+                    <p class="mt-1 text-3xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['active_clients'] ?? 0)) }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white p-3">
+                    <p class="text-xs font-semibold uppercase text-slate-500">Dormant Clients</p>
+                    <p class="mt-1 text-3xl font-bold text-rose-600 tabular-nums">{{ number_format((int) ($summaryStrip['dormant_clients'] ?? 0)) }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white p-3">
+                    <p class="text-xs font-semibold uppercase text-slate-500">Performing Loans</p>
+                    <p class="mt-1 text-3xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
+                </div>
+                <div class="rounded-xl border border-rose-200 bg-rose-400 text-white p-3">
+                    <p class="text-xs font-semibold uppercase">Loan Arrears (Ksh)</p>
+                    <p class="mt-1 text-3xl font-bold tabular-nums">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white p-3">
+                    <p class="text-xs font-semibold uppercase text-slate-500">PAR %</p>
+                    <p class="mt-1 text-3xl font-bold text-slate-800 tabular-nums">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
+                </div>
+            </div>
+        </div>
+
         {{-- KPI grid --}}
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 flex gap-4">
@@ -407,6 +531,62 @@
                     <p class="text-xs text-slate-500">COA, payroll, assets</p>
                 </div>
                 <a href="{{ route('loan.accounting.books') }}" class="text-xs font-semibold text-indigo-600 hover:underline shrink-0">Hub →</a>
+            </div>
+        </div>
+
+        {{-- Performance indicators --}}
+        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100">
+                <div class="flex items-center justify-between gap-2">
+                    <div>
+                        <h2 class="text-base font-semibold text-slate-900">Performance Indicators</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Current-month staff performance snapshot.</p>
+                    </div>
+                    <a href="{{ route('loan.dashboard.performance_targets') }}" class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                        Edit targets
+                    </a>
+                </div>
+            </div>
+            <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <table class="min-w-full text-xs text-slate-700">
+                    <thead class="bg-slate-700 text-slate-100">
+                        <tr>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-left font-semibold">Staff</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">New Loans</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Repeat Loans</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Arrears</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Performing</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Gross Disbursement</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Revenue</th>
+                        </tr>
+                        <tr class="bg-slate-600 text-[11px]">
+                            <th class="sticky top-[36px] z-20 bg-slate-600 px-3 py-1.5 text-left font-semibold"></th>
+                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        @forelse (($performanceIndicators ?? collect()) as $row)
+                            <tr class="odd:bg-white even:bg-slate-50/60 hover:bg-sky-50/50">
+                                <td class="px-3 py-2.5 font-medium text-slate-900 whitespace-nowrap">{{ $row['staff_name'] }}</td>
+                                <td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['new_target']) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['new_actual']) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['new_score'], 1) }}%</td><td class="px-2 py-2 text-right tabular-nums">{{ $row['new_pos'] }}</td>
+                                <td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['repeat_target']) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['repeat_actual']) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['repeat_score'], 1) }}%</td><td class="px-2 py-2 text-right tabular-nums">{{ $row['repeat_pos'] }}</td>
+                                <td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['arrears_target'], 0) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['arrears_actual'], 0) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['arrears_score'], 1) }}%</td><td class="px-2 py-2 text-right tabular-nums">{{ $row['arrears_pos'] }}</td>
+                                <td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['performing_target']) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['performing_actual']) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['performing_score'], 1) }}%</td><td class="px-2 py-2 text-right tabular-nums">{{ $row['performing_pos'] }}</td>
+                                <td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['gross_target'], 0) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['gross_actual'], 0) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['gross_score'], 1) }}%</td><td class="px-2 py-2 text-right tabular-nums">{{ $row['gross_pos'] }}</td>
+                                <td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['revenue_target'], 0) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['revenue_actual'], 0) }}</td><td class="px-2 py-2 text-right tabular-nums">{{ number_format((float) $row['revenue_score'], 1) }}%</td><td class="px-2 py-2 text-right tabular-nums">{{ $row['revenue_pos'] }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="25" class="px-5 py-10 text-center text-slate-500">No staff performance data available yet for this month.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
             </div>
         </div>
 

@@ -116,7 +116,6 @@
                 >
                     <i class="fa-solid fa-bars text-xl" aria-hidden="true"></i>
                 </button>
-
                 <a
                     href="{{ route($homeRoute) }}"
                     data-turbo-frame="property-main"
@@ -267,8 +266,10 @@
                         @click="userMenuOpen = !userMenuOpen"
                         class="flex items-center gap-2 sm:gap-3 pl-1 sm:pl-2 pr-1 sm:pr-2 py-1 rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
                     >
-                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/20 ring-2 ring-white/35 flex items-center justify-center text-white font-semibold text-sm sm:text-base shadow-sm">
-                            @if (Auth::check() && Auth::user()->name)
+                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/20 ring-2 ring-white/35 flex items-center justify-center text-white font-semibold text-sm sm:text-base shadow-sm overflow-hidden">
+                            @if (Auth::check() && filled(Auth::user()->profile_photo_url))
+                                <img src="{{ Auth::user()->profile_photo_url }}" alt="Profile image" class="h-full w-full object-cover">
+                            @elseif (Auth::check() && Auth::user()->name)
                                 {{ mb_substr(Auth::user()->name, 0, 1) }}
                             @else
                                 U

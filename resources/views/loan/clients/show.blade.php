@@ -30,7 +30,7 @@
                 <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-6">
                     <h2 class="text-sm font-semibold text-slate-700 mb-4">Profile</h2>
                     <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-                        <div><dt class="text-slate-500">Phone</dt><dd class="text-slate-900">{{ $loan_client->phone ?? '—' }}</dd></div>
+                        <div><dt class="text-slate-500">Phone</dt><dd class="text-slate-900"><x-phone-link :value="$loan_client->phone" /></dd></div>
                         <div><dt class="text-slate-500">Email</dt><dd class="text-slate-900">{{ $loan_client->email ?? '—' }}</dd></div>
                         <div><dt class="text-slate-500">ID / registration</dt><dd class="text-slate-900">{{ $loan_client->id_number ?? '—' }}</dd></div>
                         <div><dt class="text-slate-500">Branch</dt><dd class="text-slate-900">{{ $loan_client->branch ?? '—' }}</dd></div>
@@ -59,7 +59,7 @@
                                     <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4 space-y-2">
                                         <p class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Guarantor 1</p>
                                         @if (filled($loan_client->guarantor_1_full_name))<div><span class="text-slate-500">Name</span><p class="text-slate-900">{{ $loan_client->guarantor_1_full_name }}</p></div>@endif
-                                        @if (filled($loan_client->guarantor_1_phone))<div><span class="text-slate-500">Phone</span><p class="text-slate-900">{{ $loan_client->guarantor_1_phone }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_1_phone))<div><span class="text-slate-500">Phone</span><p class="text-slate-900"><x-phone-link :value="$loan_client->guarantor_1_phone" /></p></div>@endif
                                         @if (filled($loan_client->guarantor_1_id_number))<div><span class="text-slate-500">ID / registration</span><p class="text-slate-900">{{ $loan_client->guarantor_1_id_number }}</p></div>@endif
                                         @if (filled($loan_client->guarantor_1_relationship))<div><span class="text-slate-500">Relationship</span><p class="text-slate-900">{{ $loan_client->guarantor_1_relationship }}</p></div>@endif
                                         @if (filled($loan_client->guarantor_1_address))<div class="sm:col-span-2"><span class="text-slate-500">Address</span><p class="text-slate-900 whitespace-pre-line">{{ $loan_client->guarantor_1_address }}</p></div>@endif
@@ -69,7 +69,7 @@
                                     <div class="rounded-lg border border-slate-100 bg-slate-50/80 p-4 space-y-2">
                                         <p class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Guarantor 2</p>
                                         @if (filled($loan_client->guarantor_2_full_name))<div><span class="text-slate-500">Name</span><p class="text-slate-900">{{ $loan_client->guarantor_2_full_name }}</p></div>@endif
-                                        @if (filled($loan_client->guarantor_2_phone))<div><span class="text-slate-500">Phone</span><p class="text-slate-900">{{ $loan_client->guarantor_2_phone }}</p></div>@endif
+                                        @if (filled($loan_client->guarantor_2_phone))<div><span class="text-slate-500">Phone</span><p class="text-slate-900"><x-phone-link :value="$loan_client->guarantor_2_phone" /></p></div>@endif
                                         @if (filled($loan_client->guarantor_2_id_number))<div><span class="text-slate-500">ID / registration</span><p class="text-slate-900">{{ $loan_client->guarantor_2_id_number }}</p></div>@endif
                                         @if (filled($loan_client->guarantor_2_relationship))<div><span class="text-slate-500">Relationship</span><p class="text-slate-900">{{ $loan_client->guarantor_2_relationship }}</p></div>@endif
                                         @if (filled($loan_client->guarantor_2_address))<div class="sm:col-span-2"><span class="text-slate-500">Address</span><p class="text-slate-900 whitespace-pre-line">{{ $loan_client->guarantor_2_address }}</p></div>@endif

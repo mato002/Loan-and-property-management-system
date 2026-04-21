@@ -114,12 +114,13 @@
             </div>
         </div>
 
-        <dialog id="product-edit-modal" class="w-full max-w-3xl rounded-xl border border-slate-200 p-0 shadow-xl backdrop:bg-slate-900/40">
-            <div class="border-b border-slate-100 px-4 py-3 flex items-center justify-between">
-                <h3 class="text-sm font-semibold text-slate-800">Edit loan product</h3>
-                <button id="close-edit-product-modal" type="button" class="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700">✕</button>
-            </div>
-            <form id="product-edit-form" method="post" class="p-4 grid grid-cols-1 gap-3 md:grid-cols-10 js-product-update-form">
+        <div id="product-edit-modal" class="fixed inset-0 z-[80] hidden items-center justify-center bg-slate-900/40 p-4">
+            <div class="w-full max-w-3xl rounded-xl border border-slate-200 bg-white p-0 shadow-xl">
+                <div class="border-b border-slate-100 px-4 py-3 flex items-center justify-between">
+                    <h3 class="text-sm font-semibold text-slate-800">Edit loan product</h3>
+                    <button id="close-edit-product-modal" type="button" class="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700">✕</button>
+                </div>
+                <form id="product-edit-form" method="post" class="p-4 grid grid-cols-1 gap-3 md:grid-cols-10 js-product-update-form">
                 @csrf
                 @method('patch')
                 <input id="edit_name" name="name" class="md:col-span-3 rounded border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-800" placeholder="Product name" />
@@ -152,7 +153,8 @@
                     <button type="submit" class="rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">Update</button>
                 </div>
             </form>
-        </dialog>
+            </div>
+        </div>
     </x-loan.page>
 </x-loan-layout>
 <script>
@@ -162,6 +164,14 @@
     const editForm = document.getElementById('product-edit-form');
     const closeEditBtn = document.getElementById('close-edit-product-modal');
     const cancelEditBtn = document.getElementById('cancel-edit-product-modal');
+    const openEditModal = () => {
+        editModal?.classList.remove('hidden');
+        editModal?.classList.add('flex');
+    };
+    const closeEditModal = () => {
+        editModal?.classList.add('hidden');
+        editModal?.classList.remove('flex');
+    };
 
     document.querySelectorAll('.js-edit-product').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -182,12 +192,22 @@
             editForm.querySelector('#edit_repricing_effective_date').value = '';
             editForm.querySelector('#edit_repricing_note').value = '';
             editForm.querySelector('#edit_apply_to_existing_active_loans').checked = false;
-            editModal.showModal();
+            openEditModal();
         });
     });
 
     [closeEditBtn, cancelEditBtn].forEach((el) => {
-        el?.addEventListener('click', () => editModal?.close());
+        el?.addEventListener('click', closeEditModal);
+    });
+    editModal?.addEventListener('click', (event) => {
+        if (event.target === editModal) {
+            closeEditModal();
+        }
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && editModal && !editModal.classList.contains('hidden')) {
+            closeEditModal();
+        }
     });
 
     document.querySelectorAll('.js-product-update-form').forEach((form) => {
@@ -201,15 +221,8 @@
             const productName = form.dataset.productName || 'this product';
             const activeLoans = Number(form.dataset.activeLoans || '0');
             const message = `This will reprice ${activeLoans} active/restructured loan(s) for "${productName}". Continue?`;
-            const wasEditModalOpen = !!(editModal && typeof editModal.open === 'boolean' && editModal.open);
 
             if (window.Swal && typeof window.Swal.fire === 'function') {
-                // <dialog> is rendered in the browser top layer and can cover SweetAlert.
-                // Temporarily close it so the confirmation dialog stays clickable.
-                if (wasEditModalOpen) {
-                    editModal.close();
-                }
-
                 const result = await window.Swal.fire({
                     title: 'Apply rate update?',
                     text: message,
@@ -226,20 +239,12 @@
                     return;
                 }
 
-                if (wasEditModalOpen) {
-                    editModal.showModal();
-                }
-
                 return;
             }
 
             if (window.confirm(message)) {
                 form.submit();
                 return;
-            }
-
-            if (wasEditModalOpen) {
-                editModal.showModal();
             }
         });
     });

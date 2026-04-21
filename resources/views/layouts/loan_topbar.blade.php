@@ -10,6 +10,12 @@
     }
     $firstName = Auth::check() ? explode(' ', Auth::user()->name ?? 'User')[0] : 'User';
     $quickLinks = LoanNavigation::quickLinksForUser(Auth::user());
+    $loanNotificationItems = collect();
+    $loanNotificationUnread = 0;
+    if (Auth::check() && \Illuminate\Support\Facades\Schema::hasTable('notifications')) {
+        $loanNotificationItems = Auth::user()->notifications()->latest()->limit(8)->get();
+        $loanNotificationUnread = (int) Auth::user()->unreadNotifications()->count();
+    }
 @endphp
 
 <header class="relative md:sticky md:top-0 z-30 md:z-50 flex-shrink-0 border-b border-slate-200/90 bg-gradient-to-b from-white via-slate-50 to-white shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/90">
@@ -25,16 +31,17 @@
                 <button
                     type="button"
                     @click="toggleDesktopSidebar()"
-                    class="hidden md:inline-flex shrink-0 p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-[#2f4f4f]/30"
-                    :aria-label="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
-                    :title="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+                    x-show="!sidebarDesktopOpen"
+                    x-cloak
+                    class="hidden md:inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                    aria-label="Show sidebar"
+                    title="Show sidebar"
                 >
-                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path x-show="sidebarDesktopOpen" stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-                        <path x-show="!sidebarDesktopOpen" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
+                    Menu
                 </button>
-
                 <div class="min-w-0 hidden sm:block">
                     <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                         <h1 class="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight truncate">
@@ -86,10 +93,55 @@
 
                     <div class="hidden sm:block w-px h-8 bg-slate-200" aria-hidden="true"></div>
 
+                    <div class="relative z-[60]" x-data="{ bellOpen: false }" @click.outside="bellOpen = false">
+                        <button
+                            type="button"
+                            @click="bellOpen = !bellOpen"
+                            class="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                            title="Notifications"
+                        >
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                            </svg>
+                            @if ($loanNotificationUnread > 0)
+                                <span class="absolute -top-0.5 -right-0.5 min-w-[1.05rem] h-[1.05rem] px-1 rounded-full bg-rose-500 text-white text-[10px] leading-[1.05rem] text-center font-bold">{{ $loanNotificationUnread > 99 ? '99+' : $loanNotificationUnread }}</span>
+                            @endif
+                        </button>
+
+                        <div
+                            x-show="bellOpen"
+                            x-transition.opacity
+                            class="absolute right-0 mt-2 w-96 max-w-[92vw] rounded-xl bg-white shadow-xl border border-slate-200 py-1.5 z-[100] overflow-hidden"
+                            x-cloak
+                        >
+                            <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
+                                <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Previous Notifications</p>
+                                <a href="{{ route('loan.notifications.index') }}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-500">View all</a>
+                            </div>
+                            <div class="max-h-96 overflow-y-auto">
+                                @forelse ($loanNotificationItems as $item)
+                                    @php
+                                        $data = is_array($item->data ?? null) ? $item->data : [];
+                                        $message = trim((string) ($data['message'] ?? $data['text'] ?? $item->type));
+                                        $url = trim((string) ($data['url'] ?? route('loan.notifications.index')));
+                                    @endphp
+                                    <a href="{{ $url }}" class="block px-4 py-3 border-b border-slate-100 last:border-b-0 {{ $item->read_at ? 'bg-white' : 'bg-indigo-50/40' }}">
+                                        <p class="text-[11px] font-semibold text-slate-500">{{ optional($item->created_at)->format('M j, g:i a') }}</p>
+                                        <p class="mt-1 text-sm text-slate-700 line-clamp-2">{{ $message }}</p>
+                                    </a>
+                                @empty
+                                    <p class="px-4 py-6 text-sm text-slate-500 text-center">No notifications yet.</p>
+                                @endforelse
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="relative z-[60]" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
                         <button type="button" @click="userMenuOpen = !userMenuOpen" class="flex items-center gap-2 p-1 pr-2 sm:pr-3 rounded-full bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40">
-                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-inner border border-white/20">
-                                @if (Auth::check() && Auth::user()->name)
+                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-inner border border-white/20 overflow-hidden">
+                                @if (Auth::check() && filled(Auth::user()->profile_photo_url))
+                                    <img src="{{ Auth::user()->profile_photo_url }}" alt="Profile image" class="h-full w-full object-cover">
+                                @elseif (Auth::check() && Auth::user()->name)
                                     {{ strtoupper(substr(Auth::user()->name, 0, 1)) }}
                                 @else
                                     U

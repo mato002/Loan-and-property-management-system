@@ -21,7 +21,7 @@
             <h3 class="text-sm font-semibold text-slate-900">Lease details</h3>
             <div class="mt-2 text-sm text-slate-700 space-y-1">
                 <p><span class="text-slate-500">Tenant:</span> {{ $lease->pmTenant->name ?? '—' }}</p>
-                <p><span class="text-slate-500">Phone:</span> {{ $lease->pmTenant->phone ?? '—' }}</p>
+                <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$lease->pmTenant->phone ?? null" /></p>
                 <p><span class="text-slate-500">Email:</span> {{ $lease->pmTenant->email ?? '—' }}</p>
                 <p><span class="text-slate-500">Start:</span> {{ $lease->start_date?->format('Y-m-d') ?? '—' }}</p>
                 <p><span class="text-slate-500">End:</span> {{ $lease->end_date?->format('Y-m-d') ?? 'Open-ended' }}</p>

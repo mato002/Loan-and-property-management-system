@@ -4,7 +4,8 @@
             <a href="{{ route('loan.book.collection_agents.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
         </x-slot>
 
-        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden max-w-xl">
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div class="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <form method="post" action="{{ route('loan.book.collection_agents.store') }}" class="px-5 py-6 space-y-4">
                 @csrf
                 <div>
@@ -36,8 +37,19 @@
                     <input id="is_active" name="is_active" type="checkbox" value="1" class="rounded border-slate-300 text-[#2f4f4f] focus:ring-[#2f4f4f]" @checked(old('is_active', true)) />
                     <label for="is_active" class="text-sm text-slate-700">Active</label>
                 </div>
-                <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Save</button>
+                <div class="pt-2">
+                    <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Save agent</button>
+                </div>
             </form>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                <h3 class="text-sm font-semibold text-slate-800">Tips</h3>
+                <ul class="mt-3 space-y-2 text-xs text-slate-600">
+                    <li>Use a working phone number for call/SMS follow-up.</li>
+                    <li>Link to an employee when this agent is internal staff.</li>
+                    <li>Set inactive for ex-agents to retain historical records.</li>
+                </ul>
+            </div>
         </div>
     </x-loan.page>
 </x-loan-layout>

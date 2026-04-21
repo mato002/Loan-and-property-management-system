@@ -7,6 +7,7 @@ use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\AccountingJournalEntry;
 use App\Models\AccountingRequisition;
 use App\Models\AccountingSalaryAdvance;
+use App\Models\Employee;
 use App\Models\LoanBookApplication;
 use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookDisbursement;
@@ -15,14 +16,29 @@ use App\Models\LoanBookPayment;
 use App\Models\LoanClient;
 use App\Models\LoanSupportTicket;
 use App\Models\PropertyPortalSetting;
+use App\Models\StaffLeave;
+use App\Services\BulkSmsService;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
 class LoanDashboardController extends Controller
 {
     use ScopesLoanPortfolioAccess;
+
+    private const PERFORMANCE_DEFAULT_TARGETS = [
+        'new_target' => 20.0,
+        'repeat_target' => 10.0,
+        'arrears_target' => 0.0,
+        'performing_target' => 70.0,
+        'gross_target' => 500000.0,
+        'revenue_target' => 170000.0,
+    ];
 
     public function index(): View
     {
@@ -64,6 +80,9 @@ class LoanDashboardController extends Controller
         ];
 
         $opsStrip = $this->buildOpsStrip();
+        $performanceIndicators = $bookReady ? $this->buildPerformanceIndicators() : collect();
+        $profileCard = $this->buildProfileCard();
+        $summaryStrip = $this->buildSummaryStrip($bookReady, $clientsReady);
 
         $currencyCode = 'KES';
         if (Schema::hasTable('property_portal_settings')) {
@@ -83,7 +102,398 @@ class LoanDashboardController extends Controller
             'clientsReady' => $clientsReady,
             'currencyCode' => $currencyCode,
             'generatedAt' => now(),
+            'performanceIndicators' => $performanceIndicators,
+            'profileCard' => $profileCard,
+            'summaryStrip' => $summaryStrip,
         ]);
+    }
+
+    public function smsWalletTopupFromDashboard(Request $request, BulkSmsService $bulkSms): RedirectResponse
+    {
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01', 'max:999999.99'],
+            'reference' => ['nullable', 'string', 'max:120'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        try {
+            $bulkSms->topup((float) $validated['amount'], $validated['reference'] ?? null, $validated['notes'] ?? null);
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('loan.dashboard')
+                ->withInput()
+                ->withErrors(['sms_topup' => 'Could not process SMS topup right now.']);
+        }
+
+        return redirect()
+            ->route('loan.dashboard')
+            ->with('status', 'SMS wallet topped up successfully.');
+    }
+
+    private function buildProfileCard(): array
+    {
+        $user = auth()->user();
+        $employee = null;
+        if ($user && Schema::hasTable('employees') && ! empty($user->email)) {
+            $employee = Employee::query()
+                ->whereRaw('LOWER(email) = ?', [strtolower((string) $user->email)])
+                ->first();
+        }
+
+        $leaveDays = 0;
+        if ($employee && Schema::hasTable('staff_leaves')) {
+            $leaveDays = (int) StaffLeave::query()
+                ->where('employee_id', $employee->id)
+                ->where('status', 'approved')
+                ->whereYear('start_date', now()->year)
+                ->sum('days');
+        }
+
+        $smsBalance = 0.0;
+        if (Schema::hasTable('sms_wallets')) {
+            try {
+                $smsBalance = (float) app(BulkSmsService::class)->walletBalance();
+            } catch (\Throwable) {
+                $smsBalance = 0.0;
+            }
+        }
+
+        return [
+            'name' => (string) ($user->name ?? 'User'),
+            'role' => ucfirst((string) ($user?->effectiveLoanRole() ?: 'user')),
+            'branch' => (string) ($employee?->branch ?? 'N/A'),
+            'job_title' => (string) ($employee?->job_title ?? 'Staff'),
+            'leave_days' => $leaveDays,
+            'sms_balance' => $smsBalance,
+        ];
+    }
+
+    private function buildSummaryStrip(bool $bookReady, bool $clientsReady): array
+    {
+        if (! $bookReady || ! $clientsReady) {
+            return [
+                'total_clients' => 0,
+                'active_clients' => 0,
+                'dormant_clients' => 0,
+                'performing_loans' => 0,
+                'loan_arrears' => 0.0,
+                'par_percent' => 0.0,
+            ];
+        }
+
+        $totalClients = (int) $this->clientQuery()->where('kind', LoanClient::KIND_CLIENT)->count();
+        $activeClients = (int) $this->clientQuery()
+            ->where('kind', LoanClient::KIND_CLIENT)
+            ->whereExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('loan_book_loans as l')
+                    ->whereColumn('l.loan_client_id', 'loan_clients.id')
+                    ->whereIn('l.status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_RESTRUCTURED]);
+            })
+            ->count();
+        $dormantClients = max(0, $totalClients - $activeClients);
+
+        $performingLoans = (int) $this->loanQuery()
+            ->where('status', LoanBookLoan::STATUS_ACTIVE)
+            ->where('dpd', '<=', 5)
+            ->count();
+
+        $arrears = (float) $this->loanQuery()
+            ->where('dpd', '>', 0)
+            ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_RESTRUCTURED])
+            ->sum('balance');
+
+        $outstanding = (float) $this->loanQuery()
+            ->whereIn('status', [
+                LoanBookLoan::STATUS_ACTIVE,
+                LoanBookLoan::STATUS_RESTRUCTURED,
+                LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+            ])
+            ->sum('balance');
+        $parPercent = $outstanding > 0 ? ($arrears / $outstanding) * 100 : 0.0;
+
+        return [
+            'total_clients' => $totalClients,
+            'active_clients' => $activeClients,
+            'dormant_clients' => $dormantClients,
+            'performing_loans' => $performingLoans,
+            'loan_arrears' => $arrears,
+            'par_percent' => $parPercent,
+        ];
+    }
+
+    public function performanceTargets(Request $request): View
+    {
+        $monthRaw = trim((string) $request->query('month', now()->format('Y-m')));
+        try {
+            $monthDate = Carbon::createFromFormat('Y-m', $monthRaw)->startOfMonth();
+        } catch (\Throwable) {
+            $monthDate = now()->startOfMonth();
+        }
+
+        $defaults = self::PERFORMANCE_DEFAULT_TARGETS;
+        $employees = Employee::query()
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get(['id', 'first_name', 'last_name']);
+
+        $existing = Schema::hasTable('loan_performance_indicator_targets')
+            ? DB::table('loan_performance_indicator_targets')
+                ->where('year', (int) $monthDate->format('Y'))
+                ->where('month', (int) $monthDate->format('m'))
+                ->get()
+                ->keyBy('employee_id')
+            : collect();
+
+        $rows = $employees->map(function (Employee $employee) use ($existing, $defaults) {
+            $target = $existing->get((int) $employee->id);
+
+            return [
+                'employee_id' => (int) $employee->id,
+                'staff_name' => trim((string) $employee->full_name),
+                'new_target' => (float) ($target->new_target ?? $defaults['new_target']),
+                'repeat_target' => (float) ($target->repeat_target ?? $defaults['repeat_target']),
+                'arrears_target' => (float) ($target->arrears_target ?? $defaults['arrears_target']),
+                'performing_target' => (float) ($target->performing_target ?? $defaults['performing_target']),
+                'gross_target' => (float) ($target->gross_target ?? $defaults['gross_target']),
+                'revenue_target' => (float) ($target->revenue_target ?? $defaults['revenue_target']),
+            ];
+        });
+
+        return view('loan.dashboard.performance_targets', [
+            'title' => 'Performance Indicator Targets',
+            'subtitle' => 'Set monthly targets per staff member.',
+            'month' => $monthDate->format('Y-m'),
+            'monthLabel' => $monthDate->format('F Y'),
+            'rows' => $rows,
+            'defaults' => $defaults,
+        ]);
+    }
+
+    public function performanceTargetsUpdate(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'month' => ['required', 'date_format:Y-m'],
+            'targets' => ['required', 'array'],
+            'targets.*.employee_id' => ['required', 'exists:employees,id'],
+            'targets.*.new_target' => ['required', 'numeric', 'min:0'],
+            'targets.*.repeat_target' => ['required', 'numeric', 'min:0'],
+            'targets.*.arrears_target' => ['required', 'numeric', 'min:0'],
+            'targets.*.performing_target' => ['required', 'numeric', 'min:0'],
+            'targets.*.gross_target' => ['required', 'numeric', 'min:0'],
+            'targets.*.revenue_target' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $monthDate = Carbon::createFromFormat('Y-m', (string) $validated['month'])->startOfMonth();
+        $year = (int) $monthDate->format('Y');
+        $month = (int) $monthDate->format('m');
+
+        if (! Schema::hasTable('loan_performance_indicator_targets')) {
+            return redirect()
+                ->route('loan.dashboard.performance_targets', ['month' => $monthDate->format('Y-m')])
+                ->withErrors(['targets' => 'Run migrations first to enable saved performance targets.']);
+        }
+
+        DB::transaction(function () use ($validated, $year, $month) {
+            foreach ((array) $validated['targets'] as $row) {
+                DB::table('loan_performance_indicator_targets')->updateOrInsert(
+                    [
+                        'employee_id' => (int) $row['employee_id'],
+                        'year' => $year,
+                        'month' => $month,
+                    ],
+                    [
+                        'new_target' => (float) $row['new_target'],
+                        'repeat_target' => (float) $row['repeat_target'],
+                        'arrears_target' => (float) $row['arrears_target'],
+                        'performing_target' => (float) $row['performing_target'],
+                        'gross_target' => (float) $row['gross_target'],
+                        'revenue_target' => (float) $row['revenue_target'],
+                        'updated_at' => now(),
+                        'created_at' => now(),
+                    ]
+                );
+            }
+        });
+
+        return redirect()
+            ->route('loan.dashboard.performance_targets', ['month' => $monthDate->format('Y-m')])
+            ->with('status', 'Performance targets saved.');
+    }
+
+    private function buildPerformanceIndicators(): Collection
+    {
+        $monthStart = now()->startOfMonth();
+        $monthEnd = now()->endOfMonth();
+        $scopedLoanIds = $this->loanQuery()->select('id');
+
+        $newLoans = DB::table('loan_book_loans as l')
+            ->join('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
+            ->whereIn('l.id', $scopedLoanIds)
+            ->whereBetween('l.created_at', [$monthStart, $monthEnd])
+            ->whereNotNull('c.assigned_employee_id')
+            ->selectRaw('c.assigned_employee_id as employee_id, COUNT(*) as total')
+            ->groupBy('c.assigned_employee_id')
+            ->pluck('total', 'employee_id');
+
+        $repeatLoans = DB::table('loan_book_loans as l')
+            ->join('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
+            ->whereIn('l.id', $scopedLoanIds)
+            ->whereBetween('l.created_at', [$monthStart, $monthEnd])
+            ->whereNotNull('c.assigned_employee_id')
+            ->whereExists(function ($query) use ($monthStart) {
+                $query->selectRaw('1')
+                    ->from('loan_book_loans as old')
+                    ->whereColumn('old.loan_client_id', 'l.loan_client_id')
+                    ->where('old.created_at', '<', $monthStart);
+            })
+            ->selectRaw('c.assigned_employee_id as employee_id, COUNT(*) as total')
+            ->groupBy('c.assigned_employee_id')
+            ->pluck('total', 'employee_id');
+
+        $arrears = DB::table('loan_book_loans as l')
+            ->join('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
+            ->whereIn('l.id', $scopedLoanIds)
+            ->whereIn('l.status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_RESTRUCTURED])
+            ->where('l.dpd', '>', 0)
+            ->whereNotNull('c.assigned_employee_id')
+            ->selectRaw('c.assigned_employee_id as employee_id, COALESCE(SUM(l.balance), 0) as total')
+            ->groupBy('c.assigned_employee_id')
+            ->pluck('total', 'employee_id');
+
+        $performing = DB::table('loan_book_loans as l')
+            ->join('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
+            ->whereIn('l.id', $scopedLoanIds)
+            ->where('l.status', LoanBookLoan::STATUS_ACTIVE)
+            ->where('l.dpd', '<=', 5)
+            ->whereNotNull('c.assigned_employee_id')
+            ->selectRaw('c.assigned_employee_id as employee_id, COUNT(*) as total')
+            ->groupBy('c.assigned_employee_id')
+            ->pluck('total', 'employee_id');
+
+        $grossDisbursement = DB::table('loan_book_disbursements as d')
+            ->join('loan_book_loans as l', 'l.id', '=', 'd.loan_book_loan_id')
+            ->join('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
+            ->whereIn('l.id', $scopedLoanIds)
+            ->whereBetween('d.disbursed_at', [$monthStart->toDateString(), $monthEnd->toDateString()])
+            ->whereNotNull('c.assigned_employee_id')
+            ->selectRaw('c.assigned_employee_id as employee_id, COALESCE(SUM(d.amount), 0) as total')
+            ->groupBy('c.assigned_employee_id')
+            ->pluck('total', 'employee_id');
+
+        $revenue = DB::table('loan_book_payments as p')
+            ->join('loan_book_loans as l', 'l.id', '=', 'p.loan_book_loan_id')
+            ->join('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
+            ->whereIn('l.id', $scopedLoanIds)
+            ->where('p.status', LoanBookPayment::STATUS_PROCESSED)
+            ->whereBetween('p.transaction_at', [$monthStart->startOfDay(), $monthEnd->endOfDay()])
+            ->whereNotNull('c.assigned_employee_id')
+            ->selectRaw('c.assigned_employee_id as employee_id, COALESCE(SUM(p.amount), 0) as total')
+            ->groupBy('c.assigned_employee_id')
+            ->pluck('total', 'employee_id');
+
+        $ids = collect()
+            ->merge($newLoans->keys())
+            ->merge($repeatLoans->keys())
+            ->merge($arrears->keys())
+            ->merge($performing->keys())
+            ->merge($grossDisbursement->keys())
+            ->merge($revenue->keys())
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        $names = Employee::query()
+            ->whereIn('id', $ids)
+            ->get()
+            ->mapWithKeys(fn (Employee $e) => [(int) $e->id => trim((string) $e->full_name)]);
+
+        $targetOverrides = Schema::hasTable('loan_performance_indicator_targets')
+            ? DB::table('loan_performance_indicator_targets')
+                ->where('year', (int) $monthStart->format('Y'))
+                ->where('month', (int) $monthStart->format('m'))
+                ->get()
+                ->keyBy('employee_id')
+            : collect();
+
+        $rows = $ids->map(function (int $employeeId) use ($names, $newLoans, $repeatLoans, $arrears, $performing, $grossDisbursement, $revenue, $targetOverrides) {
+            $new = (int) ($newLoans[$employeeId] ?? 0);
+            $repeat = (int) ($repeatLoans[$employeeId] ?? 0);
+            $arr = (float) ($arrears[$employeeId] ?? 0);
+            $perf = (int) ($performing[$employeeId] ?? 0);
+            $gross = (float) ($grossDisbursement[$employeeId] ?? 0);
+            $rev = (float) ($revenue[$employeeId] ?? 0);
+            $target = $targetOverrides->get($employeeId);
+            $newTarget = (float) ($target->new_target ?? self::PERFORMANCE_DEFAULT_TARGETS['new_target']);
+            $repeatTarget = (float) ($target->repeat_target ?? self::PERFORMANCE_DEFAULT_TARGETS['repeat_target']);
+            $arrearsTarget = (float) ($target->arrears_target ?? self::PERFORMANCE_DEFAULT_TARGETS['arrears_target']);
+            $performingTarget = (float) ($target->performing_target ?? self::PERFORMANCE_DEFAULT_TARGETS['performing_target']);
+            $grossTarget = (float) ($target->gross_target ?? self::PERFORMANCE_DEFAULT_TARGETS['gross_target']);
+            $revenueTarget = (float) ($target->revenue_target ?? self::PERFORMANCE_DEFAULT_TARGETS['revenue_target']);
+            $arrearsBase = max(1.0, $arrearsTarget > 0 ? $arrearsTarget : 300000.0);
+
+            return [
+                'employee_id' => $employeeId,
+                'staff_name' => (string) ($names[$employeeId] ?? 'Unassigned'),
+                'new_target' => $newTarget,
+                'new_actual' => $new,
+                'new_score' => $new > 0 ? ($new / max(1.0, $newTarget)) * 100 : 0.0,
+                'repeat_target' => $repeatTarget,
+                'repeat_actual' => $repeat,
+                'repeat_score' => $repeat > 0 ? ($repeat / max(1.0, $repeatTarget)) * 100 : 0.0,
+                'arrears_target' => $arrearsTarget,
+                'arrears_actual' => $arr,
+                'arrears_score' => $arr > 0 ? -min(100, ($arr / $arrearsBase) * 100) : 0.0,
+                'performing_target' => $performingTarget,
+                'performing_actual' => $perf,
+                'performing_score' => $perf > 0 ? ($perf / max(1.0, $performingTarget)) * 100 : 0.0,
+                'gross_target' => $grossTarget,
+                'gross_actual' => $gross,
+                'gross_score' => $gross > 0 ? ($gross / max(1.0, $grossTarget)) * 100 : 0.0,
+                'revenue_target' => $revenueTarget,
+                'revenue_actual' => $rev,
+                'revenue_score' => $rev > 0 ? ($rev / max(1.0, $revenueTarget)) * 100 : 0.0,
+            ];
+        })->values();
+
+        $rankBy = function (Collection $source, string $key, bool $asc = false): array {
+            $sorted = $asc
+                ? $source->sortBy($key)->values()
+                : $source->sortByDesc($key)->values();
+            $ranks = [];
+            foreach ($sorted as $idx => $row) {
+                $ranks[(int) $row['employee_id']] = $idx + 1;
+            }
+
+            return $ranks;
+        };
+
+        $newPos = $rankBy($rows, 'new_actual');
+        $repeatPos = $rankBy($rows, 'repeat_actual');
+        $arrearsPos = $rankBy($rows, 'arrears_actual', true);
+        $performingPos = $rankBy($rows, 'performing_actual');
+        $grossPos = $rankBy($rows, 'gross_actual');
+        $revenuePos = $rankBy($rows, 'revenue_actual');
+
+        return $rows
+            ->map(function (array $row) use ($newPos, $repeatPos, $arrearsPos, $performingPos, $grossPos, $revenuePos) {
+                $id = (int) $row['employee_id'];
+                $row['new_pos'] = (int) ($newPos[$id] ?? 0);
+                $row['repeat_pos'] = (int) ($repeatPos[$id] ?? 0);
+                $row['arrears_pos'] = (int) ($arrearsPos[$id] ?? 0);
+                $row['performing_pos'] = (int) ($performingPos[$id] ?? 0);
+                $row['gross_pos'] = (int) ($grossPos[$id] ?? 0);
+                $row['revenue_pos'] = (int) ($revenuePos[$id] ?? 0);
+
+                return $row;
+            })
+            ->sortBy('revenue_pos')
+            ->values();
     }
 
     private function buildKpis(bool $book, bool $payments, bool $clients, bool $applications): array

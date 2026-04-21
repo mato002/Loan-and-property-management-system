@@ -85,6 +85,22 @@
                     @error('purpose')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
 
+                @php
+                    $productMeta = ($productMetaByName ?? [])[$application->product_name] ?? null;
+                    $chargesSummary = trim((string) ($productMeta['charges_summary'] ?? ''));
+                @endphp
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <h3 class="text-sm font-semibold text-slate-800">Additional application context</h3>
+                    <dl class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
+                        <div><dt class="text-slate-500">Submission source</dt><dd class="font-medium text-slate-800">{{ $application->submission_source ?: 'manual_internal' }}</dd></div>
+                        <div><dt class="text-slate-500">Approved by</dt><dd class="font-medium text-slate-800">{{ $application->loanClient?->assignedEmployee?->full_name ?? 'None' }}</dd></div>
+                        <div><dt class="text-slate-500">Guarantor2</dt><dd class="font-medium text-slate-800">{{ $application->loanClient?->guarantor_2_full_name ?: '—' }}</dd></div>
+                        <div><dt class="text-slate-500">Guarantor2 contact</dt><dd class="font-medium text-slate-800"><x-phone-link :value="$application->loanClient?->guarantor_2_phone" /></dd></div>
+                        <div class="sm:col-span-2"><dt class="text-slate-500">Charges</dt><dd class="font-medium text-slate-800">{{ $chargesSummary !== '' ? $chargesSummary : '—' }}</dd></div>
+                        <div class="sm:col-span-2"><dt class="text-slate-500">Deductions</dt><dd class="font-medium text-slate-800">Checkoff(0), Prepayment(0)</dd></div>
+                    </dl>
+                </div>
+
                 <div class="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-4">
                     <div>
                         <h3 class="text-sm font-semibold text-slate-800">Loan department form</h3>

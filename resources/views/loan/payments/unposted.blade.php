@@ -108,7 +108,7 @@
                                     </div>
                                 </td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $p->payment_kind) }}</td>
-                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $p->transaction_at->format('Y-m-d H:i') }}</td>
+                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ optional($p->transaction_at)->format('Y-m-d H:i') ?? '—' }}</td>
                                 <td class="px-5 py-3 font-mono text-xs text-slate-600">{{ $p->payer_msisdn ?? '—' }}</td>
                                 <td class="px-5 py-3 font-mono text-xs text-slate-600">{{ $p->mpesa_receipt_number ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">

@@ -83,8 +83,8 @@
                             @endphp
                             <tr class="hover:bg-slate-50/80">
                                 <td class="px-5 py-3 font-mono text-xs">{{ $app->reference }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $app->loanClient->client_number }}</td>
-                                <td class="px-5 py-3 font-medium text-slate-900">{{ $app->loanClient->full_name }}</td>
+                                <td class="px-5 py-3 text-slate-600">{{ $app->loanClient?->client_number ?? '—' }}</td>
+                                <td class="px-5 py-3 font-medium text-slate-900">{{ $app->loanClient?->full_name ?? '—' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $app->product_name }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $sourceLabel }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums">{{ number_format((float) $app->amount_requested, 2) }}</td>

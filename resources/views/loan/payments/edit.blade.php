@@ -16,7 +16,7 @@
                     <select id="loan_book_loan_id" name="loan_book_loan_id" class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="">Unallocated…</option>
                         @foreach ($loans as $l)
-                            <option value="{{ $l->id }}" @selected((int) old('loan_book_loan_id', $payment->loan_book_loan_id ?: ($suggestedLoanId ?? 0)) === (int) $l->id)>{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
+                            <option value="{{ $l->id }}" @selected((int) old('loan_book_loan_id', $payment->loan_book_loan_id ?: ($suggestedLoanId ?? 0)) === (int) $l->id)>{{ $l->loan_number }} · {{ $l->loanClient?->full_name ?? '—' }}</option>
                         @endforeach
                     </select>
                     @if (! $payment->loan_book_loan_id && ! old('loan_book_loan_id') && ! empty($suggestedLoanId))
@@ -64,7 +64,7 @@
                 </div>
                 <div>
                     <label for="transaction_at" class="block text-xs font-semibold text-slate-600 mb-1">Transaction time</label>
-                    <input id="transaction_at" name="transaction_at" type="datetime-local" value="{{ old('transaction_at', $payment->transaction_at->format('Y-m-d\TH:i')) }}" required class="w-full rounded-lg border-slate-200 text-sm" />
+                    <input id="transaction_at" name="transaction_at" type="datetime-local" value="{{ old('transaction_at', optional($payment->transaction_at)->format('Y-m-d\TH:i')) }}" required class="w-full rounded-lg border-slate-200 text-sm" />
                     @error('transaction_at')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>

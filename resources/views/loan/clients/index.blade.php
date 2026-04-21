@@ -49,7 +49,7 @@
                                 <td class="px-5 py-3 text-slate-600">{{ $client->client_status }}</td>
                                 <td class="px-5 py-3 text-slate-600">
                                     <div class="flex flex-col">
-                                        @if ($client->phone)<span>{{ $client->phone }}</span>@endif
+                                        @if ($client->phone)<span><x-phone-link :value="$client->phone" /></span>@endif
                                         @if ($client->email)<span class="text-xs">{{ $client->email }}</span>@endif
                                         @if (! $client->phone && ! $client->email)<span>—</span>@endif
                                     </div>

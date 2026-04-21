@@ -11,6 +11,9 @@ use App\Models\LoanBookCollectionRate;
 use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
+use App\Models\LoanBranch;
+use App\Models\LoanRegion;
+use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Support\TabularExport;
 use App\Services\Integrations\MpesaDarajaService;
 use App\Services\LoanBook\LoanDisbursementPayoutService;
@@ -29,13 +32,18 @@ class LoanBookOperationsController extends Controller
 
     public function disbursementsIndex(Request $request)
     {
-        $query = LoanBookDisbursement::query()->with(['loan.loanClient', 'accountingJournalEntry']);
+        $query = LoanBookDisbursement::query()->with(['loan.loanClient', 'loan.loanBranch.region', 'accountingJournalEntry']);
         $this->scopeByAssignedLoanClient($query, auth()->user(), 'loan.loanClient');
         $q = trim((string) $request->query('q', ''));
         $method = trim((string) $request->query('method', ''));
         $from = trim((string) $request->query('from', ''));
         $to = trim((string) $request->query('to', ''));
         $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $calendarYear = min(2100, max(2000, (int) $request->query('cal_year', now()->year)));
+        $calendarMonth = min(12, max(1, (int) $request->query('cal_month', now()->month)));
+        $calendarRegionId = max(0, (int) $request->query('cal_region_id', 0));
+        $calendarBranchId = max(0, (int) $request->query('cal_branch_id', 0));
+        $calendarProduct = trim((string) $request->query('cal_product', ''));
 
         $query
             ->when($q !== '', function ($builder) use ($q) {
@@ -54,7 +62,16 @@ class LoanBookOperationsController extends Controller
             })
             ->when($method !== '', fn ($builder) => $builder->where('method', $method))
             ->when($from !== '', fn ($builder) => $builder->whereDate('disbursed_at', '>=', $from))
-            ->when($to !== '', fn ($builder) => $builder->whereDate('disbursed_at', '<=', $to));
+            ->when($to !== '', fn ($builder) => $builder->whereDate('disbursed_at', '<=', $to))
+            ->when($calendarProduct !== '', function ($builder) use ($calendarProduct) {
+                $builder->whereHas('loan', fn ($loan) => $loan->where('product_name', $calendarProduct));
+            })
+            ->when($calendarBranchId > 0, function ($builder) use ($calendarBranchId) {
+                $builder->whereHas('loan', fn ($loan) => $loan->where('loan_branch_id', $calendarBranchId));
+            })
+            ->when($calendarRegionId > 0, function ($builder) use ($calendarRegionId) {
+                $builder->whereHas('loan.loanBranch', fn ($branch) => $branch->where('loan_region_id', $calendarRegionId));
+            });
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
@@ -62,7 +79,7 @@ class LoanBookOperationsController extends Controller
 
             return TabularExport::stream(
                 'loanbook-disbursements-'.now()->format('Ymd_His'),
-                ['Date', 'Loan #', 'Client #', 'Client Name', 'Amount', 'Method', 'Payout Status', 'Payout Error', 'Reference', 'GL Journal #'],
+                ['Date', 'Loan #', 'Client #', 'Client Name', 'Region', 'Branch', 'Product', 'Amount', 'Method', 'Payout Status', 'Payout Error', 'Reference', 'GL Journal #'],
                 function () use ($rows) {
                     foreach ($rows as $d) {
                         yield [
@@ -70,6 +87,9 @@ class LoanBookOperationsController extends Controller
                             (string) ($d->loan?->loan_number ?? ''),
                             (string) ($d->loan?->loanClient?->client_number ?? ''),
                             (string) ($d->loan?->loanClient?->full_name ?? ''),
+                            (string) ($d->loan?->loanBranch?->region?->name ?? ''),
+                            (string) ($d->loan?->loanBranch?->name ?? $d->loan?->branch ?? ''),
+                            (string) ($d->loan?->product_name ?? ''),
                             number_format((float) $d->amount, 2, '.', ''),
                             (string) $d->method,
                             (string) ($d->payout_status ?? 'completed'),
@@ -85,6 +105,70 @@ class LoanBookOperationsController extends Controller
 
         $disbursements = $query->orderByDesc('disbursed_at')->orderByDesc('id')->paginate($perPage)->withQueryString();
         $methods = LoanBookDisbursement::query()->select('method')->distinct()->orderBy('method')->pluck('method');
+        $monthStart = Carbon::create($calendarYear, $calendarMonth, 1)->startOfMonth();
+        $monthEnd = (clone $monthStart)->endOfMonth();
+
+        $calendarQuery = LoanBookDisbursement::query()
+            ->with(['loan.loanBranch.region'])
+            ->whereDate('disbursed_at', '>=', $monthStart->toDateString())
+            ->whereDate('disbursed_at', '<=', $monthEnd->toDateString())
+            ->whereHas('loan');
+        $this->scopeByAssignedLoanClient($calendarQuery, auth()->user(), 'loan.loanClient');
+
+        $calendarQuery->when($calendarProduct !== '', function ($builder) use ($calendarProduct) {
+            $builder->whereHas('loan', fn ($loan) => $loan->where('product_name', $calendarProduct));
+        });
+        $calendarQuery->when($calendarBranchId > 0, function ($builder) use ($calendarBranchId) {
+            $builder->whereHas('loan', fn ($loan) => $loan->where('loan_branch_id', $calendarBranchId));
+        });
+        $calendarQuery->when($calendarRegionId > 0, function ($builder) use ($calendarRegionId) {
+            $builder->whereHas('loan.loanBranch', fn ($branch) => $branch->where('loan_region_id', $calendarRegionId));
+        });
+
+        $calendarRows = $calendarQuery->get();
+        $calendarByDay = [];
+        foreach ($calendarRows as $row) {
+            $day = (int) optional($row->disbursed_at)->format('j');
+            if ($day <= 0) {
+                continue;
+            }
+            $branchName = trim((string) ($row->loan?->loanBranch?->name ?? $row->loan?->branch ?? 'Unassigned'));
+            if ($branchName === '') {
+                $branchName = 'Unassigned';
+            }
+            $calendarByDay[$day][$branchName] = (float) ($calendarByDay[$day][$branchName] ?? 0) + (float) $row->amount;
+        }
+        foreach ($calendarByDay as $day => $branchTotals) {
+            arsort($branchTotals);
+            $calendarByDay[$day] = $branchTotals;
+        }
+
+        $calendarGridStart = (clone $monthStart)->startOfWeek(Carbon::MONDAY);
+        $calendarGridEnd = (clone $monthEnd)->endOfWeek(Carbon::SUNDAY);
+        $calendarWeeks = [];
+        $cursor = (clone $calendarGridStart);
+        while ($cursor->lte($calendarGridEnd)) {
+            $week = [];
+            for ($i = 0; $i < 7; $i++) {
+                $week[] = (clone $cursor);
+                $cursor->addDay();
+            }
+            $calendarWeeks[] = $week;
+        }
+
+        $calendarRegionOptions = LoanRegion::query()->orderBy('name')->get(['id', 'name']);
+        $calendarBranchOptions = LoanBranch::query()
+            ->with('region:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'loan_region_id']);
+        $calendarProductOptionsQuery = LoanBookLoan::query()
+            ->whereNotNull('product_name')
+            ->where('product_name', '!=', '')
+            ->select('product_name')
+            ->distinct()
+            ->orderBy('product_name');
+        $this->scopeByAssignedLoanClient($calendarProductOptionsQuery, auth()->user());
+        $calendarProductOptions = $calendarProductOptionsQuery->pluck('product_name');
 
         $pendingLoanQuery = LoanBookLoan::query()
             ->with('loanClient')
@@ -108,6 +192,17 @@ class LoanBookOperationsController extends Controller
             'perPage' => $perPage,
             'methods' => $methods,
             'pendingLoans' => $pendingLoans,
+            'calendarYear' => $calendarYear,
+            'calendarMonth' => $calendarMonth,
+            'calendarRegionId' => $calendarRegionId,
+            'calendarBranchId' => $calendarBranchId,
+            'calendarProduct' => $calendarProduct,
+            'calendarWeeks' => $calendarWeeks,
+            'calendarByDay' => $calendarByDay,
+            'calendarRegionOptions' => $calendarRegionOptions,
+            'calendarBranchOptions' => $calendarBranchOptions,
+            'calendarProductOptions' => $calendarProductOptions,
+            'calendarCurrentMonth' => $monthStart,
         ]);
     }
 
@@ -170,6 +265,12 @@ class LoanBookOperationsController extends Controller
                 ->withInput()
                 ->withErrors(['accounting' => $e->getMessage()]);
         }
+
+        $request->user()?->notify(new LoanWorkflowNotification(
+            'Disbursement recorded',
+            'Disbursement for loan '.($loan->loan_number ?? '#'.$loan->id).' was posted successfully.',
+            route('loan.book.disbursements.index')
+        ));
 
         return redirect()
             ->route('loan.book.disbursements.index')
@@ -278,7 +379,18 @@ class LoanBookOperationsController extends Controller
         $perPage = min(200, max(10, (int) $request->query('per_page', 25)));
 
         $entriesQuery = LoanBookCollectionEntry::query()
-            ->with(['loan.loanClient', 'collectedBy', 'accountingJournalEntry'])
+            ->with([
+                'loan' => function ($loanQuery) use ($from, $to) {
+                    $loanQuery
+                        ->with(['loanClient.assignedEmployee'])
+                        ->withSum('processedRepayments', 'amount')
+                        ->withSum(['collectionEntries as period_collection_sum' => function ($entryQuery) use ($from, $to) {
+                            $entryQuery->whereBetween('collected_on', [$from, $to]);
+                        }], 'amount');
+                },
+                'collectedBy',
+                'accountingJournalEntry',
+            ])
             ->whereBetween('collected_on', [$from, $to])
             ->orderByDesc('collected_on')
             ->orderByDesc('id')
@@ -309,12 +421,12 @@ class LoanBookOperationsController extends Controller
                     foreach ($rows as $row) {
                         yield [
                             (string) optional($row->collected_on)->format('Y-m-d'),
-                            (string) ($row->loan->loan_number ?? ''),
-                            (string) ($row->loan->loanClient->client_number ?? ''),
-                            (string) ($row->loan->loanClient->full_name ?? ''),
+                            (string) ($row->loan?->loan_number ?? ''),
+                            (string) ($row->loan?->loanClient?->client_number ?? ''),
+                            (string) ($row->loan?->loanClient?->full_name ?? ''),
                             number_format((float) $row->amount, 2, '.', ''),
                             (string) $row->channel,
-                            (string) ($row->collectedBy->full_name ?? ''),
+                            (string) ($row->collectedBy?->full_name ?? ''),
                             (string) ($row->accounting_journal_entry_id ?? ''),
                         ];
                     }
@@ -417,6 +529,9 @@ class LoanBookOperationsController extends Controller
         $start = now()->startOfMonth()->toDateString();
         $end = now()->endOfMonth()->toDateString();
 
+        $scopedLoanIds = LoanBookLoan::query()->select('id');
+        $this->scopeByAssignedLoanClient($scopedLoanIds, auth()->user());
+
         $totalsQuery = LoanBookPayment::query()
             ->where('status', LoanBookPayment::STATUS_PROCESSED)
             ->whereBetween('transaction_at', [
@@ -454,6 +569,67 @@ class LoanBookOperationsController extends Controller
         $this->scopeByAssignedLoanClient($recentQuery, auth()->user(), 'loan.loanClient');
         $recent = $recentQuery->get();
 
+        $loanBranchMetrics = DB::table('loan_book_loans')
+            ->whereIn('id', $scopedLoanIds)
+            ->whereNotNull('branch')
+            ->whereNotNull('disbursed_at')
+            ->whereDate('disbursed_at', '>=', $start)
+            ->whereDate('disbursed_at', '<=', $end)
+            ->selectRaw('
+                branch,
+                COUNT(*) as total_loans,
+                COALESCE(SUM(principal), 0) as disbursed_amount,
+                COALESCE(SUM(principal + interest_outstanding + fees_outstanding), 0) as loan_plus_charges
+            ')
+            ->groupBy('branch')
+            ->get()
+            ->keyBy('branch');
+
+        $paidBranchMetrics = DB::table('loan_book_collection_entries as ce')
+            ->join('loan_book_loans as l', 'l.id', '=', 'ce.loan_book_loan_id')
+            ->whereIn('ce.loan_book_loan_id', $scopedLoanIds)
+            ->whereNotNull('l.branch')
+            ->whereDate('ce.collected_on', '>=', $start)
+            ->whereDate('ce.collected_on', '<=', $end)
+            ->selectRaw('l.branch as branch, COALESCE(SUM(ce.amount), 0) as paid')
+            ->groupBy('l.branch')
+            ->get()
+            ->keyBy('branch');
+
+        $branches = $loanBranchMetrics->keys()->merge($paidBranchMetrics->keys())->unique()->sort()->values();
+        $branchPerformance = $branches->map(function ($branch) use ($loanBranchMetrics, $paidBranchMetrics) {
+            $loanRow = $loanBranchMetrics->get($branch);
+            $paidRow = $paidBranchMetrics->get($branch);
+
+            $disbursed = (float) ($loanRow->disbursed_amount ?? 0);
+            $totalLoans = (int) ($loanRow->total_loans ?? 0);
+            $loanPlusCharges = (float) ($loanRow->loan_plus_charges ?? 0);
+            $paid = (float) ($paidRow->paid ?? 0);
+            $arrears = max(0, $loanPlusCharges - $paid);
+            $gcPercent = $loanPlusCharges > 0 ? ($paid / $loanPlusCharges) * 100 : 0.0;
+
+            return (object) [
+                'branch' => $branch,
+                'disbursed_amount' => $disbursed,
+                'total_loans' => $totalLoans,
+                'loan_plus_charges' => $loanPlusCharges,
+                'paid' => $paid,
+                'arrears' => $arrears,
+                'gc_percent' => $gcPercent,
+            ];
+        })->values();
+
+        $branchTotals = (object) [
+            'disbursed_amount' => (float) $branchPerformance->sum('disbursed_amount'),
+            'total_loans' => (int) $branchPerformance->sum('total_loans'),
+            'loan_plus_charges' => (float) $branchPerformance->sum('loan_plus_charges'),
+            'paid' => (float) $branchPerformance->sum('paid'),
+            'arrears' => (float) $branchPerformance->sum('arrears'),
+            'gc_percent' => ((float) $branchPerformance->sum('loan_plus_charges')) > 0
+                ? ((float) $branchPerformance->sum('paid') / (float) $branchPerformance->sum('loan_plus_charges')) * 100
+                : 0.0,
+        ];
+
         return view('loan.book.collection_mtd', [
             'title' => 'Collection MTD',
             'subtitle' => now()->format('F Y').' — month-to-date receipts.',
@@ -462,6 +638,8 @@ class LoanBookOperationsController extends Controller
             'totals' => $totals,
             'byChannel' => $byChannel,
             'recent' => $recent,
+            'branchPerformance' => $branchPerformance,
+            'branchTotals' => $branchTotals,
         ]);
     }
 
@@ -470,6 +648,11 @@ class LoanBookOperationsController extends Controller
         $from = $request->query('from', now()->startOfMonth()->toDateString());
         $to = $request->query('to', now()->toDateString());
         $q = trim((string) $request->query('q', ''));
+        $branch = trim((string) $request->query('branch', ''));
+        $reportMode = strtolower((string) $request->query('report_mode', 'detail'));
+        if (! in_array($reportMode, ['detail', 'branch'], true)) {
+            $reportMode = 'detail';
+        }
         $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
         try {
             $from = Carbon::parse($from)->toDateString();
@@ -487,24 +670,115 @@ class LoanBookOperationsController extends Controller
             ->whereIn('loan_book_collection_entries.loan_book_loan_id', $scopedLoanIds)
             ->where('loan_book_collection_entries.collected_on', '>=', $from)
             ->where('loan_book_collection_entries.collected_on', '<=', $to)
+            ->when($branch !== '', fn ($builder) => $builder->where('loan_book_loans.branch', $branch))
             ->when($q !== '', fn ($builder) => $builder->where('loan_book_loans.branch', 'like', '%'.$q.'%'))
             ->selectRaw('loan_book_loans.`branch` as `branch`, COUNT(*) as `receipt_count`, COALESCE(SUM(loan_book_collection_entries.`amount`), 0) as `total`')
             ->groupBy('loan_book_loans.branch')
             ->orderByDesc('total');
 
+        $processedPaymentsSub = DB::table('loan_book_payments')
+            ->selectRaw('loan_book_loan_id, COALESCE(SUM(amount), 0) as paid_total')
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->groupBy('loan_book_loan_id');
+
+        $detailQuery = DB::table('loan_book_loans as l')
+            ->leftJoin('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
+            ->leftJoin('employees as e', 'e.id', '=', 'c.assigned_employee_id')
+            ->leftJoin('loan_book_collection_entries as ce', function ($join) use ($from, $to) {
+                $join->on('ce.loan_book_loan_id', '=', 'l.id')
+                    ->where('ce.collected_on', '>=', $from)
+                    ->where('ce.collected_on', '<=', $to);
+            })
+            ->leftJoinSub($processedPaymentsSub, 'pp', function ($join) {
+                $join->on('pp.loan_book_loan_id', '=', 'l.id');
+            })
+            ->whereIn('l.id', $scopedLoanIds)
+            ->when($branch !== '', fn ($builder) => $builder->where('l.branch', $branch))
+            ->when($q !== '', function ($builder) use ($q) {
+                $builder->where(function ($inner) use ($q) {
+                    $inner->where('l.loan_number', 'like', '%'.$q.'%')
+                        ->orWhere('l.branch', 'like', '%'.$q.'%')
+                        ->orWhere('c.client_number', 'like', '%'.$q.'%')
+                        ->orWhere('c.first_name', 'like', '%'.$q.'%')
+                        ->orWhere('c.last_name', 'like', '%'.$q.'%')
+                        ->orWhere('c.phone', 'like', '%'.$q.'%')
+                        ->orWhereRaw("TRIM(CONCAT(COALESCE(e.first_name,''), ' ', COALESCE(e.last_name,''))) like ?", ['%'.$q.'%']);
+                });
+            })
+            ->groupBy(
+                'l.id',
+                'l.loan_number',
+                'l.branch',
+                'l.balance',
+                'l.dpd',
+                'c.first_name',
+                'c.last_name',
+                'c.phone',
+                'e.first_name',
+                'e.last_name',
+                'pp.paid_total'
+            )
+            ->selectRaw("
+                l.id as loan_id,
+                l.loan_number,
+                l.branch,
+                l.balance,
+                l.dpd,
+                TRIM(CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,''))) as client_name,
+                c.phone as client_phone,
+                TRIM(CONCAT(COALESCE(e.first_name,''), ' ', COALESCE(e.last_name,''))) as portfolio_name,
+                COALESCE(SUM(ce.amount), 0) as collection_total,
+                COALESCE(pp.paid_total, 0) as paid_total
+            ")
+            ->havingRaw('COALESCE(SUM(ce.amount), 0) > 0')
+            ->orderByDesc('collection_total');
+
+        $branches = DB::table('loan_book_loans')
+            ->whereIn('id', $scopedLoanIds)
+            ->whereNotNull('branch')
+            ->where('branch', '!=', '')
+            ->distinct()
+            ->orderBy('branch')
+            ->pluck('branch');
+
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
-            $rows = (clone $byBranchQuery)->limit(5000)->get();
+            if ($reportMode === 'branch') {
+                $rows = (clone $byBranchQuery)->limit(5000)->get();
+
+                return TabularExport::stream(
+                    'loanbook-collection-reports-branch-'.now()->format('Ymd_His'),
+                    ['Branch', 'Receipt Lines', 'Total'],
+                    function () use ($rows) {
+                        foreach ($rows as $row) {
+                            yield [
+                                (string) ($row->branch ?? ''),
+                                (string) ((int) ($row->receipt_count ?? 0)),
+                                number_format((float) ($row->total ?? 0), 2, '.', ''),
+                            ];
+                        }
+                    },
+                    $export
+                );
+            }
+
+            $rows = (clone $detailQuery)->limit(5000)->get();
 
             return TabularExport::stream(
-                'loanbook-collection-reports-'.now()->format('Ymd_His'),
-                ['Branch', 'Receipt Lines', 'Total'],
+                'loanbook-collection-reports-detail-'.now()->format('Ymd_His'),
+                ['Loan #', 'Client', 'Contact', 'Portfolio', 'Branch', 'Collection', 'Arrears (DPD)', 'Paid', 'Balance'],
                 function () use ($rows) {
                     foreach ($rows as $row) {
                         yield [
+                            (string) ($row->loan_number ?? ''),
+                            (string) ($row->client_name ?? ''),
+                            (string) ($row->client_phone ?? ''),
+                            (string) ($row->portfolio_name ?? ''),
                             (string) ($row->branch ?? ''),
-                            (string) ((int) ($row->receipt_count ?? 0)),
-                            number_format((float) ($row->total ?? 0), 2, '.', ''),
+                            number_format((float) ($row->collection_total ?? 0), 2, '.', ''),
+                            (string) ((int) ($row->dpd ?? 0)),
+                            number_format((float) ($row->paid_total ?? 0), 2, '.', ''),
+                            number_format((float) ($row->balance ?? 0), 2, '.', ''),
                         ];
                     }
                 },
@@ -513,6 +787,7 @@ class LoanBookOperationsController extends Controller
         }
 
         $byBranch = $byBranchQuery->paginate($perPage)->withQueryString();
+        $detailRows = $detailQuery->paginate($perPage, ['*'], 'detail_page')->withQueryString();
 
         return view('loan.book.collection_reports', [
             'title' => 'Collection reports',
@@ -520,7 +795,11 @@ class LoanBookOperationsController extends Controller
             'from' => $from,
             'to' => $to,
             'byBranch' => $byBranch,
+            'detailRows' => $detailRows,
+            'reportMode' => $reportMode,
             'q' => $q,
+            'branch' => $branch,
+            'branches' => $branches,
             'perPage' => $perPage,
         ]);
     }
@@ -530,7 +809,18 @@ class LoanBookOperationsController extends Controller
         $q = trim((string) $request->query('q', ''));
         $branch = trim((string) $request->query('branch', ''));
         $active = trim((string) $request->query('active', ''));
+        $monthRaw = trim((string) $request->query('month', now()->format('Y-m')));
+        $dayRaw = trim((string) $request->query('day', ''));
         $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        try {
+            $monthDate = Carbon::createFromFormat('Y-m', $monthRaw)->startOfMonth();
+        } catch (\Throwable) {
+            $monthDate = now()->startOfMonth();
+        }
+        $month = $monthDate->format('Y-m');
+        $monthStart = $monthDate->toDateString();
+        $monthEnd = $monthDate->copy()->endOfMonth()->toDateString();
+        $day = ctype_digit($dayRaw) ? max(1, min(31, (int) $dayRaw)) : null;
 
         $agentsQuery = LoanBookAgent::query()
             ->with('employee')
@@ -539,21 +829,41 @@ class LoanBookOperationsController extends Controller
             ->when($active !== '', fn ($builder) => $builder->where('is_active', $active === '1'))
             ->orderBy('name');
 
+        $assignedLoansByEmployee = DB::table('loan_book_loans as l')
+            ->join('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
+            ->whereNotNull('c.assigned_employee_id')
+            ->selectRaw('c.assigned_employee_id as employee_id, COUNT(*) as assigned_loans')
+            ->groupBy('c.assigned_employee_id')
+            ->pluck('assigned_loans', 'employee_id');
+
+        $collectionMetricsByEmployee = DB::table('loan_book_collection_entries')
+            ->whereNotNull('collected_by_employee_id')
+            ->whereDate('collected_on', '>=', $monthStart)
+            ->whereDate('collected_on', '<=', $monthEnd)
+            ->when($day !== null, fn ($builder) => $builder->whereRaw('DAY(collected_on) = ?', [$day]))
+            ->selectRaw('collected_by_employee_id as employee_id, COUNT(*) as loanbook_lines, COALESCE(SUM(amount), 0) as month_collections')
+            ->groupBy('collected_by_employee_id')
+            ->get()
+            ->keyBy('employee_id');
+
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
             $rows = (clone $agentsQuery)->limit(5000)->get();
 
             return TabularExport::stream(
                 'loanbook-collection-agents-'.now()->format('Ymd_His'),
-                ['Name', 'Phone', 'Branch', 'Linked Employee', 'Active'],
-                function () use ($rows) {
+                ['Agent Name', 'Branches', 'Portfolios', 'Loanbook', 'Assigned Loans', $monthDate->format('M').' Collections'],
+                function () use ($rows, $assignedLoansByEmployee, $collectionMetricsByEmployee) {
                     foreach ($rows as $agent) {
+                        $employeeId = $agent->employee_id;
+                        $metrics = $employeeId ? $collectionMetricsByEmployee->get($employeeId) : null;
                         yield [
                             (string) $agent->name,
-                            (string) ($agent->phone ?? ''),
                             (string) ($agent->branch ?? ''),
-                            (string) ($agent->employee->full_name ?? ''),
-                            $agent->is_active ? 'Yes' : 'No',
+                            (string) ($agent->employee?->full_name ?? 'None'),
+                            (string) ((int) ($metrics->loanbook_lines ?? 0)),
+                            (string) ((int) ($employeeId ? ($assignedLoansByEmployee[$employeeId] ?? 0) : 0)),
+                            number_format((float) ($metrics->month_collections ?? 0), 2, '.', ''),
                         ];
                     }
                 },
@@ -562,6 +872,15 @@ class LoanBookOperationsController extends Controller
         }
 
         $agents = $agentsQuery->paginate($perPage)->withQueryString();
+        $agents->getCollection()->transform(function ($agent) use ($assignedLoansByEmployee, $collectionMetricsByEmployee) {
+            $employeeId = $agent->employee_id;
+            $metrics = $employeeId ? $collectionMetricsByEmployee->get($employeeId) : null;
+            $agent->loanbook_lines = (int) ($metrics->loanbook_lines ?? 0);
+            $agent->assigned_loans = (int) ($employeeId ? ($assignedLoansByEmployee[$employeeId] ?? 0) : 0);
+            $agent->month_collections = (float) ($metrics->month_collections ?? 0);
+
+            return $agent;
+        });
 
         return view('loan.book.agents.index', [
             'title' => 'Collection agents',
@@ -571,6 +890,10 @@ class LoanBookOperationsController extends Controller
             'branch' => $branch,
             'active' => $active,
             'perPage' => $perPage,
+            'month' => $month,
+            'day' => $day,
+            'monthLabel' => $monthDate->format('M Y'),
+            'monthShortLabel' => $monthDate->format('M'),
             'branches' => LoanBookAgent::query()->whereNotNull('branch')->where('branch', '!=', '')->distinct()->orderBy('branch')->pluck('branch'),
         ]);
     }
@@ -679,6 +1002,48 @@ class LoanBookOperationsController extends Controller
         }
 
         $rates = $ratesQuery->paginate($perPage)->withQueryString();
+
+        $scopedLoanIds = LoanBookLoan::query()->select('id');
+        $this->scopeByAssignedLoanClient($scopedLoanIds, $request->user());
+
+        $loanMetrics = DB::table('loan_book_loans')
+            ->whereIn('id', $scopedLoanIds)
+            ->whereNotNull('branch')
+            ->whereNotNull('disbursed_at')
+            ->selectRaw('branch, YEAR(disbursed_at) as y, MONTH(disbursed_at) as m, COALESCE(SUM(principal), 0) as disbursed_loan, COALESCE(SUM(principal + interest_outstanding + fees_outstanding), 0) as loan_plus_charges')
+            ->groupBy('branch', DB::raw('YEAR(disbursed_at)'), DB::raw('MONTH(disbursed_at)'))
+            ->get()
+            ->keyBy(fn ($row) => ($row->branch ?? '').'|'.$row->y.'|'.$row->m);
+
+        $collectionMetrics = DB::table('loan_book_collection_entries as ce')
+            ->join('loan_book_loans as l', 'l.id', '=', 'ce.loan_book_loan_id')
+            ->whereIn('ce.loan_book_loan_id', $scopedLoanIds)
+            ->whereNotNull('l.branch')
+            ->selectRaw('l.branch as branch, YEAR(ce.collected_on) as y, MONTH(ce.collected_on) as m, COALESCE(SUM(ce.amount), 0) as collected_total')
+            ->groupBy('l.branch', DB::raw('YEAR(ce.collected_on)'), DB::raw('MONTH(ce.collected_on)'))
+            ->get()
+            ->keyBy(fn ($row) => ($row->branch ?? '').'|'.$row->y.'|'.$row->m);
+
+        $rates->getCollection()->transform(function ($rate) use ($loanMetrics, $collectionMetrics) {
+            $key = ($rate->branch ?? '').'|'.(int) $rate->year.'|'.(int) $rate->month;
+            $loanRow = $loanMetrics->get($key);
+            $collectionRow = $collectionMetrics->get($key);
+
+            $rate->disbursed_loan = (float) ($loanRow->disbursed_loan ?? 0);
+            $rate->loan_plus_charges = (float) ($loanRow->loan_plus_charges ?? 0);
+            $rate->otc = (float) $rate->target_amount;
+            $rate->oc = (float) $rate->target_amount;
+            $rate->dd7 = 0.0;
+            $rate->cg7 = 0.0;
+            $rate->arrears = max(0, ((float) $rate->oc) - (float) ($collectionRow->collected_total ?? 0));
+
+            $base = max(0.00001, (float) $rate->loan_plus_charges);
+            $rate->otc_percent = ((float) $rate->otc / $base) * 100;
+            $rate->oc_percent = ((float) $rate->oc / $base) * 100;
+            $rate->gc_percent = ((float) $rate->oc / $base) * 100;
+
+            return $rate;
+        });
 
         return view('loan.book.rates.index', [
             'title' => 'Collection rates & targets',

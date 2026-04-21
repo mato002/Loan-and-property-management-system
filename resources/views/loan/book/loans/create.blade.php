@@ -12,7 +12,7 @@
                     <select id="loan_book_application_id" name="loan_book_application_id" class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="">— None —</option>
                         @foreach ($applications as $a)
-                            <option value="{{ $a->id }}" @selected(old('loan_book_application_id', $prefillApplicationId ?? null) == $a->id)>{{ $a->reference }} · {{ $a->loanClient->full_name }}</option>
+                            <option value="{{ $a->id }}" @selected(old('loan_book_application_id', $prefillApplicationId ?? null) == $a->id)>{{ $a->reference }} · {{ $a->loanClient?->full_name ?? '—' }}</option>
                         @endforeach
                     </select>
                     @error('loan_book_application_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -168,8 +168,8 @@
     $branchDirectoryMap = $branches->mapWithKeys(fn ($b) => [strtolower(trim((string) $b->name)) => (int) $b->id]);
 @endphp
 
-<dialog id="product-modal" class="rounded-xl border border-slate-200 p-0 shadow-xl backdrop:bg-slate-900/30">
-    <form method="dialog" class="w-[min(92vw,460px)]">
+<div id="product-modal" class="fixed inset-0 z-[80] hidden items-center justify-center bg-slate-900/40 p-4">
+    <div class="w-[min(92vw,460px)] rounded-xl border border-slate-200 bg-white p-0 shadow-xl">
         <div class="border-b border-slate-100 px-5 py-3">
             <h3 class="text-sm font-semibold text-slate-800">Add loan product</h3>
         </div>
@@ -181,14 +181,14 @@
             <p id="product-modal-error" class="hidden text-xs text-red-600"></p>
         </div>
         <div class="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
-            <button value="cancel" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button id="cancel-product-modal" type="button" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
             <button id="save-product-btn" type="button" class="rounded-lg bg-[#2f4f4f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#264040]">Save product</button>
         </div>
-    </form>
-</dialog>
+    </div>
+</div>
 
-<dialog id="branch-modal" class="rounded-xl border border-slate-200 p-0 shadow-xl backdrop:bg-slate-900/30">
-    <form method="dialog" class="w-[min(92vw,500px)]">
+<div id="branch-modal" class="fixed inset-0 z-[80] hidden items-center justify-center bg-slate-900/40 p-4">
+    <div class="w-[min(92vw,500px)] rounded-xl border border-slate-200 bg-white p-0 shadow-xl">
         <div class="border-b border-slate-100 px-5 py-3">
             <h3 class="text-sm font-semibold text-slate-800">Use or create branch</h3>
         </div>
@@ -219,12 +219,12 @@
             <p id="branch-modal-error" class="hidden text-xs text-red-600"></p>
         </div>
         <div class="flex justify-end gap-2 border-t border-slate-100 px-5 py-3">
-            <button value="cancel" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+            <button id="cancel-branch-modal" type="button" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
             <button id="apply-branch-btn" type="button" class="rounded-lg bg-[#2f4f4f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#264040]">Use branch</button>
             <button id="save-branch-btn" type="button" class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Save new branch</button>
         </div>
-    </form>
-</dialog>
+    </div>
+</div>
 
 <script>
     (() => {
@@ -254,14 +254,24 @@
         const saveProductBtn = document.getElementById('save-product-btn');
         const modalProductName = document.getElementById('modal_product_name');
         const modalError = document.getElementById('product-modal-error');
+        const cancelProductModalBtn = document.getElementById('cancel-product-modal');
         const branchModal = document.getElementById('branch-modal');
         const openBranchModalBtn = document.getElementById('open-branch-modal');
         const modalBranchSelect = document.getElementById('modal_branch_id');
         const applyBranchBtn = document.getElementById('apply-branch-btn');
         const saveBranchBtn = document.getElementById('save-branch-btn');
+        const cancelBranchModalBtn = document.getElementById('cancel-branch-modal');
         const newBranchNameInput = document.getElementById('new_branch_name');
         const newBranchRegionInput = document.getElementById('new_branch_region_id');
         const branchModalError = document.getElementById('branch-modal-error');
+        const openModal = (modal) => {
+            modal?.classList.remove('hidden');
+            modal?.classList.add('flex');
+        };
+        const closeModal = (modal) => {
+            modal?.classList.add('hidden');
+            modal?.classList.remove('flex');
+        };
 
         const calculateMaturityFromSchedule = () => {
             if (!maturityInput) return;
@@ -399,9 +409,10 @@
         openProductModalBtn?.addEventListener('click', () => {
             modalError?.classList.add('hidden');
             modalError.textContent = '';
-            productModal?.showModal();
+            openModal(productModal);
             modalProductName?.focus();
         });
+        cancelProductModalBtn?.addEventListener('click', () => closeModal(productModal));
 
         saveProductBtn?.addEventListener('click', async () => {
             const name = (modalProductName?.value || '').trim();
@@ -441,7 +452,7 @@
                     }
                     productInput.value = data.product.name;
                 }
-                productModal?.close();
+                closeModal(productModal);
             } catch (error) {
                 modalError.textContent = error instanceof Error ? error.message : 'Failed to save product.';
                 modalError.classList.remove('hidden');
@@ -458,8 +469,9 @@
             if (modalBranchSelect && loanBranchSelect) {
                 modalBranchSelect.value = loanBranchSelect.value || '';
             }
-            branchModal.showModal();
+            openModal(branchModal);
         });
+        cancelBranchModalBtn?.addEventListener('click', () => closeModal(branchModal));
         applyBranchBtn?.addEventListener('click', () => {
             if (!modalBranchSelect) return;
             if (loanBranchSelect) loanBranchSelect.value = modalBranchSelect.value || '';
@@ -468,7 +480,7 @@
                 const branchName = selectedOption.textContent?.split('—')[0]?.trim() || '';
                 if (branchName !== '') branchInput.value = branchName;
             }
-            branchModal?.close();
+            closeModal(branchModal);
         });
         saveBranchBtn?.addEventListener('click', async () => {
             const name = (newBranchNameInput?.value || '').trim();
@@ -508,7 +520,7 @@
                 if (loanBranchSelect) loanBranchSelect.value = String(data.branch.id);
                 if (modalBranchSelect) modalBranchSelect.value = String(data.branch.id);
                 if (branchInput) branchInput.value = data.branch.name;
-                branchModal?.close();
+                closeModal(branchModal);
             } catch (error) {
                 branchModalError.textContent = error instanceof Error ? error.message : 'Failed to save branch.';
                 branchModalError.classList.remove('hidden');
@@ -517,5 +529,17 @@
             }
         });
         applyClientBranchDefaults();
+        [productModal, branchModal].forEach((modal) => {
+            modal?.addEventListener('click', (event) => {
+                if (event.target === modal) {
+                    closeModal(modal);
+                }
+            });
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            if (productModal && !productModal.classList.contains('hidden')) closeModal(productModal);
+            if (branchModal && !branchModal.classList.contains('hidden')) closeModal(branchModal);
+        });
     })();
 </script>

@@ -63,41 +63,47 @@
                     <table class="min-w-full text-sm">
                         <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                             <tr>
-                                <th class="px-5 py-3">Loan</th>
+                                <th class="px-5 py-3">#</th>
                                 <th class="px-5 py-3">Client</th>
+                                <th class="px-5 py-3">Contact</th>
+                                <th class="px-5 py-3">Portfolio</th>
+                                <th class="px-5 py-3">Branch</th>
+                                <th class="px-5 py-3">Installment</th>
                                 <th class="px-5 py-3 text-right">Amount</th>
-                                <th class="px-5 py-3">Channel</th>
-                                <th class="px-5 py-3">By</th>
-                                <th class="px-5 py-3">GL</th>
-                                <th class="px-5 py-3 text-right">Actions</th>
+                                <th class="px-5 py-3 text-right">Accumulated</th>
+                                <th class="px-5 py-3 text-right">Paid</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
                             @forelse ($entries as $row)
+                                @php
+                                    $loan = $row->loan;
+                                    $termValue = max(1, (int) ($loan?->term_value ?? 1));
+                                    $principal = (float) ($loan?->principal ?? 0);
+                                    $balance = (float) ($loan?->balance ?? 0);
+                                    $totalRepayable = max(0.01, $principal + max(0, $balance));
+                                    $paidTotal = (float) ($loan?->processed_repayments_sum_amount ?? 0);
+                                    $installmentIndex = $termValue > 0
+                                        ? min($termValue, max(1, (int) floor(($paidTotal / $totalRepayable) * $termValue) + 1))
+                                        : 1;
+                                    $installmentProgress = $installmentIndex.'/'.$termValue;
+                                    $accumulated = (float) ($loan?->period_collection_sum ?? 0);
+                                    $portfolioName = $loan?->loanClient?->assignedEmployee?->full_name ?? '—';
+                                @endphp
                                 <tr class="hover:bg-slate-50/80">
-                                    <td class="px-5 py-3 font-mono text-xs text-indigo-600">{{ $row->loan->loan_number }} <span class="text-slate-400">· {{ optional($row->collected_on)->format('Y-m-d') }}</span></td>
-                                    <td class="px-5 py-3 text-slate-800">{{ $row->loan->loanClient->full_name }}</td>
+                                    <td class="px-5 py-3 text-slate-500 tabular-nums">{{ (($entries->currentPage() - 1) * $entries->perPage()) + $loop->iteration }}</td>
+                                    <td class="px-5 py-3 text-slate-800">{{ $row->loan?->loanClient?->full_name ?? '—' }}</td>
+                                    <td class="px-5 py-3 text-slate-600"><x-phone-link :value="$row->loan?->loanClient?->phone" /></td>
+                                    <td class="px-5 py-3 text-slate-600">{{ $portfolioName }}</td>
+                                    <td class="px-5 py-3 text-slate-600">{{ $row->loan?->branch ?? '—' }}</td>
+                                    <td class="px-5 py-3 text-slate-600 tabular-nums">{{ $installmentProgress }}</td>
                                     <td class="px-5 py-3 text-right tabular-nums font-medium">{{ number_format((float) $row->amount, 2) }}</td>
-                                    <td class="px-5 py-3 text-slate-600">{{ $row->channel }}</td>
-                                    <td class="px-5 py-3 text-slate-500 text-xs">{{ $row->collectedBy?->full_name ?? '—' }}</td>
-                                    <td class="px-5 py-3 text-xs">
-                                        @if ($row->accounting_journal_entry_id)
-                                            <a href="{{ route('loan.accounting.journal.show', $row->accounting_journal_entry_id) }}" class="text-indigo-600 font-semibold hover:underline">#{{ $row->accounting_journal_entry_id }}</a>
-                                        @else
-                                            <span class="text-slate-400">—</span>
-                                        @endif
-                                    </td>
-                                    <td class="px-5 py-3 text-right">
-                                        <form method="post" action="{{ route('loan.book.collection_sheet.destroy', $row) }}" class="inline" data-swal-confirm="Delete this collection line?">
-                                            @csrf
-                                            @method('delete')
-                                            <button type="submit" class="text-red-600 font-medium text-sm hover:underline">Delete</button>
-                                        </form>
-                                    </td>
+                                    <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format($accumulated, 2) }}</td>
+                                    <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format($paidTotal, 2) }}</td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="px-5 py-10 text-center text-slate-500">No receipts in this date range.</td>
+                                    <td colspan="9" class="px-5 py-10 text-center text-slate-500">No receipts in this date range.</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -118,7 +124,7 @@
                         <select id="loan_book_loan_id" name="loan_book_loan_id" required class="w-full rounded-lg border-slate-200 text-sm">
                             <option value="">Select…</option>
                             @foreach ($loans as $l)
-                                <option value="{{ $l->id }}" @selected(old('loan_book_loan_id') == $l->id)>{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
+                                <option value="{{ $l->id }}" @selected(old('loan_book_loan_id') == $l->id)>{{ $l->loan_number }} · {{ $l->loanClient?->full_name ?? 'Unknown client' }}</option>
                             @endforeach
                         </select>
                         @error('loan_book_loan_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

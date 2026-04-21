@@ -14,6 +14,7 @@ use App\Http\Controllers\Loan\LoanDashboardController;
 use App\Http\Controllers\Loan\LoanEmployeesController;
 use App\Http\Controllers\Loan\LoanFinancialController;
 use App\Http\Controllers\Loan\LoanFormSetupController;
+use App\Http\Controllers\Loan\LoanNotificationController;
 use App\Http\Controllers\Loan\LoanOrganizationController;
 use App\Http\Controllers\Loan\LoanPaymentWebhookController;
 use App\Http\Controllers\Loan\LoanPaymentsController;
@@ -217,6 +218,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::middleware('module.access:loan')->group(function () {
         Route::get('/loan/dashboard', [LoanDashboardController::class, 'index'])->name('loan.dashboard');
+        Route::post('/loan/dashboard/sms-topup', [LoanDashboardController::class, 'smsWalletTopupFromDashboard'])->name('loan.dashboard.sms_topup');
+        Route::get('/loan/dashboard/performance-targets', [LoanDashboardController::class, 'performanceTargets'])->name('loan.dashboard.performance_targets');
+        Route::post('/loan/dashboard/performance-targets', [LoanDashboardController::class, 'performanceTargetsUpdate'])->name('loan.dashboard.performance_targets.update');
+        Route::prefix('loan/notifications')->name('loan.notifications.')->group(function () {
+            Route::get('/', [LoanNotificationController::class, 'index'])->name('index');
+            Route::post('/read-all', [LoanNotificationController::class, 'readAll'])->name('read_all');
+            Route::post('/{notification}/read', [LoanNotificationController::class, 'readOne'])->name('read_one');
+        });
 
     Route::prefix('loan/financial')->middleware('loan.role:accountant,admin,manager')->name('loan.financial.')->group(function () {
         Route::get('/mpesa-platform', [LoanFinancialController::class, 'mpesaPlatform'])->name('mpesa_platform');
@@ -295,6 +304,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/interactions', [LoanClientsController::class, 'interactions'])->name('interactions');
         Route::get('/interactions/create', [LoanClientsController::class, 'interactionsCreate'])->name('interactions.create');
         Route::post('/interactions', [LoanClientsController::class, 'interactionsStore'])->name('interactions.store');
+        Route::get('/interactions/{client_interaction}', [LoanClientsController::class, 'interactionsShow'])->name('interactions.show');
 
         Route::get('/{loan_client}/interactions/create', [LoanClientsController::class, 'interactionCreateForClient'])->name('interactions.for_client.create');
         Route::post('/{loan_client}/interactions', [LoanClientsController::class, 'interactionStoreForClient'])->name('interactions.for_client.store');
@@ -542,6 +552,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/loans/quick-branch', [LoanBookLoansController::class, 'quickBranchStore'])->name('loans.quick_branch');
         Route::get('/loans', [LoanBookLoansController::class, 'index'])->name('loans.index');
         Route::get('/loan-arrears', [LoanBookLoansController::class, 'arrears'])->name('loan_arrears');
+        Route::post('/loan-arrears/send-sms', [LoanBookLoansController::class, 'arrearsSendSms'])->name('loan_arrears.send_sms');
         Route::get('/checkoff-loans', [LoanBookLoansController::class, 'checkoff'])->name('checkoff_loans');
         Route::get('/loans/{loan_book_loan}', [LoanBookLoansController::class, 'show'])->name('loans.show');
         Route::post('/loans/{loan_book_loan}/rebuild-snapshot', [LoanBookLoansController::class, 'rebuildSnapshot'])->name('loans.rebuild_snapshot');

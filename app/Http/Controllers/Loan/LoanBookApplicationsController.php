@@ -25,7 +25,7 @@ class LoanBookApplicationsController extends Controller
 
     public function index(Request $request)
     {
-        $query = LoanBookApplication::query()->with(['loanClient', 'loan']);
+        $query = LoanBookApplication::query()->with(['loanClient.assignedEmployee', 'loan']);
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $q = trim((string) $request->query('q', ''));
         $stage = trim((string) $request->query('stage', ''));
@@ -61,8 +61,8 @@ class LoanBookApplicationsController extends Controller
                     foreach ($rows as $app) {
                         yield [
                             (string) $app->reference,
-                            (string) ($app->loanClient->client_number ?? ''),
-                            (string) ($app->loanClient->full_name ?? ''),
+                            (string) ($app->loanClient?->client_number ?? ''),
+                            (string) ($app->loanClient?->full_name ?? ''),
                             (string) $app->product_name,
                             (string) ($app->submission_source ?? ''),
                             number_format((float) $app->amount_requested, 2, '.', ''),
@@ -95,6 +95,7 @@ class LoanBookApplicationsController extends Controller
             'perPage' => $perPage,
             'stages' => $this->stageOptions(),
             'branches' => $branches,
+            'productMetaByName' => $this->productMetaByName(),
         ]);
     }
 
@@ -136,8 +137,8 @@ class LoanBookApplicationsController extends Controller
                     foreach ($rows as $app) {
                         yield [
                             (string) $app->reference,
-                            (string) ($app->loanClient->client_number ?? ''),
-                            (string) ($app->loanClient->full_name ?? ''),
+                            (string) ($app->loanClient?->client_number ?? ''),
+                            (string) ($app->loanClient?->full_name ?? ''),
                             (string) $app->product_name,
                             (string) ($app->submission_source ?? ''),
                             number_format((float) $app->amount_requested, 2, '.', ''),
@@ -383,7 +384,7 @@ class LoanBookApplicationsController extends Controller
     public function show(LoanBookApplication $loan_book_application): View
     {
         $loan_book_application->load([
-            'loanClient',
+            'loanClient.assignedEmployee',
             'loan',
         ]);
         $this->ensureLoanClientOwner($loan_book_application->loanClient);
@@ -392,6 +393,7 @@ class LoanBookApplicationsController extends Controller
             'title' => 'Application details',
             'subtitle' => $loan_book_application->reference,
             'application' => $loan_book_application,
+            'productMetaByName' => $this->productMetaByName(),
         ]);
     }
 

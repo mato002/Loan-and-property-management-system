@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -55,13 +56,28 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        $user = $request->user();
+        $validated = $request->validated();
+        $user->fill(collect($validated)->except(['profile_photo', 'remove_profile_photo'])->all());
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+        if ($request->boolean('remove_profile_photo') && filled($user->profile_photo_path)) {
+            Storage::disk('public')->delete((string) $user->profile_photo_path);
+            $user->profile_photo_path = null;
         }
 
-        $request->user()->save();
+        if ($request->hasFile('profile_photo')) {
+            if (filled($user->profile_photo_path)) {
+                Storage::disk('public')->delete((string) $user->profile_photo_path);
+            }
+
+            $user->profile_photo_path = $request->file('profile_photo')->store('profile-photos', 'public');
+        }
+
+        if ($user->isDirty('email')) {
+            $user->email_verified_at = null;
+        }
+
+        $user->save();
 
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }
@@ -76,6 +92,10 @@ class ProfileController extends Controller
         ]);
 
         $user = $request->user();
+
+        if (filled($user->profile_photo_path)) {
+            Storage::disk('public')->delete((string) $user->profile_photo_path);
+        }
 
         Auth::logout();
 

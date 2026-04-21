@@ -13,8 +13,10 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
-#[Fillable(['name', 'email', 'password', 'property_portal_role', 'loan_role', 'is_super_admin'])]
+#[Fillable(['name', 'email', 'password', 'profile_photo_path', 'property_portal_role', 'loan_role', 'is_super_admin'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -379,5 +381,24 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_super_admin' => 'boolean',
         ];
+    }
+
+    public function getProfilePhotoUrlAttribute(): ?string
+    {
+        $raw = trim((string) ($this->profile_photo_path ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+
+        if (Str::startsWith($raw, ['http://', 'https://', '/'])) {
+            return $raw;
+        }
+
+        // Use a relative URL so the image works regardless of APP_URL host/port.
+        if (Str::startsWith($raw, 'storage/')) {
+            return '/'.ltrim($raw, '/');
+        }
+
+        return '/storage/'.ltrim($raw, '/');
     }
 }

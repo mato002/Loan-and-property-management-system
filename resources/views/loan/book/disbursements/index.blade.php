@@ -8,6 +8,103 @@
             <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 mb-4">{{ $message }}</div>
         @enderror
 
+        <div class="mb-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+            <div class="mb-3 flex items-center justify-between gap-2">
+                <h2 class="text-sm font-semibold text-slate-700">Daily disbursements</h2>
+                <p class="text-xs text-slate-500">{{ optional($calendarCurrentMonth ?? null)->format('F Y') }}</p>
+            </div>
+            <form id="daily-disbursements-filter-form" method="get" class="mb-3 flex flex-wrap items-end gap-2">
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Year</label>
+                    <select name="cal_year" class="js-auto-calendar-filter h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        @for ($year = now()->year + 1; $year >= now()->year - 5; $year--)
+                            <option value="{{ $year }}" @selected((int) ($calendarYear ?? now()->year) === $year)>{{ $year }}</option>
+                        @endfor
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Month</label>
+                    <select name="cal_month" class="js-auto-calendar-filter h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        @for ($month = 1; $month <= 12; $month++)
+                            <option value="{{ $month }}" @selected((int) ($calendarMonth ?? now()->month) === $month)>{{ \Carbon\Carbon::create(2000, $month, 1)->format('M') }}</option>
+                        @endfor
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Region</label>
+                    <select name="cal_region_id" class="js-auto-calendar-filter h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="0">-- Region --</option>
+                        @foreach (($calendarRegionOptions ?? collect()) as $region)
+                            <option value="{{ $region->id }}" @selected((int) ($calendarRegionId ?? 0) === (int) $region->id)>{{ $region->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Branch</label>
+                    <select name="cal_branch_id" class="js-auto-calendar-filter h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="0">-- Branch --</option>
+                        @foreach (($calendarBranchOptions ?? collect()) as $branch)
+                            <option value="{{ $branch->id }}" @selected((int) ($calendarBranchId ?? 0) === (int) $branch->id)>{{ $branch->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Loan product</label>
+                    <select name="cal_product" class="js-auto-calendar-filter h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">-- Loan Product --</option>
+                        @foreach (($calendarProductOptions ?? collect()) as $productName)
+                            <option value="{{ $productName }}" @selected((string) ($calendarProduct ?? '') === (string) $productName)>{{ $productName }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Apply</button>
+                <a href="{{ route('loan.book.disbursements.index') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
+            </form>
+            <div class="overflow-x-auto">
+                <table class="min-w-[980px] w-full text-sm border border-slate-200">
+                    <thead class="bg-slate-100 text-xs font-semibold text-slate-600 uppercase">
+                        <tr>
+                            @foreach (['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as $dow)
+                                <th class="border border-slate-200 px-3 py-2 text-center">{{ $dow }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (($calendarWeeks ?? []) as $week)
+                            <tr>
+                                @foreach ($week as $day)
+                                    @php
+                                        $isCurrentMonth = (int) $day->month === (int) ($calendarMonth ?? now()->month);
+                                        $dayNumber = (int) $day->day;
+                                        $branchTotals = $isCurrentMonth ? (($calendarByDay[$dayNumber] ?? [])) : [];
+                                        $dayTotal = array_sum($branchTotals);
+                                    @endphp
+                                    <td class="align-top border border-slate-200 px-2 py-2 {{ $isCurrentMonth ? 'bg-white' : 'bg-slate-50 text-slate-400' }}">
+                                        <div class="mb-1 text-xs font-semibold {{ $isCurrentMonth ? 'text-slate-700' : 'text-slate-400' }}">
+                                            {{ $day->format('d-m-Y') }}
+                                        </div>
+                                        @if ($isCurrentMonth && $branchTotals !== [])
+                                            <div class="space-y-1 text-xs">
+                                                @foreach ($branchTotals as $branchName => $amount)
+                                                    <div class="flex items-center justify-between gap-2">
+                                                        <span class="truncate text-slate-700">{{ $branchName }}</span>
+                                                        <span class="tabular-nums font-medium text-slate-800">{{ number_format((float) $amount, 0) }}</span>
+                                                    </div>
+                                                @endforeach
+                                                <div class="mt-1 border-t border-slate-200 pt-1 text-right tabular-nums font-semibold text-slate-900">{{ number_format((float) $dayTotal, 0) }}</div>
+                                            </div>
+                                        @elseif ($isCurrentMonth)
+                                            <p class="text-xs text-slate-400">—</p>
+                                        @endif
+                                    </td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
             <div class="flex flex-wrap items-end gap-2">
                 <div class="w-full sm:w-auto">
@@ -138,7 +235,7 @@
                         @forelse (($pendingLoans ?? collect()) as $loan)
                             <tr class="hover:bg-slate-50/80">
                                 <td class="px-5 py-3 font-mono text-xs text-indigo-600">{{ $loan->loan_number }}</td>
-                                <td class="px-5 py-3 text-slate-800">{{ $loan->loanClient->full_name ?? '—' }}</td>
+                                <td class="px-5 py-3 text-slate-800">{{ $loan->loanClient?->full_name ?? '—' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $loan->product_name }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format((float) $loan->balance, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', (string) $loan->status) }}</td>
@@ -157,3 +254,14 @@
         </div>
     </x-loan.page>
 </x-loan-layout>
+
+<script>
+    (() => {
+        const form = document.getElementById('daily-disbursements-filter-form');
+        if (!form) return;
+
+        form.querySelectorAll('.js-auto-calendar-filter').forEach((field) => {
+            field.addEventListener('change', () => form.submit());
+        });
+    })();
+</script>

@@ -16,6 +16,7 @@ use App\Models\StaffLoanApplication;
 use App\Models\StaffPortfolio;
 use App\Models\User;
 use App\Models\UserModuleAccess;
+use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Models\WorkplanItem;
 use App\Mail\LoanEmployeeCredentialsMail;
 use App\Support\TabularExport;
@@ -299,6 +300,12 @@ class LoanEmployeesController extends Controller
                     loanHomeUrl: route('loan.dashboard'),
                 ));
 
+                $request->user()?->notify(new LoanWorkflowNotification(
+                    'Employee created',
+                    'Employee '.$provisionedUser->name.' was created and login credentials were sent.',
+                    route('loan.employees.index')
+                ));
+
                 return redirect()
                     ->route('loan.employees.index')
                     ->with('status', 'Employee saved and login credentials emailed.');
@@ -309,11 +316,23 @@ class LoanEmployeesController extends Controller
                     'email' => $provisionedUser->email,
                 ]);
 
+                $request->user()?->notify(new LoanWorkflowNotification(
+                    'Employee created',
+                    'Employee '.$provisionedUser->name.' was created, but credential email failed.',
+                    route('loan.employees.index')
+                ));
+
                 return redirect()
                     ->route('loan.employees.index')
                     ->with('status', 'Employee and login saved, but credential email failed. Share login email and reset password manually.');
             }
         }
+
+        $request->user()?->notify(new LoanWorkflowNotification(
+            'Employee created',
+            'New employee profile was created successfully.',
+            route('loan.employees.index')
+        ));
 
         return redirect()
             ->route('loan.employees.index')

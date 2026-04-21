@@ -52,7 +52,7 @@
                 <h3 class="text-sm font-semibold text-slate-900">Tenant details</h3>
                 <div class="mt-2 text-sm text-slate-700 space-y-1">
                     <p><span class="text-slate-500">Name:</span> {{ $tenant->name }}</p>
-                    <p><span class="text-slate-500">Phone:</span> {{ $tenant->phone ?: '—' }}</p>
+                    <p><span class="text-slate-500">Phone:</span> <x-phone-link :value="$tenant->phone" /></p>
                     <p><span class="text-slate-500">Email:</span> {{ $tenant->email ?: '—' }}</p>
                     <p><span class="text-slate-500">National ID / ref:</span> {{ $tenant->national_id ?: '—' }}</p>
                     <p><span class="text-slate-500">Account #:</span> {{ $tenant->account_number ?: '—' }}</p>

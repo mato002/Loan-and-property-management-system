@@ -59,8 +59,8 @@
                 <dl class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
                     <div><dt class="text-slate-500">Loan #</dt><dd class="font-medium text-slate-900">{{ $loan->loan_number }}</dd></div>
                     <div><dt class="text-slate-500">Status</dt><dd class="font-medium text-slate-900">{{ str_replace('_', ' ', $loan->status) }}</dd></div>
-                    <div><dt class="text-slate-500">Client</dt><dd class="font-medium text-slate-900">{{ $loan->loanClient->full_name ?? '—' }}</dd></div>
-                    <div><dt class="text-slate-500">Client #</dt><dd class="font-medium text-slate-900">{{ $loan->loanClient->client_number ?? '—' }}</dd></div>
+                    <div><dt class="text-slate-500">Client</dt><dd class="font-medium text-slate-900">{{ $loan->loanClient?->full_name ?? '—' }}</dd></div>
+                    <div><dt class="text-slate-500">Client #</dt><dd class="font-medium text-slate-900">{{ $loan->loanClient?->client_number ?? '—' }}</dd></div>
                     <div><dt class="text-slate-500">Product</dt><dd class="font-medium text-slate-900">{{ $loan->product_name }}</dd></div>
                     <div><dt class="text-slate-500">Branch</dt><dd class="font-medium text-slate-900">{{ $loan->branch ?: '—' }}</dd></div>
                     <div><dt class="text-slate-500">Principal</dt><dd class="font-medium text-slate-900 tabular-nums">{{ number_format((float) $loan->principal, 2) }}</dd></div>
@@ -84,7 +84,7 @@
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 class="text-sm font-semibold text-slate-700">Application link</h2>
                 @if ($loan->application)
-                    <p class="mt-3 text-sm text-slate-700">Booked from application {{ $loan->application->reference }}.</p>
+                    <p class="mt-3 text-sm text-slate-700">Booked from application {{ $loan->application?->reference ?? '—' }}.</p>
                     <a href="{{ route('loan.book.applications.show', $loan->application) }}" class="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Open application</a>
                     <form method="post" action="{{ route('loan.book.loans.sync_schedule', $loan) }}" class="mt-2" data-swal-confirm="Sync term and rate period from linked application and recalculate this loan snapshot?">
                         @csrf

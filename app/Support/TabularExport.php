@@ -40,9 +40,10 @@ class TabularExport
     private static function streamPdf(string $filename, array $headers, Closure $rows, array $options = []): StreamedResponse
     {
         $render = static function (bool $omitImages) use ($filename, $headers, $rows, $options): StreamedResponse {
-            $opts = array_merge($options, ['omit_images' => $omitImages]);
+            $opts = array_merge($options, ['omit_images' => $omitImages, '__column_count' => count($headers)]);
+            [$paper, $orientation] = self::resolvePdfLayout(count($headers), $opts);
 
-            return self::renderDompdfResponse($filename, self::htmlTable($headers, $rows, $opts));
+            return self::renderDompdfResponse($filename, self::htmlTable($headers, $rows, $opts), $paper, $orientation);
         };
 
         try {
@@ -58,7 +59,7 @@ class TabularExport
         }
     }
 
-    private static function renderDompdfResponse(string $filename, string $html): StreamedResponse
+    private static function renderDompdfResponse(string $filename, string $html, string $paper = 'A4', string $orientation = 'portrait'): StreamedResponse
     {
         $pdfOptions = new Options();
         $pdfOptions->set('isRemoteEnabled', true);
@@ -66,7 +67,7 @@ class TabularExport
 
         $dompdf = new Dompdf($pdfOptions);
         $dompdf->loadHtml($html, 'UTF-8');
-        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->setPaper($paper, $orientation);
         $dompdf->render();
         $pdfBinary = $dompdf->output();
 
@@ -119,6 +120,9 @@ class TabularExport
     private static function htmlTable(array $headers, Closure $rows, array $options = []): string
     {
         $esc = static fn ($v) => htmlspecialchars((string) ($v ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $columnCount = max(1, (int) ($options['__column_count'] ?? count($headers)));
+        $isCompact = $columnCount >= 8;
+        $isVeryWide = $columnCount >= 12;
         $settingsReady = Schema::hasTable('property_portal_settings');
         $brandName = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_name', '')) : '';
         if ($brandName === '') {
@@ -163,8 +167,10 @@ class TabularExport
             $summaryHtml = '<div class="summary-wrap"><table class="summary-table">'.$summaryRows.'</table></div>';
         }
 
+        $bodyClass = trim(($isCompact ? 'compact ' : '').($isVeryWide ? 'very-wide' : ''));
+
         return '<!doctype html><html><head><meta charset="utf-8"><style>
-            body{font-family:DejaVu Sans, Arial, sans-serif;font-size:12px;color:#111;margin:18px 22px;}
+            body{font-family:DejaVu Sans, Arial, sans-serif;font-size:12px;color:#111;margin:14px 16px;}
             .letterhead{border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px;}
             .brand{display:table;width:100%;}
             .brand-logo,.brand-copy{display:table-cell;vertical-align:top;}
@@ -176,15 +182,21 @@ class TabularExport
             .report-title{font-size:15px;font-weight:700;margin:8px 0 2px;}
             .report-subtitle{font-size:11px;color:#444;margin-bottom:8px;}
             .meta{font-size:10px;color:#555;margin:6px 0 10px;}
-            table{width:100%;border-collapse:collapse;}
-            th,td{border:1px solid #ddd;padding:6px;vertical-align:top;word-wrap:break-word;}
+            table{width:100%;border-collapse:collapse;table-layout:fixed;}
+            th,td{border:1px solid #ddd;padding:6px;vertical-align:top;word-break:break-word;}
             th{background:#f3f4f6;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;}
             .summary-wrap{margin-top:12px;display:flex;justify-content:flex-end;}
             .summary-table{width:48%;border-collapse:collapse;}
             .summary-table th,.summary-table td{border:1px solid #ddd;padding:6px;font-size:11px;}
             .summary-table th{background:#fafafa;width:55%;}
             .footer{margin-top:12px;padding-top:6px;border-top:1px solid #ddd;font-size:10px;color:#555;text-align:center;}
-        </style></head><body>'.
+            body.compact{font-size:10px;}
+            body.compact .report-title{font-size:13px;}
+            body.compact th,body.compact td{padding:4px;font-size:9px;}
+            body.compact .brand-contact{font-size:9px;}
+            body.very-wide th,body.very-wide td{padding:3px;font-size:8px;}
+        </style></head>'.
+            '<body class="'.$esc($bodyClass).'">'.
             '<div class="letterhead"><div class="brand">'.
                 '<div class="brand-logo">'.($logoSrc !== '' ? '<img src="'.$esc($logoSrc).'" alt="" />' : '').'</div>'.
                 '<div class="brand-copy">'.
@@ -200,6 +212,25 @@ class TabularExport
             $summaryHtml.
             '<div class="footer">'.$esc($copyright).'</div>'.
             '</body></html>';
+    }
+
+    /**
+     * @param  array<string,mixed>  $options
+     * @return array{0:string,1:string}
+     */
+    private static function resolvePdfLayout(int $columnCount, array $options): array
+    {
+        $paper = strtolower(trim((string) ($options['pdf_paper'] ?? '')));
+        $orientation = strtolower(trim((string) ($options['pdf_orientation'] ?? '')));
+
+        if ($paper === '' || ! in_array($paper, ['a4', 'a3', 'legal', 'letter'], true)) {
+            $paper = $columnCount >= 12 ? 'a3' : 'a4';
+        }
+        if ($orientation === '' || ! in_array($orientation, ['portrait', 'landscape'], true)) {
+            $orientation = $columnCount >= 8 ? 'landscape' : 'portrait';
+        }
+
+        return [strtoupper($paper), $orientation];
     }
 
     private static function resolveLogoSrc(string $logo): string

@@ -94,12 +94,12 @@
                                     </div>
                                 </td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $p->payment_kind) }}</td>
-                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $p->transaction_at->format('Y-m-d H:i') }}</td>
+                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ optional($p->transaction_at)->format('Y-m-d H:i') ?? '—' }}</td>
                                 <td class="px-5 py-3 text-slate-600 text-xs">
                                     @if ($p->posted_at)
-                                        {{ $p->posted_at->format('Y-m-d H:i') }}
+                                        {{ optional($p->posted_at)->format('Y-m-d H:i') ?? '—' }}
                                         @if ($p->postedByUser)
-                                            <span class="block text-slate-500">{{ $p->postedByUser->name }}</span>
+                                            <span class="block text-slate-500">{{ $p->postedByUser?->name ?? '—' }}</span>
                                         @endif
                                     @else
                                         —
@@ -107,9 +107,9 @@
                                 </td>
                                 <td class="px-5 py-3 text-slate-600 text-xs">
                                     @if ($p->validated_at)
-                                        {{ $p->validated_at->format('Y-m-d H:i') }}
+                                        {{ optional($p->validated_at)->format('Y-m-d H:i') ?? '—' }}
                                         @if ($p->validatedByUser)
-                                            <span class="block text-slate-500">{{ $p->validatedByUser->name }}</span>
+                                            <span class="block text-slate-500">{{ $p->validatedByUser?->name ?? '—' }}</span>
                                         @endif
                                     @else
                                         <span class="text-amber-700">Pending</span>

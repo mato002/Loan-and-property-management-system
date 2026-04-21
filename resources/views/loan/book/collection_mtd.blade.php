@@ -21,6 +21,58 @@
             </div>
         </div>
 
+        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mb-6">
+            <div class="px-5 py-4 border-b border-slate-100">
+                <h2 class="text-sm font-semibold text-slate-700">Progressive disbursements</h2>
+                <p class="text-xs text-slate-500 mt-1">{{ $start }} → {{ $end }}</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                        <tr>
+                            <th class="px-5 py-3">Branch</th>
+                            <th class="px-5 py-3 text-right">Disbursed Amount</th>
+                            <th class="px-5 py-3 text-right">Total Loans</th>
+                            <th class="px-5 py-3 text-right">Loan+Charges</th>
+                            <th class="px-5 py-3 text-right">Paid</th>
+                            <th class="px-5 py-3 text-right">Arrears</th>
+                            <th class="px-5 py-3 text-right">GC%</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        @forelse (($branchPerformance ?? collect()) as $row)
+                            <tr class="hover:bg-slate-50/80">
+                                <td class="px-5 py-3 font-medium text-slate-900">{{ $row->branch }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums">{{ number_format((float) $row->disbursed_amount, 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums">{{ number_format((int) $row->total_loans) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums">{{ number_format((float) $row->loan_plus_charges, 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums text-emerald-700">{{ number_format((float) $row->paid, 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums {{ (float) $row->arrears > 0 ? 'text-red-600 font-semibold' : 'text-slate-600' }}">{{ number_format((float) $row->arrears, 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums">{{ number_format((float) $row->gc_percent, 2) }}%</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="7" class="px-5 py-12 text-center text-slate-500">No branch disbursement/collection metrics for this period.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                    @if (($branchPerformance ?? collect())->count() > 0)
+                        <tfoot class="bg-slate-50 border-t border-slate-100">
+                            <tr class="text-sm font-semibold text-slate-800">
+                                <td class="px-5 py-3">Totals</td>
+                                <td class="px-5 py-3 text-right tabular-nums">{{ number_format((float) ($branchTotals->disbursed_amount ?? 0), 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums">{{ number_format((int) ($branchTotals->total_loans ?? 0)) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums">{{ number_format((float) ($branchTotals->loan_plus_charges ?? 0), 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums text-emerald-700">{{ number_format((float) ($branchTotals->paid ?? 0), 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums {{ (float) ($branchTotals->arrears ?? 0) > 0 ? 'text-red-600' : '' }}">{{ number_format((float) ($branchTotals->arrears ?? 0), 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums">{{ number_format((float) ($branchTotals->gc_percent ?? 0), 2) }}%</td>
+                            </tr>
+                        </tfoot>
+                    @endif
+                </table>
+            </div>
+        </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div class="px-5 py-4 border-b border-slate-100">

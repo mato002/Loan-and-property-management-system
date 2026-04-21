@@ -708,6 +708,14 @@
     });
 @endphp
 
+<style>
+    @media (min-width: 1024px) {
+        .property-sidebar[data-collapsed="1"] .property-collapse-text { display: none !important; }
+        .property-sidebar[data-collapsed="1"] .property-collapse-center { justify-content: center !important; }
+        .property-sidebar[data-collapsed="1"] [data-property-nav-section] > div { display: none !important; }
+    }
+</style>
+
 <div
     x-show="sidebarOpen"
     x-transition:enter="transition-opacity ease-linear duration-300"
@@ -723,7 +731,13 @@
 
 <aside
     class="property-sidebar fixed inset-y-0 left-0 z-50 w-[300px] sm:w-[312px] h-full bg-[#2f4f4f] border-r border-[#264040] text-[#d4e4e3] text-base transform transition-transform duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col min-h-0 shadow-xl shadow-black/20 lg:shadow-none overflow-hidden flex-shrink-0"
-    :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-lg:pointer-events-none'"
+    :class="[sidebarOpen ? 'translate-x-0' : '-translate-x-full max-lg:pointer-events-none', sidebarDesktopOpen ? 'lg:w-[18rem] lg:min-w-[18rem] lg:max-w-[18rem]' : 'lg:w-[5.5rem] lg:min-w-[5.5rem] lg:max-w-[5.5rem]']"
+    :style="window.matchMedia('(min-width: 1024px)').matches
+        ? (sidebarDesktopOpen
+            ? 'width: 18rem; min-width: 18rem; max-width: 18rem;'
+            : 'width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem;')
+        : ''"
+    :data-collapsed="sidebarDesktopOpen ? '0' : '1'"
 >
     <div class="h-14 flex items-center justify-between px-4 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md lg:hidden shrink-0">
         <span class="text-sm font-semibold uppercase tracking-wide text-[#8db1af]">Menu</span>
@@ -733,12 +747,23 @@
     </div>
 
     <div class="shrink-0 px-3 py-3.5 border-b border-[#264040] bg-[#243d3d]/30">
+        <div class="mb-2 hidden lg:flex justify-end">
+            <button
+                type="button"
+                @click="toggleDesktopSidebar()"
+                class="inline-flex items-center justify-center rounded-lg p-2 text-[#8db1af] hover:text-white hover:bg-[#406866] transition-colors"
+                :title="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+                :aria-label="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+            >
+                <i class="fa-solid" :class="sidebarDesktopOpen ? 'fa-angles-left' : 'fa-angles-right'" aria-hidden="true"></i>
+            </button>
+        </div>
         <a
             href="{{ route('property.dashboard') }}"
             data-turbo-frame="property-main"
             data-property-nav="property.dashboard"
             @if ($navActive(['property.dashboard'])) aria-current="page" @endif
-            class="flex items-center gap-3 min-w-0 group"
+            class="flex items-center gap-3 min-w-0 group property-collapse-center"
             @click="if (window.innerWidth < 1024) sidebarOpen = false"
         >
             <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#406866]/60 ring-1 ring-[#5a8583]/50 shadow-inner">
@@ -748,7 +773,7 @@
                     <i class="fa-solid fa-building text-xl text-[#c5ebe8]" aria-hidden="true"></i>
                 @endif
             </span>
-            <span class="flex flex-col min-w-0 leading-tight text-left">
+            <span class="property-collapse-text flex flex-col min-w-0 leading-tight text-left">
                 <span class="text-base font-bold tracking-tight text-white truncate">{{ $companyName !== '' ? $companyName : 'Agent workspace' }}</span>
                 <span class="text-sm font-medium text-[#8db1af] truncate">Property operations</span>
             </span>
@@ -760,10 +785,10 @@
             <div class="px-2 pt-2 pb-3">
                 <a
                     href="{{ route('superadmin.users.index') }}"
-                    class="flex items-center gap-3 rounded-xl border border-[#406866]/60 bg-[#243d3d]/35 px-3 py-2.5 text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-colors"
+                    class="flex items-center gap-3 rounded-xl border border-[#406866]/60 bg-[#243d3d]/35 px-3 py-2.5 text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-colors property-collapse-center"
                 >
                     <i class="fa-solid fa-shield-halved text-[#c5ebe8]" aria-hidden="true"></i>
-                    <span class="font-semibold">Super Admin</span>
+                    <span class="property-collapse-text font-semibold">Super Admin</span>
                 </a>
             </div>
         @endif
@@ -784,12 +809,12 @@
                         data-property-nav="{{ implode('|', $item['active']) }}"
                         @if ($active) aria-current="page" @endif
                         @click="if (window.innerWidth < 1024) sidebarOpen = false"
-                        class="group flex items-start gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white"
+                        class="group flex items-start gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center"
                     >
                         @if (! empty($section['icon']))
                             <i class="fa-solid {{ $section['icon'] }} text-[#c5ebe8] text-base shrink-0 mt-0.5 w-6 text-center group-aria-[current=page]:text-[#c5ebe8]" aria-hidden="true"></i>
                         @endif
-                        <span class="flex flex-col gap-0.5 min-w-0 flex-1">
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
                             @if (trim((string) ($section['heading'] ?? '')) !== '')
                                 <span class="text-xs font-semibold uppercase tracking-wide text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#c5ebe8]">{{ $section['heading'] }}</span>
                             @endif
@@ -815,15 +840,15 @@
                 >
                     <button
                         type="button"
-                        class="w-full flex items-start gap-2 rounded-xl px-2 py-2.5 text-left text-[#d4e4e3] hover:bg-[#406866]/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50"
+                        class="w-full flex items-start gap-2 rounded-xl px-2 py-2.5 text-left text-[#d4e4e3] hover:bg-[#406866]/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 property-collapse-center"
                         @click="open = ! open"
                         :aria-expanded="open"
                         aria-controls="nav-section-{{ $si }}"
                     >
-                        <span class="flex flex-col items-center justify-center shrink-0 pt-0.5 w-5" aria-hidden="true">
+                        <span class="property-collapse-text flex flex-col items-center justify-center shrink-0 pt-0.5 w-5" aria-hidden="true">
                             <i class="fa-solid fa-chevron-down text-sm text-[#8db1af] transition-transform duration-200" :class="{ 'rotate-180': open }"></i>
                         </span>
-                        <span class="flex-1 min-w-0">
+                        <span class="property-collapse-text flex-1 min-w-0">
                             <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold uppercase tracking-wide text-[#8db1af] group-data-[section-active]:text-[#c5ebe8]">
                                 @if (! empty($section['icon']))
                                     <i class="fa-solid {{ $section['icon'] }} text-base text-[#a8c9c7] not-uppercase normal-case group-data-[section-active]:text-[#c5ebe8]" aria-hidden="true"></i>
@@ -877,9 +902,9 @@
         <div class="pt-4 mt-3 border-t border-[#406866]/40">
             <form method="POST" action="{{ route('logout') }}" data-turbo="false">
                 @csrf
-                <button type="submit" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border-l-[3px] border-transparent transition-all text-left group">
+                <button type="submit" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border-l-[3px] border-transparent transition-all text-left group property-collapse-center">
                     <i class="fa-solid fa-right-from-bracket w-5 shrink-0 text-center text-[#8db1af] group-hover:text-red-400 transition-colors" aria-hidden="true"></i>
-                    Log out
+                    <span class="property-collapse-text">Log out</span>
                 </button>
             </form>
         </div>
@@ -890,7 +915,7 @@
             href="{{ route('profile.edit') }}"
             data-turbo-frame="property-main"
             data-property-nav="profile.edit"
-            class="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#406866]/50 transition-colors"
+            class="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#406866]/50 transition-colors property-collapse-center"
         >
             <div class="w-11 h-11 rounded-full bg-emerald-500/25 border border-emerald-400/35 flex items-center justify-center text-emerald-200 font-semibold text-base shrink-0">
                 @if (Auth::check() && Auth::user()->name)
@@ -899,7 +924,7 @@
                     U
                 @endif
             </div>
-            <div class="flex flex-col overflow-hidden min-w-0">
+            <div class="property-collapse-text flex flex-col overflow-hidden min-w-0">
                 <span class="text-base font-medium text-white truncate">{{ Auth::user()->name ?? 'User' }}</span>
                 <span class="text-sm text-[#8db1af] truncate">{{ Auth::user()->email ?? '' }}</span>
             </div>
@@ -909,11 +934,11 @@
             href="{{ route('public.home') }}"
             target="_blank"
             rel="noopener"
-            class="mt-2 flex items-center gap-3 p-2.5 rounded-xl border border-[#406866]/60 text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-colors"
+            class="mt-2 flex items-center gap-3 p-2.5 rounded-xl border border-[#406866]/60 text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-colors property-collapse-center"
         >
             <i class="fa-solid fa-globe w-5 text-center text-[#8db1af]" aria-hidden="true"></i>
-            <span class="text-sm font-medium">Open public website</span>
-            <i class="fa-solid fa-arrow-up-right-from-square ml-auto text-xs text-[#8db1af]" aria-hidden="true"></i>
+            <span class="property-collapse-text text-sm font-medium">Open public website</span>
+            <i class="property-collapse-text fa-solid fa-arrow-up-right-from-square ml-auto text-xs text-[#8db1af]" aria-hidden="true"></i>
         </a>
     </div>
 </aside>

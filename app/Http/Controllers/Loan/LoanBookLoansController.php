@@ -13,6 +13,7 @@ use App\Models\LoanClient;
 use App\Models\LoanProduct;
 use App\Models\LoanRegion;
 use App\Models\LoanSystemSetting;
+use App\Services\BulkSmsService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
@@ -139,14 +140,189 @@ class LoanBookLoansController extends Controller
 
     public function arrears(Request $request)
     {
-        $query = LoanBookLoan::query()->with(['loanClient']);
+        try {
+            $query = LoanBookLoan::query()
+                ->with(['loanClient.assignedEmployee', 'loanBranch.region'])
+                ->withSum('processedRepayments', 'amount');
+            $this->scopeByAssignedLoanClient($query, auth()->user());
+            $q = trim((string) $request->query('q', ''));
+            $branch = trim((string) $request->query('branch', ''));
+            $region = trim((string) $request->query('region', ''));
+            $officer = trim((string) $request->query('officer', ''));
+            $product = trim((string) $request->query('product', ''));
+            $status = trim((string) $request->query('status', LoanBookLoan::STATUS_ACTIVE));
+            $dpdMin = max(1, (int) $request->query('dpd_min', 1));
+            $dpdMaxRaw = trim((string) $request->query('dpd_max', ''));
+            $dpdMax = $dpdMaxRaw !== '' ? max($dpdMin, (int) $dpdMaxRaw) : null;
+            $from = trim((string) $request->query('from', ''));
+            $to = trim((string) $request->query('to', ''));
+            $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+            $query = $query
+                ->when($status !== '', fn (Builder $builder) => $builder->where('status', $status))
+                ->where('dpd', '>=', $dpdMin)
+                ->when($dpdMax !== null, fn (Builder $builder) => $builder->where('dpd', '<=', $dpdMax))
+                ->when($q !== '', function (Builder $builder) use ($q): void {
+                    $builder->where(function (Builder $inner) use ($q): void {
+                        $inner->where('loan_number', 'like', '%'.$q.'%')
+                            ->orWhere('product_name', 'like', '%'.$q.'%')
+                            ->orWhere('branch', 'like', '%'.$q.'%')
+                            ->orWhereHas('loanClient', function (Builder $client) use ($q): void {
+                                $client->where('client_number', 'like', '%'.$q.'%')
+                                    ->orWhere('first_name', 'like', '%'.$q.'%')
+                                    ->orWhere('last_name', 'like', '%'.$q.'%');
+                            });
+                    });
+                })
+                ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch))
+                ->when($region !== '', fn (Builder $builder) => $builder->whereHas('loanBranch.region', fn (Builder $regionQuery) => $regionQuery->where('name', $region)))
+                ->when($officer !== '', fn (Builder $builder) => $builder->whereHas('loanClient.assignedEmployee', function (Builder $employee) use ($officer): void {
+                    $employee->whereRaw("TRIM(CONCAT(COALESCE(first_name,''), ' ', COALESCE(last_name,''))) = ?", [$officer]);
+                }))
+                ->when($product !== '', fn (Builder $builder) => $builder->where('product_name', $product))
+                ->when($from !== '', fn (Builder $builder) => $builder->whereDate('disbursed_at', '>=', $from))
+                ->when($to !== '', fn (Builder $builder) => $builder->whereDate('disbursed_at', '<=', $to));
+
+            $export = strtolower((string) $request->query('export', ''));
+            if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+                $rows = (clone $query)->orderByDesc('dpd')->limit(5000)->get();
+
+                return TabularExport::stream(
+                    'loanbook-arrears-'.now()->format('Ymd_His'),
+                    ['Client', 'Contact', 'Branch', 'Loan Officer', 'Loan', 'Disbursement', 'Cycles', 'P.Arrears', 'Accumulated', 'Installment', 'Fall Date', 'Days', 'T.Bal'],
+                    function () use ($rows) {
+                        foreach ($rows as $loan) {
+                            $termValue = max(1, (int) ($loan->term_value ?? 1));
+                            $paid = (float) ($loan->processed_repayments_sum_amount ?? 0);
+                            $totalBalance = (float) ($loan->balance ?? 0);
+                            $periodicArrears = $termValue > 0 ? max(0, $totalBalance / $termValue) : $totalBalance;
+                            $loanAmount = (float) ($loan->principal ?? 0);
+                            $totalRepayable = max(0.01, $loanAmount + max(0, $totalBalance));
+                            $installmentNo = min($termValue, max(1, (int) floor(($paid / $totalRepayable) * $termValue) + 1));
+                            $fallDate = $loan->disbursed_at ? $loan->disbursed_at->copy()->addDays((int) ($loan->dpd ?? 0)) : null;
+                            yield [
+                                (string) ($loan->loanClient?->full_name ?? ''),
+                                (string) ($loan->loanClient?->phone ?? ''),
+                                (string) ($loan->branch ?? ''),
+                                (string) ($loan->loanClient?->assignedEmployee?->full_name ?? ''),
+                                number_format($loanAmount, 2, '.', ''),
+                                (string) optional($loan->disbursed_at)->format('d-m-Y'),
+                                (string) $termValue,
+                                number_format($periodicArrears, 2, '.', ''),
+                                number_format($paid, 2, '.', ''),
+                                $installmentNo.'/'.$termValue,
+                                (string) optional($fallDate)->format('d-m-Y'),
+                                (string) $loan->dpd,
+                                number_format($totalBalance, 2, '.', ''),
+                            ];
+                        }
+                    },
+                    $export
+                );
+            }
+
+            $loans = $query->orderByDesc('dpd')->paginate($perPage)->withQueryString();
+            $branches = LoanBookLoan::query()->whereNotNull('branch')->where('branch', '!=', '')->distinct()->orderBy('branch')->pluck('branch');
+            $regions = \App\Models\LoanRegion::query()->orderBy('name')->pluck('name');
+            $officers = \App\Models\Employee::query()
+                ->orderBy('first_name')
+                ->orderBy('last_name')
+                ->get()
+                ->map(fn (\App\Models\Employee $employee): string => trim((string) $employee->full_name))
+                ->filter()
+                ->values();
+            $products = LoanBookLoan::query()->whereNotNull('product_name')->where('product_name', '!=', '')->distinct()->orderBy('product_name')->pluck('product_name');
+            $sampleRecipients = (clone $query)
+                ->whereHas('loanClient', fn (Builder $clientQuery) => $clientQuery->whereNotNull('phone')->where('phone', '!=', ''))
+                ->limit(500)
+                ->get()
+                ->map(function (LoanBookLoan $loan): ?array {
+                    $client = $loan->loanClient;
+                    $phone = trim((string) ($client?->phone ?? ''));
+                    if ($phone === '') {
+                        return null;
+                    }
+
+                    return [
+                        'name' => (string) ($client?->full_name ?? 'Client'),
+                        'phone' => $phone,
+                    ];
+                })
+                ->filter()
+                ->unique(fn (array $row) => $row['phone'])
+                ->values();
+
+            return view('loan.book.loans.arrears', [
+                'title' => 'Loan arrears',
+                'subtitle' => 'Active accounts with days past due.',
+                'loans' => $loans,
+                'q' => $q,
+                'branch' => $branch,
+                'region' => $region,
+                'officer' => $officer,
+                'product' => $product,
+                'status' => $status,
+                'dpdMin' => $dpdMin,
+                'dpdMax' => $dpdMaxRaw,
+                'from' => $from,
+                'to' => $to,
+                'perPage' => $perPage,
+                'branches' => $branches,
+                'regions' => $regions,
+                'officers' => $officers,
+                'products' => $products,
+                'statuses' => $this->statusOptions(),
+                'sampleRecipients' => $sampleRecipients,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return redirect()
+                ->route('loan.book.loans.index')
+                ->withErrors([
+                    'arrears' => 'Could not load Loan Arrears right now. Please try again shortly.',
+                ]);
+        }
+    }
+
+    public function arrearsSendSms(Request $request, BulkSmsService $bulkSms): RedirectResponse
+    {
+        $validated = $request->validate([
+            'message' => ['required', 'string', 'max:1000'],
+            'arrears_pick' => ['nullable', 'in:period,accumulated,total'],
+            'sample_to' => ['nullable', 'string', 'max:30'],
+            'q' => ['nullable', 'string', 'max:255'],
+            'branch' => ['nullable', 'string', 'max:255'],
+            'region' => ['nullable', 'string', 'max:255'],
+            'officer' => ['nullable', 'string', 'max:255'],
+            'product' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'max:255'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+            'dpd_min' => ['nullable', 'integer', 'min:1'],
+            'dpd_max' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $q = trim((string) ($validated['q'] ?? ''));
+        $branch = trim((string) ($validated['branch'] ?? ''));
+        $region = trim((string) ($validated['region'] ?? ''));
+        $officer = trim((string) ($validated['officer'] ?? ''));
+        $product = trim((string) ($validated['product'] ?? ''));
+        $status = trim((string) ($validated['status'] ?? LoanBookLoan::STATUS_ACTIVE));
+        $dpdMin = max(1, (int) ($validated['dpd_min'] ?? 1));
+        $dpdMax = isset($validated['dpd_max']) ? max($dpdMin, (int) $validated['dpd_max']) : null;
+        $from = trim((string) ($validated['from'] ?? ''));
+        $to = trim((string) ($validated['to'] ?? ''));
+        $arrearsPick = (string) ($validated['arrears_pick'] ?? 'period');
+        $sampleToRaw = trim((string) ($validated['sample_to'] ?? ''));
+
+        $query = LoanBookLoan::query()
+            ->with(['loanClient.assignedEmployee', 'loanBranch.region'])
+            ->withSum('processedRepayments', 'amount');
         $this->scopeByAssignedLoanClient($query, auth()->user());
-        $q = trim((string) $request->query('q', ''));
-        $branch = trim((string) $request->query('branch', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
-        $query = $query
-            ->where('status', LoanBookLoan::STATUS_ACTIVE)
-            ->where('dpd', '>', 0)
+        $query
+            ->when($status !== '', fn (Builder $builder) => $builder->where('status', $status))
+            ->where('dpd', '>=', $dpdMin)
+            ->when($dpdMax !== null, fn (Builder $builder) => $builder->where('dpd', '<=', $dpdMax))
             ->when($q !== '', function (Builder $builder) use ($q): void {
                 $builder->where(function (Builder $inner) use ($q): void {
                     $inner->where('loan_number', 'like', '%'.$q.'%')
@@ -159,49 +335,96 @@ class LoanBookLoansController extends Controller
                         });
                 });
             })
-            ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch));
+            ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch))
+            ->when($region !== '', fn (Builder $builder) => $builder->whereHas('loanBranch.region', fn (Builder $regionQuery) => $regionQuery->where('name', $region)))
+            ->when($officer !== '', fn (Builder $builder) => $builder->whereHas('loanClient.assignedEmployee', function (Builder $employee) use ($officer): void {
+                $employee->whereRaw("TRIM(CONCAT(COALESCE(first_name,''), ' ', COALESCE(last_name,''))) = ?", [$officer]);
+            }))
+            ->when($product !== '', fn (Builder $builder) => $builder->where('product_name', $product))
+            ->when($from !== '', fn (Builder $builder) => $builder->whereDate('disbursed_at', '>=', $from))
+            ->when($to !== '', fn (Builder $builder) => $builder->whereDate('disbursed_at', '<=', $to));
 
-        $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
-            $rows = (clone $query)->orderByDesc('dpd')->limit(5000)->get();
+        $loans = $query->orderByDesc('dpd')->limit(3000)->get();
 
-            return TabularExport::stream(
-                'loanbook-arrears-'.now()->format('Ymd_His'),
-                ['Loan #', 'Client #', 'Client Name', 'Balance', 'DPD', 'Branch', 'Status'],
-                function () use ($rows) {
-                    foreach ($rows as $loan) {
-                        yield [
-                            (string) $loan->loan_number,
-                            (string) ($loan->loanClient->client_number ?? ''),
-                            (string) ($loan->loanClient->full_name ?? ''),
-                            number_format((float) $loan->balance, 2, '.', ''),
-                            (string) $loan->dpd,
-                            (string) ($loan->branch ?? ''),
-                            (string) $loan->status,
-                        ];
-                    }
-                },
-                $export
-            );
+        $sent = 0;
+        $charged = 0.0;
+        $failed = 0;
+        $template = (string) $validated['message'];
+        $userId = $request->user()?->id;
+        $samplePhone = null;
+        if ($sampleToRaw !== '') {
+            $normalized = $bulkSms->normalizeRecipientList($sampleToRaw);
+            $samplePhone = $normalized[0] ?? null;
+            if ($samplePhone === null) {
+                return redirect()
+                    ->route('loan.book.loan_arrears', $request->only(['q', 'branch', 'region', 'officer', 'product', 'status', 'from', 'to', 'dpd_min', 'dpd_max']))
+                    ->withErrors(['sms' => 'Selected sample phone is invalid.']);
+            }
         }
 
-        $loans = $query->orderByDesc('dpd')->paginate($perPage)->withQueryString();
-        $branches = LoanBookLoan::query()->whereNotNull('branch')->where('branch', '!=', '')->distinct()->orderBy('branch')->pluck('branch');
+        foreach ($loans as $loan) {
+            $rawPhone = (string) ($loan->loanClient?->phone ?? '');
+            $phones = $bulkSms->normalizeRecipientList($rawPhone);
+            if ($phones === []) {
+                continue;
+            }
+            if ($samplePhone !== null && $phones[0] !== $samplePhone) {
+                continue;
+            }
 
-        return view('loan.book.loans.arrears', [
-            'title' => 'Loan arrears',
-            'subtitle' => 'Active accounts with days past due.',
-            'loans' => $loans,
-            'q' => $q,
-            'branch' => $branch,
-            'perPage' => $perPage,
-            'branches' => $branches,
-        ]);
+            $termValue = max(1, (int) ($loan->term_value ?? 1));
+            $paid = (float) ($loan->processed_repayments_sum_amount ?? 0);
+            $totalBalance = (float) ($loan->balance ?? 0);
+            $periodicArrears = $termValue > 0 ? max(0, $totalBalance / $termValue) : $totalBalance;
+            $fallDate = $loan->disbursed_at ? $loan->disbursed_at->copy()->addDays((int) ($loan->dpd ?? 0)) : null;
+            $idNo = (string) ($loan->loanClient?->id_number ?? $loan->loanClient?->client_number ?? $loan->loan_number);
+
+            $arrearsValue = match ($arrearsPick) {
+                'accumulated' => $paid,
+                'total' => $totalBalance,
+                default => $periodicArrears,
+            };
+
+            $message = str_replace(
+                ['CLIENT', 'IDNO', 'ARREARS', 'STARTDAY'],
+                [
+                    (string) ($loan->loanClient?->full_name ?? 'Client'),
+                    $idNo,
+                    number_format($arrearsValue, 2),
+                    (string) optional($fallDate)->format('d-m-Y'),
+                ],
+                $template
+            );
+
+            $result = $bulkSms->sendNow($message, [$phones[0]], $userId, null);
+            if (! ($result['ok'] ?? false)) {
+                $failed++;
+                continue;
+            }
+
+            $sent += (int) ($result['sent'] ?? 1);
+            $charged += (float) ($result['charged'] ?? 0);
+        }
+
+        if ($sent === 0) {
+            return redirect()
+                ->route('loan.book.loan_arrears', $request->only(['q', 'branch', 'region', 'officer', 'product', 'status', 'from', 'to', 'dpd_min', 'dpd_max']))
+                ->withErrors(['sms' => 'No SMS were sent. Check recipient phone numbers and SMS wallet/provider setup.']);
+        }
+
+        $statusMessage = sprintf('Sent %d message(s). Charged %s %s.', $sent, number_format($charged, 2), $bulkSms->currency());
+        if ($failed > 0) {
+            $statusMessage .= ' Failed: '.$failed.'.';
+        }
+
+        return redirect()
+            ->route('loan.book.loan_arrears', $request->only(['q', 'branch', 'region', 'officer', 'product', 'status', 'from', 'to', 'dpd_min', 'dpd_max']))
+            ->with('status', $statusMessage);
     }
 
     public function checkoff(Request $request)
     {
-        $query = LoanBookLoan::query()->with(['loanClient']);
+        $query = LoanBookLoan::query()->with(['loanClient.assignedEmployee']);
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $q = trim((string) $request->query('q', ''));
         $status = trim((string) $request->query('status', ''));
@@ -231,17 +454,17 @@ class LoanBookLoansController extends Controller
 
             return TabularExport::stream(
                 'loanbook-checkoff-'.now()->format('Ymd_His'),
-                ['Loan #', 'Client #', 'Client Name', 'Employer', 'Balance', 'Status', 'Branch'],
+                ['Client', 'ID No', 'Checkoff', 'Loan Officer', 'Confirmed By', 'Date', 'Receipt'],
                 function () use ($rows) {
                     foreach ($rows as $loan) {
                         yield [
-                            (string) $loan->loan_number,
-                            (string) ($loan->loanClient->client_number ?? ''),
                             (string) ($loan->loanClient->full_name ?? ''),
-                            (string) ($loan->checkoff_employer ?? ''),
+                            (string) ($loan->loanClient->id_number ?? ''),
                             number_format((float) $loan->balance, 2, '.', ''),
-                            (string) $loan->status,
-                            (string) ($loan->branch ?? ''),
+                            (string) ($loan->loanClient?->assignedEmployee?->full_name ?? ''),
+                            'System',
+                            (string) (optional($loan->disbursed_at)->format('d-m-Y H:i') ?? ''),
+                            (string) $loan->loan_number,
                         ];
                     }
                 },

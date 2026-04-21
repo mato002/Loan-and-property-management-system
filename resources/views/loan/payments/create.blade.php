@@ -18,11 +18,11 @@
                             <option
                                 value="{{ $l->id }}"
                                 data-loan-number="{{ $l->loan_number }}"
-                                data-client-name="{{ $l->loanClient->full_name }}"
-                                data-payer-msisdn="{{ $l->loanClient->phone ?? '' }}"
+                                data-client-name="{{ $l->loanClient?->full_name ?? '' }}"
+                                data-payer-msisdn="{{ $l->loanClient?->phone ?? '' }}"
                                 data-balance="{{ number_format((float) ($l->balance ?? 0), 2, '.', '') }}"
                                 @selected((int) old('loan_book_loan_id', (int) ($selectedLoanId ?? 0)) === (int) $l->id)
-                            >{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
+                            >{{ $l->loan_number }} · {{ $l->loanClient?->full_name ?? '—' }}</option>
                         @endforeach
                     </select>
                     @error('loan_book_loan_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

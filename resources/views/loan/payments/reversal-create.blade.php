@@ -31,7 +31,7 @@
                     <select id="loan_book_loan_id" name="loan_book_loan_id" required class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="">Select…</option>
                         @foreach ($loans as $l)
-                            <option value="{{ $l->id }}" @selected(old('loan_book_loan_id', $original?->loan_book_loan_id) == $l->id)>{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
+                            <option value="{{ $l->id }}" @selected(old('loan_book_loan_id', $original?->loan_book_loan_id) == $l->id)>{{ $l->loan_number }} · {{ $l->loanClient?->full_name ?? '—' }}</option>
                         @endforeach
                     </select>
                     @error('loan_book_loan_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

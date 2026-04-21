@@ -9,9 +9,21 @@
             </a>
         </x-slot>
 
+        <form method="get" action="{{ route('loan.clients.default_groups') }}" class="mb-4 rounded-xl border border-slate-200 bg-white p-3 sm:p-4 shadow-sm">
+            <div class="flex flex-wrap items-end gap-2">
+                <div class="flex-1 min-w-[220px]">
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search groups</label>
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Group name or description..." class="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
+                <a href="{{ route('loan.clients.default_groups') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
+            </div>
+        </form>
+
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
                 <h2 class="text-sm font-semibold text-slate-700">All groups</h2>
+                <p class="text-xs text-slate-500">{{ $groups->total() }} group(s)</p>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full text-sm">
@@ -52,6 +64,11 @@
                     </tbody>
                 </table>
             </div>
+            @if ($groups->hasPages())
+                <div class="px-5 py-4 border-t border-slate-100">
+                    {{ $groups->links() }}
+                </div>
+            @endif
         </div>
     </x-loan.page>
 </x-loan-layout>
