@@ -73,6 +73,11 @@ class LoanClient extends Model
         return $this->hasMany(ClientTransfer::class)->orderByDesc('created_at');
     }
 
+    public function loanBookLoans(): HasMany
+    {
+        return $this->hasMany(LoanBookLoan::class, 'loan_client_id');
+    }
+
     public function scopeClients($query)
     {
         return $query->where('kind', self::KIND_CLIENT);

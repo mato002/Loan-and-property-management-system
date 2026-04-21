@@ -7,6 +7,7 @@ use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
 use App\Models\LoanSystemSetting;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class LoanBookLoanUpdateService
@@ -36,11 +37,10 @@ class LoanBookLoanUpdateService
                 $loan->principal_outstanding = (float) $loan->principal;
             }
             if ((float) $loan->interest_outstanding <= 0 && (float) $loan->principal_outstanding > 0 && (float) $loan->interest_rate > 0) {
-                $loan->interest_outstanding = $this->estimateInterestOutstanding(
+                $loan->interest_outstanding = $this->estimateInterestForLoan(
+                    $loan,
                     (float) $loan->principal_outstanding,
-                    (float) $loan->interest_rate,
-                    $loan->disbursed_at,
-                    $loan->maturity_date
+                    (float) $loan->interest_rate
                 );
             }
             $loan->balance = round(max(0.0, (float) $loan->principal_outstanding + (float) $loan->interest_outstanding + (float) $loan->fees_outstanding), 2);
@@ -148,24 +148,70 @@ class LoanBookLoanUpdateService
         return $order;
     }
 
-    private function estimateInterestOutstanding(float $principal, float $annualRate, mixed $disbursedAt, mixed $maturityDate): float
+    public function estimateInterestForLoan(LoanBookLoan $loan, float $principal, float $ratePercent): float
     {
-        if ($principal <= 0 || $annualRate <= 0) {
+        $loan->loadMissing('application');
+
+        $ratePeriod = strtolower(trim((string) ($loan->interest_rate_period ?: ($loan->application?->interest_rate_period ?? 'annual'))));
+        $termValue = $loan->term_value !== null
+            ? (int) $loan->term_value
+            : ($loan->application?->term_value !== null ? (int) $loan->application->term_value : null);
+        $termUnit = filled($loan->term_unit)
+            ? (string) $loan->term_unit
+            : ($loan->application?->term_unit !== null ? (string) $loan->application->term_unit : null);
+
+        return $this->estimateInterestOutstanding(
+            principal: $principal,
+            ratePercent: $ratePercent,
+            ratePeriod: $ratePeriod,
+            termValue: $termValue,
+            termUnit: $termUnit,
+            disbursedAt: $loan->disbursed_at,
+            maturityDate: $loan->maturity_date
+        );
+    }
+
+    public function estimateInterestOutstanding(
+        float $principal,
+        float $ratePercent,
+        string $ratePeriod = 'annual',
+        ?int $termValue = null,
+        ?string $termUnit = null,
+        mixed $disbursedAt = null,
+        mixed $maturityDate = null
+    ): float
+    {
+        if ($principal <= 0 || $ratePercent <= 0) {
             return 0.0;
         }
 
-        $months = 12;
-        if ($disbursedAt && $maturityDate) {
+        $unit = strtolower(trim((string) ($termUnit ?? '')));
+        $value = max(1, (int) ($termValue ?? 0));
+        if ($value <= 0 || ! in_array($unit, ['daily', 'weekly', 'monthly'], true)) {
+            $unit = 'monthly';
+            $value = 12;
+
             try {
-                $from = \Illuminate\Support\Carbon::parse($disbursedAt)->startOfDay();
-                $to = \Illuminate\Support\Carbon::parse($maturityDate)->startOfDay();
-                $months = max(1, $from->diffInMonths($to));
-            } catch (\Throwable $e) {
-                $months = 12;
+                if ($disbursedAt && $maturityDate) {
+                    $from = Carbon::parse($disbursedAt)->startOfDay();
+                    $to = Carbon::parse($maturityDate)->startOfDay();
+                    $days = max(1, (int) $from->diffInDays($to));
+                    $value = max(1, (int) ceil($days / 30));
+                }
+            } catch (\Throwable) {
+                $value = 12;
             }
         }
 
-        return round($principal * ($annualRate / 100) * ($months / 12), 2);
+        $ratePeriod = strtolower(trim($ratePeriod));
+        $periodCount = match ($ratePeriod) {
+            'daily' => $unit === 'daily' ? $value : ($unit === 'weekly' ? $value * 7 : $value * 30),
+            'weekly' => $unit === 'daily' ? ($value / 7) : ($unit === 'weekly' ? $value : (($value * 30) / 7)),
+            'monthly' => $unit === 'daily' ? ($value / 30) : ($unit === 'weekly' ? ($value / 4) : $value),
+            default => ($unit === 'daily' ? $value / 365 : ($unit === 'weekly' ? $value / 52 : $value / 12)),
+        };
+
+        return round($principal * ($ratePercent / 100) * max(0.0, $periodCount), 2);
     }
 }
 

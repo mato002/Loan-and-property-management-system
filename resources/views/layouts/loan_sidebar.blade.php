@@ -12,7 +12,15 @@
 @endphp
 
 <!-- Sidebar Elements -->
-<aside :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full max-md:pointer-events-none'" class="fixed inset-y-0 left-0 z-50 w-[280px] sm:w-[288px] bg-[#2f4f4f] border-r border-[#264040] flex flex-col min-h-0 transition-transform duration-300 md:relative md:translate-x-0 md:w-72 md:max-w-72 overflow-y-auto md:overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none">
+<aside
+    :class="[
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full max-md:pointer-events-none',
+        sidebarDesktopOpen
+            ? 'md:w-72 md:max-w-72 md:opacity-100 md:border-r md:border-[#264040]'
+            : 'md:w-0 md:max-w-0 md:opacity-0 md:border-r-0 md:pointer-events-none'
+    ]"
+    class="fixed inset-y-0 left-0 z-50 w-[280px] sm:w-[288px] bg-[#2f4f4f] border-r border-[#264040] flex flex-col min-h-0 transition-all duration-300 md:relative md:translate-x-0 overflow-y-auto md:overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none"
+>
     <!-- Header -->
     <div class="h-16 flex items-center justify-between px-6 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md">
         <a href="{{ route('dashboard') }}" class="text-xl font-bold text-white flex items-center gap-3 min-w-0">

@@ -44,8 +44,8 @@
                 <ul class="divide-y divide-slate-100 max-h-80 overflow-y-auto">
                     @forelse ($recent as $row)
                         <li class="px-5 py-3 text-sm">
-                            <span class="font-mono text-xs text-indigo-600">{{ $row->loan->loan_number }}</span>
-                            <span class="text-slate-800"> · {{ $row->loan->loanClient->full_name }}</span>
+                            <span class="font-mono text-xs text-indigo-600">{{ $row->loan?->loan_number ?? 'Unknown loan' }}</span>
+                            <span class="text-slate-800"> · {{ $row->loan?->loanClient?->full_name ?? 'Unknown client' }}</span>
                             <span class="block text-xs text-slate-500 mt-0.5">{{ optional($row->transaction_at ?? $row->collected_on)->format('Y-m-d') }} · {{ number_format((float) $row->amount, 2) }} · {{ $row->channel }}</span>
                         </li>
                     @empty

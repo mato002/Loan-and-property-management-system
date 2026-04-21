@@ -67,6 +67,8 @@
                     <div><dt class="text-slate-500">Principal outstanding</dt><dd class="font-medium text-slate-900 tabular-nums">{{ number_format((float) $loan->principal_outstanding, 2) }}</dd></div>
                     <div><dt class="text-slate-500">Balance</dt><dd class="font-medium text-slate-900 tabular-nums">{{ number_format((float) $loan->balance, 2) }}</dd></div>
                     <div><dt class="text-slate-500">Interest rate</dt><dd class="font-medium text-slate-900">{{ number_format((float) $loan->interest_rate, 2) }}%</dd></div>
+                    <div><dt class="text-slate-500">Interest outstanding</dt><dd class="font-medium text-slate-900 tabular-nums">{{ number_format((float) $loan->interest_outstanding, 2) }}</dd></div>
+                    <div><dt class="text-slate-500">Rate period</dt><dd class="font-medium text-slate-900">{{ strtoupper((string) ($loan->interest_rate_period ?: ($loan->application?->interest_rate_period ?? 'annual'))) }}</dd></div>
                     <div><dt class="text-slate-500">Days past due</dt><dd class="font-medium text-slate-900">{{ $loan->dpd }}</dd></div>
                     <div><dt class="text-slate-500">Checkoff</dt><dd class="font-medium text-slate-900">{{ $loan->is_checkoff ? 'Yes' : 'No' }}</dd></div>
                     <div><dt class="text-slate-500">Disbursed at</dt><dd class="font-medium text-slate-900">{{ optional($loan->disbursed_at)->format('Y-m-d') ?: '—' }}</dd></div>
@@ -84,6 +86,12 @@
                 @if ($loan->application)
                     <p class="mt-3 text-sm text-slate-700">Booked from application {{ $loan->application->reference }}.</p>
                     <a href="{{ route('loan.book.applications.show', $loan->application) }}" class="mt-3 inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Open application</a>
+                    <form method="post" action="{{ route('loan.book.loans.sync_schedule', $loan) }}" class="mt-2" data-swal-confirm="Sync term and rate period from linked application and recalculate this loan snapshot?">
+                        @csrf
+                        <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100">
+                            Sync Schedule From Application
+                        </button>
+                    </form>
                 @else
                     <p class="mt-3 text-sm text-slate-600">This loan was created directly (no linked application).</p>
                 @endif

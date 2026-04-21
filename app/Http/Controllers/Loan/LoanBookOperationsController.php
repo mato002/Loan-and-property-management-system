@@ -257,11 +257,20 @@ class LoanBookOperationsController extends Controller
 
     public function collectionSheet(Request $request)
     {
-        $date = $request->query('date', now()->toDateString());
+        $fromRaw = (string) $request->query('from', $request->query('date', now()->toDateString()));
+        $toRaw = (string) $request->query('to', $request->query('date', now()->toDateString()));
         try {
-            $on = Carbon::parse($date)->toDateString();
+            $from = Carbon::parse($fromRaw)->toDateString();
         } catch (\Throwable) {
-            $on = now()->toDateString();
+            $from = now()->toDateString();
+        }
+        try {
+            $to = Carbon::parse($toRaw)->toDateString();
+        } catch (\Throwable) {
+            $to = $from;
+        }
+        if ($to < $from) {
+            [$from, $to] = [$to, $from];
         }
 
         $q = trim((string) $request->query('q', ''));
@@ -270,7 +279,8 @@ class LoanBookOperationsController extends Controller
 
         $entriesQuery = LoanBookCollectionEntry::query()
             ->with(['loan.loanClient', 'collectedBy', 'accountingJournalEntry'])
-            ->whereDate('collected_on', $on)
+            ->whereBetween('collected_on', [$from, $to])
+            ->orderByDesc('collected_on')
             ->orderByDesc('id')
             ->when($q !== '', function ($builder) use ($q) {
                 $builder->where(function ($inner) use ($q) {
@@ -328,7 +338,8 @@ class LoanBookOperationsController extends Controller
             'entries' => $entries,
             'loans' => $loans,
             'employees' => Employee::query()->orderBy('last_name')->orderBy('first_name')->get(),
-            'filterDate' => $on,
+            'filterFrom' => $from,
+            'filterTo' => $to,
             'q' => $q,
             'channel' => $channel,
             'perPage' => $perPage,
@@ -431,6 +442,8 @@ class LoanBookOperationsController extends Controller
         $recentQuery = LoanBookPayment::query()
             ->with(['loan.loanClient'])
             ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->whereNotNull('loan_book_loan_id')
+            ->whereHas('loan')
             ->whereBetween('transaction_at', [
                 $start.' 00:00:00',
                 $end.' 23:59:59',

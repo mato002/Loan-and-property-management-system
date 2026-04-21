@@ -6,7 +6,7 @@
 
         <div
             class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden max-w-3xl"
-            x-data="loanProductPicker(@js($productMetaByName ?? []))"
+            x-data="loanProductPicker(@js($productMetaByName ?? []), @js((string) old('term_unit', '')))"
             data-products-store-url="{{ route('loan.book.applications.products.store') }}"
         >
             <form method="post" action="{{ route('loan.book.applications.store') }}" class="px-5 py-6 space-y-4">
@@ -64,25 +64,27 @@
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">Term length</label>
-                        <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', old('term_months', 12)) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
-                        @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    </div>
-                    <div>
                         <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">Term unit</label>
-                        <select id="term_unit" name="term_unit" required class="w-full rounded-lg border-slate-200 text-sm">
+                        <select id="term_unit" name="term_unit" required class="w-full rounded-lg border-slate-200 text-sm" x-model="termUnit" @change="onTermUnitChange()">
+                            <option value="" @selected(old('term_unit', '') === '')>Select term unit…</option>
                             @foreach (['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'] as $v => $lab)
-                                <option value="{{ $v }}" @selected(old('term_unit', 'monthly') === $v)>{{ $lab }}</option>
+                                <option value="{{ $v }}" @selected(old('term_unit', '') === $v)>{{ $lab }}</option>
                             @endforeach
                         </select>
+                        <p class="mt-1 text-[11px] text-slate-500" x-show="termUnit === ''">Choose how the loan term is measured (days, weeks, or months).</p>
                         @error('term_unit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div x-show="termUnit !== ''" x-cloak>
+                        <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">Term length</label>
+                        <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="e.g. 6" />
+                        @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
                         <label for="interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Interest rate (%)</label>
                         <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="1000" value="{{ old('interest_rate') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
-                    <div>
+                    <div class="sm:col-span-2">
                         <label for="interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">Interest period</label>
                         <select id="interest_rate_period" name="interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
                             @foreach (['daily' => 'Per day', 'weekly' => 'Per week', 'monthly' => 'Per month', 'annual' => 'Per year'] as $v => $lab)
@@ -96,9 +98,11 @@
                     <label for="stage" class="block text-xs font-semibold text-slate-600 mb-1">Stage</label>
                     <select id="stage" name="stage" required class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach ($stages as $value => $label)
+                            @continue($value === \App\Models\LoanBookApplication::STAGE_DISBURSED)
                             <option value="{{ $value }}" @selected(old('stage', \App\Models\LoanBookApplication::STAGE_SUBMITTED) === $value)>{{ $label }}</option>
                         @endforeach
                     </select>
+                    <p class="mt-1 text-[11px] text-slate-500">Disbursed is set automatically after a completed disbursement record.</p>
                     @error('stage')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -290,10 +294,11 @@
 </x-loan-layout>
 
 <script>
-    function loanProductPicker(productMetaByName = {}) {
+    function loanProductPicker(productMetaByName = {}, initialTermUnit = '') {
         const productStoreUrl = @json(route('loan.book.applications.products.store'));
         return {
             productMetaByName,
+            termUnit: initialTermUnit ? String(initialTermUnit) : '',
             showProductModal: false,
             newProductName: '',
             newProductDescription: '',
@@ -319,9 +324,19 @@
                 this.$nextTick(() => {
                     this.autofillFromSelectedClient();
                     this.applyProductDefaults();
+                    const termUnitSelect = this.$el.querySelector('#term_unit');
+                    if (termUnitSelect) {
+                        this.termUnit = termUnitSelect.value || '';
+                    }
                     const productSelect = this.$el.querySelector('#product_name');
                     productSelect?.addEventListener('change', () => this.applyProductDefaults());
                 });
+            },
+            onTermUnitChange() {
+                const termInput = this.$el.querySelector('#term_value');
+                if (!this.termUnit && termInput) {
+                    termInput.value = '';
+                }
             },
             openProductModal() {
                 this.productModalError = '';
@@ -386,10 +401,17 @@
                         termInput.dispatchEvent(new Event('input', { bubbles: true }));
                         termInput.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                    if (termUnitSelect && (termUnitSelect.value ?? '') === 'monthly') {
+                    if (termUnitSelect && (!(termUnitSelect.value ?? '').trim() || (termUnitSelect.value ?? '') === 'monthly')) {
                         termUnitSelect.value = defaultTermUnit;
                         termUnitSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     }
+                }
+                if (meta.charges_summary) {
+                    parts.push(`Charges: ${meta.charges_summary}.`);
+                }
+                const tu = this.$el.querySelector('#term_unit');
+                if (tu) {
+                    this.termUnit = tu.value || '';
                 }
                 this.selectedProductHint = parts.join(' ');
             },

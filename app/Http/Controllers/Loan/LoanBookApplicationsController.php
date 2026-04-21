@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Loan;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\LoanBookApplication;
+use App\Models\LoanBookLoan;
 use App\Models\LoanBranch;
 use App\Models\LoanClient;
 use App\Models\LoanProduct;
@@ -194,15 +195,28 @@ class LoanBookApplicationsController extends Controller
             default => '',
         };
 
+        $prefillClientId = $selectedClientId ? (int) $selectedClientId : null;
+        $clientsQuery = LoanClient::query()
+            ->clients()
+            ->when(! $this->canAccessAllLoanData($request->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId($request->user())))
+            ->when(
+                $prefillClientId,
+                fn (Builder $query) => $query->where(function (Builder $inner) use ($prefillClientId): void {
+                    $inner->whereDoesntHave('loanBookLoans', function (Builder $loan): void {
+                        $loan->where('status', '!=', LoanBookLoan::STATUS_CLOSED);
+                    })->orWhere('id', $prefillClientId);
+                }),
+                fn (Builder $query) => $query->whereDoesntHave('loanBookLoans', function (Builder $loan): void {
+                    $loan->where('status', '!=', LoanBookLoan::STATUS_CLOSED);
+                }),
+            )
+            ->orderBy('last_name')
+            ->orderBy('first_name');
+
         return view('loan.book.applications.create', [
             'title' => 'Create application',
             'subtitle' => 'Start a new LoanBook file for an onboarded client.',
-            'clients' => LoanClient::query()
-                ->clients()
-                ->when(! $this->canAccessAllLoanData($request->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId($request->user())))
-                ->orderBy('last_name')
-                ->orderBy('first_name')
-                ->get(),
+            'clients' => $clientsQuery->get(),
             'stages' => $this->stageOptions(),
             'selectedClientId' => $selectedClientId,
             'defaultProductName' => $defaultProductName,
@@ -227,8 +241,8 @@ class LoanBookApplicationsController extends Controller
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
             'product_name' => ['required', 'string', 'max:160'],
             'amount_requested' => ['required', 'numeric', 'min:0'],
-            'term_value' => ['nullable', 'integer', 'min:1', 'max:3660'],
-            'term_unit' => ['nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
+            'term_value' => ['required', 'integer', 'min:1', 'max:3660'],
+            'term_unit' => ['required', 'string', 'in:'.implode(',', $this->termUnitOptions())],
             'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
@@ -255,6 +269,18 @@ class LoanBookApplicationsController extends Controller
         $validated['term_unit'] = $termUnit;
         $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
         $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
+
+        if (LoanBookLoan::query()
+            ->where('loan_client_id', $validated['loan_client_id'])
+            ->where('status', '!=', LoanBookLoan::STATUS_CLOSED)
+            ->exists()) {
+            return redirect()
+                ->back()
+                ->withErrors([
+                    'loan_client_id' => __('This client already has an open loan. Use another client or close the existing loan first.'),
+                ])
+                ->withInput();
+        }
 
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
         $this->mergeLoanDepartmentGuarantorFromClient($validated, $client);
@@ -321,6 +347,7 @@ class LoanBookApplicationsController extends Controller
                 'default_term_months' => $product->default_term_months,
                 'default_term_unit' => $hasDefaultTermUnit ? ($product->default_term_unit ?? 'monthly') : 'monthly',
                 'default_interest_rate_period' => $hasDefaultRatePeriod ? ($product->default_interest_rate_period ?? 'annual') : 'annual',
+                'charges_summary' => '',
             ],
         ]);
     }
@@ -329,16 +356,23 @@ class LoanBookApplicationsController extends Controller
     {
         $this->ensureLoanClientOwner($loan_book_application->loanClient);
 
+        $clients = LoanClient::query()
+            ->clients()
+            ->when(! $this->canAccessAllLoanData(auth()->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId(auth()->user())))
+            ->where(function (Builder $query) use ($loan_book_application): void {
+                $query->whereDoesntHave('loanBookLoans', function (Builder $loan): void {
+                    $loan->where('status', '!=', LoanBookLoan::STATUS_CLOSED);
+                })->orWhere('id', $loan_book_application->loan_client_id);
+            })
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get();
+
         return view('loan.book.applications.edit', [
             'title' => 'Edit application',
             'subtitle' => $loan_book_application->reference,
             'application' => $loan_book_application,
-            'clients' => LoanClient::query()
-                ->clients()
-                ->when(! $this->canAccessAllLoanData(auth()->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId(auth()->user())))
-                ->orderBy('last_name')
-                ->orderBy('first_name')
-                ->get(),
+            'clients' => $clients,
             'stages' => $this->stageOptions(),
             'productOptions' => $this->productOptions($loan_book_application->product_name),
             'productMetaByName' => $this->productMetaByName(),
@@ -369,8 +403,8 @@ class LoanBookApplicationsController extends Controller
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
             'product_name' => ['required', 'string', 'max:160'],
             'amount_requested' => ['required', 'numeric', 'min:0'],
-            'term_value' => ['nullable', 'integer', 'min:1', 'max:3660'],
-            'term_unit' => ['nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
+            'term_value' => ['required', 'integer', 'min:1', 'max:3660'],
+            'term_unit' => ['required', 'string', 'in:'.implode(',', $this->termUnitOptions())],
             'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
@@ -400,6 +434,29 @@ class LoanBookApplicationsController extends Controller
         $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
         $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
         $validated['product_name'] = $this->ensureProductRegistered((string) $validated['product_name']);
+        if (isset($validated['stage'])) {
+            $stageError = $this->stageTransitionError($loan_book_application, (string) $validated['stage']);
+            if ($stageError !== null) {
+                return redirect()
+                    ->back()
+                    ->withErrors(['stage' => $stageError])
+                    ->withInput();
+            }
+        }
+
+        if ((int) $validated['loan_client_id'] !== (int) $loan_book_application->loan_client_id) {
+            if (LoanBookLoan::query()
+                ->where('loan_client_id', $validated['loan_client_id'])
+                ->where('status', '!=', LoanBookLoan::STATUS_CLOSED)
+                ->exists()) {
+                return redirect()
+                    ->back()
+                    ->withErrors([
+                        'loan_client_id' => __('That client already has an open loan. Pick a different client.'),
+                    ])
+                    ->withInput();
+            }
+        }
 
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
         $this->mergeLoanDepartmentGuarantorFromClient($validated, $client);
@@ -437,6 +494,12 @@ class LoanBookApplicationsController extends Controller
         $validated = $request->validate([
             'stage' => ['required', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
         ]);
+        $stageError = $this->stageTransitionError($loan_book_application, (string) $validated['stage']);
+        if ($stageError !== null) {
+            return redirect()
+                ->back()
+                ->withErrors(['stage' => $stageError]);
+        }
 
         $loan_book_application->update(['stage' => $validated['stage']]);
 
@@ -541,7 +604,8 @@ class LoanBookApplicationsController extends Controller
      *     default_interest_rate: ?float,
      *     default_term_months: ?int,
      *     default_term_unit: string,
-     *     default_interest_rate_period: string
+ *     default_interest_rate_period: string,
+ *     charges_summary: string
      * }>
      */
     private function productMetaByName(): array
@@ -559,8 +623,10 @@ class LoanBookApplicationsController extends Controller
         if ($hasDefaultRatePeriod) {
             $select[] = 'default_interest_rate_period';
         }
+        $hasCharges = Schema::hasTable('loan_product_charges');
 
         return LoanProduct::query()
+            ->with($hasCharges ? ['charges' => fn ($q) => $q->where('is_active', true)->orderBy('id')] : [])
             ->select($select)
             ->get()
             ->mapWithKeys(fn (LoanProduct $product) => [
@@ -569,6 +635,15 @@ class LoanBookApplicationsController extends Controller
                     'default_term_months' => $product->default_term_months !== null ? (int) $product->default_term_months : null,
                     'default_term_unit' => $hasDefaultTermUnit ? (string) ($product->default_term_unit ?? 'monthly') : 'monthly',
                     'default_interest_rate_period' => $hasDefaultRatePeriod ? (string) ($product->default_interest_rate_period ?? 'annual') : 'annual',
+                    'charges_summary' => $hasCharges
+                        ? $product->charges->map(function ($charge): string {
+                            $amount = (string) $charge->amount_type === 'percent'
+                                ? number_format((float) $charge->amount, 4).'%'
+                                : number_format((float) $charge->amount, 2);
+
+                            return trim((string) $charge->charge_name).' '.$amount.' ('.str_replace('_', ' ', (string) $charge->applies_to_stage).')';
+                        })->implode('; ')
+                        : '',
                 ],
             ])
             ->all();
@@ -713,6 +788,37 @@ class LoanBookApplicationsController extends Controller
             ->value('arrears') ?? 0.0);
 
         return $arrears > 0;
+    }
+
+    private function stageTransitionError(LoanBookApplication $application, string $nextStage): ?string
+    {
+        $currentStage = (string) ($application->stage ?? '');
+        if ($nextStage === $currentStage) {
+            return null;
+        }
+
+        $hasLinkedLoan = $application->loan()->exists();
+
+        // Once disbursed, stage must remain disbursed.
+        if ($currentStage === LoanBookApplication::STAGE_DISBURSED && $nextStage !== LoanBookApplication::STAGE_DISBURSED) {
+            return 'Disbursed applications are locked and cannot be moved back to another stage.';
+        }
+
+        // If there is already a booked loan, pipeline stage cannot be moved backward to pre-approval states.
+        if ($hasLinkedLoan && in_array($nextStage, [
+            LoanBookApplication::STAGE_SUBMITTED,
+            LoanBookApplication::STAGE_CREDIT_REVIEW,
+            LoanBookApplication::STAGE_DECLINED,
+        ], true)) {
+            return 'This application already has a linked loan, so its stage cannot be moved to pre-approval states.';
+        }
+
+        // "Disbursed" is system-managed only (set after actual disbursement completion).
+        if ($nextStage === LoanBookApplication::STAGE_DISBURSED && $currentStage !== LoanBookApplication::STAGE_DISBURSED) {
+            return 'Disbursed stage is system-controlled and updates only after a completed disbursement.';
+        }
+
+        return null;
     }
 
 }

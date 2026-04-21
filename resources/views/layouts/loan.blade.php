@@ -51,7 +51,23 @@
             }
         </style>
     </head>
-    <body class="font-sans antialiased h-screen overflow-hidden text-slate-900 dark:text-slate-100 selection:bg-indigo-500/30" x-data="{ sidebarOpen: false }">
+    <body
+        class="font-sans antialiased h-screen overflow-hidden text-slate-900 dark:text-slate-100 selection:bg-indigo-500/30"
+        x-data="{
+            sidebarOpen: false,
+            sidebarDesktopOpen: true,
+            init() {
+                const saved = window.localStorage.getItem('loan.sidebar.desktop.open');
+                if (saved !== null) {
+                    this.sidebarDesktopOpen = saved === '1';
+                }
+            },
+            toggleDesktopSidebar() {
+                this.sidebarDesktopOpen = !this.sidebarDesktopOpen;
+                window.localStorage.setItem('loan.sidebar.desktop.open', this.sidebarDesktopOpen ? '1' : '0');
+            }
+        }"
+    >
         <x-swal-flash />
         <div class="h-full flex bg-slate-50 dark:bg-slate-900">
             

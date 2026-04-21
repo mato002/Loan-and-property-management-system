@@ -747,7 +747,7 @@ class RevenueController extends Controller
             'KES 0.00',
             $i->updated_at?->format('Y-m-d') ?? '—',
             'Stub',
-            new HtmlString('<a href="'.route('property.revenue.receipts').'" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'),
+            new HtmlString('<a href="'.route('property.revenue.invoices.show', ['invoice' => $i->id], false).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'),
         ])->all();
 
         return view('property.agent.revenue.receipts', [

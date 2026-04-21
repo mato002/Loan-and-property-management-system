@@ -134,7 +134,10 @@ class PmPaymentController extends Controller
             }
 
             $source = $this->sourceBadge($p);
-            $actions = '—';
+            $receiptUrl = route('property.payments.receipt.show', ['payment' => $p->id], false);
+            $actions = new HtmlString(
+                '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="text-xs font-semibold text-indigo-700 hover:text-indigo-800">View</a>'
+            );
             if ($p->status === PmPayment::STATUS_PENDING) {
                 $completeUrl = route('property.payments.settle', $p);
                 $failUrl = route('property.payments.settle', $p);
@@ -150,7 +153,8 @@ class PmPaymentController extends Controller
                     method_field('PATCH').
                     '<input type="hidden" name="decision" value="failed">'.
                     '<button type="submit" class="text-xs font-semibold text-red-700 hover:text-red-800">Mark failed</button>'.
-                    '</form>'
+                    '</form> '.
+                    '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="ml-2 text-xs font-semibold text-indigo-700 hover:text-indigo-800">View</a>'
                 );
             }
 

@@ -12,69 +12,90 @@
             </div>
         @endif
 
-        <div class="mb-4 flex items-center justify-end">
+        <div class="mb-4 flex items-center justify-end gap-2" x-data="{ createRoleOpen: @js(old('form_context') === 'create_role') }">
+            <button
+                type="button"
+                class="rounded-lg bg-[#2f4f4f] px-3 py-2 text-xs font-semibold text-white hover:bg-[#264040] disabled:opacity-60"
+                @click="createRoleOpen = true"
+                @disabled(!($rbacReady ?? false))
+            >
+                Create role
+            </button>
             <form method="post" action="{{ route('loan.system.setup.access_roles.sync') }}">
                 @csrf
                 <button type="submit" class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" @disabled(!($rbacReady ?? false))>
                     Sync existing user roles
                 </button>
             </form>
+            <div
+                class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+                x-show="createRoleOpen"
+                x-cloak
+                @keydown.escape.window="createRoleOpen = false"
+            >
+                <div
+                    class="w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl"
+                    x-data="{
+                        defaults: @js($defaultPermissionsByBaseRole ?? []),
+                        createBaseRole: @js(old('base_role', 'admin')),
+                        createPerms: @js(old('permissions', [])),
+                        hasOldPerms: @js(is_array(old('permissions')) && count(old('permissions')) > 0),
+                        applyCreateDefaults() { this.createPerms = [...(this.defaults[this.createBaseRole] || [])]; }
+                    }"
+                    x-init="if (!hasOldPerms) applyCreateDefaults()"
+                    @click.away="createRoleOpen = false"
+                >
+                    <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                        <h2 class="text-sm font-semibold text-slate-700">Create role</h2>
+                        <button type="button" class="rounded-md px-2 py-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700" @click="createRoleOpen = false">Close</button>
+                    </div>
+                    <form method="post" action="{{ route('loan.system.setup.access_roles.store') }}" class="space-y-4 p-5">
+                        @csrf
+                        <input type="hidden" name="form_context" value="create_role">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Role name</label>
+                            <input name="name" value="{{ old('name') }}" class="w-full rounded-lg border-slate-200 text-sm" required>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Base role</label>
+                            <select name="base_role" x-model="createBaseRole" @change="applyCreateDefaults()" class="w-full rounded-lg border-slate-200 text-sm" required>
+                                @foreach (['admin', 'manager', 'accountant', 'officer', 'applicant', 'user'] as $role)
+                                    <option value="{{ $role }}">{{ ucfirst($role) }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between gap-2 mb-1">
+                                <label class="block text-xs font-semibold text-slate-600">Permissions</label>
+                                <button type="button" class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700" @click="applyCreateDefaults()">Use role defaults</button>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                @foreach ($permissionCatalog as $key => $label)
+                                    <label class="inline-flex items-center gap-2 text-xs text-slate-700 rounded border border-slate-200 px-2 py-1.5">
+                                        <input type="checkbox" name="permissions[]" :value="'{{ $key }}'" x-model="createPerms" class="rounded border-slate-300">
+                                        {{ $label }}
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 mb-1">Description</label>
+                            <textarea name="description" rows="3" class="w-full rounded-lg border-slate-200 text-sm">{{ old('description') }}</textarea>
+                        </div>
+                        <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                            <input type="checkbox" name="is_active" value="1" class="rounded border-slate-300" @checked(old('is_active', '1') === '1')>
+                            Active
+                        </label>
+                        <div class="flex items-center justify-end gap-2">
+                            <button type="button" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" @click="createRoleOpen = false">Cancel</button>
+                            <button class="rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#264040] disabled:opacity-60" @disabled(!($rbacReady ?? false))>Save role</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
 
-        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div class="xl:col-span-1 bg-white border border-slate-200 rounded-xl shadow-sm p-5"
-                x-data="{
-                    defaults: @js($defaultPermissionsByBaseRole ?? []),
-                    createBaseRole: 'admin',
-                    createPerms: [],
-                    applyCreateDefaults() { this.createPerms = [...(this.defaults[this.createBaseRole] || [])]; }
-                }"
-                x-init="applyCreateDefaults()"
-            >
-                <h2 class="text-sm font-semibold text-slate-700">Create role</h2>
-                <form method="post" action="{{ route('loan.system.setup.access_roles.store') }}" class="mt-4 space-y-4">
-                    @csrf
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Role name</label>
-                        <input name="name" class="w-full rounded-lg border-slate-200 text-sm" required>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Base role</label>
-                        <select name="base_role" x-model="createBaseRole" @change="applyCreateDefaults()" class="w-full rounded-lg border-slate-200 text-sm" required>
-                            @foreach (['admin', 'manager', 'accountant', 'officer', 'applicant', 'user'] as $role)
-                                <option value="{{ $role }}">{{ ucfirst($role) }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div>
-                        <div class="flex items-center justify-between gap-2 mb-1">
-                            <label class="block text-xs font-semibold text-slate-600">Permissions</label>
-                            <button type="button" class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700" @click="applyCreateDefaults()">Use role defaults</button>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            @foreach ($permissionCatalog as $key => $label)
-                                <label class="inline-flex items-center gap-2 text-xs text-slate-700 rounded border border-slate-200 px-2 py-1.5">
-                                    <input type="checkbox" name="permissions[]" :value="'{{ $key }}'" x-model="createPerms" class="rounded border-slate-300">
-                                    {{ $label }}
-                                </label>
-                            @endforeach
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Description</label>
-                        <textarea name="description" rows="3" class="w-full rounded-lg border-slate-200 text-sm"></textarea>
-                    </div>
-                    <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-                        <input type="checkbox" name="is_active" value="1" checked class="rounded border-slate-300">
-                        Active
-                    </label>
-                    <div>
-                        <button class="rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#264040] disabled:opacity-60" @disabled(!($rbacReady ?? false))>Save role</button>
-                    </div>
-                </form>
-            </div>
-
-            <div class="xl:col-span-2 space-y-6">
+        <div class="space-y-6">
                 @foreach ($roles as $role)
                     @php
                         $assignedUserIds = $role->users()->pluck('users.id')->all();
@@ -157,7 +178,6 @@
                         No roles yet. Use <span class="font-semibold">Sync existing user roles</span> to import from current users, or create one manually.
                     </div>
                 @endif
-            </div>
         </div>
     </x-loan.page>
 </x-loan-layout>

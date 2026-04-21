@@ -2,8 +2,10 @@
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
             <form method="get" action="{{ route('loan.book.collection_sheet.index') }}" class="flex flex-wrap items-center gap-2">
-                <label class="text-xs font-semibold text-slate-600">Date</label>
-                <input type="date" name="date" value="{{ $filterDate }}" class="rounded-lg border-slate-200 text-sm" />
+                <label class="text-xs font-semibold text-slate-600">From</label>
+                <input type="date" name="from" value="{{ $filterFrom }}" class="rounded-lg border-slate-200 text-sm" />
+                <label class="text-xs font-semibold text-slate-600">To</label>
+                <input type="date" name="to" value="{{ $filterTo }}" class="rounded-lg border-slate-200 text-sm" />
                 <input type="hidden" name="q" value="{{ $q ?? '' }}">
                 <input type="hidden" name="channel" value="{{ $channel ?? '' }}">
                 <input type="hidden" name="per_page" value="{{ $perPage ?? 25 }}">
@@ -17,7 +19,8 @@
         @enderror
 
         <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <input type="hidden" name="date" value="{{ $filterDate }}">
+            <input type="hidden" name="from" value="{{ $filterFrom }}">
+            <input type="hidden" name="to" value="{{ $filterTo }}">
             <div class="flex flex-wrap items-end gap-2">
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
@@ -41,11 +44,11 @@
                     </select>
                 </div>
                 <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
-                <a href="{{ route('loan.book.collection_sheet.index', ['date' => $filterDate]) }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
+                <a href="{{ route('loan.book.collection_sheet.index', ['from' => $filterFrom, 'to' => $filterTo]) }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
                 <div class="ml-auto flex items-center gap-2">
-                    <a href="{{ route('loan.book.collection_sheet.index', array_merge(request()->query(), ['date' => $filterDate, 'export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
-                    <a href="{{ route('loan.book.collection_sheet.index', array_merge(request()->query(), ['date' => $filterDate, 'export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
-                    <a href="{{ route('loan.book.collection_sheet.index', array_merge(request()->query(), ['date' => $filterDate, 'export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+                    <a href="{{ route('loan.book.collection_sheet.index', array_merge(request()->query(), ['from' => $filterFrom, 'to' => $filterTo, 'export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                    <a href="{{ route('loan.book.collection_sheet.index', array_merge(request()->query(), ['from' => $filterFrom, 'to' => $filterTo, 'export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+                    <a href="{{ route('loan.book.collection_sheet.index', array_merge(request()->query(), ['from' => $filterFrom, 'to' => $filterTo, 'export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
                 </div>
             </div>
         </form>
@@ -53,7 +56,7 @@
         <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
             <div class="xl:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div class="px-5 py-4 border-b border-slate-100">
-                    <h2 class="text-sm font-semibold text-slate-700">Lines for {{ $filterDate }}</h2>
+                    <h2 class="text-sm font-semibold text-slate-700">Lines for {{ $filterFrom }} to {{ $filterTo }}</h2>
                     <p class="text-xs text-slate-500 mt-1">{{ $entries->total() }} receipt(s)</p>
                 </div>
                 <div class="overflow-x-auto">
@@ -72,7 +75,7 @@
                         <tbody class="divide-y divide-slate-100">
                             @forelse ($entries as $row)
                                 <tr class="hover:bg-slate-50/80">
-                                    <td class="px-5 py-3 font-mono text-xs text-indigo-600">{{ $row->loan->loan_number }}</td>
+                                    <td class="px-5 py-3 font-mono text-xs text-indigo-600">{{ $row->loan->loan_number }} <span class="text-slate-400">· {{ optional($row->collected_on)->format('Y-m-d') }}</span></td>
                                     <td class="px-5 py-3 text-slate-800">{{ $row->loan->loanClient->full_name }}</td>
                                     <td class="px-5 py-3 text-right tabular-nums font-medium">{{ number_format((float) $row->amount, 2) }}</td>
                                     <td class="px-5 py-3 text-slate-600">{{ $row->channel }}</td>
@@ -94,7 +97,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="px-5 py-10 text-center text-slate-500">No receipts this day.</td>
+                                    <td colspan="7" class="px-5 py-10 text-center text-slate-500">No receipts in this date range.</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -109,7 +112,7 @@
                 <h2 class="text-sm font-semibold text-slate-800">Add receipt</h2>
                 <form method="post" action="{{ route('loan.book.collection_sheet.store') }}" class="space-y-3">
                     @csrf
-                    <input type="hidden" name="collected_on" value="{{ $filterDate }}" />
+                    <input type="hidden" name="collected_on" value="{{ $filterTo }}" />
                     <div>
                         <label for="loan_book_loan_id" class="block text-xs font-semibold text-slate-600 mb-1">Loan</label>
                         <select id="loan_book_loan_id" name="loan_book_loan_id" required class="w-full rounded-lg border-slate-200 text-sm">

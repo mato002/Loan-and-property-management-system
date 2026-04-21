@@ -22,6 +22,18 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                 </button>
+                <button
+                    type="button"
+                    @click="toggleDesktopSidebar()"
+                    class="hidden md:inline-flex shrink-0 p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-[#2f4f4f]/30"
+                    :aria-label="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+                    :title="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+                >
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path x-show="sidebarDesktopOpen" stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+                        <path x-show="!sidebarDesktopOpen" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                </button>
 
                 <div class="min-w-0 hidden sm:block">
                     <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">

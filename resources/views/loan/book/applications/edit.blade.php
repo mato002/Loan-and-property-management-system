@@ -35,11 +35,6 @@
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">Term length</label>
-                        <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', $application->term_value ?? $application->term_months) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
-                        @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    </div>
-                    <div>
                         <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">Term unit</label>
                         <select id="term_unit" name="term_unit" required class="w-full rounded-lg border-slate-200 text-sm">
                             @foreach (['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'] as $v => $lab)
@@ -49,11 +44,16 @@
                         @error('term_unit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
+                        <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">Term length</label>
+                        <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', $application->term_value ?? $application->term_months) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                        @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
                         <label for="interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Interest rate (%)</label>
                         <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="1000" value="{{ old('interest_rate', $application->interest_rate) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
-                    <div>
+                    <div class="sm:col-span-2">
                         <label for="interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">Interest period</label>
                         <select id="interest_rate_period" name="interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
                             @foreach (['daily' => 'Per day', 'weekly' => 'Per week', 'monthly' => 'Per month', 'annual' => 'Per year'] as $v => $lab)
@@ -67,9 +67,11 @@
                     <label for="stage" class="block text-xs font-semibold text-slate-600 mb-1">Stage</label>
                     <select id="stage" name="stage" required class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach ($stages as $value => $label)
+                            @continue($value === \App\Models\LoanBookApplication::STAGE_DISBURSED && $application->stage !== \App\Models\LoanBookApplication::STAGE_DISBURSED)
                             <option value="{{ $value }}" @selected(old('stage', $application->stage) === $value)>{{ $label }}</option>
                         @endforeach
                     </select>
+                    <p class="mt-1 text-[11px] text-slate-500">Disbursed is system-controlled and only updates after completed disbursement.</p>
                     @error('stage')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -203,10 +205,13 @@
                         termInput.dispatchEvent(new Event('input', { bubbles: true }));
                         termInput.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                    if (termUnitSelect && (termUnitSelect.value ?? '') === 'monthly') {
+                    if (termUnitSelect && (!(termUnitSelect.value ?? '').trim() || (termUnitSelect.value ?? '') === 'monthly')) {
                         termUnitSelect.value = defaultTermUnit;
                         termUnitSelect.dispatchEvent(new Event('change', { bubbles: true }));
                     }
+                }
+                if (meta.charges_summary) {
+                    parts.push(`Charges: ${meta.charges_summary}.`);
                 }
                 this.selectedProductHint = parts.join(' ');
             },

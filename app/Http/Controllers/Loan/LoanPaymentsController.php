@@ -508,7 +508,7 @@ class LoanPaymentsController extends Controller
             ->with('status', 'Payments merged into a new parent row. Post it from Unposted when ready.');
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
         $query = LoanBookLoan::query()
             ->with('loanClient')
@@ -516,8 +516,12 @@ class LoanPaymentsController extends Controller
             ->orderBy('loan_number');
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $loans = $query->get();
+        $selectedLoanId = $request->integer('loan_book_loan_id');
+        if (! $loans->contains(fn (LoanBookLoan $loan): bool => (int) $loan->id === $selectedLoanId)) {
+            $selectedLoanId = 0;
+        }
 
-        return view('loan.payments.create', compact('loans'));
+        return view('loan.payments.create', compact('loans', 'selectedLoanId'));
     }
 
     public function store(Request $request): RedirectResponse
@@ -638,8 +642,20 @@ class LoanPaymentsController extends Controller
             ->orderBy('loan_number');
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $loans = $query->get();
+        $suggestedLoanId = null;
+        if (! $loan_book_payment->loan_book_loan_id) {
+            $suggested = $this->buildSuggestedLoanMap(collect([$loan_book_payment]), $loans);
+            $candidate = (int) ($suggested[(int) $loan_book_payment->id] ?? 0);
+            if ($candidate > 0) {
+                $suggestedLoanId = $candidate;
+            }
+        }
 
-        return view('loan.payments.edit', ['payment' => $loan_book_payment, 'loans' => $loans]);
+        return view('loan.payments.edit', [
+            'payment' => $loan_book_payment,
+            'loans' => $loans,
+            'suggestedLoanId' => $suggestedLoanId,
+        ]);
     }
 
     public function update(Request $request, LoanBookPayment $loan_book_payment): RedirectResponse
@@ -710,6 +726,9 @@ class LoanPaymentsController extends Controller
                 if ($payment->status !== LoanBookPayment::STATUS_UNPOSTED) {
                     throw new \RuntimeException('This payment is no longer unposted.');
                 }
+                if (! $payment->loan_book_loan_id) {
+                    throw new \RuntimeException('Assign this payment to a loan/client before posting.');
+                }
                 $payment->load('loan');
                 $entry = app(LoanBookGlPostingService::class)->postLoanPayment($payment, $request->user());
                 $payment->update([
@@ -779,6 +798,7 @@ class LoanPaymentsController extends Controller
 
         $validated = $request->validate([
             'loan_book_loan_id' => ['required', 'exists:loan_book_loans,id'],
+            'post_now' => ['nullable', 'boolean'],
         ]);
 
         $targetLoan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
@@ -794,9 +814,126 @@ class LoanPaymentsController extends Controller
                 : $assignmentNote,
         ]);
 
+        $shouldPostNow = $request->boolean('post_now', false)
+            && str_starts_with((string) $loan_book_payment->channel, 'mpesa_sms_')
+            && $loan_book_payment->status === LoanBookPayment::STATUS_UNPOSTED;
+
+        if ($shouldPostNow) {
+            try {
+                DB::transaction(function () use ($loan_book_payment, $request) {
+                    $payment = LoanBookPayment::query()->lockForUpdate()->findOrFail($loan_book_payment->id);
+                    if (! $payment->loan_book_loan_id) {
+                        throw new \RuntimeException('Assign this payment to a loan/client before posting.');
+                    }
+                    if ($payment->status !== LoanBookPayment::STATUS_UNPOSTED) {
+                        throw new \RuntimeException('This payment is no longer unposted.');
+                    }
+                    if ($payment->accounting_journal_entry_id) {
+                        throw new \RuntimeException('This payment is already linked to a journal entry.');
+                    }
+                    $payment->load('loan');
+                    $entry = app(LoanBookGlPostingService::class)->postLoanPayment($payment, $request->user());
+                    $payment->update([
+                        'status' => LoanBookPayment::STATUS_PROCESSED,
+                        'posted_at' => now(),
+                        'posted_by' => $request->user()->id,
+                        'accounting_journal_entry_id' => $entry->id,
+                    ]);
+                    $this->syncCollectionEntryFromProcessedPayment($payment);
+                    app(LoanBookLoanUpdateService::class)->onPaymentProcessed($payment->fresh());
+                });
+
+                return redirect()
+                    ->route('loan.payments.unposted')
+                    ->with('status', 'Payment '.$loan_book_payment->reference.' assigned and posted to '.$targetLoan->loan_number.'.');
+            } catch (\RuntimeException $e) {
+                return redirect()
+                    ->route('loan.payments.unposted')
+                    ->withErrors(['accounting' => $e->getMessage()]);
+            }
+        }
+
         return redirect()
             ->route('loan.payments.unposted')
             ->with('status', 'Payment '.$loan_book_payment->reference.' assigned to '.$targetLoan->loan_number.'.');
+    }
+
+    public function autoMatch(Request $request): RedirectResponse
+    {
+        $q = trim((string) $request->input('q', ''));
+        $channel = trim((string) $request->input('channel', ''));
+        $from = trim((string) $request->input('from', ''));
+        $to = trim((string) $request->input('to', ''));
+        $perPage = min(200, max(10, (int) $request->input('per_page', 20)));
+
+        $paymentsQuery = LoanBookPayment::query()
+            ->with('loan.loanClient')
+            ->unpostedQueue()
+            ->whereNull('loan_book_loan_id')
+            ->where(function (Builder $builder): void {
+                $builder
+                    ->where('channel', 'mpesa_sms_unmatched')
+                    ->orWhere('channel', 'mpesa_sms_disbursement_unmatched');
+            });
+        $this->scopeByAssignedLoanClient($paymentsQuery, $request->user(), 'loan.loanClient');
+
+        $paymentsQuery
+            ->when($q !== '', function (Builder $builder) use ($q): void {
+                $builder->where(function (Builder $inner) use ($q): void {
+                    $inner->where('reference', 'like', '%'.$q.'%')
+                        ->orWhere('mpesa_receipt_number', 'like', '%'.$q.'%')
+                        ->orWhere('payer_msisdn', 'like', '%'.$q.'%');
+                });
+            })
+            ->when($channel !== '', fn (Builder $builder) => $builder->where('channel', $channel))
+            ->when($from !== '', fn (Builder $builder) => $builder->where('transaction_at', '>=', $from.' 00:00:00'))
+            ->when($to !== '', fn (Builder $builder) => $builder->where('transaction_at', '<=', $to.' 23:59:59'));
+
+        $payments = $paymentsQuery->orderByDesc('transaction_at')->limit(2000)->get();
+        if ($payments->isEmpty()) {
+            return redirect()
+                ->route('loan.payments.unposted', compact('q', 'channel', 'from', 'to', 'perPage'))
+                ->with('status', 'Auto-match finished: 0 matched, 0 skipped (no eligible unmatched SMS payments in this filter).');
+        }
+
+        $assignableLoans = LoanBookLoan::query()
+            ->with('loanClient')
+            ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_PENDING_DISBURSEMENT])
+            ->orderBy('loan_number');
+        $this->scopeByAssignedLoanClient($assignableLoans, $request->user());
+        $assignableLoans = $assignableLoans->limit(5000)->get();
+
+        $suggested = $this->buildSuggestedLoanMap($payments, $assignableLoans);
+        $matched = 0;
+        $skipped = 0;
+
+        DB::transaction(function () use ($payments, $suggested, &$matched, &$skipped): void {
+            foreach ($payments as $payment) {
+                $loanId = (int) ($suggested[(int) $payment->id] ?? 0);
+                if ($loanId <= 0) {
+                    $skipped++;
+                    continue;
+                }
+
+                $fresh = LoanBookPayment::query()->lockForUpdate()->find($payment->id);
+                if (! $fresh || $fresh->loan_book_loan_id !== null || $fresh->status !== LoanBookPayment::STATUS_UNPOSTED) {
+                    $skipped++;
+                    continue;
+                }
+
+                $note = 'Auto-matched by bulk action on '.now()->format('Y-m-d H:i');
+                $existing = trim((string) ($fresh->notes ?? ''));
+                $fresh->update([
+                    'loan_book_loan_id' => $loanId,
+                    'notes' => $existing !== '' ? $existing."\n".$note : $note,
+                ]);
+                $matched++;
+            }
+        });
+
+        return redirect()
+            ->route('loan.payments.unposted', compact('q', 'channel', 'from', 'to', 'perPage'))
+            ->with('status', "Auto-match complete: {$matched} matched, {$skipped} skipped.");
     }
 
     /**

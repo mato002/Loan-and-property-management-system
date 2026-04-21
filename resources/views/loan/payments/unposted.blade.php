@@ -4,6 +4,15 @@
         subtitle="Queue of payments waiting to be posted to the loan book."
     >
         <x-slot name="actions">
+            <form method="post" action="{{ route('loan.payments.unposted.auto_match') }}" class="inline-flex">
+                @csrf
+                <input type="hidden" name="q" value="{{ $q ?? '' }}">
+                <input type="hidden" name="channel" value="{{ $channel ?? '' }}">
+                <input type="hidden" name="from" value="{{ $from ?? '' }}">
+                <input type="hidden" name="to" value="{{ $to ?? '' }}">
+                <input type="hidden" name="per_page" value="{{ $perPage ?? 20 }}">
+                <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm hover:bg-emerald-100 transition-colors">Auto-match</button>
+            </form>
             <a href="{{ route('loan.payments.merge') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Merge payments</a>
             <a href="{{ route('loan.payments.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Record payment</a>
         </x-slot>
@@ -67,8 +76,8 @@
                 <p class="text-xs text-slate-500">{{ $payments->total() }} row(s)</p>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+            <div class="overflow-x-auto pb-2">
+                <table class="min-w-[1400px] w-full text-sm">
                     <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
                             <th class="px-5 py-3">Reference</th>
@@ -103,30 +112,40 @@
                                 <td class="px-5 py-3 font-mono text-xs text-slate-600">{{ $p->payer_msisdn ?? '—' }}</td>
                                 <td class="px-5 py-3 font-mono text-xs text-slate-600">{{ $p->mpesa_receipt_number ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
-                                    @if (in_array((string) $p->channel, ['mpesa_sms_unmatched', 'mpesa_sms_disbursement_unmatched'], true) && is_null($p->loan_book_loan_id))
-                                        <form method="post" action="{{ route('loan.payments.assign_loan', $p) }}" class="mb-2 inline-flex items-center gap-2">
-                                            @csrf
-                                            <select name="loan_book_loan_id" required class="h-8 rounded-lg border border-amber-300 bg-amber-50 px-2 text-xs text-slate-700">
-                                                <option value="">Assign loan...</option>
-                                                @foreach (($assignableLoanOptions ?? collect()) as $loanId => $loanLabel)
-                                                    <option value="{{ $loanId }}" @selected((int) ($suggestedLoanByPayment[$p->id] ?? 0) === (int) $loanId)>{{ $loanLabel }}</option>
-                                                @endforeach
-                                            </select>
-                                            <button type="submit" class="h-8 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700">Assign</button>
-                                        </form>
-                                    @endif
-                                    <form method="post" action="{{ route('loan.payments.post', $p) }}" class="inline mr-2">
-                                        @csrf
-                                        <button type="submit" class="text-[#2f4f4f] hover:text-[#264040] font-medium text-sm">Post</button>
-                                    </form>
-                                    @if ($p->canEdit())
-                                        <a href="{{ route('loan.payments.edit', $p) }}" class="text-indigo-600 hover:text-indigo-500 font-medium text-sm mr-2">Edit</a>
-                                        <form method="post" action="{{ route('loan.payments.destroy', $p) }}" class="inline" data-swal-confirm="Delete this unposted payment?">
-                                            @csrf
-                                            @method('delete')
-                                            <button type="submit" class="text-red-600 hover:text-red-500 font-medium text-sm">Delete</button>
-                                        </form>
-                                    @endif
+                                    <details class="relative inline-block text-left">
+                                        <summary class="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+                                            Actions
+                                        </summary>
+                                        <div class="absolute right-0 z-10 mt-1 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-lg">
+                                            @if (in_array((string) $p->channel, ['mpesa_sms_unmatched', 'mpesa_sms_disbursement_unmatched'], true) && is_null($p->loan_book_loan_id))
+                                                <form method="post" action="{{ route('loan.payments.assign_loan', $p) }}" class="mb-2 flex items-center gap-2">
+                                                    @csrf
+                                                    <input type="hidden" name="post_now" value="1">
+                                                    <select name="loan_book_loan_id" required class="h-8 flex-1 rounded-lg border border-amber-300 bg-amber-50 px-2 text-xs text-slate-700">
+                                                        <option value="">Assign loan...</option>
+                                                        @foreach (($assignableLoanOptions ?? collect()) as $loanId => $loanLabel)
+                                                            <option value="{{ $loanId }}" @selected((int) ($suggestedLoanByPayment[$p->id] ?? 0) === (int) $loanId)>{{ $loanLabel }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                    <button type="submit" class="h-8 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700">Assign &amp; Post</button>
+                                                </form>
+                                            @endif
+                                            @if (! is_null($p->loan_book_loan_id))
+                                                <form method="post" action="{{ route('loan.payments.post', $p) }}" class="mb-1">
+                                                    @csrf
+                                                    <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-[#2f4f4f] hover:bg-slate-50">Post</button>
+                                                </form>
+                                            @endif
+                                            @if ($p->canEdit())
+                                                <a href="{{ route('loan.payments.edit', $p) }}" class="mb-1 block rounded-md px-2 py-1.5 text-left text-xs font-medium text-indigo-600 hover:bg-slate-50">Edit</a>
+                                                <form method="post" action="{{ route('loan.payments.destroy', $p) }}" data-swal-confirm="Delete this unposted payment?">
+                                                    @csrf
+                                                    @method('delete')
+                                                    <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-slate-50">Delete</button>
+                                                </form>
+                                            @endif
+                                        </div>
+                                    </details>
                                 </td>
                             </tr>
                         @empty

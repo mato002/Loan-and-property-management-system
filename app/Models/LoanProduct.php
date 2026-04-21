@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class LoanProduct extends Model
 {
@@ -23,6 +24,11 @@ class LoanProduct extends Model
             'default_term_months' => 'integer',
             'is_active' => 'boolean',
         ];
+    }
+
+    public function charges(): HasMany
+    {
+        return $this->hasMany(LoanProductCharge::class, 'loan_product_id');
     }
 }
 

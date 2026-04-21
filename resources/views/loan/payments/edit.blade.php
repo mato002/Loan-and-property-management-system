@@ -16,9 +16,12 @@
                     <select id="loan_book_loan_id" name="loan_book_loan_id" class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="">Unallocated…</option>
                         @foreach ($loans as $l)
-                            <option value="{{ $l->id }}" @selected(old('loan_book_loan_id', $payment->loan_book_loan_id) == $l->id)>{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
+                            <option value="{{ $l->id }}" @selected((int) old('loan_book_loan_id', $payment->loan_book_loan_id ?: ($suggestedLoanId ?? 0)) === (int) $l->id)>{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
                         @endforeach
                     </select>
+                    @if (! $payment->loan_book_loan_id && ! old('loan_book_loan_id') && ! empty($suggestedLoanId))
+                        <p class="mt-1 text-[11px] text-emerald-700">Auto-suggested from payer number match.</p>
+                    @endif
                     @error('loan_book_loan_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>

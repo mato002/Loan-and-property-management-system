@@ -39,6 +39,32 @@
                     </select>
                 </div>
                 <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Next step</label>
+                    <select name="next_step" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                        <option value="">All</option>
+                        <option value="disburse" @selected(($nextStep ?? '') === 'disburse')>Disburse now</option>
+                        <option value="record_payment" @selected(($nextStep ?? '') === 'record_payment')>Record payment</option>
+                        <option value="sync_schedule" @selected(($nextStep ?? '') === 'sync_schedule')>Sync schedule</option>
+                        <option value="arrears" @selected(($nextStep ?? '') === 'arrears')>Arrears follow-up</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Disbursed from</label>
+                    <input type="date" name="disbursed_from" value="{{ $disbursedFrom ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Disbursed to</label>
+                    <input type="date" name="disbursed_to" value="{{ $disbursedTo ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Maturity from</label>
+                    <input type="date" name="maturity_from" value="{{ $maturityFrom ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
+                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Maturity to</label>
+                    <input type="date" name="maturity_to" value="{{ $maturityTo ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                </div>
+                <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
                     <select name="per_page" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                         @foreach ([10, 15, 25, 50, 100, 200] as $size)
@@ -76,7 +102,7 @@
             <div class="px-5 py-4 border-b border-slate-100 flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center">
                 <div>
                     <h2 class="text-sm font-semibold text-slate-700">Loan register</h2>
-                    <p class="text-xs text-slate-500 mt-0.5">Paid includes unposted pay-ins until you post them from <a href="{{ route('loan.payments.unposted') }}" class="text-indigo-600 font-semibold hover:underline">Unposted</a>.</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Progress uses posted repayments only.</p>
                 </div>
                 <p class="text-xs text-slate-500">{{ $loans->total() }} account(s)</p>
             </div>
@@ -86,12 +112,18 @@
                         <tr>
                             <th class="px-5 py-3">Loan #</th>
                             <th class="px-5 py-3">Client</th>
+                            <th class="px-5 py-3">Contact</th>
+                            <th class="px-5 py-3">Loan officer</th>
+                            <th class="px-5 py-3">Disbursement</th>
                             <th class="px-5 py-3">Product</th>
+                            <th class="px-5 py-3 text-right">Loan</th>
+                            <th class="px-5 py-3 text-right">To-pay</th>
                             <th class="px-5 py-3 text-right">Paid</th>
-                            <th class="px-5 py-3 text-right">Remaining</th>
-                            <th class="px-5 py-3">Progress</th>
+                            <th class="px-5 py-3">Percent</th>
+                            <th class="px-5 py-3 text-right">Balance</th>
                             <th class="px-5 py-3">DPD</th>
                             <th class="px-5 py-3">Status</th>
+                            <th class="px-5 py-3">Maturity</th>
                             <th class="px-5 py-3 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -99,43 +131,77 @@
                         @forelse ($loans as $loan)
                             @php
                                 $posted = (float) ($loan->processed_repayments_sum_amount ?? 0);
-                                $unposted = (float) ($loan->unposted_repayments_sum_amount ?? 0);
-                                $paid = $posted + $unposted;
+                                $paid = $posted;
                                 $balance = (float) $loan->balance;
-                                $remaining = max(0, $balance - $unposted);
+                                $remaining = max(0, $balance);
                                 $totalRepayable = $paid + $remaining;
                                 $progress = $totalRepayable > 0.00001 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
+                                $officerName = trim((string) ($loan->loanClient?->assignedEmployee?->name ?? ''));
+                                $statusClasses = match ($loan->status) {
+                                    \App\Models\LoanBookLoan::STATUS_ACTIVE => 'bg-emerald-100 text-emerald-700',
+                                    \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT => 'bg-amber-100 text-amber-700',
+                                    \App\Models\LoanBookLoan::STATUS_CLOSED => 'bg-slate-200 text-slate-700',
+                                    \App\Models\LoanBookLoan::STATUS_WRITTEN_OFF => 'bg-rose-100 text-rose-700',
+                                    \App\Models\LoanBookLoan::STATUS_RESTRUCTURED => 'bg-indigo-100 text-indigo-700',
+                                    default => 'bg-slate-100 text-slate-600',
+                                };
                             @endphp
                             <tr class="hover:bg-slate-50/80">
                                 <td class="px-5 py-3 font-mono text-xs text-indigo-600 font-medium">{{ $loan->loan_number }}</td>
                                 <td class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient->full_name ?? 'Client record missing' }}</td>
+                                <td class="px-5 py-3 text-slate-600">{{ $loan->loanClient?->phone ?: '—' }}</td>
+                                <td class="px-5 py-3 text-slate-600">{{ $officerName !== '' ? $officerName : '—' }}</td>
+                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $loan->disbursed_at?->format('d-m-Y') ?? '—' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $loan->product_name }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format((float) $loan->principal, 2) }}</td>
+                                <td class="px-5 py-3 text-right tabular-nums font-semibold text-slate-800">{{ number_format($totalRepayable, 2) }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums text-emerald-700">
                                     <span class="font-semibold">{{ number_format($paid, 2) }}</span>
-                                    @if ($unposted > 0.00001)
-                                        <span class="block text-[10px] font-normal text-amber-800 leading-tight mt-0.5">{{ number_format($posted, 2) }} posted · {{ number_format($unposted, 2) }} unposted</span>
-                                    @endif
                                 </td>
-                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format($remaining, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ number_format($progress, 1) }}%</td>
+                                <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format($remaining, 2) }}</td>
                                 <td class="px-5 py-3 tabular-nums {{ $loan->dpd > 0 ? 'text-red-600 font-semibold' : 'text-slate-600' }}">{{ $loan->dpd }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', $loan->status) }}</td>
+                                <td class="px-5 py-3">
+                                    <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold {{ $statusClasses }}">
+                                        {{ str_replace('_', ' ', $loan->status) }}
+                                    </span>
+                                </td>
+                                <td class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $loan->maturity_date?->format('d-m-Y') ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
-                                    @if ($loan->status === \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT)
-                                        <a href="{{ route('loan.book.disbursements.create', ['loan_book_loan_id' => $loan->id]) }}" class="text-emerald-700 font-medium text-sm hover:underline mr-3">Disburse</a>
-                                    @endif
-                                    <a href="{{ route('loan.book.loans.show', $loan) }}" class="text-slate-700 font-medium text-sm hover:underline mr-3">View</a>
-                                    <a href="{{ route('loan.book.loans.edit', $loan) }}" class="text-indigo-600 font-medium text-sm hover:underline mr-3">Edit</a>
-                                    <form method="post" action="{{ route('loan.book.loans.destroy', $loan) }}" class="inline" data-swal-confirm="Delete this loan? No disbursements or collections may exist.">
-                                        @csrf
-                                        @method('delete')
-                                        <button type="submit" class="text-red-600 font-medium text-sm hover:underline">Delete</button>
-                                    </form>
+                                    <details class="relative inline-block text-left">
+                                        <summary class="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+                                            Actions
+                                        </summary>
+                                        <div class="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                                            @if ($loan->status === \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT)
+                                                <a href="{{ route('loan.book.disbursements.create', ['loan_book_loan_id' => $loan->id]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-slate-50">Disburse</a>
+                                            @endif
+                                            <a href="{{ route('loan.payments.create', ['loan_book_loan_id' => $loan->id]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-teal-700 hover:bg-slate-50">Record payment</a>
+                                            <a href="{{ route('loan.payments.unposted', ['q' => $loan->loan_number]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-teal-700 hover:bg-slate-50">Unposted</a>
+                                            @if ($loan->loan_book_application_id)
+                                                <form method="post" action="{{ route('loan.book.loans.sync_schedule', $loan) }}" data-swal-confirm="Sync term/rate period from linked application and recompute interest snapshot?">
+                                                    @csrf
+                                                    <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-amber-700 hover:bg-slate-50">Sync schedule</button>
+                                                </form>
+                                            @endif
+                                            <form method="post" action="{{ route('loan.book.loans.rebuild_snapshot', $loan) }}" data-swal-confirm="Rebuild repayment snapshot from disbursements and processed payments?">
+                                                @csrf
+                                                <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Rebuild</button>
+                                            </form>
+                                            <a href="{{ route('loan.book.loans.show', $loan) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
+                                            <a href="{{ route('loan.book.loans.edit', $loan) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-indigo-600 hover:bg-slate-50">Edit</a>
+                                            <form method="post" action="{{ route('loan.book.loans.destroy', $loan) }}" data-swal-confirm="Delete this loan? No disbursements or collections may exist.">
+                                                @csrf
+                                                @method('delete')
+                                                <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-slate-50">Delete</button>
+                                            </form>
+                                        </div>
+                                    </details>
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="9" class="px-5 py-12 text-center text-slate-500">No loans booked yet.</td>
+                                <td colspan="15" class="px-5 py-12 text-center text-slate-500">No loans booked yet.</td>
                             </tr>
                         @endforelse
                     </tbody>

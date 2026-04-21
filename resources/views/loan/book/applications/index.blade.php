@@ -104,12 +104,17 @@
                                         @csrf
                                         @method('patch')
                                         <label class="sr-only" for="stage-{{ $app->id }}">Stage for {{ $app->reference }}</label>
-                                        <select id="stage-{{ $app->id }}" name="stage" class="min-w-[10rem] max-w-[12rem] rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs font-medium text-slate-800 shadow-sm">
-                                            @foreach (($stages ?? []) as $value => $label)
-                                                <option value="{{ $value }}" @selected($app->stage === $value)>{{ $label }}</option>
-                                            @endforeach
-                                        </select>
-                                        <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-900 whitespace-nowrap">Update</button>
+                                        @if ($app->stage === \App\Models\LoanBookApplication::STAGE_DISBURSED)
+                                            <span class="inline-flex items-center rounded-lg bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">Disbursed (locked)</span>
+                                        @else
+                                            <select id="stage-{{ $app->id }}" name="stage" class="min-w-[10rem] max-w-[12rem] rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs font-medium text-slate-800 shadow-sm">
+                                                @foreach (($stages ?? []) as $value => $label)
+                                                    @continue($value === \App\Models\LoanBookApplication::STAGE_DISBURSED)
+                                                    <option value="{{ $value }}" @selected($app->stage === $value)>{{ $label }}</option>
+                                                @endforeach
+                                            </select>
+                                            <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-900 whitespace-nowrap">Update</button>
+                                        @endif
                                     </form>
                                 </td>
                                 <td class="px-5 py-3 text-slate-500">{{ $app->branch ?? '—' }}</td>

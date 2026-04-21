@@ -13,6 +13,7 @@ use App\Models\LoanSupportTicket;
 use App\Models\LoanSupportTicketReply;
 use App\Models\LoanSystemSetting;
 use App\Models\User;
+use App\Services\LoanBook\LoanBookLoanUpdateService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -25,6 +26,10 @@ use Illuminate\View\View;
 
 class LoanSystemHelpController extends Controller
 {
+    public function __construct(private readonly LoanBookLoanUpdateService $loanMath)
+    {
+    }
+
     /** @var list<string> */
     private const COMPANY_SETTING_KEYS = [
         'app_display_name',
@@ -395,11 +400,30 @@ class LoanSystemHelpController extends Controller
             ->map(fn ($count) => (int) $count)
             ->all();
 
+        $hasProductCharges = Schema::hasTable('loan_product_charges');
+        $productsQuery = LoanProduct::query()
+            ->orderByDesc('is_active')
+            ->orderBy('name');
+        if ($hasProductCharges) {
+            $productsQuery->with(['charges' => fn ($q) => $q->where('is_active', true)->orderBy('id')]);
+        }
+
         return view('loan.system.setup.loan_products', [
             'title' => 'Loan products',
             'subtitle' => 'Set default interest rates and repayment periods per product.',
-            'products' => LoanProduct::query()->orderByDesc('is_active')->orderBy('name')->get(),
+            'products' => $productsQuery->get(),
             'activeLoanCounts' => $activeLoanCounts,
+            'hasProductCharges' => $hasProductCharges,
+        ]);
+    }
+
+    public function setupLoanProductsCreate(): View
+    {
+        abort_unless(Schema::hasTable('loan_products'), 404, 'Loan products table not found. Run migrations.');
+
+        return view('loan.system.setup.loan_products_create', [
+            'title' => 'Add loan product',
+            'subtitle' => 'Create a new product with default term and interest settings.',
         ]);
     }
 
@@ -417,6 +441,12 @@ class LoanSystemHelpController extends Controller
             'default_term_unit' => ['nullable', 'in:daily,weekly,monthly'],
             'default_interest_rate_period' => ['nullable', 'in:daily,weekly,monthly,annual'],
             'is_active' => ['nullable', 'in:0,1'],
+            'charges' => ['nullable', 'array'],
+            'charges.*.name' => ['nullable', 'string', 'max:160'],
+            'charges.*.type' => ['nullable', 'in:fixed,percent'],
+            'charges.*.amount' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
+            'charges.*.applies_to_stage' => ['nullable', 'in:application,loan,disbursement,installment'],
+            'charges.*.applies_to_client_scope' => ['nullable', 'in:all,new_clients,existing_clients,checkoff_only,non_checkoff'],
         ]);
 
         $name = trim((string) $validated['name']);
@@ -437,10 +467,31 @@ class LoanSystemHelpController extends Controller
             $payload['default_interest_rate_period'] = (string) ($validated['default_interest_rate_period'] ?? 'annual');
         }
 
-        LoanProduct::query()->updateOrCreate(
+        $product = LoanProduct::query()->updateOrCreate(
             ['name' => $name],
             $payload
         );
+
+        if (Schema::hasTable('loan_product_charges')) {
+            $charges = collect($validated['charges'] ?? [])
+                ->map(function (array $charge): array {
+                    return [
+                        'charge_name' => trim((string) ($charge['name'] ?? '')),
+                        'amount_type' => (string) ($charge['type'] ?? 'fixed'),
+                        'amount' => (float) ($charge['amount'] ?? 0),
+                        'applies_to_stage' => (string) ($charge['applies_to_stage'] ?? 'loan'),
+                        'applies_to_client_scope' => (string) ($charge['applies_to_client_scope'] ?? 'all'),
+                    ];
+                })
+                ->filter(fn (array $charge): bool => $charge['charge_name'] !== '' && $charge['amount'] > 0)
+                ->values();
+
+            if ($charges->isNotEmpty()) {
+                $product->charges()->createMany(
+                    $charges->map(fn (array $charge): array => array_merge($charge, ['is_active' => true]))->all()
+                );
+            }
+        }
 
         return redirect()->route('loan.system.setup.loan_products')->with('status', 'Loan product saved.');
     }
@@ -536,11 +587,10 @@ class LoanSystemHelpController extends Controller
                         if ($principalOutstanding <= 0.0) {
                             $principalOutstanding = max(0.0, (float) $loan->balance);
                         }
-                        $recomputedInterest = $this->estimateInterestOutstandingForLoan(
+                        $recomputedInterest = $this->loanMath->estimateInterestForLoan(
+                            $loan,
                             $principalOutstanding,
-                            $newDefaultInterestRate,
-                            $loan->disbursed_at,
-                            $loan->maturity_date
+                            $newDefaultInterestRate
                         );
                         $existingNotes = trim((string) ($loan->notes ?? ''));
                         $loan->update([
@@ -558,26 +608,6 @@ class LoanSystemHelpController extends Controller
         return redirect()
             ->route('loan.system.setup.loan_products')
             ->with('status', 'Loan product updated. Repriced '.$affected.' active loan(s).');
-    }
-
-    private function estimateInterestOutstandingForLoan(float $principal, float $annualRate, mixed $disbursedAt, mixed $maturityDate): float
-    {
-        if ($principal <= 0 || $annualRate <= 0) {
-            return 0.0;
-        }
-
-        $months = 12;
-        if ($disbursedAt && $maturityDate) {
-            try {
-                $from = \Illuminate\Support\Carbon::parse($disbursedAt)->startOfDay();
-                $to = \Illuminate\Support\Carbon::parse($maturityDate)->startOfDay();
-                $months = max(1, $from->diffInMonths($to));
-            } catch (\Throwable $e) {
-                $months = 12;
-            }
-        }
-
-        return round($principal * ($annualRate / 100) * ($months / 12), 2);
     }
 
     public function setupLoanProductsDestroy(LoanProduct $loan_product): RedirectResponse

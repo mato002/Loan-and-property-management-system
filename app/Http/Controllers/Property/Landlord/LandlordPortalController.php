@@ -1143,11 +1143,26 @@ class LandlordPortalController extends Controller
         $validated = $request->validate([
             'product_name' => ['required', 'string', 'max:160'],
             'amount_requested' => ['required', 'numeric', 'min:1'],
-            'term_months' => ['required', 'integer', 'min:1', 'max:600'],
+            'term_value' => ['nullable', 'integer', 'min:1', 'max:3660'],
+            'term_unit' => ['nullable', 'string', 'in:daily,weekly,monthly'],
+            'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            'interest_rate_period' => ['nullable', 'string', 'in:daily,weekly,monthly,annual'],
             'purpose' => ['nullable', 'string', 'max:2000'],
             'branch' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
+        $termValue = (int) ($validated['term_value'] ?? 0);
+        $termUnit = strtolower(trim((string) ($validated['term_unit'] ?? 'monthly')));
+        if ($termValue <= 0) {
+            $termValue = max(1, (int) ($validated['term_months'] ?? 1));
+            $termUnit = 'monthly';
+        }
+        $termMonths = match ($termUnit) {
+            'daily' => max(1, (int) ceil($termValue / 30)),
+            'weekly' => max(1, (int) ceil($termValue / 4)),
+            default => min(600, $termValue),
+        };
         $user = $request->user();
         $client = $this->resolveOrCreatePortalClient($user, 'landlord');
 
@@ -1157,7 +1172,11 @@ class LandlordPortalController extends Controller
             'reference' => 'APP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT),
             'product_name' => $validated['product_name'],
             'amount_requested' => $validated['amount_requested'],
-            'term_months' => $validated['term_months'],
+            'term_months' => $termMonths,
+            'term_value' => $termValue,
+            'term_unit' => $termUnit,
+            'interest_rate' => isset($validated['interest_rate']) ? (float) $validated['interest_rate'] : null,
+            'interest_rate_period' => strtolower((string) ($validated['interest_rate_period'] ?? 'annual')),
             'purpose' => $validated['purpose'] ?? null,
             'stage' => LoanBookApplication::STAGE_SUBMITTED,
             'branch' => trim((string) ($validated['branch'] ?? '')) !== '' ? $validated['branch'] : $client->branch,

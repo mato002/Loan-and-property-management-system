@@ -15,7 +15,14 @@
                     <select id="loan_book_loan_id" name="loan_book_loan_id" class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="">Unallocated…</option>
                         @foreach ($loans as $l)
-                            <option value="{{ $l->id }}" @selected(old('loan_book_loan_id') == $l->id)>{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
+                            <option
+                                value="{{ $l->id }}"
+                                data-loan-number="{{ $l->loan_number }}"
+                                data-client-name="{{ $l->loanClient->full_name }}"
+                                data-payer-msisdn="{{ $l->loanClient->phone ?? '' }}"
+                                data-balance="{{ number_format((float) ($l->balance ?? 0), 2, '.', '') }}"
+                                @selected((int) old('loan_book_loan_id', (int) ($selectedLoanId ?? 0)) === (int) $l->id)
+                            >{{ $l->loan_number }} · {{ $l->loanClient->full_name }}</option>
                         @endforeach
                     </select>
                     @error('loan_book_loan_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -73,3 +80,57 @@
         </div>
     </x-loan.page>
 </x-loan-layout>
+<script>
+    (() => {
+        const form = document.querySelector('form[action="{{ route('loan.payments.store') }}"]');
+        if (!form) return;
+
+        const loanSelect = form.querySelector('#loan_book_loan_id');
+        const amountInput = form.querySelector('#amount');
+        const msisdnInput = form.querySelector('#payer_msisdn');
+        const notesInput = form.querySelector('#notes');
+        const autoFilled = {
+            amount: '',
+            payer_msisdn: '',
+            notes: '',
+        };
+
+        const setIfSafe = (input, key, nextValue) => {
+            if (!input) return;
+            const candidate = String(nextValue || '').trim();
+            if (candidate === '') return;
+            const current = String(input.value || '').trim();
+            const previous = String(autoFilled[key] || '').trim();
+            if (current !== '' && current !== previous) return;
+            input.value = candidate;
+            autoFilled[key] = candidate;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+
+        const onLoanChange = () => {
+            if (!loanSelect) return;
+            const option = loanSelect.options[loanSelect.selectedIndex];
+            if (!option || !option.value) return;
+
+            const loanNumber = String(option.dataset.loanNumber || '').trim();
+            const clientName = String(option.dataset.clientName || '').trim();
+            const msisdn = String(option.dataset.payerMsisdn || '').trim();
+            const balance = Number(option.dataset.balance || 0);
+
+            setIfSafe(msisdnInput, 'payer_msisdn', msisdn);
+            if (balance > 0) {
+                setIfSafe(amountInput, 'amount', balance.toFixed(2));
+            }
+            if (loanNumber !== '' || clientName !== '') {
+                const note = `Payment for ${loanNumber}${clientName ? ' · ' + clientName : ''}`;
+                setIfSafe(notesInput, 'notes', note);
+            }
+        };
+
+        loanSelect?.addEventListener('change', onLoanChange);
+        if (loanSelect?.value) {
+            onLoanChange();
+        }
+    })();
+</script>
