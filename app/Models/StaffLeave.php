@@ -14,6 +14,7 @@ class StaffLeave extends Model
         'end_date',
         'days',
         'status',
+        'form_meta',
         'notes',
     ];
 
@@ -22,6 +23,7 @@ class StaffLeave extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'form_meta' => 'array',
         ];
     }
 

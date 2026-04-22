@@ -14,12 +14,14 @@ class StaffLoanApplication extends Model
         'amount',
         'stage',
         'status',
+        'form_meta',
     ];
 
     protected function casts(): array
     {
         return [
             'amount' => 'decimal:2',
+            'form_meta' => 'array',
         ];
     }
 

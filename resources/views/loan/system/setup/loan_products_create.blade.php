@@ -53,6 +53,91 @@
                         <option value="0" @selected(old('is_active') === '0')>No</option>
                     </select>
                 </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Payment interval (days)</label>
+                    <input name="payment_interval_days" type="number" min="1" max="365" value="{{ old('payment_interval_days') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Total interest</label>
+                    <input name="total_interest_amount" type="number" min="0" step="0.01" value="{{ old('total_interest_amount') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Interest duration</label>
+                    <input name="interest_duration_value" type="number" min="1" max="600" value="{{ old('interest_duration_value') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Interest type</label>
+                    <select name="interest_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="">Select type</option>
+                        <option value="flat_rate" @selected(old('interest_type', 'flat_rate') === 'flat_rate')>Flat rate</option>
+                        <option value="reducing_balance" @selected(old('interest_type') === 'reducing_balance')>Reducing balance</option>
+                        <option value="amortized" @selected(old('interest_type') === 'amortized')>Amortized</option>
+                        <option value="simple_interest" @selected(old('interest_type') === 'simple_interest')>Simple interest</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Min loan amount</label>
+                    <input name="min_loan_amount" type="number" min="0" step="0.01" value="{{ old('min_loan_amount') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Max amount</label>
+                    <input name="max_loan_amount" type="number" min="0" step="0.01" value="{{ old('max_loan_amount') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Arrears penalty</label>
+                    <select name="arrears_penalty_scope" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="">None</option>
+                        <option value="whole_loan" @selected(old('arrears_penalty_scope', 'whole_loan') === 'whole_loan')>For whole loan</option>
+                        <option value="per_installment" @selected(old('arrears_penalty_scope') === 'per_installment')>Per installment</option>
+                        <option value="none" @selected(old('arrears_penalty_scope') === 'none')>No penalty</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Penalty amount</label>
+                    <input name="penalty_amount" type="number" min="0" step="0.01" value="{{ old('penalty_amount') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Rollover fees</label>
+                    <input name="rollover_fees" type="number" min="0" step="0.01" value="{{ old('rollover_fees', '0') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Loan offset fees</label>
+                    <input name="loan_offset_fees" type="number" min="0" step="0.01" value="{{ old('loan_offset_fees', '0') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Repay waiver days</label>
+                    <input name="repay_waiver_days" type="number" min="0" max="365" value="{{ old('repay_waiver_days', '0') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Clients apply with</label>
+                    <select name="client_application_scope" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="">Any client</option>
+                        <option value="no_running_loans" @selected(old('client_application_scope', 'no_running_loans') === 'no_running_loans')>No running loans</option>
+                        <option value="new_clients_only" @selected(old('client_application_scope') === 'new_clients_only')>New clients only</option>
+                        <option value="existing_clients_only" @selected(old('client_application_scope') === 'existing_clients_only')>Existing clients only</option>
+                        <option value="any_client" @selected(old('client_application_scope') === 'any_client')>All clients</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Installment display</label>
+                    <select name="installment_display_mode" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="">Default</option>
+                        <option value="all_installments" @selected(old('installment_display_mode', 'all_installments') === 'all_installments')>All installments</option>
+                        <option value="due_only" @selected(old('installment_display_mode') === 'due_only')>Due only</option>
+                        <option value="summary" @selected(old('installment_display_mode') === 'summary')>Summary</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Exempt from checkoffs</label>
+                    <select name="exempt_from_checkoffs" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="0" @selected(old('exempt_from_checkoffs', '0') === '0')>No</option>
+                        <option value="1" @selected(old('exempt_from_checkoffs') === '1')>Yes</option>
+                    </select>
+                </div>
+                <div class="md:col-span-4">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Cluster name</label>
+                    <input name="cluster_name" value="{{ old('cluster_name') }}" class="w-full rounded-lg border-slate-200 text-sm" />
+                </div>
                 <div class="md:col-span-8">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Description (optional)</label>
                     <input name="description" value="{{ old('description') }}" class="w-full rounded-lg border-slate-200 text-sm" />

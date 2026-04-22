@@ -81,10 +81,28 @@
                                     })(),
                                 };
                             @endphp
-                            <tr class="hover:bg-slate-50/80">
-                                <td class="px-5 py-3 font-mono text-xs">{{ $app->reference }}</td>
+                            <tr
+                                class="cursor-pointer hover:bg-slate-50/80"
+                                role="link"
+                                tabindex="0"
+                                onclick="if (event.target.closest('a, button, input, select, textarea, form, label, summary, details')) return; window.location.href='{{ route('loan.book.applications.show', $app) }}';"
+                                onkeydown="if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { event.preventDefault(); window.location.href='{{ route('loan.book.applications.show', $app) }}'; }"
+                            >
+                                <td class="px-5 py-3 font-mono text-xs">
+                                    <a href="{{ route('loan.book.applications.show', $app) }}" class="text-indigo-600 hover:underline">
+                                        {{ $app->reference }}
+                                    </a>
+                                </td>
                                 <td class="px-5 py-3 text-slate-600">{{ $app->loanClient?->client_number ?? '—' }}</td>
-                                <td class="px-5 py-3 font-medium text-slate-900">{{ $app->loanClient?->full_name ?? '—' }}</td>
+                                <td class="px-5 py-3 font-medium text-slate-900">
+                                    @if ($app->loanClient)
+                                        <a href="{{ route('loan.clients.show', $app->loanClient) }}" class="text-[#2f4f4f] hover:underline">
+                                            {{ $app->loanClient->full_name }}
+                                        </a>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td class="px-5 py-3 text-slate-600">{{ $app->product_name }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $sourceLabel }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums">{{ number_format((float) $app->amount_requested, 2) }}</td>

@@ -58,10 +58,12 @@ class LoanPaymentsController extends Controller
     public function processed(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         $query = LoanBookPayment::query()
-            ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'accountingJournalEntry'])
+            ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'accountingJournalEntry.lines.account'])
             ->processedQueue();
         $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
         $source = trim((string) $request->query('source', ''));
+        $payMode = trim((string) $request->query('pay_mode', ''));
+        $corporate = trim((string) $request->query('corporate', ''));
         $filters = $this->applyListFilters($query, $request);
         if ($source !== '') {
             $query->where(function (Builder $builder) use ($source): void {
@@ -78,6 +80,12 @@ class LoanPaymentsController extends Controller
                 $builder->where('channel', $source);
             });
         }
+        if ($payMode !== '') {
+            $query->where('channel', $payMode);
+        }
+        if ($corporate !== '') {
+            $query->whereHas('loan', fn (Builder $loan) => $loan->where('checkoff_employer', $corporate));
+        }
         if ($export = $this->exportIfRequested((clone $query)->orderByDesc('posted_at')->orderByDesc('transaction_at'), $request, 'payments-processed')) {
             return $export;
         }
@@ -86,8 +94,35 @@ class LoanPaymentsController extends Controller
             ->orderByDesc('transaction_at')
             ->paginate($filters['perPage'])
             ->withQueryString();
+        $totalAmount = (clone $query)->sum('amount');
+        $displayDate = $to = trim((string) ($filters['to'] ?? ''));
+        if ($displayDate === '') {
+            $displayDate = now()->toDateString();
+        }
+        $corporateOptions = LoanBookLoan::query()
+            ->whereNotNull('checkoff_employer')
+            ->where('checkoff_employer', '!=', '')
+            ->orderBy('checkoff_employer')
+            ->distinct()
+            ->pluck('checkoff_employer')
+            ->values();
+        $payModeOptions = LoanBookPayment::query()
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->orderBy('channel')
+            ->distinct()
+            ->pluck('channel')
+            ->values();
 
-        return view('loan.payments.processed', array_merge(compact('payments', 'source'), $filters));
+        return view('loan.payments.processed', array_merge(compact(
+            'payments',
+            'source',
+            'payMode',
+            'corporate',
+            'totalAmount',
+            'displayDate',
+            'corporateOptions',
+            'payModeOptions'
+        ), $filters));
     }
 
     public function prepayments(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse

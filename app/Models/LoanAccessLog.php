@@ -14,6 +14,7 @@ class LoanAccessLog extends Model
         'route_name',
         'method',
         'path',
+        'activity',
         'ip_address',
         'user_agent',
         'created_at',

@@ -2,6 +2,7 @@
     <x-loan.page title="New journal entry" subtitle="Total debits must equal total credits. Leave unused lines at zero.">
         <x-slot name="actions">
             <a href="{{ route('loan.accounting.journal.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
+            <a href="{{ route('loan.accounting.journal.index') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">View entries</a>
         </x-slot>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">

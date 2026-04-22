@@ -8,6 +8,15 @@
             <form method="post" action="{{ route('loan.book.loans.update', $loan) }}" class="px-5 py-6 space-y-4">
                 @csrf
                 @method('patch')
+                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Jump to section</p>
+                    <div class="flex flex-wrap gap-2">
+                        <a href="#section-tags" data-section-nav="section-tags" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Tags / Product</a>
+                        <a href="#section-charges" data-section-nav="section-charges" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Charges</a>
+                        <a href="#section-schedule" data-section-nav="section-schedule" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Schedule</a>
+                        <a href="#section-status" data-section-nav="section-status" class="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Status</a>
+                    </div>
+                </div>
                 <div>
                     <label for="loan_book_application_id" class="block text-xs font-semibold text-slate-600 mb-1">Link application</label>
                     <select id="loan_book_application_id" name="loan_book_application_id" class="w-full rounded-lg border-slate-200 text-sm">
@@ -27,7 +36,7 @@
                     </select>
                     @error('loan_client_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div>
+                <div id="section-tags">
                     <div class="mb-1 flex items-center justify-between gap-2">
                         <label for="product_name" class="block text-xs font-semibold text-slate-600">Loan product</label>
                         <button type="button" id="open-product-modal" class="text-xs font-semibold text-indigo-600 hover:text-indigo-500">+ Add product</button>
@@ -40,7 +49,7 @@
                     </select>
                     @error('product_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div id="section-charges" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="principal" class="block text-xs font-semibold text-slate-600 mb-1">Principal</label>
                         <input id="principal" name="principal" type="number" step="0.01" min="0" value="{{ old('principal', $loan->principal) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
@@ -59,7 +68,7 @@
                         @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div id="section-schedule" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">Term length (number)</label>
                         <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', $loan->term_value ?? 12) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
@@ -83,7 +92,7 @@
                         @error('dpd')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
-                <div>
+                <div id="section-status">
                     <label for="status" class="block text-xs font-semibold text-slate-600 mb-1">Status</label>
                     <select id="status" name="status" required class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach ($statuses as $value => $label)
@@ -547,5 +556,56 @@
             if (productModal && !productModal.classList.contains('hidden')) closeModal(productModal);
             if (branchModal && !branchModal.classList.contains('hidden')) closeModal(branchModal);
         });
+
+        // Deep-link helper for client action modal routes: ?tab=... or ?focus=...
+        const params = new URLSearchParams(window.location.search);
+        const focus = (params.get('focus') || '').trim().toLowerCase();
+        const tab = (params.get('tab') || '').trim().toLowerCase();
+        const focusMap = {
+            tags: '#section-tags',
+            charges: '#section-charges',
+            schedule: '#section-schedule',
+            rollover: '#section-schedule',
+            status: '#section-status',
+            writeoff: '#section-status',
+            delete: '#section-status',
+        };
+        const selector = focusMap[focus] || focusMap[tab] || '';
+        const navLinks = Array.from(form.querySelectorAll('[data-section-nav]'));
+        const setActiveNav = (sectionId) => {
+            navLinks.forEach((link) => {
+                const isActive = link.getAttribute('data-section-nav') === sectionId;
+                link.classList.toggle('border-indigo-300', isActive);
+                link.classList.toggle('bg-indigo-50', isActive);
+                link.classList.toggle('text-indigo-700', isActive);
+                link.classList.toggle('border-slate-300', !isActive);
+                link.classList.toggle('bg-white', !isActive);
+                link.classList.toggle('text-slate-700', !isActive);
+            });
+        };
+        navLinks.forEach((link) => {
+            link.addEventListener('click', () => {
+                const targetId = String(link.getAttribute('data-section-nav') || '');
+                if (!targetId) return;
+                setActiveNav(targetId);
+            });
+        });
+        if (selector) {
+            const section = form.querySelector(selector);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                section.classList.add('ring-2', 'ring-indigo-300', 'rounded-lg');
+                setActiveNav(selector.replace('#', ''));
+                const firstInput = section.querySelector('input, select, textarea');
+                if (firstInput instanceof HTMLElement) {
+                    setTimeout(() => firstInput.focus(), 120);
+                }
+                setTimeout(() => {
+                    section.classList.remove('ring-2', 'ring-indigo-300', 'rounded-lg');
+                }, 2200);
+            }
+        } else {
+            setActiveNav('section-tags');
+        }
     })();
 </script>

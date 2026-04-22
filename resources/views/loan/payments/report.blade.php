@@ -84,10 +84,39 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($payments as $p)
-                            <tr class="hover:bg-slate-50/80">
+                            @php
+                                $paymentsReportRowUrl = $p->loan?->loanClient
+                                    ? route('loan.clients.show', $p->loan->loanClient)
+                                    : null;
+                            @endphp
+                            <tr
+                                class="hover:bg-slate-50/80 {{ $paymentsReportRowUrl ? 'cursor-pointer' : '' }}"
+                                @if ($paymentsReportRowUrl)
+                                    role="link"
+                                    tabindex="0"
+                                    onclick="if (event.target.closest('a, button, input, select, textarea, form, label, summary, details')) return; window.location.href='{{ $paymentsReportRowUrl }}';"
+                                    onkeydown="if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { event.preventDefault(); window.location.href='{{ $paymentsReportRowUrl }}'; }"
+                                @endif
+                            >
                                 <td class="px-5 py-3 font-mono text-xs text-slate-700">{{ $p->reference }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loan_number ?? '—' }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loanClient?->full_name ?? '—' }}</td>
+                                <td class="px-5 py-3 text-slate-600">
+                                    @if ($p->loan)
+                                        <a href="{{ route('loan.book.loans.show', $p->loan) }}" class="text-indigo-600 hover:underline">
+                                            {{ $p->loan->loan_number }}
+                                        </a>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="px-5 py-3 text-slate-600">
+                                    @if ($p->loan?->loanClient)
+                                        <a href="{{ route('loan.clients.show', $p->loan->loanClient) }}" class="text-[#2f4f4f] hover:underline">
+                                            {{ $p->loan->loanClient->full_name }}
+                                        </a>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td class="px-5 py-3 text-right tabular-nums font-medium text-slate-900">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $p->channel }}</td>
                                 <td class="px-5 py-3 text-slate-600 capitalize">{{ $p->status }}</td>

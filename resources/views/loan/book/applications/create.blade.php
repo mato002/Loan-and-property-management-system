@@ -1,15 +1,19 @@
 <x-loan-layout>
     <x-loan.page :title="$title" :subtitle="$subtitle">
+        @php
+            $mapped = $loanFormMappedFields ?? [];
+            $customFormFields = $loanFormCustomFields ?? [];
+        @endphp
         <x-slot name="actions">
             <a href="{{ route('loan.book.applications.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
         </x-slot>
 
         <div
-            class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden max-w-3xl"
+            class="grid max-w-7xl grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]"
             x-data="loanProductPicker(@js($productMetaByName ?? []), @js((string) old('term_unit', '')))"
             data-products-store-url="{{ route('loan.book.applications.products.store') }}"
         >
-            <form method="post" action="{{ route('loan.book.applications.store') }}" class="px-5 py-6 space-y-4">
+            <form method="post" action="{{ route('loan.book.applications.store') }}" enctype="multipart/form-data" class="rounded-xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
                 @csrf
                 <div>
                     <label for="loan_client_id" class="block text-xs font-semibold text-slate-600 mb-1">Client</label>
@@ -17,7 +21,8 @@
                         id="loan_client_id"
                         name="loan_client_id"
                         required
-                        class="w-full rounded-lg border-slate-200 text-sm"
+                        x-model="selectedClientId"
+                        class="w-full rounded-lg border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm"
                         @change="autofillFromSelectedClient()"
                     >
                         <option value="">Select client…</option>
@@ -29,9 +34,11 @@
                                 data-id-number="{{ trim((string) ($c->id_number ?? '')) }}"
                                 data-address="{{ trim((string) ($c->address ?? '')) }}"
                                 data-branch="{{ trim((string) ($c->branch ?? '')) }}"
+                                data-loan-officer="{{ trim((string) ($c->assignedEmployee?->full_name ?? '')) }}"
                                 data-guarantor-full-name="{{ trim((string) ($c->guarantor_1_full_name ?? '')) }}"
                                 data-guarantor-id-number="{{ trim((string) ($c->guarantor_1_id_number ?? '')) }}"
                                 data-guarantor-phone="{{ trim((string) ($c->guarantor_1_phone ?? '')) }}"
+                                data-search="{{ strtolower(trim((string) ($c->full_name.' '.$c->client_number.' '.($c->phone ?? '').' '.($c->id_number ?? '')))) }}"
                                 @selected((string) old('loan_client_id', $selectedClientId ?? '') === (string) $c->id)
                             >{{ $c->full_name }} · {{ $c->client_number }}</option>
                         @endforeach
@@ -39,7 +46,7 @@
                     @error('loan_client_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label for="product_name" class="block text-xs font-semibold text-slate-600 mb-1">Product</label>
+                    <label for="product_name" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['product_name']['label'] ?? 'Product' }}</label>
                     <div class="flex gap-2">
                         <select id="product_name" name="product_name" required class="w-full rounded-lg border-slate-200 text-sm">
                             <option value="">Select product...</option>
@@ -59,7 +66,7 @@
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label for="amount_requested" class="block text-xs font-semibold text-slate-600 mb-1">Amount requested</label>
+                        <label for="amount_requested" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['amount_requested']['label'] ?? 'Amount requested' }}</label>
                         <input id="amount_requested" name="amount_requested" type="number" step="0.01" min="0" value="{{ old('amount_requested') }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
@@ -75,7 +82,7 @@
                         @error('term_unit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div x-show="termUnit !== ''" x-cloak>
-                        <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">Term length</label>
+                        <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['term_value']['label'] ?? 'Term length' }}</label>
                         <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="e.g. 6" />
                         @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
@@ -134,61 +141,106 @@
                         <h3 class="text-sm font-semibold text-slate-800">Loan department form</h3>
                         <p class="mt-1 text-xs text-slate-500">Applicant <strong>name</strong>, <strong>phone</strong>, <strong>home address</strong> and <strong>ID</strong> are taken from the selected client’s profile. Complete the fields below to match your paper form.</p>
                     </div>
-                    <div class="rounded-lg border border-slate-200 bg-white p-3">
-                        <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Selected client profile</h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
-                            <p><span class="font-semibold text-slate-600">Name:</span> <span x-text="selectedClientPreview.fullName || '—'"></span></p>
-                            <p><span class="font-semibold text-slate-600">Phone:</span> <span x-text="selectedClientPreview.phone || '—'"></span></p>
-                            <p><span class="font-semibold text-slate-600">ID No.:</span> <span x-text="selectedClientPreview.idNumber || '—'"></span></p>
-                            <p class="sm:col-span-2"><span class="font-semibold text-slate-600">Address:</span> <span x-text="selectedClientPreview.address || '—'"></span></p>
-                        </div>
-                    </div>
+                    @if (isset($mapped['applicant_pin_location_code']))
                     <div>
                         <label for="applicant_pin_location_code" class="block text-xs font-semibold text-slate-600 mb-1">Home / business PIN location code</label>
                         <input id="applicant_pin_location_code" name="applicant_pin_location_code" type="text" value="{{ old('applicant_pin_location_code') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="e.g. map / PIN code for home or business" />
                         @error('applicant_pin_location_code')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                    @endif
+                    @if (isset($mapped['applicant_signature_name']))
                     <div>
                         <label for="applicant_signature_name" class="block text-xs font-semibold text-slate-600 mb-1">Applicant sign (full name)</label>
                         <input id="applicant_signature_name" name="applicant_signature_name" type="text" value="{{ old('applicant_signature_name') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="Type full name as on the signature line" autocomplete="name" />
                         @error('applicant_signature_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                    @endif
                     <div class="border-t border-slate-200 pt-4">
                         <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">Guarantor details</h4>
                         <p class="text-xs text-slate-500 mb-3">If left blank, primary guarantor is copied from the client profile when you save (when present).</p>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            @if (isset($mapped['guarantor_full_name']))
                             <div class="sm:col-span-2">
                                 <label for="guarantor_full_name" class="block text-xs font-semibold text-slate-600 mb-1">Name</label>
                                 <input id="guarantor_full_name" name="guarantor_full_name" type="text" value="{{ old('guarantor_full_name') }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                 @error('guarantor_full_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             </div>
+                            @endif
+                            @if (isset($mapped['guarantor_id_number']))
                             <div>
                                 <label for="guarantor_id_number" class="block text-xs font-semibold text-slate-600 mb-1">ID no.</label>
                                 <input id="guarantor_id_number" name="guarantor_id_number" type="text" value="{{ old('guarantor_id_number') }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                 @error('guarantor_id_number')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             </div>
+                            @endif
+                            @if (isset($mapped['guarantor_phone']))
                             <div>
                                 <label for="guarantor_phone" class="block text-xs font-semibold text-slate-600 mb-1">Tel no.</label>
                                 <input id="guarantor_phone" name="guarantor_phone" type="text" value="{{ old('guarantor_phone') }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                 @error('guarantor_phone')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             </div>
+                            @endif
+                            @if (isset($mapped['guarantor_signature_name']))
                             <div class="sm:col-span-2">
                                 <label for="guarantor_signature_name" class="block text-xs font-semibold text-slate-600 mb-1">Guarantor signature (full name)</label>
                                 <input id="guarantor_signature_name" name="guarantor_signature_name" type="text" value="{{ old('guarantor_signature_name') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="Type full name as signature" />
                                 @error('guarantor_signature_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             </div>
+                            @endif
                         </div>
                     </div>
+                    @if (!empty($customFormFields))
                     <div class="border-t border-slate-200 pt-4">
-                        <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Repayment agreement</h4>
-                        <p class="text-xs text-slate-700 leading-relaxed border border-slate-200 rounded-lg bg-white p-3">
-                            I hereby agree to surrender all my properties to {{ config('app.name') }} or Auctioneers to auction my property if I fail or I don't pay the loan as agreed in the conditions.
-                        </p>
-                        <label class="mt-3 flex items-start gap-2 cursor-pointer">
-                            <input type="checkbox" name="repayment_agreement_accepted" value="1" class="mt-1 rounded border-slate-300 text-[#2f4f4f] focus:ring-[#2f4f4f]" @checked(old('repayment_agreement_accepted')) />
-                            <span class="text-sm text-slate-700">Applicant confirms they have read and accept the repayment agreement above.</span>
-                        </label>
+                        <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">Additional setup fields</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            @foreach ($customFormFields as $field)
+                                @php
+                                    $fieldKey = (string) ($field['key'] ?? '');
+                                    $fieldType = (string) ($field['data_type'] ?? 'alphanumeric');
+                                    $fieldLabel = (string) ($field['label'] ?? $fieldKey);
+                                    $fieldValue = old("form_meta.$fieldKey", data_get($application ?? null, "form_meta.$fieldKey"));
+                                    $options = (array) ($field['select_options'] ?? []);
+                                @endphp
+                                @if ($fieldType === 'long_text')
+                                    <div class="sm:col-span-2">
+                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <textarea id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" rows="3" class="w-full rounded-lg border-slate-200 text-sm">{{ $fieldValue }}</textarea>
+                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @elseif ($fieldType === 'number')
+                                    <div>
+                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <input id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" type="number" step="0.01" value="{{ $fieldValue }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @elseif ($fieldType === 'select')
+                                    <div>
+                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <select id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" class="w-full rounded-lg border-slate-200 text-sm">
+                                            <option value="">Select…</option>
+                                            @foreach ($options as $option)
+                                                <option value="{{ $option }}" @selected((string) $fieldValue === (string) $option)>{{ $option }}</option>
+                                            @endforeach
+                                        </select>
+                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @elseif ($fieldType === 'image')
+                                    <div>
+                                        <label for="form_files_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <input id="form_files_{{ $fieldKey }}" name="form_files[{{ $fieldKey }}]" type="file" accept="image/*" class="w-full rounded-lg border-slate-200 text-sm" />
+                                        @error("form_files.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @else
+                                    <div>
+                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <input id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" type="text" value="{{ $fieldValue }}" class="w-full rounded-lg border-slate-200 text-sm" />
+                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @endif
+                            @endforeach
+                        </div>
                     </div>
+                    @endif
                 </div>
 
                 <div>
@@ -200,6 +252,57 @@
                     <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Save application</button>
                 </div>
             </form>
+            <aside class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-4" x-data="{ mobileClientPreviewOpen: false }">
+                <button
+                    type="button"
+                    class="flex w-full items-center justify-between rounded-md text-left xl:cursor-default"
+                    @click="if (window.innerWidth < 1280) mobileClientPreviewOpen = !mobileClientPreviewOpen"
+                >
+                    <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Selected client profile</h4>
+                    <span class="text-xs font-semibold text-slate-500 xl:hidden" x-text="mobileClientPreviewOpen ? 'Hide' : 'Show'"></span>
+                </button>
+                <div class="mt-2 text-xs text-slate-500 xl:hidden">
+                    <span class="font-semibold text-slate-600">Client:</span>
+                    <span x-text="selectedClientPreview.fullName || 'None selected'"></span>
+                </div>
+                <div class="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-700" x-show="mobileClientPreviewOpen || window.innerWidth >= 1280" x-cloak>
+                    <p><span class="font-semibold text-slate-600">Name:</span> <span x-text="selectedClientPreview.fullName || '—'"></span></p>
+                    <p><span class="font-semibold text-slate-600">Phone:</span> <span x-text="selectedClientPreview.phone || '—'"></span></p>
+                    <p><span class="font-semibold text-slate-600">ID No.:</span> <span x-text="selectedClientPreview.idNumber || '—'"></span></p>
+                    <p><span class="font-semibold text-slate-600">Address:</span> <span x-text="selectedClientPreview.address || '—'"></span></p>
+                    @if (isset($mapped['loan_officer']))
+                        <p><span class="font-semibold text-slate-600">{{ $mapped['loan_officer']['label'] }}:</span> <span x-text="selectedClientPreview.loanOfficer || '—'"></span></p>
+                    @endif
+                    @if (isset($mapped['client_id_number']))
+                        <p><span class="font-semibold text-slate-600">{{ $mapped['client_id_number']['label'] }}:</span> <span x-text="selectedClientPreview.idNumber || '—'"></span></p>
+                    @endif
+                </div>
+                <div class="mt-4 border-t border-slate-200 pt-3" x-show="mobileClientPreviewOpen || window.innerWidth >= 1280" x-cloak>
+                    <h5 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Application draft</h5>
+                    <div class="mt-2 space-y-1 text-xs text-slate-700">
+                        <template x-if="applicationPreviewFields.length === 0 && applicationPreviewImages.length === 0">
+                            <p class="text-slate-500">Fill the form to preview entered details here.</p>
+                        </template>
+                        <template x-for="item in applicationPreviewFields" :key="item.key">
+                            <p>
+                                <span class="font-semibold text-slate-600" x-text="item.label + ':'"></span>
+                                <span x-text="item.value"></span>
+                            </p>
+                        </template>
+                    </div>
+                    <div class="mt-3 space-y-2" x-show="applicationPreviewImages.length > 0">
+                        <h6 class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Uploaded images</h6>
+                        <div class="grid grid-cols-2 gap-2">
+                            <template x-for="image in applicationPreviewImages" :key="image.key">
+                                <figure class="overflow-hidden rounded-md border border-slate-200 bg-slate-50 p-1">
+                                    <img :src="image.url" :alt="image.label" class="h-20 w-full rounded object-cover" />
+                                    <figcaption class="mt-1 truncate text-[10px] text-slate-600" x-text="image.label"></figcaption>
+                                </figure>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </aside>
 
             <div
                 x-show="showProductModal"
@@ -318,10 +421,24 @@
                 phone: '',
                 idNumber: '',
                 address: '',
+                loanOfficer: '',
             },
+            clientDropdownOpen: false,
+            clientSearchQuery: '',
+            clientOptions: [],
+            filteredClientOptions: [],
+            selectedClientId: '',
+            selectedClientData: null,
+            selectedClientLabel: '',
             selectedProductHint: '',
+            applicationPreviewFields: [],
+            applicationPreviewImages: [],
+            previewImageUrls: [],
             init() {
                 this.$nextTick(() => {
+                    this.setupClientSearch();
+                    this.setupApplicationPreview();
+                    this.$watch('selectedClientId', () => this.autofillFromSelectedClient());
                     this.autofillFromSelectedClient();
                     this.applyProductDefaults();
                     const termUnitSelect = this.$el.querySelector('#term_unit');
@@ -331,6 +448,148 @@
                     const productSelect = this.$el.querySelector('#product_name');
                     productSelect?.addEventListener('change', () => this.applyProductDefaults());
                 });
+            },
+            setupApplicationPreview() {
+                const form = this.$el.querySelector('form');
+                if (!form) return;
+                const refresh = () => this.refreshApplicationPreview();
+                form.addEventListener('input', refresh);
+                form.addEventListener('change', refresh);
+                this.refreshApplicationPreview();
+            },
+            refreshApplicationPreview() {
+                const form = this.$el.querySelector('form');
+                if (!form) return;
+
+                const fields = [];
+                const controls = Array.from(form.querySelectorAll('input, select, textarea'));
+                for (const control of controls) {
+                    const tagName = (control.tagName ?? '').toLowerCase();
+                    const type = (control.type ?? '').toLowerCase();
+                    const name = (control.name ?? '').trim();
+                    const id = (control.id ?? '').trim();
+                    if (!name || name === '_token' || name === 'loan_client_id') continue;
+                    if (type === 'hidden' || type === 'file' || type === 'checkbox' || type === 'radio') continue;
+
+                    let value = '';
+                    if (tagName === 'select') {
+                        value = (control.options?.[control.selectedIndex]?.textContent ?? '').trim();
+                    } else {
+                        value = String(control.value ?? '').trim();
+                    }
+                    if (!value || value.toLowerCase().startsWith('select ')) continue;
+
+                    fields.push({
+                        key: `${name}-${id || 'field'}`,
+                        label: this.previewLabelForControl(control, name, id),
+                        value,
+                    });
+                }
+                this.applicationPreviewFields = fields;
+                this.refreshApplicationImagePreview(form);
+            },
+            refreshApplicationImagePreview(form) {
+                this.previewImageUrls.forEach((url) => URL.revokeObjectURL(url));
+                this.previewImageUrls = [];
+
+                const imageItems = [];
+                const fileInputs = Array.from(form.querySelectorAll('input[type="file"]'));
+                for (const input of fileInputs) {
+                    const files = Array.from(input.files ?? []);
+                    if (files.length === 0) continue;
+                    const label = this.previewLabelForControl(input, input.name ?? '', input.id ?? '');
+                    files.forEach((file, index) => {
+                        if (!String(file.type ?? '').toLowerCase().startsWith('image/')) return;
+                        const url = URL.createObjectURL(file);
+                        this.previewImageUrls.push(url);
+                        imageItems.push({
+                            key: `${input.name || input.id || 'file'}-${index}-${file.name}`,
+                            label: files.length > 1 ? `${label} (${index + 1})` : label,
+                            url,
+                        });
+                    });
+                }
+                this.applicationPreviewImages = imageItems;
+            },
+            previewLabelForControl(control, fallbackName, id) {
+                if (id) {
+                    const explicitLabel = this.$el.querySelector(`label[for="${id}"]`);
+                    if (explicitLabel) {
+                        const labelText = (explicitLabel.textContent ?? '').replace(/\s+/g, ' ').trim();
+                        if (labelText !== '') return labelText;
+                    }
+                }
+                const normalized = String(fallbackName ?? '')
+                    .replace(/\[\]/g, '')
+                    .replace(/\[/g, ' ')
+                    .replace(/\]/g, '')
+                    .replace(/_/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                if (normalized === '') return 'Field';
+                return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+            },
+            setupClientSearch() {
+                const clientSelect = this.$el.querySelector('#loan_client_id');
+                if (!clientSelect) return;
+
+                this.clientOptions = Array.from(clientSelect.options)
+                    .filter((option) => option.value !== '')
+                    .map((option) => ({
+                        value: String(option.value),
+                        label: (option.textContent ?? '').trim(),
+                        search: ((option.dataset.search ?? option.textContent ?? '') + '').toLowerCase(),
+                        fullName: (option.dataset.fullName ?? '').trim(),
+                        phone: (option.dataset.phone ?? '').trim(),
+                        idNumber: (option.dataset.idNumber ?? '').trim(),
+                        address: (option.dataset.address ?? '').trim(),
+                        branch: (option.dataset.branch ?? '').trim(),
+                        guarantorFullName: (option.dataset.guarantorFullName ?? '').trim(),
+                        guarantorIdNumber: (option.dataset.guarantorIdNumber ?? '').trim(),
+                        guarantorPhone: (option.dataset.guarantorPhone ?? '').trim(),
+                        loanOfficer: (option.dataset.loanOfficer ?? '').trim(),
+                    }));
+
+                this.selectedClientId = String(clientSelect.value ?? '');
+                this.selectedClientData = this.clientOptions.find((item) => item.value === this.selectedClientId) ?? null;
+                this.selectedClientLabel = this.selectedClientData?.label ?? '';
+                this.clientSearchQuery = '';
+                this.filterClientOptionsList();
+            },
+            selectedClientOption() {
+                if (!this.selectedClientId) return null;
+                return this.clientOptions.find((item) => item.value === String(this.selectedClientId)) ?? null;
+            },
+            openClientDropdown() {
+                this.clientDropdownOpen = true;
+                this.clientSearchQuery = '';
+                this.filterClientOptionsList();
+            },
+            filterClientOptionsList() {
+                const query = String(this.clientSearchQuery ?? '').trim().toLowerCase();
+                this.filteredClientOptions = this.clientOptions.filter((option) => query === '' || option.search.includes(query));
+            },
+            pickFirstVisibleClient() {
+                const firstVisible = this.filteredClientOptions[0] ?? null;
+                if (!firstVisible) return;
+                this.selectClientOption(firstVisible.value);
+            },
+            selectClientOption(value) {
+                const clientSelect = this.$el.querySelector('#loan_client_id');
+                const normalizedValue = String(value ?? '');
+                if (!clientSelect || normalizedValue === '') return;
+
+                const selectedOptionData = this.clientOptions.find((item) => item.value === normalizedValue) ?? null;
+                if (!selectedOptionData) return;
+
+                this.selectedClientId = normalizedValue;
+                this.selectedClientData = selectedOptionData;
+                this.selectedClientLabel = selectedOptionData.label;
+                this.clientSearchQuery = '';
+                this.clientDropdownOpen = false;
+                clientSelect.value = normalizedValue;
+                this.filterClientOptionsList();
+                clientSelect.dispatchEvent(new Event('change', { bubbles: true }));
             },
             onTermUnitChange() {
                 const termInput = this.$el.querySelector('#term_value');
@@ -426,21 +685,21 @@
                 this.branchModalError = '';
             },
             clientDataset() {
-                const clientSelect = this.$el.querySelector('#loan_client_id');
-                const selectedOption = clientSelect?.selectedOptions?.[0];
+                const selectedOption = this.selectedClientOption();
                 if (!selectedOption || !selectedOption.value) {
                     return null;
                 }
 
                 return {
-                    fullName: (selectedOption.dataset.fullName ?? '').trim(),
-                    phone: (selectedOption.dataset.phone ?? '').trim(),
-                    idNumber: (selectedOption.dataset.idNumber ?? '').trim(),
-                    address: (selectedOption.dataset.address ?? '').trim(),
-                    branch: (selectedOption.dataset.branch ?? '').trim(),
-                    guarantorFullName: (selectedOption.dataset.guarantorFullName ?? '').trim(),
-                    guarantorIdNumber: (selectedOption.dataset.guarantorIdNumber ?? '').trim(),
-                    guarantorPhone: (selectedOption.dataset.guarantorPhone ?? '').trim(),
+                    fullName: selectedOption.fullName ?? '',
+                    phone: selectedOption.phone ?? '',
+                    idNumber: selectedOption.idNumber ?? '',
+                    address: selectedOption.address ?? '',
+                    branch: selectedOption.branch ?? '',
+                    guarantorFullName: selectedOption.guarantorFullName ?? '',
+                    guarantorIdNumber: selectedOption.guarantorIdNumber ?? '',
+                    guarantorPhone: selectedOption.guarantorPhone ?? '',
+                    loanOfficer: selectedOption.loanOfficer ?? '',
                 };
             },
             updateClientPreview(data) {
@@ -449,6 +708,7 @@
                     phone: data?.phone ?? '',
                     idNumber: data?.idNumber ?? '',
                     address: data?.address ?? '',
+                    loanOfficer: data?.loanOfficer ?? '',
                 };
             },
             setIfSafe(fieldId, nextValue) {
@@ -469,6 +729,8 @@
             },
             autofillFromSelectedClient() {
                 const data = this.clientDataset();
+                const selectedOption = this.selectedClientOption();
+                this.selectedClientLabel = selectedOption?.label ?? '';
                 this.updateClientPreview(data);
                 if (!data) return;
 

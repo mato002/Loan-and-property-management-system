@@ -21,6 +21,13 @@ class LoanClient extends Model
         'phone',
         'email',
         'id_number',
+        'gender',
+        'next_of_kin_name',
+        'next_of_kin_contact',
+        'client_photo_path',
+        'id_front_photo_path',
+        'id_back_photo_path',
+        'biodata_meta',
         'address',
         'branch',
         'assigned_employee_id',
@@ -44,6 +51,7 @@ class LoanClient extends Model
     {
         return [
             'converted_at' => 'datetime',
+            'biodata_meta' => 'array',
         ];
     }
 

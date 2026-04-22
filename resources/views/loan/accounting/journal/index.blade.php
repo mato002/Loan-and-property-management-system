@@ -22,6 +22,15 @@
                     <input type="text" name="reference" value="{{ $reference ?? '' }}" placeholder="Search…" class="h-10 w-56 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
                 </div>
                 <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Status</label>
+                    <select name="status" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        <option value="">All</option>
+                        <option value="posted" @selected(($status ?? '') === 'posted')>Posted</option>
+                        <option value="draft" @selected(($status ?? '') === 'draft')>Draft</option>
+                        <option value="reversed" @selected(($status ?? '') === 'reversed')>Reversed</option>
+                    </select>
+                </div>
+                <div>
                     <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Per page</label>
                     <select name="per_page" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
                         @foreach ([10, 30, 50, 100, 200] as $size)
@@ -45,6 +54,7 @@
                             <th class="px-5 py-3">Date</th>
                             <th class="px-5 py-3">Reference</th>
                             <th class="px-5 py-3">Description</th>
+                            <th class="px-5 py-3">Status</th>
                             <th class="px-5 py-3">Lines</th>
                             <th class="px-5 py-3">By</th>
                             <th class="px-5 py-3 text-right">Actions</th>
@@ -57,26 +67,45 @@
                                 <td class="px-5 py-3 text-slate-700 whitespace-nowrap">{{ $e->entry_date->format('Y-m-d') }}</td>
                                 <td class="px-5 py-3 font-mono text-xs">{{ $e->reference ?? '—' }}</td>
                                 <td class="px-5 py-3 text-slate-600 max-w-xs truncate">{{ $e->description ?? '—' }}</td>
+                                <td class="px-5 py-3">
+                                    @php($status = strtolower((string) ($e->status ?? \App\Models\AccountingJournalEntry::STATUS_POSTED)))
+                                    <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold {{ $status === 'reversed' ? 'bg-amber-100 text-amber-700' : ($status === 'draft' ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-700') }}">
+                                        {{ ucfirst($status) }}
+                                    </span>
+                                </td>
                                 <td class="px-5 py-3 text-slate-600">{{ $e->lines_count }}</td>
                                 <td class="px-5 py-3 text-slate-600 text-xs">{{ $e->createdByUser?->name ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('loan.accounting.journal.show', $e) }}" class="text-indigo-600 font-medium text-sm mr-3">View</a>
-                                    <button
-                                        type="submit"
-                                        formaction="{{ route('loan.accounting.journal.destroy', $e) }}"
-                                        formmethod="post"
-                                        name="_method"
-                                        value="delete"
-                                        class="text-red-600 font-medium text-sm"
-                                        data-swal-confirm="Delete this journal entry and all lines?"
-                                    >
-                                        Delete
-                                    </button>
+                                    @if (($e->status ?? \App\Models\AccountingJournalEntry::STATUS_POSTED) === \App\Models\AccountingJournalEntry::STATUS_POSTED)
+                                        <button
+                                            type="submit"
+                                            formaction="{{ route('loan.accounting.journal.reverse', $e) }}"
+                                            formmethod="post"
+                                            class="text-amber-700 font-medium text-sm mr-3"
+                                            data-swal-confirm="Reverse this posted journal entry?"
+                                        >
+                                            Reverse
+                                        </button>
+                                    @endif
+                                    @if (($e->status ?? \App\Models\AccountingJournalEntry::STATUS_POSTED) === \App\Models\AccountingJournalEntry::STATUS_DRAFT)
+                                        <button
+                                            type="submit"
+                                            formaction="{{ route('loan.accounting.journal.destroy', $e) }}"
+                                            formmethod="post"
+                                            name="_method"
+                                            value="delete"
+                                            class="text-red-600 font-medium text-sm"
+                                            data-swal-confirm="Delete this draft journal entry and all lines?"
+                                        >
+                                            Delete
+                                        </button>
+                                    @endif
                                 </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-5 py-12 text-center text-slate-500">No journal entries yet.</td>
+                                <td colspan="8" class="px-5 py-12 text-center text-slate-500">No journal entries yet.</td>
                             </tr>
                         @endforelse
                     </tbody>

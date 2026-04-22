@@ -8,7 +8,12 @@ use App\Models\ClientInteraction;
 use App\Models\ClientTransfer;
 use App\Models\DefaultClientGroup;
 use App\Models\Employee;
+use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanBranch;
+use App\Models\LoanBookApplication;
+use App\Models\LoanBookDisbursement;
+use App\Models\LoanBookLoan;
+use App\Models\LoanBookPayment;
 use App\Models\LoanClient;
 use App\Models\LoanRegion;
 use App\Notifications\Loan\LoanWorkflowNotification;
@@ -19,22 +24,30 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 
 class LoanClientsController extends Controller
 {
     use ScopesLoanPortfolioAccess;
 
-    public function index(Request $request): View
+    public function index(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         $q = LoanClient::query()
             ->clients()
             ->with('assignedEmployee')
+            ->withCount('loanBookLoans')
             ->orderBy('last_name')
             ->orderBy('first_name');
         $this->scopeLoanClientsToUser($q, $request->user());
 
-        if ($search = trim((string) $request->get('q'))) {
+        $search = trim((string) $request->query('q', ''));
+        $branch = trim((string) $request->query('branch', ''));
+        $status = trim((string) $request->query('status', ''));
+        $employeeId = (int) $request->query('employee_id', 0);
+        $perPage = min(200, max(10, (int) $request->query('per_page', 15)));
+
+        if ($search !== '') {
             $q->where(function ($query) use ($search) {
                 $query
                     ->where('client_number', 'like', '%'.$search.'%')
@@ -44,10 +57,131 @@ class LoanClientsController extends Controller
                     ->orWhere('email', 'like', '%'.$search.'%');
             });
         }
+        if ($branch !== '') {
+            $q->where('branch', $branch);
+        }
+        if ($status !== '') {
+            $q->where('client_status', $status);
+        }
+        if ($employeeId > 0) {
+            $q->where('assigned_employee_id', $employeeId);
+        }
 
-        $clients = $q->paginate(15)->withQueryString();
+        $export = strtolower(trim((string) $request->query('export', '')));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $q)->limit(5000)->get();
+            $requestedCols = collect(explode(',', (string) $request->query('cols', '')))
+                ->map(fn (string $col): string => trim($col))
+                ->filter()
+                ->values();
+            $availableCols = [
+                'number' => [
+                    'label' => 'Client Number',
+                    'value' => fn (LoanClient $client): string => (string) ($client->client_number ?? ''),
+                ],
+                'name' => [
+                    'label' => 'Client Name',
+                    'value' => fn (LoanClient $client): string => (string) ($client->full_name ?? ''),
+                ],
+                'idNo' => [
+                    'label' => 'ID Number',
+                    'value' => fn (LoanClient $client): string => (string) ($client->id_number ?? ''),
+                ],
+                'mPoints' => [
+                    'label' => 'M-Points',
+                    'value' => fn (LoanClient $client): string => '0',
+                ],
+                'branch' => [
+                    'label' => 'Branch',
+                    'value' => fn (LoanClient $client): string => (string) ($client->branch ?? ''),
+                ],
+                'cycles' => [
+                    'label' => 'Cycles',
+                    'value' => fn (LoanClient $client): string => (string) ((int) ($client->loan_book_loans_count ?? 0)),
+                ],
+                'gender' => [
+                    'label' => 'Gender',
+                    'value' => fn (LoanClient $client): string => (string) ($client->gender ? ucfirst((string) $client->gender) : ''),
+                ],
+                'assigned' => [
+                    'label' => 'Loans Officer',
+                    'value' => fn (LoanClient $client): string => (string) ($client->assignedEmployee?->full_name ?? ''),
+                ],
+                'status' => [
+                    'label' => 'Status',
+                    'value' => fn (LoanClient $client): string => (string) ($client->client_status ?? ''),
+                ],
+                'contact' => [
+                    'label' => 'Contact',
+                    'value' => fn (LoanClient $client): string => trim((string) (($client->phone ?? '').' '.($client->email ?? ''))),
+                ],
+                'kinContact' => [
+                    'label' => 'Kin Contact',
+                    'value' => fn (LoanClient $client): string => (string) ($client->next_of_kin_contact ?? ''),
+                ],
+                'nextOfKin' => [
+                    'label' => 'Next Of Kin',
+                    'value' => fn (LoanClient $client): string => (string) ($client->next_of_kin_name ?? ''),
+                ],
+            ];
+            $defaultColOrder = ['number', 'name', 'mPoints', 'idNo', 'branch', 'cycles', 'gender', 'contact', 'kinContact', 'nextOfKin', 'assigned', 'status'];
+            $selectedCols = $requestedCols->isNotEmpty()
+                ? $requestedCols->filter(fn (string $key): bool => array_key_exists($key, $availableCols))->values()->all()
+                : $defaultColOrder;
+            if ($selectedCols === []) {
+                $selectedCols = $defaultColOrder;
+            }
+            $headers = array_map(fn (string $key): string => (string) $availableCols[$key]['label'], $selectedCols);
 
-        return view('loan.clients.index', compact('clients'));
+            return TabularExport::stream(
+                'loan-clients-'.now()->format('Ymd_His'),
+                $headers,
+                function () use ($rows, $selectedCols, $availableCols) {
+                    foreach ($rows as $client) {
+                        $row = [];
+                        foreach ($selectedCols as $key) {
+                            $row[] = (string) $availableCols[$key]['value']($client);
+                        }
+                        yield $row;
+                    }
+                },
+                $export,
+                [
+                    'title' => 'Client register',
+                    'subtitle' => 'Loan clients, assignments, and contact details.',
+                    'summary' => [
+                        'Rows' => (string) $rows->count(),
+                        'Filters' => trim(collect([
+                            $search !== '' ? "Search: {$search}" : null,
+                            $branch !== '' ? "Branch: {$branch}" : null,
+                            $status !== '' ? "Status: {$status}" : null,
+                            $employeeId > 0 ? 'Assigned: filtered' : null,
+                        ])->filter()->implode(' | ')) ?: 'None',
+                    ],
+                ]
+            );
+        }
+
+        $clients = $q->paginate($perPage)->withQueryString();
+        $branchOptions = LoanClient::query()
+            ->clients()
+            ->whereNotNull('branch')
+            ->where('branch', '!=', '')
+            ->distinct()
+            ->orderBy('branch')
+            ->pluck('branch');
+        $employees = $this->employeesForSelect();
+
+        return view('loan.clients.index', compact(
+            'clients',
+            'search',
+            'branch',
+            'status',
+            'employeeId',
+            'perPage',
+            'branchOptions',
+            'employees'
+        ));
     }
 
     public function create(): View
@@ -57,12 +191,16 @@ class LoanClientsController extends Controller
         return view('loan.clients.create', [
             'employees' => $employees,
             'branchOptions' => $this->branchOptions(),
+            'biodataLabels' => $this->clientBiodataLabels(),
+            'biodataDynamicFields' => $this->clientBiodataDynamicFields(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         $validated = $this->validateClientPayload($request, null, LoanClient::KIND_CLIENT);
+        $validated = array_merge($validated, $this->handleClientImageUploads($request));
+        $validated['biodata_meta'] = $this->resolveDynamicBiodataMeta($request);
         $validated['client_number'] = $this->generateClientNumber();
         $validated['kind'] = LoanClient::KIND_CLIENT;
         $validated['lead_status'] = null;
@@ -89,9 +227,79 @@ class LoanClientsController extends Controller
             'assignedEmployee',
             'defaultGroups',
             'interactions' => fn ($q) => $q->with('user')->orderByDesc('interacted_at')->limit(8),
+            'loanBookLoans' => fn ($q) => $q
+                ->with('application')
+                ->with('disbursements')
+                ->with('collectionAgent')
+                ->with(['processedRepayments' => fn ($payments) => $payments->orderBy('transaction_at')->orderBy('id')])
+                ->withSum('processedRepayments', 'amount')
+                ->orderByDesc('disbursed_at')
+                ->limit(50),
         ]);
 
-        return view('loan.clients.show', compact('loan_client'));
+        $collectionAgents = Employee::query()
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('job_title', 'like', '%collect%')
+                    ->orWhereHas('staffGroups', function (Builder $groupQuery): void {
+                        $groupQuery
+                            ->where('name', 'like', '%collect%')
+                            ->orWhere('description', 'like', '%collect%');
+                    });
+            })
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get(['id', 'first_name', 'last_name', 'job_title', 'branch']);
+
+        $recentApplications = LoanBookApplication::query()
+            ->where('loan_client_id', $loan_client->id)
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('id')
+            ->limit(15)
+            ->get();
+
+        $recentDisbursements = LoanBookDisbursement::query()
+            ->with('loan')
+            ->whereHas('loan', fn (Builder $query) => $query->where('loan_client_id', $loan_client->id))
+            ->orderByDesc('disbursed_at')
+            ->orderByDesc('id')
+            ->limit(15)
+            ->get();
+
+        $recentPayments = LoanBookPayment::query()
+            ->with('loan')
+            ->whereHas('loan', fn (Builder $query) => $query->where('loan_client_id', $loan_client->id))
+            ->orderByDesc('transaction_at')
+            ->orderByDesc('id')
+            ->limit(20)
+            ->get();
+
+        return view('loan.clients.show', [
+            'loan_client' => $loan_client,
+            'biodataLabels' => $this->clientBiodataLabels(),
+            'recentApplications' => $recentApplications,
+            'recentDisbursements' => $recentDisbursements,
+            'recentPayments' => $recentPayments,
+            'collectionAgents' => $collectionAgents,
+        ]);
+    }
+
+    public function assignLoanCollectionAgent(Request $request, LoanClient $loan_client, LoanBookLoan $loan_book_loan): RedirectResponse
+    {
+        $this->ensureLoanClientAccessible($loan_client);
+        if ((int) $loan_book_loan->loan_client_id !== (int) $loan_client->id) {
+            abort(404);
+        }
+
+        $validated = $request->validate([
+            'collection_agent_employee_id' => ['required', 'exists:employees,id'],
+        ]);
+
+        $loan_book_loan->update([
+            'collection_agent_employee_id' => (int) $validated['collection_agent_employee_id'],
+        ]);
+
+        return back()->with('status', 'Collection agent assigned successfully.');
     }
 
     public function edit(LoanClient $loan_client): View
@@ -104,6 +312,8 @@ class LoanClientsController extends Controller
             'loan_client' => $loan_client,
             'employees' => $employees,
             'branchOptions' => $this->branchOptions(),
+            'biodataLabels' => $this->clientBiodataLabels(),
+            'biodataDynamicFields' => $this->clientBiodataDynamicFields(),
         ]);
     }
 
@@ -112,6 +322,8 @@ class LoanClientsController extends Controller
         $this->ensureLoanClientAccessible($loan_client);
 
         $validated = $this->validateClientPayload($request, $loan_client, $loan_client->kind);
+        $validated = array_merge($validated, $this->handleClientImageUploads($request, $loan_client));
+        $validated['biodata_meta'] = $this->resolveDynamicBiodataMeta($request, $loan_client);
         // Client numbers are system-assigned and immutable after creation.
         $validated['client_number'] = $loan_client->client_number;
         $loan_client->update($validated);
@@ -256,6 +468,7 @@ class LoanClientsController extends Controller
     {
         $clients = LoanClient::query()
             ->clients()
+            ->with('assignedEmployee')
             ->when(! $this->canAccessAllLoanData(auth()->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId(auth()->user())))
             ->orderBy('last_name')
             ->orderBy('first_name')
@@ -847,6 +1060,13 @@ class LoanClientsController extends Controller
             'phone' => ['nullable', 'string', 'max:40'],
             'email' => ['nullable', 'email', 'max:255'],
             'id_number' => ['nullable', 'string', 'max:80'],
+            'gender' => ['nullable', 'string', 'in:male,female,other'],
+            'next_of_kin_name' => ['nullable', 'string', 'max:200'],
+            'next_of_kin_contact' => ['nullable', 'string', 'max:40'],
+            'client_photo' => ['nullable', 'image', 'max:4096'],
+            'id_front_photo' => ['nullable', 'image', 'max:4096'],
+            'id_back_photo' => ['nullable', 'image', 'max:4096'],
+            'biodata_meta' => ['nullable', 'array'],
             'address' => ['nullable', 'string', 'max:2000'],
             'branch' => ['nullable', 'string', 'max:120'],
             'assigned_employee_id' => ['nullable', 'exists:employees,id'],
@@ -872,6 +1092,40 @@ class LoanClientsController extends Controller
         }
 
         return $request->validate($rules);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function handleClientImageUploads(Request $request, ?LoanClient $existing = null): array
+    {
+        $updates = [];
+        $mapping = [
+            'client_photo' => 'client_photo_path',
+            'id_front_photo' => 'id_front_photo_path',
+            'id_back_photo' => 'id_back_photo_path',
+        ];
+
+        foreach ($mapping as $fileField => $dbField) {
+            if (! $request->hasFile($fileField)) {
+                continue;
+            }
+
+            $file = $request->file($fileField);
+            if (! $file) {
+                continue;
+            }
+
+            $newPath = $file->store('loan-clients', 'public');
+            $updates[$dbField] = $newPath;
+
+            $oldPath = (string) ($existing?->{$dbField} ?? '');
+            if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
+                Storage::disk('public')->delete($oldPath);
+            }
+        }
+
+        return $updates;
     }
 
     private function generateClientNumber(string $prefix = 'CL'): string
@@ -945,6 +1199,165 @@ class LoanClientsController extends Controller
         $employeeId = $this->resolveLoanEmployeeId($request->user());
 
         return $employeeId ? (int) $employeeId : null;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function clientBiodataLabels(): array
+    {
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_CLIENT_BIODATA);
+
+        $definitions = LoanFormFieldDefinition::query()
+            ->where('form_kind', LoanFormFieldDefinition::KIND_CLIENT_BIODATA)
+            ->get();
+
+        $defaults = [
+            'phone' => 'Client Contact',
+            'id_number' => 'Idno',
+            'full_name' => 'Name',
+            'gender' => 'Gender',
+            'next_of_kin_contact' => 'Kin Contact',
+            'next_of_kin_name' => 'Next Of Kin',
+            'client_photo' => 'Client Photo',
+            'assigned_employee_id' => 'Loan Officer',
+            'id_back_photo' => 'Id Back Photo',
+            'id_front_photo' => 'Id Front Photo',
+        ];
+
+        $aliases = [
+            'phone' => ['client contact', 'phone', 'phone number', 'contact'],
+            'id_number' => ['idno', 'national id / passport', 'id / registration', 'id number'],
+            'full_name' => ['full name', 'name', 'client name'],
+            'gender' => ['gender', 'sex'],
+            'next_of_kin_contact' => ['kin contact', 'next of kin phone'],
+            'next_of_kin_name' => ['next of kin', 'next of kin name'],
+            'client_photo' => ['client photo', 'photo'],
+            'assigned_employee_id' => ['loan officer', 'assigned officer'],
+            'id_back_photo' => ['id back photo'],
+            'id_front_photo' => ['id front photo', 'id document photo'],
+        ];
+
+        $labels = $defaults;
+        foreach ($definitions as $field) {
+            $normalized = strtolower(trim((string) $field->label));
+            foreach ($aliases as $key => $options) {
+                if (in_array($normalized, $options, true)) {
+                    $labels[$key] = (string) $field->label;
+                    break;
+                }
+            }
+        }
+
+        return $labels;
+    }
+
+    /**
+     * @return array<int, array{key: string, label: string, data_type: string, select_options: array<int, string>}>
+     */
+    private function clientBiodataDynamicFields(): array
+    {
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_CLIENT_BIODATA);
+        $definitions = LoanFormFieldDefinition::query()
+            ->where('form_kind', LoanFormFieldDefinition::KIND_CLIENT_BIODATA)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $mappedLabels = collect([
+            'name',
+            'full name',
+            'client name',
+            'client contact',
+            'phone',
+            'phone number',
+            'idno',
+            'national id / passport',
+            'id / registration',
+            'id number',
+            'gender',
+            'sex',
+            'kin contact',
+            'next of kin phone',
+            'next of kin',
+            'next of kin name',
+            'client photo',
+            'photo',
+            'loan officer',
+            'assigned officer',
+            'id back photo',
+            'id front photo',
+            'id document photo',
+        ])->map(fn (string $v): string => strtolower(trim($v)))->all();
+
+        return $definitions
+            ->filter(function (LoanFormFieldDefinition $field) use ($mappedLabels): bool {
+                $normalized = strtolower(trim((string) $field->label));
+                return ! in_array($normalized, $mappedLabels, true);
+            })
+            ->map(function (LoanFormFieldDefinition $field): array {
+                $options = collect(explode(',', (string) ($field->select_options ?? '')))
+                    ->map(fn (string $opt): string => trim($opt))
+                    ->filter()
+                    ->values()
+                    ->all();
+
+                return [
+                    'key' => (string) $field->field_key,
+                    'label' => (string) $field->label,
+                    'data_type' => (string) $field->data_type,
+                    'select_options' => $options,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveDynamicBiodataMeta(Request $request, ?LoanClient $existing = null): array
+    {
+        $existingMeta = (array) ($existing?->biodata_meta ?? []);
+        $result = [];
+        $definitions = $this->clientBiodataDynamicFields();
+        foreach ($definitions as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+
+            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
+            if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
+                $inputKey = "biodata_files.$key";
+                if ($request->hasFile($inputKey)) {
+                    $file = $request->file($inputKey);
+                    if ($file) {
+                        $newPath = $file->store('loan-clients/biodata', 'public');
+                        $result[$key] = $newPath;
+
+                        $oldPath = (string) ($existingMeta[$key] ?? '');
+                        if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
+                            Storage::disk('public')->delete($oldPath);
+                        }
+                        continue;
+                    }
+                }
+
+                if (array_key_exists($key, $existingMeta)) {
+                    $result[$key] = $existingMeta[$key];
+                }
+                continue;
+            }
+
+            $inputValue = $request->input("biodata_meta.$key");
+            if (is_array($inputValue)) {
+                $inputValue = '';
+            }
+            $result[$key] = trim((string) ($inputValue ?? ''));
+        }
+
+        return $result;
     }
 
 }

@@ -1,4 +1,20 @@
 <x-loan-layout>
+    <style>
+        .loan-register-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .loan-register-table th,
+        .loan-register-table td {
+            padding: 0.45rem 0.5rem;
+            font-size: 0.75rem;
+            line-height: 1.15rem;
+            vertical-align: top;
+            word-break: break-word;
+        }
+    </style>
+
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
             <a href="{{ route('loan.book.loan_arrears') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Arrears</a>
@@ -6,6 +22,64 @@
             <a href="{{ route('loan.book.loans.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Create loan</a>
         </x-slot>
 
+        <div
+            x-data="{
+                columnMenuOpen: false,
+                storageKey: 'loan.book.loans.index.columns.v1',
+                defaultCols: {
+                    loanNo: true,
+                    client: true,
+                    contact: true,
+                    officer: true,
+                    disbursement: true,
+                    product: true,
+                    loan: true,
+                    toPay: true,
+                    paid: true,
+                    percent: true,
+                    balance: true,
+                    dpd: true,
+                    status: true,
+                    maturity: true,
+                    actions: true
+                },
+                cols: {},
+                init() {
+                    this.cols = { ...this.defaultCols };
+                    try {
+                        const saved = JSON.parse(localStorage.getItem(this.storageKey) || '{}');
+                        if (saved && typeof saved === 'object') {
+                            Object.keys(this.defaultCols).forEach((k) => {
+                                if (Object.prototype.hasOwnProperty.call(saved, k)) {
+                                    this.cols[k] = !!saved[k];
+                                }
+                            });
+                        }
+                    } catch (e) {}
+
+                    this.$watch('cols', (value) => {
+                        localStorage.setItem(this.storageKey, JSON.stringify(value));
+                    }, { deep: true });
+                },
+                visibleExportCols() {
+                    return Object.keys(this.defaultCols).filter((k) => k !== 'actions' && !!this.cols[k]);
+                },
+                exportUrl(format) {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('export', format);
+                    url.searchParams.set('cols', this.visibleExportCols().join(','));
+                    return `${url.pathname}?${url.searchParams.toString()}`;
+                },
+                openRow(url, event) {
+                    const target = event?.target;
+                    if (!url || (target && target.closest('a, button, input, select, textarea, form, label, summary, details'))) {
+                        return;
+                    }
+
+                    window.location.href = url;
+                }
+            }"
+        >
         <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div class="flex flex-wrap items-end gap-2">
                 <div>
@@ -75,9 +149,9 @@
                 <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
                 <a href="{{ route('loan.book.loans.index') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
                 <div class="ml-auto flex items-center gap-2">
-                    <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
-                    <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
-                    <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
+                    <a :href="exportUrl('csv')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                    <a :href="exportUrl('xls')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+                    <a :href="exportUrl('pdf')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
                 </div>
             </div>
         </form>
@@ -98,29 +172,7 @@
             </a>
         </div>
 
-        <div
-            class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden"
-            x-data="{
-                columnMenuOpen: false,
-                cols: {
-                    loanNo: true,
-                    client: true,
-                    contact: true,
-                    officer: true,
-                    disbursement: true,
-                    product: true,
-                    loan: true,
-                    toPay: true,
-                    paid: true,
-                    percent: true,
-                    balance: true,
-                    dpd: true,
-                    status: true,
-                    maturity: true,
-                    actions: true
-                }
-            }"
-        >
+        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-slate-100 flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start">
                 <div>
                     <h2 class="text-sm font-semibold text-slate-700">Loan register</h2>
@@ -156,8 +208,8 @@
                 </div>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <table class="loan-register-table min-w-full w-full text-xs">
+                    <thead class="bg-slate-50 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
                             <th x-show="cols.loanNo" class="px-5 py-3">Loan #</th>
                             <th x-show="cols.client" class="px-5 py-3">Client</th>
@@ -177,6 +229,12 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
+                        @php
+                            $loanPrincipalTotal = 0.0;
+                            $loanToPayTotal = 0.0;
+                            $loanPaidTotal = 0.0;
+                            $loanBalanceTotal = 0.0;
+                        @endphp
                         @forelse ($loans as $loan)
                             @php
                                 $posted = (float) ($loan->processed_repayments_sum_amount ?? 0);
@@ -186,6 +244,10 @@
                                 $totalRepayable = $paid + $remaining;
                                 $progress = $totalRepayable > 0.00001 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
                                 $officerName = trim((string) ($loan->loanClient?->assignedEmployee?->full_name ?? ''));
+                                $loanPrincipalTotal += (float) $loan->principal;
+                                $loanToPayTotal += $totalRepayable;
+                                $loanPaidTotal += $paid;
+                                $loanBalanceTotal += $remaining;
                                 $statusClasses = match ($loan->status) {
                                     \App\Models\LoanBookLoan::STATUS_ACTIVE => 'bg-emerald-100 text-emerald-700',
                                     \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT => 'bg-amber-100 text-amber-700',
@@ -195,9 +257,24 @@
                                     default => 'bg-slate-100 text-slate-600',
                                 };
                             @endphp
-                            <tr class="hover:bg-slate-50/80">
+                            <tr
+                                class="cursor-pointer hover:bg-slate-50/80"
+                                role="link"
+                                tabindex="0"
+                                @click="openRow('{{ route('loan.book.loans.show', $loan) }}', $event)"
+                                @keydown.enter.prevent="openRow('{{ route('loan.book.loans.show', $loan) }}', $event)"
+                                @keydown.space.prevent="openRow('{{ route('loan.book.loans.show', $loan) }}', $event)"
+                            >
                                 <td x-show="cols.loanNo" class="px-5 py-3 font-mono text-xs text-indigo-600 font-medium">{{ $loan->loan_number }}</td>
-                                <td x-show="cols.client" class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient?->full_name ?? 'Client record missing' }}</td>
+                                <td x-show="cols.client" class="px-5 py-3 font-medium text-slate-900">
+                                    @if ($loan->loanClient)
+                                        <a href="{{ route('loan.clients.show', $loan->loanClient) }}" class="text-[#2f4f4f] hover:underline">
+                                            {{ $loan->loanClient->full_name }}
+                                        </a>
+                                    @else
+                                        Client record missing
+                                    @endif
+                                </td>
                                 <td x-show="cols.contact" class="px-5 py-3 text-slate-600"><x-phone-link :value="$loan->loanClient?->phone" /></td>
                                 <td x-show="cols.officer" class="px-5 py-3 text-slate-600">{{ $officerName !== '' ? $officerName : '—' }}</td>
                                 <td x-show="cols.disbursement" class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $loan->disbursed_at?->format('d-m-Y') ?? '—' }}</td>
@@ -254,11 +331,33 @@
                             </tr>
                         @endforelse
                     </tbody>
+                    @if ($loans->count() > 0)
+                        <tfoot class="bg-slate-100/80">
+                            <tr class="border-t border-slate-200">
+                                <td x-show="cols.loanNo" class="px-5 py-3 font-bold text-slate-800">Totals (this page)</td>
+                                <td x-show="cols.client" class="px-5 py-3"></td>
+                                <td x-show="cols.contact" class="px-5 py-3"></td>
+                                <td x-show="cols.officer" class="px-5 py-3"></td>
+                                <td x-show="cols.disbursement" class="px-5 py-3"></td>
+                                <td x-show="cols.product" class="px-5 py-3"></td>
+                                <td x-show="cols.loan" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($loanPrincipalTotal, 2) }}</td>
+                                <td x-show="cols.toPay" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($loanToPayTotal, 2) }}</td>
+                                <td x-show="cols.paid" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($loanPaidTotal, 2) }}</td>
+                                <td x-show="cols.percent" class="px-5 py-3"></td>
+                                <td x-show="cols.balance" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($loanBalanceTotal, 2) }}</td>
+                                <td x-show="cols.dpd" class="px-5 py-3"></td>
+                                <td x-show="cols.status" class="px-5 py-3"></td>
+                                <td x-show="cols.maturity" class="px-5 py-3"></td>
+                                <td x-show="cols.actions" class="px-5 py-3"></td>
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
             </div>
             @if ($loans->hasPages())
                 <div class="px-5 py-3 border-t border-slate-100">{{ $loans->withQueryString()->links() }}</div>
             @endif
+        </div>
         </div>
     </x-loan.page>
 </x-loan-layout>

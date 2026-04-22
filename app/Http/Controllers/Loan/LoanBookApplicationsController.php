@@ -8,6 +8,7 @@ use App\Models\LoanBookApplication;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBranch;
 use App\Models\LoanClient;
+use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanProduct;
 use App\Models\PmInvoice;
 use App\Support\TabularExport;
@@ -16,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -53,24 +55,136 @@ class LoanBookApplicationsController extends Controller
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
             $rows = (clone $query)->orderByDesc('created_at')->limit(5000)->get();
+            $requestedCols = collect(explode(',', (string) $request->query('cols', '')))
+                ->map(fn (string $col): string => trim($col))
+                ->filter()
+                ->values();
+            $availableCols = [
+                'application' => [
+                    'label' => 'Application',
+                    'value' => fn (LoanBookApplication $app): string => (string) optional($app->submitted_at)->format('d.m.Y, h:i A'),
+                ],
+                'ref' => [
+                    'label' => 'Reference',
+                    'value' => fn (LoanBookApplication $app): string => (string) $app->reference,
+                ],
+                'client' => [
+                    'label' => 'Client Name',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->loanClient?->full_name ?? ''),
+                ],
+                'clientNo' => [
+                    'label' => 'Client #',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->loanClient?->client_number ?? ''),
+                ],
+                'product' => [
+                    'label' => 'Product',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->product_name ?? ''),
+                ],
+                'source' => [
+                    'label' => 'Source',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->submission_source ?? ''),
+                ],
+                'term' => [
+                    'label' => 'Term',
+                    'value' => fn (LoanBookApplication $app): string => (string) ((int) ($app->term_value ?: $app->term_months)).' '.ucfirst((string) ($app->term_unit ?: 'months')),
+                ],
+                'amount' => [
+                    'label' => 'Amount',
+                    'value' => fn (LoanBookApplication $app): string => number_format((float) $app->amount_requested, 2, '.', ''),
+                ],
+                'guarantor' => [
+                    'label' => 'Guarantor',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->guarantor_full_name ?: ($app->loanClient?->guarantor_1_full_name ?? '')),
+                ],
+                'guarantorContact' => [
+                    'label' => 'Guarantor Contact',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->guarantor_phone ?: ($app->loanClient?->guarantor_1_phone ?? '')),
+                ],
+                'residential' => [
+                    'label' => 'Residential Type',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->loanClient?->address ?? ''),
+                ],
+                'business' => [
+                    'label' => 'Business / Purpose',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->purpose ?? ''),
+                ],
+                'asset' => [
+                    'label' => 'Asset List',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->notes ?? ''),
+                ],
+                'runs' => [
+                    'label' => 'Loan Runs',
+                    'value' => fn (LoanBookApplication $app): string => '0',
+                ],
+                'guarantor2' => [
+                    'label' => 'Guarantor 2',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->loanClient?->guarantor_2_full_name ?? ''),
+                ],
+                'guarantor2Contact' => [
+                    'label' => 'Guarantor 2 Contact',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->loanClient?->guarantor_2_phone ?? ''),
+                ],
+                'charges' => [
+                    'label' => 'Charges',
+                    'value' => fn (LoanBookApplication $app): string => '',
+                ],
+                'media' => [
+                    'label' => 'Attached Media',
+                    'value' => fn (LoanBookApplication $app): string => '',
+                ],
+                'deductions' => [
+                    'label' => 'Deductions',
+                    'value' => fn (LoanBookApplication $app): string => 'Checkoff(0), Prepayment(0)',
+                ],
+                'approvedBy' => [
+                    'label' => 'Approved By',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->loanClient?->assignedEmployee?->full_name ?? ''),
+                ],
+                'stage' => [
+                    'label' => 'Stage',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->stage ?? ''),
+                ],
+                'branch' => [
+                    'label' => 'Branch',
+                    'value' => fn (LoanBookApplication $app): string => (string) ($app->branch ?? ''),
+                ],
+                'submitted' => [
+                    'label' => 'Submitted',
+                    'value' => fn (LoanBookApplication $app): string => (string) optional($app->submitted_at)->format('Y-m-d'),
+                ],
+            ];
+            $defaultColOrder = ['ref', 'clientNo', 'client', 'product', 'source', 'amount', 'term', 'stage', 'branch', 'submitted'];
+            $selectedCols = $requestedCols->isNotEmpty()
+                ? $requestedCols->filter(fn (string $key): bool => array_key_exists($key, $availableCols))->values()->all()
+                : $defaultColOrder;
+            if ($selectedCols === []) {
+                $selectedCols = $defaultColOrder;
+            }
+            $headers = array_map(fn (string $key): string => (string) $availableCols[$key]['label'], $selectedCols);
+            $hasAmountCol = in_array('amount', $selectedCols, true);
 
             return TabularExport::stream(
                 'loanbook-applications-'.now()->format('Ymd_His'),
-                ['Reference', 'Client #', 'Client Name', 'Product', 'Source', 'Amount', 'Term Months', 'Stage', 'Branch', 'Submitted'],
-                function () use ($rows) {
+                $headers,
+                function () use ($rows, $selectedCols, $availableCols, $hasAmountCol) {
+                    $amountTotal = 0.0;
                     foreach ($rows as $app) {
-                        yield [
-                            (string) $app->reference,
-                            (string) ($app->loanClient?->client_number ?? ''),
-                            (string) ($app->loanClient?->full_name ?? ''),
-                            (string) $app->product_name,
-                            (string) ($app->submission_source ?? ''),
-                            number_format((float) $app->amount_requested, 2, '.', ''),
-                            (string) $app->term_months,
-                            (string) $app->stage,
-                            (string) ($app->branch ?? ''),
-                            (string) optional($app->submitted_at)->format('Y-m-d'),
-                        ];
+                        $amountTotal += (float) $app->amount_requested;
+                        $row = [];
+                        foreach ($selectedCols as $key) {
+                            $row[] = (string) $availableCols[$key]['value']($app);
+                        }
+                        yield $row;
+                    }
+                    if ($hasAmountCol) {
+                        $totalRow = array_fill(0, count($selectedCols), '');
+                        $firstColIdx = 0;
+                        $amountColIdx = array_search('amount', $selectedCols, true);
+                        $totalRow[$firstColIdx] = 'TOTAL';
+                        if ($amountColIdx !== false) {
+                            $totalRow[$amountColIdx] = number_format($amountTotal, 2, '.', '');
+                        }
+                        yield $totalRow;
                     }
                 },
                 $export
@@ -134,20 +248,24 @@ class LoanBookApplicationsController extends Controller
                 'loanbook-application-report-'.now()->format('Ymd_His'),
                 ['Reference', 'Client #', 'Client Name', 'Product', 'Source', 'Amount', 'Term Months', 'Stage', 'Branch', 'Submitted'],
                 function () use ($rows) {
+                    $amountTotal = 0.0;
                     foreach ($rows as $app) {
+                        $amount = (float) $app->amount_requested;
+                        $amountTotal += $amount;
                         yield [
                             (string) $app->reference,
                             (string) ($app->loanClient?->client_number ?? ''),
                             (string) ($app->loanClient?->full_name ?? ''),
                             (string) $app->product_name,
                             (string) ($app->submission_source ?? ''),
-                            number_format((float) $app->amount_requested, 2, '.', ''),
+                            number_format($amount, 2, '.', ''),
                             (string) $app->term_months,
                             (string) $app->stage,
                             (string) ($app->branch ?? ''),
                             (string) optional($app->submitted_at)->format('Y-m-d'),
                         ];
                     }
+                    yield ['TOTAL', '', '', '', '', number_format($amountTotal, 2, '.', ''), '', '', '', ''];
                 },
                 $export
             );
@@ -199,6 +317,7 @@ class LoanBookApplicationsController extends Controller
         $prefillClientId = $selectedClientId ? (int) $selectedClientId : null;
         $clientsQuery = LoanClient::query()
             ->clients()
+            ->with('assignedEmployee')
             ->when(! $this->canAccessAllLoanData($request->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId($request->user())))
             ->when(
                 $prefillClientId,
@@ -225,6 +344,8 @@ class LoanBookApplicationsController extends Controller
             'productOptions' => $this->productOptions($defaultProductName),
             'productMetaByName' => $this->productMetaByName(),
             'branchOptions' => $this->branchOptions(),
+            'loanFormMappedFields' => $this->clientLoanMappedFields(),
+            'loanFormCustomFields' => $this->clientLoanCustomFields(),
         ]);
     }
 
@@ -257,7 +378,7 @@ class LoanBookApplicationsController extends Controller
             'guarantor_id_number' => ['nullable', 'string', 'max:80'],
             'guarantor_phone' => ['nullable', 'string', 'max:40'],
             'guarantor_signature_name' => ['nullable', 'string', 'max:200'],
-        ]);
+        ] + $this->clientLoanDynamicValidationRules());
         $validated['submission_source'] = 'manual_internal';
         $validated['repayment_agreement_accepted'] = $request->boolean('repayment_agreement_accepted');
         $termValue = (int) ($validated['term_value'] ?? 0);
@@ -270,6 +391,9 @@ class LoanBookApplicationsController extends Controller
         $validated['term_unit'] = $termUnit;
         $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
         $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
+        if ($this->applicationFormMetaSupported()) {
+            $validated['form_meta'] = $this->resolveClientLoanFormMeta($request);
+        }
 
         if (LoanBookLoan::query()
             ->where('loan_client_id', $validated['loan_client_id'])
@@ -378,6 +502,8 @@ class LoanBookApplicationsController extends Controller
             'productOptions' => $this->productOptions($loan_book_application->product_name),
             'productMetaByName' => $this->productMetaByName(),
             'branchOptions' => $this->branchOptions(),
+            'loanFormMappedFields' => $this->clientLoanMappedFields(),
+            'loanFormCustomFields' => $this->clientLoanCustomFields(),
         ]);
     }
 
@@ -420,7 +546,7 @@ class LoanBookApplicationsController extends Controller
             'guarantor_id_number' => ['nullable', 'string', 'max:80'],
             'guarantor_phone' => ['nullable', 'string', 'max:40'],
             'guarantor_signature_name' => ['nullable', 'string', 'max:200'],
-        ]);
+        ] + $this->clientLoanDynamicValidationRules());
         if (empty($loan_book_application->submission_source)) {
             $validated['submission_source'] = 'manual_internal';
         }
@@ -435,6 +561,9 @@ class LoanBookApplicationsController extends Controller
         $validated['term_unit'] = $termUnit;
         $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
         $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
+        if ($this->applicationFormMetaSupported()) {
+            $validated['form_meta'] = $this->resolveClientLoanFormMeta($request, $loan_book_application);
+        }
         $validated['product_name'] = $this->ensureProductRegistered((string) $validated['product_name']);
         if (isset($validated['stage'])) {
             $stageError = $this->stageTransitionError($loan_book_application, (string) $validated['stage']);
@@ -527,6 +656,185 @@ class LoanBookApplicationsController extends Controller
                 $validated[$appField] = $client->{$clientField};
             }
         }
+    }
+
+    /**
+     * @return array<string, array{label:string,data_type:string,field_key:string,select_options:list<string>}>
+     */
+    private function clientLoanMappedFields(): array
+    {
+        $definitions = $this->clientLoanFormDefinitions();
+        $aliases = [
+            'product_name' => ['loan product', 'product'],
+            'amount_requested' => ['amount', 'requested amount'],
+            'term_value' => ['duration', 'term', 'term length'],
+            'guarantor_full_name' => ['guarantor name', 'guarantor full name'],
+            'guarantor_phone' => ['guarantor contact', 'guarantor phone', 'guarantor tel no'],
+            'guarantor_id_number' => ['guarantor id', 'guarantor id no', 'guarantor idno'],
+            'applicant_signature_name' => ['applicant sign', 'applicant signature', 'applicant sign (full name)'],
+            'applicant_pin_location_code' => ['home / business pin location code', 'pin location code'],
+            'guarantor_signature_name' => ['guarantor signature', 'guarantor signature (full name)'],
+            'repayment_agreement_accepted' => ['repayment agreement', 'agreement'],
+            'client_id_number' => ['client idno', 'idno', 'client id'],
+            'loan_officer' => ['loan officer', 'officer'],
+        ];
+
+        $mapped = [];
+        foreach ($definitions as $field) {
+            $label = strtolower(trim((string) $field->label));
+            foreach ($aliases as $key => $patterns) {
+                if (! in_array($label, $patterns, true) || isset($mapped[$key])) {
+                    continue;
+                }
+                $mapped[$key] = [
+                    'label' => (string) $field->label,
+                    'data_type' => (string) $field->data_type,
+                    'field_key' => (string) $field->field_key,
+                    'select_options' => $this->splitSelectOptions((string) ($field->select_options ?? '')),
+                ];
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * @return array<int, array{key:string,label:string,data_type:string,select_options:list<string>}>
+     */
+    private function clientLoanCustomFields(): array
+    {
+        $definitions = $this->clientLoanFormDefinitions();
+        $mappedKeys = collect($this->clientLoanMappedFields())
+            ->pluck('field_key')
+            ->filter()
+            ->values()
+            ->all();
+
+        return $definitions
+            ->filter(fn (LoanFormFieldDefinition $f): bool => ! in_array((string) $f->field_key, $mappedKeys, true))
+            ->map(fn (LoanFormFieldDefinition $f): array => [
+                'key' => (string) $f->field_key,
+                'label' => (string) $f->label,
+                'data_type' => (string) $f->data_type,
+                'select_options' => $this->splitSelectOptions((string) ($f->select_options ?? '')),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function clientLoanDynamicValidationRules(): array
+    {
+        if (! $this->applicationFormMetaSupported()) {
+            return [];
+        }
+
+        $rules = [];
+        foreach ($this->clientLoanCustomFields() as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
+            if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
+                $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:4096'];
+                continue;
+            }
+            if ($type === LoanFormFieldDefinition::TYPE_NUMBER) {
+                $rules["form_meta.$key"] = ['nullable', 'numeric'];
+                continue;
+            }
+            if ($type === LoanFormFieldDefinition::TYPE_SELECT) {
+                $options = collect((array) ($field['select_options'] ?? []))
+                    ->map(fn (string $v): string => trim($v))
+                    ->filter()
+                    ->values()
+                    ->all();
+                $rules["form_meta.$key"] = $options !== []
+                    ? ['nullable', 'string', \Illuminate\Validation\Rule::in($options)]
+                    : ['nullable', 'string', 'max:255'];
+                continue;
+            }
+            $rules["form_meta.$key"] = ['nullable', 'string', 'max:5000'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveClientLoanFormMeta(Request $request, ?LoanBookApplication $existing = null): array
+    {
+        $existingMeta = (array) ($existing?->form_meta ?? []);
+        $meta = [];
+        foreach ($this->clientLoanCustomFields() as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
+            if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
+                $inputKey = "form_files.$key";
+                if ($request->hasFile($inputKey)) {
+                    $file = $request->file($inputKey);
+                    if ($file) {
+                        $newPath = $file->store('loan-applications/form-meta', 'public');
+                        $meta[$key] = $newPath;
+                        $oldPath = (string) ($existingMeta[$key] ?? '');
+                        if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
+                            Storage::disk('public')->delete($oldPath);
+                        }
+                        continue;
+                    }
+                }
+                if (array_key_exists($key, $existingMeta)) {
+                    $meta[$key] = $existingMeta[$key];
+                }
+                continue;
+            }
+
+            $value = $request->input("form_meta.$key");
+            if (is_array($value)) {
+                $value = '';
+            }
+            $meta[$key] = trim((string) ($value ?? ''));
+        }
+
+        return $meta;
+    }
+
+    private function applicationFormMetaSupported(): bool
+    {
+        return Schema::hasColumn('loan_book_applications', 'form_meta');
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, LoanFormFieldDefinition>
+     */
+    private function clientLoanFormDefinitions()
+    {
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_CLIENT_LOAN);
+
+        return LoanFormFieldDefinition::query()
+            ->where('form_kind', LoanFormFieldDefinition::KIND_CLIENT_LOAN)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitSelectOptions(string $options): array
+    {
+        return collect(explode(',', $options))
+            ->map(fn (string $opt): string => trim($opt))
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**

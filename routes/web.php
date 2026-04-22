@@ -308,6 +308,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/{loan_client}/interactions/create', [LoanClientsController::class, 'interactionCreateForClient'])->name('interactions.for_client.create');
         Route::post('/{loan_client}/interactions', [LoanClientsController::class, 'interactionStoreForClient'])->name('interactions.for_client.store');
+        Route::patch('/{loan_client}/loans/{loan_book_loan}/collection-agent', [LoanClientsController::class, 'assignLoanCollectionAgent'])->name('loans.collection_agent.assign');
 
         Route::get('/{loan_client}', [LoanClientsController::class, 'show'])->name('show');
         Route::get('/{loan_client}/edit', [LoanClientsController::class, 'edit'])->name('edit');
@@ -333,6 +334,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/groups', [LoanEmployeesController::class, 'groupsStore'])->name('groups.store');
         Route::get('/groups', [LoanEmployeesController::class, 'groups'])->name('groups');
         Route::get('/groups/{staff_group}', [LoanEmployeesController::class, 'groupsShow'])->name('groups.show');
+        Route::patch('/groups/{staff_group}', [LoanEmployeesController::class, 'groupsUpdate'])->name('groups.update');
         Route::post('/groups/{staff_group}/members', [LoanEmployeesController::class, 'groupsMemberStore'])->name('groups.members.store');
         Route::delete('/groups/{staff_group}/members/{employee}', [LoanEmployeesController::class, 'groupsMemberDestroy'])->name('groups.members.destroy');
         Route::delete('/groups/{staff_group}', [LoanEmployeesController::class, 'groupsDestroy'])->name('groups.destroy');
@@ -486,6 +488,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/journal-entries', [LoanAccountingController::class, 'journalIndex'])->name('journal.index');
         Route::post('/journal-entries/bulk', [LoanAccountingController::class, 'journalBulk'])->name('journal.bulk');
         Route::get('/journal-entries/{accounting_journal_entry}', [LoanAccountingController::class, 'journalShow'])->name('journal.show');
+        Route::post('/journal-entries/{accounting_journal_entry}/reverse', [LoanAccountingController::class, 'journalReverse'])->name('journal.reverse');
         Route::delete('/journal-entries/{accounting_journal_entry}', [LoanAccountingController::class, 'journalDestroy'])->name('journal.destroy');
 
         Route::get('/ledger', [LoanAccountingController::class, 'ledger'])->name('ledger');

@@ -26,6 +26,7 @@ class AccountingSalaryAdvance extends Model
         'approved_amount',
         'approved_at',
         'settled_on',
+        'form_meta',
         'notes',
     ];
 
@@ -37,6 +38,7 @@ class AccountingSalaryAdvance extends Model
             'requested_on' => 'date',
             'approved_at' => 'datetime',
             'settled_on' => 'date',
+            'form_meta' => 'array',
         ];
     }
 

@@ -170,7 +170,9 @@ class TabularExport
         $bodyClass = trim(($isCompact ? 'compact ' : '').($isVeryWide ? 'very-wide' : ''));
 
         return '<!doctype html><html><head><meta charset="utf-8"><style>
-            body{font-family:DejaVu Sans, Arial, sans-serif;font-size:12px;color:#111;margin:14px 16px;}
+            @page{margin:14px 16px 30px 16px;}
+            body{font-family:DejaVu Sans, Arial, sans-serif;font-size:12px;color:#111;margin:0;}
+            .report-shell{padding-bottom:22px;}
             .letterhead{border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:12px;}
             .brand{display:table;width:100%;}
             .brand-logo,.brand-copy{display:table-cell;vertical-align:top;}
@@ -184,12 +186,12 @@ class TabularExport
             .meta{font-size:10px;color:#555;margin:6px 0 10px;}
             table{width:100%;border-collapse:collapse;table-layout:fixed;}
             th,td{border:1px solid #ddd;padding:6px;vertical-align:top;word-break:break-word;}
-            th{background:#f3f4f6;text-align:left;font-weight:700;font-size:10px;text-transform:uppercase;}
+            th{background:#f3f4f6;text-align:center;font-weight:700;font-size:10px;text-transform:uppercase;}
             .summary-wrap{margin-top:12px;display:flex;justify-content:flex-end;}
             .summary-table{width:48%;border-collapse:collapse;}
             .summary-table th,.summary-table td{border:1px solid #ddd;padding:6px;font-size:11px;}
-            .summary-table th{background:#fafafa;width:55%;}
-            .footer{margin-top:12px;padding-top:6px;border-top:1px solid #ddd;font-size:10px;color:#555;text-align:center;}
+            .summary-table th{background:#fafafa;width:55%;text-align:left;}
+            .footer{position:fixed;left:16px;right:16px;bottom:8px;padding-top:6px;border-top:1px solid #ddd;font-size:10px;color:#555;text-align:center;}
             body.compact{font-size:10px;}
             body.compact .report-title{font-size:13px;}
             body.compact th,body.compact td{padding:4px;font-size:9px;}
@@ -197,6 +199,7 @@ class TabularExport
             body.very-wide th,body.very-wide td{padding:3px;font-size:8px;}
         </style></head>'.
             '<body class="'.$esc($bodyClass).'">'.
+            '<div class="report-shell">'.
             '<div class="letterhead"><div class="brand">'.
                 '<div class="brand-logo">'.($logoSrc !== '' ? '<img src="'.$esc($logoSrc).'" alt="" />' : '').'</div>'.
                 '<div class="brand-copy">'.
@@ -210,6 +213,7 @@ class TabularExport
             '<div class="meta">Generated on '.$esc($generatedAt).'</div>'.
             '<table><thead><tr>'.$th.'</tr></thead><tbody>'.$trs.'</tbody></table>'.
             $summaryHtml.
+            '</div>'.
             '<div class="footer">'.$esc($copyright).'</div>'.
             '</body></html>';
     }

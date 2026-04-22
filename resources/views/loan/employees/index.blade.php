@@ -102,19 +102,29 @@
                                     </div>
                                 </td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
-                                    <a href="{{ route('loan.employees.show', $employee) }}" class="text-slate-700 hover:text-slate-900 font-medium text-sm mr-3">View</a>
-                                    <a href="{{ route('loan.employees.edit', $employee) }}" class="text-indigo-600 hover:text-indigo-500 font-medium text-sm mr-3">Edit</a>
-                                    @if ($employee->email)
-                                        <form method="post" action="{{ route('loan.employees.resend_login', $employee) }}" class="inline" data-swal-confirm="Resend login credentials to this employee email?">
-                                            @csrf
-                                            <button type="submit" class="text-emerald-600 hover:text-emerald-500 font-medium text-sm mr-3">Resend login</button>
-                                        </form>
-                                    @endif
-                                    <form method="post" action="{{ route('loan.employees.destroy', $employee) }}" class="inline" data-swal-confirm="Remove this employee?">
-                                        @csrf
-                                        @method('delete')
-                                        <button type="submit" class="text-red-600 hover:text-red-500 font-medium text-sm">Delete</button>
-                                    </form>
+                                    <details class="relative inline-block text-left">
+                                        <summary class="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+                                            Actions
+                                            <svg class="ml-1.5 h-3 w-3 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.51a.75.75 0 0 1-1.08 0l-4.25-4.51a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd" />
+                                            </svg>
+                                        </summary>
+                                        <div class="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                                            <a href="{{ route('loan.employees.show', $employee) }}" class="block px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">View</a>
+                                            <a href="{{ route('loan.employees.edit', $employee) }}" class="block px-3 py-2 text-left text-sm text-indigo-600 hover:bg-indigo-50">Edit</a>
+                                            @if ($employee->email)
+                                                <form method="post" action="{{ route('loan.employees.resend_login', $employee) }}" data-swal-confirm="Resend login credentials to this employee email?">
+                                                    @csrf
+                                                    <button type="submit" class="block w-full px-3 py-2 text-left text-sm text-emerald-600 hover:bg-emerald-50">Resend login</button>
+                                                </form>
+                                            @endif
+                                            <form method="post" action="{{ route('loan.employees.destroy', $employee) }}" data-swal-confirm="Remove this employee?">
+                                                @csrf
+                                                @method('delete')
+                                                <button type="submit" class="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50">Delete</button>
+                                            </form>
+                                        </div>
+                                    </details>
                                 </td>
                             </tr>
                         @empty

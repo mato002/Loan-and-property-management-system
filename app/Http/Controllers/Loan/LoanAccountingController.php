@@ -12,12 +12,16 @@ use App\Models\AccountingRequisition;
 use App\Models\AccountingSalaryAdvance;
 use App\Models\AccountingUtilityPayment;
 use App\Models\AccountingWalletSlotSetting;
+use App\Models\LoanFormFieldDefinition;
 use App\Models\Employee;
 use App\Support\TabularExport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Carbon\Carbon;
 
@@ -307,6 +311,7 @@ class LoanAccountingController extends Controller
         $from = request()->string('from')->toString();
         $to = request()->string('to')->toString();
         $reference = request()->string('reference')->toString();
+        $status = strtolower(request()->string('status')->toString());
         $createdBy = request()->integer('created_by');
         $export = request()->string('export')->toString();
 
@@ -323,6 +328,13 @@ class LoanAccountingController extends Controller
         if ($reference !== '') {
             $q->where('reference', 'like', '%'.$reference.'%');
         }
+        if (in_array($status, [
+            AccountingJournalEntry::STATUS_DRAFT,
+            AccountingJournalEntry::STATUS_POSTED,
+            AccountingJournalEntry::STATUS_REVERSED,
+        ], true)) {
+            $q->where('status', $status);
+        }
         if ($createdBy) {
             $q->where('created_by', $createdBy);
         }
@@ -331,13 +343,14 @@ class LoanAccountingController extends Controller
 
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {
             return TabularExport::stream('journal-entries', [
-                'Entry Date', 'Reference', 'Description', 'Lines', 'Created By',
+                'Entry Date', 'Reference', 'Description', 'Status', 'Lines', 'Created By',
             ], function () use ($q) {
                 return $q->get()->map(function (AccountingJournalEntry $e) {
                     return [
                         optional($e->entry_date)->format('Y-m-d'),
                         (string) ($e->reference ?? ''),
                         (string) ($e->description ?? ''),
+                        (string) ($e->status ?? AccountingJournalEntry::STATUS_POSTED),
                         (int) ($e->lines_count ?? 0),
                         (string) ($e->createdByUser?->name ?? ''),
                     ];
@@ -348,7 +361,7 @@ class LoanAccountingController extends Controller
         $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
         $entries = $q->paginate($perPage)->withQueryString();
 
-        return view('loan.accounting.journal.index', compact('entries', 'from', 'to', 'reference', 'createdBy', 'perPage'));
+        return view('loan.accounting.journal.index', compact('entries', 'from', 'to', 'reference', 'status', 'createdBy', 'perPage'));
     }
 
     public function journalCreate(): View
@@ -401,12 +414,16 @@ class LoanAccountingController extends Controller
             return back()->withErrors(['lines' => 'Total debits must equal total credits and be greater than zero.'])->withInput();
         }
 
-        DB::transaction(function () use ($validated, $request, $lines) {
+        $entry = null;
+        DB::transaction(function () use ($validated, $request, $lines, &$entry) {
             $entry = AccountingJournalEntry::create([
                 'entry_date' => $validated['entry_date'],
                 'reference' => $validated['reference'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'created_by' => $request->user()->id,
+                'status' => AccountingJournalEntry::STATUS_POSTED,
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
             ]);
             foreach ($lines as $line) {
                 AccountingJournalLine::create([
@@ -419,12 +436,14 @@ class LoanAccountingController extends Controller
             }
         });
 
-        return redirect()->route('loan.accounting.journal.index')->with('status', 'Journal entry posted.');
+        return redirect()
+            ->route('loan.accounting.journal.show', $entry)
+            ->with('status', 'Journal entry posted.');
     }
 
     public function journalShow(AccountingJournalEntry $accounting_journal_entry): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
-        $accounting_journal_entry->load(['lines.account', 'createdByUser']);
+        $accounting_journal_entry->load(['lines.account', 'createdByUser', 'approvedByUser', 'reversedFrom']);
 
         $export = request()->string('export')->toString();
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {
@@ -448,6 +467,12 @@ class LoanAccountingController extends Controller
 
     public function journalDestroy(AccountingJournalEntry $accounting_journal_entry): RedirectResponse
     {
+        if (($accounting_journal_entry->status ?? AccountingJournalEntry::STATUS_POSTED) !== AccountingJournalEntry::STATUS_DRAFT) {
+            return redirect()
+                ->route('loan.accounting.journal.show', $accounting_journal_entry)
+                ->withErrors(['journal' => 'Only draft entries can be deleted. Reverse posted entries instead.']);
+        }
+
         $accounting_journal_entry->delete();
 
         return redirect()->route('loan.accounting.journal.index')->with('status', 'Journal entry deleted.');
@@ -461,10 +486,67 @@ class LoanAccountingController extends Controller
             return back()->withErrors(['bulk' => 'Select at least one entry.']);
         }
         if ($action === 'delete') {
-            AccountingJournalEntry::query()->whereIn('id', $ids)->delete();
-            return back()->with('status', 'Selected journal entries deleted.');
+            $deleted = AccountingJournalEntry::query()
+                ->whereIn('id', $ids)
+                ->where('status', AccountingJournalEntry::STATUS_DRAFT)
+                ->delete();
+
+            if ($deleted === 0) {
+                return back()->withErrors(['bulk' => 'Only draft entries can be deleted in bulk.']);
+            }
+
+            return back()->with('status', 'Selected draft journal entries deleted.');
         }
         return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
+    }
+
+    public function journalReverse(Request $request, AccountingJournalEntry $accounting_journal_entry): RedirectResponse
+    {
+        $accounting_journal_entry->load('lines');
+
+        if (($accounting_journal_entry->status ?? AccountingJournalEntry::STATUS_POSTED) !== AccountingJournalEntry::STATUS_POSTED) {
+            return redirect()
+                ->route('loan.accounting.journal.show', $accounting_journal_entry)
+                ->withErrors(['journal' => 'Only posted entries can be reversed.']);
+        }
+
+        if ($accounting_journal_entry->reversals()->exists()) {
+            return redirect()
+                ->route('loan.accounting.journal.show', $accounting_journal_entry)
+                ->withErrors(['journal' => 'This entry has already been reversed.']);
+        }
+
+        $reversalEntry = null;
+        DB::transaction(function () use ($request, $accounting_journal_entry, &$reversalEntry) {
+            $reversalEntry = AccountingJournalEntry::create([
+                'entry_date' => now()->toDateString(),
+                'reference' => 'REV-'.$accounting_journal_entry->id,
+                'description' => 'Reversal of journal #'.$accounting_journal_entry->id.' ('.$accounting_journal_entry->reference.')',
+                'created_by' => $request->user()->id,
+                'status' => AccountingJournalEntry::STATUS_POSTED,
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
+                'reversed_from_id' => $accounting_journal_entry->id,
+            ]);
+
+            foreach ($accounting_journal_entry->lines as $line) {
+                AccountingJournalLine::create([
+                    'accounting_journal_entry_id' => $reversalEntry->id,
+                    'accounting_chart_account_id' => $line->accounting_chart_account_id,
+                    'debit' => round((float) ($line->credit ?? 0), 2),
+                    'credit' => round((float) ($line->debit ?? 0), 2),
+                    'memo' => $line->memo ? ('Reversal: '.$line->memo) : 'Reversal line',
+                ]);
+            }
+
+            $accounting_journal_entry->update([
+                'status' => AccountingJournalEntry::STATUS_REVERSED,
+            ]);
+        });
+
+        return redirect()
+            ->route('loan.accounting.journal.show', $reversalEntry)
+            ->with('status', 'Reversal journal posted successfully.');
     }
 
     /* ---------- Ledger ---------- */
@@ -622,7 +704,14 @@ class LoanAccountingController extends Controller
 
     public function requisitionsCreate(): View
     {
-        return view('loan.accounting.requisitions.create');
+        $fields = $this->accountingFormsDefinitions();
+        $mapped = $this->mappedAccountingRequisitionFields($fields);
+        $custom = $this->accountingRequisitionCustomFields($fields, $mapped);
+
+        return view('loan.accounting.requisitions.create', [
+            'accountingRequisitionMappedFields' => $mapped,
+            'accountingRequisitionCustomFields' => $custom,
+        ]);
     }
 
     public function requisitionsStore(Request $request): RedirectResponse
@@ -633,7 +722,9 @@ class LoanAccountingController extends Controller
             'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'max:8'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            ...$this->accountingRequisitionDynamicValidationRules(),
         ]);
+        $validated['form_meta'] = $this->resolveAccountingRequisitionFormMeta($request);
 
         $row = AccountingRequisition::create([
             'reference' => null,
@@ -643,6 +734,7 @@ class LoanAccountingController extends Controller
             'currency' => $validated['currency'] ?? 'KES',
             'status' => AccountingRequisition::STATUS_PENDING,
             'requested_by' => $request->user()->id,
+            'form_meta' => $validated['form_meta'],
             'notes' => $validated['notes'] ?? null,
         ]);
         $this->assignRequisitionReference($row);
@@ -652,7 +744,15 @@ class LoanAccountingController extends Controller
 
     public function requisitionsEdit(AccountingRequisition $accounting_requisition): View
     {
-        return view('loan.accounting.requisitions.edit', ['row' => $accounting_requisition]);
+        $fields = $this->accountingFormsDefinitions();
+        $mapped = $this->mappedAccountingRequisitionFields($fields);
+        $custom = $this->accountingRequisitionCustomFields($fields, $mapped);
+
+        return view('loan.accounting.requisitions.edit', [
+            'row' => $accounting_requisition,
+            'accountingRequisitionMappedFields' => $mapped,
+            'accountingRequisitionCustomFields' => $custom,
+        ]);
     }
 
     public function requisitionsUpdate(Request $request, AccountingRequisition $accounting_requisition): RedirectResponse
@@ -667,13 +767,16 @@ class LoanAccountingController extends Controller
             'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'max:8'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            ...$this->accountingRequisitionDynamicValidationRules(),
         ]);
+        $validated['form_meta'] = $this->resolveAccountingRequisitionFormMeta($request, $accounting_requisition);
 
         $accounting_requisition->update([
             'title' => $validated['title'],
             'purpose' => $validated['purpose'] ?? null,
             'amount' => $validated['amount'],
             'currency' => $validated['currency'] ?? 'KES',
+            'form_meta' => $validated['form_meta'],
             'notes' => $validated['notes'] ?? null,
         ]);
 
@@ -1076,8 +1179,15 @@ class LoanAccountingController extends Controller
     public function advancesCreate(): View
     {
         $employees = Employee::query()->orderBy('first_name')->orderBy('last_name')->get();
+        $fields = $this->salaryAdvanceFormDefinitions();
+        $mapped = $this->mappedSalaryAdvanceFields($fields);
+        $custom = $this->salaryAdvanceCustomFields($fields, $mapped);
 
-        return view('loan.accounting.advances.create', compact('employees'));
+        return view('loan.accounting.advances.create', [
+            'employees' => $employees,
+            'salaryAdvanceMappedFields' => $mapped,
+            'salaryAdvanceCustomFields' => $custom,
+        ]);
     }
 
     public function advancesStore(Request $request): RedirectResponse
@@ -1089,7 +1199,10 @@ class LoanAccountingController extends Controller
             'requested_on' => ['required', 'date'],
             'reason_for_request' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            ...$this->salaryAdvanceDynamicValidationRules(),
         ]);
+
+        $validated['form_meta'] = $this->resolveSalaryAdvanceFormMeta($request);
 
         AccountingSalaryAdvance::create([
             ...$validated,
@@ -1103,8 +1216,16 @@ class LoanAccountingController extends Controller
     public function advancesEdit(AccountingSalaryAdvance $accounting_salary_advance): View
     {
         $employees = Employee::query()->orderBy('first_name')->orderBy('last_name')->get();
+        $fields = $this->salaryAdvanceFormDefinitions();
+        $mapped = $this->mappedSalaryAdvanceFields($fields);
+        $custom = $this->salaryAdvanceCustomFields($fields, $mapped);
 
-        return view('loan.accounting.advances.edit', ['row' => $accounting_salary_advance, 'employees' => $employees]);
+        return view('loan.accounting.advances.edit', [
+            'row' => $accounting_salary_advance,
+            'employees' => $employees,
+            'salaryAdvanceMappedFields' => $mapped,
+            'salaryAdvanceCustomFields' => $custom,
+        ]);
     }
 
     public function advancesUpdate(Request $request, AccountingSalaryAdvance $accounting_salary_advance): RedirectResponse
@@ -1120,7 +1241,10 @@ class LoanAccountingController extends Controller
             'requested_on' => ['required', 'date'],
             'reason_for_request' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            ...$this->salaryAdvanceDynamicValidationRules(),
         ]);
+
+        $validated['form_meta'] = $this->resolveSalaryAdvanceFormMeta($request, $accounting_salary_advance);
 
         $accounting_salary_advance->update($validated);
 
@@ -1191,12 +1315,429 @@ class LoanAccountingController extends Controller
         return redirect()->back()->with('status', 'Advance marked settled.');
     }
 
+    /**
+     * @return \Illuminate\Support\Collection<int, LoanFormFieldDefinition>
+     */
+    private function accountingFormsDefinitions()
+    {
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_ACCOUNTING_FORMS);
+
+        return LoanFormFieldDefinition::query()
+            ->where('form_kind', LoanFormFieldDefinition::KIND_ACCOUNTING_FORMS)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @return array<string, array<string, mixed>>
+     */
+    private function mappedAccountingRequisitionFields(Collection $fields): array
+    {
+        $mapped = [];
+        foreach ($fields as $field) {
+            $key = trim((string) $field->field_key);
+            $label = trim((string) $field->label);
+            $hay = strtolower($key.' '.$label);
+            if (! isset($mapped['title']) && (str_contains($hay, 'request title') || str_contains($hay, 'title'))) {
+                $mapped['title'] = $this->normalizedDefinitionField($field);
+                continue;
+            }
+            if (! isset($mapped['amount']) && str_contains($hay, 'amount')) {
+                $mapped['amount'] = $this->normalizedDefinitionField($field);
+                continue;
+            }
+            if (! isset($mapped['purpose']) && (str_contains($hay, 'narration') || str_contains($hay, 'purpose') || str_contains($hay, 'details'))) {
+                $mapped['purpose'] = $this->normalizedDefinitionField($field);
+            }
+        }
+
+        if (! isset($mapped['amount'])) {
+            $amountCandidate = $fields->first(fn (LoanFormFieldDefinition $f) => $f->data_type === LoanFormFieldDefinition::TYPE_NUMBER);
+            if ($amountCandidate) {
+                $mapped['amount'] = $this->normalizedDefinitionField($amountCandidate);
+            }
+        }
+
+        if (! isset($mapped['title'])) {
+            $titleCandidate = $fields->first();
+            if ($titleCandidate) {
+                $mapped['title'] = $this->normalizedDefinitionField($titleCandidate);
+            }
+        }
+
+        if (! isset($mapped['purpose'])) {
+            $purposeCandidate = $fields->first(fn (LoanFormFieldDefinition $f) => (string) $f->field_key !== (string) ($mapped['title']['key'] ?? '') && (string) $f->field_key !== (string) ($mapped['amount']['key'] ?? ''));
+            if ($purposeCandidate) {
+                $mapped['purpose'] = $this->normalizedDefinitionField($purposeCandidate);
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @param  array<string, array<string, mixed>>  $mapped
+     * @return list<array<string, mixed>>
+     */
+    private function accountingRequisitionCustomFields(Collection $fields, array $mapped): array
+    {
+        $mappedKeys = collect($mapped)->pluck('key')->filter()->map(fn ($v) => (string) $v)->all();
+
+        return $fields
+            ->filter(fn (LoanFormFieldDefinition $f): bool => ! in_array((string) $f->field_key, $mappedKeys, true))
+            ->map(fn (LoanFormFieldDefinition $f): array => $this->normalizedDefinitionField($f))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function accountingRequisitionDynamicValidationRules(): array
+    {
+        if (! $this->accountingRequisitionFormMetaSupported()) {
+            return [];
+        }
+
+        $rules = [];
+        $fields = $this->accountingFormsDefinitions();
+        $mapped = $this->mappedAccountingRequisitionFields($fields);
+        foreach ($this->accountingRequisitionCustomFields($fields, $mapped) as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+
+            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
+            if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
+                $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:4096'];
+                continue;
+            }
+            if ($type === LoanFormFieldDefinition::TYPE_NUMBER) {
+                $rules["form_meta.$key"] = ['nullable', 'numeric'];
+                continue;
+            }
+            if ($type === LoanFormFieldDefinition::TYPE_SELECT) {
+                $options = collect((array) ($field['select_options'] ?? []))
+                    ->map(fn (string $v): string => trim($v))
+                    ->filter()
+                    ->values()
+                    ->all();
+                $rules["form_meta.$key"] = $options !== []
+                    ? ['nullable', 'string', Rule::in($options)]
+                    : ['nullable', 'string', 'max:255'];
+                continue;
+            }
+            $rules["form_meta.$key"] = ['nullable', 'string', 'max:5000'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveAccountingRequisitionFormMeta(Request $request, ?AccountingRequisition $existing = null): array
+    {
+        if (! $this->accountingRequisitionFormMetaSupported()) {
+            return [];
+        }
+
+        $existingMeta = (array) ($existing?->form_meta ?? []);
+        $meta = [];
+        $fields = $this->accountingFormsDefinitions();
+        $mapped = $this->mappedAccountingRequisitionFields($fields);
+        foreach ($this->accountingRequisitionCustomFields($fields, $mapped) as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
+            if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
+                $inputKey = "form_files.$key";
+                if ($request->hasFile($inputKey)) {
+                    $file = $request->file($inputKey);
+                    if ($file) {
+                        $newPath = $file->store('requisitions/form-meta', 'public');
+                        $meta[$key] = $newPath;
+                        $oldPath = (string) ($existingMeta[$key] ?? '');
+                        if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
+                            Storage::disk('public')->delete($oldPath);
+                        }
+                        continue;
+                    }
+                }
+                if (array_key_exists($key, $existingMeta)) {
+                    $meta[$key] = $existingMeta[$key];
+                }
+                continue;
+            }
+
+            $value = $request->input("form_meta.$key");
+            if (is_array($value)) {
+                $value = '';
+            }
+            $meta[$key] = trim((string) ($value ?? ''));
+        }
+
+        return $meta;
+    }
+
+    private function accountingRequisitionFormMetaSupported(): bool
+    {
+        return Schema::hasColumn('accounting_requisitions', 'form_meta');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizedDefinitionField(LoanFormFieldDefinition $field): array
+    {
+        return [
+            'key' => (string) $field->field_key,
+            'label' => (string) $field->label,
+            'data_type' => (string) $field->data_type,
+            'select_options' => $this->splitSelectOptions((string) ($field->select_options ?? '')),
+        ];
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, LoanFormFieldDefinition>
+     */
+    private function salaryAdvanceFormDefinitions()
+    {
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_SALARY_ADVANCE);
+
+        return LoanFormFieldDefinition::query()
+            ->where('form_kind', LoanFormFieldDefinition::KIND_SALARY_ADVANCE)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @return array<string, array<string, mixed>>
+     */
+    private function mappedSalaryAdvanceFields(Collection $fields): array
+    {
+        $mapped = [];
+        foreach ($fields as $field) {
+            $key = trim((string) $field->field_key);
+            $label = trim((string) $field->label);
+            $hay = strtolower($key.' '.$label);
+            if (! isset($mapped['amount']) && str_contains($hay, 'amount')) {
+                $mapped['amount'] = [
+                    'key' => $key,
+                    'label' => $label,
+                    'data_type' => (string) $field->data_type,
+                    'select_options' => $this->splitSelectOptions((string) ($field->select_options ?? '')),
+                ];
+                continue;
+            }
+            if (! isset($mapped['reason_for_request']) && (str_contains($hay, 'reason') || str_contains($hay, 'purpose'))) {
+                $mapped['reason_for_request'] = [
+                    'key' => $key,
+                    'label' => $label,
+                    'data_type' => (string) $field->data_type,
+                    'select_options' => $this->splitSelectOptions((string) ($field->select_options ?? '')),
+                ];
+            }
+        }
+
+        if (! isset($mapped['amount'])) {
+            $amountCandidate = $fields->first(fn (LoanFormFieldDefinition $f) => $f->data_type === LoanFormFieldDefinition::TYPE_NUMBER);
+            if ($amountCandidate) {
+                $mapped['amount'] = [
+                    'key' => (string) $amountCandidate->field_key,
+                    'label' => (string) $amountCandidate->label,
+                    'data_type' => (string) $amountCandidate->data_type,
+                    'select_options' => $this->splitSelectOptions((string) ($amountCandidate->select_options ?? '')),
+                ];
+            }
+        }
+
+        if (! isset($mapped['reason_for_request'])) {
+            $reasonCandidate = $fields->first(fn (LoanFormFieldDefinition $f) => (string) $f->field_key !== (string) ($mapped['amount']['key'] ?? ''));
+            if ($reasonCandidate) {
+                $mapped['reason_for_request'] = [
+                    'key' => (string) $reasonCandidate->field_key,
+                    'label' => (string) $reasonCandidate->label,
+                    'data_type' => (string) $reasonCandidate->data_type,
+                    'select_options' => $this->splitSelectOptions((string) ($reasonCandidate->select_options ?? '')),
+                ];
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @param  array<string, array<string, mixed>>  $mapped
+     * @return list<array<string, mixed>>
+     */
+    private function salaryAdvanceCustomFields(Collection $fields, array $mapped): array
+    {
+        $mappedKeys = collect($mapped)->pluck('key')->filter()->map(fn ($v) => (string) $v)->all();
+
+        return $fields
+            ->filter(fn (LoanFormFieldDefinition $f): bool => ! in_array((string) $f->field_key, $mappedKeys, true))
+            ->map(fn (LoanFormFieldDefinition $f): array => [
+                'key' => (string) $f->field_key,
+                'label' => (string) $f->label,
+                'data_type' => (string) $f->data_type,
+                'select_options' => $this->splitSelectOptions((string) ($f->select_options ?? '')),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function salaryAdvanceDynamicValidationRules(): array
+    {
+        if (! $this->salaryAdvanceFormMetaSupported()) {
+            return [];
+        }
+
+        $rules = [];
+        $fields = $this->salaryAdvanceFormDefinitions();
+        $mapped = $this->mappedSalaryAdvanceFields($fields);
+        foreach ($this->salaryAdvanceCustomFields($fields, $mapped) as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
+            if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
+                $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:4096'];
+                continue;
+            }
+            if ($type === LoanFormFieldDefinition::TYPE_NUMBER) {
+                $rules["form_meta.$key"] = ['nullable', 'numeric'];
+                continue;
+            }
+            if ($type === LoanFormFieldDefinition::TYPE_SELECT) {
+                $options = collect((array) ($field['select_options'] ?? []))
+                    ->map(fn (string $v): string => trim($v))
+                    ->filter()
+                    ->values()
+                    ->all();
+                $rules["form_meta.$key"] = $options !== []
+                    ? ['nullable', 'string', Rule::in($options)]
+                    : ['nullable', 'string', 'max:255'];
+                continue;
+            }
+            $rules["form_meta.$key"] = ['nullable', 'string', 'max:5000'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveSalaryAdvanceFormMeta(Request $request, ?AccountingSalaryAdvance $existing = null): array
+    {
+        if (! $this->salaryAdvanceFormMetaSupported()) {
+            return [];
+        }
+
+        $existingMeta = (array) ($existing?->form_meta ?? []);
+        $meta = [];
+
+        $fields = $this->salaryAdvanceFormDefinitions();
+        $mapped = $this->mappedSalaryAdvanceFields($fields);
+        foreach ($this->salaryAdvanceCustomFields($fields, $mapped) as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+
+            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
+            if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
+                $inputKey = "form_files.$key";
+                if ($request->hasFile($inputKey)) {
+                    $file = $request->file($inputKey);
+                    if ($file) {
+                        $newPath = $file->store('salary-advances/form-meta', 'public');
+                        $meta[$key] = $newPath;
+                        $oldPath = (string) ($existingMeta[$key] ?? '');
+                        if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
+                            Storage::disk('public')->delete($oldPath);
+                        }
+                        continue;
+                    }
+                }
+                if (array_key_exists($key, $existingMeta)) {
+                    $meta[$key] = $existingMeta[$key];
+                }
+                continue;
+            }
+
+            $value = $request->input("form_meta.$key");
+            if (is_array($value)) {
+                $value = '';
+            }
+            $meta[$key] = trim((string) ($value ?? ''));
+        }
+
+        return $meta;
+    }
+
+    private function salaryAdvanceFormMetaSupported(): bool
+    {
+        return Schema::hasColumn('accounting_salary_advances', 'form_meta');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitSelectOptions(string $options): array
+    {
+        return collect(explode(',', $options))
+            ->map(fn (string $opt): string => trim($opt))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
     /* ---------- Reports ---------- */
 
     public function expenseSummary(Request $request): View
     {
-        $from = $request->date('from') ?: now()->startOfMonth()->toDateString();
-        $to = $request->date('to') ?: now()->endOfMonth()->toDateString();
+        $month = max(1, min(12, (int) $request->integer('month', now()->month)));
+        $year = max(2000, min(2100, (int) $request->integer('year', now()->year)));
+        $usingPresetMonth = $request->query->has('month') || $request->query->has('year');
+
+        $presetStart = Carbon::create($year, $month, 1)->startOfMonth()->startOfDay();
+        $presetEnd = Carbon::create($year, $month, 1)->endOfMonth()->endOfDay();
+        $fromRaw = (string) $request->query('from', $presetStart->toDateString());
+        $toRaw = (string) $request->query('to', $presetEnd->toDateString());
+        try {
+            $fromDate = Carbon::parse($fromRaw)->startOfDay();
+        } catch (\Throwable) {
+            $fromDate = $presetStart->copy();
+        }
+        try {
+            $toDate = Carbon::parse($toRaw)->endOfDay();
+        } catch (\Throwable) {
+            $toDate = $presetEnd->copy();
+        }
+        if ($usingPresetMonth) {
+            $fromDate = $presetStart->copy();
+            $toDate = $presetEnd->copy();
+        }
+        if ($toDate->lt($fromDate)) {
+            [$fromDate, $toDate] = [$toDate->copy()->startOfDay(), $fromDate->copy()->endOfDay()];
+        }
+        $from = $fromDate->toDateString();
+        $to = $toDate->toDateString();
 
         $utilities = (float) AccountingUtilityPayment::query()
             ->whereBetween('paid_on', [$from, $to])
@@ -1230,6 +1771,74 @@ class LoanAccountingController extends Controller
 
         $total = $utilities + $pettyOut + $requisitionsPaid + $advances + $journalExpense;
 
+        $utilitiesDaily = AccountingUtilityPayment::query()
+            ->selectRaw('DATE(paid_on) as day_date, COALESCE(SUM(amount),0) as amount_total')
+            ->whereBetween('paid_on', [$from, $to])
+            ->groupBy('day_date')
+            ->pluck('amount_total', 'day_date');
+        $pettyDaily = AccountingPettyCashEntry::query()
+            ->selectRaw('DATE(entry_date) as day_date, COALESCE(SUM(amount),0) as amount_total')
+            ->where('kind', AccountingPettyCashEntry::KIND_DISBURSEMENT)
+            ->whereBetween('entry_date', [$from, $to])
+            ->groupBy('day_date')
+            ->pluck('amount_total', 'day_date');
+        $requisitionsDaily = AccountingRequisition::query()
+            ->selectRaw('DATE(paid_at) as day_date, COALESCE(SUM(amount),0) as amount_total')
+            ->where('status', AccountingRequisition::STATUS_PAID)
+            ->whereBetween('paid_at', [$fromDate->toDateTimeString(), $toDate->toDateTimeString()])
+            ->groupBy('day_date')
+            ->pluck('amount_total', 'day_date');
+        $advancesDaily = AccountingSalaryAdvance::query()
+            ->selectRaw('DATE(requested_on) as day_date, COALESCE(SUM(amount),0) as amount_total')
+            ->whereIn('status', [AccountingSalaryAdvance::STATUS_APPROVED, AccountingSalaryAdvance::STATUS_SETTLED])
+            ->whereBetween('requested_on', [$from, $to])
+            ->groupBy('day_date')
+            ->pluck('amount_total', 'day_date');
+        $journalDailyRows = AccountingJournalLine::query()
+            ->selectRaw('DATE(accounting_journal_entries.entry_date) as day_date, COALESCE(SUM(accounting_journal_lines.debit),0) as dr_total, COALESCE(SUM(accounting_journal_lines.credit),0) as cr_total')
+            ->join('accounting_journal_entries', 'accounting_journal_entries.id', '=', 'accounting_journal_lines.accounting_journal_entry_id')
+            ->whereIn('accounting_chart_account_id', $expenseAccountIds)
+            ->whereBetween('accounting_journal_entries.entry_date', [$from, $to])
+            ->groupBy('day_date')
+            ->get();
+        $journalDaily = $journalDailyRows
+            ->mapWithKeys(fn ($row) => [
+                (string) $row->day_date => ((float) ($row->dr_total ?? 0) - (float) ($row->cr_total ?? 0)),
+            ]);
+
+        $calendarStart = $fromDate->copy()->startOfWeek(Carbon::MONDAY);
+        $calendarEnd = $toDate->copy()->endOfWeek(Carbon::SUNDAY);
+        $weeks = [];
+        $cursor = $calendarStart->copy();
+        while ($cursor->lte($calendarEnd)) {
+            $week = [];
+            for ($i = 0; $i < 7; $i++) {
+                $day = $cursor->copy();
+                $dayKey = $day->toDateString();
+                $inRange = $day->betweenIncluded($fromDate, $toDate);
+                $utilityAmount = (float) ($utilitiesDaily[$dayKey] ?? 0);
+                $pettyAmount = (float) ($pettyDaily[$dayKey] ?? 0);
+                $requisitionAmount = (float) ($requisitionsDaily[$dayKey] ?? 0);
+                $advanceAmount = (float) ($advancesDaily[$dayKey] ?? 0);
+                $journalAmount = (float) ($journalDaily[$dayKey] ?? 0);
+                $dailyTotal = $utilityAmount + $pettyAmount + $requisitionAmount + $advanceAmount + $journalAmount;
+                $week[] = [
+                    'date' => $day,
+                    'in_range' => $inRange,
+                    'breakdown' => [
+                        'Utilities' => $utilityAmount,
+                        'Petty cash' => $pettyAmount,
+                        'Requisitions' => $requisitionAmount,
+                        'Salary advances' => $advanceAmount,
+                        'Journal expense' => $journalAmount,
+                    ],
+                    'total' => $dailyTotal,
+                ];
+                $cursor->addDay();
+            }
+            $weeks[] = $week;
+        }
+
         return view('loan.accounting.expense-summary', compact(
             'from',
             'to',
@@ -1238,7 +1847,10 @@ class LoanAccountingController extends Controller
             'requisitionsPaid',
             'advances',
             'journalExpense',
-            'total'
+            'total',
+            'weeks',
+            'month',
+            'year'
         ));
     }
 

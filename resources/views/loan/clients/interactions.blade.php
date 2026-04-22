@@ -70,13 +70,13 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($interactions as $row)
-                            @php($rowTarget = $row->loanClient ? route('loan.clients.interactions.for_client.create', $row->loanClient) : route('loan.clients.interactions.show', $row))
+                            @php($rowTarget = $row->loanClient ? route('loan.clients.show', $row->loanClient) : route('loan.clients.interactions.show', $row))
                             <tr
                                 class="hover:bg-slate-50/80 cursor-pointer"
                                 role="link"
                                 tabindex="0"
-                                onclick="window.location.href='{{ $rowTarget }}'"
-                                onkeydown="if(event.key === 'Enter' || event.key === ' '){event.preventDefault(); window.location.href='{{ $rowTarget }}';}"
+                                onclick="if (event.target.closest('a, button, input, select, textarea, form, label, summary, details')) return; window.location.href='{{ $rowTarget }}';"
+                                onkeydown="if((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a, button, input, select, textarea, form, label, summary, details')){event.preventDefault(); window.location.href='{{ $rowTarget }}';}"
                             >
                                 <td class="px-5 py-3">
                                     @if ($row->loanClient)

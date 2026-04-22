@@ -10,6 +10,11 @@ class StaffGroup extends Model
     protected $fillable = [
         'name',
         'description',
+        'permissions',
+    ];
+
+    protected $casts = [
+        'permissions' => 'array',
     ];
 
     public function employees(): BelongsToMany

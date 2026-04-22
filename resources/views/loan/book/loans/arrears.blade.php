@@ -238,6 +238,12 @@ Kindly pay your arrears that have accumulated to ARREARS from STARTDAY using A/C
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
+                        @php
+                            $arrearsLoanTotal = 0.0;
+                            $arrearsPeriodicTotal = 0.0;
+                            $arrearsAccumulatedTotal = 0.0;
+                            $arrearsBalanceTotal = 0.0;
+                        @endphp
                         @forelse ($loans as $loan)
                             @php
                                 $termValue = max(1, (int) ($loan->term_value ?? 1));
@@ -248,8 +254,24 @@ Kindly pay your arrears that have accumulated to ARREARS from STARTDAY using A/C
                                 $totalRepayable = max(0.01, $loanAmount + max(0, $totalBalance));
                                 $installmentNo = min($termValue, max(1, (int) floor(($paid / $totalRepayable) * $termValue) + 1));
                                 $fallDate = $loan->disbursed_at ? $loan->disbursed_at->copy()->addDays((int) ($loan->dpd ?? 0)) : null;
+                                $arrearsLoanTotal += $loanAmount;
+                                $arrearsPeriodicTotal += $periodicArrears;
+                                $arrearsAccumulatedTotal += $paid;
+                                $arrearsBalanceTotal += $totalBalance;
                             @endphp
-                            <tr class="hover:bg-slate-50/80">
+                            @php
+                                $arrearsRowUrl = $loan->loanClient ? route('loan.clients.show', $loan->loanClient) : null;
+                            @endphp
+                            <tr
+                                class="hover:bg-slate-50/80 {{ $arrearsRowUrl ? 'cursor-pointer' : '' }}"
+                                @if ($arrearsRowUrl)
+                                    role="link"
+                                    tabindex="0"
+                                    @click="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href = @js($arrearsRowUrl); }"
+                                    @keydown.enter.prevent="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href = @js($arrearsRowUrl); }"
+                                    @keydown.space.prevent="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href = @js($arrearsRowUrl); }"
+                                @endif
+                            >
                                 <td x-show="cols.rowNo" class="px-5 py-3 text-slate-500 tabular-nums">{{ (($loans->currentPage() - 1) * $loans->perPage()) + $loop->iteration }}</td>
                                 <td x-show="cols.client" class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient?->full_name ?? '—' }}</td>
                                 <td x-show="cols.contact" class="px-5 py-3 text-slate-600"><x-phone-link :value="$loan->loanClient?->phone" /></td>
@@ -271,6 +293,26 @@ Kindly pay your arrears that have accumulated to ARREARS from STARTDAY using A/C
                             </tr>
                         @endforelse
                     </tbody>
+                    @if ($loans->count() > 0)
+                        <tfoot class="bg-slate-100/80">
+                            <tr class="border-t border-slate-200">
+                                <td x-show="cols.rowNo" class="px-5 py-3 text-slate-600">—</td>
+                                <td x-show="cols.client" class="px-5 py-3 font-bold text-slate-800">Totals (this page)</td>
+                                <td x-show="cols.contact" class="px-5 py-3"></td>
+                                <td x-show="cols.branch" class="px-5 py-3"></td>
+                                <td x-show="cols.officer" class="px-5 py-3"></td>
+                                <td x-show="cols.loan" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($arrearsLoanTotal, 2) }}</td>
+                                <td x-show="cols.disbursed" class="px-5 py-3"></td>
+                                <td x-show="cols.cycles" class="px-5 py-3"></td>
+                                <td x-show="cols.pArrears" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($arrearsPeriodicTotal, 2) }}</td>
+                                <td x-show="cols.accumulated" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($arrearsAccumulatedTotal, 2) }}</td>
+                                <td x-show="cols.installment" class="px-5 py-3"></td>
+                                <td x-show="cols.fallDate" class="px-5 py-3"></td>
+                                <td x-show="cols.days" class="px-5 py-3"></td>
+                                <td x-show="cols.totalBalance" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($arrearsBalanceTotal, 2) }}</td>
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
             </div>
             @if ($loans->hasPages())

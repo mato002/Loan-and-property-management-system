@@ -1,4 +1,20 @@
 <x-loan-layout>
+    <style>
+        .loan-compact-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .loan-compact-table th,
+        .loan-compact-table td {
+            padding: 0.45rem 0.5rem;
+            font-size: 0.75rem;
+            line-height: 1.15rem;
+            vertical-align: top;
+            word-break: break-word;
+        }
+    </style>
+
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
             <form method="get" action="{{ route('loan.book.collection_sheet.index') }}" class="flex flex-wrap items-center gap-2">
@@ -60,8 +76,8 @@
                     <p class="text-xs text-slate-500 mt-1">{{ $entries->total() }} receipt(s)</p>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="min-w-full text-sm">
-                        <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    <table class="loan-compact-table min-w-full w-full text-xs">
+                        <thead class="bg-slate-50 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                             <tr>
                                 <th class="px-5 py-3">#</th>
                                 <th class="px-5 py-3">Client</th>
@@ -75,6 +91,11 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
+                            @php
+                                $totalAmount = 0.0;
+                                $totalAccumulated = 0.0;
+                                $totalPaid = 0.0;
+                            @endphp
                             @forelse ($entries as $row)
                                 @php
                                     $loan = $row->loan;
@@ -89,8 +110,23 @@
                                     $installmentProgress = $installmentIndex.'/'.$termValue;
                                     $accumulated = (float) ($loan?->period_collection_sum ?? 0);
                                     $portfolioName = $loan?->loanClient?->assignedEmployee?->full_name ?? '—';
+                                    $totalAmount += (float) $row->amount;
+                                    $totalAccumulated += $accumulated;
+                                    $totalPaid += $paidTotal;
                                 @endphp
-                                <tr class="hover:bg-slate-50/80">
+                                @php
+                                    $rowClient = $row->loan?->loanClient;
+                                    $rowUrl = $rowClient ? route('loan.clients.show', $rowClient) : null;
+                                @endphp
+                                <tr
+                                    class="hover:bg-slate-50/80 {{ $rowUrl ? 'cursor-pointer' : '' }}"
+                                    @if ($rowUrl)
+                                        role="link"
+                                        tabindex="0"
+                                        onclick="if (event.target.closest('a, button, input, select, textarea, form, label, summary, details')) return; window.location.href='{{ $rowUrl }}';"
+                                        onkeydown="if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { event.preventDefault(); window.location.href='{{ $rowUrl }}'; }"
+                                    @endif
+                                >
                                     <td class="px-5 py-3 text-slate-500 tabular-nums">{{ (($entries->currentPage() - 1) * $entries->perPage()) + $loop->iteration }}</td>
                                     <td class="px-5 py-3 text-slate-800">{{ $row->loan?->loanClient?->full_name ?? '—' }}</td>
                                     <td class="px-5 py-3 text-slate-600"><x-phone-link :value="$row->loan?->loanClient?->phone" /></td>
@@ -107,6 +143,24 @@
                                 </tr>
                             @endforelse
                         </tbody>
+                        @if ($entries->count() > 0)
+                            <tfoot class="bg-slate-100/80">
+                                <tr class="border-t border-slate-200">
+                                    <td colspan="6" class="px-5 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-700">
+                                        Totals (this page)
+                                    </td>
+                                    <td class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">
+                                        {{ number_format($totalAmount, 2) }}
+                                    </td>
+                                    <td class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">
+                                        {{ number_format($totalAccumulated, 2) }}
+                                    </td>
+                                    <td class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">
+                                        {{ number_format($totalPaid, 2) }}
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        @endif
                     </table>
                 </div>
                 @if ($entries->hasPages())

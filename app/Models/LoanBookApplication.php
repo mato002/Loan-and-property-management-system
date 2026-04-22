@@ -44,6 +44,7 @@ class LoanBookApplication extends Model
         'guarantor_id_number',
         'guarantor_phone',
         'guarantor_signature_name',
+        'form_meta',
     ];
 
     protected function casts(): array
@@ -53,6 +54,7 @@ class LoanBookApplication extends Model
             'interest_rate' => 'decimal:4',
             'submitted_at' => 'datetime',
             'repayment_agreement_accepted' => 'boolean',
+            'form_meta' => 'array',
         ];
     }
 

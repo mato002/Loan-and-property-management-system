@@ -1,11 +1,16 @@
 <x-loan-layout>
     <x-loan.page :title="$title" :subtitle="$subtitle">
+        @php
+            $mapped = $loanFormMappedFields ?? [];
+            $customFormFields = $loanFormCustomFields ?? [];
+            $formMeta = (array) ($application->form_meta ?? []);
+        @endphp
         <x-slot name="actions">
             <a href="{{ route('loan.book.applications.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
         </x-slot>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden max-w-3xl" x-data="loanProductEditMeta(@js($productMetaByName ?? []))" x-init="init()">
-            <form method="post" action="{{ route('loan.book.applications.update', $application) }}" class="px-5 py-6 space-y-4">
+            <form method="post" action="{{ route('loan.book.applications.update', $application) }}" enctype="multipart/form-data" class="px-5 py-6 space-y-4">
                 @csrf
                 @method('patch')
                 <div>
@@ -18,7 +23,7 @@
                     @error('loan_client_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label for="product_name" class="block text-xs font-semibold text-slate-600 mb-1">Product</label>
+                    <label for="product_name" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['product_name']['label'] ?? 'Product' }}</label>
                     <select id="product_name" name="product_name" required class="w-full rounded-lg border-slate-200 text-sm" @change="applyProductDefaults">
                         <option value="">Select product...</option>
                         @foreach (($productOptions ?? []) as $productName)
@@ -30,7 +35,7 @@
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                        <label for="amount_requested" class="block text-xs font-semibold text-slate-600 mb-1">Amount requested</label>
+                        <label for="amount_requested" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['amount_requested']['label'] ?? 'Amount requested' }}</label>
                         <input id="amount_requested" name="amount_requested" type="number" step="0.01" min="0" value="{{ old('amount_requested', $application->amount_requested) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
@@ -44,7 +49,7 @@
                         @error('term_unit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">Term length</label>
+                        <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['term_value']['label'] ?? 'Term length' }}</label>
                         <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', $application->term_value ?? $application->term_months) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
@@ -106,41 +111,108 @@
                         <h3 class="text-sm font-semibold text-slate-800">Loan department form</h3>
                         <p class="mt-1 text-xs text-slate-500">Applicant <strong>name</strong>, <strong>phone</strong>, <strong>home address</strong> and <strong>ID</strong> are on the client profile.</p>
                     </div>
+                    @if (isset($mapped['applicant_pin_location_code']))
                     <div>
                         <label for="applicant_pin_location_code" class="block text-xs font-semibold text-slate-600 mb-1">Home / business PIN location code</label>
                         <input id="applicant_pin_location_code" name="applicant_pin_location_code" type="text" value="{{ old('applicant_pin_location_code', $application->applicant_pin_location_code) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                         @error('applicant_pin_location_code')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                    @endif
+                    @if (isset($mapped['applicant_signature_name']))
                     <div>
                         <label for="applicant_signature_name" class="block text-xs font-semibold text-slate-600 mb-1">Applicant sign (full name)</label>
                         <input id="applicant_signature_name" name="applicant_signature_name" type="text" value="{{ old('applicant_signature_name', $application->applicant_signature_name) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                         @error('applicant_signature_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                    @endif
                     <div class="border-t border-slate-200 pt-4">
                         <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">Guarantor details</h4>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            @if (isset($mapped['guarantor_full_name']))
                             <div class="sm:col-span-2">
                                 <label for="guarantor_full_name" class="block text-xs font-semibold text-slate-600 mb-1">Name</label>
                                 <input id="guarantor_full_name" name="guarantor_full_name" type="text" value="{{ old('guarantor_full_name', $application->guarantor_full_name) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                 @error('guarantor_full_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             </div>
+                            @endif
+                            @if (isset($mapped['guarantor_id_number']))
                             <div>
                                 <label for="guarantor_id_number" class="block text-xs font-semibold text-slate-600 mb-1">ID no.</label>
                                 <input id="guarantor_id_number" name="guarantor_id_number" type="text" value="{{ old('guarantor_id_number', $application->guarantor_id_number) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                 @error('guarantor_id_number')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             </div>
+                            @endif
+                            @if (isset($mapped['guarantor_phone']))
                             <div>
                                 <label for="guarantor_phone" class="block text-xs font-semibold text-slate-600 mb-1">Tel no.</label>
                                 <input id="guarantor_phone" name="guarantor_phone" type="text" value="{{ old('guarantor_phone', $application->guarantor_phone) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                 @error('guarantor_phone')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             </div>
+                            @endif
+                            @if (isset($mapped['guarantor_signature_name']))
                             <div class="sm:col-span-2">
                                 <label for="guarantor_signature_name" class="block text-xs font-semibold text-slate-600 mb-1">Guarantor signature (full name)</label>
                                 <input id="guarantor_signature_name" name="guarantor_signature_name" type="text" value="{{ old('guarantor_signature_name', $application->guarantor_signature_name) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                 @error('guarantor_signature_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             </div>
+                            @endif
                         </div>
                     </div>
+                    @if (!empty($customFormFields))
+                    <div class="border-t border-slate-200 pt-4">
+                        <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">Additional setup fields</h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            @foreach ($customFormFields as $field)
+                                @php
+                                    $fieldKey = (string) ($field['key'] ?? '');
+                                    $fieldType = (string) ($field['data_type'] ?? 'alphanumeric');
+                                    $fieldLabel = (string) ($field['label'] ?? $fieldKey);
+                                    $fieldValue = old("form_meta.$fieldKey", $formMeta[$fieldKey] ?? '');
+                                    $options = (array) ($field['select_options'] ?? []);
+                                @endphp
+                                @if ($fieldType === 'long_text')
+                                    <div class="sm:col-span-2">
+                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <textarea id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" rows="3" class="w-full rounded-lg border-slate-200 text-sm">{{ $fieldValue }}</textarea>
+                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @elseif ($fieldType === 'number')
+                                    <div>
+                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <input id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" type="number" step="0.01" value="{{ $fieldValue }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @elseif ($fieldType === 'select')
+                                    <div>
+                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <select id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" class="w-full rounded-lg border-slate-200 text-sm">
+                                            <option value="">Select…</option>
+                                            @foreach ($options as $option)
+                                                <option value="{{ $option }}" @selected((string) $fieldValue === (string) $option)>{{ $option }}</option>
+                                            @endforeach
+                                        </select>
+                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @elseif ($fieldType === 'image')
+                                    <div>
+                                        <label for="form_files_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <input id="form_files_{{ $fieldKey }}" name="form_files[{{ $fieldKey }}]" type="file" accept="image/*" class="w-full rounded-lg border-slate-200 text-sm" />
+                                        @if (!empty($formMeta[$fieldKey]))
+                                            <a href="{{ Storage::url((string) $formMeta[$fieldKey]) }}" target="_blank" class="mt-1 inline-block text-xs font-semibold text-indigo-600 hover:underline">View uploaded file</a>
+                                        @endif
+                                        @error("form_files.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @else
+                                    <div>
+                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
+                                        <input id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" type="text" value="{{ $fieldValue }}" class="w-full rounded-lg border-slate-200 text-sm" />
+                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </div>
+                                @endif
+                            @endforeach
+                        </div>
+                    </div>
+                    @endif
                     <div class="border-t border-slate-200 pt-4">
                         <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Repayment agreement</h4>
                         <p class="text-xs text-slate-700 leading-relaxed border border-slate-200 rounded-lg bg-white p-3">

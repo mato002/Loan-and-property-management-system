@@ -134,8 +134,13 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
-                        @forelse ($loans as $loan)
+                        @php
+                            $checkoffTotal = 0.0;
+                        @endphp
+                        @if ($loans->count() > 0)
+                            @foreach ($loans as $loan)
                             @php
+                                $checkoffTotal += (float) $loan->balance;
                                 $statusClasses = match ($loan->status) {
                                     \App\Models\LoanBookLoan::STATUS_ACTIVE => 'bg-emerald-100 text-emerald-700',
                                     \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT => 'bg-amber-100 text-amber-700',
@@ -145,9 +150,29 @@
                                     default => 'bg-slate-100 text-slate-600',
                                 };
                             @endphp
-                            <tr class="hover:bg-slate-50/80">
+                            @php
+                                $checkoffRowUrl = $loan->loanClient ? route('loan.clients.show', $loan->loanClient) : null;
+                            @endphp
+                            <tr
+                                class="hover:bg-slate-50/80 {{ $checkoffRowUrl ? 'cursor-pointer' : '' }}"
+                                @if ($checkoffRowUrl)
+                                    role="link"
+                                    tabindex="0"
+                                    @click="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href = @js($checkoffRowUrl); }"
+                                    @keydown.enter.prevent="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href = @js($checkoffRowUrl); }"
+                                    @keydown.space.prevent="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href = @js($checkoffRowUrl); }"
+                                @endif
+                            >
                                 <td x-show="cols.rowNo" class="px-5 py-3 text-slate-500 tabular-nums">{{ (($loans->currentPage() - 1) * $loans->perPage()) + $loop->iteration }}</td>
-                                <td x-show="cols.client" class="px-5 py-3 font-medium text-slate-900">{{ $loan->loanClient?->full_name ?? '—' }}</td>
+                                <td x-show="cols.client" class="px-5 py-3 font-medium text-slate-900">
+                                    @if ($loan->loanClient)
+                                        <a href="{{ route('loan.clients.show', $loan->loanClient) }}" class="text-[#2f4f4f] hover:underline">
+                                            {{ $loan->loanClient->full_name }}
+                                        </a>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td x-show="cols.loanNo" class="px-5 py-3 text-slate-600">{{ $loan->loanClient?->id_number ?? '—' }}</td>
                                 <td x-show="cols.balance" class="px-5 py-3 text-right tabular-nums">{{ number_format((float) $loan->balance, 2) }}</td>
                                 <td x-show="cols.officer" class="px-5 py-3 text-slate-600">{{ $loan->loanClient?->assignedEmployee?->full_name ?? '—' }}</td>
@@ -155,16 +180,56 @@
                                 <td x-show="cols.disbursed" class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ optional($loan->disbursed_at)->format('d-m-Y, H:i') ?? '—' }}</td>
                                 <td x-show="cols.status" class="px-5 py-3 font-mono text-xs text-indigo-600">{{ $loan->loan_number }}</td>
                                 <td x-show="cols.action" class="px-5 py-3 text-right whitespace-nowrap">
-                                    <a href="{{ route('loan.book.loans.show', $loan) }}" class="text-slate-700 font-medium text-sm hover:underline mr-3">View</a>
-                                    <a href="{{ route('loan.book.loans.edit', $loan) }}" class="text-indigo-600 font-medium text-sm hover:underline">Edit</a>
+                                    <div
+                                        x-data="{ open: false }"
+                                        class="relative inline-block text-left"
+                                        @click.stop
+                                        @keydown.stop
+                                        @click.outside="open = false"
+                                    >
+                                        <button
+                                            type="button"
+                                            @click="open = !open"
+                                            class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                                        >
+                                            Actions
+                                            <svg class="ml-1 h-3.5 w-3.5 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.514a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            x-show="open"
+                                            x-cloak
+                                            class="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
+                                        >
+                                            <a href="{{ route('loan.book.loans.show', $loan) }}" class="block px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
+                                            <a href="{{ route('loan.book.loans.edit', $loan) }}" class="block px-3 py-2 text-left text-xs font-medium text-indigo-700 hover:bg-indigo-50">Edit</a>
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
-                        @empty
+                            @endforeach
+                        @else
                             <tr>
                                 <td colspan="9" class="px-5 py-12 text-center text-slate-500">No checkoff loans flagged yet. Edit a loan and enable checkoff.</td>
                             </tr>
-                        @endforelse
+                        @endif
                     </tbody>
+                    @if ($loans->count() > 0)
+                        <tfoot class="bg-slate-100/80">
+                            <tr class="border-t border-slate-200">
+                                <td x-show="cols.rowNo" class="px-5 py-3 text-slate-600">—</td>
+                                <td x-show="cols.client" class="px-5 py-3 font-bold text-slate-800">Totals (this page)</td>
+                                <td x-show="cols.loanNo" class="px-5 py-3"></td>
+                                <td x-show="cols.balance" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($checkoffTotal, 2) }}</td>
+                                <td x-show="cols.officer" class="px-5 py-3"></td>
+                                <td x-show="cols.employer" class="px-5 py-3"></td>
+                                <td x-show="cols.disbursed" class="px-5 py-3"></td>
+                                <td x-show="cols.status" class="px-5 py-3"></td>
+                                <td x-show="cols.action" class="px-5 py-3"></td>
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
             </div>
             @if ($loans->hasPages())

@@ -1,4 +1,20 @@
 <x-loan-layout>
+    <style>
+        .loan-compact-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .loan-compact-table th,
+        .loan-compact-table td {
+            padding: 0.45rem 0.5rem;
+            font-size: 0.75rem;
+            line-height: 1.15rem;
+            vertical-align: top;
+            word-break: break-word;
+        }
+    </style>
+
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
             <a href="{{ route('loan.book.disbursements.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Record disbursement</a>
@@ -152,8 +168,8 @@
                 <p class="text-xs text-slate-500">{{ $disbursements->total() }} row(s)</p>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <table class="loan-compact-table min-w-full w-full text-xs">
+                    <thead class="bg-slate-50 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
                             <th class="px-5 py-3">Date</th>
                             <th class="px-5 py-3">Loan</th>
@@ -166,13 +182,35 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
+                        @php($disbursementAmountTotal = 0.0)
                         @forelse ($disbursements as $d)
-                            <tr class="hover:bg-slate-50/80 @if (! $d->loan) bg-amber-50/60 @endif">
+                            @php($disbursementAmountTotal += (float) $d->amount)
+                            <tr
+                                class="hover:bg-slate-50/80 @if (! $d->loan) bg-amber-50/60 @else cursor-pointer @endif"
+                                @if ($d->loan)
+                                    role="link"
+                                    tabindex="0"
+                                    onclick="if (event.target.closest('a, button, input, select, textarea, form, label, summary, details')) return; window.location.href='{{ route('loan.book.disbursements.show', $d) }}';"
+                                    onkeydown="if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { event.preventDefault(); window.location.href='{{ route('loan.book.disbursements.show', $d) }}'; }"
+                                @endif
+                            >
                                 <td class="px-5 py-3 text-slate-600 tabular-nums">{{ optional($d->disbursed_at)->format('Y-m-d') ?: '—' }}</td>
                                 <td class="px-5 py-3 font-mono text-xs {{ $d->loan ? 'text-indigo-600' : 'text-amber-800' }}" @if (! $d->loan) title="loan_book_loan_id={{ $d->loan_book_loan_id }}" @endif>
-                                    {{ $d->loan?->loan_number ?? __('Missing loan') }}
+                                    @if ($d->loan)
+                                        <a href="{{ route('loan.book.loans.show', $d->loan) }}" class="hover:underline">{{ $d->loan->loan_number }}</a>
+                                    @else
+                                        {{ __('Missing loan') }}
+                                    @endif
                                 </td>
-                                <td class="px-5 py-3 text-slate-800">{{ $d->loan?->loanClient?->full_name ?? '—' }}</td>
+                                <td class="px-5 py-3 text-slate-800">
+                                    @if ($d->loan?->loanClient)
+                                        <a href="{{ route('loan.clients.show', $d->loan->loanClient) }}" class="text-[#2f4f4f] hover:underline">
+                                            {{ $d->loan->loanClient->full_name }}
+                                        </a>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td class="px-5 py-3 text-right tabular-nums font-medium">{{ number_format((float) $d->amount, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $d->method }}</td>
                                 <td class="px-5 py-3">
@@ -193,12 +231,36 @@
                                     @endif
                                 </td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
-                                    <a href="{{ route('loan.book.disbursements.show', $d) }}" class="text-slate-700 font-medium text-sm hover:underline mr-3">View</a>
-                                    <form method="post" action="{{ route('loan.book.disbursements.destroy', $d) }}" class="inline" data-swal-confirm="Remove this disbursement line?">
-                                        @csrf
-                                        @method('delete')
-                                        <button type="submit" class="text-red-600 font-medium text-sm hover:underline">Delete</button>
-                                    </form>
+                                    <div
+                                        x-data="{ open: false }"
+                                        class="relative inline-block text-left"
+                                        @click.stop
+                                        @keydown.stop
+                                        @click.outside="open = false"
+                                    >
+                                        <button
+                                            type="button"
+                                            @click="open = !open"
+                                            class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                                        >
+                                            Actions
+                                            <svg class="ml-1 h-3.5 w-3.5 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.514a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            x-show="open"
+                                            x-cloak
+                                            class="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
+                                        >
+                                            <a href="{{ route('loan.book.disbursements.show', $d) }}" class="block px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
+                                            <form method="post" action="{{ route('loan.book.disbursements.destroy', $d) }}" data-swal-confirm="Remove this disbursement line?">
+                                                @csrf
+                                                @method('delete')
+                                                <button type="submit" class="block w-full px-3 py-2 text-left text-xs font-medium text-red-700 hover:bg-red-50">Delete</button>
+                                            </form>
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                         @empty
@@ -207,6 +269,21 @@
                             </tr>
                         @endforelse
                     </tbody>
+                    @if ($disbursements->count() > 0)
+                        <tfoot class="bg-slate-100/80">
+                            <tr class="border-t border-slate-200">
+                                <td class="px-5 py-3 font-bold text-slate-800">Totals (this page)</td>
+                                <td class="px-5 py-3"></td>
+                                <td class="px-5 py-3"></td>
+                                <td class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($disbursementAmountTotal, 2) }}</td>
+                                <td class="px-5 py-3"></td>
+                                <td class="px-5 py-3"></td>
+                                <td class="px-5 py-3"></td>
+                                <td class="px-5 py-3"></td>
+                                <td class="px-5 py-3"></td>
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
             </div>
             @if ($disbursements->hasPages())
@@ -220,8 +297,8 @@
                 <p class="text-xs text-slate-500">{{ ($pendingLoans ?? collect())->count() }} shown</p>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
-                    <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <table class="loan-compact-table min-w-full w-full text-xs">
+                    <thead class="bg-slate-50 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
                             <th class="px-5 py-3">Loan #</th>
                             <th class="px-5 py-3">Client</th>
@@ -232,15 +309,57 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
+                        @php($pendingLoanBalanceTotal = 0.0)
                         @forelse (($pendingLoans ?? collect()) as $loan)
-                            <tr class="hover:bg-slate-50/80">
-                                <td class="px-5 py-3 font-mono text-xs text-indigo-600">{{ $loan->loan_number }}</td>
-                                <td class="px-5 py-3 text-slate-800">{{ $loan->loanClient?->full_name ?? '—' }}</td>
+                            @php($pendingLoanBalanceTotal += (float) $loan->balance)
+                            <tr
+                                class="cursor-pointer hover:bg-slate-50/80"
+                                role="link"
+                                tabindex="0"
+                                onclick="if (event.target.closest('a, button, input, select, textarea, form, label, summary, details')) return; window.location.href='{{ route('loan.book.loans.show', $loan) }}';"
+                                onkeydown="if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { event.preventDefault(); window.location.href='{{ route('loan.book.loans.show', $loan) }}'; }"
+                            >
+                                <td class="px-5 py-3 font-mono text-xs text-indigo-600">
+                                    <a href="{{ route('loan.book.loans.show', $loan) }}" class="hover:underline">{{ $loan->loan_number }}</a>
+                                </td>
+                                <td class="px-5 py-3 text-slate-800">
+                                    @if ($loan->loanClient)
+                                        <a href="{{ route('loan.clients.show', $loan->loanClient) }}" class="text-[#2f4f4f] hover:underline">
+                                            {{ $loan->loanClient->full_name }}
+                                        </a>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td class="px-5 py-3 text-slate-600">{{ $loan->product_name }}</td>
                                 <td class="px-5 py-3 text-right tabular-nums text-slate-700">{{ number_format((float) $loan->balance, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ str_replace('_', ' ', (string) $loan->status) }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
-                                    <a href="{{ route('loan.book.disbursements.create', ['loan_book_loan_id' => $loan->id]) }}" class="text-indigo-600 font-medium text-sm hover:underline">Disburse now</a>
+                                    <div
+                                        x-data="{ open: false }"
+                                        class="relative inline-block text-left"
+                                        @click.stop
+                                        @keydown.stop
+                                        @click.outside="open = false"
+                                    >
+                                        <button
+                                            type="button"
+                                            @click="open = !open"
+                                            class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                                        >
+                                            Actions
+                                            <svg class="ml-1 h-3.5 w-3.5 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.25 4.514a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
+                                            </svg>
+                                        </button>
+                                        <div
+                                            x-show="open"
+                                            x-cloak
+                                            class="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
+                                        >
+                                            <a href="{{ route('loan.book.disbursements.create', ['loan_book_loan_id' => $loan->id]) }}" class="block px-3 py-2 text-left text-xs font-medium text-indigo-700 hover:bg-indigo-50">Disburse now</a>
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                         @empty
@@ -249,6 +368,18 @@
                             </tr>
                         @endforelse
                     </tbody>
+                    @if (($pendingLoans ?? collect())->count() > 0)
+                        <tfoot class="bg-slate-100/80">
+                            <tr class="border-t border-slate-200">
+                                <td class="px-5 py-3 font-bold text-slate-800">Totals</td>
+                                <td class="px-5 py-3"></td>
+                                <td class="px-5 py-3"></td>
+                                <td class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($pendingLoanBalanceTotal, 2) }}</td>
+                                <td class="px-5 py-3"></td>
+                                <td class="px-5 py-3"></td>
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
             </div>
         </div>

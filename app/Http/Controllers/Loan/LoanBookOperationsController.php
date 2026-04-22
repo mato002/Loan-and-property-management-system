@@ -81,7 +81,10 @@ class LoanBookOperationsController extends Controller
                 'loanbook-disbursements-'.now()->format('Ymd_His'),
                 ['Date', 'Loan #', 'Client #', 'Client Name', 'Region', 'Branch', 'Product', 'Amount', 'Method', 'Payout Status', 'Payout Error', 'Reference', 'GL Journal #'],
                 function () use ($rows) {
+                    $amountTotal = 0.0;
                     foreach ($rows as $d) {
+                        $amount = (float) $d->amount;
+                        $amountTotal += $amount;
                         yield [
                             (string) optional($d->disbursed_at)->format('Y-m-d'),
                             (string) ($d->loan?->loan_number ?? ''),
@@ -90,7 +93,7 @@ class LoanBookOperationsController extends Controller
                             (string) ($d->loan?->loanBranch?->region?->name ?? ''),
                             (string) ($d->loan?->loanBranch?->name ?? $d->loan?->branch ?? ''),
                             (string) ($d->loan?->product_name ?? ''),
-                            number_format((float) $d->amount, 2, '.', ''),
+                            number_format($amount, 2, '.', ''),
                             (string) $d->method,
                             (string) ($d->payout_status ?? 'completed'),
                             (string) ($d->payout_status === 'failed' ? ($d->payout_result_desc ?? '') : ''),
@@ -98,6 +101,7 @@ class LoanBookOperationsController extends Controller
                             (string) ($d->accounting_journal_entry_id ?? ''),
                         ];
                     }
+                    yield ['TOTAL', '', '', '', '', '', '', number_format($amountTotal, 2, '.', ''), '', '', '', '', ''];
                 },
                 $export
             );
@@ -418,18 +422,22 @@ class LoanBookOperationsController extends Controller
                 'loanbook-collection-sheet-'.now()->format('Ymd_His'),
                 ['Collected On', 'Loan #', 'Client #', 'Client Name', 'Amount', 'Channel', 'Collected By', 'GL Journal #'],
                 function () use ($rows) {
+                    $amountTotal = 0.0;
                     foreach ($rows as $row) {
+                        $amount = (float) $row->amount;
+                        $amountTotal += $amount;
                         yield [
                             (string) optional($row->collected_on)->format('Y-m-d'),
                             (string) ($row->loan?->loan_number ?? ''),
                             (string) ($row->loan?->loanClient?->client_number ?? ''),
                             (string) ($row->loan?->loanClient?->full_name ?? ''),
-                            number_format((float) $row->amount, 2, '.', ''),
+                            number_format($amount, 2, '.', ''),
                             (string) $row->channel,
                             (string) ($row->collectedBy?->full_name ?? ''),
                             (string) ($row->accounting_journal_entry_id ?? ''),
                         ];
                     }
+                    yield ['TOTAL', '', '', '', number_format($amountTotal, 2, '.', ''), '', '', ''];
                 },
                 $export
             );
@@ -750,13 +758,20 @@ class LoanBookOperationsController extends Controller
                     'loanbook-collection-reports-branch-'.now()->format('Ymd_His'),
                     ['Branch', 'Receipt Lines', 'Total'],
                     function () use ($rows) {
+                        $receiptLinesTotal = 0;
+                        $amountTotal = 0.0;
                         foreach ($rows as $row) {
+                            $receiptLines = (int) ($row->receipt_count ?? 0);
+                            $amount = (float) ($row->total ?? 0);
+                            $receiptLinesTotal += $receiptLines;
+                            $amountTotal += $amount;
                             yield [
                                 (string) ($row->branch ?? ''),
-                                (string) ((int) ($row->receipt_count ?? 0)),
-                                number_format((float) ($row->total ?? 0), 2, '.', ''),
+                                (string) $receiptLines,
+                                number_format($amount, 2, '.', ''),
                             ];
                         }
+                        yield ['TOTAL', (string) $receiptLinesTotal, number_format($amountTotal, 2, '.', '')];
                     },
                     $export
                 );
@@ -768,19 +783,29 @@ class LoanBookOperationsController extends Controller
                 'loanbook-collection-reports-detail-'.now()->format('Ymd_His'),
                 ['Loan #', 'Client', 'Contact', 'Portfolio', 'Branch', 'Collection', 'Arrears (DPD)', 'Paid', 'Balance'],
                 function () use ($rows) {
+                    $collectionTotal = 0.0;
+                    $paidTotal = 0.0;
+                    $balanceTotal = 0.0;
                     foreach ($rows as $row) {
+                        $collection = (float) ($row->collection_total ?? 0);
+                        $paid = (float) ($row->paid_total ?? 0);
+                        $balance = (float) ($row->balance ?? 0);
+                        $collectionTotal += $collection;
+                        $paidTotal += $paid;
+                        $balanceTotal += $balance;
                         yield [
                             (string) ($row->loan_number ?? ''),
                             (string) ($row->client_name ?? ''),
                             (string) ($row->client_phone ?? ''),
                             (string) ($row->portfolio_name ?? ''),
                             (string) ($row->branch ?? ''),
-                            number_format((float) ($row->collection_total ?? 0), 2, '.', ''),
+                            number_format($collection, 2, '.', ''),
                             (string) ((int) ($row->dpd ?? 0)),
-                            number_format((float) ($row->paid_total ?? 0), 2, '.', ''),
-                            number_format((float) ($row->balance ?? 0), 2, '.', ''),
+                            number_format($paid, 2, '.', ''),
+                            number_format($balance, 2, '.', ''),
                         ];
                     }
+                    yield ['TOTAL', '', '', '', '', number_format($collectionTotal, 2, '.', ''), '', number_format($paidTotal, 2, '.', ''), number_format($balanceTotal, 2, '.', '')];
                 },
                 $export
             );
@@ -854,18 +879,28 @@ class LoanBookOperationsController extends Controller
                 'loanbook-collection-agents-'.now()->format('Ymd_His'),
                 ['Agent Name', 'Branches', 'Portfolios', 'Loanbook', 'Assigned Loans', $monthDate->format('M').' Collections'],
                 function () use ($rows, $assignedLoansByEmployee, $collectionMetricsByEmployee) {
+                    $loanbookLinesTotal = 0;
+                    $assignedLoansTotal = 0;
+                    $collectionsTotal = 0.0;
                     foreach ($rows as $agent) {
                         $employeeId = $agent->employee_id;
                         $metrics = $employeeId ? $collectionMetricsByEmployee->get($employeeId) : null;
+                        $loanbookLines = (int) ($metrics->loanbook_lines ?? 0);
+                        $assignedLoans = (int) ($employeeId ? ($assignedLoansByEmployee[$employeeId] ?? 0) : 0);
+                        $collections = (float) ($metrics->month_collections ?? 0);
+                        $loanbookLinesTotal += $loanbookLines;
+                        $assignedLoansTotal += $assignedLoans;
+                        $collectionsTotal += $collections;
                         yield [
                             (string) $agent->name,
                             (string) ($agent->branch ?? ''),
                             (string) ($agent->employee?->full_name ?? 'None'),
-                            (string) ((int) ($metrics->loanbook_lines ?? 0)),
-                            (string) ((int) ($employeeId ? ($assignedLoansByEmployee[$employeeId] ?? 0) : 0)),
-                            number_format((float) ($metrics->month_collections ?? 0), 2, '.', ''),
+                            (string) $loanbookLines,
+                            (string) $assignedLoans,
+                            number_format($collections, 2, '.', ''),
                         ];
                     }
+                    yield ['TOTAL', '', '', (string) $loanbookLinesTotal, (string) $assignedLoansTotal, number_format($collectionsTotal, 2, '.', '')];
                 },
                 $export
             );
@@ -987,15 +1022,19 @@ class LoanBookOperationsController extends Controller
                 'loanbook-collection-rates-'.now()->format('Ymd_His'),
                 ['Branch', 'Year', 'Month', 'Target Amount', 'Notes'],
                 function () use ($rows) {
+                    $targetAmountTotal = 0.0;
                     foreach ($rows as $rate) {
+                        $targetAmount = (float) $rate->target_amount;
+                        $targetAmountTotal += $targetAmount;
                         yield [
                             (string) $rate->branch,
                             (string) $rate->year,
                             (string) $rate->month,
-                            number_format((float) $rate->target_amount, 2, '.', ''),
+                            number_format($targetAmount, 2, '.', ''),
                             (string) ($rate->notes ?? ''),
                         ];
                     }
+                    yield ['TOTAL', '', '', number_format($targetAmountTotal, 2, '.', ''), ''];
                 },
                 $export
             );

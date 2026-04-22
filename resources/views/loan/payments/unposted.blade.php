@@ -1,4 +1,20 @@
 <x-loan-layout>
+    <style>
+        .loan-compact-table {
+            table-layout: fixed;
+            width: 100%;
+        }
+
+        .loan-compact-table th,
+        .loan-compact-table td {
+            padding: 0.45rem 0.5rem;
+            font-size: 0.75rem;
+            line-height: 1.15rem;
+            vertical-align: top;
+            word-break: break-word;
+        }
+    </style>
+
     <x-loan.page
         title="Unposted payments"
         subtitle="Queue of payments waiting to be posted to the loan book."
@@ -77,8 +93,8 @@
             </div>
 
             <div class="overflow-x-auto pb-2">
-                <table class="min-w-[1400px] w-full text-sm">
-                    <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                <table class="loan-compact-table min-w-[1100px] w-full text-xs">
+                    <thead class="bg-slate-50 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
                             <th class="px-5 py-3">Reference</th>
                             <th class="px-5 py-3">Loan</th>
@@ -94,10 +110,39 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($payments as $p)
-                            <tr class="hover:bg-slate-50/80">
+                            @php
+                                $unpostedRowUrl = $p->loan?->loanClient
+                                    ? route('loan.clients.show', $p->loan->loanClient)
+                                    : null;
+                            @endphp
+                            <tr
+                                class="hover:bg-slate-50/80 {{ $unpostedRowUrl ? 'cursor-pointer' : '' }}"
+                                @if ($unpostedRowUrl)
+                                    role="link"
+                                    tabindex="0"
+                                    onclick="if (event.target.closest('a, button, input, select, textarea, form, label, summary, details')) return; window.location.href='{{ $unpostedRowUrl }}';"
+                                    onkeydown="if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { event.preventDefault(); window.location.href='{{ $unpostedRowUrl }}'; }"
+                                @endif
+                            >
                                 <td class="px-5 py-3 font-mono text-xs text-slate-700">{{ $p->reference }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loan_number ?? '—' }}</td>
-                                <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loanClient?->full_name ?? '—' }}</td>
+                                <td class="px-5 py-3 text-slate-600">
+                                    @if ($p->loan)
+                                        <a href="{{ route('loan.book.loans.show', $p->loan) }}" class="text-indigo-600 hover:underline">
+                                            {{ $p->loan->loan_number }}
+                                        </a>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="px-5 py-3 text-slate-600">
+                                    @if ($p->loan?->loanClient)
+                                        <a href="{{ route('loan.clients.show', $p->loan->loanClient) }}" class="text-[#2f4f4f] hover:underline">
+                                            {{ $p->loan->loanClient->full_name }}
+                                        </a>
+                                    @else
+                                        —
+                                    @endif
+                                </td>
                                 <td class="px-5 py-3 text-right tabular-nums font-medium text-slate-900">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600">
                                     <div class="flex items-center gap-2">

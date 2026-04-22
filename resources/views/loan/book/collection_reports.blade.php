@@ -111,8 +111,30 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
+                        @php
+                            $branchLinesTotal = 0;
+                            $branchAmountTotal = 0.0;
+                        @endphp
                         @forelse ($byBranch as $row)
-                            <tr class="hover:bg-slate-50/80">
+                            @php
+                                $branchLinesTotal += (int) $row->receipt_count;
+                                $branchAmountTotal += (float) $row->total;
+                            @endphp
+                            @php
+                                $branchDrillUrl = route('loan.book.collection_reports', array_merge(request()->query(), [
+                                    'report_mode' => 'detail',
+                                    'branch' => (string) ($row->branch ?? ''),
+                                    'page' => 1,
+                                ]));
+                            @endphp
+                            <tr
+                                class="cursor-pointer hover:bg-slate-50/80"
+                                role="link"
+                                tabindex="0"
+                                @click="window.location.href = @js($branchDrillUrl)"
+                                @keydown.enter.prevent="window.location.href = @js($branchDrillUrl)"
+                                @keydown.space.prevent="window.location.href = @js($branchDrillUrl)"
+                            >
                                 <td x-show="cols.rowNo" class="px-5 py-3 text-slate-500 tabular-nums">{{ (($byBranch->currentPage() - 1) * $byBranch->perPage()) + $loop->iteration }}</td>
                                 <td x-show="cols.branch" class="px-5 py-3 font-medium text-slate-900">{{ $row->branch ?? '—' }}</td>
                                 <td x-show="cols.lines" class="px-5 py-3 text-right tabular-nums text-slate-600">{{ (int) $row->receipt_count }}</td>
@@ -124,6 +146,16 @@
                             </tr>
                         @endforelse
                     </tbody>
+                    @if ($byBranch->count() > 0)
+                        <tfoot class="bg-slate-100/80">
+                            <tr class="border-t border-slate-200">
+                                <td x-show="cols.rowNo" class="px-5 py-3 text-slate-600">—</td>
+                                <td x-show="cols.branch" class="px-5 py-3 font-bold text-slate-800">Totals (this page)</td>
+                                <td x-show="cols.lines" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($branchLinesTotal) }}</td>
+                                <td x-show="cols.total" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($branchAmountTotal, 2) }}</td>
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
             </div>
             @if (method_exists($byBranch, 'hasPages') && $byBranch->hasPages())
@@ -173,8 +205,32 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
+                        @php
+                            $detailCollectionTotal = 0.0;
+                            $detailArrearsTotal = 0.0;
+                            $detailPaidTotal = 0.0;
+                            $detailBalanceTotal = 0.0;
+                        @endphp
                         @forelse ($detailRows as $row)
-                            <tr class="hover:bg-slate-50/80">
+                            @php
+                                $detailCollectionTotal += (float) ($row->collection_total ?? 0);
+                                $detailArrearsTotal += (float) ($row->dpd ?? 0);
+                                $detailPaidTotal += (float) ($row->paid_total ?? 0);
+                                $detailBalanceTotal += (float) ($row->balance ?? 0);
+                            @endphp
+                            @php
+                                $detailRowUrl = !empty($row->client_id) ? route('loan.clients.show', (int) $row->client_id) : null;
+                            @endphp
+                            <tr
+                                class="hover:bg-slate-50/80 {{ $detailRowUrl ? 'cursor-pointer' : '' }}"
+                                @if ($detailRowUrl)
+                                    role="link"
+                                    tabindex="0"
+                                    @click="window.location.href = @js($detailRowUrl)"
+                                    @keydown.enter.prevent="window.location.href = @js($detailRowUrl)"
+                                    @keydown.space.prevent="window.location.href = @js($detailRowUrl)"
+                                @endif
+                            >
                                 <td x-show="cols.rowNo" class="px-5 py-3 text-slate-500 tabular-nums">{{ (($detailRows->currentPage() - 1) * $detailRows->perPage()) + $loop->iteration }}</td>
                                 <td x-show="cols.client" class="px-5 py-3 font-medium text-slate-900">{{ trim((string) ($row->client_name ?? '')) !== '' ? $row->client_name : '—' }}</td>
                                 <td x-show="cols.contact" class="px-5 py-3 text-slate-600"><x-phone-link :value="$row->client_phone" /></td>
@@ -191,6 +247,21 @@
                             </tr>
                         @endforelse
                     </tbody>
+                    @if ($detailRows->count() > 0)
+                        <tfoot class="bg-slate-100/80">
+                            <tr class="border-t border-slate-200">
+                                <td x-show="cols.rowNo" class="px-5 py-3 text-slate-600">—</td>
+                                <td x-show="cols.client" class="px-5 py-3 font-bold text-slate-800">Totals (this page)</td>
+                                <td x-show="cols.contact" class="px-5 py-3"></td>
+                                <td x-show="cols.portfolio" class="px-5 py-3"></td>
+                                <td x-show="cols.branch" class="px-5 py-3"></td>
+                                <td x-show="cols.collection" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($detailCollectionTotal, 2) }}</td>
+                                <td x-show="cols.arrears" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($detailArrearsTotal, 0) }}</td>
+                                <td x-show="cols.paid" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($detailPaidTotal, 2) }}</td>
+                                <td x-show="cols.balance" class="px-5 py-3 text-right tabular-nums font-bold text-slate-900">{{ number_format($detailBalanceTotal, 2) }}</td>
+                            </tr>
+                        </tfoot>
+                    @endif
                 </table>
             </div>
             @if ($detailRows->hasPages())

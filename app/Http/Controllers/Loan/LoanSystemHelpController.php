@@ -12,6 +12,7 @@ use App\Models\LoanRole;
 use App\Models\LoanSupportTicket;
 use App\Models\LoanSupportTicketReply;
 use App\Models\LoanSystemSetting;
+use App\Support\TabularExport;
 use App\Models\User;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use Illuminate\Http\RedirectResponse;
@@ -440,6 +441,21 @@ class LoanSystemHelpController extends Controller
             'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'default_term_unit' => ['nullable', 'in:daily,weekly,monthly'],
             'default_interest_rate_period' => ['nullable', 'in:daily,weekly,monthly,annual'],
+            'payment_interval_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'total_interest_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'interest_duration_value' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'interest_type' => ['nullable', 'in:flat_rate,reducing_balance,amortized,simple_interest'],
+            'min_loan_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'max_loan_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'arrears_penalty_scope' => ['nullable', 'in:whole_loan,per_installment,none'],
+            'penalty_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'rollover_fees' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'loan_offset_fees' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'repay_waiver_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'client_application_scope' => ['nullable', 'in:any_client,no_running_loans,new_clients_only,existing_clients_only'],
+            'installment_display_mode' => ['nullable', 'in:all_installments,due_only,summary'],
+            'exempt_from_checkoffs' => ['nullable', 'in:0,1'],
+            'cluster_name' => ['nullable', 'string', 'max:160'],
             'is_active' => ['nullable', 'in:0,1'],
             'charges' => ['nullable', 'array'],
             'charges.*.name' => ['nullable', 'string', 'max:160'],
@@ -458,6 +474,39 @@ class LoanSystemHelpController extends Controller
             'default_term_months' => isset($validated['default_term_months']) && $validated['default_term_months'] !== ''
                 ? (int) $validated['default_term_months']
                 : null,
+            'payment_interval_days' => isset($validated['payment_interval_days']) && $validated['payment_interval_days'] !== ''
+                ? (int) $validated['payment_interval_days']
+                : null,
+            'total_interest_amount' => isset($validated['total_interest_amount']) && $validated['total_interest_amount'] !== ''
+                ? (float) $validated['total_interest_amount']
+                : null,
+            'interest_duration_value' => isset($validated['interest_duration_value']) && $validated['interest_duration_value'] !== ''
+                ? (int) $validated['interest_duration_value']
+                : null,
+            'interest_type' => filled($validated['interest_type'] ?? null) ? (string) $validated['interest_type'] : null,
+            'min_loan_amount' => isset($validated['min_loan_amount']) && $validated['min_loan_amount'] !== ''
+                ? (float) $validated['min_loan_amount']
+                : null,
+            'max_loan_amount' => isset($validated['max_loan_amount']) && $validated['max_loan_amount'] !== ''
+                ? (float) $validated['max_loan_amount']
+                : null,
+            'arrears_penalty_scope' => filled($validated['arrears_penalty_scope'] ?? null) ? (string) $validated['arrears_penalty_scope'] : null,
+            'penalty_amount' => isset($validated['penalty_amount']) && $validated['penalty_amount'] !== ''
+                ? (float) $validated['penalty_amount']
+                : null,
+            'rollover_fees' => isset($validated['rollover_fees']) && $validated['rollover_fees'] !== ''
+                ? (float) $validated['rollover_fees']
+                : null,
+            'loan_offset_fees' => isset($validated['loan_offset_fees']) && $validated['loan_offset_fees'] !== ''
+                ? (float) $validated['loan_offset_fees']
+                : null,
+            'repay_waiver_days' => isset($validated['repay_waiver_days']) && $validated['repay_waiver_days'] !== ''
+                ? (int) $validated['repay_waiver_days']
+                : null,
+            'client_application_scope' => filled($validated['client_application_scope'] ?? null) ? (string) $validated['client_application_scope'] : null,
+            'installment_display_mode' => filled($validated['installment_display_mode'] ?? null) ? (string) $validated['installment_display_mode'] : null,
+            'exempt_from_checkoffs' => ($validated['exempt_from_checkoffs'] ?? '0') === '1',
+            'cluster_name' => filled($validated['cluster_name'] ?? null) ? trim((string) $validated['cluster_name']) : null,
             'is_active' => ($validated['is_active'] ?? '1') === '1',
         ];
         if ($hasDefaultTermUnit) {
@@ -507,6 +556,21 @@ class LoanSystemHelpController extends Controller
             'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'default_term_unit' => ['nullable', 'in:daily,weekly,monthly'],
             'default_interest_rate_period' => ['nullable', 'in:daily,weekly,monthly,annual'],
+            'payment_interval_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'total_interest_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'interest_duration_value' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'interest_type' => ['nullable', 'in:flat_rate,reducing_balance,amortized,simple_interest'],
+            'min_loan_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'max_loan_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'arrears_penalty_scope' => ['nullable', 'in:whole_loan,per_installment,none'],
+            'penalty_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'rollover_fees' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'loan_offset_fees' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'repay_waiver_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'client_application_scope' => ['nullable', 'in:any_client,no_running_loans,new_clients_only,existing_clients_only'],
+            'installment_display_mode' => ['nullable', 'in:all_installments,due_only,summary'],
+            'exempt_from_checkoffs' => ['nullable', 'in:0,1'],
+            'cluster_name' => ['nullable', 'string', 'max:160'],
             'is_active' => ['required', 'in:0,1'],
             'apply_to_existing_active_loans' => ['nullable', 'in:0,1'],
             'repricing_effective_date' => ['nullable', 'date'],
@@ -527,6 +591,39 @@ class LoanSystemHelpController extends Controller
             'default_term_months' => isset($validated['default_term_months']) && $validated['default_term_months'] !== ''
                 ? (int) $validated['default_term_months']
                 : null,
+            'payment_interval_days' => isset($validated['payment_interval_days']) && $validated['payment_interval_days'] !== ''
+                ? (int) $validated['payment_interval_days']
+                : null,
+            'total_interest_amount' => isset($validated['total_interest_amount']) && $validated['total_interest_amount'] !== ''
+                ? (float) $validated['total_interest_amount']
+                : null,
+            'interest_duration_value' => isset($validated['interest_duration_value']) && $validated['interest_duration_value'] !== ''
+                ? (int) $validated['interest_duration_value']
+                : null,
+            'interest_type' => filled($validated['interest_type'] ?? null) ? (string) $validated['interest_type'] : null,
+            'min_loan_amount' => isset($validated['min_loan_amount']) && $validated['min_loan_amount'] !== ''
+                ? (float) $validated['min_loan_amount']
+                : null,
+            'max_loan_amount' => isset($validated['max_loan_amount']) && $validated['max_loan_amount'] !== ''
+                ? (float) $validated['max_loan_amount']
+                : null,
+            'arrears_penalty_scope' => filled($validated['arrears_penalty_scope'] ?? null) ? (string) $validated['arrears_penalty_scope'] : null,
+            'penalty_amount' => isset($validated['penalty_amount']) && $validated['penalty_amount'] !== ''
+                ? (float) $validated['penalty_amount']
+                : null,
+            'rollover_fees' => isset($validated['rollover_fees']) && $validated['rollover_fees'] !== ''
+                ? (float) $validated['rollover_fees']
+                : null,
+            'loan_offset_fees' => isset($validated['loan_offset_fees']) && $validated['loan_offset_fees'] !== ''
+                ? (float) $validated['loan_offset_fees']
+                : null,
+            'repay_waiver_days' => isset($validated['repay_waiver_days']) && $validated['repay_waiver_days'] !== ''
+                ? (int) $validated['repay_waiver_days']
+                : null,
+            'client_application_scope' => filled($validated['client_application_scope'] ?? null) ? (string) $validated['client_application_scope'] : null,
+            'installment_display_mode' => filled($validated['installment_display_mode'] ?? null) ? (string) $validated['installment_display_mode'] : null,
+            'exempt_from_checkoffs' => ($validated['exempt_from_checkoffs'] ?? '0') === '1',
+            'cluster_name' => filled($validated['cluster_name'] ?? null) ? trim((string) $validated['cluster_name']) : null,
             'is_active' => $validated['is_active'] === '1',
         ];
         if ($hasDefaultTermUnit) {
@@ -1157,32 +1254,97 @@ class LoanSystemHelpController extends Controller
         return redirect()->route($redirectRouteName)->with('status', 'Settings saved.');
     }
 
-    public function accessLogsIndex(Request $request): View
+    public function accessLogsIndex(Request $request)
     {
-        $q = LoanAccessLog::query()->with('user')->orderByDesc('created_at');
+        $logsQuery = LoanAccessLog::query()->with('user')->orderByDesc('created_at');
 
         if ($request->filled('user_id')) {
-            $q->where('user_id', $request->integer('user_id'));
+            $logsQuery->where('user_id', $request->integer('user_id'));
         }
         if ($request->filled('method')) {
-            $q->where('method', strtoupper($request->string('method')));
+            $logsQuery->where('method', strtoupper($request->string('method')));
+        }
+        if ($request->filled('route_name')) {
+            $logsQuery->where('route_name', $request->string('route_name'));
+        }
+        if ($request->filled('ip_address')) {
+            $logsQuery->where('ip_address', $request->string('ip_address'));
+        }
+        if ($request->filled('from_date')) {
+            $logsQuery->whereDate('created_at', '>=', (string) $request->string('from_date'));
+        }
+        if ($request->filled('to_date')) {
+            $logsQuery->whereDate('created_at', '<=', (string) $request->string('to_date'));
         }
         if ($request->filled('q')) {
             $term = '%'.$request->string('q').'%';
-            $q->where(function ($w) use ($term) {
+            $logsQuery->where(function ($w) use ($term) {
                 $w->where('path', 'like', $term)
-                    ->orWhere('route_name', 'like', $term);
+                    ->orWhere('route_name', 'like', $term)
+                    ->orWhere('activity', 'like', $term);
+            });
+        }
+        if ($request->filled('activity_type')) {
+            $activityType = strtolower(trim((string) $request->string('activity_type')));
+            $logsQuery->where(function ($w) use ($activityType) {
+                if ($activityType === 'failed') {
+                    $w->where('activity', 'like', '%failed%');
+                    return;
+                }
+
+                $w->where('activity', 'like', ucfirst($activityType).'%');
             });
         }
 
-        $logs = $q->paginate(40)->withQueryString();
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $rows = (clone $logsQuery)->limit(10000)->get();
+
+            return TabularExport::stream(
+                'loan-access-logs-'.now()->format('Ymd_His'),
+                ['When', 'User', 'Method', 'Activity', 'Path', 'Route', 'IP'],
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield [
+                            optional($row->created_at)->format('Y-m-d H:i:s') ?? '',
+                            (string) ($row->user?->name ?? ''),
+                            (string) ($row->method ?? ''),
+                            (string) ($row->activity ?? ''),
+                            (string) ($row->path ?? ''),
+                            (string) ($row->route_name ?? ''),
+                            (string) ($row->ip_address ?? ''),
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $perPage = min(200, max(20, (int) $request->query('per_page', 40)));
+        $logs = $logsQuery->paginate($perPage)->withQueryString();
         $users = User::query()->orderBy('name')->get(['id', 'name']);
+        $routes = LoanAccessLog::query()
+            ->whereNotNull('route_name')
+            ->where('route_name', '!=', '')
+            ->distinct()
+            ->orderBy('route_name')
+            ->pluck('route_name');
+        $ips = LoanAccessLog::query()
+            ->whereNotNull('ip_address')
+            ->where('ip_address', '!=', '')
+            ->distinct()
+            ->orderBy('ip_address')
+            ->pluck('ip_address');
 
         return view('loan.system.access_logs.index', [
             'title' => 'Access logs',
             'subtitle' => 'Loan portal page views and actions (from sign-in onward).',
             'logs' => $logs,
             'users' => $users,
+            'routes' => $routes,
+            'ips' => $ips,
+            'perPage' => $perPage,
+            'activityTypes' => ['viewed', 'submitted', 'updated', 'deleted', 'failed'],
         ]);
     }
 

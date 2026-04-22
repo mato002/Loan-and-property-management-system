@@ -41,7 +41,14 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($leads as $lead)
-                            <tr class="hover:bg-slate-50/80">
+                            <tr
+                                class="cursor-pointer hover:bg-slate-50/80"
+                                role="link"
+                                tabindex="0"
+                                @click="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href='{{ route('loan.clients.show', $lead) }}'; }"
+                                @keydown.enter.prevent="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href='{{ route('loan.clients.show', $lead) }}'; }"
+                                @keydown.space.prevent="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href='{{ route('loan.clients.show', $lead) }}'; }"
+                            >
                                 <td class="px-5 py-3 font-mono text-xs text-slate-600">{{ $lead->client_number }}</td>
                                 <td class="px-5 py-3 font-medium text-slate-900">{{ $lead->full_name }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $lead->lead_status ?? 'new' }}</td>

@@ -23,6 +23,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Dashboard balance source
+    |--------------------------------------------------------------------------
+    | local:    always show local DB wallet (sms_wallets)
+    | provider: always show provider API balance
+    | auto:     use provider when configured, else local DB wallet
+    */
+    'dashboard_balance_source' => env('BULKSMS_DASHBOARD_BALANCE_SOURCE', 'auto'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Provider API (Pradytec AI CRM)
     |--------------------------------------------------------------------------
     */

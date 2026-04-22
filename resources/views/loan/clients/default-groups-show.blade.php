@@ -67,7 +67,14 @@
                         </thead>
                         <tbody class="divide-y divide-slate-100">
                             @forelse ($members as $client)
-                                <tr class="hover:bg-slate-50/80">
+                                <tr
+                                    class="cursor-pointer hover:bg-slate-50/80"
+                                    role="link"
+                                    tabindex="0"
+                                    @click="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href='{{ route('loan.clients.show', $client) }}'; }"
+                                    @keydown.enter.prevent="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href='{{ route('loan.clients.show', $client) }}'; }"
+                                    @keydown.space.prevent="if (!$event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { window.location.href='{{ route('loan.clients.show', $client) }}'; }"
+                                >
                                     <td class="px-5 py-3 font-medium text-slate-900">
                                         <a href="{{ route('loan.clients.show', $client) }}" class="text-indigo-600 hover:text-indigo-500">{{ $client->full_name }}</a>
                                     </td>

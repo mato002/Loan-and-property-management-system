@@ -13,6 +13,25 @@ use Throwable;
 
 class BulkSmsService
 {
+    private function providerConfigured(): bool
+    {
+        $cfg = (array) config('bulksms.provider', []);
+        $apiUrl = rtrim((string) ($cfg['api_url'] ?? ''), '/');
+        $clientId = trim((string) ($cfg['client_id'] ?? ''));
+        $apiKey = trim((string) ($cfg['api_key'] ?? ''));
+
+        return $apiUrl !== '' && $clientId !== '' && $apiKey !== '';
+    }
+
+    private function localWalletBalanceValue(): float
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('sms_wallets')) {
+            return 0.0;
+        }
+
+        return (float) SmsWallet::singleton()->balance;
+    }
+
     private function billingMode(): string
     {
         $mode = strtolower((string) config('bulksms.billing_mode', 'local_wallet'));
@@ -137,7 +156,32 @@ class BulkSmsService
 
     public function walletBalance(): string
     {
-        return (string) SmsWallet::singleton()->balance;
+        return (string) $this->dashboardBalance();
+    }
+
+    public function dashboardBalance(): float
+    {
+        $source = strtolower((string) config('bulksms.dashboard_balance_source', 'auto'));
+        $source = in_array($source, ['local', 'provider', 'auto'], true) ? $source : 'auto';
+
+        if ($source === 'local') {
+            return $this->localWalletBalanceValue();
+        }
+
+        if ($source === 'provider') {
+            $provider = $this->providerBalance();
+            return (float) ($provider['ok'] ?? false ? ($provider['balance'] ?? 0) : 0);
+        }
+
+        // auto: prefer provider when configured and reachable, then fallback to local.
+        if ($this->providerConfigured()) {
+            $provider = $this->providerBalance();
+            if (($provider['ok'] ?? false) === true) {
+                return (float) ($provider['balance'] ?? 0);
+            }
+        }
+
+        return $this->localWalletBalanceValue();
     }
 
     /**

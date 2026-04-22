@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Employee;
 use App\Models\LoanBranch;
 use App\Models\LoanDepartment;
+use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanJobTitle;
 use App\Models\LoanRole;
 use App\Models\LoanRegion;
@@ -29,6 +30,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Throwable;
@@ -491,6 +493,9 @@ class LoanEmployeesController extends Controller
         $leaveType = trim((string) $request->query('leave_type', ''));
         $employeeId = (int) $request->query('employee_id', 0);
         $perPage = min(200, max(10, (int) $request->query('per_page', 20)));
+        $fields = $this->leaveWorkflowFormDefinitions();
+        $mapped = $this->mappedLeaveFields($fields);
+        $custom = $this->leaveCustomFields($fields, $mapped);
 
         $leavesQuery = StaffLeave::query()
             ->with('employee')
@@ -509,13 +514,19 @@ class LoanEmployeesController extends Controller
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
             $rows = (clone $leavesQuery)->limit(5000)->get();
+            $baseHeadings = ['Employee', 'Employee #', 'Type', 'Start date', 'End date', 'Days', 'Status', 'Notes'];
+            $dynamicHeadings = collect($custom)
+                ->map(fn (array $field): string => (string) ($field['label'] ?? $field['key'] ?? 'Custom field'))
+                ->values()
+                ->all();
+            $headings = array_values(array_merge($baseHeadings, $dynamicHeadings));
 
             return TabularExport::stream(
                 'loan-employee-leaves-'.now()->format('Ymd_His'),
-                ['Employee', 'Employee #', 'Type', 'Start date', 'End date', 'Days', 'Status', 'Notes'],
-                function () use ($rows) {
+                $headings,
+                function () use ($rows, $custom) {
                     foreach ($rows as $leave) {
-                        yield [
+                        $baseRow = [
                             (string) ($leave->employee?->full_name ?? ''),
                             (string) ($leave->employee?->employee_number ?? ''),
                             (string) $leave->leave_type,
@@ -525,6 +536,15 @@ class LoanEmployeesController extends Controller
                             (string) ucfirst((string) $leave->status),
                             (string) ($leave->notes ?? ''),
                         ];
+                        $meta = (array) ($leave->form_meta ?? []);
+                        $dynamicRow = collect($custom)
+                            ->map(function (array $field) use ($meta): string {
+                                $key = (string) ($field['key'] ?? '');
+                                return (string) ($meta[$key] ?? '');
+                            })
+                            ->values()
+                            ->all();
+                        yield array_values(array_merge($baseRow, $dynamicRow));
                     }
                 },
                 $export
@@ -541,8 +561,11 @@ class LoanEmployeesController extends Controller
             ->get();
 
         $leaveTypes = StaffLeave::query()->whereNotNull('leave_type')->where('leave_type', '!=', '')->distinct()->orderBy('leave_type')->pluck('leave_type');
+        if ($leaveTypes->isEmpty()) {
+            $leaveTypes = collect($this->defaultLeaveTypeOptions());
+        }
 
-        return view('loan.employees.leaves', compact('leaves', 'employees', 'q', 'status', 'leaveType', 'employeeId', 'perPage', 'leaveTypes'));
+        return view('loan.employees.leaves', compact('leaves', 'employees', 'q', 'status', 'leaveType', 'employeeId', 'perPage', 'leaveTypes', 'custom', 'mapped'));
     }
 
     public function leavesCreate(): View
@@ -551,8 +574,17 @@ class LoanEmployeesController extends Controller
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get();
+        $fields = $this->leaveWorkflowFormDefinitions();
+        $mapped = $this->mappedLeaveFields($fields);
+        $custom = $this->leaveCustomFields($fields, $mapped);
+        $leaveTypeOptions = $this->leaveTypeOptionsFromMapped($mapped['leave_type'] ?? null);
 
-        return view('loan.employees.leaves-create', compact('employees'));
+        return view('loan.employees.leaves-create', [
+            'employees' => $employees,
+            'leaveMappedFields' => $mapped,
+            'leaveCustomFields' => $custom,
+            'leaveTypeOptions' => $leaveTypeOptions,
+        ]);
     }
 
     public function leavesStore(Request $request): RedirectResponse
@@ -563,11 +595,13 @@ class LoanEmployeesController extends Controller
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            ...$this->leaveDynamicValidationRules(),
         ]);
 
         $start = Carbon::parse($validated['start_date'])->startOfDay();
         $end = Carbon::parse($validated['end_date'])->startOfDay();
         $days = (int) $start->diffInDays($end) + 1;
+        $validated['form_meta'] = $this->resolveLeaveFormMeta($request);
 
         StaffLeave::create([
             'employee_id' => $validated['employee_id'],
@@ -576,6 +610,7 @@ class LoanEmployeesController extends Controller
             'end_date' => $end,
             'days' => $days,
             'status' => 'pending',
+            'form_meta' => $validated['form_meta'],
             'notes' => $validated['notes'] ?? null,
         ]);
 
@@ -599,6 +634,8 @@ class LoanEmployeesController extends Controller
     {
         $q = trim((string) $request->query('q', ''));
         $perPage = min(120, max(12, (int) $request->query('per_page', 24)));
+        $permissionOptions = $this->staffGroupPermissionOptions();
+        $permissionKeys = array_keys($permissionOptions);
 
         $groupsQuery = StaffGroup::query()
             ->withCount('employees')
@@ -616,13 +653,14 @@ class LoanEmployeesController extends Controller
 
             return TabularExport::stream(
                 'loan-employee-groups-'.now()->format('Ymd_His'),
-                ['Group', 'Description', 'Members'],
+                ['Group', 'Description', 'Members', 'Permissions'],
                 function () use ($rows) {
                     foreach ($rows as $group) {
                         yield [
                             (string) $group->name,
                             (string) ($group->description ?? ''),
                             (string) $group->employees_count,
+                            (string) count(array_filter((array) ($group->permissions ?? []))),
                         ];
                     }
                 },
@@ -634,7 +672,7 @@ class LoanEmployeesController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        return view('loan.employees.groups', compact('groups', 'q', 'perPage'));
+        return view('loan.employees.groups', compact('groups', 'q', 'perPage', 'permissionOptions', 'permissionKeys'));
     }
 
     public function groupsCreate(): View
@@ -644,16 +682,46 @@ class LoanEmployeesController extends Controller
 
     public function groupsStore(Request $request): RedirectResponse
     {
+        $permissionOptions = $this->staffGroupPermissionOptions();
+        $permissionKeys = array_keys($permissionOptions);
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'description' => ['nullable', 'string', 'max:2000'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', 'in:'.implode(',', $permissionKeys)],
         ]);
 
-        $staff_group = StaffGroup::create($validated);
+        $staff_group = StaffGroup::create([
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'permissions' => array_values(array_unique($validated['permissions'] ?? [])),
+        ]);
 
         return redirect()
-            ->route('loan.employees.groups.show', $staff_group)
-            ->with('status', 'Group created. Add members below.');
+            ->route('loan.employees.groups')
+            ->with('status', 'Group created.');
+    }
+
+    public function groupsUpdate(Request $request, StaffGroup $staff_group): RedirectResponse
+    {
+        $permissionOptions = $this->staffGroupPermissionOptions();
+        $permissionKeys = array_keys($permissionOptions);
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:160'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', 'in:'.implode(',', $permissionKeys)],
+        ]);
+
+        $staff_group->update([
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'permissions' => array_values(array_unique($validated['permissions'] ?? [])),
+        ]);
+
+        return redirect()
+            ->route('loan.employees.groups')
+            ->with('status', 'Group updated.');
     }
 
     public function groupsShow(StaffGroup $staff_group): View
@@ -694,6 +762,51 @@ class LoanEmployeesController extends Controller
         return redirect()
             ->route('loan.employees.groups')
             ->with('status', 'Group deleted.');
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function staffGroupPermissionOptions(): array
+    {
+        return [
+            'access_accounting' => 'Access accounting',
+            'view_requisitions' => 'View requisitions',
+            'create_requisition' => 'Create requisition',
+            'edit_requisitions' => 'Edit requisitions',
+            'delete_requisitions' => 'Delete requisitions',
+            'approve_requisitions' => 'Approve requisitions',
+            'view_cashbook' => 'View cashbook',
+            'manage_cashbook' => 'Manage cashbook',
+            'view_accounting_books' => 'View accounting books',
+            'view_expenses' => 'View expenses',
+            'post_journal_entry' => 'Post journal entry',
+            'delete_journal_entry' => 'Delete journal entry',
+            'view_disbursements' => 'View disbursements',
+            'reconcile_disbursements' => 'Reconcile disbursements',
+            'approve_salary_advance' => 'Approve salary advance',
+            'view_salary_advances' => 'View salary advances',
+            'update_accounting_rule' => 'Update accounting rule',
+            'create_chart_of_account' => 'Create chart of account',
+            'delete_chart_of_account' => 'Delete chart of account',
+            'add_cashbook_float' => 'Add cashbook float',
+            'create_client_lead' => 'Create client lead',
+            'enable_client_auto_disbursement' => 'Enable client auto-disbursement',
+            'manage_wallet_withdrawals' => 'Manage wallet withdrawals',
+            'manage_wallet_deposits' => 'Manage wallet deposits',
+            'perform_inter_wallet_transfers' => 'Perform inter-wallet transfers',
+            'approve_wallet_deposits' => 'Approve wallet deposits',
+            'reverse_wallet_transactions' => 'Reverse wallet transactions',
+            'manage_wallet_overdraft_limit' => 'Manage wallet overdraft limit',
+            'disable_client_auto_disbursement' => 'Disable client auto-disbursement',
+            'access_group_lending' => 'Access group lending',
+            'create_loan_group' => 'Create loan group',
+            'edit_loan_group' => 'Edit loan group',
+            'delete_loan_group' => 'Delete loan group',
+            'manage_loan_group_membership' => 'Manage loan group membership',
+            'manage_group_leadership' => 'Manage group leadership',
+            'remove_member_from_group' => 'Remove member from group',
+        ];
     }
 
     public function portfolios(Request $request)
@@ -889,8 +1002,15 @@ class LoanEmployeesController extends Controller
             ->orderBy('last_name')
             ->orderBy('first_name')
             ->get();
+        $fields = $this->staffLoanFormDefinitions();
+        $mapped = $this->mappedStaffLoanFields($fields);
+        $custom = $this->staffLoanCustomFields($fields, $mapped);
 
-        return view('loan.employees.loan-applications-create', compact('employees'));
+        return view('loan.employees.loan-applications-create', [
+            'employees' => $employees,
+            'staffLoanMappedFields' => $mapped,
+            'staffLoanCustomFields' => $custom,
+        ]);
     }
 
     public function loanApplicationsStore(Request $request): RedirectResponse
@@ -900,7 +1020,9 @@ class LoanEmployeesController extends Controller
             'product' => ['required', 'string', 'max:160'],
             'amount' => ['required', 'numeric', 'min:0'],
             'stage' => ['nullable', 'string', 'max:120'],
+            ...$this->staffLoanDynamicValidationRules(),
         ]);
+        $validated['form_meta'] = $this->resolveStaffLoanFormMeta($request);
 
         $application = StaffLoanApplication::create([
             'employee_id' => $validated['employee_id'],
@@ -908,6 +1030,7 @@ class LoanEmployeesController extends Controller
             'amount' => $validated['amount'],
             'stage' => $validated['stage'] ?? 'Submitted',
             'status' => 'pending',
+            'form_meta' => $validated['form_meta'],
         ]);
 
         $application->update([
@@ -1262,6 +1385,341 @@ class LoanEmployeesController extends Controller
         }
 
         return checkdnsrr($domain, 'MX') || checkdnsrr($domain, 'A') || checkdnsrr($domain, 'AAAA');
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, LoanFormFieldDefinition>
+     */
+    private function leaveWorkflowFormDefinitions()
+    {
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_LEAVE_WORKFLOW);
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_STAFF_LEAVE_APPLICATION);
+
+        return LoanFormFieldDefinition::query()
+            ->whereIn('form_kind', [
+                LoanFormFieldDefinition::KIND_LEAVE_WORKFLOW,
+                LoanFormFieldDefinition::KIND_STAFF_LEAVE_APPLICATION,
+            ])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @return array<string, array<string, mixed>>
+     */
+    private function mappedLeaveFields($fields): array
+    {
+        $mapped = [];
+        foreach ($fields as $field) {
+            $key = trim((string) $field->field_key);
+            $label = trim((string) $field->label);
+            $hay = strtolower($key.' '.$label);
+            if (! isset($mapped['leave_type']) && str_contains($hay, 'leave type')) {
+                $mapped['leave_type'] = $this->normalizedDefinitionField($field);
+                continue;
+            }
+            if (! isset($mapped['notes']) && (str_contains($hay, 'reason') || str_contains($hay, 'handover') || str_contains($hay, 'comment') || str_contains($hay, 'notes'))) {
+                $mapped['notes'] = $this->normalizedDefinitionField($field);
+            }
+        }
+
+        if (! isset($mapped['leave_type'])) {
+            $typeCandidate = $fields->first(fn (LoanFormFieldDefinition $f) => $f->data_type === LoanFormFieldDefinition::TYPE_SELECT);
+            if ($typeCandidate) {
+                $mapped['leave_type'] = $this->normalizedDefinitionField($typeCandidate);
+            }
+        }
+
+        if (! isset($mapped['notes'])) {
+            $notesCandidate = $fields->first(fn (LoanFormFieldDefinition $f) => (string) $f->field_key !== (string) ($mapped['leave_type']['key'] ?? ''));
+            if ($notesCandidate) {
+                $mapped['notes'] = $this->normalizedDefinitionField($notesCandidate);
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @param  array<string, array<string, mixed>>  $mapped
+     * @return list<array<string, mixed>>
+     */
+    private function leaveCustomFields($fields, array $mapped): array
+    {
+        $mappedKeys = collect($mapped)->pluck('key')->filter()->map(fn ($v) => (string) $v)->all();
+
+        return $fields
+            ->filter(fn (LoanFormFieldDefinition $f): bool => ! in_array((string) $f->field_key, $mappedKeys, true))
+            ->map(fn (LoanFormFieldDefinition $f): array => $this->normalizedDefinitionField($f))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function leaveTypeOptionsFromMapped(?array $mappedType): array
+    {
+        $options = collect((array) ($mappedType['select_options'] ?? []))
+            ->map(fn ($v) => trim((string) $v))
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($options === []) {
+            return $this->defaultLeaveTypeOptions();
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function defaultLeaveTypeOptions(): array
+    {
+        return ['Annual', 'Sick', 'Unpaid', 'Maternity', 'Paternity', 'Other'];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function leaveDynamicValidationRules(): array
+    {
+        if (! $this->leaveFormMetaSupported()) {
+            return [];
+        }
+
+        $rules = [];
+        $fields = $this->leaveWorkflowFormDefinitions();
+        $mapped = $this->mappedLeaveFields($fields);
+        foreach ($this->leaveCustomFields($fields, $mapped) as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
+            if ($type === LoanFormFieldDefinition::TYPE_NUMBER) {
+                $rules["form_meta.$key"] = ['nullable', 'numeric'];
+                continue;
+            }
+            if ($type === LoanFormFieldDefinition::TYPE_SELECT) {
+                $options = collect((array) ($field['select_options'] ?? []))
+                    ->map(fn (string $v): string => trim($v))
+                    ->filter()
+                    ->values()
+                    ->all();
+                $rules["form_meta.$key"] = $options !== []
+                    ? ['nullable', 'string', Rule::in($options)]
+                    : ['nullable', 'string', 'max:255'];
+                continue;
+            }
+            $rules["form_meta.$key"] = ['nullable', 'string', 'max:5000'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveLeaveFormMeta(Request $request): array
+    {
+        if (! $this->leaveFormMetaSupported()) {
+            return [];
+        }
+
+        $meta = [];
+        $fields = $this->leaveWorkflowFormDefinitions();
+        $mapped = $this->mappedLeaveFields($fields);
+        foreach ($this->leaveCustomFields($fields, $mapped) as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $value = $request->input("form_meta.$key");
+            if (is_array($value)) {
+                $value = '';
+            }
+            $meta[$key] = trim((string) ($value ?? ''));
+        }
+
+        return $meta;
+    }
+
+    private function leaveFormMetaSupported(): bool
+    {
+        return Schema::hasColumn('staff_leaves', 'form_meta');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizedDefinitionField(LoanFormFieldDefinition $field): array
+    {
+        return [
+            'key' => (string) $field->field_key,
+            'label' => (string) $field->label,
+            'data_type' => (string) $field->data_type,
+            'select_options' => $this->splitSelectOptions((string) ($field->select_options ?? '')),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function splitSelectOptions(string $options): array
+    {
+        return collect(explode(',', $options))
+            ->map(fn (string $opt): string => trim($opt))
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, LoanFormFieldDefinition>
+     */
+    private function staffLoanFormDefinitions()
+    {
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_STAFF_LOAN);
+
+        return LoanFormFieldDefinition::query()
+            ->where('form_kind', LoanFormFieldDefinition::KIND_STAFF_LOAN)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @return array<string, array<string, mixed>>
+     */
+    private function mappedStaffLoanFields($fields): array
+    {
+        $mapped = [];
+        foreach ($fields as $field) {
+            $key = trim((string) $field->field_key);
+            $label = trim((string) $field->label);
+            $hay = strtolower($key.' '.$label);
+            if (! isset($mapped['product']) && (str_contains($hay, 'product') || str_contains($hay, 'loan type'))) {
+                $mapped['product'] = $this->normalizedDefinitionField($field);
+                continue;
+            }
+            if (! isset($mapped['amount']) && str_contains($hay, 'amount')) {
+                $mapped['amount'] = $this->normalizedDefinitionField($field);
+                continue;
+            }
+            if (! isset($mapped['stage']) && (str_contains($hay, 'stage') || str_contains($hay, 'status'))) {
+                $mapped['stage'] = $this->normalizedDefinitionField($field);
+            }
+        }
+
+        if (! isset($mapped['amount'])) {
+            $amountCandidate = $fields->first(fn (LoanFormFieldDefinition $f) => $f->data_type === LoanFormFieldDefinition::TYPE_NUMBER);
+            if ($amountCandidate) {
+                $mapped['amount'] = $this->normalizedDefinitionField($amountCandidate);
+            }
+        }
+
+        if (! isset($mapped['product'])) {
+            $productCandidate = $fields->first();
+            if ($productCandidate) {
+                $mapped['product'] = $this->normalizedDefinitionField($productCandidate);
+            }
+        }
+
+        return $mapped;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @param  array<string, array<string, mixed>>  $mapped
+     * @return list<array<string, mixed>>
+     */
+    private function staffLoanCustomFields($fields, array $mapped): array
+    {
+        $mappedKeys = collect($mapped)->pluck('key')->filter()->map(fn ($v) => (string) $v)->all();
+
+        return $fields
+            ->filter(fn (LoanFormFieldDefinition $f): bool => ! in_array((string) $f->field_key, $mappedKeys, true))
+            ->map(fn (LoanFormFieldDefinition $f): array => $this->normalizedDefinitionField($f))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function staffLoanDynamicValidationRules(): array
+    {
+        if (! $this->staffLoanFormMetaSupported()) {
+            return [];
+        }
+
+        $rules = [];
+        $fields = $this->staffLoanFormDefinitions();
+        $mapped = $this->mappedStaffLoanFields($fields);
+        foreach ($this->staffLoanCustomFields($fields, $mapped) as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
+            if ($type === LoanFormFieldDefinition::TYPE_NUMBER) {
+                $rules["form_meta.$key"] = ['nullable', 'numeric'];
+                continue;
+            }
+            if ($type === LoanFormFieldDefinition::TYPE_SELECT) {
+                $options = collect((array) ($field['select_options'] ?? []))
+                    ->map(fn (string $v): string => trim($v))
+                    ->filter()
+                    ->values()
+                    ->all();
+                $rules["form_meta.$key"] = $options !== []
+                    ? ['nullable', 'string', Rule::in($options)]
+                    : ['nullable', 'string', 'max:255'];
+                continue;
+            }
+            $rules["form_meta.$key"] = ['nullable', 'string', 'max:5000'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolveStaffLoanFormMeta(Request $request): array
+    {
+        if (! $this->staffLoanFormMetaSupported()) {
+            return [];
+        }
+
+        $meta = [];
+        $fields = $this->staffLoanFormDefinitions();
+        $mapped = $this->mappedStaffLoanFields($fields);
+        foreach ($this->staffLoanCustomFields($fields, $mapped) as $field) {
+            $key = (string) ($field['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $value = $request->input("form_meta.$key");
+            if (is_array($value)) {
+                $value = '';
+            }
+            $meta[$key] = trim((string) ($value ?? ''));
+        }
+
+        return $meta;
+    }
+
+    private function staffLoanFormMetaSupported(): bool
+    {
+        return Schema::hasColumn('staff_loan_applications', 'form_meta');
     }
 
     /**

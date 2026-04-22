@@ -26,6 +26,7 @@ class AccountingRequisition extends Model
         'approved_by',
         'approved_at',
         'paid_at',
+        'form_meta',
         'notes',
     ];
 
@@ -35,6 +36,7 @@ class AccountingRequisition extends Model
             'amount' => 'decimal:2',
             'approved_at' => 'datetime',
             'paid_at' => 'datetime',
+            'form_meta' => 'array',
         ];
     }
 

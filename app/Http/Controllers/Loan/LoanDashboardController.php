@@ -150,12 +150,10 @@ class LoanDashboardController extends Controller
         }
 
         $smsBalance = 0.0;
-        if (Schema::hasTable('sms_wallets')) {
-            try {
-                $smsBalance = (float) app(BulkSmsService::class)->walletBalance();
-            } catch (\Throwable) {
-                $smsBalance = 0.0;
-            }
+        try {
+            $smsBalance = (float) app(BulkSmsService::class)->dashboardBalance();
+        } catch (\Throwable) {
+            $smsBalance = 0.0;
         }
 
         return [

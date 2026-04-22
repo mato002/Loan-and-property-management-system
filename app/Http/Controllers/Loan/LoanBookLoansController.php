@@ -35,6 +35,23 @@ class LoanBookLoansController extends Controller
 
     public function index(Request $request)
     {
+        $exportColumnMap = [
+            'loanNo' => 'Loan #',
+            'client' => 'Client',
+            'contact' => 'Contact',
+            'officer' => 'Loan officer',
+            'disbursement' => 'Disbursement',
+            'product' => 'Product',
+            'loan' => 'Loan',
+            'toPay' => 'To-pay',
+            'paid' => 'Paid',
+            'percent' => 'Percent',
+            'balance' => 'Balance',
+            'dpd' => 'DPD',
+            'status' => 'Status',
+            'maturity' => 'Maturity',
+        ];
+
         $query = LoanBookLoan::query()
             ->with(['loanClient.assignedEmployee', 'application'])
             ->withSum('processedRepayments', 'amount');
@@ -91,26 +108,67 @@ class LoanBookLoansController extends Controller
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $requestedCols = array_values(array_filter(array_map(
+                'trim',
+                explode(',', (string) $request->query('cols', ''))
+            )));
+            $selectedCols = $requestedCols !== []
+                ? array_values(array_intersect(array_keys($exportColumnMap), $requestedCols))
+                : array_keys($exportColumnMap);
+            if ($selectedCols === []) {
+                $selectedCols = array_keys($exportColumnMap);
+            }
+
             $rows = (clone $query)->orderByDesc('created_at')->limit(5000)->get();
 
             return TabularExport::stream(
                 'loanbook-loans-'.now()->format('Ymd_His'),
-                ['Loan #', 'Client #', 'Client Name', 'Product', 'Principal', 'Balance', 'Interest Rate', 'DPD', 'Status', 'Branch'],
-                function () use ($rows) {
+                array_map(fn (string $key): string => $exportColumnMap[$key], $selectedCols),
+                function () use ($rows, $selectedCols) {
+                    $loanTotal = 0.0;
+                    $toPayTotal = 0.0;
+                    $paidTotal = 0.0;
+                    $balanceTotal = 0.0;
                     foreach ($rows as $loan) {
-                        yield [
-                            (string) $loan->loan_number,
-                            (string) ($loan->loanClient->client_number ?? ''),
-                            (string) ($loan->loanClient->full_name ?? ''),
-                            (string) $loan->product_name,
-                            number_format((float) $loan->principal, 2, '.', ''),
-                            number_format((float) $loan->balance, 2, '.', ''),
-                            number_format((float) $loan->interest_rate, 2, '.', ''),
-                            (string) $loan->dpd,
-                            (string) $loan->status,
-                            (string) ($loan->branch ?? ''),
+                        $paid = (float) ($loan->processed_repayments_sum_amount ?? 0);
+                        $remaining = max(0, (float) $loan->balance);
+                        $toPay = $paid + $remaining;
+                        $percent = $toPay > 0.00001 ? min(100, max(0, ($paid / $toPay) * 100)) : 0;
+                        $officerName = trim((string) ($loan->loanClient?->assignedEmployee?->full_name ?? ''));
+
+                        $loanTotal += (float) $loan->principal;
+                        $toPayTotal += $toPay;
+                        $paidTotal += $paid;
+                        $balanceTotal += $remaining;
+
+                        $rowByKey = [
+                            'loanNo' => (string) $loan->loan_number,
+                            'client' => (string) ($loan->loanClient?->full_name ?? ''),
+                            'contact' => (string) ($loan->loanClient?->phone ?? ''),
+                            'officer' => $officerName,
+                            'disbursement' => (string) (optional($loan->disbursed_at)->format('d-m-Y') ?? ''),
+                            'product' => (string) $loan->product_name,
+                            'loan' => number_format((float) $loan->principal, 2, '.', ''),
+                            'toPay' => number_format($toPay, 2, '.', ''),
+                            'paid' => number_format($paid, 2, '.', ''),
+                            'percent' => number_format($percent, 1, '.', '').'%',
+                            'balance' => number_format($remaining, 2, '.', ''),
+                            'dpd' => (string) $loan->dpd,
+                            'status' => (string) $loan->status,
+                            'maturity' => (string) (optional($loan->maturity_date)->format('d-m-Y') ?? ''),
                         ];
+
+                        yield array_map(fn (string $key): string => (string) ($rowByKey[$key] ?? ''), $selectedCols);
                     }
+
+                    $totalsByKey = [
+                        'loanNo' => 'TOTAL',
+                        'loan' => number_format($loanTotal, 2, '.', ''),
+                        'toPay' => number_format($toPayTotal, 2, '.', ''),
+                        'paid' => number_format($paidTotal, 2, '.', ''),
+                        'balance' => number_format($balanceTotal, 2, '.', ''),
+                    ];
+                    yield array_map(fn (string $key): string => (string) ($totalsByKey[$key] ?? ''), $selectedCols);
                 },
                 $export
             );
@@ -190,12 +248,20 @@ class LoanBookLoansController extends Controller
                     'loanbook-arrears-'.now()->format('Ymd_His'),
                     ['Client', 'Contact', 'Branch', 'Loan Officer', 'Loan', 'Disbursement', 'Cycles', 'P.Arrears', 'Accumulated', 'Installment', 'Fall Date', 'Days', 'T.Bal'],
                     function () use ($rows) {
+                    $loanTotal = 0.0;
+                    $periodicArrearsTotal = 0.0;
+                    $paidTotal = 0.0;
+                    $balanceTotal = 0.0;
                         foreach ($rows as $loan) {
                             $termValue = max(1, (int) ($loan->term_value ?? 1));
                             $paid = (float) ($loan->processed_repayments_sum_amount ?? 0);
                             $totalBalance = (float) ($loan->balance ?? 0);
                             $periodicArrears = $termValue > 0 ? max(0, $totalBalance / $termValue) : $totalBalance;
                             $loanAmount = (float) ($loan->principal ?? 0);
+                        $loanTotal += $loanAmount;
+                        $periodicArrearsTotal += $periodicArrears;
+                        $paidTotal += $paid;
+                        $balanceTotal += $totalBalance;
                             $totalRepayable = max(0.01, $loanAmount + max(0, $totalBalance));
                             $installmentNo = min($termValue, max(1, (int) floor(($paid / $totalRepayable) * $termValue) + 1));
                             $fallDate = $loan->disbursed_at ? $loan->disbursed_at->copy()->addDays((int) ($loan->dpd ?? 0)) : null;
@@ -215,6 +281,7 @@ class LoanBookLoansController extends Controller
                                 number_format($totalBalance, 2, '.', ''),
                             ];
                         }
+                    yield ['TOTAL', '', '', '', number_format($loanTotal, 2, '.', ''), '', '', number_format($periodicArrearsTotal, 2, '.', ''), number_format($paidTotal, 2, '.', ''), '', '', '', number_format($balanceTotal, 2, '.', '')];
                     },
                     $export
                 );
@@ -456,17 +523,21 @@ class LoanBookLoansController extends Controller
                 'loanbook-checkoff-'.now()->format('Ymd_His'),
                 ['Client', 'ID No', 'Checkoff', 'Loan Officer', 'Confirmed By', 'Date', 'Receipt'],
                 function () use ($rows) {
+                    $checkoffTotal = 0.0;
                     foreach ($rows as $loan) {
+                        $checkoff = (float) $loan->balance;
+                        $checkoffTotal += $checkoff;
                         yield [
                             (string) ($loan->loanClient->full_name ?? ''),
                             (string) ($loan->loanClient->id_number ?? ''),
-                            number_format((float) $loan->balance, 2, '.', ''),
+                            number_format($checkoff, 2, '.', ''),
                             (string) ($loan->loanClient?->assignedEmployee?->full_name ?? ''),
                             'System',
                             (string) (optional($loan->disbursed_at)->format('d-m-Y H:i') ?? ''),
                             (string) $loan->loan_number,
                         ];
                     }
+                    yield ['TOTAL', '', number_format($checkoffTotal, 2, '.', ''), '', '', '', ''];
                 },
                 $export
             );

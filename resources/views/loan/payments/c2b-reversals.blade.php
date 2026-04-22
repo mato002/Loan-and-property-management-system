@@ -67,7 +67,18 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($payments as $p)
-                            <tr class="hover:bg-slate-50/80">
+                            @php
+                                $reversalRowUrl = $p->loan?->loanClient ? route('loan.clients.show', $p->loan->loanClient) : null;
+                            @endphp
+                            <tr
+                                class="hover:bg-slate-50/80 {{ $reversalRowUrl ? 'cursor-pointer' : '' }}"
+                                @if ($reversalRowUrl)
+                                    role="link"
+                                    tabindex="0"
+                                    onclick="if (event.target.closest('a, button, input, select, textarea, form, label, summary, details')) return; window.location.href='{{ $reversalRowUrl }}';"
+                                    onkeydown="if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { event.preventDefault(); window.location.href='{{ $reversalRowUrl }}'; }"
+                                @endif
+                            >
                                 <td class="px-5 py-3 font-mono text-xs text-slate-700">{{ $p->reference }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loan_number ?? '—' }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $p->loan?->loanClient?->full_name ?? '—' }}</td>

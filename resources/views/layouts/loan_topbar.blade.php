@@ -18,7 +18,7 @@
     }
 @endphp
 
-<header class="relative md:sticky md:top-0 z-30 md:z-50 flex-shrink-0 border-b border-slate-200/90 bg-gradient-to-b from-white via-slate-50 to-white shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/90">
+<header class="relative md:sticky md:top-0 z-30 md:z-50 flex-shrink-0 border-b border-slate-200/90 bg-gradient-to-b from-white via-slate-50 to-white shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/90 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-gradient-to-r before:from-cyan-500 before:via-sky-500 before:to-indigo-500">
     <div class="px-4 sm:px-6 lg:px-8">
         {{-- Primary row --}}
         <div class="flex items-center justify-between gap-3 py-3 sm:py-3.5 min-h-[4.25rem]">
@@ -65,12 +65,12 @@
 
             <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0 justify-end">
                 {{-- Quick nav (tablet+) --}}
-                <nav class="hidden lg:flex items-center gap-0.5 rounded-xl bg-white/80 border border-slate-200/80 p-1 shadow-sm" aria-label="Quick navigation">
+                <nav class="hidden lg:flex items-center gap-0.5 rounded-xl bg-white/90 border border-slate-200 p-1 shadow-sm" aria-label="Quick navigation">
                     @foreach ($quickLinks as $link)
                         @if (Route::has($link['route']))
                             <a
                                 href="{{ route($link['route']) }}"
-                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap {{ $link['active'] ? 'bg-[#2f4f4f] text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}"
+                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap {{ $link['active'] ? 'bg-[#2f4f4f] text-white shadow-sm ring-1 ring-[#2f4f4f]/20' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}"
                             >
                                 {{ $link['label'] }}
                             </a>
@@ -97,7 +97,7 @@
                         <button
                             type="button"
                             @click="bellOpen = !bellOpen"
-                            class="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                            class="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm"
                             title="Notifications"
                         >
                             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -137,7 +137,7 @@
                     </div>
 
                     <div class="relative z-[60]" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
-                        <button type="button" @click="userMenuOpen = !userMenuOpen" class="flex items-center gap-2 p-1 pr-2 sm:pr-3 rounded-full bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40">
+                        <button type="button" @click="userMenuOpen = !userMenuOpen" class="flex items-center gap-2 p-1 pr-2 sm:pr-3 rounded-full bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shadow-sm">
                             <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-inner border border-white/20 overflow-hidden">
                                 @if (Auth::check() && filled(Auth::user()->profile_photo_url))
                                     <img src="{{ Auth::user()->profile_photo_url }}" alt="Profile image" class="h-full w-full object-cover">

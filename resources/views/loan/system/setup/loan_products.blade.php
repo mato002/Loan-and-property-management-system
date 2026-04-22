@@ -16,6 +16,21 @@
                         'default_term_months' => $product->default_term_months !== null ? (int) $product->default_term_months : null,
                         'default_interest_rate_period' => (string) ($product->default_interest_rate_period ?? 'annual'),
                         'default_term_unit' => (string) ($product->default_term_unit ?? 'monthly'),
+                        'payment_interval_days' => $product->payment_interval_days !== null ? (int) $product->payment_interval_days : null,
+                        'total_interest_amount' => $product->total_interest_amount !== null ? (float) $product->total_interest_amount : null,
+                        'interest_duration_value' => $product->interest_duration_value !== null ? (int) $product->interest_duration_value : null,
+                        'interest_type' => (string) ($product->interest_type ?? ''),
+                        'min_loan_amount' => $product->min_loan_amount !== null ? (float) $product->min_loan_amount : null,
+                        'max_loan_amount' => $product->max_loan_amount !== null ? (float) $product->max_loan_amount : null,
+                        'arrears_penalty_scope' => (string) ($product->arrears_penalty_scope ?? ''),
+                        'penalty_amount' => $product->penalty_amount !== null ? (float) $product->penalty_amount : null,
+                        'rollover_fees' => $product->rollover_fees !== null ? (float) $product->rollover_fees : null,
+                        'loan_offset_fees' => $product->loan_offset_fees !== null ? (float) $product->loan_offset_fees : null,
+                        'repay_waiver_days' => $product->repay_waiver_days !== null ? (int) $product->repay_waiver_days : null,
+                        'client_application_scope' => (string) ($product->client_application_scope ?? ''),
+                        'installment_display_mode' => (string) ($product->installment_display_mode ?? ''),
+                        'exempt_from_checkoffs' => (bool) $product->exempt_from_checkoffs,
+                        'cluster_name' => (string) ($product->cluster_name ?? ''),
                         'is_active' => (bool) $product->is_active,
                         'active_loans' => (int) ($activeLoanCounts[$product->name] ?? 0),
                     ],
@@ -38,6 +53,8 @@
                             <th class="px-4 py-3">Description</th>
                             <th class="px-4 py-3 text-right">Default interest</th>
                             <th class="px-4 py-3 text-right">Default term</th>
+                            <th class="px-4 py-3 text-right">Range</th>
+                            <th class="px-4 py-3">Penalty/checkoff</th>
                             <th class="px-4 py-3">Charges</th>
                             <th class="px-4 py-3">Status</th>
                             <th class="px-4 py-3">Edit</th>
@@ -59,6 +76,23 @@
                                 <td class="px-4 py-3 text-right tabular-nums text-slate-700 whitespace-nowrap">
                                     @if ($product->default_term_months !== null)
                                         {{ $product->default_term_months }} {{ $product->default_term_unit ?? 'monthly' }}
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3 text-right tabular-nums text-xs text-slate-700 whitespace-nowrap">
+                                    @if ($product->min_loan_amount !== null || $product->max_loan_amount !== null)
+                                        {{ $product->min_loan_amount !== null ? number_format((float) $product->min_loan_amount, 2) : '0.00' }}
+                                        —
+                                        {{ $product->max_loan_amount !== null ? number_format((float) $product->max_loan_amount, 2) : 'No cap' }}
+                                    @else
+                                        —
+                                    @endif
+                                </td>
+                                <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                                    @if ($product->penalty_amount !== null || $product->exempt_from_checkoffs)
+                                        <div>{{ $product->arrears_penalty_scope ? str_replace('_', ' ', $product->arrears_penalty_scope) : 'Penalty' }}: {{ $product->penalty_amount !== null ? number_format((float) $product->penalty_amount, 2) : '—' }}</div>
+                                        <div class="text-slate-500">Checkoff exempt: {{ $product->exempt_from_checkoffs ? 'Yes' : 'No' }}</div>
                                     @else
                                         —
                                     @endif
@@ -106,7 +140,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="8" class="px-5 py-12 text-center text-slate-500">No loan products defined yet.</td>
+                                <td colspan="10" class="px-5 py-12 text-center text-slate-500">No loan products defined yet.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -120,7 +154,7 @@
                     <h3 class="text-sm font-semibold text-slate-800">Edit loan product</h3>
                     <button id="close-edit-product-modal" type="button" class="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700">✕</button>
                 </div>
-                <form id="product-edit-form" method="post" class="p-4 grid grid-cols-1 gap-3 md:grid-cols-10 js-product-update-form">
+                <form id="product-edit-form" method="post" class="p-4 grid grid-cols-1 gap-3 md:grid-cols-12 js-product-update-form">
                 @csrf
                 @method('patch')
                 <input id="edit_name" name="name" class="md:col-span-3 rounded border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-800" placeholder="Product name" />
@@ -142,13 +176,53 @@
                     <option value="1">Active</option>
                     <option value="0">Inactive</option>
                 </select>
+                <input id="edit_payment_interval_days" name="payment_interval_days" type="number" min="1" max="365" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Payment interval days" />
+                <input id="edit_total_interest_amount" name="total_interest_amount" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Total interest" />
+                <input id="edit_interest_duration_value" name="interest_duration_value" type="number" min="1" max="600" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Interest duration" />
+                <select id="edit_interest_type" name="interest_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
+                    <option value="">Interest type</option>
+                    <option value="flat_rate">Flat rate</option>
+                    <option value="reducing_balance">Reducing balance</option>
+                    <option value="amortized">Amortized</option>
+                    <option value="simple_interest">Simple interest</option>
+                </select>
+                <input id="edit_min_loan_amount" name="min_loan_amount" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Min amount" />
+                <input id="edit_max_loan_amount" name="max_loan_amount" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Max amount" />
+                <select id="edit_arrears_penalty_scope" name="arrears_penalty_scope" class="rounded border-slate-200 px-2 py-1.5 text-xs">
+                    <option value="">Arrears penalty</option>
+                    <option value="whole_loan">For whole loan</option>
+                    <option value="per_installment">Per installment</option>
+                    <option value="none">No penalty</option>
+                </select>
+                <input id="edit_penalty_amount" name="penalty_amount" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Penalty amount" />
+                <input id="edit_rollover_fees" name="rollover_fees" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Rollover fees" />
+                <input id="edit_loan_offset_fees" name="loan_offset_fees" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Loan offset fees" />
+                <input id="edit_repay_waiver_days" name="repay_waiver_days" type="number" min="0" max="365" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Repay waiver days" />
+                <select id="edit_client_application_scope" name="client_application_scope" class="rounded border-slate-200 px-2 py-1.5 text-xs">
+                    <option value="">Client scope</option>
+                    <option value="any_client">Any client</option>
+                    <option value="no_running_loans">No running loans</option>
+                    <option value="new_clients_only">New clients only</option>
+                    <option value="existing_clients_only">Existing clients only</option>
+                </select>
+                <select id="edit_installment_display_mode" name="installment_display_mode" class="rounded border-slate-200 px-2 py-1.5 text-xs">
+                    <option value="">Installment display</option>
+                    <option value="all_installments">All installments</option>
+                    <option value="due_only">Due only</option>
+                    <option value="summary">Summary</option>
+                </select>
+                <select id="edit_exempt_from_checkoffs" name="exempt_from_checkoffs" class="rounded border-slate-200 px-2 py-1.5 text-xs">
+                    <option value="0">Checkoff exempt: No</option>
+                    <option value="1">Checkoff exempt: Yes</option>
+                </select>
+                <input id="edit_cluster_name" name="cluster_name" class="rounded border-slate-200 px-2 py-1.5 text-xs" placeholder="Cluster name" />
                 <input id="edit_repricing_effective_date" name="repricing_effective_date" type="date" class="rounded border-slate-200 px-2 py-1.5 text-xs" title="Optional effective date for audit note" />
-                <input id="edit_repricing_note" name="repricing_note" class="md:col-span-3 rounded border-slate-200 px-2 py-1.5 text-xs" placeholder="Optional repricing note" />
-                <label class="md:col-span-5 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                <input id="edit_repricing_note" name="repricing_note" class="md:col-span-4 rounded border-slate-200 px-2 py-1.5 text-xs" placeholder="Optional repricing note" />
+                <label class="md:col-span-4 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
                     <input id="edit_apply_to_existing_active_loans" type="checkbox" name="apply_to_existing_active_loans" value="1" class="rounded border-amber-300 text-amber-700 focus:ring-amber-500 js-apply-existing" />
                     Apply rate to existing active loans
                 </label>
-                <div class="md:col-span-5 flex justify-end gap-2">
+                <div class="md:col-span-4 flex justify-end gap-2">
                     <button type="button" id="cancel-edit-product-modal" class="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
                     <button type="submit" class="rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">Update</button>
                 </div>
@@ -189,6 +263,21 @@
             editForm.querySelector('#edit_default_interest_rate_period').value = product.default_interest_rate_period ?? 'annual';
             editForm.querySelector('#edit_default_term_unit').value = product.default_term_unit ?? 'monthly';
             editForm.querySelector('#edit_is_active').value = product.is_active ? '1' : '0';
+            editForm.querySelector('#edit_payment_interval_days').value = product.payment_interval_days ?? '';
+            editForm.querySelector('#edit_total_interest_amount').value = product.total_interest_amount ?? '';
+            editForm.querySelector('#edit_interest_duration_value').value = product.interest_duration_value ?? '';
+            editForm.querySelector('#edit_interest_type').value = product.interest_type ?? '';
+            editForm.querySelector('#edit_min_loan_amount').value = product.min_loan_amount ?? '';
+            editForm.querySelector('#edit_max_loan_amount').value = product.max_loan_amount ?? '';
+            editForm.querySelector('#edit_arrears_penalty_scope').value = product.arrears_penalty_scope ?? '';
+            editForm.querySelector('#edit_penalty_amount').value = product.penalty_amount ?? '';
+            editForm.querySelector('#edit_rollover_fees').value = product.rollover_fees ?? '';
+            editForm.querySelector('#edit_loan_offset_fees').value = product.loan_offset_fees ?? '';
+            editForm.querySelector('#edit_repay_waiver_days').value = product.repay_waiver_days ?? '';
+            editForm.querySelector('#edit_client_application_scope').value = product.client_application_scope ?? '';
+            editForm.querySelector('#edit_installment_display_mode').value = product.installment_display_mode ?? '';
+            editForm.querySelector('#edit_exempt_from_checkoffs').value = product.exempt_from_checkoffs ? '1' : '0';
+            editForm.querySelector('#edit_cluster_name').value = product.cluster_name ?? '';
             editForm.querySelector('#edit_repricing_effective_date').value = '';
             editForm.querySelector('#edit_repricing_note').value = '';
             editForm.querySelector('#edit_apply_to_existing_active_loans').checked = false;

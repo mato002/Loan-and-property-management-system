@@ -25,6 +25,7 @@ class LoanBookLoan extends Model
         'loan_number',
         'loan_book_application_id',
         'loan_client_id',
+        'collection_agent_employee_id',
         'product_name',
         'principal',
         'principal_outstanding',
@@ -74,6 +75,11 @@ class LoanBookLoan extends Model
     public function loanBranch(): BelongsTo
     {
         return $this->belongsTo(LoanBranch::class, 'loan_branch_id');
+    }
+
+    public function collectionAgent(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'collection_agent_employee_id');
     }
 
     public function disbursements(): HasMany

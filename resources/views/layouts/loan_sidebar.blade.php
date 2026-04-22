@@ -9,6 +9,10 @@
         default => asset(ltrim($loanLogoRaw, '/')),
     };
     $loanAppName = \App\Models\LoanSystemSetting::getValue('app_display_name', 'Loan Manager');
+    $sidebarUnreadNotifications = 0;
+    if (auth()->check() && \Illuminate\Support\Facades\Schema::hasTable('notifications')) {
+        $sidebarUnreadNotifications = (int) auth()->user()->unreadNotifications()->count();
+    }
 @endphp
 
 <!-- Sidebar Elements -->
@@ -24,10 +28,10 @@
             ? 'width: 18rem; min-width: 18rem; max-width: 18rem;'
             : 'width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem;')
         : ''"
-    class="fixed inset-y-0 left-0 z-50 w-[280px] sm:w-[288px] bg-[#2f4f4f] border-r border-[#264040] flex flex-col min-h-0 transition-all duration-300 md:relative md:translate-x-0 overflow-y-auto md:overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none"
+    class="fixed inset-y-0 left-0 z-50 w-[280px] sm:w-[288px] bg-[#17363a] border-r border-[#1f4a4d] flex flex-col min-h-0 transition-all duration-300 md:relative md:translate-x-0 overflow-y-auto md:overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none"
 >
     <!-- Header -->
-    <div class="h-16 flex items-center justify-between px-4 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md">
+    <div class="h-16 flex items-center justify-between px-4 border-b border-[#1f4a4d] bg-[#102b2f]/70 backdrop-blur-md">
         <a href="{{ route('dashboard') }}" class="text-xl font-bold text-white flex items-center gap-3 min-w-0" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:w-full md:gap-0'">
             @if (trim((string) $loanLogoUrl) !== '')
                 <img src="{{ $loanLogoUrl }}" alt="Logo" class="rounded bg-white/90 p-1 shadow-lg object-contain" :class="sidebarDesktopOpen ? 'h-8 w-auto max-w-[130px]' : 'h-8 w-8'">
@@ -60,11 +64,11 @@
     </div>
 
     <!-- Navigation List -->
-    <nav class="flex-1 min-h-0 overflow-y-auto py-6 px-2 md:px-3 space-y-4 custom-scrollbar" @click="if (window.innerWidth < 768 && $event.target.closest('a')) sidebarOpen = false">
+    <nav class="flex-1 min-h-0 overflow-y-auto py-5 px-2 md:px-3 space-y-3 custom-scrollbar" @click="if (window.innerWidth < 768 && $event.target.closest('a')) sidebarOpen = false">
 
         <!-- Dashboard Link -->
         <div>
-            <a href="{{ route('dashboard') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-white/10 hover:text-white transition-all font-medium group" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Dashboard'">
+            <a href="{{ route('dashboard') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-medium group {{ request()->routeIs('dashboard') ? 'bg-white/20 text-white shadow-sm' : 'text-[#d4e4e3] hover:bg-white/10 hover:text-white' }}" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Dashboard'">
                 <svg class="w-5 h-5 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
                 </svg>
@@ -260,16 +264,39 @@
                 ($groupName === 'My Account' && (request()->routeIs('loan.account.*') || request()->routeIs('profile.*'))) ||
                 ($groupName === 'System & Help' && request()->routeIs('loan.system.*'))
             ) ? 'true' : 'false' }} }">
-                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white transition-all group" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : @js($groupName)">
+                @php
+                    $isGroupActive = (
+                        ($groupName === 'Employees' && request()->routeIs('loan.employees.*')) ||
+                        ($groupName === 'Accounting' && request()->routeIs('loan.accounting.*')) ||
+                        ($groupName === 'Branches & Regions' && (request()->routeIs('loan.regions.*') || request()->routeIs('loan.branches.*'))) ||
+                        ($groupName === 'Business Analytics' && request()->routeIs('loan.analytics.*')) ||
+                        ($groupName === 'Clients' && request()->routeIs('loan.clients.*')) ||
+                        ($groupName === 'LoanBook' && request()->routeIs('loan.book.*')) ||
+                        ($groupName === 'Payments' && request()->routeIs('loan.payments.*')) ||
+                        ($groupName === 'Bulk SMS' && request()->routeIs('loan.bulksms.*')) ||
+                        ($groupName === 'Financial' && request()->routeIs('loan.financial.*')) ||
+                        ($groupName === 'Asset Financing' && request()->routeIs('loan.assets.*')) ||
+                        ($groupName === 'My Account' && (request()->routeIs('loan.account.*') || request()->routeIs('profile.*'))) ||
+                        ($groupName === 'System & Help' && request()->routeIs('loan.system.*'))
+                    );
+                @endphp
+                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group {{ $isGroupActive ? 'bg-white/15 text-white shadow-sm' : 'text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white' }}" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : @js($groupName)">
                     <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">
                         <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             {!! $data['icon'] !!}
                         </svg>
-                        <span x-show="sidebarDesktopOpen" x-cloak class="font-medium truncate text-left">{{ $groupName }}</span>
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">{{ $groupName }}</span>
                     </div>
-                    <svg x-show="sidebarDesktopOpen" x-cloak :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                    </svg>
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">
+                        @if ($groupName === 'System & Help' && $sidebarUnreadNotifications > 0)
+                            <span class="inline-flex min-w-[1.1rem] h-[1.1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white">
+                                {{ $sidebarUnreadNotifications > 99 ? '99+' : $sidebarUnreadNotifications }}
+                            </span>
+                        @endif
+                        <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </div>
                 </button>
                 <div x-show="sidebarDesktopOpen && open" 
                      x-transition:enter="transition ease-out duration-200"
@@ -315,7 +342,7 @@
                             <a
                                 href="{{ $href }}"
                                 @if($isActive) aria-current="page" @endif
-                                class="block py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate {{ $isActive ? 'text-white font-semibold' : 'text-[#8db1af] hover:text-white' }}"
+                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate {{ $isActive ? 'bg-white/15 text-white font-semibold' : 'text-[#8db1af] hover:text-white hover:bg-white/5' }}"
                                 title="{{ $linkTitle }}"
                             >
                                 {{ $label }}

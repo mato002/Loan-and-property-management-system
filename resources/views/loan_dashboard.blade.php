@@ -614,18 +614,26 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js" crossorigin="anonymous"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            if (typeof Chart === 'undefined') return;
+            const startCharts = function () {
+                if (typeof window.Chart === 'undefined') {
+                    return false;
+                }
 
-            const charts = @json($charts);
-            const currencyCode = @json($currencyCode ?? 'KES');
+                const Chart = window.Chart;
+                const charts = @json($charts);
+                const currencyCode = @json($currencyCode ?? 'KES');
+                const collections = charts?.collections ?? { labels: [], values: [] };
+                const disbursements = charts?.disbursements ?? { labels: [], values: [] };
+                const dpd = charts?.dpd ?? { labels: [], values: [] };
+                const loanStatus = charts?.loanStatus ?? { labels: [], values: [] };
+                const applicationStages = charts?.applicationStages ?? { labels: [], values: [] };
 
-            const gridColor = 'rgba(15, 23, 42, 0.07)';
-            const tickColor = '#475569';
+                const gridColor = 'rgba(15, 23, 42, 0.07)';
+                const tickColor = '#475569';
 
-            const moneyAxisTicks = {
+                const moneyAxisTicks = {
                 color: tickColor,
                 callback: function (value) {
                     const n = Number(value);
@@ -636,7 +644,7 @@
                 },
             };
 
-            const moneyTooltip = {
+                const moneyTooltip = {
                 callbacks: {
                     label: function (ctx) {
                         const v = ctx.parsed.y ?? ctx.parsed;
@@ -646,11 +654,11 @@
                 },
             };
 
-            function toNumbers(arr) {
+                function toNumbers(arr) {
                 return (arr || []).map(function (v) { return Number(v) || 0; });
             }
 
-            function yScaleMoney(maxVal) {
+                function yScaleMoney(maxVal) {
                 const m = Math.max(0, maxVal);
                 return {
                     beginAtZero: true,
@@ -662,17 +670,24 @@
                 };
             }
 
-            let colLabels = charts.collections.labels || [];
-            let colVals = toNumbers(charts.collections.values);
+                function resetCanvasChart(canvasEl) {
+                    if (!canvasEl || typeof Chart.getChart !== 'function') return;
+                    const existing = Chart.getChart(canvasEl);
+                    if (existing) existing.destroy();
+                }
+
+                let colLabels = collections.labels || [];
+            let colVals = toNumbers(collections.values);
             let colPlaceholder = false;
             if (!colLabels.length) {
                 colLabels = ['No collections yet'];
                 colVals = [1];
                 colPlaceholder = true;
             }
-            const colMax = colVals.length ? Math.max.apply(null, colVals) : 0;
-            const colEl = document.getElementById('chartCollections');
-            if (colEl) {
+                const colMax = colVals.length ? Math.max.apply(null, colVals) : 0;
+                const colEl = document.getElementById('chartCollections');
+                if (colEl) {
+                resetCanvasChart(colEl);
                 const barHi = '#22c55e';
                 const barLo = '#86efac';
                 const barBorder = '#15803d';
@@ -750,10 +765,10 @@
                         },
                     },
                 });
-            }
+                }
 
-            let disLabels = charts.disbursements.labels || [];
-            let disVals = toNumbers(charts.disbursements.values);
+                let disLabels = disbursements.labels || [];
+            let disVals = toNumbers(disbursements.values);
             let disPlaceholder = false;
             if (!disLabels.length) {
                 disLabels = ['No disbursements yet'];
@@ -766,8 +781,9 @@
                 : disVals.map(function (v) {
                     return Number(v) > 0 ? 'rgba(79, 70, 229, 0.55)' : 'rgba(165, 180, 252, 0.45)';
                 });
-            const disEl = document.getElementById('chartDisbursements');
-            if (disEl) {
+                const disEl = document.getElementById('chartDisbursements');
+                if (disEl) {
+                resetCanvasChart(disEl);
                 new Chart(disEl, {
                     type: 'bar',
                     data: {
@@ -793,12 +809,13 @@
                         },
                     },
                 });
-            }
+                }
 
-            const dpdEl = document.getElementById('chartDpd');
-            if (dpdEl) {
-                const dpdLabels = charts.dpd.labels || [];
-                const dpdValues = toNumbers(charts.dpd.values);
+                const dpdEl = document.getElementById('chartDpd');
+                if (dpdEl) {
+                resetCanvasChart(dpdEl);
+                const dpdLabels = dpd.labels || [];
+                const dpdValues = toNumbers(dpd.values);
                 const dpdSum = dpdValues.reduce(function (a, b) { return a + b; }, 0);
                 let dL = dpdLabels;
                 let dV = dpdValues;
@@ -837,9 +854,9 @@
                         },
                     },
                 });
-            }
+                }
 
-            const statusColors = [
+                const statusColors = [
                 '#14b8a6',
                 '#8b5cf6',
                 '#22c55e',
@@ -848,10 +865,11 @@
                 '#3b82f6',
             ];
 
-            const loanStatusEl = document.getElementById('chartLoanStatus');
-            if (loanStatusEl) {
-                let lsLabels = charts.loanStatus.labels || [];
-                let lsValues = toNumbers(charts.loanStatus.values);
+                const loanStatusEl = document.getElementById('chartLoanStatus');
+                if (loanStatusEl) {
+                resetCanvasChart(loanStatusEl);
+                let lsLabels = loanStatus.labels || [];
+                let lsValues = toNumbers(loanStatus.values);
                 let lsColors;
                 if (!lsLabels.length) {
                     lsLabels = ['No loans in LoanBook yet'];
@@ -891,12 +909,13 @@
                         },
                     },
                 });
-            }
+                }
 
-            const appStEl = document.getElementById('chartAppStages');
-            if (appStEl) {
-                let appLabels = charts.applicationStages.labels || [];
-                let appValues = toNumbers(charts.applicationStages.values);
+                const appStEl = document.getElementById('chartAppStages');
+                if (appStEl) {
+                resetCanvasChart(appStEl);
+                let appLabels = applicationStages.labels || [];
+                let appValues = toNumbers(applicationStages.values);
                 let appPlaceholder = false;
                 if (!appLabels.length) {
                     appLabels = ['No applications yet'];
@@ -942,7 +961,22 @@
                         },
                     },
                 });
+                }
+
+                return true;
+            };
+
+            if (startCharts()) {
+                return;
             }
+
+            let tries = 0;
+            const retryTimer = window.setInterval(function () {
+                tries += 1;
+                if (startCharts() || tries >= 30) {
+                    window.clearInterval(retryTimer);
+                }
+            }, 100);
         });
     </script>
 </x-loan-layout>

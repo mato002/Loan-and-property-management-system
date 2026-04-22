@@ -98,6 +98,7 @@ class LoanFormFieldDefinition extends Model
 
         if ($rows !== null) {
             self::seedIfEmpty($formKind, $rows);
+            self::seedMissingCoreFields($formKind, $rows);
         }
     }
 
@@ -120,6 +121,39 @@ class LoanFormFieldDefinition extends Model
                 'select_options' => $row['select_options'] ?? null,
                 'prefill_from_previous' => $row['prefill'] ?? false,
                 'is_core' => $row['is_core'],
+                'sort_order' => $row['sort_order'],
+            ]);
+        }
+    }
+
+    /**
+     * Ensure new core fields are added for existing setups.
+     *
+     * @param  list<array{label:string,data_type:string,select_options?:string|null,is_core:bool,sort_order:int,prefill?:bool}>  $rows
+     */
+    private static function seedMissingCoreFields(string $formKind, array $rows): void
+    {
+        foreach ($rows as $row) {
+            if (! ($row['is_core'] ?? false)) {
+                continue;
+            }
+
+            $exists = self::query()
+                ->where('form_kind', $formKind)
+                ->whereRaw('LOWER(label) = ?', [strtolower((string) $row['label'])])
+                ->exists();
+            if ($exists) {
+                continue;
+            }
+
+            self::query()->create([
+                'form_kind' => $formKind,
+                'field_key' => self::generateFieldKey($formKind, $row['label']),
+                'label' => $row['label'],
+                'data_type' => $row['data_type'],
+                'select_options' => $row['select_options'] ?? null,
+                'prefill_from_previous' => false,
+                'is_core' => true,
                 'sort_order' => $row['sort_order'],
             ]);
         }
@@ -251,12 +285,16 @@ class LoanFormFieldDefinition extends Model
         $i = 0;
 
         return [
-            ['label' => 'Full name', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => true, 'sort_order' => $i++],
-            ['label' => 'National ID / passport', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => true, 'sort_order' => $i++],
-            ['label' => 'Phone number', 'data_type' => self::TYPE_NUMBER, 'is_core' => false, 'sort_order' => $i++],
-            ['label' => 'ID document photo', 'data_type' => self::TYPE_IMAGE, 'is_core' => false, 'sort_order' => $i++],
-            ['label' => 'Next of kin name', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => false, 'sort_order' => $i++],
-            ['label' => 'Next of kin phone', 'data_type' => self::TYPE_NUMBER, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Name', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Client Contact', 'data_type' => self::TYPE_NUMBER, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Idno', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Gender', 'data_type' => self::TYPE_SELECT, 'select_options' => 'Male,Female,Other', 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Kin Contact', 'data_type' => self::TYPE_NUMBER, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Next Of Kin', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Client Photo', 'data_type' => self::TYPE_IMAGE, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Loan Officer', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Id Back Photo', 'data_type' => self::TYPE_IMAGE, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Id Front Photo', 'data_type' => self::TYPE_IMAGE, 'is_core' => true, 'sort_order' => $i++],
         ];
     }
 

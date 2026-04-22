@@ -12,7 +12,7 @@
             <a href="{{ route('loan.clients.transfer', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
         </x-slot>
 
-        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6" x-data="transferDraftPreview()">
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8 xl:col-span-2">
                 <h2 class="text-sm font-semibold text-slate-700 mb-1">Transfer active clients</h2>
                 <p class="text-xs text-slate-500 mb-4">Move all active clients (optionally including dormant) from one officer to another.</p>
@@ -67,10 +67,17 @@
                     <input type="hidden" name="mode" value="single" />
                     <div>
                         <x-input-label for="loan_client_id" value="Client" />
-                        <select id="loan_client_id" name="loan_client_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <select id="loan_client_id" name="loan_client_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" x-model="draft.loanClientId">
                             <option value="">— Select client —</option>
                             @foreach ($clients as $c)
-                                <option value="{{ $c->id }}" @selected(old('loan_client_id') == $c->id)>{{ $c->client_number }} — {{ $c->full_name }}</option>
+                                <option
+                                    value="{{ $c->id }}"
+                                    data-client-number="{{ $c->client_number }}"
+                                    data-client-name="{{ $c->full_name }}"
+                                    data-client-branch="{{ $c->branch ?? '' }}"
+                                    data-client-officer="{{ $c->assignedEmployee?->full_name ?? '' }}"
+                                    @selected(old('loan_client_id') == $c->id)
+                                >{{ $c->client_number }} — {{ $c->full_name }}</option>
                             @endforeach
                         </select>
                         <x-input-error class="mt-2" :messages="$errors->get('loan_client_id')" />
@@ -78,7 +85,7 @@
                     <div>
                         <x-input-label for="to_branch" value="To branch" />
                         <div class="mt-1 flex items-center gap-2">
-                            <select id="to_branch" name="to_branch" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <select id="to_branch" name="to_branch" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" x-model="draft.toBranch">
                                 <option value="">— Keep current —</option>
                                 @foreach (($branchOptions ?? []) as $branchName)
                                     <option value="{{ $branchName }}" @selected(old('to_branch') === $branchName)>{{ $branchName }}</option>
@@ -95,7 +102,7 @@
                     </div>
                     <div>
                         <x-input-label for="to_employee_id" value="To officer" />
-                        <select id="to_employee_id" name="to_employee_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <select id="to_employee_id" name="to_employee_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" x-model="draft.toEmployeeId">
                             <option value="">— Keep current —</option>
                             @foreach ($employees as $employee)
                                 <option
@@ -109,14 +116,27 @@
                     </div>
                     <div>
                         <x-input-label for="reason" value="Reason (optional)" />
-                        <textarea id="reason" name="reason" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('mode') === 'single' ? old('reason') : '' }}</textarea>
+                        <textarea id="reason" name="reason" rows="3" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" x-model="draft.reason">{{ old('mode') === 'single' ? old('reason') : '' }}</textarea>
                         <x-input-error class="mt-2" :messages="$errors->get('reason')" />
                     </div>
                     <x-primary-button type="submit">{{ __('Apply transfer') }}</x-primary-button>
                 </form>
             </div>
 
-            <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div class="space-y-6">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                    <h2 class="text-sm font-semibold text-slate-700">Transfer draft</h2>
+                    <div class="mt-3 space-y-2 text-xs text-slate-700">
+                        <p><span class="font-semibold text-slate-600">Client:</span> <span x-text="selectedClientLabel || '—'"></span></p>
+                        <p><span class="font-semibold text-slate-600">Current branch:</span> <span x-text="selectedClientBranch || '—'"></span></p>
+                        <p><span class="font-semibold text-slate-600">Current officer:</span> <span x-text="selectedClientOfficer || '—'"></span></p>
+                        <p><span class="font-semibold text-slate-600">To branch:</span> <span x-text="selectedToBranchLabel || 'Keep current'"></span></p>
+                        <p><span class="font-semibold text-slate-600">To officer:</span> <span x-text="selectedToOfficerLabel || 'Keep current'"></span></p>
+                        <p><span class="font-semibold text-slate-600">Reason:</span> <span x-text="draft.reason?.trim() ? draft.reason : '—'"></span></p>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div class="px-5 py-4 border-b border-slate-100">
                     <h2 class="text-sm font-semibold text-slate-700">Recent transfers</h2>
                     <p class="text-xs text-slate-500 mt-1">Last 25 movements</p>
@@ -133,6 +153,7 @@
                         <li class="px-5 py-10 text-center text-slate-500 text-sm">No transfers yet.</li>
                     @endforelse
                 </ul>
+                </div>
             </div>
         </div>
     </x-loan.page>
@@ -159,6 +180,69 @@
 </div>
 
 <script>
+    function transferDraftPreview() {
+        return {
+            draft: {
+                loanClientId: '',
+                toBranch: '',
+                toEmployeeId: '',
+                reason: '',
+            },
+            clientMap: {},
+            init() {
+                const clientSelect = document.getElementById('loan_client_id');
+                if (clientSelect) {
+                    this.clientMap = Array.from(clientSelect.options).reduce((carry, option) => {
+                        const value = String(option.value || '');
+                        if (value === '') return carry;
+                        carry[value] = {
+                            label: (option.textContent || '').trim(),
+                            number: String(option.dataset.clientNumber || '').trim(),
+                            name: String(option.dataset.clientName || '').trim(),
+                            branch: String(option.dataset.clientBranch || '').trim(),
+                            officer: String(option.dataset.clientOfficer || '').trim(),
+                        };
+                        return carry;
+                    }, {});
+                    this.draft.loanClientId = String(clientSelect.value || '');
+                }
+
+                const branchSelect = document.getElementById('to_branch');
+                if (branchSelect) this.draft.toBranch = String(branchSelect.value || '');
+
+                const officerSelect = document.getElementById('to_employee_id');
+                if (officerSelect) this.draft.toEmployeeId = String(officerSelect.value || '');
+
+                const reasonInput = document.getElementById('reason');
+                if (reasonInput) this.draft.reason = String(reasonInput.value || '');
+            },
+            get selectedClient() {
+                return this.clientMap[this.draft.loanClientId] || null;
+            },
+            get selectedClientLabel() {
+                return this.selectedClient?.label || '';
+            },
+            get selectedClientBranch() {
+                return this.selectedClient?.branch || '';
+            },
+            get selectedClientOfficer() {
+                return this.selectedClient?.officer || '';
+            },
+            get selectedToBranchLabel() {
+                if (!this.draft.toBranch) return '';
+                const branchSelect = document.getElementById('to_branch');
+                const option = branchSelect?.options?.[branchSelect.selectedIndex];
+                return (option?.textContent || '').trim();
+            },
+            get selectedToOfficerLabel() {
+                if (!this.draft.toEmployeeId) return '';
+                const officerSelect = document.getElementById('to_employee_id');
+                const option = officerSelect?.options?.[officerSelect.selectedIndex];
+                return (option?.textContent || '').trim();
+            },
+        };
+    }
+
     (() => {
         const branchSelect = document.getElementById('to_branch');
         const openBtn = document.getElementById('open-branch-modal');
