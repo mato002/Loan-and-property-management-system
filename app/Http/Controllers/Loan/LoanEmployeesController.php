@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\LoanAccessLog;
 use App\Models\LoanBranch;
 use App\Models\LoanDepartment;
 use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanJobTitle;
 use App\Models\LoanRole;
 use App\Models\LoanRegion;
+use App\Models\AccountingJournalEntry;
 use App\Models\StaffGroup;
 use App\Models\StaffLeave;
 use App\Models\StaffLoan;
@@ -194,6 +196,7 @@ class LoanEmployeesController extends Controller
             'jobTitleOptions' => $jobTitleOptions,
             'branches' => $branches,
             'regions' => $regions,
+            'supervisors' => Employee::query()->orderBy('last_name')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'employee_number']),
         ]);
     }
 
@@ -208,10 +211,25 @@ class LoanEmployeesController extends Controller
             'first_name' => ['required', 'string', 'max:120'],
             'last_name' => ['required', 'string', 'max:120'],
             'email' => ['nullable', 'email:rfc,dns', 'max:255'],
+            'personal_email' => ['nullable', 'email:rfc,dns', 'max:255'],
             'phone' => ['nullable', 'string', 'max:40'],
             'department' => ['nullable', 'string', 'max:120'],
             'job_title' => ['nullable', 'string', 'max:120'],
+            'employment_status' => ['nullable', 'string', 'max:40'],
+            'work_type' => ['nullable', 'string', 'max:40'],
+            'gender' => ['nullable', 'string', 'max:20'],
+            'national_id' => ['nullable', 'string', 'max:40'],
+            'next_of_kin_name' => ['nullable', 'string', 'max:200'],
+            'next_of_kin_phone' => ['nullable', 'string', 'max:40'],
             'branch' => ['nullable', 'string', 'max:120'],
+            'supervisor_employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'assigned_tools' => ['nullable', 'string', 'max:2000'],
+            'kra_pin' => ['nullable', 'string', 'max:30'],
+            'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_account_number' => ['nullable', 'string', 'max:80'],
+            'nhif_number' => ['nullable', 'string', 'max:40'],
+            'nssf_number' => ['nullable', 'string', 'max:40'],
+            'employment_contract_scan' => ['nullable', 'string', 'max:255'],
             'hire_date' => ['nullable', 'date'],
             'loan_role' => ['nullable', 'string', 'in:'.implode(',', $allowedRoleSlugs)],
         ]);
@@ -395,6 +413,7 @@ class LoanEmployeesController extends Controller
             'employee' => $employee,
             'departmentNames' => $this->departmentOptions(),
             'jobTitleOptions' => $this->jobTitleOptions(),
+            'supervisors' => Employee::query()->where('id', '!=', $employee->id)->orderBy('last_name')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'employee_number']),
         ]);
     }
 
@@ -406,9 +425,102 @@ class LoanEmployeesController extends Controller
             $linkedUser = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
         }
 
+        $employee->loadMissing(['staffPortfolios', 'staffLoanApplications', 'staffLoans', 'staffLeaves']);
+
+        $department = Str::lower(trim((string) ($employee->department ?? '')));
+        $isCreditDepartment = Str::contains($department, 'credit') || Str::contains($department, 'loan');
+        $isAccountingDepartment = Str::contains($department, 'account') || Str::contains($department, 'finance');
+        $isHrDepartment = Str::contains($department, 'hr') || Str::contains($department, 'human');
+        $isOperationsDepartment = Str::contains($department, 'operation');
+
+        $kpi = [
+            'title' => 'Attendance & Leave Balance',
+            'metric_a_label' => 'Attendance (30d)',
+            'metric_a_value' => 'Not Set',
+            'metric_b_label' => 'Leave balance',
+            'metric_b_value' => 'Not Set',
+        ];
+        if ($isCreditDepartment) {
+            $portfolioCount = (int) $employee->staffPortfolios->count();
+            $avgPar = (float) $employee->staffPortfolios->whereNotNull('par_rate')->avg('par_rate');
+            $kpi = [
+                'title' => 'Credit KPI Snapshot',
+                'metric_a_label' => 'Collection rate proxy',
+                'metric_a_value' => $portfolioCount > 0 ? number_format(max(0, 100 - $avgPar), 1).'%' : 'Not Set',
+                'metric_b_label' => 'Portfolio quality (PAR)',
+                'metric_b_value' => $portfolioCount > 0 ? number_format($avgPar, 1).'%' : 'Not Set',
+            ];
+        } elseif ($isOperationsDepartment) {
+            $completedLeaves = (int) $employee->staffLeaves->where('status', 'approved')->count();
+            $openApplications = (int) $employee->staffLoanApplications
+                ->filter(fn ($application) => ! in_array(strtolower((string) $application->status), ['approved', 'rejected', 'closed'], true))
+                ->count();
+            $kpi = [
+                'title' => 'Operations KPI Snapshot',
+                'metric_a_label' => 'Task completion proxy',
+                'metric_a_value' => (string) max(0, $completedLeaves).' closed',
+                'metric_b_label' => 'Recovery ratio proxy',
+                'metric_b_value' => $openApplications > 0 ? number_format($completedLeaves / max(1, $openApplications), 2).'x' : 'Not Set',
+            ];
+        }
+
+        $employee->loadMissing(['supervisor', 'directReports']);
+        $supervisor = $employee->supervisor;
+        $directReports = $employee->directReports;
+        $jobTitle = Str::lower(trim((string) ($employee->job_title ?? '')));
+        if ($supervisor === null && $department !== '') {
+            $supervisor = Employee::query()
+                ->where('id', '!=', $employee->id)
+                ->whereRaw('LOWER(department) = ?', [$department])
+                ->where(function ($builder) {
+                    $builder->where('job_title', 'like', '%Manager%')
+                        ->orWhere('job_title', 'like', '%Supervisor%')
+                        ->orWhere('job_title', 'like', '%Lead%');
+                })
+                ->orderBy('last_name')
+                ->first();
+        }
+        if ($directReports->isEmpty() && Str::contains($jobTitle, ['manager', 'supervisor', 'lead']) && $department !== '') {
+            $directReports = Employee::query()
+                ->where('id', '!=', $employee->id)
+                ->whereRaw('LOWER(department) = ?', [$department])
+                ->orderBy('last_name')
+                ->limit(8)
+                ->get();
+        }
+
+        $journalEntries = collect();
+        if ($isAccountingDepartment && $linkedUser !== null) {
+            $journalEntries = AccountingJournalEntry::query()
+                ->where(function ($builder) use ($linkedUser) {
+                    $builder->where('created_by', $linkedUser->id)
+                        ->orWhere('approved_by', $linkedUser->id);
+                })
+                ->latest('entry_date')
+                ->limit(8)
+                ->get();
+        }
+
+        $recentActivity = collect();
+        if ($linkedUser !== null) {
+            $recentActivity = LoanAccessLog::query()
+                ->where('user_id', $linkedUser->id)
+                ->latest('created_at')
+                ->limit(5)
+                ->get();
+        }
+
         return view('loan.employees.show', [
             'employee' => $employee,
             'linkedUser' => $linkedUser,
+            'kpi' => $kpi,
+            'isCreditDepartment' => $isCreditDepartment,
+            'isAccountingDepartment' => $isAccountingDepartment,
+            'isHrDepartment' => $isHrDepartment,
+            'supervisor' => $supervisor,
+            'directReports' => $directReports,
+            'journalEntries' => $journalEntries,
+            'recentActivity' => $recentActivity,
         ]);
     }
 
@@ -463,10 +575,25 @@ class LoanEmployeesController extends Controller
             'first_name' => ['required', 'string', 'max:120'],
             'last_name' => ['required', 'string', 'max:120'],
             'email' => ['nullable', 'email:rfc,dns', 'max:255'],
+            'personal_email' => ['nullable', 'email:rfc,dns', 'max:255'],
             'phone' => ['nullable', 'string', 'max:40'],
             'department' => ['nullable', 'string', 'max:120'],
             'job_title' => ['nullable', 'string', 'max:120'],
+            'employment_status' => ['nullable', 'string', 'max:40'],
+            'work_type' => ['nullable', 'string', 'max:40'],
+            'gender' => ['nullable', 'string', 'max:20'],
+            'national_id' => ['nullable', 'string', 'max:40'],
+            'next_of_kin_name' => ['nullable', 'string', 'max:200'],
+            'next_of_kin_phone' => ['nullable', 'string', 'max:40'],
             'branch' => ['nullable', 'string', 'max:120'],
+            'supervisor_employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'assigned_tools' => ['nullable', 'string', 'max:2000'],
+            'kra_pin' => ['nullable', 'string', 'max:30'],
+            'bank_name' => ['nullable', 'string', 'max:120'],
+            'bank_account_number' => ['nullable', 'string', 'max:80'],
+            'nhif_number' => ['nullable', 'string', 'max:40'],
+            'nssf_number' => ['nullable', 'string', 'max:40'],
+            'employment_contract_scan' => ['nullable', 'string', 'max:255'],
             'hire_date' => ['nullable', 'date'],
         ]);
 

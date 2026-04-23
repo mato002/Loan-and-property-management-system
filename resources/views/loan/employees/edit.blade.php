@@ -41,6 +41,11 @@
                         <x-input-error class="mt-2" :messages="$errors->get('phone')" />
                     </div>
                     <div>
+                        <x-input-label for="personal_email" value="Personal email" />
+                        <x-text-input id="personal_email" name="personal_email" type="email" class="mt-1 block w-full" :value="old('personal_email', $employee->personal_email)" autocomplete="email" />
+                        <x-input-error class="mt-2" :messages="$errors->get('personal_email')" />
+                    </div>
+                    <div>
                         <x-input-label for="department" value="Department" />
                         <select id="department" name="department" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                             <option value="">Select department</option>
@@ -69,6 +74,96 @@
                         <x-input-label for="hire_date" value="Hire date" />
                         <x-text-input id="hire_date" name="hire_date" type="date" class="mt-1 block w-full" :value="old('hire_date', optional($employee->hire_date)->format('Y-m-d'))" />
                         <x-input-error class="mt-2" :messages="$errors->get('hire_date')" />
+                    </div>
+                    <div>
+                        <x-input-label for="employment_status" value="Employment status" />
+                        <select id="employment_status" name="employment_status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Select status</option>
+                            @foreach (['Active', 'On Leave', 'Suspended', 'Exited'] as $status)
+                                <option value="{{ $status }}" @selected(old('employment_status', $employee->employment_status) === $status)>{{ $status }}</option>
+                            @endforeach
+                        </select>
+                        <x-input-error class="mt-2" :messages="$errors->get('employment_status')" />
+                    </div>
+                    <div>
+                        <x-input-label for="work_type" value="Work type" />
+                        <select id="work_type" name="work_type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Select work type</option>
+                            @foreach (['Full-time', 'Part-time', 'Consultant'] as $type)
+                                <option value="{{ $type }}" @selected(old('work_type', $employee->work_type) === $type)>{{ $type }}</option>
+                            @endforeach
+                        </select>
+                        <x-input-error class="mt-2" :messages="$errors->get('work_type')" />
+                    </div>
+                    <div>
+                        <x-input-label for="gender" value="Gender" />
+                        <select id="gender" name="gender" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Select gender</option>
+                            @foreach (['Male', 'Female', 'Other'] as $gender)
+                                <option value="{{ $gender }}" @selected(old('gender', $employee->gender) === $gender)>{{ $gender }}</option>
+                            @endforeach
+                        </select>
+                        <x-input-error class="mt-2" :messages="$errors->get('gender')" />
+                    </div>
+                    <div>
+                        <x-input-label for="national_id" value="National ID" />
+                        <x-text-input id="national_id" name="national_id" type="text" class="mt-1 block w-full" :value="old('national_id', $employee->national_id)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('national_id')" />
+                    </div>
+                    <div>
+                        <x-input-label for="next_of_kin_name" value="Next of kin name" />
+                        <x-text-input id="next_of_kin_name" name="next_of_kin_name" type="text" class="mt-1 block w-full" :value="old('next_of_kin_name', $employee->next_of_kin_name)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('next_of_kin_name')" />
+                    </div>
+                    <div>
+                        <x-input-label for="next_of_kin_phone" value="Next of kin phone" />
+                        <x-text-input id="next_of_kin_phone" name="next_of_kin_phone" type="text" class="mt-1 block w-full" :value="old('next_of_kin_phone', $employee->next_of_kin_phone)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('next_of_kin_phone')" />
+                    </div>
+                    <div>
+                        <x-input-label for="supervisor_employee_id" value="Immediate supervisor" />
+                        <select id="supervisor_employee_id" name="supervisor_employee_id" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <option value="">Select supervisor</option>
+                            @foreach (($supervisors ?? collect()) as $supervisor)
+                                <option value="{{ $supervisor->id }}" @selected((string) old('supervisor_employee_id', $employee->supervisor_employee_id) === (string) $supervisor->id)>{{ $supervisor->full_name }} ({{ $supervisor->employee_number }})</option>
+                            @endforeach
+                        </select>
+                        <x-input-error class="mt-2" :messages="$errors->get('supervisor_employee_id')" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <x-input-label for="assigned_tools" value="Assigned tools (comma separated)" />
+                        <x-text-input id="assigned_tools" name="assigned_tools" type="text" class="mt-1 block w-full" :value="old('assigned_tools', $employee->assigned_tools)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('assigned_tools')" />
+                    </div>
+                    <div>
+                        <x-input-label for="kra_pin" value="KRA PIN" />
+                        <x-text-input id="kra_pin" name="kra_pin" type="text" class="mt-1 block w-full" :value="old('kra_pin', $employee->kra_pin)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('kra_pin')" />
+                    </div>
+                    <div>
+                        <x-input-label for="bank_name" value="Bank name" />
+                        <x-text-input id="bank_name" name="bank_name" type="text" class="mt-1 block w-full" :value="old('bank_name', $employee->bank_name)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('bank_name')" />
+                    </div>
+                    <div>
+                        <x-input-label for="bank_account_number" value="Bank account number" />
+                        <x-text-input id="bank_account_number" name="bank_account_number" type="text" class="mt-1 block w-full" :value="old('bank_account_number', $employee->bank_account_number)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('bank_account_number')" />
+                    </div>
+                    <div>
+                        <x-input-label for="nhif_number" value="NHIF number" />
+                        <x-text-input id="nhif_number" name="nhif_number" type="text" class="mt-1 block w-full" :value="old('nhif_number', $employee->nhif_number)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('nhif_number')" />
+                    </div>
+                    <div>
+                        <x-input-label for="nssf_number" value="NSSF number" />
+                        <x-text-input id="nssf_number" name="nssf_number" type="text" class="mt-1 block w-full" :value="old('nssf_number', $employee->nssf_number)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('nssf_number')" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <x-input-label for="employment_contract_scan" value="Employment contract scan (path / reference)" />
+                        <x-text-input id="employment_contract_scan" name="employment_contract_scan" type="text" class="mt-1 block w-full" :value="old('employment_contract_scan', $employee->employment_contract_scan)" />
+                        <x-input-error class="mt-2" :messages="$errors->get('employment_contract_scan')" />
                     </div>
                 </div>
 

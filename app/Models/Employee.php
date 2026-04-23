@@ -13,10 +13,25 @@ class Employee extends Model
         'first_name',
         'last_name',
         'email',
+        'personal_email',
         'phone',
         'department',
         'job_title',
+        'employment_status',
+        'work_type',
+        'gender',
+        'national_id',
+        'next_of_kin_name',
+        'next_of_kin_phone',
         'branch',
+        'supervisor_employee_id',
+        'assigned_tools',
+        'kra_pin',
+        'bank_name',
+        'bank_account_number',
+        'nhif_number',
+        'nssf_number',
+        'employment_contract_scan',
         'hire_date',
     ];
 
@@ -25,6 +40,16 @@ class Employee extends Model
         return [
             'hire_date' => 'date',
         ];
+    }
+
+    public function supervisor()
+    {
+        return $this->belongsTo(self::class, 'supervisor_employee_id');
+    }
+
+    public function directReports(): HasMany
+    {
+        return $this->hasMany(self::class, 'supervisor_employee_id');
     }
 
     public function getFullNameAttribute(): string

@@ -2,117 +2,161 @@
     <x-loan.page
         title="Books of account"
         subtitle="Central hub for the general ledger, operational registers, payroll, budgets, and financial statements."
+        :showQuickLinks="false"
     >
         @include('loan.accounting.partials.flash')
 
-        @php
-            $cards = [
-                [
-                    'href' => route('loan.accounting.journal.create'),
-                    'title' => 'Create journal entry',
-                    'desc' => 'Manual post an entry to the journal record.',
-                    'icon' => 'plus',
-                ],
-                [
-                    'href' => route('loan.accounting.books.chart_rules'),
-                    'title' => 'Chart of accounts & rules',
-                    'desc' => 'List of accounts used by the company & accounting rules.',
-                    'icon' => 'chart-tree',
-                ],
-                [
-                    'href' => route('loan.accounting.company_expenses.index'),
-                    'title' => 'Company expenses',
-                    'desc' => 'View and manage company expenses.',
-                    'icon' => 'banknote',
-                ],
-                [
-                    'href' => route('loan.accounting.ledger'),
-                    'title' => 'General ledger',
-                    'desc' => 'Description for the accounts activities.',
-                    'icon' => 'list',
-                ],
-                [
-                    'href' => route('loan.accounting.company_assets.index'),
-                    'title' => 'Company assets',
-                    'desc' => 'Register and manage company assets.',
-                    'icon' => 'document',
-                ],
-                [
-                    'href' => route('loan.accounting.journal.index'),
-                    'title' => 'View posted entries',
-                    'desc' => 'Retrieve and manage posted entries.',
-                    'icon' => 'search',
-                ],
-                [
-                    'href' => route('loan.accounting.reports.hub'),
-                    'title' => 'Accruals & reports',
-                    'desc' => 'Income statement, trial balance & balance sheet reports.',
-                    'icon' => 'chart-bar',
-                ],
-                [
-                    'href' => route('loan.accounting.payroll.hub'),
-                    'title' => 'Employee payroll',
-                    'desc' => 'Salary dues, payroll and payslips.',
-                    'icon' => 'leaf',
-                ],
-                [
-                    'href' => route('loan.accounting.budget.report'),
-                    'title' => 'Budget reports',
-                    'desc' => 'Budget analysis for branches & estimates.',
-                    'icon' => 'sliders',
-                ],
-                [
-                    'href' => route('loan.accounting.reconciliation.index'),
-                    'title' => 'Accounts reconciliation',
-                    'desc' => 'Reconcile operating financial accounts.',
-                    'icon' => 'refresh',
-                ],
-            ];
-        @endphp
+        <x-slot name="actions">
+            <div class="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+                <button type="button" class="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-800">
+                    Quick Insights
+                </button>
+                <button type="button" class="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                    System Alerts
+                </button>
+            </div>
+        </x-slot>
 
-        <div class="grid gap-3 sm:gap-4 sm:grid-cols-2 max-w-5xl">
-            @foreach ($cards as $c)
-                <a href="{{ $c['href'] }}" class="flex items-start gap-3 sm:gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group">
-                    <div class="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100 transition-colors">
-                        @switch($c['icon'])
-                            @case('plus')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                                @break
-                            @case('chart-tree')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-                                @break
-                            @case('banknote')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                                @break
-                            @case('list')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/></svg>
-                                @break
-                            @case('document')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                                @break
-                            @case('search')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                                @break
-                            @case('chart-bar')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                                @break
-                            @case('leaf')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
-                                @break
-                            @case('sliders')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
-                                @break
-                            @case('refresh')
-                                <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                                @break
-                        @endswitch
+        <div class="space-y-6 bg-slate-50/60 rounded-2xl p-3 sm:p-4 lg:p-6">
+            <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <div class="mb-4 flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-slate-900">Quick-Look Dashboard</h2>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <article class="rounded-xl border border-emerald-100 bg-emerald-50/70 p-4">
+                        <p class="text-sm font-medium text-slate-600">Total Bank Balance</p>
+                        <p class="mt-1 text-3xl font-semibold tracking-tight text-emerald-700">KSh 1,250,300.20</p>
+                        <svg class="mt-3 h-8 w-full text-emerald-500" viewBox="0 0 120 24" fill="none" aria-hidden="true">
+                            <path d="M2 18C14 10 24 12 34 8C44 4 55 16 65 12C74 8 83 6 92 10C102 14 110 9 118 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                        </svg>
+                    </article>
+
+                    <article class="rounded-xl border border-amber-100 bg-amber-50/70 p-4">
+                        <p class="text-sm font-medium text-slate-600">Aged Receivables (30-60 Days)</p>
+                        <p class="mt-1 text-3xl font-semibold tracking-tight text-amber-700">KSh 145,900.00</p>
+                        <svg class="mt-3 h-8 w-full text-amber-500" viewBox="0 0 120 24" fill="none" aria-hidden="true">
+                            <path d="M2 8C12 6 22 10 32 14C41 18 50 20 60 15C70 10 79 7 90 9C101 11 109 14 118 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                        </svg>
+                    </article>
+
+                    <article class="rounded-xl border border-blue-100 bg-blue-50/70 p-4 sm:col-span-2 xl:col-span-1">
+                        <p class="text-sm font-medium text-slate-600">Aged Payables (Current)</p>
+                        <p class="mt-1 text-3xl font-semibold tracking-tight text-blue-700">KSh 88,450.70</p>
+                        <svg class="mt-3 h-8 w-full text-blue-500" viewBox="0 0 120 24" fill="none" aria-hidden="true">
+                            <path d="M2 12C12 6 22 7 33 11C45 15 54 20 66 15C78 10 88 4 99 6C108 8 114 10 118 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                        </svg>
+                    </article>
+                </div>
+            </section>
+
+            <div class="grid gap-5 xl:grid-cols-2">
+                <section class="space-y-3">
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Daily Entries</h3>
+                    <div class="grid gap-3">
+                        <a href="{{ route('loan.accounting.journal.create') }}" class="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14"/></svg>
+                            </span>
+                            <div class="min-w-0">
+                                <h4 class="text-base font-semibold text-slate-900">Create Journal Entry</h4>
+                                <p class="mt-1 text-sm text-slate-500">Start a new, manual general ledger entry.</p>
+                                <span class="mt-3 inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white">Add Journal Entry</span>
+                            </div>
+                        </a>
+
+                        <a href="{{ route('loan.accounting.company_expenses.index') }}" class="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5h18M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm0 6h5m-5 4h8"/></svg>
+                            </span>
+                            <div class="min-w-0">
+                                <h4 class="text-base font-semibold text-slate-900">Company Expenses</h4>
+                                <p class="mt-1 text-sm text-slate-500">Record, track, and approve corporate expenses.</p>
+                            </div>
+                        </a>
                     </div>
-                    <div class="min-w-0">
-                        <h2 class="text-sm sm:text-[15px] font-bold text-slate-900 group-hover:text-blue-800 transition-colors">{{ $c['title'] }}</h2>
-                        <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{{ $c['desc'] }}</p>
+                </section>
+
+                <section class="space-y-3">
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Management Reporting</h3>
+                    <div class="grid gap-3">
+                        <a href="{{ route('loan.accounting.reports.hub') }}" class="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-600">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 18h16M7 15V9m5 6V6m5 9v-3"/></svg>
+                            </span>
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h4 class="text-base font-semibold text-slate-900">Accruals &amp; Reports</h4>
+                                    <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">+26 new facilities</span>
+                                </div>
+                                <p class="mt-1 text-sm text-slate-500">Analyze performance against branch &amp; company budgets.</p>
+                            </div>
+                        </a>
+
+                        <a href="{{ route('loan.accounting.budget.report') }}" class="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm3 5h6m-6 4h6m-6 4h4"/></svg>
+                            </span>
+                            <div class="min-w-0">
+                                <h4 class="text-base font-semibold text-slate-900">Budget Reports</h4>
+                                <p class="mt-1 text-sm text-slate-500">Track and analyze financial planning and allocations.</p>
+                            </div>
+                        </a>
+
+                        <a href="{{ route('loan.accounting.journal.index') }}" class="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-4.5-4.5M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z"/></svg>
+                            </span>
+                            <div class="min-w-0">
+                                <h4 class="text-base font-semibold text-slate-900">View Posted Entries</h4>
+                                <p class="mt-1 text-sm text-slate-500">Search, filter, and review all finalized entries.</p>
+                            </div>
+                        </a>
                     </div>
-                </a>
-            @endforeach
+                </section>
+
+                <section class="space-y-3">
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-600">General Ledger &amp; Compliance</h3>
+                    <div class="grid gap-3">
+                        <a href="{{ route('loan.accounting.payroll.hub') }}" class="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a4 4 0 1 1 8 0v2m-9 0h10a1 1 0 0 1 1 1v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a1 1 0 0 1 1-1Z"/></svg>
+                            </span>
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <h4 class="text-base font-semibold text-slate-900">Employee Payroll</h4>
+                                    <span class="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">System update: Payroll pending</span>
+                                </div>
+                                <p class="mt-1 text-sm text-slate-500">Manage payroll entries, dues, and employee payout records.</p>
+                            </div>
+                        </a>
+
+                        <a href="{{ route('loan.accounting.ledger') }}" class="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h9"/></svg>
+                            </span>
+                            <div class="min-w-0">
+                                <h4 class="text-base font-semibold text-slate-900">Journal Register &amp; Ledger Access</h4>
+                                <p class="mt-1 text-sm text-slate-500">Review ledger postings and audit trails.</p>
+                            </div>
+                        </a>
+                    </div>
+                </section>
+
+                <section class="space-y-3">
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Payroll</h3>
+                    <div class="grid gap-3">
+                        <a href="{{ route('loan.accounting.books.chart_rules') }}" class="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm2 4h8m-8 4h8m-8 4h5"/></svg>
+                            </span>
+                            <div class="min-w-0">
+                                <h4 class="text-base font-semibold text-slate-900">Chart of Accounts &amp; Rules</h4>
+                                <p class="mt-1 text-sm text-slate-500">Define and manage company account structure and rules.</p>
+                            </div>
+                        </a>
+                    </div>
+                </section>
+            </div>
         </div>
     </x-loan.page>
 </x-loan-layout>
