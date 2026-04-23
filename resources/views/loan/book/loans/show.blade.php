@@ -1,4 +1,22 @@
 <x-loan-layout>
+    <style>
+        .loan-table-scroll-5 {
+            max-height: 15rem; /* roughly header + 5 body rows */
+            overflow-y: auto;
+        }
+
+        .loan-table-scroll-5 thead th {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .loan-timeline-scroll-5 {
+            max-height: 20rem; /* about 5 timeline cards */
+            overflow-y: auto;
+            padding-right: 0.25rem;
+        }
+    </style>
     <x-loan.page :title="$title" :subtitle="$subtitle">
         @php
             $paid = (float) $loan->payments->sum('amount');
@@ -201,7 +219,7 @@
                 <h3 class="text-sm font-semibold text-slate-700">Repayment schedule</h3>
                 <p class="mt-1 text-xs text-slate-500">Installment-by-installment expected repayment and current status ({{ strtolower($scheduleFrequencyLabel) }} frequency).</p>
             </div>
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto loan-table-scroll-5">
                 <table class="min-w-full text-sm">
                     <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
@@ -244,7 +262,7 @@
                 <div class="border-b border-slate-100 px-4 py-3">
                     <h3 class="text-sm font-semibold text-slate-700">Disbursements</h3>
                 </div>
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto loan-table-scroll-5">
                     <table class="min-w-full text-sm">
                         <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                             <tr>
@@ -274,7 +292,7 @@
                 <div class="border-b border-slate-100 px-4 py-3">
                     <h3 class="text-sm font-semibold text-slate-700">Collections</h3>
                 </div>
-                <div class="overflow-x-auto">
+                <div class="overflow-x-auto loan-table-scroll-5">
                     <table class="min-w-full text-sm">
                         <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                             <tr>
@@ -306,7 +324,7 @@
 
         <div class="mt-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 class="text-sm font-semibold text-slate-700">Activity timeline</h2>
-            <div class="mt-3 space-y-3">
+            <div class="mt-3 space-y-3 loan-timeline-scroll-5">
                 @forelse ($timeline->take(10) as $item)
                     <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                         <div class="flex flex-wrap items-center justify-between gap-2">

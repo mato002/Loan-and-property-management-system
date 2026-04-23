@@ -717,7 +717,7 @@ class LoanBookLoansController extends Controller
 
         return view('loan.book.loans.show', [
             'title' => 'Loan details',
-            'subtitle' => $loan_book_loan->loan_number,
+            'subtitle' => $loan_book_loan->loan_number.' · '.($loan_book_loan->loanClient?->full_name ?? 'Unknown client'),
             'loan' => $loan_book_loan,
             'recentCollections' => $recentCollections,
         ]);

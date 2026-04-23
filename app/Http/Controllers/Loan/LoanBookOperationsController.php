@@ -212,7 +212,10 @@ class LoanBookOperationsController extends Controller
 
     public function disbursementsCreate(): View
     {
-        $loanQuery = LoanBookLoan::query()->with('loanClient')->orderByDesc('created_at');
+        $loanQuery = LoanBookLoan::query()
+            ->with('loanClient')
+            ->whereDoesntHave('disbursements')
+            ->orderByDesc('created_at');
         $this->scopeByAssignedLoanClient($loanQuery, auth()->user());
 
         return view('loan.book.disbursements.create', [
@@ -242,6 +245,12 @@ class LoanBookOperationsController extends Controller
 
         $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
         $this->ensureLoanClientOwner($loan->loanClient, $request->user());
+        if ($loan->disbursements()->exists()) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->withErrors(['loan_book_loan_id' => __('This loan has already been disbursed. Multiple disbursements are not allowed.')]);
+        }
 
         try {
             // All methods (including M-Pesa) are recorded as manual payouts: GL posts immediately.

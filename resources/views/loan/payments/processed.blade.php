@@ -1,108 +1,160 @@
 <x-loan-layout>
     <style>
-        .loan-compact-table {
-            table-layout: fixed;
-            width: 100%;
-        }
-
-        .loan-compact-table th,
-        .loan-compact-table td {
-            padding: 0.45rem 0.5rem;
-            font-size: 0.75rem;
-            line-height: 1.15rem;
-            vertical-align: top;
-            word-break: break-word;
+        .print-only-header { display: none; }
+        @media print {
+            .print-only-header { display: block !important; margin-bottom: 10px; border-bottom: 2px solid #1a5f7a; padding-bottom: 8px; }
+            aside, nav, .sidebar, .navbar, .filter-section, .no-print, button, a[href*="reversal"], a[href*="journal"] { display: none !important; }
+            main, .main-content, .content, .max-w-\[1600px\], .max-w-\[1800px\] { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+            .shadow-sm, .shadow, .shadow-md, .bg-slate-50, .bg-slate-100 { box-shadow: none !important; background: #fff !important; }
+            table, th, td { color: #000 !important; font-size: 10pt !important; }
+            thead { display: table-header-group !important; }
+            tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+            @page { size: A4 landscape; margin: 12mm; }
         }
     </style>
 
+    @php
+        $pageItems = $payments->getCollection();
+        $processedVisibleAmount = (float) $pageItems->sum(fn ($p) => (float) ($p->amount ?? 0));
+        $processedTodayCount = (int) $pageItems->filter(fn ($p) => optional($p->transaction_at)?->isToday())->count();
+        $reversalEligible = (int) $pageItems->filter(fn ($p) => $p->payment_kind !== \App\Models\LoanBookPayment::KIND_C2B_REVERSAL)->count();
+        $withJournal = (int) $pageItems->filter(fn ($p) => ! is_null($p->accounting_journal_entry_id))->count();
+        $autoPostedRatio = $pageItems->count() > 0 ? (int) round(($withJournal / $pageItems->count()) * 100) : 0;
+        $autoGaugeOffset = 220 - (($autoPostedRatio / 100) * 220);
+        $reviewCount = (int) $pageItems->filter(fn ($p) => blank($p->validatedByUser?->name) && blank($p->postedByUser?->name))->count();
+    @endphp
+
     <x-loan.page
-        title="Processed payments"
-        subtitle="Posted collections and other payment lines."
+        title="PROCESSED PAYMENTS LEDGER"
+        subtitle="System: Kenya · Branch: Nakuru · Last refresh: {{ now()->format('M j, Y g:i A') }}"
     >
         @include('loan.payments.partials.flash')
 
-        <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div class="flex flex-wrap items-end gap-2">
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">From</label>
-                    <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
-                </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">To</label>
-                    <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
-                </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Corporate</label>
-                    <select name="corporate" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm min-w-44">
-                        <option value="">All</option>
-                        @foreach (($corporateOptions ?? collect()) as $option)
-                            <option value="{{ $option }}" @selected(($corporate ?? '') === $option)>{{ $option }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Pay Mode</label>
-                    <select name="pay_mode" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm min-w-36">
-                        <option value="">All</option>
-                        @foreach (($payModeOptions ?? collect()) as $option)
-                            <option value="{{ $option }}" @selected(($payMode ?? '') === $option)>{{ ucfirst($option) }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, loan, client, receipt..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
-                </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Source</label>
-                    <select name="source" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
-                        <option value="">All</option>
-                        <option value="sms_forwarder" @selected(($source ?? '') === 'sms_forwarder')>SMS Forwarder</option>
-                        <option value="manual" @selected(($source ?? '') === 'manual')>Manual/Other</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
-                    <select name="per_page" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
-                        @foreach ([10, 20, 25, 50, 100, 200] as $size)
-                            <option value="{{ $size }}" @selected((int) ($perPage ?? 20) === $size)>{{ $size }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
-                <a href="{{ route('loan.payments.processed') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
-                <div class="ml-auto flex items-center gap-2">
-                    <a href="{{ route('loan.payments.processed', array_merge(request()->query(), ['export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
-                    <a href="{{ route('loan.payments.processed', array_merge(request()->query(), ['export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
-                    <a href="{{ route('loan.payments.processed', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
-                    <button type="button" onclick="window.print()" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Print</button>
-                </div>
-            </div>
-        </form>
-
-        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <h2 class="text-sm font-semibold text-slate-700">
-                    Processed pays for {{ \Carbon\Carbon::parse($displayDate)->format('d-m-Y') }}
-                </h2>
-                <p class="text-xs text-slate-500">
-                    {{ $payments->total() }} row(s) · (Ksh {{ number_format((float) ($totalAmount ?? 0), 2) }})
-                </p>
+        <section class="space-y-5 bg-slate-50/70">
+            <div class="grid grid-cols-1 gap-4 lg:grid-cols-4">
+                <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Processed (KES)</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">KES {{ number_format((float) ($totalAmount ?? $processedVisibleAmount), 2) }}</p>
+                    <p class="mt-1 text-xs text-purple-700">{{ number_format($payments->total()) }} rows · {{ $processedTodayCount }} today</p>
+                    <svg class="mt-2 h-5 w-full text-purple-500" viewBox="0 0 120 20" fill="none" aria-hidden="true">
+                        <path d="M2 14c12-9 18-9 30 0s18 9 30 0 18-9 30 0 18 9 26 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+                    </svg>
+                </article>
+                <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Posting Confidence</p>
+                            <p class="mt-2 text-2xl font-semibold text-slate-900">{{ $autoPostedRatio }}%</p>
+                            <p class="mt-1 text-xs {{ $autoPostedRatio >= 80 ? 'text-emerald-700' : 'text-amber-700' }}">Journal-linked: {{ $withJournal }} / {{ $pageItems->count() }}</p>
+                        </div>
+                        <svg class="h-14 w-14 shrink-0" viewBox="0 0 100 100" fill="none" aria-label="Posting confidence">
+                            <circle cx="50" cy="50" r="35" stroke="#e2e8f0" stroke-width="8"></circle>
+                            <circle cx="50" cy="50" r="35" stroke="#16a34a" stroke-width="8" stroke-linecap="round" stroke-dasharray="220" stroke-dashoffset="{{ $autoGaugeOffset }}" transform="rotate(-90 50 50)"></circle>
+                        </svg>
+                    </div>
+                </article>
+                <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Reversal Eligible</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">{{ $reversalEligible }}</p>
+                    <p class="mt-1 text-xs text-amber-700">Rows that can be reversed safely</p>
+                </article>
+                <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Needs Review</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">{{ $reviewCount }}</p>
+                    <p class="mt-1 text-xs text-purple-700">Missing validator or posting actor metadata</p>
+                </article>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="loan-compact-table min-w-full w-full text-xs">
-                    <thead class="bg-slate-50 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+            <form method="get" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" x-data="{ advancedFilters:false }">
+                <div class="flex flex-wrap items-end gap-2">
+                    <div>
+                        <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">From</label>
+                        <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">To</label>
+                        <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Corporate</label>
+                        <select name="corporate" class="h-10 min-w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                            <option value="">All</option>
+                            @foreach (($corporateOptions ?? collect()) as $option)
+                                <option value="{{ $option }}" @selected(($corporate ?? '') === $option)>{{ $option }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Pay Mode</label>
+                        <select name="pay_mode" class="h-10 min-w-36 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                            <option value="">All</option>
+                            @foreach (($payModeOptions ?? collect()) as $option)
+                                <option value="{{ $option }}" @selected(($payMode ?? '') === $option)>{{ ucfirst($option) }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="min-w-[260px] flex-1">
+                        <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
+                        <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, Loan #, Client, Phone..." class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Source</label>
+                        <select name="source" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                            <option value="">All</option>
+                            <option value="sms_forwarder" @selected(($source ?? '') === 'sms_forwarder')>SMS Forwarder</option>
+                            <option value="manual" @selected(($source ?? '') === 'manual')>Manual/Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
+                        <select name="per_page" onchange="this.form.submit()" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                            @foreach ([10, 20, 25, 50, 100, 200] as $size)
+                                <option value="{{ $size }}" @selected((int) ($perPage ?? 20) === $size)>{{ $size }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <button type="button" @click="advancedFilters=!advancedFilters" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Advanced Filters</button>
+                    <button type="submit" class="h-10 rounded-lg bg-teal-800 px-4 text-sm font-semibold text-white hover:bg-teal-900">Filter</button>
+                    <a href="{{ route('loan.payments.processed') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</a>
+                    <div class="ml-auto flex flex-wrap items-center gap-2 no-print">
+                        <a href="{{ route('loan.payments.processed', array_merge(request()->query(), ['export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">CSV</a>
+                        <a href="{{ route('loan.payments.processed', array_merge(request()->query(), ['export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Excel</a>
+                        <a href="{{ route('loan.payments.processed', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">PDF</a>
+                        <a href="{{ route('loan.payments.processed.print', request()->query()) }}" target="_blank" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Print</a>
+                    </div>
+                </div>
+                <div x-show="advancedFilters" x-cloak class="mt-3 grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 md:grid-cols-4">
+                    <input type="text" placeholder="Branch..." class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                    <input type="text" placeholder="Destination account..." class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                    <input type="text" placeholder="Approver..." class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                    <input type="text" placeholder="Amount range..." class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                </div>
+            </form>
+
+            <div class="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm">
+                <div class="print-only-header">
+                    <div class="text-xl font-bold text-slate-900">Gaitho Loans</div>
+                    <div class="text-sm font-semibold text-slate-800">PROCESSED PAYMENTS LEDGER</div>
+                    <div class="text-xs text-slate-600">Branch: Nakuru · Generated: {{ now()->format('M j, Y g:i A') }} · User: {{ auth()->user()?->name ?? 'System' }}</div>
+                </div>
+                <div class="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <h2 class="text-sm font-semibold text-slate-700">Processed pays for {{ \Carbon\Carbon::parse($displayDate)->format('d-m-Y') }}</h2>
+                    <p class="text-xs text-slate-500">{{ $payments->total() }} row(s) · Ksh {{ number_format((float) ($totalAmount ?? 0), 2) }}</p>
+                </div>
+                <div class="overflow-x-hidden">
+                    <table class="w-full table-auto text-[11px]">
+                        <thead class="sticky top-0 z-10 bg-slate-100 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                         <tr>
-                            <th class="px-5 py-3">Transaction</th>
-                            <th class="px-5 py-3 text-right">Amount</th>
-                            <th class="px-5 py-3">Payment Details</th>
-                            <th class="px-5 py-3">Client</th>
-                            <th class="px-5 py-3">Approval</th>
-                            <th class="px-5 py-3">Time</th>
+                            <th class="border-b border-r border-slate-300 px-3 py-3">Transaction</th>
+                            <th class="border-b border-r border-slate-300 px-3 py-3 text-right">Amount</th>
+                            <th class="border-b border-r border-slate-300 px-3 py-3">Payment Details</th>
+                            <th class="border-b border-r border-slate-300 px-3 py-3">Client</th>
+                            <th class="border-b border-r border-slate-300 px-3 py-3">Message</th>
+                            <th class="border-b border-r border-slate-300 px-3 py-3">Approval</th>
+                            <th class="border-b border-slate-300 px-3 py-3">Time</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100">
+                    <tbody class="bg-white">
                         @forelse ($payments as $p)
                             @php
                                 $processedRowUrl = $p->loan?->loanClient
@@ -118,9 +170,9 @@
                                     onkeydown="if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('a, button, input, select, textarea, form, label, summary, details')) { event.preventDefault(); window.location.href='{{ $processedRowUrl }}'; }"
                                 @endif
                             >
-                                <td class="px-5 py-3 font-mono text-xs text-slate-700">{{ $p->reference }}</td>
-                                <td class="px-5 py-3 text-right tabular-nums font-medium text-slate-900">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
-                                <td class="px-5 py-3 text-slate-600">
+                                <td class="border-b border-r border-slate-200 px-4 py-3 font-mono text-xs text-blue-700">{{ $p->reference }}</td>
+                                <td class="border-b border-r border-slate-200 px-4 py-3 text-right tabular-nums font-semibold text-emerald-700">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
+                                <td class="border-b border-r border-slate-200 px-4 py-3 text-slate-600">
                                     <ul class="list-disc pl-4 space-y-0.5">
                                         @php
                                             $journalLines = collect($p->accountingJournalEntry?->lines ?? [])->take(3);
@@ -141,7 +193,7 @@
                                         @endforelse
                                     </ul>
                                 </td>
-                                <td class="px-5 py-3 text-slate-600">
+                                <td class="border-b border-r border-slate-200 px-4 py-3 text-slate-600">
                                     @if ($p->loan?->loanClient)
                                         <a href="{{ route('loan.clients.show', $p->loan->loanClient) }}" class="text-[#2f4f4f] hover:underline">
                                             {{ $p->loan->loanClient->full_name }}
@@ -151,14 +203,18 @@
                                         —
                                     @endif
                                 </td>
-                                <td class="px-5 py-3 text-slate-600 text-xs">
-                                    @if ($p->validatedByUser || $p->postedByUser)
-                                        {{ $p->validatedByUser?->name ?? $p->postedByUser?->name ?? 'System' }}
-                                    @else
-                                        System
-                                    @endif
+                                <td class="border-b border-r border-slate-200 px-4 py-3 text-slate-600 whitespace-pre-wrap">{{ $p->message ?? '—' }}</td>
+                                <td class="border-b border-r border-slate-200 px-4 py-3 text-xs text-slate-600">
+                                    <div class="space-y-1">
+                                        <div>
+                                            <span class="inline-flex rounded-full border {{ ($p->validatedByUser || $p->postedByUser) ? 'border-emerald-200 bg-emerald-100 text-emerald-700' : 'border-purple-200 bg-purple-100 text-purple-700' }} px-2 py-0.5 text-[11px] font-semibold">
+                                                {{ ($p->validatedByUser || $p->postedByUser) ? 'Confirmed' : 'System Posted' }}
+                                            </span>
+                                        </div>
+                                        <div>{{ $p->validatedByUser?->name ?? $p->postedByUser?->name ?? 'System' }}</div>
+                                    </div>
                                 </td>
-                                <td class="px-5 py-3 text-slate-600 text-xs whitespace-nowrap">
+                                <td class="border-b border-slate-200 px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
                                     <span>{{ optional($p->transaction_at)->format('h:i a') ?? '—' }}</span>
                                     @if ($p->payment_kind !== \App\Models\LoanBookPayment::KIND_C2B_REVERSAL)
                                         <a href="{{ route('loan.payments.reversal.create', ['from' => $p->id]) }}" class="mt-1 block text-blue-600 hover:underline">
@@ -174,7 +230,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="6" class="px-5 py-12 text-center text-slate-500">No processed payments yet.</td>
+                                <td colspan="7" class="px-5 py-12 text-center text-slate-500">No processed payments yet.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -182,10 +238,11 @@
             </div>
 
             @if ($payments->hasPages())
-                <div class="px-5 py-4 border-t border-slate-100">
+                <div class="border-t border-slate-100 px-5 py-4">
                     {{ $payments->links() }}
                 </div>
             @endif
-        </div>
+            </div>
+        </section>
     </x-loan.page>
 </x-loan-layout>

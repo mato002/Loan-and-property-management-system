@@ -11,6 +11,8 @@ use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanClient;
 use App\Models\PropertyPortalSetting;
+use App\Models\User;
+use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Repositories\Equity\PaymentAuditLogRepository;
 use App\Services\Integrations\MpesaDarajaService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
@@ -63,7 +65,12 @@ class LoanPaymentWebhookController extends Controller
         $paidAt = MpesaSmsForwarderParser::normalizePaidAt($data['paid_at'] ?? null);
 
         $rawMessage = (string) ($data['raw_message'] ?? '');
-        $provider = strtolower(trim((string) ($data['provider'] ?? '')));
+        $provider = $this->normalizeSmsProvider(
+            (string) ($data['provider'] ?? ''),
+            $rawMessage,
+            (string) ($data['source_device'] ?? ''),
+            $payload
+        );
         if (! MpesaSmsForwarderParser::isAllowedSmsProvider($provider, $rawMessage)) {
             return response()->json([
                 'ok' => true,
@@ -277,6 +284,7 @@ class LoanPaymentWebhookController extends Controller
             $currency,
             $providerTxnCode,
             $normalizedPhone,
+            $senderName,
             $txnAt,
             $provider,
             $data,
@@ -289,13 +297,14 @@ class LoanPaymentWebhookController extends Controller
                 'loan_book_loan_id' => $loan->id,
                 'amount' => $amount,
                 'currency' => $currency,
-                'channel' => 'mpesa',
+                'channel' => $this->smsChannelFor($provider, 'ingest'),
                 'status' => LoanBookPayment::STATUS_UNPOSTED,
                 'payment_kind' => LoanBookPayment::KIND_NORMAL,
                 'mpesa_receipt_number' => $providerTxnCode,
                 'payer_msisdn' => $normalizedPhone,
                 'transaction_at' => $txnAt,
                 'notes' => $this->buildPaymentNotes($provider, $data, $payload, $rawMessage),
+                'message' => $rawMessage !== '' ? $rawMessage : null,
                 'created_by' => null,
             ]);
             $row->update([
@@ -385,13 +394,16 @@ class LoanPaymentWebhookController extends Controller
                 'loan_book_loan_id' => null,
                 'amount' => $amount,
                 'currency' => $this->defaultLoanCurrency(),
-                'channel' => $smsDirection === 'outgoing' ? 'mpesa_sms_disbursement_unmatched' : 'mpesa_sms_unmatched',
+                'channel' => $smsDirection === 'outgoing'
+                    ? $this->smsChannelFor($provider, 'disbursement_unmatched')
+                    : $this->smsChannelFor($provider, 'unmatched'),
                 'status' => LoanBookPayment::STATUS_UNPOSTED,
                 'payment_kind' => LoanBookPayment::KIND_NORMAL,
                 'mpesa_receipt_number' => $providerTxnCode,
                 'payer_msisdn' => $normalizedPhone,
                 'transaction_at' => $txnAt,
                 'notes' => $this->buildPaymentNotes($provider, $data, $payload, $rawMessage),
+                'message' => $rawMessage !== '' ? $rawMessage : null,
                 'created_by' => null,
             ]);
             $row->update([
@@ -419,6 +431,52 @@ class LoanPaymentWebhookController extends Controller
         }
 
         return implode("\n", $lines);
+    }
+
+    private function smsChannelFor(string $provider, string $suffix): string
+    {
+        $normalizedProvider = strtolower(trim($provider));
+        if (! preg_match('/^[a-z0-9_]+$/', $normalizedProvider)) {
+            $normalizedProvider = '';
+        }
+        if ($normalizedProvider === '') {
+            $normalizedProvider = 'mpesa';
+        }
+
+        return $normalizedProvider.'_sms_'.$suffix;
+    }
+
+    private function normalizeSmsProvider(string $provider, string $rawMessage, string $sourceDevice, ?array $payload): string
+    {
+        $normalizedProvider = strtolower(trim($provider));
+        if (in_array($normalizedProvider, ['equity', 'mpesa'], true)) {
+            return $normalizedProvider;
+        }
+
+        $haystack = strtolower(trim(
+            $normalizedProvider.' '.
+            $sourceDevice.' '.
+            $rawMessage.' '.
+            ($payload ? json_encode($payload) : '')
+        ));
+
+        if (
+            str_contains($haystack, 'equity')
+            || str_contains($haystack, 'equitel')
+            || str_contains($haystack, 'eazzy')
+        ) {
+            return 'equity';
+        }
+
+        if (
+            str_contains($haystack, 'm-pesa')
+            || str_contains($haystack, 'mpesa')
+            || str_contains($haystack, 'safaricom')
+        ) {
+            return 'mpesa';
+        }
+
+        return 'mpesa';
     }
 
     private function buildPaymentNotes(string $provider, array $data, ?array $payload, string $rawMessage): string
@@ -456,7 +514,7 @@ class LoanPaymentWebhookController extends Controller
 
     private function shouldAutoPostMatchedPayments(): bool
     {
-        return (bool) config('services.loan_sms_ingest.auto_post_matched', false);
+        return (bool) config('services.loan_sms_ingest.auto_post_matched', true);
     }
 
     private function tryAutoPostMatchedPayment(
@@ -498,6 +556,8 @@ class LoanPaymentWebhookController extends Controller
                 'transaction_id' => $providerTxnCode,
                 'payment_id' => $payment->id,
             ], 'sms_forwarder_decision');
+
+            $this->notifyAutoPostedPayment($payment->fresh(['loan.loanClient']));
         } catch (\Throwable $e) {
             $ingest->update([
                 'match_note' => trim((string) $ingest->match_note.' Auto-post failed; left unposted. '.$e->getMessage()),
@@ -510,6 +570,52 @@ class LoanPaymentWebhookController extends Controller
                 'payment_id' => $payment->id,
                 'reason' => $e->getMessage(),
             ], 'sms_forwarder_decision');
+        }
+    }
+
+    private function notifyAutoPostedPayment(?LoanBookPayment $payment): void
+    {
+        if (! $payment) {
+            return;
+        }
+
+        try {
+            $payment->loadMissing('loan.loanClient');
+            $assignedEmployeeId = (int) ($payment->loan?->loanClient?->assigned_employee_id ?? 0);
+            $assignedUser = null;
+
+            if ($assignedEmployeeId > 0) {
+                $employeeEmail = trim((string) (\App\Models\Employee::query()
+                    ->whereKey($assignedEmployeeId)
+                    ->value('email') ?? ''));
+                if ($employeeEmail !== '') {
+                    $assignedUser = User::query()
+                        ->whereRaw('LOWER(email) = ?', [strtolower($employeeEmail)])
+                        ->first();
+                }
+            }
+
+            $users = User::query()->get()->filter(function (User $user) use ($assignedUser): bool {
+                if ($assignedUser && (int) $user->id === (int) $assignedUser->id) {
+                    return true;
+                }
+
+                return ($user->is_super_admin ?? false) === true
+                    || ($user->isModuleApproved('loan') && $user->hasLoanPermission('payments.view') && strtolower($user->effectiveLoanRole()) === 'admin');
+            })->unique('id');
+
+            foreach ($users as $user) {
+                $user->notify(new LoanWorkflowNotification(
+                    'Payment auto-posted',
+                    'Payment '.$payment->reference.' was auto-posted and processed successfully.',
+                    route('loan.payments.show', $payment)
+                ));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Loan auto-post notification failed', [
+                'payment_id' => $payment->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

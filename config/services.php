@@ -45,7 +45,7 @@ return [
 
     'loan_sms_ingest' => [
         'secret' => env('LOAN_SMS_INGEST_SECRET'),
-        'auto_post_matched' => env('LOAN_SMS_AUTO_POST_MATCHED', false),
+        'auto_post_matched' => env('LOAN_SMS_AUTO_POST_MATCHED', true),
     ],
 
     'property_banks' => [

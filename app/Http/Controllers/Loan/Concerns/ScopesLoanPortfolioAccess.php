@@ -68,14 +68,22 @@ trait ScopesLoanPortfolioAccess
             return false;
         }
 
+        // Super Admin has full cross-portfolio visibility.
         if (($user->is_super_admin ?? false) === true) {
             return true;
         }
 
-        // Use effective role so RBAC assignments in loan_user_role are honored.
+        // Loan Admin role gets full cross-portfolio visibility.
+        // Other roles (manager/officer/accountant/user) stay portfolio-scoped.
         $role = strtolower(trim((string) ($user->effectiveLoanRole() ?? '')));
+        if ($role === 'admin') {
+            return true;
+        }
 
-        return in_array($role, ['admin', 'manager', 'accountant'], true);
+        // Everyone else is portfolio-scoped by default.
+        // Optional emergency override for non-super-admin users:
+        // set LOAN_GLOBAL_DATA_ACCESS=true in env.
+        return (bool) env('LOAN_GLOBAL_DATA_ACCESS', false);
     }
 
     private function resolveLoanEmployeeId(?User $user): ?int

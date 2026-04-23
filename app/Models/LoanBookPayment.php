@@ -47,6 +47,7 @@ class LoanBookPayment extends Model
         'validated_at',
         'validated_by',
         'notes',
+        'message',
         'created_by',
         'accounting_journal_entry_id',
     ];

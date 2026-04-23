@@ -7,14 +7,18 @@ use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
+use App\Models\PropertyPortalSetting;
 use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Support\TabularExport;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -55,6 +59,29 @@ class LoanPaymentsController extends Controller
         return view('loan.payments.unposted', array_merge(compact('payments', 'assignableLoanOptions', 'suggestedLoanByPayment'), $filters));
     }
 
+    public function unpostedPrint(Request $request): View
+    {
+        $query = LoanBookPayment::query()->with('loan.loanClient')->unpostedQueue();
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+        $filters = $this->applyListFilters($query, $request);
+
+        $payments = $query
+            ->orderByDesc('transaction_at')
+            ->limit(5000)
+            ->get();
+
+        $totalAmount = (float) $payments->sum('amount');
+
+        return view('loan.payments.unposted-print', [
+            'payments' => $payments,
+            'totalAmount' => $totalAmount,
+            'generatedAt' => now(),
+            'generatedBy' => $request->user()?->name ?? 'System',
+            'branchName' => 'Nakuru',
+            'filters' => $filters,
+        ]);
+    }
+
     public function processed(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         $query = LoanBookPayment::query()
@@ -68,12 +95,12 @@ class LoanPaymentsController extends Controller
         if ($source !== '') {
             $query->where(function (Builder $builder) use ($source): void {
                 if ($source === 'sms_forwarder') {
-                    $builder->where('channel', 'like', 'mpesa_sms_%');
+                    $builder->where('channel', 'like', '%_sms_%');
 
                     return;
                 }
                 if ($source === 'manual') {
-                    $builder->where('channel', 'not like', 'mpesa_sms_%');
+                    $builder->where('channel', 'not like', '%_sms_%');
 
                     return;
                 }
@@ -125,6 +152,58 @@ class LoanPaymentsController extends Controller
         ), $filters));
     }
 
+    public function processedPrint(Request $request): View
+    {
+        $query = LoanBookPayment::query()
+            ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'accountingJournalEntry.lines.account'])
+            ->processedQueue();
+        $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
+
+        $source = trim((string) $request->query('source', ''));
+        $payMode = trim((string) $request->query('pay_mode', ''));
+        $corporate = trim((string) $request->query('corporate', ''));
+        $filters = $this->applyListFilters($query, $request);
+
+        if ($source !== '') {
+            $query->where(function (Builder $builder) use ($source): void {
+                if ($source === 'sms_forwarder') {
+                    $builder->where('channel', 'like', '%_sms_%');
+
+                    return;
+                }
+                if ($source === 'manual') {
+                    $builder->where('channel', 'not like', '%_sms_%');
+
+                    return;
+                }
+                $builder->where('channel', $source);
+            });
+        }
+        if ($payMode !== '') {
+            $query->where('channel', $payMode);
+        }
+        if ($corporate !== '') {
+            $query->whereHas('loan', fn (Builder $loan) => $loan->where('checkoff_employer', $corporate));
+        }
+
+        $payments = $query
+            ->orderByDesc('posted_at')
+            ->orderByDesc('transaction_at')
+            ->limit(5000)
+            ->get();
+
+        $totalAmount = (float) $payments->sum('amount');
+
+        return view('loan.payments.processed-print', [
+            'payments' => $payments,
+            'totalAmount' => $totalAmount,
+            'generatedAt' => now(),
+            'generatedBy' => $request->user()?->name ?? 'System',
+            'branchName' => 'Nakuru',
+            'filters' => $filters,
+        ]);
+    }
+
     public function prepayments(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         $query = LoanBookPayment::query()
@@ -173,6 +252,22 @@ class LoanPaymentsController extends Controller
         return view('loan.payments.merged', array_merge(compact('payments'), $filters));
     }
 
+    public function show(LoanBookPayment $loan_book_payment): View
+    {
+        $loan_book_payment->load([
+            'loan.loanClient',
+            'postedByUser',
+            'validatedByUser',
+            'createdByUser',
+            'accountingJournalEntry.lines.account',
+        ]);
+        $this->ensureLoanClientOwner($loan_book_payment->loan?->loanClient);
+
+        return view('loan.payments.show', [
+            'payment' => $loan_book_payment,
+        ]);
+    }
+
     public function c2bReversals(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         $query = LoanBookPayment::query()
@@ -202,12 +297,12 @@ class LoanPaymentsController extends Controller
         if ($source !== '') {
             $query->where(function (Builder $builder) use ($source): void {
                 if ($source === 'sms_forwarder') {
-                    $builder->where('channel', 'like', 'mpesa_sms_%');
+                    $builder->where('channel', 'like', '%_sms_%');
 
                     return;
                 }
                 if ($source === 'manual') {
-                    $builder->where('channel', 'not like', 'mpesa_sms_%');
+                    $builder->where('channel', 'not like', '%_sms_%');
 
                     return;
                 }
@@ -799,7 +894,7 @@ class LoanPaymentsController extends Controller
         $request->user()?->notify(new LoanWorkflowNotification(
             'Payment posted',
             'Payment '.$loan_book_payment->reference.' was posted and processed successfully.',
-            route('loan.payments.processed')
+            route('loan.payments.show', $loan_book_payment)
         ));
 
         return redirect()
@@ -869,7 +964,7 @@ class LoanPaymentsController extends Controller
         ]);
 
         $shouldPostNow = $request->boolean('post_now', false)
-            && str_starts_with((string) $loan_book_payment->channel, 'mpesa_sms_')
+            && str_contains((string) $loan_book_payment->channel, '_sms_')
             && $loan_book_payment->status === LoanBookPayment::STATUS_UNPOSTED;
 
         if ($shouldPostNow) {
@@ -926,8 +1021,8 @@ class LoanPaymentsController extends Controller
             ->whereNull('loan_book_loan_id')
             ->where(function (Builder $builder): void {
                 $builder
-                    ->where('channel', 'mpesa_sms_unmatched')
-                    ->orWhere('channel', 'mpesa_sms_disbursement_unmatched');
+                    ->where('channel', 'like', '%_sms_unmatched')
+                    ->orWhere('channel', 'like', '%_sms_disbursement_unmatched');
             });
         $this->scopeByAssignedLoanClient($paymentsQuery, $request->user(), 'loan.loanClient');
 
@@ -1036,6 +1131,10 @@ class LoanPaymentsController extends Controller
 
         $rows = $query->with(['loan.loanClient'])->limit(5000)->get();
 
+        if ($format === 'pdf' && $basename === 'payments-unposted') {
+            return $this->streamUnpostedPdfReport($rows, $basename);
+        }
+
         return TabularExport::stream(
             $basename.'-'.now()->format('Ymd_His'),
             ['Reference', 'Date', 'Loan #', 'Client #', 'Client Name', 'Amount', 'Channel', 'Status', 'Kind', 'Receipt'],
@@ -1057,6 +1156,126 @@ class LoanPaymentsController extends Controller
             },
             $format
         );
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, LoanBookPayment> $rows
+     */
+    private function streamUnpostedPdfReport($rows, string $basename): StreamedResponse
+    {
+        $settingsReady = Schema::hasTable('property_portal_settings');
+        $companyName = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_name', '')) : '';
+        $tagline = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_tagline', '')) : '';
+        $logo = $settingsReady ? trim((string) PropertyPortalSetting::getValue('company_logo_url', '')) : '';
+        $phone = $settingsReady ? trim((string) PropertyPortalSetting::getValue('contact_phone', '')) : '';
+        $email = $settingsReady ? trim((string) PropertyPortalSetting::getValue('contact_email_primary', '')) : '';
+        $address = $settingsReady ? trim((string) PropertyPortalSetting::getValue('contact_address', '')) : '';
+
+        $companyName = $companyName !== '' ? $companyName : 'Gaitho Property Agency';
+        $tagline = $tagline !== '' ? $tagline : 'Excellence in Property Management.';
+        $contactLines = array_values(array_filter([$phone, $email, $address], fn ($v) => $v !== ''));
+        $logoSrc = $this->resolvePdfLogoSrc($logo);
+        $generatedAt = now();
+
+        $mappedRows = $rows->map(function (LoanBookPayment $payment): array {
+            $channelRaw = strtolower((string) ($payment->channel ?? ''));
+            $channel = match (true) {
+                str_contains($channelRaw, 'mpesa_sms_unmatched') => 'M-Pesa Unmatched',
+                str_contains($channelRaw, 'mpesa_sms') => 'M-Pesa SMS',
+                str_contains($channelRaw, 'mpesa') => 'M-Pesa',
+                str_contains($channelRaw, 'bank') => 'Bank',
+                str_contains($channelRaw, 'cash') => 'Cash',
+                str_contains($channelRaw, 'wallet') => 'Wallet',
+                default => ucwords(str_replace('_', ' ', $channelRaw ?: 'Other')),
+            };
+
+            $statusRaw = strtolower((string) ($payment->status ?? ''));
+            if ($statusRaw === '' && str_contains($channelRaw, 'unmatched')) {
+                $statusRaw = 'unmatched';
+            }
+            if ($statusRaw === '') {
+                $statusRaw = 'unposted';
+            }
+
+            return [
+                'reference' => (string) ($payment->reference ?: '—'),
+                'date_time' => (string) (optional($payment->transaction_at)->format('Y-m-d H:i') ?? '—'),
+                'channel' => $channel,
+                'receipt' => (string) ($payment->mpesa_receipt_number ?: '—'),
+                'client_name' => (string) ($payment->loan?->loanClient?->full_name ?: '—'),
+                'loan_number' => (string) ($payment->loan?->loan_number ?: '—'),
+                'amount' => (float) ($payment->amount ?? 0),
+                'status' => $statusRaw,
+            ];
+        })->values();
+
+        $totalTransactions = $mappedRows->count();
+        $totalAmount = (float) $mappedRows->sum('amount');
+        $attentionRequired = (int) $mappedRows->filter(fn ($row) => in_array($row['status'], ['unposted', 'unmatched'], true))->count();
+
+        $html = view('loan.payments.exports.unposted-report', [
+            'companyName' => $companyName,
+            'tagline' => $tagline,
+            'contactLines' => $contactLines,
+            'logoSrc' => $logoSrc,
+            'generatedAt' => $generatedAt,
+            'rows' => $mappedRows,
+            'totalTransactions' => $totalTransactions,
+            'totalAmount' => $totalAmount,
+            'attentionRequired' => $attentionRequired,
+        ])->render();
+
+        try {
+            $options = new Options();
+            $options->set('isRemoteEnabled', true);
+            $options->set('defaultFont', 'DejaVu Sans');
+
+            $dompdf = new Dompdf($options);
+            $dompdf->loadHtml($html, 'UTF-8');
+            $dompdf->setPaper('A4', 'landscape');
+            $dompdf->render();
+            $binary = $dompdf->output();
+
+            return response()->streamDownload(function () use ($binary): void {
+                echo $binary;
+            }, $basename.'-'.now()->format('Ymd_His').'.pdf', [
+                'Content-Type' => 'application/pdf',
+            ]);
+        } catch (\Throwable) {
+            $docName = $basename.'-'.now()->format('Ymd_His').'.doc';
+
+            return response()->streamDownload(function () use ($html): void {
+                echo $html;
+            }, $docName, [
+                'Content-Type' => 'application/msword; charset=UTF-8',
+            ]);
+        }
+    }
+
+    private function resolvePdfLogoSrc(string $logo): string
+    {
+        $logo = trim($logo);
+        if ($logo === '') {
+            return '';
+        }
+        if (str_starts_with($logo, 'data:image/')) {
+            return $logo;
+        }
+        if (preg_match('/^https?:\/\//i', $logo) === 1) {
+            return $logo;
+        }
+
+        $candidate = ltrim($logo, '/');
+        $publicPath = public_path($candidate);
+        if (! is_file($publicPath)) {
+            return $logo;
+        }
+        $mime = mime_content_type($publicPath) ?: 'image/png';
+        $content = @file_get_contents($publicPath);
+
+        return $content !== false
+            ? 'data:'.$mime.';base64,'.base64_encode($content)
+            : $logo;
     }
 
     /**

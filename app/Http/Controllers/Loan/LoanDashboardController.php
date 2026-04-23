@@ -384,6 +384,7 @@ class LoanDashboardController extends Controller
             ->join('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
             ->whereIn('l.id', $scopedLoanIds)
             ->where('p.status', LoanBookPayment::STATUS_PROCESSED)
+            ->where('p.payment_kind', '!=', LoanBookPayment::KIND_C2B_REVERSAL)
             ->whereBetween('p.transaction_at', [$monthStart->startOfDay(), $monthEnd->endOfDay()])
             ->whereNotNull('c.assigned_employee_id')
             ->selectRaw('c.assigned_employee_id as employee_id, COALESCE(SUM(p.amount), 0) as total')
@@ -532,6 +533,7 @@ class LoanDashboardController extends Controller
             $mtdCollections = (float) LoanBookPayment::query()
                 ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user(), 'loan.loanClient'))
                 ->processedQueue()
+                ->where('payment_kind', '!=', LoanBookPayment::KIND_C2B_REVERSAL)
                 ->whereBetween('transaction_at', [now()->startOfMonth(), now()->endOfMonth()])
                 ->sum('amount');
         }
@@ -658,6 +660,7 @@ class LoanDashboardController extends Controller
             $paymentTotals[] = (float) LoanBookPayment::query()
                 ->tap(fn (Builder $query) => $this->scopeByAssignedLoanClient($query, auth()->user(), 'loan.loanClient'))
                 ->processedQueue()
+                ->where('payment_kind', '!=', LoanBookPayment::KIND_C2B_REVERSAL)
                 ->whereBetween('transaction_at', [$start, $end])
                 ->sum('amount');
 
