@@ -21,7 +21,75 @@
     <x-loan.page title="UNPOSTED PAYMENTS QUEUE" subtitle="System: Kenya · Branch: Nakuru · Last refresh: {{ now()->format('M j, Y g:i A') }}">
         @include('loan.payments.partials.flash')
 
-        <section class="space-y-5 bg-slate-50/70" x-data="{ paymentModal:false, importModal:false, balancesModal:false, bulkModal:false, advancedFilters:false, selectedRows: [] }">
+        <section
+            class="space-y-5 bg-slate-50/70"
+            x-data="{
+                paymentModal:false,
+                importModal:false,
+                balancesModal:false,
+                bulkModal:false,
+                advancedFilters:false,
+                selectedRows: [],
+                clients: @js(($manualPaymentClients ?? collect())->values()),
+                loans: @js(($manualPaymentLoans ?? collect())->values()),
+                selectedClientId: '',
+                selectedLoanId: '',
+                isThirdPartyPayer: false,
+                payerName: '',
+                payerPhone: '',
+                selectedChannel: 'mpesa',
+                amount: '',
+                reference: '',
+                branch: '',
+                receivingAccount: '',
+                transactionAt: '{{ now()->format('Y-m-d\TH:i') }}',
+                notes: '',
+                payerContext: '',
+                get filteredLoans() {
+                    const clientId = Number(this.selectedClientId || 0);
+                    if (!clientId) return this.loans;
+                    return this.loans.filter((loan) => Number(loan.client_id) === clientId);
+                },
+                onClientChange() {
+                    const clientId = Number(this.selectedClientId || 0);
+                    const client = this.clients.find((row) => Number(row.id) === clientId);
+                    if (!client) {
+                        if (!this.isThirdPartyPayer) {
+                            this.payerName = '';
+                            this.payerPhone = '';
+                        }
+                        this.branch = '';
+                        return;
+                    }
+                    if (!this.isThirdPartyPayer) {
+                        this.payerName = client.name || '';
+                        this.payerPhone = client.phone || '';
+                    }
+                    this.branch = client.branch || '';
+                    const preferredLoan = this.loans.find((loan) => Number(loan.client_id) === clientId);
+                    if (preferredLoan) {
+                        this.selectedLoanId = String(preferredLoan.id);
+                        this.onLoanChange();
+                    }
+                },
+                onLoanChange() {
+                    const loanId = Number(this.selectedLoanId || 0);
+                    const loan = this.loans.find((row) => Number(row.id) === loanId);
+                    if (!loan) return;
+                    if (!this.selectedClientId && loan.client_id) {
+                        this.selectedClientId = String(loan.client_id);
+                    }
+                    if (!this.isThirdPartyPayer) {
+                        if (!this.payerName) this.payerName = loan.client_name || '';
+                        if (!this.payerPhone) this.payerPhone = loan.client_phone || '';
+                    }
+                    if (!this.branch) this.branch = loan.branch || '';
+                    if (!this.receivingAccount && loan.branch) {
+                        this.receivingAccount = loan.branch + ' Collection Account';
+                    }
+                }
+            }"
+        >
             <div class="grid grid-cols-1 gap-4 lg:grid-cols-4">
                 <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Total Unposted (KES)</p>
@@ -134,8 +202,8 @@
                     <h2 class="text-sm font-semibold text-slate-800">Unposted Queue</h2>
                     <p class="text-xs text-slate-500">{{ number_format($payments->total()) }} row(s)</p>
                 </div>
-                <div class="overflow-x-hidden">
-                    <table class="w-full table-auto text-[10px] lg:text-[11px]">
+                <div class="overflow-x-auto">
+                    <table class="min-w-[1280px] w-full table-auto text-[10px] lg:text-[11px]">
                         <thead class="sticky top-0 z-10 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
                             <tr class="[&>th]:border-b [&>th]:border-r [&>th]:border-slate-300 [&>th:last-child]:border-r-0">
                                 <th class="px-1.5 py-2 text-center">
@@ -162,6 +230,28 @@
                                     $unpostedRowUrl = $p->loan?->loanClient ? route('loan.clients.show', $p->loan->loanClient) : null;
                                     $rawChannel = strtolower(trim((string) ($p->channel ?? '')));
                                     $rawMessage = strtolower((string) ($p->message ?? ''));
+                                    $clientPhoneDigits = preg_replace('/\D+/', '', (string) ($p->loan?->loanClient?->phone ?? '')) ?: '';
+                                    $payerPhoneDigits = preg_replace('/\D+/', '', (string) ($p->payer_msisdn ?? '')) ?: '';
+                                    $phoneVariants = static function (string $digits): array {
+                                        if ($digits === '') {
+                                            return [];
+                                        }
+                                        $variants = [$digits];
+                                        if (str_starts_with($digits, '254') && strlen($digits) >= 12) {
+                                            $variants[] = '0'.substr($digits, 3);
+                                        }
+                                        if (str_starts_with($digits, '0') && strlen($digits) >= 10) {
+                                            $variants[] = '254'.substr($digits, 1);
+                                        }
+
+                                        return array_values(array_unique(array_filter($variants)));
+                                    };
+                                    $isLikelyThirdPartyPayer = false;
+                                    if ($clientPhoneDigits !== '' && $payerPhoneDigits !== '') {
+                                        $clientPhoneVariants = $phoneVariants($clientPhoneDigits);
+                                        $payerPhoneVariants = $phoneVariants($payerPhoneDigits);
+                                        $isLikelyThirdPartyPayer = count(array_intersect($clientPhoneVariants, $payerPhoneVariants)) === 0;
+                                    }
                                     $providerLabel = match (true) {
                                         str_contains($rawMessage, 'equity') || str_contains($rawMessage, 'equitel') || str_contains($rawMessage, 'eazzy') => 'Equity',
                                         str_starts_with($rawChannel, 'equity_'), $rawChannel === 'equity' => 'Equity',
@@ -202,6 +292,11 @@
                                     <td class="px-2 py-2 align-top">{{ str_replace('_', ' ', $p->payment_kind) }}</td>
                                     <td class="px-2 py-2 align-top">
                                         <span class="inline-flex rounded-full border px-1.5 py-0.5 font-semibold {{ $statusClass }}">{{ $rowStatus }} ({{ $rowConfidence }}%)</span>
+                                        @if ($isLikelyThirdPartyPayer)
+                                            <div class="mt-1">
+                                                <span class="inline-flex rounded-full border border-purple-200 bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">Third-party payer</span>
+                                            </div>
+                                        @endif
                                     </td>
                                     <td class="px-2 py-2 align-top"><span class="inline-flex rounded-full border {{ $rowDpd > 0 ? 'border-amber-200 bg-amber-100 text-amber-700' : 'border-emerald-200 bg-emerald-100 text-emerald-700' }} px-1.5 py-0.5 font-semibold">{{ $rowDpd }}</span></td>
                                     <td class="px-2 py-2 align-top whitespace-nowrap">{{ optional($p->transaction_at)->format('Y-m-d H:i') ?? '—' }}</td>
@@ -354,22 +449,79 @@
                         <h3 class="text-base font-semibold text-slate-900">Manual Payment Booking</h3>
                         <button type="button" @click="paymentModal=false" class="rounded p-1 text-slate-500 hover:bg-slate-100">✕</button>
                     </div>
-                    <form action="{{ route('loan.payments.create') }}" method="get" class="grid grid-cols-1 gap-3 p-5 md:grid-cols-2">
-                        <input type="text" placeholder="Client / Loan lookup" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
-                        <input type="text" placeholder="Payer name" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
-                        <input type="text" placeholder="Payer phone" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
-                        <select class="h-10 rounded-lg border border-slate-300 px-3 text-sm"><option>Channel</option><option>M-Pesa</option><option>Bank</option><option>Cash</option></select>
-                        <input type="number" step="0.01" placeholder="Amount" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
-                        <input type="text" placeholder="Reference / transaction code" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
-                        <input type="text" placeholder="Branch" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
-                        <input type="text" placeholder="Receiving account / paybill / till" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
-                        <input type="datetime-local" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                    <form action="{{ route('loan.payments.store') }}" method="post" class="grid grid-cols-1 gap-3 p-5 md:grid-cols-2">
+                        @csrf
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600">Client</label>
+                            <select x-model="selectedClientId" @change="onClientChange()" class="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                                <option value="">Select client...</option>
+                                <template x-for="client in clients" :key="'c-' + client.id">
+                                    <option :value="String(client.id)" x-text="client.name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold text-slate-600">Loan</label>
+                            <select name="loan_book_loan_id" x-model="selectedLoanId" @change="onLoanChange()" required class="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm">
+                                <option value="">Select loan...</option>
+                                <template x-for="loan in filteredLoans" :key="'l-' + loan.id">
+                                    <option :value="String(loan.id)" x-text="loan.loan_number + ' - ' + loan.client_name"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <label class="md:col-span-2 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                            <input type="checkbox" x-model="isThirdPartyPayer" class="h-4 w-4 rounded border-amber-300 text-amber-700">
+                            Third-party payer (payer is different from selected client).
+                        </label>
+                        <template x-if="isThirdPartyPayer">
+                            <input type="text" x-model="payerName" placeholder="Third-party payer name" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                        </template>
+                        <template x-if="isThirdPartyPayer">
+                            <input type="text" x-model="payerPhone" placeholder="Third-party payer phone" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                        </template>
+                        <select name="channel" x-model="selectedChannel" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                            <option value="mpesa">M-Pesa</option>
+                            <option value="cash">Cash</option>
+                            <option value="bank">Bank Transfer</option>
+                            <option value="airtel_money">Airtel Money</option>
+                            <option value="tkash">T-Kash</option>
+                            <option value="equitel">Equitel</option>
+                            <option value="pesalink">PesaLink</option>
+                            <option value="rtgs">RTGS</option>
+                            <option value="eft">EFT</option>
+                            <option value="cheque">Cheque</option>
+                            <option value="card">Card (POS)</option>
+                            <option value="wallet">Wallet</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <input type="number" step="0.01" min="0.01" name="amount" x-model="amount" required placeholder="Amount" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                        <input type="text" name="mpesa_receipt_number" x-model="reference" :required="selectedChannel === 'mpesa'" placeholder="Reference / transaction code" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                        <input type="text" x-model="branch" placeholder="Branch" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                        <input type="text" x-model="receivingAccount" placeholder="Receiving account / paybill / till" class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                        <input type="datetime-local" name="transaction_at" x-model="transactionAt" required class="h-10 rounded-lg border border-slate-300 px-3 text-sm">
                         <input type="file" class="h-10 rounded-lg border border-slate-300 px-3 text-sm file:mr-3 file:border-0 file:bg-slate-100 file:px-3 file:py-2">
-                        <textarea placeholder="Notes" class="md:col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
+                        <template x-if="isThirdPartyPayer">
+                            <input type="text" x-model="payerContext" placeholder="Payer relationship / reason (optional)" class="md:col-span-2 h-10 rounded-lg border border-slate-300 px-3 text-sm">
+                        </template>
+                        <textarea x-model="notes" placeholder="Notes" class="md:col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
+                        <input type="hidden" name="currency" value="KES">
+                        <input type="hidden" name="payment_kind" value="normal">
+                        <input type="hidden" name="payer_msisdn" x-model="payerPhone">
+                        <input
+                            type="hidden"
+                            name="notes"
+                            :value="[
+                                notes,
+                                branch ? 'Branch: ' + branch : '',
+                                receivingAccount ? 'Receiving account: ' + receivingAccount : '',
+                                isThirdPartyPayer && payerName ? 'Third-party payer: ' + payerName : '',
+                                isThirdPartyPayer && payerContext ? 'Payer context: ' + payerContext : ''
+                            ].filter(Boolean).join(' | ')"
+                        >
                         <p class="md:col-span-2 text-xs text-amber-700">Duplicate/reference validation is required before final save.</p>
                         <div class="md:col-span-2 flex justify-end gap-2">
                             <button type="button" @click="paymentModal=false" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Cancel</button>
-                            <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Continue to Payment Form</button>
+                            <button type="submit" :disabled="!selectedLoanId || !amount || !transactionAt || (selectedChannel === 'mpesa' && !reference)" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Save Payment</button>
                         </div>
                     </form>
                 </div>

@@ -209,6 +209,25 @@
                 justify-content: space-between;
                 align-items: center;
             }
+
+            @media (max-width: 1024px) {
+                main .mobile-table-scroll {
+                    overflow-x: auto;
+                    -webkit-overflow-scrolling: touch;
+                }
+                main .mobile-table-scroll > table {
+                    min-width: max-content;
+                }
+            }
+
+            main table.loan-grid-lines {
+                border-collapse: collapse;
+                border: 1px solid #cbd5e1;
+            }
+            main table.loan-grid-lines th,
+            main table.loan-grid-lines td {
+                border: 1px solid #cbd5e1;
+            }
         </style>
     </head>
     <body
@@ -350,11 +369,47 @@
                 document.body.appendChild(btn);
             }
 
+            function ensureMobileTableScroll() {
+                const tables = Array.from(document.querySelectorAll('main table'));
+                tables.forEach(function (table) {
+                    const hasScrollableParent = table.closest('.overflow-x-auto, .mobile-table-scroll');
+                    if (!hasScrollableParent) {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'mobile-table-scroll';
+                        table.parentNode.insertBefore(wrapper, table);
+                        wrapper.appendChild(table);
+                        return;
+                    }
+
+                    const scrollParent = table.closest('.overflow-x-auto');
+                    if (scrollParent && !scrollParent.classList.contains('mobile-table-scroll')) {
+                        scrollParent.classList.add('mobile-table-scroll');
+                    }
+                });
+            }
+
+            function ensureTableGridLines() {
+                const tables = Array.from(document.querySelectorAll('main table'));
+                tables.forEach(function (table) {
+                    table.classList.add('loan-grid-lines');
+                });
+            }
+
             document.addEventListener('DOMContentLoaded', ensureGlobalPrintButton);
+            document.addEventListener('DOMContentLoaded', ensureMobileTableScroll);
+            document.addEventListener('DOMContentLoaded', ensureTableGridLines);
             document.addEventListener('turbo:load', ensureGlobalPrintButton);
+            document.addEventListener('turbo:load', ensureMobileTableScroll);
+            document.addEventListener('turbo:load', ensureTableGridLines);
             document.addEventListener('livewire:navigated', ensureGlobalPrintButton);
+            document.addEventListener('livewire:navigated', ensureMobileTableScroll);
+            document.addEventListener('livewire:navigated', ensureTableGridLines);
             document.addEventListener('alpine:navigated', ensureGlobalPrintButton);
+            document.addEventListener('alpine:navigated', ensureMobileTableScroll);
+            document.addEventListener('alpine:navigated', ensureTableGridLines);
             window.addEventListener('popstate', ensureGlobalPrintButton);
+            window.addEventListener('popstate', ensureMobileTableScroll);
+            window.addEventListener('popstate', ensureTableGridLines);
             window.addEventListener('beforeprint', buildPrintSurface);
         })();
         </script>

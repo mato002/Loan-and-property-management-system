@@ -55,8 +55,34 @@ class LoanPaymentsController extends Controller
                 $loan->id => $loan->loan_number.' - '.($loan->loanClient?->full_name ?? 'Unknown client'),
             ]);
         $suggestedLoanByPayment = $this->buildSuggestedLoanMap($payments->getCollection(), $assignableLoans);
+        $manualPaymentLoans = $assignableLoans
+            ->map(fn (LoanBookLoan $loan) => [
+                'id' => (int) $loan->id,
+                'loan_number' => (string) ($loan->loan_number ?? ''),
+                'client_id' => (int) ($loan->loanClient?->id ?? 0),
+                'client_name' => (string) ($loan->loanClient?->full_name ?? 'Unknown client'),
+                'client_phone' => (string) ($loan->loanClient?->phone ?? ''),
+                'branch' => (string) ($loan->loanClient?->branch ?? ''),
+            ])
+            ->values();
+        $manualPaymentClients = $manualPaymentLoans
+            ->filter(fn (array $row) => $row['client_id'] > 0)
+            ->unique('client_id')
+            ->values()
+            ->map(fn (array $row) => [
+                'id' => $row['client_id'],
+                'name' => $row['client_name'],
+                'phone' => $row['client_phone'],
+                'branch' => $row['branch'],
+            ]);
 
-        return view('loan.payments.unposted', array_merge(compact('payments', 'assignableLoanOptions', 'suggestedLoanByPayment'), $filters));
+        return view('loan.payments.unposted', array_merge(compact(
+            'payments',
+            'assignableLoanOptions',
+            'suggestedLoanByPayment',
+            'manualPaymentLoans',
+            'manualPaymentClients'
+        ), $filters));
     }
 
     public function unpostedPrint(Request $request): View
@@ -657,11 +683,27 @@ class LoanPaymentsController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $supportedChannels = [
+            'cash',
+            'mpesa',
+            'bank',
+            'cheque',
+            'card',
+            'wallet',
+            'airtel_money',
+            'tkash',
+            'equitel',
+            'pesalink',
+            'rtgs',
+            'eft',
+            'other',
+        ];
+
         $validated = $request->validate([
             'loan_book_loan_id' => ['required', 'exists:loan_book_loans,id'],
             'amount' => ['required', 'numeric', 'min:0.01'],
             'currency' => ['nullable', 'string', 'max:8'],
-            'channel' => ['required', 'in:cash,mpesa,bank,cheque,card'],
+            'channel' => ['required', 'in:'.implode(',', $supportedChannels)],
             'payment_kind' => ['required', 'in:normal,prepayment,overpayment'],
             'mpesa_receipt_number' => ['nullable', 'string', 'max:80'],
             'payer_msisdn' => ['nullable', 'string', 'max:40'],

@@ -179,8 +179,8 @@
                 'Payments' => [
                     'icon' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>',
                     'items' => [
-                        ['label' => 'Unposted Payments', 'route' => 'loan.payments.unposted', 'active_patterns' => ['loan.payments.unposted', 'loan.payments.create', 'loan.payments.edit', 'loan.payments.store', 'loan.payments.update', 'loan.payments.destroy', 'loan.payments.post']],
-                        ['label' => 'Processed Payments', 'route' => 'loan.payments.processed', 'active_pattern' => 'loan.payments.processed'],
+                        ['label' => 'Unposted Payments', 'route' => 'loan.payments.unposted', 'active_patterns' => ['loan.payments.unposted', 'loan.payments.unposted.print', 'loan.payments.create', 'loan.payments.edit', 'loan.payments.store', 'loan.payments.update', 'loan.payments.destroy', 'loan.payments.post']],
+                        ['label' => 'Processed Payments', 'route' => 'loan.payments.processed', 'active_patterns' => ['loan.payments.processed', 'loan.payments.processed.print']],
                         ['label' => 'Prepayments', 'route' => 'loan.payments.prepayments', 'active_pattern' => 'loan.payments.prepayments'],
                         ['label' => 'Overpayments', 'route' => 'loan.payments.overpayments', 'active_pattern' => 'loan.payments.overpayments'],
                         ['label' => 'Merged Payments', 'route' => 'loan.payments.merged', 'active_patterns' => ['loan.payments.merged', 'loan.payments.merge', 'loan.payments.merge.store']],

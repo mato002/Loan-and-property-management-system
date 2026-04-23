@@ -3,7 +3,9 @@
         .loan-compact-table {
             table-layout: auto;
             width: 100%;
-            min-width: 0;
+            min-width: 1200px;
+            border-collapse: collapse;
+            border: 1px solid #cbd5e1;
         }
 
         .loan-compact-table th,
@@ -12,10 +14,11 @@
             font-size: 0.75rem !important;
             line-height: 1.15rem !important;
             vertical-align: top;
-            word-break: normal;
-            overflow-wrap: anywhere;
+            word-break: keep-all;
+            overflow-wrap: normal;
             hyphens: none;
-            white-space: normal;
+            white-space: nowrap;
+            border: 1px solid #cbd5e1;
         }
     </style>
 

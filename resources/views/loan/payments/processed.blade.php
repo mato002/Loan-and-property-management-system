@@ -41,17 +41,94 @@
                     </svg>
                 </article>
                 <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div class="flex items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Posting Confidence</p>
-                            <p class="mt-2 text-2xl font-semibold text-slate-900">{{ $autoPostedRatio }}%</p>
-                            <p class="mt-1 text-xs {{ $autoPostedRatio >= 80 ? 'text-emerald-700' : 'text-amber-700' }}">Journal-linked: {{ $withJournal }} / {{ $pageItems->count() }}</p>
+                    @php
+                        $principalProcessed = 0.0;
+                        $interestProcessed = 0.0;
+                        $chargesProcessed = 0.0;
+                        $totalProcessedForBreakdown = (float) ($totalAmount ?? $processedVisibleAmount);
+
+                        foreach ($pageItems as $payment) {
+                            $paymentAmount = (float) ($payment->amount ?? 0);
+                            $lines = collect($payment->accountingJournalEntry?->lines ?? []);
+
+                            if ($lines->isEmpty()) {
+                                $principalProcessed += $paymentAmount;
+                                continue;
+                            }
+
+                            $bucketPrincipal = 0.0;
+                            $bucketInterest = 0.0;
+                            $bucketCharges = 0.0;
+
+                            foreach ($lines as $line) {
+                                $lineAmount = (float) (($line->debit ?: $line->credit) ?: 0);
+                                if ($lineAmount <= 0) {
+                                    continue;
+                                }
+
+                                $accountName = strtolower((string) ($line->account?->name ?? ''));
+                                if (str_contains($accountName, 'interest')) {
+                                    $bucketInterest += $lineAmount;
+                                } elseif (
+                                    str_contains($accountName, 'fee') ||
+                                    str_contains($accountName, 'penalt') ||
+                                    str_contains($accountName, 'charge') ||
+                                    str_contains($accountName, 'insurance') ||
+                                    str_contains($accountName, 'levy')
+                                ) {
+                                    $bucketCharges += $lineAmount;
+                                } else {
+                                    $bucketPrincipal += $lineAmount;
+                                }
+                            }
+
+                            $bucketTotal = $bucketPrincipal + $bucketInterest + $bucketCharges;
+                            if ($bucketTotal <= 0.0) {
+                                $principalProcessed += $paymentAmount;
+                                continue;
+                            }
+
+                            $scale = $paymentAmount > 0 ? ($paymentAmount / $bucketTotal) : 0.0;
+                            $principalProcessed += $bucketPrincipal * $scale;
+                            $interestProcessed += $bucketInterest * $scale;
+                            $chargesProcessed += $bucketCharges * $scale;
+                        }
+
+                        if ($totalProcessedForBreakdown <= 0) {
+                            $totalProcessedForBreakdown = $principalProcessed + $interestProcessed + $chargesProcessed;
+                        }
+                        if ($totalProcessedForBreakdown <= 0) {
+                            $totalProcessedForBreakdown = 1;
+                        }
+
+                        $principalPercent = max(0, min(100, ($principalProcessed / $totalProcessedForBreakdown) * 100));
+                        $interestPercent = max(0, min(100, ($interestProcessed / $totalProcessedForBreakdown) * 100));
+                        $chargesPercent = max(0, min(100, ($chargesProcessed / $totalProcessedForBreakdown) * 100));
+                    @endphp
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Processed Breakdown (MTD)</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">KES {{ number_format($totalProcessedForBreakdown, 2) }}</p>
+                    <div class="mt-3 space-y-1.5 text-xs">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-slate-600">Principal Processed</span>
+                            <span class="font-semibold text-slate-800">KES {{ number_format($principalProcessed, 2) }} <span class="font-normal text-slate-500">({{ number_format($principalPercent, 0) }}%)</span></span>
                         </div>
-                        <svg class="h-14 w-14 shrink-0" viewBox="0 0 100 100" fill="none" aria-label="Posting confidence">
-                            <circle cx="50" cy="50" r="35" stroke="#e2e8f0" stroke-width="8"></circle>
-                            <circle cx="50" cy="50" r="35" stroke="#16a34a" stroke-width="8" stroke-linecap="round" stroke-dasharray="220" stroke-dashoffset="{{ $autoGaugeOffset }}" transform="rotate(-90 50 50)"></circle>
-                        </svg>
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-slate-600">Interest Processed</span>
+                            <span class="font-semibold text-slate-800">KES {{ number_format($interestProcessed, 2) }} <span class="font-normal text-slate-500">({{ number_format($interestPercent, 0) }}%)</span></span>
+                        </div>
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-slate-600">Charges Processed</span>
+                            <span class="font-semibold text-slate-800">KES {{ number_format($chargesProcessed, 2) }} <span class="font-normal text-slate-500">({{ number_format($chargesPercent, 0) }}%)</span></span>
+                        </div>
                     </div>
+                    <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+                        <div class="flex h-full w-full">
+                            <span class="h-full bg-teal-700" style="width: {{ $principalPercent }}%"></span>
+                            <span class="h-full bg-emerald-600" style="width: {{ $interestPercent }}%"></span>
+                            <span class="h-full bg-amber-500" style="width: {{ $chargesPercent }}%"></span>
+                        </div>
+                    </div>
+                    <p class="mt-2 text-xs text-slate-500">Distribution of processed repayments (MTD) · {{ number_format($payments->total()) }} rows · {{ $processedTodayCount }} today</p>
                 </article>
                 <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Reversal Eligible</p>
@@ -141,8 +218,8 @@
                     <h2 class="text-sm font-semibold text-slate-700">Processed pays for {{ \Carbon\Carbon::parse($displayDate)->format('d-m-Y') }}</h2>
                     <p class="text-xs text-slate-500">{{ $payments->total() }} row(s) · Ksh {{ number_format((float) ($totalAmount ?? 0), 2) }}</p>
                 </div>
-                <div class="overflow-x-hidden">
-                    <table class="w-full table-auto text-[11px]">
+                <div class="overflow-x-auto">
+                    <table class="min-w-[980px] w-full table-auto text-[11px]">
                         <thead class="sticky top-0 z-10 bg-slate-100 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                         <tr>
                             <th class="border-b border-r border-slate-300 px-3 py-3">Transaction</th>
@@ -173,24 +250,53 @@
                                 <td class="border-b border-r border-slate-200 px-4 py-3 font-mono text-xs text-blue-700">{{ $p->reference }}</td>
                                 <td class="border-b border-r border-slate-200 px-4 py-3 text-right tabular-nums font-semibold text-emerald-700">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
                                 <td class="border-b border-r border-slate-200 px-4 py-3 text-slate-600">
-                                    <ul class="list-disc pl-4 space-y-0.5">
-                                        @php
-                                            $journalLines = collect($p->accountingJournalEntry?->lines ?? [])->take(3);
-                                        @endphp
-                                        @forelse ($journalLines as $line)
-                                            @php
-                                                $lineAmount = (float) ($line->debit ?: $line->credit ?: 0);
-                                            @endphp
-                                            <li>
-                                                {{ $line->account?->name ?? 'Ledger line' }} -
-                                                {{ number_format($lineAmount, 2) }}
-                                            </li>
-                                        @empty
-                                            <li>{{ ucfirst(str_replace('_', ' ', (string) $p->payment_kind)) }} - {{ number_format((float) $p->amount, 2) }}</li>
-                                            @if ($p->mpesa_receipt_number)
-                                                <li>Receipt - {{ $p->mpesa_receipt_number }}</li>
+                                    @php
+                                        $journalLines = collect($p->accountingJournalEntry?->lines ?? []);
+                                        $principalAmount = 0.0;
+                                        $interestAmount = 0.0;
+                                        $chargesAmount = 0.0;
+
+                                        foreach ($journalLines as $line) {
+                                            $lineAmount = (float) (($line->debit ?: $line->credit) ?: 0);
+                                            if ($lineAmount <= 0) {
+                                                continue;
+                                            }
+
+                                            $accountName = strtolower((string) ($line->account?->name ?? ''));
+                                            if (str_contains($accountName, 'interest')) {
+                                                $interestAmount += $lineAmount;
+                                            } elseif (
+                                                str_contains($accountName, 'fee') ||
+                                                str_contains($accountName, 'penalt') ||
+                                                str_contains($accountName, 'charge') ||
+                                                str_contains($accountName, 'insurance') ||
+                                                str_contains($accountName, 'levy')
+                                            ) {
+                                                $chargesAmount += $lineAmount;
+                                            } else {
+                                                $principalAmount += $lineAmount;
+                                            }
+                                        }
+
+                                        $breakdownTotal = $principalAmount + $interestAmount + $chargesAmount;
+                                    @endphp
+                                    <ul class="list-disc space-y-0.5 pl-4">
+                                        @if ($breakdownTotal > 0)
+                                            @if ($principalAmount > 0)
+                                                <li>Principal - {{ number_format($principalAmount, 2) }}</li>
                                             @endif
-                                        @endforelse
+                                            @if ($interestAmount > 0)
+                                                <li>Interest - {{ number_format($interestAmount, 2) }}</li>
+                                            @endif
+                                            @if ($chargesAmount > 0)
+                                                <li>Charges - {{ number_format($chargesAmount, 2) }}</li>
+                                            @endif
+                                        @else
+                                            <li>{{ ucfirst(str_replace('_', ' ', (string) $p->payment_kind)) }} - {{ number_format((float) $p->amount, 2) }}</li>
+                                        @endif
+                                        @if ($p->mpesa_receipt_number)
+                                            <li>Receipt - {{ $p->mpesa_receipt_number }}</li>
+                                        @endif
                                     </ul>
                                 </td>
                                 <td class="border-b border-r border-slate-200 px-4 py-3 text-slate-600">
