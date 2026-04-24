@@ -17,23 +17,52 @@
             </div>
         </x-slot>
 
+        @php
+            $bankBalance = (float) data_get($booksHubMetrics ?? [], 'bank_balance', 0);
+            $agedReceivables = (float) data_get($booksHubMetrics ?? [], 'aged_receivables', 0);
+            $agedPayables = (float) data_get($booksHubMetrics ?? [], 'aged_payables', 0);
+            $newEntries30d = (int) data_get($booksHubMetrics ?? [], 'new_entries_30d', 0);
+            $pendingPayrollRuns = (int) data_get($booksHubMetrics ?? [], 'pending_payroll_runs', 0);
+            $budgetLinesCount = (int) data_get($booksHubMetrics ?? [], 'budget_lines_count', 0);
+            $expenseRecords30d = (int) data_get($booksHubMetrics ?? [], 'expense_records_30d', 0);
+            $unpostedLoanGlItems = (int) data_get($booksHubMetrics ?? [], 'unposted_loan_gl_items', 0);
+            $unpostedProcessedPayments = (int) data_get($booksHubMetrics ?? [], 'unposted_processed_payments', 0);
+            $unpostedDisbursements = (int) data_get($booksHubMetrics ?? [], 'unposted_disbursements', 0);
+            $isBankOverdrawn = $bankBalance < 0;
+            $bankBalanceDisplay = number_format(abs($bankBalance), 2);
+        @endphp
+
         <div class="space-y-6 bg-slate-50/60 rounded-2xl p-3 sm:p-4 lg:p-6">
             <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div class="mb-4 flex items-center justify-between">
                     <h2 class="text-lg font-semibold text-slate-900">Quick-Look Dashboard</h2>
                 </div>
+                @if ($unpostedLoanGlItems > 0)
+                    <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <p class="font-semibold">GL sync warning: {{ number_format($unpostedLoanGlItems) }} loan transactions are not journal-posted yet.</p>
+                        <p class="mt-1">
+                            Processed payments pending GL: {{ number_format($unpostedProcessedPayments) }}
+                            &middot;
+                            Disbursements pending GL: {{ number_format($unpostedDisbursements) }}.
+                        </p>
+                    </div>
+                @endif
                 <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    <article class="rounded-xl border border-emerald-100 bg-emerald-50/70 p-4">
+                    <article class="rounded-xl border p-4 {{ $isBankOverdrawn ? 'border-rose-100 bg-rose-50/70' : 'border-emerald-100 bg-emerald-50/70' }}">
                         <p class="text-sm font-medium text-slate-600">Total Bank Balance</p>
-                        <p class="mt-1 text-3xl font-semibold tracking-tight text-emerald-700">KSh 1,250,300.20</p>
-                        <svg class="mt-3 h-8 w-full text-emerald-500" viewBox="0 0 120 24" fill="none" aria-hidden="true">
+                        @if ($isBankOverdrawn)
+                            <p class="mt-1 text-3xl font-semibold tracking-tight text-rose-700">Overdrawn: KSh {{ $bankBalanceDisplay }}</p>
+                        @else
+                            <p class="mt-1 text-3xl font-semibold tracking-tight text-emerald-700">KSh {{ $bankBalanceDisplay }}</p>
+                        @endif
+                        <svg class="mt-3 h-8 w-full {{ $isBankOverdrawn ? 'text-rose-500' : 'text-emerald-500' }}" viewBox="0 0 120 24" fill="none" aria-hidden="true">
                             <path d="M2 18C14 10 24 12 34 8C44 4 55 16 65 12C74 8 83 6 92 10C102 14 110 9 118 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                         </svg>
                     </article>
 
                     <article class="rounded-xl border border-amber-100 bg-amber-50/70 p-4">
                         <p class="text-sm font-medium text-slate-600">Aged Receivables (30-60 Days)</p>
-                        <p class="mt-1 text-3xl font-semibold tracking-tight text-amber-700">KSh 145,900.00</p>
+                        <p class="mt-1 text-3xl font-semibold tracking-tight text-amber-700">KSh {{ number_format($agedReceivables, 2) }}</p>
                         <svg class="mt-3 h-8 w-full text-amber-500" viewBox="0 0 120 24" fill="none" aria-hidden="true">
                             <path d="M2 8C12 6 22 10 32 14C41 18 50 20 60 15C70 10 79 7 90 9C101 11 109 14 118 12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                         </svg>
@@ -41,7 +70,7 @@
 
                     <article class="rounded-xl border border-blue-100 bg-blue-50/70 p-4 sm:col-span-2 xl:col-span-1">
                         <p class="text-sm font-medium text-slate-600">Aged Payables (Current)</p>
-                        <p class="mt-1 text-3xl font-semibold tracking-tight text-blue-700">KSh 88,450.70</p>
+                        <p class="mt-1 text-3xl font-semibold tracking-tight text-blue-700">KSh {{ number_format($agedPayables, 2) }}</p>
                         <svg class="mt-3 h-8 w-full text-blue-500" viewBox="0 0 120 24" fill="none" aria-hidden="true">
                             <path d="M2 12C12 6 22 7 33 11C45 15 54 20 66 15C78 10 88 4 99 6C108 8 114 10 118 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                         </svg>
@@ -71,6 +100,7 @@
                             <div class="min-w-0">
                                 <h4 class="text-base font-semibold text-slate-900">Company Expenses</h4>
                                 <p class="mt-1 text-sm text-slate-500">Record, track, and approve corporate expenses.</p>
+                                <p class="mt-1 text-xs font-medium text-slate-400">{{ number_format($expenseRecords30d) }} records captured in last 30 days</p>
                             </div>
                         </a>
                     </div>
@@ -85,8 +115,8 @@
                             </span>
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <h4 class="text-base font-semibold text-slate-900">Accruals &amp; Reports</h4>
-                                    <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">+26 new facilities</span>
+                                    <h4 class="text-base font-semibold text-slate-900">Financial Statements and Reports</h4>
+                                    <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">{{ number_format($newEntries30d) }} new entries (30d)</span>
                                 </div>
                                 <p class="mt-1 text-sm text-slate-500">Analyze performance against branch &amp; company budgets.</p>
                             </div>
@@ -99,6 +129,7 @@
                             <div class="min-w-0">
                                 <h4 class="text-base font-semibold text-slate-900">Budget Reports</h4>
                                 <p class="mt-1 text-sm text-slate-500">Track and analyze financial planning and allocations.</p>
+                                <p class="mt-1 text-xs font-medium text-slate-400">{{ number_format($budgetLinesCount) }} configured budget lines</p>
                             </div>
                         </a>
 
@@ -124,7 +155,7 @@
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <h4 class="text-base font-semibold text-slate-900">Employee Payroll</h4>
-                                    <span class="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">System update: Payroll pending</span>
+                                    <span class="rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">{{ number_format($pendingPayrollRuns) }} payroll runs pending</span>
                                 </div>
                                 <p class="mt-1 text-sm text-slate-500">Manage payroll entries, dues, and employee payout records.</p>
                             </div>

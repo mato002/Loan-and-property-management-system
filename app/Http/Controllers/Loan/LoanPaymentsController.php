@@ -121,12 +121,12 @@ class LoanPaymentsController extends Controller
         if ($source !== '') {
             $query->where(function (Builder $builder) use ($source): void {
                 if ($source === 'sms_forwarder') {
-                    $builder->where('channel', 'like', '%_sms_%');
+                    $builder->where('channel', 'like', '%sms%');
 
                     return;
                 }
                 if ($source === 'manual') {
-                    $builder->where('channel', 'not like', '%_sms_%');
+                    $builder->where('channel', 'not like', '%sms%');
 
                     return;
                 }
@@ -193,12 +193,12 @@ class LoanPaymentsController extends Controller
         if ($source !== '') {
             $query->where(function (Builder $builder) use ($source): void {
                 if ($source === 'sms_forwarder') {
-                    $builder->where('channel', 'like', '%_sms_%');
+                    $builder->where('channel', 'like', '%sms%');
 
                     return;
                 }
                 if ($source === 'manual') {
-                    $builder->where('channel', 'not like', '%_sms_%');
+                    $builder->where('channel', 'not like', '%sms%');
 
                     return;
                 }
@@ -1145,6 +1145,8 @@ class LoanPaymentsController extends Controller
                     $inner->where('reference', 'like', '%'.$q.'%')
                         ->orWhere('mpesa_receipt_number', 'like', '%'.$q.'%')
                         ->orWhere('payer_msisdn', 'like', '%'.$q.'%')
+                        ->orWhere('message', 'like', '%'.$q.'%')
+                        ->orWhere('notes', 'like', '%'.$q.'%')
                         ->orWhereHas('loan', function (Builder $loan) use ($q): void {
                             $loan->where('loan_number', 'like', '%'.$q.'%')
                                 ->orWhere('product_name', 'like', '%'.$q.'%')
@@ -1156,12 +1158,59 @@ class LoanPaymentsController extends Controller
                         });
                 });
             })
-            ->when($channel !== '', fn (Builder $builder) => $builder->where('channel', $channel))
+            ->when($channel !== '', fn (Builder $builder) => $this->applyChannelFilter($builder, $channel))
             ->when($allowStatus && $status !== '', fn (Builder $builder) => $builder->where('status', $status))
             ->when($from !== '', fn (Builder $builder) => $builder->where('transaction_at', '>=', $from.' 00:00:00'))
             ->when($to !== '', fn (Builder $builder) => $builder->where('transaction_at', '<=', $to.' 23:59:59'));
 
         return compact('q', 'channel', 'status', 'from', 'to', 'perPage');
+    }
+
+    private function applyChannelFilter(Builder $query, string $channel): void
+    {
+        $value = strtolower(trim($channel));
+
+        if ($value === '') {
+            return;
+        }
+
+        if ($value === 'mpesa') {
+            $query->where('channel', 'like', 'mpesa%');
+
+            return;
+        }
+
+        if ($value === 'bank') {
+            $query->where('channel', 'like', 'bank%');
+
+            return;
+        }
+
+        if ($value === 'cash') {
+            $query->where('channel', 'like', 'cash%');
+
+            return;
+        }
+
+        if ($value === 'wallet') {
+            $query->where('channel', 'like', 'wallet%');
+
+            return;
+        }
+
+        if ($value === 'other') {
+            $query->where(function (Builder $builder): void {
+                $builder
+                    ->where('channel', 'not like', 'mpesa%')
+                    ->where('channel', 'not like', 'bank%')
+                    ->where('channel', 'not like', 'cash%')
+                    ->where('channel', 'not like', 'wallet%');
+            });
+
+            return;
+        }
+
+        $query->where('channel', $channel);
     }
 
     private function exportIfRequested(Builder $query, Request $request, string $basename): ?StreamedResponse

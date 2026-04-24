@@ -9,6 +9,7 @@ use App\Models\AccountingChartAccount;
 use App\Models\AccountingCompanyAsset;
 use App\Models\AccountingCompanyExpense;
 use App\Models\AccountingJournalLine;
+use App\Models\AccountingPostingRule;
 use App\Models\AccountingPayrollLine;
 use App\Models\AccountingPayrollPeriod;
 use App\Models\Employee;
@@ -54,7 +55,34 @@ class LoanAccountingBooksController extends Controller
 
     public function chartRules(): View
     {
-        return view('loan.accounting.books.chart-rules');
+        $accounts = AccountingChartAccount::query()
+            ->orderBy('account_type')
+            ->orderBy('code')
+            ->get();
+
+        $postingRules = AccountingPostingRule::query()
+            ->with(['debitAccount', 'creditAccount'])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $activeAccounts = $accounts->where('is_active', true)->count();
+        $newAccounts30d = AccountingChartAccount::query()
+            ->where('created_at', '>=', now()->subDays(30))
+            ->count();
+        $missingRules = $postingRules->filter(fn (AccountingPostingRule $r) => ! $r->debit_account_id || ! $r->credit_account_id)->count();
+        $pendingApprovals = $postingRules->where('is_editable', true)->count();
+        $isBalanced = abs((float) AccountingJournalLine::sum('debit') - (float) AccountingJournalLine::sum('credit')) < 0.01;
+
+        return view('loan.accounting.books.chart-rules', compact(
+            'accounts',
+            'postingRules',
+            'activeAccounts',
+            'newAccounts30d',
+            'missingRules',
+            'pendingApprovals',
+            'isBalanced'
+        ));
     }
 
     /* ---------- Reports hub & financials ---------- */

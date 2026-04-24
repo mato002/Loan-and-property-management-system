@@ -179,15 +179,7 @@
                     <div class="relative">
                         <button type="button" @click="bulkModal=true" class="inline-flex h-10 items-center rounded-lg border border-teal-700 bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800">BULK ACTIONS</button>
                     </div>
-                    <form method="post" action="{{ route('loan.payments.unposted.auto_match') }}" class="inline-flex">
-                        @csrf
-                        <input type="hidden" name="q" value="{{ $q ?? '' }}">
-                        <input type="hidden" name="channel" value="{{ $channel ?? '' }}">
-                        <input type="hidden" name="from" value="{{ $from ?? '' }}">
-                        <input type="hidden" name="to" value="{{ $to ?? '' }}">
-                        <input type="hidden" name="per_page" value="{{ $perPage ?? 20 }}">
-                        <button type="submit" class="inline-flex h-10 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">Auto-match</button>
-                    </form>
+                    <button type="submit" form="unposted-auto-match-form" class="inline-flex h-10 items-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">Auto-match</button>
                     <a href="{{ route('loan.payments.merge') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">Merge</a>
                     <div class="ml-auto flex flex-wrap items-center gap-2">
                         <button type="button" @click="paymentModal=true" class="inline-flex h-10 items-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700">Payment</button>
@@ -195,6 +187,15 @@
                         <button type="button" @click="balancesModal=true" class="inline-flex h-10 items-center rounded-lg border border-purple-300 bg-purple-50 px-4 text-sm font-semibold text-purple-700 hover:bg-purple-100">Balances</button>
                     </div>
                 </div>
+            </form>
+
+            <form id="unposted-auto-match-form" method="post" action="{{ route('loan.payments.unposted.auto_match') }}" class="hidden">
+                @csrf
+                <input type="hidden" name="q" value="{{ $q ?? '' }}">
+                <input type="hidden" name="channel" value="{{ $channel ?? '' }}">
+                <input type="hidden" name="from" value="{{ $from ?? '' }}">
+                <input type="hidden" name="to" value="{{ $to ?? '' }}">
+                <input type="hidden" name="per_page" value="{{ $perPage ?? 20 }}">
             </form>
 
             <div class="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm">

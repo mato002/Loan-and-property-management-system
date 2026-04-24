@@ -4,16 +4,21 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Models\AccountingChartAccount;
+use App\Models\AccountingCompanyExpense;
 use App\Models\AccountingJournalEntry;
 use App\Models\AccountingJournalLine;
+use App\Models\AccountingPayrollPeriod;
 use App\Models\AccountingPettyCashEntry;
 use App\Models\AccountingPostingRule;
+use App\Models\AccountingBudgetLine;
 use App\Models\AccountingRequisition;
 use App\Models\AccountingSalaryAdvance;
 use App\Models\AccountingUtilityPayment;
 use App\Models\AccountingWalletSlotSetting;
+use App\Models\LoanBookDisbursement;
 use App\Models\LoanFormFieldDefinition;
 use App\Models\Employee;
+use App\Models\LoanBookPayment;
 use App\Support\TabularExport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,7 +43,64 @@ class LoanAccountingController extends Controller
 
     public function books(): View
     {
-        return view('loan.accounting.books');
+        $bankBalance = (float) AccountingJournalLine::query()
+            ->whereHas('account', function ($q) {
+                $q->where('is_cash_account', true)->where('name', 'like', '%bank%');
+            })
+            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
+            ->value('balance');
+
+        $agedReceivables = (float) AccountingJournalLine::query()
+            ->whereHas('account', function ($q) {
+                $q->where('account_type', AccountingChartAccount::TYPE_ASSET)
+                    ->where(function ($q2) {
+                        $q2->where('name', 'like', '%receivable%')
+                            ->orWhere('name', 'like', '%debtor%');
+                    });
+            })
+            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
+            ->value('balance');
+
+        $agedPayables = (float) AccountingJournalLine::query()
+            ->whereHas('account', function ($q) {
+                $q->where('account_type', AccountingChartAccount::TYPE_LIABILITY)
+                    ->where(function ($q2) {
+                        $q2->where('name', 'like', '%payable%')
+                            ->orWhere('name', 'like', '%creditor%');
+                    });
+            })
+            ->selectRaw('COALESCE(SUM(credit - debit), 0) as balance')
+            ->value('balance');
+
+        $unpostedProcessedPayments = (int) LoanBookPayment::query()
+            ->processedQueue()
+            ->whereNull('accounting_journal_entry_id')
+            ->count();
+        $unpostedDisbursements = (int) LoanBookDisbursement::query()
+            ->whereNull('accounting_journal_entry_id')
+            ->count();
+        $unpostedLoanGlItems = $unpostedProcessedPayments + $unpostedDisbursements;
+
+        $booksHubMetrics = [
+            'bank_balance' => $bankBalance,
+            'aged_receivables' => max(0, $agedReceivables),
+            'aged_payables' => max(0, $agedPayables),
+            'new_entries_30d' => (int) AccountingJournalEntry::query()
+                ->where('entry_date', '>=', now()->subDays(30)->toDateString())
+                ->count(),
+            'pending_payroll_runs' => (int) AccountingPayrollPeriod::query()
+                ->where('status', AccountingPayrollPeriod::STATUS_DRAFT)
+                ->count(),
+            'budget_lines_count' => (int) AccountingBudgetLine::query()->count(),
+            'expense_records_30d' => (int) AccountingCompanyExpense::query()
+                ->where('expense_date', '>=', now()->subDays(30)->toDateString())
+                ->count(),
+            'unposted_processed_payments' => $unpostedProcessedPayments,
+            'unposted_disbursements' => $unpostedDisbursements,
+            'unposted_loan_gl_items' => $unpostedLoanGlItems,
+        ];
+
+        return view('loan.accounting.books', compact('booksHubMetrics'));
     }
 
     /* ---------- Chart of accounts ---------- */
@@ -124,6 +186,12 @@ class LoanAccountingController extends Controller
             ->get();
 
         $chartOverview = $this->buildChartOfAccountsOverview($accounts, $walletSlots, $postingRules);
+        $financialOverview = $this->buildFinancialIntelligenceOverview();
+        $reports = $this->buildFinancialReportTiles();
+        $periodStart = now()->startOfMonth();
+        $periodEnd = now();
+        $periodLabel = $periodStart->format('F Y').' (Open)';
+        $dateRangeLabel = $periodStart->format('F j').' - '.$periodEnd->format('F j, Y');
 
         return view('loan.accounting.chart.index', compact(
             'accounts',
@@ -132,9 +200,113 @@ class LoanAccountingController extends Controller
             'walletSlots',
             'postingRules',
             'chartOverview',
+            'financialOverview',
+            'reports',
+            'periodLabel',
+            'dateRangeLabel',
             'q',
             'active'
         ));
+    }
+
+    /** @return array<string, float|int> */
+    private function buildFinancialIntelligenceOverview(): array
+    {
+        $incomeAccountIds = AccountingChartAccount::query()->where('account_type', 'income')->pluck('id');
+        $expenseAccountIds = AccountingChartAccount::query()->where('account_type', 'expense')->pluck('id');
+        $cashAccountIds = AccountingChartAccount::query()->where('is_cash_account', true)->pluck('id');
+
+        $cashCollected = (float) AccountingJournalLine::query()
+            ->when($incomeAccountIds->isNotEmpty(), fn ($q) => $q->whereIn('accounting_chart_account_id', $incomeAccountIds))
+            ->sum('credit');
+
+        $cashSpent = (float) AccountingJournalLine::query()
+            ->when($expenseAccountIds->isNotEmpty(), fn ($q) => $q->whereIn('accounting_chart_account_id', $expenseAccountIds))
+            ->sum('debit');
+
+        $interestCollected = (float) AccountingJournalLine::query()
+            ->whereHas('account', fn ($q) => $q->where('account_type', 'income')->where('name', 'like', '%interest%'))
+            ->sum('credit');
+
+        $processingFeesCollected = (float) AccountingJournalLine::query()
+            ->whereHas('account', fn ($q) => $q->where('account_type', 'income')->where('name', 'like', '%processing%'))
+            ->sum('credit');
+
+        $opexSpent = (float) AccountingJournalLine::query()
+            ->whereHas('account', fn ($q) => $q->where('account_type', 'expense')->where('name', 'like', '%opex%'))
+            ->sum('debit');
+
+        $salariesSpent = (float) AccountingJournalLine::query()
+            ->whereHas('account', fn ($q) => $q->where('account_type', 'expense')->where('name', 'like', '%salar%'))
+            ->sum('debit');
+
+        $aggregateCashPosition = (float) AccountingJournalLine::query()
+            ->when($cashAccountIds->isNotEmpty(), fn ($q) => $q->whereIn('accounting_chart_account_id', $cashAccountIds))
+            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
+            ->value('balance');
+
+        $cashBankPosition = (float) AccountingJournalLine::query()
+            ->whereHas('account', function ($q) {
+                $q->where('is_cash_account', true)->where('name', 'like', '%bank%');
+            })
+            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
+            ->value('balance');
+
+        $cashMpesaPosition = (float) AccountingJournalLine::query()
+            ->whereHas('account', function ($q) {
+                $q->where('is_cash_account', true)->where('name', 'like', '%m-pesa%');
+            })
+            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
+            ->value('balance');
+
+        $entriesTotal = (int) AccountingJournalEntry::query()->count();
+        $entriesPosted = Schema::hasColumn('accounting_journal_entries', 'status')
+            ? (int) AccountingJournalEntry::query()->where('status', AccountingJournalEntry::STATUS_POSTED)->count()
+            : $entriesTotal;
+        $collectionEfficiency = $entriesTotal > 0 ? round(($entriesPosted / $entriesTotal) * 100, 1) : 0.0;
+
+        $employeesCount = max(1, (int) Employee::query()->count());
+        $costPerClient = $cashSpent / $employeesCount;
+        $netCashSurplus = $cashCollected - $cashSpent;
+        $operatingMarginPct = $cashCollected > 0 ? round(($netCashSurplus / $cashCollected) * 100, 1) : 0.0;
+        $taxEstimate = max(0.0, round($netCashSurplus * 0.08, 2));
+        $kraDeadlineDays = max(0, now()->diffInDays(now()->endOfMonth(), false));
+
+        return [
+            'cash_collected' => $cashCollected,
+            'cash_spent' => $cashSpent,
+            'interest_collected' => $interestCollected,
+            'processing_fees_collected' => $processingFeesCollected,
+            'opex_spent' => $opexSpent,
+            'salaries_spent' => $salariesSpent,
+            'net_cash_surplus' => $netCashSurplus,
+            'aggregate_cash_position' => $aggregateCashPosition,
+            'bank_cash_position' => $cashBankPosition,
+            'mpesa_cash_position' => $cashMpesaPosition,
+            'tax_estimate' => $taxEstimate,
+            'kra_deadline_days' => $kraDeadlineDays,
+            'operating_margin_pct' => $operatingMarginPct,
+            'cost_per_client' => $costPerClient,
+            'collection_efficiency_pct' => $collectionEfficiency,
+        ];
+    }
+
+    /** @return array<int, array<string, string>> */
+    private function buildFinancialReportTiles(): array
+    {
+        $lastGenerated = AccountingJournalEntry::query()->latest('updated_at')->value('updated_at');
+        $lastGeneratedLabel = $lastGenerated
+            ? Carbon::parse($lastGenerated)->diffForHumans()
+            : 'No generated runs';
+
+        return [
+            ['title' => 'Income Statement (P&L)', 'description' => 'Cash-basis performance with realized revenue streams.', 'last' => $lastGeneratedLabel],
+            ['title' => 'Balance Sheet', 'description' => 'Net loan portfolio and equity position snapshot.', 'last' => $lastGeneratedLabel],
+            ['title' => 'Trial Balance', 'description' => 'Debit/credit integrity audit view for cash-basis accounts.', 'last' => $lastGeneratedLabel],
+            ['title' => 'Cash Flow Statement', 'description' => 'Tracks M-Pesa to bank movement and cash concentration.', 'last' => $lastGeneratedLabel],
+            ['title' => 'Tax / KRA Ledger', 'description' => 'PAYE, VAT, NSSF, NHIF, SHIF obligations and due posture.', 'last' => $lastGeneratedLabel],
+            ['title' => 'Management Report', 'description' => 'Hybrid financial and operational intelligence for leadership.', 'last' => $lastGeneratedLabel],
+        ];
     }
 
     /**
