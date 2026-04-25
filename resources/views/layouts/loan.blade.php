@@ -274,6 +274,33 @@
         <div id="global-print-surface" aria-hidden="true"></div>
         <script>
         (function () {
+            const SEARCH_DEBOUNCE_MS = 1100;
+
+            function wireAutoFilterForms(scopeRoot) {
+                const root = scopeRoot || document;
+                const forms = Array.from(root.querySelectorAll('form[method="get"]:not([data-auto-submit="off"])'));
+
+                forms.forEach(function (form) {
+                    if (form.dataset.autoSubmitBound === '1') return;
+                    form.dataset.autoSubmitBound = '1';
+
+                    const searchInputs = Array.from(form.querySelectorAll('input[name="q"], input[type="search"], input[data-auto-search="true"]'))
+                        .filter(function (input) { return !input.matches('[data-auto-submit="off"]'); });
+                    searchInputs.forEach(function (input) {
+                        input.addEventListener('input', function () {
+                            window.clearTimeout(input._autoSearchTimer);
+                            input._autoSearchTimer = window.setTimeout(function () { form.requestSubmit(); }, SEARCH_DEBOUNCE_MS);
+                        });
+                    });
+
+                    const autoControls = Array.from(form.querySelectorAll('select, input[type="date"], input[type="month"], input[type="number"], input[type="checkbox"], input[type="radio"]'))
+                        .filter(function (el) { return !el.matches('[data-auto-submit="off"]'); });
+                    autoControls.forEach(function (control) {
+                        control.addEventListener('change', function () { form.requestSubmit(); });
+                    });
+                });
+            }
+
             function buildPrintSurface() {
                 const printSurface = document.getElementById('global-print-surface');
                 if (!printSurface) return;
@@ -398,18 +425,24 @@
             document.addEventListener('DOMContentLoaded', ensureGlobalPrintButton);
             document.addEventListener('DOMContentLoaded', ensureMobileTableScroll);
             document.addEventListener('DOMContentLoaded', ensureTableGridLines);
+            document.addEventListener('DOMContentLoaded', function () { wireAutoFilterForms(document); });
             document.addEventListener('turbo:load', ensureGlobalPrintButton);
             document.addEventListener('turbo:load', ensureMobileTableScroll);
             document.addEventListener('turbo:load', ensureTableGridLines);
+            document.addEventListener('turbo:load', function () { wireAutoFilterForms(document); });
+            document.addEventListener('turbo:frame-load', function (event) { wireAutoFilterForms(event.target); });
             document.addEventListener('livewire:navigated', ensureGlobalPrintButton);
             document.addEventListener('livewire:navigated', ensureMobileTableScroll);
             document.addEventListener('livewire:navigated', ensureTableGridLines);
+            document.addEventListener('livewire:navigated', function () { wireAutoFilterForms(document); });
             document.addEventListener('alpine:navigated', ensureGlobalPrintButton);
             document.addEventListener('alpine:navigated', ensureMobileTableScroll);
             document.addEventListener('alpine:navigated', ensureTableGridLines);
+            document.addEventListener('alpine:navigated', function () { wireAutoFilterForms(document); });
             window.addEventListener('popstate', ensureGlobalPrintButton);
             window.addEventListener('popstate', ensureMobileTableScroll);
             window.addEventListener('popstate', ensureTableGridLines);
+            window.addEventListener('popstate', function () { wireAutoFilterForms(document); });
             window.addEventListener('beforeprint', buildPrintSurface);
         })();
         </script>

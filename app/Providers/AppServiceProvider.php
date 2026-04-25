@@ -2,10 +2,13 @@
 
 namespace App\Providers;
 
+use App\Models\AccountingChartAccount;
 use App\View\Compilers\AppBladeCompiler;
 use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\View\DynamicComponent;
+use Illuminate\Support\Facades\View;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,5 +40,18 @@ class AppServiceProvider extends ServiceProvider
     {
         Paginator::defaultView('pagination::tailwind');
         Paginator::defaultSimpleView('pagination::simple-tailwind');
+
+        View::composer('*', function ($view) {
+            $overdrawnCount = 0;
+            if (Schema::hasTable('accounting_chart_accounts')
+                && Schema::hasColumn('accounting_chart_accounts', 'allow_overdraft')
+                && Schema::hasColumn('accounting_chart_accounts', 'current_balance')) {
+                $overdrawnCount = AccountingChartAccount::query()
+                    ->where('allow_overdraft', true)
+                    ->where('current_balance', '<', 0)
+                    ->count();
+            }
+            $view->with('overdrawnCount', $overdrawnCount);
+        });
     }
 }

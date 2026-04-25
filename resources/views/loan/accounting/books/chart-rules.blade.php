@@ -13,7 +13,11 @@
             <a href="{{ route('loan.accounting.books') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Books Hub</a>
         </x-slot>
 
-        <div class="space-y-6">
+        <div
+            class="space-y-6"
+            x-data="{ showCreateAccountModal: {{ $errors->any() ? 'true' : 'false' }}, showOverdrawnModal: false, allowOverdraft: {{ old('allow_overdraft') ? 'true' : 'false' }} }"
+            @keydown.escape.window="showCreateAccountModal = false; showOverdrawnModal = false"
+        >
             <section class="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -65,6 +69,17 @@
                             <span>New Accounts (30 Days)</span>
                             <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold">+{{ $fmtN((int) ($newAccounts30d ?? 0)) }}</span>
                         </div>
+                        <button type="button" @click="showOverdrawnModal = true" class="flex w-full items-center justify-between rounded-lg border px-3 py-2 {{ (int) ($overdrawnCount ?? 0) > 0 ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700' }}">
+                            <span class="inline-flex items-center gap-1">
+                                @if ((int) ($overdrawnCount ?? 0) > 0)
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                @else
+                                    <i class="fa-solid fa-circle-check"></i>
+                                @endif
+                                Overdrawn Accounts
+                            </span>
+                            <span class="font-semibold">{{ $fmtN((int) ($overdrawnCount ?? 0)) }}</span>
+                        </button>
                     </div>
                 </article>
                 <article class="rounded-xl border border-teal-200 bg-white p-4 shadow-sm">
@@ -84,7 +99,7 @@
                     <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div class="mb-4 flex items-center justify-between gap-3">
                             <h2 class="text-lg font-semibold text-slate-900">Manage Chart of Accounts (Cash Flow View)</h2>
-                            <a href="{{ route('loan.accounting.chart.index') }}" class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Create New Account</a>
+                            <button type="button" @click="showCreateAccountModal = true" class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Create New Account</button>
                         </div>
                         <div class="overflow-x-auto rounded-lg border border-slate-200">
                             <table class="min-w-full divide-y divide-slate-200 text-sm">
@@ -95,7 +110,7 @@
                                         <th class="px-3 py-2">Account Type</th>
                                         <th class="px-3 py-2">Parent Group</th>
                                         <th class="px-3 py-2">Current Balance</th>
-                                        <th class="px-3 py-2">Min. Balance (Floor)</th>
+                                        <th class="px-3 py-2">Overdraft Policy</th>
                                         <th class="px-3 py-2">Active State</th>
                                         <th class="px-3 py-2">Actions</th>
                                     </tr>
@@ -109,9 +124,15 @@
                                             <td class="px-3 py-2 font-mono text-xs text-slate-700">{{ $row->code }}</td>
                                             <td class="px-3 py-2 font-medium text-slate-800">{{ $row->name }}</td>
                                             <td class="px-3 py-2 text-slate-600">{{ ucfirst($row->account_type) }}</td>
-                                            <td class="px-3 py-2 text-slate-600">Assets</td>
-                                            <td class="px-3 py-2 font-semibold text-emerald-700">KSh {{ $fmtN(0) }}</td>
-                                            <td class="px-3 py-2 text-slate-600">KSh {{ $fmtN(0) }}</td>
+                                            <td class="px-3 py-2 text-slate-600">{{ $row->parent?->name ?? 'Top Level' }}</td>
+                                            <td class="px-3 py-2 font-semibold text-emerald-700">KSh {{ $fmtN((float) ($row->current_balance ?? 0)) }}</td>
+                                            <td class="px-3 py-2 text-slate-600">
+                                                @if ($row->allow_overdraft)
+                                                    Allowed @if(!is_null($row->overdraft_limit)) (Limit: KSh {{ $fmtN((float) $row->overdraft_limit) }}) @endif
+                                                @else
+                                                    Strict Mode
+                                                @endif
+                                            </td>
                                             <td class="px-3 py-2"><input type="checkbox" @checked($row->is_active) disabled class="h-4 w-8 rounded-full border border-slate-300 text-emerald-600"></td>
                                             <td class="px-3 py-2 text-slate-500">
                                                 <div class="flex items-center gap-1">
@@ -219,6 +240,167 @@
                     </div>
                 </aside>
             </section>
+
+            <div
+                x-cloak
+                x-show="showCreateAccountModal"
+                x-transition.opacity
+                class="fixed inset-0 z-50 bg-black/50"
+                @click.self="showCreateAccountModal = false"
+            >
+                <div class="flex min-h-screen items-center justify-center p-4">
+                    <div
+                        x-show="showCreateAccountModal"
+                        x-transition
+                        class="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
+                    >
+                        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-slate-900">Create New Account</h3>
+                                <p class="text-sm text-slate-500">Add a new chart of account without leaving this page.</p>
+                            </div>
+                            <button type="button" @click="showCreateAccountModal = false" class="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">x</button>
+                        </div>
+
+                        <form method="post" action="{{ route('loan.accounting.chart.store') }}" class="space-y-5 px-6 py-5">
+                            @csrf
+
+                            <div class="grid gap-4 md:grid-cols-3">
+                                <div>
+                                    <label for="modal_code" class="mb-1 block text-xs font-semibold text-slate-600">Code</label>
+                                    <input id="modal_code" name="code" value="{{ old('code') }}" required class="w-full rounded-lg border-slate-200 text-sm font-mono" />
+                                    @error('code')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </div>
+                                <div>
+                                    <label for="modal_name" class="mb-1 block text-xs font-semibold text-slate-600">Name</label>
+                                    <input id="modal_name" name="name" value="{{ old('name') }}" required class="w-full rounded-lg border-slate-200 text-sm" />
+                                    @error('name')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </div>
+                                <div>
+                                    <label for="modal_account_type" class="mb-1 block text-xs font-semibold text-slate-600">Type</label>
+                                    <select id="modal_account_type" name="account_type" required class="w-full rounded-lg border-slate-200 text-sm">
+                                        @foreach (['asset', 'liability', 'equity', 'income', 'expense'] as $t)
+                                            <option value="{{ $t }}" @selected(old('account_type', 'asset') === $t)>{{ ucfirst($t) }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('account_type')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </div>
+                            </div>
+
+                            <div class="grid gap-4 md:grid-cols-3">
+                                <div>
+                                    <label for="modal_account_class" class="mb-1 block text-xs font-semibold text-slate-600">Account Class</label>
+                                    <select id="modal_account_class" name="account_class" class="w-full rounded-lg border-slate-200 text-sm">
+                                        @foreach (['Header', 'Detail'] as $class)
+                                            <option value="{{ $class }}" @selected(old('account_class', 'Detail') === $class)>{{ $class }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('account_class')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </div>
+                                <div>
+                                    <label for="modal_parent_id" class="mb-1 block text-xs font-semibold text-slate-600">Parent Account (Header)</label>
+                                    <select id="modal_parent_id" name="parent_id" class="w-full rounded-lg border-slate-200 text-sm">
+                                        <option value="">Top-level account</option>
+                                        @foreach (($headerAccounts ?? collect()) as $header)
+                                            <option value="{{ $header->id }}" @selected((string) old('parent_id') === (string) $header->id)>{{ $header->code }} - {{ $header->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('parent_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </div>
+                                <div>
+                                    <label for="modal_current_balance" class="mb-1 block text-xs font-semibold text-slate-600">Current Balance</label>
+                                    <input id="modal_current_balance" type="number" step="0.01" min="0" name="current_balance" value="{{ old('current_balance', 0) }}" class="w-full rounded-lg border-slate-200 text-sm" />
+                                    @error('current_balance')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </div>
+                                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                    <label class="flex items-center justify-between text-sm text-slate-700">
+                                        <span>Allow Overdraft</span>
+                                        <span>
+                                            <input type="hidden" name="allow_overdraft" value="0" />
+                                            <input x-model="allowOverdraft" type="checkbox" name="allow_overdraft" value="1" class="rounded border-slate-300" />
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="grid gap-4 md:grid-cols-3">
+                                <div x-show="allowOverdraft" x-cloak>
+                                    <label for="modal_overdraft_limit" class="mb-1 block text-xs font-semibold text-slate-600">Overdraft Limit</label>
+                                    <input id="modal_overdraft_limit" type="number" step="0.01" min="0" name="overdraft_limit" value="{{ old('overdraft_limit') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="Leave blank for unlimited" />
+                                    @error('overdraft_limit')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </div>
+                                <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                    <input type="hidden" name="is_cash_account" value="0" />
+                                    <input type="checkbox" name="is_cash_account" value="1" class="rounded border-slate-300" @checked(old('is_cash_account')) />
+                                    Cash / bank account
+                                </label>
+                                <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                    <input type="hidden" name="is_active" value="0" />
+                                    <input type="checkbox" name="is_active" value="1" class="rounded border-slate-300" @checked(old('is_active', true)) />
+                                    Active
+                                </label>
+                                <div class="flex items-center md:justify-end">
+                                    <span class="inline-flex rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Account Status: Proposed</span>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
+                                <button type="button" @click="showCreateAccountModal = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Save Account</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                x-cloak
+                x-show="showOverdrawnModal"
+                x-transition.opacity
+                class="fixed inset-0 z-50 bg-black/50"
+                @click.self="showOverdrawnModal = false"
+            >
+                <div class="flex min-h-screen items-center justify-center p-4">
+                    <div class="w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-slate-900">Overdrawn Accounts</h3>
+                                <p class="text-sm text-slate-500">Accounts where current balance is negative and overdraft is enabled.</p>
+                            </div>
+                            <button type="button" @click="showOverdrawnModal = false" class="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">x</button>
+                        </div>
+                        <div class="max-h-[65vh] overflow-y-auto p-6">
+                            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                    <tr>
+                                        <th class="px-3 py-2">Code</th>
+                                        <th class="px-3 py-2">Name</th>
+                                        <th class="px-3 py-2">Current Balance</th>
+                                        <th class="px-3 py-2">Overdraft Limit</th>
+                                        <th class="px-3 py-2">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    @forelse (($overdrawnAccounts ?? collect()) as $a)
+                                        <tr>
+                                            <td class="px-3 py-2 font-mono text-xs">{{ $a->code }}</td>
+                                            <td class="px-3 py-2">{{ $a->name }}</td>
+                                            <td class="px-3 py-2 font-semibold text-red-700">KSh {{ $fmtN((float) $a->current_balance) }}</td>
+                                            <td class="px-3 py-2">{{ is_null($a->overdraft_limit) ? 'Unlimited' : 'KSh '.number_format((float) $a->overdraft_limit, 0) }}</td>
+                                            <td class="px-3 py-2">
+                                                <a href="{{ route('loan.accounting.chart.edit', $a) }}" class="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+                                                <a href="{{ route('loan.accounting.journal.index', ['q' => $a->code]) }}" class="rounded p-1 text-slate-500 hover:bg-purple-50 hover:text-purple-700" title="View Journal"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
+                                            </td>
+                                        </tr>
+                                    @empty
+                                        <tr><td colspan="5" class="px-3 py-4 text-center text-emerald-700">No overdrawn accounts. Treasury is stable.</td></tr>
+                                    @endforelse
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </x-loan.page>
 </x-loan-layout>

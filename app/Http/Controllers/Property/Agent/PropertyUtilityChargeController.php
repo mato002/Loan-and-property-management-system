@@ -97,6 +97,13 @@ class PropertyUtilityChargeController extends Controller
             ['label' => 'Distinct units', 'value' => (string) $charges->getCollection()->unique('property_unit_id')->count(), 'hint' => 'Current page'],
             ['label' => 'Water readings', 'value' => (string) $waterReadings->count(), 'hint' => 'Recent'],
         ];
+        $waterChargePropertyIds = DB::table('pm_unit_utility_charges as charges')
+            ->join('property_units as units', 'units.id', '=', 'charges.property_unit_id')
+            ->where('charges.charge_type', 'water')
+            ->distinct()
+            ->pluck('units.property_id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
 
         return view('property.agent.revenue.utilities', [
             'stats' => $stats,
@@ -109,6 +116,7 @@ class PropertyUtilityChargeController extends Controller
                 'per_page' => (string) $perPage,
             ],
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get(),
+            'waterChargePropertyIds' => $waterChargePropertyIds,
         ]);
     }
 
@@ -174,6 +182,92 @@ class PropertyUtilityChargeController extends Controller
         );
 
         return back()->with('success', 'Water meter reading saved.');
+    }
+
+    public function storeBulkWaterReadings(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'property_id' => ['required', 'exists:properties,id'],
+            'billing_month' => ['required', 'date_format:Y-m'],
+            'rate_per_unit' => ['required', 'numeric', 'min:0'],
+            'fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'current_readings' => ['required', 'array'],
+            'current_readings.*' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $propertyId = (int) $data['property_id'];
+        $month = (string) $data['billing_month'];
+        $rate = (float) $data['rate_per_unit'];
+        $fixed = (float) ($data['fixed_charge'] ?? 0);
+        $notes = $data['notes'] ?? null;
+
+        $unitMap = PropertyUnit::query()
+            ->where('property_id', $propertyId)
+            ->pluck('label', 'id')
+            ->mapWithKeys(fn ($label, $id) => [(int) $id => (string) $label]);
+
+        if ($unitMap->isEmpty()) {
+            return back()->withErrors(['property_id' => 'No units found for the selected property.'])->withInput();
+        }
+
+        $submittedReadings = collect($data['current_readings'] ?? [])
+            ->filter(fn ($value) => $value !== null && $value !== '')
+            ->mapWithKeys(fn ($value, $unitId) => [(int) $unitId => (float) $value]);
+
+        if ($submittedReadings->isEmpty()) {
+            return back()->withErrors(['current_readings' => 'Enter at least one current reading to save in bulk.'])->withInput();
+        }
+
+        $invalidUnitIds = $submittedReadings
+            ->keys()
+            ->filter(fn ($unitId) => ! $unitMap->has((int) $unitId))
+            ->values();
+        if ($invalidUnitIds->isNotEmpty()) {
+            return back()->withErrors(['current_readings' => 'Some submitted units do not belong to the selected property.'])->withInput();
+        }
+
+        $errors = [];
+        $saved = 0;
+
+        DB::transaction(function () use ($submittedReadings, $month, $rate, $fixed, $notes, $unitMap, &$errors, &$saved) {
+            foreach ($submittedReadings as $unitId => $current) {
+                $prev = (float) (PmWaterReading::query()
+                    ->where('property_unit_id', (int) $unitId)
+                    ->where('billing_month', '<', $month)
+                    ->orderByDesc('billing_month')
+                    ->value('current_reading') ?? 0);
+
+                if ($current < $prev) {
+                    $errors['current_readings.'.$unitId] = ($unitMap[(int) $unitId] ?? ('Unit '.$unitId)).': current reading cannot be less than previous reading ('.$prev.').';
+                    continue;
+                }
+
+                $unitsUsed = $current - $prev;
+                $amount = ($unitsUsed * $rate) + $fixed;
+
+                PmWaterReading::query()->updateOrCreate(
+                    ['property_unit_id' => (int) $unitId, 'billing_month' => $month],
+                    [
+                        'previous_reading' => $prev,
+                        'current_reading' => $current,
+                        'units_used' => $unitsUsed,
+                        'rate_per_unit' => $rate,
+                        'fixed_charge' => $fixed,
+                        'amount' => $amount,
+                        'status' => 'recorded',
+                        'notes' => $notes,
+                    ]
+                );
+                $saved++;
+            }
+        });
+
+        if (! empty($errors)) {
+            return back()->withErrors($errors)->withInput();
+        }
+
+        return back()->with('success', $saved.' water meter reading(s) saved in bulk.');
     }
 
     public function generateWaterInvoices(Request $request): RedirectResponse

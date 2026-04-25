@@ -40,7 +40,7 @@
         <div class="px-4 py-3 border-b border-slate-100">
             <h3 class="text-sm font-semibold text-slate-900">Lease history</h3>
         </div>
-        <table class="min-w-full text-sm">
+        <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                 <tr>
                     <th class="px-4 py-3">Lease #</th>

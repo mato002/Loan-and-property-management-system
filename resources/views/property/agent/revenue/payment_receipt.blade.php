@@ -66,7 +66,7 @@
         </div>
 
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 overflow-hidden">
-            <table class="min-w-full text-sm">
+            <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                 <thead class="bg-blue-600 text-left text-xs font-semibold uppercase tracking-wide text-white border-b border-blue-700">
                     <tr>
                         <th class="px-4 py-3">Invoice</th>

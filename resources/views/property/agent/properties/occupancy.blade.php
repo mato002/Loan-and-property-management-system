@@ -78,7 +78,7 @@
                 <h3 class="text-sm font-semibold text-slate-900">Vacancy aging buckets</h3>
                 <p class="mt-1 text-xs text-slate-500">Prioritize long-vacant units and rent exposure.</p>
             </div>
-            <table class="min-w-full text-sm">
+            <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                     <tr>
                         <th class="px-4 py-3">Bucket</th>
@@ -114,7 +114,7 @@
                 <h3 class="text-sm font-semibold text-slate-900">Occupancy activity trend (6 months)</h3>
                 <p class="mt-1 text-xs text-slate-500">Move-ins vs move-outs from recorded unit movements.</p>
             </div>
-            <table class="min-w-full text-sm">
+            <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                     <tr>
                         <th class="px-4 py-3">Month</th>

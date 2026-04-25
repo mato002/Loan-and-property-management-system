@@ -29,11 +29,11 @@
             <div class="flex flex-wrap items-end gap-2">
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Group name..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Group name..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
-                    <select name="per_page" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <select name="per_page" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                         @foreach ([12, 24, 36, 60, 120] as $size)
                             <option value="{{ $size }}" @selected((int) ($perPage ?? 24) === $size)>{{ $size }}</option>
                         @endforeach

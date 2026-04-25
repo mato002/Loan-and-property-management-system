@@ -146,15 +146,15 @@
                 <div class="flex flex-wrap items-end gap-2">
                     <div>
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">From</label>
-                        <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <input type="date" name="from" value="{{ $from ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                     </div>
                     <div>
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">To</label>
-                        <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <input type="date" name="to" value="{{ $to ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                     </div>
                     <div>
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Corporate</label>
-                        <select name="corporate" class="h-10 min-w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <select name="corporate" onchange="this.form.requestSubmit()" class="h-10 min-w-44 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                             <option value="">All</option>
                             @foreach (($corporateOptions ?? collect()) as $option)
                                 <option value="{{ $option }}" @selected(($corporate ?? '') === $option)>{{ $option }}</option>
@@ -163,7 +163,7 @@
                     </div>
                     <div>
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Pay Mode</label>
-                        <select name="pay_mode" class="h-10 min-w-36 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <select name="pay_mode" onchange="this.form.requestSubmit()" class="h-10 min-w-36 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                             <option value="">All</option>
                             @foreach (($payModeOptions ?? collect()) as $option)
                                 <option value="{{ $option }}" @selected(($payMode ?? '') === $option)>{{ ucfirst($option) }}</option>
@@ -172,11 +172,11 @@
                     </div>
                     <div class="min-w-[260px] flex-1">
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                        <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, Loan #, Client, Phone..." class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, Loan #, Client, Phone..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                     </div>
                     <div>
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Source</label>
-                        <select name="source" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <select name="source" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                             <option value="">All</option>
                             <option value="sms_forwarder" @selected(($source ?? '') === 'sms_forwarder')>SMS Forwarder</option>
                             <option value="manual" @selected(($source ?? '') === 'manual')>Manual/Other</option>
@@ -219,7 +219,7 @@
                     <p class="text-xs text-slate-500">{{ $payments->total() }} row(s) · Ksh {{ number_format((float) ($totalAmount ?? 0), 2) }}</p>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="min-w-[980px] w-full table-auto text-[11px]">
+                    <table class="min-w-[980px] w-full table-auto border-collapse text-[11px] [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                         <thead class="sticky top-0 z-10 bg-slate-100 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                         <tr>
                             <th class="border-b border-r border-slate-300 px-3 py-3">Transaction</th>

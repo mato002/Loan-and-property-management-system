@@ -11,6 +11,8 @@ use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookPayment;
 use App\Models\User;
+use App\Services\AccountingChartBalanceService;
+use App\Services\AccountingOverdraftGuardService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -313,6 +315,19 @@ class LoanBookGlPostingService
             throw new \RuntimeException('Debit and credit accounts must differ.');
         }
 
+        $debitAccount = AccountingChartAccount::query()->find($debitAccountId);
+        $creditAccount = AccountingChartAccount::query()->find($creditAccountId);
+        if (! $debitAccount || ! $creditAccount) {
+            throw new \RuntimeException('Posting account is missing.');
+        }
+        if ($debitAccount->isHeader() || $creditAccount->isHeader()) {
+            throw new \RuntimeException('Journal entries can only post to Detail accounts.');
+        }
+        app(AccountingOverdraftGuardService::class)->assertCanApplyDeltas([
+            $debitAccountId => $amount,
+            $creditAccountId => 0 - $amount,
+        ]);
+
         $entry = AccountingJournalEntry::query()->create([
             'entry_date' => $entryDate->toDateString(),
             'reference' => Str::limit($reference, 64, ''),
@@ -335,6 +350,9 @@ class LoanBookGlPostingService
             'credit' => $amount,
             'memo' => null,
         ]);
+
+        app(AccountingChartBalanceService::class)
+            ->syncAccountsAndAncestors([$debitAccountId, $creditAccountId]);
 
         return $entry;
     }

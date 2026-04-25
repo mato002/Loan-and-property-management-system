@@ -9,7 +9,7 @@
             <div class="flex flex-wrap items-end gap-2">
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, loan, client, receipt..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, loan, client, receipt..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Status</label>
@@ -49,7 +49,7 @@
             </div>
 
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                     <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         <tr>
                             <th class="px-5 py-3">Reference</th>

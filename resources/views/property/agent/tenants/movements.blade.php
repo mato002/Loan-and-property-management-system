@@ -187,7 +187,7 @@
                 <h3 class="text-sm font-semibold text-slate-900">6-month trend</h3>
                 <p class="mt-1 text-xs text-slate-500">Movement completion trend by month.</p>
             </div>
-            <table class="min-w-full text-sm">
+            <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                     <tr>
                         <th class="px-4 py-3">Month</th>

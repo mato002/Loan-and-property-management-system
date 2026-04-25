@@ -20,10 +20,44 @@
                     <label for="account_type" class="block text-xs font-semibold text-slate-600 mb-1">Type</label>
                     <select id="account_type" name="account_type" required class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach (['asset', 'liability', 'equity', 'income', 'expense'] as $t)
-                            <option value="{{ $t }}" @selected(old('account_type') === $t)>{{ ucfirst($t) }}</option>
+                            <option value="{{ $t }}" @selected(old('account_type', 'asset') === $t)>{{ ucfirst($t) }}</option>
                         @endforeach
                     </select>
                     @error('account_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label for="account_class" class="block text-xs font-semibold text-slate-600 mb-1">Account Class</label>
+                    <select id="account_class" name="account_class" class="w-full rounded-lg border-slate-200 text-sm">
+                        @foreach (['Header', 'Detail'] as $class)
+                            <option value="{{ $class }}" @selected(old('account_class', 'Detail') === $class)>{{ $class }}</option>
+                        @endforeach
+                    </select>
+                    @error('account_class')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label for="parent_id" class="block text-xs font-semibold text-slate-600 mb-1">Parent Account (Header)</label>
+                    <select id="parent_id" name="parent_id" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="">Top-level account</option>
+                        @foreach (($headerAccounts ?? collect()) as $header)
+                            <option value="{{ $header->id }}" @selected((string) old('parent_id') === (string) $header->id)>{{ $header->code }} - {{ $header->name }}</option>
+                        @endforeach
+                    </select>
+                    @error('parent_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label for="current_balance" class="block text-xs font-semibold text-slate-600 mb-1">Current Balance</label>
+                    <input id="current_balance" type="number" step="0.01" min="0" name="current_balance" value="{{ old('current_balance', 0) }}" class="w-full rounded-lg border-slate-200 text-sm" />
+                    @error('current_balance')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <label class="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="hidden" name="allow_overdraft" value="0" />
+                    <input type="checkbox" name="allow_overdraft" value="1" class="rounded border-slate-300" @checked(old('allow_overdraft')) />
+                    Allow overdraft
+                </label>
+                <div>
+                    <label for="overdraft_limit" class="block text-xs font-semibold text-slate-600 mb-1">Overdraft Limit</label>
+                    <input id="overdraft_limit" type="number" step="0.01" min="0" name="overdraft_limit" value="{{ old('overdraft_limit') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="Leave blank for unlimited when enabled" />
+                    @error('overdraft_limit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <label class="flex items-center gap-2 text-sm text-slate-700">
                     <input type="hidden" name="is_cash_account" value="0" />

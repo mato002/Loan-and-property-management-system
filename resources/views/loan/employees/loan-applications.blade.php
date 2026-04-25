@@ -13,11 +13,11 @@
             <div class="flex flex-wrap items-end gap-2">
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, employee, product..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, employee, product..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Status</label>
-                    <select name="status" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                    <select name="status" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
                         <option value="">All</option>
                         @foreach (['pending', 'approved', 'declined', 'disbursed'] as $rowStatus)
                             <option value="{{ $rowStatus }}" @selected(($status ?? '') === $rowStatus)>{{ ucfirst($rowStatus) }}</option>
@@ -26,7 +26,7 @@
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Stage</label>
-                    <select name="stage" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                    <select name="stage" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
                         <option value="">All</option>
                         @foreach (($stages ?? []) as $rowStage)
                             <option value="{{ $rowStage }}" @selected(($stage ?? '') === $rowStage)>{{ $rowStage }}</option>
@@ -35,7 +35,7 @@
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
-                    <select name="per_page" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                    <select name="per_page" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
                         @foreach ([10, 20, 30, 50, 100, 200] as $size)
                             <option value="{{ $size }}" @selected((int) ($perPage ?? 20) === $size)>{{ $size }}</option>
                         @endforeach

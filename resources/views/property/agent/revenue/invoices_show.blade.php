@@ -31,7 +31,7 @@
         <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 class="text-sm font-semibold text-slate-800 mb-3">Payment allocations</h3>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                     <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                         <tr>
                             <th class="px-3 py-2">Payment ref</th>

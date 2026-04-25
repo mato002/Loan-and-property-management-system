@@ -84,7 +84,7 @@
             <div class="flex flex-wrap items-end gap-2">
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan #, client, product..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan #, client, product..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Status</label>
@@ -124,19 +124,19 @@
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Disbursed from</label>
-                    <input type="date" name="disbursed_from" value="{{ $disbursedFrom ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="date" name="disbursed_from" value="{{ $disbursedFrom ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Disbursed to</label>
-                    <input type="date" name="disbursed_to" value="{{ $disbursedTo ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="date" name="disbursed_to" value="{{ $disbursedTo ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Maturity from</label>
-                    <input type="date" name="maturity_from" value="{{ $maturityFrom ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="date" name="maturity_from" value="{{ $maturityFrom ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Maturity to</label>
-                    <input type="date" name="maturity_to" value="{{ $maturityTo ?? '' }}" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="date" name="maturity_to" value="{{ $maturityTo ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>
@@ -244,6 +244,9 @@
                                 $totalRepayable = $paid + $remaining;
                                 $progress = $totalRepayable > 0.00001 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
                                 $officerName = trim((string) ($loan->loanClient?->assignedEmployee?->full_name ?? ''));
+                                $rowRedirectUrl = $loan->loanClient
+                                    ? route('loan.clients.show', $loan->loanClient)
+                                    : route('loan.book.loans.show', $loan);
                                 $loanPrincipalTotal += (float) $loan->principal;
                                 $loanToPayTotal += $totalRepayable;
                                 $loanPaidTotal += $paid;
@@ -261,9 +264,9 @@
                                 class="cursor-pointer hover:bg-slate-50/80"
                                 role="link"
                                 tabindex="0"
-                                @click="openRow('{{ route('loan.book.loans.show', $loan) }}', $event)"
-                                @keydown.enter.prevent="openRow('{{ route('loan.book.loans.show', $loan) }}', $event)"
-                                @keydown.space.prevent="openRow('{{ route('loan.book.loans.show', $loan) }}', $event)"
+                                @click="openRow('{{ $rowRedirectUrl }}', $event)"
+                                @keydown.enter.prevent="openRow('{{ $rowRedirectUrl }}', $event)"
+                                @keydown.space.prevent="openRow('{{ $rowRedirectUrl }}', $event)"
                             >
                                 <td x-show="cols.loanNo" class="px-5 py-3 font-mono text-xs text-indigo-600 font-medium">{{ $loan->loan_number }}</td>
                                 <td x-show="cols.client" class="px-5 py-3 font-medium text-slate-900">

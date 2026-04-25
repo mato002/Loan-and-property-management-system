@@ -125,7 +125,7 @@
             <div class="flex flex-wrap items-end gap-2">
                 <div class="w-full sm:w-auto">
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan #, client, reference..." class="h-10 w-full sm:w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan #, client, reference..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="h-10 w-full sm:w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div class="w-[calc(50%-0.25rem)] sm:w-auto">
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Method</label>
@@ -138,11 +138,11 @@
                 </div>
                 <div class="w-[calc(50%-0.25rem)] sm:w-auto">
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">From</label>
-                    <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="date" name="from" value="{{ $from ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div class="w-[calc(50%-0.25rem)] sm:w-auto">
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">To</label>
-                    <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="date" name="to" value="{{ $to ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div class="w-[calc(50%-0.25rem)] sm:w-auto">
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Per page</label>

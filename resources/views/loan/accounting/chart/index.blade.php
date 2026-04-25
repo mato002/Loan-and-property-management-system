@@ -3165,7 +3165,7 @@
                                             <td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-700">{{ data_get($row, 'code', '0000') }}</td>
                                             <td class="px-3 py-2 font-medium text-slate-800">{{ data_get($row, 'name', 'Account') }}</td>
                                             <td class="px-3 py-2 capitalize text-slate-600">{{ data_get($row, 'account_type', 'asset') }}</td>
-                                            <td class="px-3 py-2 text-slate-600">{{ data_get($row, 'parent_group', 'Assets') }}</td>
+                                            <td class="px-3 py-2 text-slate-600">{{ data_get($row, 'parent.name', 'Top Level') }}</td>
                                             <td class="px-3 py-2 font-semibold {{ $isLow ? 'text-red-600' : ($isNear ? 'text-orange-600' : 'text-emerald-700') }}">KSh {{ $fmtN($bal) }}</td>
                                             <td class="px-3 py-2 text-slate-600">KSh {{ $fmtN($floor) }}</td>
                                             <td class="px-3 py-2">
@@ -3209,7 +3209,7 @@
                                             <td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-slate-700">{{ data_get($row, 'code', '0000') }}</td>
                                             <td class="px-3 py-2 font-medium text-slate-800">{{ data_get($row, 'name', 'Liability Account') }}</td>
                                             <td class="px-3 py-2 capitalize text-slate-600">{{ data_get($row, 'account_type', 'liability') }}</td>
-                                            <td class="px-3 py-2 text-slate-600">{{ data_get($row, 'parent_group', 'Group') }}</td>
+                                            <td class="px-3 py-2 text-slate-600">{{ data_get($row, 'parent.name', 'Top Level') }}</td>
                                             <td class="px-3 py-2 font-semibold text-orange-700">KSh {{ $fmtN($bal) }}</td>
                                             <td class="px-3 py-2 text-slate-600">KSh {{ $fmtN($floor) }}</td>
                                             <td class="px-3 py-2"><input type="checkbox" @checked((bool) data_get($row, 'is_active', true)) disabled class="h-4 w-8 rounded-full border border-slate-300 text-emerald-600 focus:ring-emerald-500"></td>
@@ -3231,7 +3231,7 @@
                                                 <td class="px-3 py-2 font-mono text-xs text-slate-700">{{ data_get($row, 'code', '0000') }}</td>
                                                 <td class="px-3 py-2 font-medium text-slate-800">{{ data_get($row, 'name', 'General Account') }}</td>
                                                 <td class="px-3 py-2 capitalize text-slate-600">{{ data_get($row, 'account_type', 'other') }}</td>
-                                                <td class="px-3 py-2 text-slate-600">{{ data_get($row, 'parent_group', 'General') }}</td>
+                                                <td class="px-3 py-2 text-slate-600">{{ data_get($row, 'parent.name', 'Top Level') }}</td>
                                                 <td class="px-3 py-2 font-semibold text-emerald-700">KSh {{ $fmtN((int) data_get($row, 'current_balance', 5000)) }}</td>
                                                 <td class="px-3 py-2 text-slate-600">KSh {{ $fmtN((int) data_get($row, 'min_balance_floor', 10000)) }}</td>
                                                 <td class="px-3 py-2"><input type="checkbox" @checked((bool) data_get($row, 'is_active', true)) disabled class="h-4 w-8 rounded-full border border-slate-300 text-emerald-600 focus:ring-emerald-500"></td>

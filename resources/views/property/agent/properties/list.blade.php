@@ -10,8 +10,44 @@
     empty-hint="Add a property below, then open Units to add doors and rents."
 >
     <x-slot name="above">
+        @php
+            $propertyFormHasErrors = $errors->has('name')
+                || $errors->has('code')
+                || $errors->has('city')
+                || $errors->has('commission_percent')
+                || $errors->has('address_line');
+            $linkLandlordFormHasErrors = $errors->has('property_id')
+                || $errors->has('user_id')
+                || $errors->has('ownership_percent');
+        @endphp
+        <div x-data="{ showPropertyForm: @js($propertyFormHasErrors), showLinkLandlordForm: @js($linkLandlordFormHasErrors) }" class="space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <button
+                    type="button"
+                    class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
+                    @click="showPropertyForm = !showPropertyForm"
+                >
+                    <i class="fa-solid fa-building-circle-plus text-lg" aria-hidden="true"></i>
+                    <span x-text="showPropertyForm ? 'Hide add property form' : 'Add property'"></span>
+                </button>
+                <button
+                    type="button"
+                    class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700 sm:w-auto"
+                    @click="showLinkLandlordForm = !showLinkLandlordForm"
+                >
+                    <i class="fa-solid fa-link text-lg" aria-hidden="true"></i>
+                    <span x-text="showLinkLandlordForm ? 'Hide link landlord form' : 'Link landlord user'"></span>
+                </button>
+            </div>
+
         <div class="grid gap-4 lg:grid-cols-2">
-            <form method="post" action="{{ route('property.properties.store') }}" class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
+            <form
+                method="post"
+                action="{{ route('property.properties.store') }}"
+                x-show="showPropertyForm"
+                x-cloak
+                class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3"
+            >
                 @csrf
                 <h3 class="property-attention-title dark:text-white">Add Property</h3>
                 <p class="property-attention-hint dark:text-slate-300">Start here: create the property first, then add units and landlord links.</p>
@@ -68,6 +104,8 @@
                 action="{{ route('property.properties.landlords.attach') }}"
                 data-turbo-frame="property-main"
                 data-turbo="false"
+                x-show="showLinkLandlordForm"
+                x-cloak
                 class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 scroll-mt-24"
                 x-data="{
                     showNewLandlord: false,
@@ -121,8 +159,18 @@
                     }
                 }"
             >
+                <div class="mb-1 flex items-center justify-between gap-3">
+                    <h3 class="property-attention-title dark:text-white">Link Landlord User</h3>
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        @click="showLinkLandlordForm = false"
+                    >
+                        <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+                        Hide
+                    </button>
+                </div>
                 @csrf
-                <h3 class="property-attention-title dark:text-white">Link Landlord User</h3>
                 <p class="property-attention-hint dark:text-slate-300">Assign a landlord account to a property so ownership and statements are connected.</p>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
@@ -184,7 +232,7 @@
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Landlord links</h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400">Update ownership % or detach. New links are rejected if total ownership on a property would exceed 100%.</p>
                 <div class="overflow-x-auto overflow-y-auto max-h-80 pr-1">
-                    <table class="min-w-full text-sm">
+                    <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                         <thead>
                             <tr class="text-left text-xs font-semibold uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-600">
                                 <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Property</th>
@@ -246,6 +294,7 @@
                 </div>
             </div>
         @endif
+        </div>
     </x-slot>
 
     <x-slot name="toolbar">

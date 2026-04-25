@@ -104,6 +104,18 @@
                 line-height: 1.15rem;
                 color: #475569;
             }
+            /* Property module table grid lines (global) */
+            #property-main table {
+                border-collapse: collapse;
+            }
+            #property-main table th,
+            #property-main table td {
+                border: 1px solid #cbd5e1;
+            }
+            .dark #property-main table th,
+            .dark #property-main table td {
+                border-color: #334155;
+            }
         </style>
     </head>
     <body
@@ -180,6 +192,44 @@
             </a>
         @endif
 
+        <script>
+            (function () {
+                const SEARCH_DEBOUNCE_MS = 1100;
+
+                function wireAutoFilterForms(scopeRoot) {
+                    const root = scopeRoot || document;
+                    const forms = Array.from(root.querySelectorAll('form[method="get"]:not([data-auto-submit="off"])'));
+
+                    forms.forEach((form) => {
+                        if (form.dataset.autoSubmitBound === '1') {
+                            return;
+                        }
+                        form.dataset.autoSubmitBound = '1';
+
+                        const searchInputs = Array.from(form.querySelectorAll('input[name="q"], input[type="search"], input[data-auto-search="true"]'))
+                            .filter((input) => !input.matches('[data-auto-submit="off"]'));
+                        searchInputs.forEach((input) => {
+                            input.addEventListener('input', () => {
+                                window.clearTimeout(input._autoSearchTimer);
+                                input._autoSearchTimer = window.setTimeout(() => form.requestSubmit(), SEARCH_DEBOUNCE_MS);
+                            });
+                        });
+
+                        const autoControls = Array.from(form.querySelectorAll('select, input[type="date"], input[type="month"], input[type="number"], input[type="checkbox"], input[type="radio"]'))
+                            .filter((el) => !el.matches('[data-auto-submit="off"]'));
+                        autoControls.forEach((control) => {
+                            control.addEventListener('change', () => form.requestSubmit());
+                        });
+                    });
+                }
+
+                document.addEventListener('DOMContentLoaded', () => wireAutoFilterForms(document));
+                document.addEventListener('turbo:load', () => wireAutoFilterForms(document));
+                document.addEventListener('turbo:frame-load', (event) => wireAutoFilterForms(event.target));
+                document.addEventListener('livewire:navigated', () => wireAutoFilterForms(document));
+                document.addEventListener('alpine:navigated', () => wireAutoFilterForms(document));
+            })();
+        </script>
         @stack('scripts')
     </body>
 </html>

@@ -120,7 +120,7 @@
                 <p class="text-xs text-gray-500 mt-1">Shows each unpaid invoice (rent and water). Payments are automatically allocated to oldest due first.</p>
             </div>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                     <thead class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500 border-b border-gray-200">
                         <tr>
                             <th class="px-6 py-3 whitespace-nowrap">Type</th>

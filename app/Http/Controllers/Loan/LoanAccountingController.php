@@ -19,6 +19,8 @@ use App\Models\LoanBookDisbursement;
 use App\Models\LoanFormFieldDefinition;
 use App\Models\Employee;
 use App\Models\LoanBookPayment;
+use App\Services\AccountingChartBalanceService;
+use App\Services\AccountingOverdraftGuardService;
 use App\Support\TabularExport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Carbon\Carbon;
 
@@ -120,11 +123,12 @@ class LoanAccountingController extends Controller
 
     public function chartIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
+        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
         $export = request()->string('export')->toString();
         $q = request()->string('q')->toString();
         $active = request()->string('active')->toString(); // '', '1', '0'
 
-        $accountsQuery = AccountingChartAccount::query();
+        $accountsQuery = AccountingChartAccount::query()->with('parent');
         if ($active === '1') {
             $accountsQuery->where('is_active', true);
         } elseif ($active === '0') {
@@ -159,8 +163,16 @@ class LoanAccountingController extends Controller
 
         $selectAccounts = AccountingChartAccount::query()
             ->where('is_active', true)
+            ->when($hasAccountClass, fn ($q) => $q->where('account_class', AccountingChartAccount::CLASS_DETAIL))
             ->orderBy('code')
             ->get();
+        $headerAccounts = $hasAccountClass
+            ? AccountingChartAccount::query()
+                ->where('is_active', true)
+                ->where('account_class', AccountingChartAccount::CLASS_HEADER)
+                ->orderBy('code')
+                ->get()
+            : collect();
 
         $slotLabels = $this->walletSlotLabels();
         $slotSettings = AccountingWalletSlotSetting::query()
@@ -197,6 +209,7 @@ class LoanAccountingController extends Controller
             'accounts',
             'accountsByType',
             'selectAccounts',
+            'headerAccounts',
             'walletSlots',
             'postingRules',
             'chartOverview',
@@ -415,52 +428,47 @@ class LoanAccountingController extends Controller
 
     public function chartCreate(): View
     {
-        return view('loan.accounting.chart.create');
+        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
+        $headerAccounts = $hasAccountClass
+            ? AccountingChartAccount::query()
+                ->where('is_active', true)
+                ->where('account_class', AccountingChartAccount::CLASS_HEADER)
+                ->orderBy('code')
+                ->get()
+            : collect();
+
+        return view('loan.accounting.chart.create', compact('headerAccounts'));
     }
 
     public function chartStore(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'code' => ['required', 'string', 'max:32', 'unique:accounting_chart_accounts,code'],
-            'name' => ['required', 'string', 'max:255'],
-            'account_type' => ['required', 'in:asset,liability,equity,income,expense'],
-            'is_cash_account' => ['sometimes', 'boolean'],
-            'is_active' => ['sometimes', 'boolean'],
-        ]);
-
-        AccountingChartAccount::create([
-            'code' => $validated['code'],
-            'name' => $validated['name'],
-            'account_type' => $validated['account_type'],
-            'is_cash_account' => $request->boolean('is_cash_account'),
-            'is_active' => $request->boolean('is_active', true),
-        ]);
+        $validated = $this->validateChartPayload($request);
+        $payload = $this->buildChartPayload($request, $validated);
+        AccountingChartAccount::create($payload);
 
         return redirect()->route('loan.accounting.chart.index')->with('status', 'Account created.');
     }
 
     public function chartEdit(AccountingChartAccount $accounting_chart_account): View
     {
-        return view('loan.accounting.chart.edit', ['account' => $accounting_chart_account]);
+        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
+        $headerAccounts = $hasAccountClass
+            ? AccountingChartAccount::query()
+                ->where('is_active', true)
+                ->where('account_class', AccountingChartAccount::CLASS_HEADER)
+                ->where('id', '!=', $accounting_chart_account->id)
+                ->orderBy('code')
+                ->get()
+            : collect();
+
+        return view('loan.accounting.chart.edit', ['account' => $accounting_chart_account, 'headerAccounts' => $headerAccounts]);
     }
 
     public function chartUpdate(Request $request, AccountingChartAccount $accounting_chart_account): RedirectResponse
     {
-        $validated = $request->validate([
-            'code' => ['required', 'string', 'max:32', 'unique:accounting_chart_accounts,code,'.$accounting_chart_account->id],
-            'name' => ['required', 'string', 'max:255'],
-            'account_type' => ['required', 'in:asset,liability,equity,income,expense'],
-            'is_cash_account' => ['sometimes', 'boolean'],
-            'is_active' => ['sometimes', 'boolean'],
-        ]);
-
-        $accounting_chart_account->update([
-            'code' => $validated['code'],
-            'name' => $validated['name'],
-            'account_type' => $validated['account_type'],
-            'is_cash_account' => $request->boolean('is_cash_account'),
-            'is_active' => $request->boolean('is_active', true),
-        ]);
+        $validated = $this->validateChartPayload($request, $accounting_chart_account);
+        $payload = $this->buildChartPayload($request, $validated, $accounting_chart_account);
+        $accounting_chart_account->update($payload);
 
         return redirect()->route('loan.accounting.chart.index')->with('status', 'Account updated.');
     }
@@ -474,6 +482,101 @@ class LoanAccountingController extends Controller
         $accounting_chart_account->delete();
 
         return redirect()->route('loan.accounting.chart.index')->with('status', 'Account removed.');
+    }
+
+    /** @return array<string, mixed> */
+    private function validateChartPayload(Request $request, ?AccountingChartAccount $existing = null): array
+    {
+        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
+        $hasParentId = Schema::hasColumn('accounting_chart_accounts', 'parent_id');
+        $rules = [
+            'code' => ['required', 'string', 'max:32'],
+            'name' => ['required', 'string', 'max:255'],
+            'account_type' => ['required', 'in:asset,liability,equity,income,expense'],
+            'account_class' => $hasAccountClass
+                ? ['required', Rule::in([AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_DETAIL])]
+                : ['nullable'],
+            'parent_id' => $hasParentId
+                ? ['nullable', 'integer', 'exists:accounting_chart_accounts,id']
+                : ['nullable'],
+            'current_balance' => ['nullable', 'numeric'],
+            'allow_overdraft' => ['sometimes', 'boolean'],
+            'overdraft_limit' => ['nullable', 'numeric', 'min:0'],
+            'is_cash_account' => ['sometimes', 'boolean'],
+            'is_active' => ['sometimes', 'boolean'],
+        ];
+        $rules['code'][] = $existing
+            ? Rule::unique('accounting_chart_accounts', 'code')->ignore($existing->id)
+            : Rule::unique('accounting_chart_accounts', 'code');
+
+        $validated = $request->validate($rules);
+
+        if ($hasAccountClass && $hasParentId && ! empty($validated['parent_id'])) {
+            $parent = AccountingChartAccount::query()->find((int) $validated['parent_id']);
+            if (! $parent || ! $parent->isHeader()) {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'Parent account must be a Header account.',
+                ]);
+            }
+            if ($existing && (int) $validated['parent_id'] === (int) $existing->id) {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'Account cannot be parent of itself.',
+                ]);
+            }
+            if ($existing && $parent->isDescendantOf((int) $existing->id)) {
+                throw ValidationException::withMessages([
+                    'parent_id' => 'Circular account hierarchy is not allowed.',
+                ]);
+            }
+        }
+
+        return $validated;
+    }
+
+    /** @param  array<string, mixed>  $validated
+     *  @return array<string, mixed>
+     */
+    private function buildChartPayload(Request $request, array $validated, ?AccountingChartAccount $existing = null): array
+    {
+        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
+        $hasParentId = Schema::hasColumn('accounting_chart_accounts', 'parent_id');
+        $parent = null;
+        if ($hasParentId && ! empty($validated['parent_id'])) {
+            $parent = AccountingChartAccount::query()->find((int) $validated['parent_id']);
+        }
+
+        $accountType = $parent ? (string) $parent->account_type : (string) $validated['account_type'];
+
+        if ($hasAccountClass && $existing && $existing->isHeader() && ($validated['account_class'] ?? '') === AccountingChartAccount::CLASS_DETAIL) {
+            if ($existing->children()->exists()) {
+                throw ValidationException::withMessages([
+                    'account_class' => 'Convert or reassign child accounts first before changing this header to detail.',
+                ]);
+            }
+        }
+
+        $payload = [
+            'code' => $validated['code'],
+            'name' => $validated['name'],
+            'account_type' => $accountType,
+            'current_balance' => (float) ($validated['current_balance'] ?? 0),
+            'allow_overdraft' => $request->boolean('allow_overdraft'),
+            'overdraft_limit' => $validated['overdraft_limit'] ?? null,
+            'is_cash_account' => $request->boolean('is_cash_account'),
+            'is_active' => $request->boolean('is_active', true),
+        ];
+
+        if ($hasAccountClass) {
+            $payload['account_class'] = $validated['account_class'] ?? AccountingChartAccount::CLASS_DETAIL;
+        }
+        if ($hasParentId) {
+            $payload['parent_id'] = $validated['parent_id'] ?? null;
+        }
+        if (! $payload['allow_overdraft']) {
+            $payload['overdraft_limit'] = null;
+        }
+
+        return $payload;
     }
 
     /* ---------- Journal entries ---------- */
@@ -538,8 +641,10 @@ class LoanAccountingController extends Controller
 
     public function journalCreate(): View
     {
+        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
         $accounts = AccountingChartAccount::query()
             ->where('is_active', true)
+            ->when($hasAccountClass, fn ($q) => $q->where('account_class', AccountingChartAccount::CLASS_DETAIL))
             ->orderBy('code')
             ->get();
 
@@ -566,6 +671,22 @@ class LoanAccountingController extends Controller
         ]);
 
         $lines = collect($validated['lines']);
+        $lineAccountIds = $lines->pluck('accounting_chart_account_id')->map(fn ($id) => (int) $id)->unique()->values();
+        $lineAccounts = AccountingChartAccount::query()->whereIn('id', $lineAccountIds)->get()->keyBy('id');
+        foreach ($lineAccountIds as $accountId) {
+            $account = $lineAccounts->get($accountId);
+            if ($account && $account->isHeader()) {
+                return back()->withErrors(['lines' => 'Journal entries can only post to Detail accounts.'])->withInput();
+            }
+        }
+        $lineDeltas = [];
+        foreach ($lines as $line) {
+            $accountId = (int) $line['accounting_chart_account_id'];
+            $delta = round((float) ($line['debit'] ?? 0) - (float) ($line['credit'] ?? 0), 2);
+            $lineDeltas[$accountId] = round((float) ($lineDeltas[$accountId] ?? 0) + $delta, 2);
+        }
+        app(AccountingOverdraftGuardService::class)->assertCanApplyDeltas($lineDeltas);
+
         foreach ($lines as $i => $line) {
             $d = round((float) ($line['debit'] ?? 0), 2);
             $c = round((float) ($line['credit'] ?? 0), 2);
@@ -587,7 +708,7 @@ class LoanAccountingController extends Controller
         }
 
         $entry = null;
-        DB::transaction(function () use ($validated, $request, $lines, &$entry) {
+        DB::transaction(function () use ($validated, $request, $lines, $lineAccountIds, &$entry) {
             $entry = AccountingJournalEntry::create([
                 'entry_date' => $validated['entry_date'],
                 'reference' => $validated['reference'] ?? null,
@@ -606,6 +727,7 @@ class LoanAccountingController extends Controller
                     'memo' => $line['memo'] ?? null,
                 ]);
             }
+            app(AccountingChartBalanceService::class)->syncAccountsAndAncestors($lineAccountIds->all());
         });
 
         return redirect()
@@ -690,6 +812,14 @@ class LoanAccountingController extends Controller
 
         $reversalEntry = null;
         DB::transaction(function () use ($request, $accounting_journal_entry, &$reversalEntry) {
+            $reversalDeltas = [];
+            foreach ($accounting_journal_entry->lines as $line) {
+                $accountId = (int) $line->accounting_chart_account_id;
+                $delta = round((float) ($line->credit ?? 0) - (float) ($line->debit ?? 0), 2);
+                $reversalDeltas[$accountId] = round((float) ($reversalDeltas[$accountId] ?? 0) + $delta, 2);
+            }
+            app(AccountingOverdraftGuardService::class)->assertCanApplyDeltas($reversalDeltas);
+
             $reversalEntry = AccountingJournalEntry::create([
                 'entry_date' => now()->toDateString(),
                 'reference' => 'REV-'.$accounting_journal_entry->id,
@@ -702,6 +832,10 @@ class LoanAccountingController extends Controller
             ]);
 
             foreach ($accounting_journal_entry->lines as $line) {
+                $targetAccount = AccountingChartAccount::query()->find((int) $line->accounting_chart_account_id);
+                if ($targetAccount && $targetAccount->isHeader()) {
+                    throw new \RuntimeException('Reversal cannot post to Header accounts. Convert mapping to Detail accounts first.');
+                }
                 AccountingJournalLine::create([
                     'accounting_journal_entry_id' => $reversalEntry->id,
                     'accounting_chart_account_id' => $line->accounting_chart_account_id,
@@ -714,6 +848,14 @@ class LoanAccountingController extends Controller
             $accounting_journal_entry->update([
                 'status' => AccountingJournalEntry::STATUS_REVERSED,
             ]);
+
+            $affectedIds = $accounting_journal_entry->lines
+                ->pluck('accounting_chart_account_id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+            app(AccountingChartBalanceService::class)->syncAccountsAndAncestors($affectedIds);
         });
 
         return redirect()

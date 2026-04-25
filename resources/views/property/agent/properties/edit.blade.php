@@ -91,7 +91,7 @@
     </x-slot>
 
     <div class="overflow-x-auto w-full min-w-0 -mx-4 px-4 sm:mx-0 sm:px-0">
-        <table class="min-w-full text-sm">
+        <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
             <thead class="bg-slate-50 dark:bg-slate-900/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
                 <tr>
                     <th class="px-3 sm:px-4 py-3 whitespace-nowrap">Landlord</th>

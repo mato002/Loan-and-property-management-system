@@ -9,6 +9,7 @@
     empty-hint="Create tenants here, then add leases and invoices against them."
 >
     <x-slot name="above">
+        <div x-data="{ showTenantForm: @js($errors->any()) }" class="space-y-4">
         <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
             <p class="text-lg font-semibold text-slate-900">Tenant onboarding flow</p>
             <p class="mt-1 text-sm text-slate-600">Step 1: Add tenant → Step 2: Allocate unit (Lease) → Step 3: Create rent bill (Invoice) → Step 4: Collect payment.</p>
@@ -28,8 +29,25 @@
             </div>
         </div>
 
+        <div class="max-w-3xl">
+            <button
+                type="button"
+                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
+                @click="showTenantForm = !showTenantForm"
+            >
+                <i class="fa-solid fa-user-plus text-lg" aria-hidden="true"></i>
+                <span x-text="showTenantForm ? 'Hide add tenant form' : 'Add tenant'"></span>
+            </button>
+        </div>
+
         @if ($showTenantForm ?? true)
-        <form method="post" action="{{ route('property.tenants.store') }}" class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+        <form
+            method="post"
+            action="{{ route('property.tenants.store') }}"
+            x-show="showTenantForm"
+            x-cloak
+            class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl"
+        >
             @csrf
             <h3 class="property-attention-title dark:text-white">Add Tenant</h3>
             <p class="property-attention-hint dark:text-slate-300">Create the tenant profile first, then move to lease allocation in the next step.</p>
@@ -81,6 +99,7 @@
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save tenant</button>
         </form>
         @endif
+        </div>
     </x-slot>
 
     <x-slot name="toolbar">

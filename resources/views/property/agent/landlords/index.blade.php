@@ -6,6 +6,14 @@
     :columns="[]"
 >
     <x-slot name="above">
+        @php
+            $landlordCreateFormHasErrors = $errors->has('name')
+                || $errors->has('email')
+                || $errors->has('password')
+                || $errors->has('property_id')
+                || $errors->has('ownership_percent');
+        @endphp
+        <div x-data="{ showLandlordCreateForm: @js($landlordCreateFormHasErrors) }" class="space-y-4">
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
             <div class="flex flex-wrap items-center gap-2">
                 <a href="{{ route('property.landlords.index', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All landlords</a>
@@ -39,7 +47,24 @@
             <p class="mt-2 text-xs text-slate-500">Period: <span class="font-semibold">{{ $periodLabel }}</span> · Commission rate used: <span class="font-semibold">{{ number_format((float) ($commissionPct ?? 0), 2) }}%</span></p>
         </div>
 
-        <form method="post" action="{{ route('property.landlords.onboard') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+        <div class="max-w-3xl">
+            <button
+                type="button"
+                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
+                @click="showLandlordCreateForm = !showLandlordCreateForm"
+            >
+                <i class="fa-solid fa-user-plus text-lg" aria-hidden="true"></i>
+                <span x-text="showLandlordCreateForm ? 'Hide landlord form' : 'Create landlord account'"></span>
+            </button>
+        </div>
+
+        <form
+            method="post"
+            action="{{ route('property.landlords.onboard') }}"
+            x-show="showLandlordCreateForm"
+            x-cloak
+            class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl"
+        >
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Onboard landlord</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -89,6 +114,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create landlord account</button>
         </form>
+        </div>
     </x-slot>
 
     <x-slot name="toolbar">

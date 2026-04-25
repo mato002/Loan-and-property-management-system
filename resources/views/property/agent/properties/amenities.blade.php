@@ -110,7 +110,7 @@
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 class="text-sm font-semibold text-slate-900">Category summary</h3>
-            <table class="mt-3 min-w-full text-sm">
+            <table class="mt-3 min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                 <thead class="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
                     <tr>
                         <th class="py-2">Category</th>

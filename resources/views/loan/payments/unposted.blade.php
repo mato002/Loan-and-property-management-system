@@ -128,11 +128,11 @@
                 <div class="flex flex-wrap items-end gap-2">
                     <div class="min-w-[240px] flex-1">
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                        <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, Loan #, Client, Phone..." class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, Loan #, Client, Phone..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                     </div>
                     <div>
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Channel</label>
-                        <select name="channel" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <select name="channel" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                             <option value="" @selected(($channel ?? '') === '')>All</option>
                             <option value="mpesa" @selected(($channel ?? '') === 'mpesa')>M-Pesa</option>
                             <option value="bank" @selected(($channel ?? '') === 'bank')>Bank</option>
@@ -152,11 +152,11 @@
                     </div>
                     <div>
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">From</label>
-                        <input type="date" name="from" value="{{ $from ?? '' }}" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <input type="date" name="from" value="{{ $from ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                     </div>
                     <div>
                         <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">To</label>
-                        <input type="date" name="to" value="{{ $to ?? '' }}" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
+                        <input type="date" name="to" value="{{ $to ?? '' }}" onchange="this.form.requestSubmit()" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700">
                     </div>
                     <button type="button" @click="advancedFilters=!advancedFilters" class="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Advanced Filters</button>
                     <button type="submit" class="h-10 rounded-lg bg-teal-800 px-4 text-sm font-semibold text-white hover:bg-teal-900">Filter</button>
@@ -204,7 +204,7 @@
                     <p class="text-xs text-slate-500">{{ number_format($payments->total()) }} row(s)</p>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="min-w-[1280px] w-full table-auto text-[10px] lg:text-[11px]">
+                    <table class="min-w-[1280px] w-full table-auto border-collapse text-[10px] lg:text-[11px] [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                         <thead class="sticky top-0 z-10 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
                             <tr class="[&>th]:border-b [&>th]:border-r [&>th]:border-slate-300 [&>th:last-child]:border-r-0">
                                 <th class="px-1.5 py-2 text-center">
@@ -382,7 +382,7 @@
                         <button type="button" @click="balancesModal=false" class="rounded p-1 text-slate-500 hover:bg-slate-100">✕</button>
                     </div>
                     <div class="overflow-x-auto p-5">
-                        <table class="min-w-full text-sm">
+                        <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                             <thead class="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
                                 <tr class="[&>th]:border-b [&>th]:border-r [&>th]:border-slate-300 [&>th:last-child]:border-r-0">
                                     <th class="px-3 py-2 text-left">Branch</th>

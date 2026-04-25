@@ -203,7 +203,7 @@
             <div class="flex flex-wrap items-end gap-2">
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, client, product..." class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Ref, client, product..." oninput="window.clearTimeout(this._autoSearchTimer); this._autoSearchTimer = window.setTimeout(() => this.form.requestSubmit(), 1100);" class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Stage</label>
@@ -360,15 +360,18 @@
                                 $amortizationModel = (is_string($amortizationMetaRaw) && (str_contains($amortizationMetaRaw, 'reduc') || str_contains($amortizationMetaRaw, 'diminish') || str_contains($amortizationMetaRaw, 'amort')))
                                     ? 'reducing'
                                     : 'flat';
+                                $rowRedirectUrl = $app->loanClient
+                                    ? route('loan.clients.show', $app->loanClient)
+                                    : route('loan.book.applications.show', $app);
                                 $applicationsAmountTotal += (float) $app->amount_requested;
                             @endphp
                             <tr
                                 class="cursor-pointer hover:bg-slate-50/80"
                                 role="link"
                                 tabindex="0"
-                                @click="openRow('{{ route('loan.book.applications.show', $app) }}', $event)"
-                                @keydown.enter.prevent="openRow('{{ route('loan.book.applications.show', $app) }}', $event)"
-                                @keydown.space.prevent="openRow('{{ route('loan.book.applications.show', $app) }}', $event)"
+                                @click="openRow('{{ $rowRedirectUrl }}', $event)"
+                                @keydown.enter.prevent="openRow('{{ $rowRedirectUrl }}', $event)"
+                                @keydown.space.prevent="openRow('{{ $rowRedirectUrl }}', $event)"
                             >
                                 <td x-show="cols.application" class="px-3 py-2.5 text-slate-600">{{ $app->submitted_at?->format('d.m.Y, h:i A') ?? '—' }}</td>
                                 <td x-show="cols.ref" class="px-3 py-2.5 font-mono text-[11px] text-indigo-600 font-medium">{{ $app->reference }}</td>

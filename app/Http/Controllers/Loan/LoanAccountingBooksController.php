@@ -19,6 +19,7 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -55,10 +56,19 @@ class LoanAccountingBooksController extends Controller
 
     public function chartRules(): View
     {
+        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
         $accounts = AccountingChartAccount::query()
+            ->with('parent')
             ->orderBy('account_type')
             ->orderBy('code')
             ->get();
+        $headerAccounts = $hasAccountClass
+            ? AccountingChartAccount::query()
+                ->where('is_active', true)
+                ->where('account_class', AccountingChartAccount::CLASS_HEADER)
+                ->orderBy('code')
+                ->get()
+            : collect();
 
         $postingRules = AccountingPostingRule::query()
             ->with(['debitAccount', 'creditAccount'])
@@ -73,15 +83,26 @@ class LoanAccountingBooksController extends Controller
         $missingRules = $postingRules->filter(fn (AccountingPostingRule $r) => ! $r->debit_account_id || ! $r->credit_account_id)->count();
         $pendingApprovals = $postingRules->where('is_editable', true)->count();
         $isBalanced = abs((float) AccountingJournalLine::sum('debit') - (float) AccountingJournalLine::sum('credit')) < 0.01;
+        $overdrawnAccounts = collect();
+        if (Schema::hasColumn('accounting_chart_accounts', 'allow_overdraft')
+            && Schema::hasColumn('accounting_chart_accounts', 'current_balance')) {
+            $overdrawnAccounts = AccountingChartAccount::query()
+                ->where('allow_overdraft', true)
+                ->where('current_balance', '<', 0)
+                ->orderBy('current_balance')
+                ->get();
+        }
 
         return view('loan.accounting.books.chart-rules', compact(
             'accounts',
+            'headerAccounts',
             'postingRules',
             'activeAccounts',
             'newAccounts30d',
             'missingRules',
             'pendingApprovals',
-            'isBalanced'
+            'isBalanced',
+            'overdrawnAccounts'
         ));
     }
 
