@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\PmAmenity;
 use App\Models\Property;
+use App\Models\PropertyPortalSetting;
 use App\Support\TabularExport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class PropertyAmenityController extends Controller
@@ -126,14 +128,16 @@ class PropertyAmenityController extends Controller
             'amenitiesPage' => $amenitiesPage,
             'categorySummary' => $categorySummary,
             'amenityPropertyIds' => $amenityPropertyIds,
+            'amenityFields' => $this->amenityFieldConfig(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $fieldCfg = $this->amenityFieldConfig();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:128'],
-            'category' => ['nullable', 'string', 'max:64'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($fieldCfg, 'name')), 'nullable', 'string', 'max:128'],
+            'category' => [Rule::requiredIf($this->isFieldRequired($fieldCfg, 'category')), 'nullable', 'string', 'max:64'],
         ]);
 
         PmAmenity::query()->create($data);
@@ -181,5 +185,46 @@ class PropertyAmenityController extends Controller
         $amenity->delete();
 
         return back()->with('success', __('Amenity removed from library.'));
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function amenityFieldConfig(): array
+    {
+        $defaults = [
+            'name' => ['enabled' => true, 'required' => true],
+            'category' => ['enabled' => true, 'required' => false],
+            'property_id' => ['enabled' => true, 'required' => true],
+        ];
+        $raw = PropertyPortalSetting::getValue('system_setup_amenity_fields_json', '');
+        if (! is_string($raw) || trim($raw) === '') {
+            return $defaults;
+        }
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return $defaults;
+        }
+        foreach ($decoded as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $key = trim((string) ($row['key'] ?? ''));
+            if ($key === '' || ! array_key_exists($key, $defaults)) {
+                continue;
+            }
+            $defaults[$key]['enabled'] = ! array_key_exists('enabled', $row) || (bool) $row['enabled'];
+            $defaults[$key]['required'] = (bool) ($row['required'] ?? false);
+        }
+
+        return $defaults;
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $config
+     */
+    private function isFieldRequired(array $config, string $field): bool
+    {
+        return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
     }
 }

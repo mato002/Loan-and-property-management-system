@@ -9,6 +9,10 @@
     empty-title="No amenities in library"
     empty-hint="Add types below, then tag properties."
 >
+    @php
+        $amenityCfg = $amenityFields ?? [];
+        $amenityRequired = fn (string $k, bool $d = false) => (bool) (($amenityCfg[$k]['required'] ?? $d) && ($amenityCfg[$k]['enabled'] ?? true));
+    @endphp
     <x-slot name="above">
         @if ($errors->has('amenity'))
             <p class="text-sm text-red-600 dark:text-red-400">{{ $errors->first('amenity') }}</p>
@@ -19,7 +23,7 @@
                 <h3 class="text-sm font-semibold text-slate-900">Add to library</h3>
                 <div>
                     <label class="block text-xs font-medium text-slate-600">Name</label>
-                    <input type="text" name="name" value="{{ old('name') }}" required class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. Solar water heating" />
+                    <input type="text" name="name" value="{{ old('name') }}" @required($amenityRequired('name', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. Solar water heating" />
                     @error('name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -56,7 +60,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600">Property</label>
-                    <select name="property_id" x-model="selectedProperty" required class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                    <select name="property_id" x-model="selectedProperty" @required($amenityRequired('property_id', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
                         <option value="">Select…</option>
                         @foreach($properties as $p)
                             <option

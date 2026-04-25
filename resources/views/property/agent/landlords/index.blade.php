@@ -12,6 +12,8 @@
                 || $errors->has('password')
                 || $errors->has('property_id')
                 || $errors->has('ownership_percent');
+            $landlordFieldCfg = $landlordFields ?? [];
+            $landlordRequired = fn (string $k, bool $d = false) => (bool) (($landlordFieldCfg[$k]['required'] ?? $d) && ($landlordFieldCfg[$k]['enabled'] ?? true));
         @endphp
         <div x-data="{ showLandlordCreateForm: @js($landlordCreateFormHasErrors) }" class="space-y-4">
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
@@ -70,12 +72,12 @@
             <div class="grid gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Full name</label>
-                    <input type="text" name="name" value="{{ old('name') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="text" name="name" value="{{ old('name') }}" @required($landlordRequired('name', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
-                    <input type="email" name="email" value="{{ old('email') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="email" name="email" value="{{ old('email') }}" @required($landlordRequired('email', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('email')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
             </div>
@@ -190,8 +192,12 @@
                         );
                     @endphp
                     <tr
-                        class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                        class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 cursor-pointer"
                         data-filter-text="{{ e($filterText) }}"
+                        data-row-href="{{ route('property.landlords.show', ['landlord' => $u->id, 'month' => $monthValue, 'fy' => $fyValue], false) }}"
+                        tabindex="0"
+                        role="link"
+                        aria-label="Open landlord profile"
                     >
                         <td class="px-3 sm:px-4 py-3 text-slate-900 dark:text-white font-medium">{{ $u->name }}</td>
                         <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 whitespace-nowrap">{{ $u->email }}</td>
@@ -324,4 +330,27 @@
             </div>
         </div>
     @endif
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const interactiveSelector = 'a, button, input, select, textarea, label, [role="button"], [data-row-ignore-click]';
+
+            document.querySelectorAll('tr[data-row-href]').forEach(function (row) {
+                const href = row.getAttribute('data-row-href');
+                if (!href) return;
+
+                row.addEventListener('click', function (event) {
+                    if (event.target && event.target.closest(interactiveSelector)) return;
+                    window.location.href = href;
+                });
+
+                row.addEventListener('keydown', function (event) {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    if (event.target && event.target.closest(interactiveSelector)) return;
+                    event.preventDefault();
+                    window.location.href = href;
+                });
+            });
+        });
+    </script>
 </x-property.workspace>

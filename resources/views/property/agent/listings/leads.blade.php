@@ -8,6 +8,10 @@
     empty-title="No leads"
     empty-hint="Add a lead below or import from your CRM when you wire CSV."
 >
+    @php
+        $leadCfg = $leadFields ?? [];
+        $leadRequired = fn (string $k, bool $d = false) => (bool) (($leadCfg[$k]['required'] ?? $d) && ($leadCfg[$k]['enabled'] ?? true));
+    @endphp
     <x-slot name="above">
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
             <div class="flex flex-wrap items-center gap-2">
@@ -68,17 +72,17 @@
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Name</label>
-                    <input type="text" name="name" value="{{ old('name') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="text" name="name" value="{{ old('name') }}" @required($leadRequired('full_name', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Phone</label>
-                    <input type="text" name="phone" value="{{ old('phone') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="text" name="phone" value="{{ old('phone') }}" @required($leadRequired('phone', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('phone')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
-                    <input type="email" name="email" value="{{ old('email') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="email" name="email" value="{{ old('email') }}" @required($leadRequired('email', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('email')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -99,7 +103,7 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit (optional)</label>
                     <x-property.quick-create-select
                         name="property_unit_id"
-                        :required="false"
+                        :required="$leadRequired('preferred_unit_type', false)"
                         placeholder="—"
                         :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
                         :create="[

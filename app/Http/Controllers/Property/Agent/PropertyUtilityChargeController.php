@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmPenaltyRule;
+use App\Models\PropertyPortalSetting;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmWaterReading;
 use App\Models\PropertyUnit;
@@ -104,6 +105,27 @@ class PropertyUtilityChargeController extends Controller
             ->pluck('units.property_id')
             ->map(fn ($id) => (int) $id)
             ->values();
+        $propertyChargeTemplates = $this->propertyChargeTemplates();
+        $waterTemplateByUnit = [];
+        $waterTemplatePropertyIds = [];
+        foreach (PropertyUnit::query()->select(['id', 'property_id'])->get() as $unit) {
+            $templates = (array) ($propertyChargeTemplates[(string) $unit->property_id] ?? []);
+            $water = collect($templates)->first(fn (array $row): bool => strtolower((string) ($row['charge_type'] ?? '')) === 'water');
+            if (! is_array($water)) {
+                continue;
+            }
+            $waterTemplateByUnit[(string) $unit->id] = [
+                'rate_per_unit' => is_numeric($water['rate_per_unit'] ?? null) ? (float) $water['rate_per_unit'] : null,
+                'fixed_charge' => is_numeric($water['fixed_charge'] ?? null) ? (float) $water['fixed_charge'] : null,
+                'label' => trim((string) ($water['label'] ?? '')),
+            ];
+            $waterTemplatePropertyIds[] = (int) $unit->property_id;
+        }
+        $waterChargePropertyIds = collect($waterChargePropertyIds)
+            ->merge($waterTemplatePropertyIds)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
 
         return view('property.agent.revenue.utilities', [
             'stats' => $stats,
@@ -117,6 +139,7 @@ class PropertyUtilityChargeController extends Controller
             ],
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get(),
             'waterChargePropertyIds' => $waterChargePropertyIds,
+            'waterTemplateByUnit' => $waterTemplateByUnit,
         ]);
     }
 
@@ -394,5 +417,16 @@ class PropertyUtilityChargeController extends Controller
         $charge->delete();
 
         return back()->with('success', __('Charge removed.'));
+    }
+
+    /**
+     * @return array<string, array<int, array<string, mixed>>>
+     */
+    private function propertyChargeTemplates(): array
+    {
+        $raw = (string) PropertyPortalSetting::getValue('utility_property_charge_templates_json', '{}');
+        $decoded = json_decode($raw, true);
+
+        return is_array($decoded) ? $decoded : [];
     }
 }

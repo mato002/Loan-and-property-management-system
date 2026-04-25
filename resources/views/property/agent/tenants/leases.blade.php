@@ -8,6 +8,10 @@
     empty-title="No leases"
     empty-hint="Create a lease and select vacant units; active leases mark units occupied."
 >
+    @php
+        $leaseCfg = $leaseFields ?? [];
+        $leaseRequired = fn (string $k, bool $d = false) => (bool) (($leaseCfg[$k]['required'] ?? $d) && ($leaseCfg[$k]['enabled'] ?? true));
+    @endphp
     <x-slot name="above">
         <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">
             <p class="text-lg font-semibold text-slate-900">Rent flow (Step 1 of 3): Allocate a unit</p>
@@ -33,7 +37,7 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
                     <x-property.quick-create-select
                         name="pm_tenant_id"
-                        :required="true"
+                        :required="$leaseRequired('tenant_id', true)"
                         :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id', request('pm_tenant_id')) === (string) $t->id])->all()"
                         :create="[
                             'mode' => 'ajax',
@@ -50,7 +54,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Start</label>
-                    <input type="date" name="start_date" value="{{ old('start_date') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="date" name="start_date" value="{{ old('start_date') }}" @required($leaseRequired('start_date', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('start_date')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -76,7 +80,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
-                    <select name="status" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <select name="status" @required($leaseRequired('status', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="draft" @selected(old('status', 'draft') === 'draft')>Draft</option>
                         <option value="active" @selected(old('status') === 'active')>Active</option>
                         <option value="expired" @selected(old('status') === 'expired')>Expired</option>
@@ -111,7 +115,7 @@
             <div class="grid gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Monthly rent</label>
-                    <input id="lease-monthly-rent" type="number" name="monthly_rent" value="{{ old('monthly_rent') }}" step="0.01" min="0" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input id="lease-monthly-rent" type="number" name="monthly_rent" value="{{ old('monthly_rent') }}" step="0.01" min="0" @required($leaseRequired('rent_amount', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     <p class="mt-1 text-xs text-slate-500">Auto-fills from selected unit rent.</p>
                     @error('monthly_rent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>

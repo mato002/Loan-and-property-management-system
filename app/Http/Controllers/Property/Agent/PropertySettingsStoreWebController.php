@@ -12,17 +12,45 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class PropertySettingsStoreWebController extends Controller
 {
     public function systemSetup(): View
     {
+        $fieldModules = $this->systemSetupFieldModules();
+        $configuredModuleKeys = collect($fieldModules)
+            ->pluck('key')
+            ->filter(fn (string $module): bool => $this->isSystemSetupModuleConfigured($module))
+            ->values()
+            ->all();
+
         return view('property.agent.settings.system_setup.index', [
             'formsCount' => (int) PropertyPortalSetting::getValue('system_setup_forms_count', '0'),
+            'propertyOnboardingFieldsCount' => count($this->configuredFields('property_onboarding')),
+            'unitFieldsCount' => count($this->configuredFields('unit')),
+            'amenityFieldsCount' => count($this->configuredFields('amenity')),
+            'landlordFieldsCount' => count($this->configuredFields('landlord')),
+            'leadFieldsCount' => count($this->configuredFields('lead')),
+            'rentalApplicationFieldsCount' => count($this->configuredFields('rental_application')),
+            'tenantFieldsCount' => count($this->configuredFields('tenant')),
+            'leaseFieldsCount' => count($this->configuredFields('lease')),
+            'maintenanceFieldsCount' => count($this->configuredFields('maintenance')),
+            'vendorFieldsCount' => count($this->configuredFields('vendor')),
+            'invoiceFieldsCount' => count($this->configuredFields('invoice')),
+            'tenantNoticeFieldsCount' => count($this->configuredFields('tenant_notice')),
+            'movementFieldsCount' => count($this->configuredFields('movement')),
             'workflowsCount' => (int) PropertyPortalSetting::getValue('system_setup_workflows_count', '0'),
             'templatesCount' => (int) PropertyPortalSetting::getValue('system_setup_templates_count', '0'),
             'accessCount' => Schema::hasTable('pm_roles') ? (int) PmRole::query()->count() : 0,
+            'fieldModuleCompletion' => [
+                'total' => count($fieldModules),
+                'configured' => count($configuredModuleKeys),
+                'pending' => max(0, count($fieldModules) - count($configuredModuleKeys)),
+                'configured_keys' => $configuredModuleKeys,
+                'items' => $fieldModules,
+            ],
         ]);
     }
 
@@ -49,6 +77,156 @@ class PropertySettingsStoreWebController extends Controller
         PropertyPortalSetting::setValue('system_setup_forms_count', '2');
 
         return back()->with('success', __('Form setup saved.'));
+    }
+
+    public function systemSetupPropertyOnboardingFields(): View
+    {
+        return view('property.agent.settings.system_setup.property_onboarding_fields', [
+            'fields' => $this->configuredFields('property_onboarding'),
+        ]);
+    }
+
+    public function storeSystemSetupPropertyOnboardingFields(Request $request): RedirectResponse
+    {
+        $fields = $this->validateDynamicFields($request);
+
+        PropertyPortalSetting::setValue(
+            'system_setup_property_onboarding_fields_json',
+            json_encode($fields, JSON_UNESCAPED_UNICODE)
+        );
+        PropertyPortalSetting::setValue('system_setup_forms_count', (string) max(2, count($fields)));
+
+        return back()->with('success', __('Property onboarding fields updated.'));
+    }
+
+    public function systemSetupUnitFields(): View
+    {
+        return view('property.agent.settings.system_setup.unit_fields', [
+            'fields' => $this->configuredFields('unit'),
+        ]);
+    }
+
+    public function storeSystemSetupUnitFields(Request $request): RedirectResponse
+    {
+        $fields = $this->validateDynamicFields($request);
+
+        PropertyPortalSetting::setValue(
+            'system_setup_unit_fields_json',
+            json_encode($fields, JSON_UNESCAPED_UNICODE)
+        );
+        PropertyPortalSetting::setValue('system_setup_forms_count', (string) max(2, count($fields)));
+
+        return back()->with('success', __('Unit fields updated.'));
+    }
+
+    public function systemSetupAmenityFields(): View
+    {
+        return $this->renderModuleFieldSetup('amenity', 'Amenity fields', 'Configure amenity form fields used when creating/updating amenities.');
+    }
+
+    public function storeSystemSetupAmenityFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'amenity', 'Amenity fields updated.');
+    }
+
+    public function systemSetupLandlordFields(): View
+    {
+        return $this->renderModuleFieldSetup('landlord', 'Landlord fields', 'Configure landlord onboarding/profile form fields.');
+    }
+
+    public function storeSystemSetupLandlordFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'landlord', 'Landlord fields updated.');
+    }
+
+    public function systemSetupLeadFields(): View
+    {
+        return $this->renderModuleFieldSetup('lead', 'Lead fields', 'Configure listing lead capture and qualification fields.');
+    }
+
+    public function storeSystemSetupLeadFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'lead', 'Lead fields updated.');
+    }
+
+    public function systemSetupRentalApplicationFields(): View
+    {
+        return $this->renderModuleFieldSetup('rental_application', 'Rental application fields', 'Configure rental application form fields and checks.');
+    }
+
+    public function storeSystemSetupRentalApplicationFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'rental_application', 'Rental application fields updated.');
+    }
+
+    public function systemSetupTenantFields(): View
+    {
+        return $this->renderModuleFieldSetup('tenant', 'Tenant fields', 'Configure tenant onboarding/profile form fields.');
+    }
+
+    public function storeSystemSetupTenantFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'tenant', 'Tenant fields updated.');
+    }
+
+    public function systemSetupLeaseFields(): View
+    {
+        return $this->renderModuleFieldSetup('lease', 'Lease fields', 'Configure lease creation and update form fields.');
+    }
+
+    public function storeSystemSetupLeaseFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'lease', 'Lease fields updated.');
+    }
+
+    public function systemSetupMaintenanceFields(): View
+    {
+        return $this->renderModuleFieldSetup('maintenance', 'Maintenance fields', 'Configure maintenance request and work-order form fields.');
+    }
+
+    public function storeSystemSetupMaintenanceFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'maintenance', 'Maintenance fields updated.');
+    }
+
+    public function systemSetupVendorFields(): View
+    {
+        return $this->renderModuleFieldSetup('vendor', 'Vendor fields', 'Configure vendor onboarding and profile fields.');
+    }
+
+    public function storeSystemSetupVendorFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'vendor', 'Vendor fields updated.');
+    }
+
+    public function systemSetupInvoiceFields(): View
+    {
+        return $this->renderModuleFieldSetup('invoice', 'Invoice & payment fields', 'Configure invoice issue, payment capture, and settlement form fields.');
+    }
+
+    public function storeSystemSetupInvoiceFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'invoice', 'Invoice & payment fields updated.');
+    }
+
+    public function systemSetupTenantNoticeFields(): View
+    {
+        return $this->renderModuleFieldSetup('tenant_notice', 'Tenant notice fields', 'Configure tenant notice/vacate form fields.');
+    }
+
+    public function storeSystemSetupTenantNoticeFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'tenant_notice', 'Tenant notice fields updated.');
+    }
+
+    public function systemSetupMovementFields(): View
+    {
+        return $this->renderModuleFieldSetup('movement', 'Move-in / move-out fields', 'Configure move scheduling and movement tracking form fields.');
+    }
+
+    public function storeSystemSetupMovementFields(Request $request): RedirectResponse
+    {
+        return $this->storeModuleFieldSetup($request, 'movement', 'Move-in / move-out fields updated.');
     }
 
     public function systemSetupWorkflows(): View
@@ -245,6 +423,396 @@ class PropertySettingsStoreWebController extends Controller
         $user->pmPermissions()->sync($data['permission_ids'] ?? []);
 
         return back()->with('success', __('User direct permissions updated.'));
+    }
+
+    /**
+     * @return list<array{
+     *   key:string,
+     *   label:string,
+     *   type:string,
+     *   required:bool,
+     *   enabled:bool,
+     *   help_text:string,
+     *   options:string
+     * }>
+     */
+    private function configuredFields(string $module): array
+    {
+        $settingKey = match ($module) {
+            'unit' => 'system_setup_unit_fields_json',
+            'amenity' => 'system_setup_amenity_fields_json',
+            'landlord' => 'system_setup_landlord_fields_json',
+            'lead' => 'system_setup_lead_fields_json',
+            'rental_application' => 'system_setup_rental_application_fields_json',
+            'tenant' => 'system_setup_tenant_fields_json',
+            'lease' => 'system_setup_lease_fields_json',
+            'maintenance' => 'system_setup_maintenance_fields_json',
+            'vendor' => 'system_setup_vendor_fields_json',
+            'invoice' => 'system_setup_invoice_fields_json',
+            'tenant_notice' => 'system_setup_tenant_notice_fields_json',
+            'movement' => 'system_setup_movement_fields_json',
+            default => 'system_setup_property_onboarding_fields_json',
+        };
+
+        $raw = PropertyPortalSetting::getValue($settingKey, '');
+        if (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $normalized = collect($decoded)
+                    ->filter(fn ($row) => is_array($row))
+                    ->map(function (array $row) {
+                        return [
+                            'key' => trim((string) ($row['key'] ?? '')),
+                            'label' => trim((string) ($row['label'] ?? '')),
+                            'type' => trim((string) ($row['type'] ?? 'text')),
+                            'required' => (bool) ($row['required'] ?? false),
+                            'enabled' => ! array_key_exists('enabled', $row) || (bool) $row['enabled'],
+                            'help_text' => trim((string) ($row['help_text'] ?? '')),
+                            'options' => trim((string) ($row['options'] ?? '')),
+                        ];
+                    })
+                    ->filter(fn (array $row) => $row['key'] !== '' && $row['label'] !== '')
+                    ->values()
+                    ->all();
+
+                if (! empty($normalized)) {
+                    return $normalized;
+                }
+            }
+        }
+
+        return match ($module) {
+            'unit' => $this->defaultUnitFields(),
+            'amenity' => $this->defaultAmenityFields(),
+            'landlord' => $this->defaultLandlordFields(),
+            'lead' => $this->defaultLeadFields(),
+            'rental_application' => $this->defaultRentalApplicationFields(),
+            'tenant' => $this->defaultTenantFields(),
+            'lease' => $this->defaultLeaseFields(),
+            'maintenance' => $this->defaultMaintenanceFields(),
+            'vendor' => $this->defaultVendorFields(),
+            'invoice' => $this->defaultInvoiceFields(),
+            'tenant_notice' => $this->defaultTenantNoticeFields(),
+            'movement' => $this->defaultMovementFields(),
+            default => $this->defaultPropertyOnboardingFields(),
+        };
+    }
+
+    /**
+     * @return list<array{key:string,label:string}>
+     */
+    private function systemSetupFieldModules(): array
+    {
+        return [
+            ['key' => 'property_onboarding', 'label' => 'Property onboarding fields'],
+            ['key' => 'unit', 'label' => 'Unit fields'],
+            ['key' => 'amenity', 'label' => 'Amenity fields'],
+            ['key' => 'landlord', 'label' => 'Landlord fields'],
+            ['key' => 'lead', 'label' => 'Lead fields'],
+            ['key' => 'rental_application', 'label' => 'Rental application fields'],
+            ['key' => 'tenant', 'label' => 'Tenant fields'],
+            ['key' => 'lease', 'label' => 'Lease fields'],
+            ['key' => 'maintenance', 'label' => 'Maintenance fields'],
+            ['key' => 'vendor', 'label' => 'Vendor fields'],
+            ['key' => 'invoice', 'label' => 'Invoice & payment fields'],
+            ['key' => 'tenant_notice', 'label' => 'Tenant notice fields'],
+            ['key' => 'movement', 'label' => 'Move-in / move-out fields'],
+        ];
+    }
+
+    private function isSystemSetupModuleConfigured(string $module): bool
+    {
+        $settingKey = $this->systemSetupModuleSettingKey($module);
+        if ($settingKey === '') {
+            return false;
+        }
+
+        $raw = PropertyPortalSetting::getValue($settingKey, '');
+        if (! is_string($raw) || trim($raw) === '') {
+            return false;
+        }
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return false;
+        }
+
+        return collect($decoded)
+            ->filter(fn ($row) => is_array($row))
+            ->contains(function (array $row): bool {
+                return trim((string) ($row['key'] ?? '')) !== ''
+                    && trim((string) ($row['label'] ?? '')) !== '';
+            });
+    }
+
+    private function systemSetupModuleSettingKey(string $module): string
+    {
+        return match ($module) {
+            'unit' => 'system_setup_unit_fields_json',
+            'amenity' => 'system_setup_amenity_fields_json',
+            'landlord' => 'system_setup_landlord_fields_json',
+            'lead' => 'system_setup_lead_fields_json',
+            'rental_application' => 'system_setup_rental_application_fields_json',
+            'tenant' => 'system_setup_tenant_fields_json',
+            'lease' => 'system_setup_lease_fields_json',
+            'maintenance' => 'system_setup_maintenance_fields_json',
+            'vendor' => 'system_setup_vendor_fields_json',
+            'invoice' => 'system_setup_invoice_fields_json',
+            'tenant_notice' => 'system_setup_tenant_notice_fields_json',
+            'movement' => 'system_setup_movement_fields_json',
+            default => 'system_setup_property_onboarding_fields_json',
+        };
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function validateDynamicFields(Request $request): array
+    {
+        $data = $request->validate([
+            'fields' => ['nullable', 'array', 'max:60'],
+            'fields.*.key' => ['nullable', 'string', 'max:100'],
+            'fields.*.label' => ['nullable', 'string', 'max:120'],
+            'fields.*.type' => ['nullable', 'in:text,textarea,number,select,date,checkbox'],
+            'fields.*.required' => ['nullable', 'in:0,1'],
+            'fields.*.enabled' => ['nullable', 'in:0,1'],
+            'fields.*.help_text' => ['nullable', 'string', 'max:300'],
+            'fields.*.options' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $rows = [];
+        foreach (($data['fields'] ?? []) as $row) {
+            $label = trim((string) ($row['label'] ?? ''));
+            $keyInput = trim((string) ($row['key'] ?? ''));
+            $key = $keyInput !== '' ? Str::snake($keyInput) : Str::snake($label);
+            $key = preg_replace('/[^a-z0-9_]/', '', (string) $key) ?? '';
+            $type = trim((string) ($row['type'] ?? 'text'));
+
+            if ($label === '' || $key === '') {
+                continue;
+            }
+
+            $rows[] = [
+                'key' => $key,
+                'label' => $label,
+                'type' => in_array($type, ['text', 'textarea', 'number', 'select', 'date', 'checkbox'], true) ? $type : 'text',
+                'required' => (string) ($row['required'] ?? '0') === '1',
+                'enabled' => (string) ($row['enabled'] ?? '1') === '1',
+                'help_text' => trim((string) ($row['help_text'] ?? '')),
+                'options' => trim((string) ($row['options'] ?? '')),
+            ];
+        }
+
+        $uniqueByKey = [];
+        foreach ($rows as $row) {
+            $uniqueByKey[$row['key']] = $row;
+        }
+
+        return array_values($uniqueByKey);
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultPropertyOnboardingFields(): array
+    {
+        return [
+            ['key' => 'name', 'label' => 'Property name', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Official property name.', 'options' => ''],
+            ['key' => 'code', 'label' => 'Property code', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Auto-generated when blank.', 'options' => ''],
+            ['key' => 'city', 'label' => 'City', 'type' => 'select', 'required' => false, 'enabled' => true, 'help_text' => 'Town/city where property is located.', 'options' => 'Nairobi, Nakuru, Mombasa, Kisumu'],
+            ['key' => 'address_line', 'label' => 'Address line', 'type' => 'textarea', 'required' => false, 'enabled' => true, 'help_text' => 'Street/building description.', 'options' => ''],
+            ['key' => 'commission_percent', 'label' => 'Commission %', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'Override commission for this property.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultUnitFields(): array
+    {
+        return [
+            ['key' => 'property_id', 'label' => 'Property', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Parent property/building.', 'options' => ''],
+            ['key' => 'label', 'label' => 'Unit label', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Door/unit identifier.', 'options' => ''],
+            ['key' => 'unit_type', 'label' => 'Unit type', 'type' => 'select', 'required' => false, 'enabled' => true, 'help_text' => 'Bedsitter, 1BR, shop, office, etc.', 'options' => 'Bedsitter, 1BR, 2BR, 3BR, Shop, Office'],
+            ['key' => 'bedrooms', 'label' => 'Bedrooms', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'No. of bedrooms where applicable.', 'options' => ''],
+            ['key' => 'rent_amount', 'label' => 'Rent amount', 'type' => 'number', 'required' => true, 'enabled' => true, 'help_text' => 'Monthly rent amount.', 'options' => ''],
+            ['key' => 'status', 'label' => 'Status', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Current occupancy status.', 'options' => 'vacant, occupied, notice'],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultAmenityFields(): array
+    {
+        return [
+            ['key' => 'name', 'label' => 'Amenity name', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Display name of the amenity.', 'options' => ''],
+            ['key' => 'property_id', 'label' => 'Property', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Property this amenity belongs to.', 'options' => ''],
+            ['key' => 'is_shared', 'label' => 'Shared amenity', 'type' => 'checkbox', 'required' => false, 'enabled' => true, 'help_text' => 'Whether all units can use it.', 'options' => ''],
+            ['key' => 'notes', 'label' => 'Notes', 'type' => 'textarea', 'required' => false, 'enabled' => true, 'help_text' => 'Usage restrictions or details.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultLandlordFields(): array
+    {
+        return [
+            ['key' => 'name', 'label' => 'Full name', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Landlord legal/display name.', 'options' => ''],
+            ['key' => 'email', 'label' => 'Email', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Primary email address.', 'options' => ''],
+            ['key' => 'phone', 'label' => 'Phone', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Primary contact number.', 'options' => ''],
+            ['key' => 'id_number', 'label' => 'ID / registration', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'National ID or company registration.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultLeadFields(): array
+    {
+        return [
+            ['key' => 'full_name', 'label' => 'Lead name', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Prospect full name.', 'options' => ''],
+            ['key' => 'phone', 'label' => 'Phone', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Reachable phone number.', 'options' => ''],
+            ['key' => 'email', 'label' => 'Email', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Prospect email address.', 'options' => ''],
+            ['key' => 'preferred_unit_type', 'label' => 'Preferred unit type', 'type' => 'select', 'required' => false, 'enabled' => true, 'help_text' => 'Preferred unit style.', 'options' => 'Bedsitter, 1BR, 2BR, 3BR, Shop, Office'],
+            ['key' => 'budget', 'label' => 'Budget', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'Lead budget range.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultRentalApplicationFields(): array
+    {
+        return [
+            ['key' => 'applicant_name', 'label' => 'Applicant name', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Main applicant full name.', 'options' => ''],
+            ['key' => 'unit_id', 'label' => 'Applied unit', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Unit being applied for.', 'options' => ''],
+            ['key' => 'monthly_income', 'label' => 'Monthly income', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'Stated applicant income.', 'options' => ''],
+            ['key' => 'employment_status', 'label' => 'Employment status', 'type' => 'select', 'required' => false, 'enabled' => true, 'help_text' => 'Current employment state.', 'options' => 'Employed, Self-employed, Student, Unemployed'],
+            ['key' => 'references', 'label' => 'References', 'type' => 'textarea', 'required' => false, 'enabled' => true, 'help_text' => 'Referees and contacts.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultTenantFields(): array
+    {
+        return [
+            ['key' => 'name', 'label' => 'Tenant name', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Tenant full legal name.', 'options' => ''],
+            ['key' => 'email', 'label' => 'Email', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Primary email address.', 'options' => ''],
+            ['key' => 'phone', 'label' => 'Phone', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Primary mobile number.', 'options' => ''],
+            ['key' => 'id_number', 'label' => 'ID number', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'National ID / passport.', 'options' => ''],
+            ['key' => 'emergency_contact', 'label' => 'Emergency contact', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Next of kin details.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultLeaseFields(): array
+    {
+        return [
+            ['key' => 'tenant_id', 'label' => 'Tenant', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Tenant to be leased.', 'options' => ''],
+            ['key' => 'property_unit_id', 'label' => 'Unit', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Unit under lease.', 'options' => ''],
+            ['key' => 'start_date', 'label' => 'Start date', 'type' => 'date', 'required' => true, 'enabled' => true, 'help_text' => 'Lease commencement date.', 'options' => ''],
+            ['key' => 'end_date', 'label' => 'End date', 'type' => 'date', 'required' => false, 'enabled' => true, 'help_text' => 'Lease end or renewal date.', 'options' => ''],
+            ['key' => 'rent_amount', 'label' => 'Rent amount', 'type' => 'number', 'required' => true, 'enabled' => true, 'help_text' => 'Contract rent amount.', 'options' => ''],
+            ['key' => 'deposit_amount', 'label' => 'Deposit amount', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'Security deposit collected.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultMaintenanceFields(): array
+    {
+        return [
+            ['key' => 'property_unit_id', 'label' => 'Unit', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Unit with issue/request.', 'options' => ''],
+            ['key' => 'category', 'label' => 'Issue category', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Plumbing, electrical, cleaning, etc.', 'options' => 'Plumbing, Electrical, Cleaning, Structural, Other'],
+            ['key' => 'priority', 'label' => 'Priority', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Operational urgency level.', 'options' => 'low, medium, high, critical'],
+            ['key' => 'description', 'label' => 'Issue description', 'type' => 'textarea', 'required' => true, 'enabled' => true, 'help_text' => 'Detailed maintenance notes.', 'options' => ''],
+            ['key' => 'target_date', 'label' => 'Target completion date', 'type' => 'date', 'required' => false, 'enabled' => true, 'help_text' => 'Expected close date.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultVendorFields(): array
+    {
+        return [
+            ['key' => 'name', 'label' => 'Vendor name', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Supplier/company name.', 'options' => ''],
+            ['key' => 'service_category', 'label' => 'Service category', 'type' => 'select', 'required' => false, 'enabled' => true, 'help_text' => 'Work domain offered by vendor.', 'options' => 'Plumbing, Electrical, Security, Cleaning, General repairs'],
+            ['key' => 'contact_phone', 'label' => 'Phone', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Primary phone contact.', 'options' => ''],
+            ['key' => 'email', 'label' => 'Email', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Primary email address.', 'options' => ''],
+            ['key' => 'notes', 'label' => 'Notes', 'type' => 'textarea', 'required' => false, 'enabled' => true, 'help_text' => 'Rates, SLA, or compliance notes.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultInvoiceFields(): array
+    {
+        return [
+            ['key' => 'pm_tenant_id', 'label' => 'Tenant', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Tenant being billed.', 'options' => ''],
+            ['key' => 'property_unit_id', 'label' => 'Unit', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Billed unit.', 'options' => ''],
+            ['key' => 'invoice_type', 'label' => 'Invoice type', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Charge source/classification.', 'options' => 'rent, water, service, penalty, other'],
+            ['key' => 'amount', 'label' => 'Amount', 'type' => 'number', 'required' => true, 'enabled' => true, 'help_text' => 'Invoice amount.', 'options' => ''],
+            ['key' => 'due_date', 'label' => 'Due date', 'type' => 'date', 'required' => true, 'enabled' => true, 'help_text' => 'Payment due date.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultTenantNoticeFields(): array
+    {
+        return [
+            ['key' => 'pm_tenant_id', 'label' => 'Tenant', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Notice recipient.', 'options' => ''],
+            ['key' => 'property_unit_id', 'label' => 'Unit', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Unit reference for notice.', 'options' => ''],
+            ['key' => 'notice_type', 'label' => 'Notice type', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Reason/category of notice.', 'options' => 'vacate, renewal, warning, other'],
+            ['key' => 'notice_date', 'label' => 'Notice date', 'type' => 'date', 'required' => true, 'enabled' => true, 'help_text' => 'Date served.', 'options' => ''],
+            ['key' => 'details', 'label' => 'Notice details', 'type' => 'textarea', 'required' => false, 'enabled' => true, 'help_text' => 'Context and instructions.', 'options' => ''],
+        ];
+    }
+
+    /**
+     * @return list<array{key:string,label:string,type:string,required:bool,enabled:bool,help_text:string,options:string}>
+     */
+    private function defaultMovementFields(): array
+    {
+        return [
+            ['key' => 'property_unit_id', 'label' => 'Unit', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Unit for move event.', 'options' => ''],
+            ['key' => 'movement_type', 'label' => 'Movement type', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Move-in or move-out.', 'options' => 'move_in, move_out'],
+            ['key' => 'status', 'label' => 'Status', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Planning/execution state.', 'options' => 'planned, in_progress, done, cancelled'],
+            ['key' => 'scheduled_on', 'label' => 'Scheduled date', 'type' => 'date', 'required' => true, 'enabled' => true, 'help_text' => 'Expected move date.', 'options' => ''],
+            ['key' => 'notes', 'label' => 'Notes', 'type' => 'textarea', 'required' => false, 'enabled' => true, 'help_text' => 'Operational notes for field teams.', 'options' => ''],
+        ];
+    }
+
+    private function renderModuleFieldSetup(string $module, string $title, string $subtitle): View
+    {
+        return view('property.agent.settings.system_setup.module_fields', [
+            'module' => $module,
+            'title' => $title,
+            'subtitle' => $subtitle,
+            'fields' => $this->configuredFields($module),
+        ]);
+    }
+
+    private function storeModuleFieldSetup(Request $request, string $module, string $successMessage): RedirectResponse
+    {
+        $fields = $this->validateDynamicFields($request);
+        $settingKey = 'system_setup_'.$module.'_fields_json';
+        PropertyPortalSetting::setValue(
+            $settingKey,
+            json_encode($fields, JSON_UNESCAPED_UNICODE)
+        );
+        PropertyPortalSetting::setValue('system_setup_forms_count', (string) max((int) PropertyPortalSetting::getValue('system_setup_forms_count', '2'), count($fields)));
+
+        return back()->with('success', __($successMessage));
     }
 
     private function ensureAccessControlDefaults(): void

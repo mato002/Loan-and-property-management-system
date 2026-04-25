@@ -15,7 +15,8 @@
                 || $errors->has('code')
                 || $errors->has('city')
                 || $errors->has('commission_percent')
-                || $errors->has('address_line');
+                || $errors->has('address_line')
+                || $errors->has('charge_templates');
             $linkLandlordFormHasErrors = $errors->has('property_id')
                 || $errors->has('user_id')
                 || $errors->has('ownership_percent');
@@ -46,6 +47,47 @@
                 action="{{ route('property.properties.store') }}"
                 x-show="showPropertyForm"
                 x-cloak
+                x-data="{
+                    showChargeBuilder: @js(count((array) old('charge_templates', [])) > 0),
+                    chargeTypeOptions: ['water', 'service', 'garbage', 'other'],
+                    charges: (() => {
+                        const seed = @js(old('charge_templates', []));
+                        if (Array.isArray(seed) && seed.length > 0) return seed;
+                        return [];
+                    })(),
+                    init() {
+                        this.charges.forEach((charge) => {
+                            const type = String(charge?.charge_type || '').trim().toLowerCase();
+                            if (type !== '' && !this.chargeTypeOptions.includes(type)) {
+                                this.chargeTypeOptions.push(type);
+                            }
+                        });
+                    },
+                    addCharge() {
+                        this.showChargeBuilder = true;
+                        this.charges.push({ charge_type: 'water', label: '', rate_per_unit: '', fixed_charge: '', notes: '' });
+                    },
+                    addChargeType(index) {
+                        const raw = window.prompt('New charge type (e.g. internet, security, sewer):', '');
+                        if (!raw) return;
+                        const normalized = String(raw)
+                            .trim()
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, '_')
+                            .replace(/^_+|_+$/g, '');
+                        if (!normalized) return;
+                        if (!this.chargeTypeOptions.includes(normalized)) {
+                            this.chargeTypeOptions.push(normalized);
+                        }
+                        if (this.charges[index]) {
+                            this.charges[index].charge_type = normalized;
+                        }
+                    },
+                    removeCharge(index) {
+                        this.charges.splice(index, 1);
+                        if (this.charges.length === 0) this.showChargeBuilder = false;
+                    }
+                }"
                 class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3"
             >
                 @csrf
@@ -94,6 +136,54 @@
                     />
                     <datalist id="ke-address-suggestions"></datalist>
                     @error('address_line')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div class="rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50/70 dark:bg-slate-900/40 p-3">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                            <p class="text-xs font-semibold text-slate-700 dark:text-slate-200">Utility charge templates (optional)</p>
+                            <p class="text-xs text-slate-500 dark:text-slate-400">If this property has bills (e.g. water), tap <span class="font-medium">Add charge</span>.</p>
+                        </div>
+                        <button type="button" @click="addCharge()" class="rounded-lg border border-slate-300 dark:border-slate-500 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-gray-800">Add charge</button>
+                    </div>
+
+                    <div x-show="showChargeBuilder" x-cloak class="mt-3 space-y-3">
+                        <template x-for="(charge, index) in charges" :key="index">
+                            <div class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 p-3 space-y-2">
+                                <div class="grid gap-2 sm:grid-cols-2">
+                                    <div>
+                                        <div class="flex items-center justify-between gap-2">
+                                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Charge type</label>
+                                            <button type="button" @click="addChargeType(index)" class="rounded border border-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">+</button>
+                                        </div>
+                                        <select :name="`charge_templates[${index}][charge_type]`" x-model="charge.charge_type" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                            <template x-for="type in chargeTypeOptions" :key="`charge-type-${type}`">
+                                                <option :value="type" x-text="type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' ')"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Label</label>
+                                        <input :name="`charge_templates[${index}][label]`" x-model="charge.label" type="text" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. Water bill" />
+                                    </div>
+                                </div>
+                                <div class="grid gap-2 sm:grid-cols-2">
+                                    <div>
+                                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label>
+                                        <input :name="`charge_templates[${index}][rate_per_unit]`" x-model="charge.rate_per_unit" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="0.00" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label>
+                                        <input :name="`charge_templates[${index}][fixed_charge]`" x-model="charge.fixed_charge" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="0.00" />
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <input :name="`charge_templates[${index}][notes]`" x-model="charge.notes" type="text" class="flex-1 min-w-[12rem] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional notes" />
+                                    <button type="button" @click="removeCharge(index)" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Remove</button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    @error('charge_templates')<p class="text-xs text-red-600 mt-2">{{ $message }}</p>@enderror
                 </div>
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save property</button>
             </form>

@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -277,27 +278,31 @@ class PmLeaseWebController extends Controller
                 ->sortBy('name')
                 ->values(),
             'leaseTemplate' => $leaseTemplate,
+            'leaseFields' => $this->leaseFieldConfig(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $cfg = $this->leaseFieldConfig();
         $data = $request->validate([
-            'pm_tenant_id' => ['required', 'exists:pm_tenants,id'],
-            'start_date' => ['required', 'date'],
+            'pm_tenant_id' => [Rule::requiredIf($this->isFieldRequired($cfg, 'tenant_id')), 'nullable', 'exists:pm_tenants,id'],
+            'start_date' => [Rule::requiredIf($this->isFieldRequired($cfg, 'start_date')), 'nullable', 'date'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
-            'monthly_rent' => ['required', 'numeric', 'min:0'],
-            'deposit_amount' => ['nullable', 'numeric', 'min:0'],
+            'monthly_rent' => [Rule::requiredIf($this->isFieldRequired($cfg, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
+            'deposit_amount' => [Rule::requiredIf($this->isFieldRequired($cfg, 'deposit_amount')), 'nullable', 'numeric', 'min:0'],
             'utility_expense_type' => ['nullable', 'in:water,electricity,other'],
             'utility_expense_amount' => ['nullable', 'numeric', 'min:0', 'required_with:utility_expense_type'],
-            'status' => ['required', 'in:draft,active,expired,terminated'],
+            'status' => [Rule::requiredIf($this->isFieldRequired($cfg, 'status')), 'nullable', 'in:draft,active,expired,terminated'],
             'terms_summary' => ['nullable', 'string', 'max:5000'],
-            'property_unit_ids' => ['nullable', 'array', 'max:1'],
+            'property_unit_ids' => [Rule::requiredIf($this->isFieldRequired($cfg, 'property_unit_id')), 'nullable', 'array', 'max:1'],
             'property_unit_ids.*' => ['integer', 'exists:property_units,id'],
             'additional_deposits' => ['nullable', 'array', 'max:20'],
             'additional_deposits.*.label' => ['nullable', 'string', 'max:100'],
             'additional_deposits.*.amount' => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        $data['status'] = (string) ($data['status'] ?? PmLease::STATUS_DRAFT);
 
         DB::transaction(function () use ($data) {
             $unitIds = $this->normalizeSingleUnitSelection((array) ($data['property_unit_ids'] ?? []));
@@ -340,6 +345,51 @@ class PmLeaseWebController extends Controller
         });
 
         return back()->with('success', 'Lease saved.');
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function leaseFieldConfig(): array
+    {
+        $defaults = [
+            'tenant_id' => ['enabled' => true, 'required' => true],
+            'property_unit_id' => ['enabled' => true, 'required' => true],
+            'start_date' => ['enabled' => true, 'required' => true],
+            'end_date' => ['enabled' => true, 'required' => false],
+            'rent_amount' => ['enabled' => true, 'required' => true],
+            'deposit_amount' => ['enabled' => true, 'required' => false],
+            'status' => ['enabled' => true, 'required' => true],
+        ];
+        $raw = PropertyPortalSetting::getValue('system_setup_lease_fields_json', '');
+        if (! is_string($raw) || trim($raw) === '') {
+            return $defaults;
+        }
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return $defaults;
+        }
+        foreach ($decoded as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $key = trim((string) ($row['key'] ?? ''));
+            if ($key === '' || ! array_key_exists($key, $defaults)) {
+                continue;
+            }
+            $defaults[$key]['enabled'] = ! array_key_exists('enabled', $row) || (bool) $row['enabled'];
+            $defaults[$key]['required'] = (bool) ($row['required'] ?? false);
+        }
+
+        return $defaults;
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $config
+     */
+    private function isFieldRequired(array $config, string $field): bool
+    {
+        return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
     }
 
     public function show(PmLease $lease): View

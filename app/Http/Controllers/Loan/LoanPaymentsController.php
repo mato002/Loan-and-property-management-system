@@ -1096,35 +1096,59 @@ class LoanPaymentsController extends Controller
 
         $suggested = $this->buildSuggestedLoanMap($payments, $assignableLoans);
         $matched = 0;
+        $posted = 0;
         $skipped = 0;
+        $failed = 0;
 
-        DB::transaction(function () use ($payments, $suggested, &$matched, &$skipped): void {
-            foreach ($payments as $payment) {
-                $loanId = (int) ($suggested[(int) $payment->id] ?? 0);
-                if ($loanId <= 0) {
-                    $skipped++;
-                    continue;
-                }
-
-                $fresh = LoanBookPayment::query()->lockForUpdate()->find($payment->id);
-                if (! $fresh || $fresh->loan_book_loan_id !== null || $fresh->status !== LoanBookPayment::STATUS_UNPOSTED) {
-                    $skipped++;
-                    continue;
-                }
-
-                $note = 'Auto-matched by bulk action on '.now()->format('Y-m-d H:i');
-                $existing = trim((string) ($fresh->notes ?? ''));
-                $fresh->update([
-                    'loan_book_loan_id' => $loanId,
-                    'notes' => $existing !== '' ? $existing."\n".$note : $note,
-                ]);
-                $matched++;
+        foreach ($payments as $payment) {
+            $loanId = (int) ($suggested[(int) $payment->id] ?? 0);
+            if ($loanId <= 0) {
+                $skipped++;
+                continue;
             }
-        });
+
+            try {
+                DB::transaction(function () use ($payment, $loanId, $request, &$matched, &$posted): void {
+                    $fresh = LoanBookPayment::query()->lockForUpdate()->find($payment->id);
+                    if (! $fresh || $fresh->loan_book_loan_id !== null || $fresh->status !== LoanBookPayment::STATUS_UNPOSTED) {
+                        return;
+                    }
+
+                    $note = 'Auto-matched by bulk action on '.now()->format('Y-m-d H:i');
+                    $existing = trim((string) ($fresh->notes ?? ''));
+                    $fresh->update([
+                        'loan_book_loan_id' => $loanId,
+                        'notes' => $existing !== '' ? $existing."\n".$note : $note,
+                    ]);
+                    $matched++;
+
+                    $fresh->load('loan');
+                    $entry = app(LoanBookGlPostingService::class)->postLoanPayment($fresh, $request->user());
+                    $fresh->update([
+                        'status' => LoanBookPayment::STATUS_PROCESSED,
+                        'posted_at' => now(),
+                        'posted_by' => (int) $request->user()->id,
+                        'accounting_journal_entry_id' => $entry->id,
+                    ]);
+
+                    $this->syncCollectionEntryFromProcessedPayment($fresh);
+                    app(LoanBookLoanUpdateService::class)->onPaymentProcessed($fresh->fresh());
+                    $posted++;
+                });
+            } catch (\Throwable $e) {
+                $failed++;
+                LoanBookPayment::query()
+                    ->whereKey($payment->id)
+                    ->where('status', LoanBookPayment::STATUS_UNPOSTED)
+                    ->update([
+                        'notes' => DB::raw("CONCAT(COALESCE(notes, ''), IF(COALESCE(notes, '') = '', '', '\\n'), 'Auto-post failed after match: ".addslashes($e->getMessage())."')"),
+                    ]);
+            }
+        }
 
         return redirect()
             ->route('loan.payments.unposted', compact('q', 'channel', 'from', 'to', 'perPage'))
-            ->with('status', "Auto-match complete: {$matched} matched, {$skipped} skipped.");
+            ->with('status', "Auto-match complete: {$matched} matched, {$posted} posted, {$skipped} skipped, {$failed} failed.");
     }
 
     /**

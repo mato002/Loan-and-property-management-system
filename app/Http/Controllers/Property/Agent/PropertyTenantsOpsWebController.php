@@ -120,9 +120,12 @@ class PropertyTenantsOpsWebController extends Controller
                 ['ID', 'Unit', 'Type', 'Status', 'Scheduled On', 'Completed On', 'Owner', 'Notes'],
                 function () use ($movements) {
                     return $movements->map(function (PmUnitMovement $m) {
+                        $propertyName = (string) ($m->unit?->property?->name ?? 'Unknown property');
+                        $unitLabel = (string) ($m->unit?->label ?? 'Unknown unit');
+
                         return [
                             (string) $m->id,
-                            (string) (($m->unit->property->name ?? '').'/'.($m->unit->label ?? '')),
+                            $propertyName.'/'.$unitLabel,
                             (string) str_replace('_', ' ', $m->movement_type),
                             (string) $m->status,
                             (string) ($m->scheduled_on?->format('Y-m-d') ?? ''),
@@ -144,39 +147,46 @@ class PropertyTenantsOpsWebController extends Controller
         ];
 
         $rows = $movementsPage->getCollection()->map(function (PmUnitMovement $m) {
-            $actions = '—';
+            $propertyId = $m->unit?->property_id;
+            $propertyName = (string) ($m->unit?->property?->name ?? 'Unknown property');
+            $unitLabel = (string) ($m->unit?->label ?? 'Unknown unit');
+            $items = [];
             if (! in_array($m->status, ['done', 'cancelled'], true)) {
-                $actions = new HtmlString(
-                    '<div class="flex flex-wrap gap-1">'.
-                    '<form method="POST" action="'.route('property.tenants.movements.status', $m).'" class="inline-flex">'.csrf_field().
+                $items[] = '<form method="POST" action="'.route('property.tenants.movements.status', $m).'">'.csrf_field().
                     '<input type="hidden" name="status" value="in_progress" />'.
-                    '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Start</button>'.
-                    '</form>'.
-                    '<form method="POST" action="'.route('property.tenants.movements.status', $m).'" class="inline-flex">'.csrf_field().
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Start</button>'.
+                    '</form>';
+                $items[] = '<form method="POST" action="'.route('property.tenants.movements.status', $m).'">'.csrf_field().
                     '<input type="hidden" name="status" value="done" />'.
-                    '<button type="submit" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Mark done</button>'.
-                    '</form>'.
-                    '</div>'
-                );
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Mark done</button>'.
+                    '</form>';
             }
-            $extra = [
-                '<a href="'.route('property.properties.show', ['property' => $m->unit->property_id], absolute: false).'" class="text-indigo-600 hover:text-indigo-700 font-medium">View property</a>',
-                '<a href="'.route('property.properties.units', ['property_id' => $m->unit->property_id], absolute: false).'" class="text-slate-700 hover:text-slate-900 font-medium">Open units</a>',
-            ];
+            $extra = [];
+            if ($propertyId) {
+                $extra[] = '<a href="'.route('property.properties.show', ['property' => $propertyId], absolute: false).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View property</a>';
+                $extra[] = '<a href="'.route('property.properties.units', ['property_id' => $propertyId], absolute: false).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Open units</a>';
+            } else {
+                $extra[] = '<span class="block px-3 py-2 text-xs text-rose-700">Missing unit/property link</span>';
+            }
             if ($m->movement_type === 'move_in') {
-                $extra[] = '<a href="'.route('property.tenants.leases', ['unit_id' => $m->property_unit_id], absolute: false).'" class="text-emerald-600 hover:text-emerald-700 font-medium">Lease flow</a>';
+                $extra[] = '<a href="'.route('property.tenants.leases', ['unit_id' => $m->property_unit_id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Lease flow</a>';
             } else {
-                $extra[] = '<a href="'.route('property.tenants.notices', ['unit_id' => $m->property_unit_id], absolute: false).'" class="text-amber-600 hover:text-amber-700 font-medium">Notice flow</a>';
+                $extra[] = '<a href="'.route('property.tenants.notices', ['unit_id' => $m->property_unit_id], absolute: false).'" class="block px-3 py-2 text-xs text-amber-700 hover:bg-amber-50">Notice flow</a>';
             }
-            $extraHtml = new HtmlString('<div class="mt-1 flex flex-wrap gap-2">'.implode('<span class="text-slate-300">|</span>', $extra).'</div>');
-            if ($actions instanceof HtmlString) {
-                $actions = new HtmlString((string) $actions.' '.$extraHtml);
-            } else {
-                $actions = $extraHtml;
-            }
+            $items = array_merge($items, $extra);
+            $actions = new HtmlString(
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                implode('', $items).
+                '</div>'.
+                '</details>'.
+                '</div>'
+            );
 
             return [
-                $m->unit->property->name.'/'.$m->unit->label,
+                $propertyName.'/'.$unitLabel,
                 str_replace('_', ' ', $m->movement_type),
                 ucfirst($m->status),
                 $m->scheduled_on?->format('Y-m-d') ?? '—',
@@ -225,9 +235,11 @@ class PropertyTenantsOpsWebController extends Controller
             ['ID', 'Unit', 'Type', 'Status', 'Scheduled On', 'Completed On', 'Owner', 'Notes'],
             function () use ($rows) {
                 foreach ($rows as $m) {
+                    $propertyName = (string) ($m->unit?->property?->name ?? 'Unknown property');
+                    $unitLabel = (string) ($m->unit?->label ?? 'Unknown unit');
                     yield [
                         $m->id,
-                        $m->unit->property->name.'/'.$m->unit->label,
+                        $propertyName.'/'.$unitLabel,
                         $m->movement_type,
                         $m->status,
                         optional($m->scheduled_on)->format('Y-m-d'),
@@ -284,19 +296,24 @@ class PropertyTenantsOpsWebController extends Controller
             $actions = '—';
             if (! in_array($n->status, ['closed'], true)) {
                 $actions = new HtmlString(
-                    '<div class="flex flex-wrap gap-1">'.
-                    '<form method="POST" action="'.route('property.tenants.notices.status', $n).'" class="inline-flex">'.csrf_field().
+                    '<div class="relative inline-block text-left">'.
+                    '<details>'.
+                    '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                    '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                    '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
                     '<input type="hidden" name="status" value="sent" />'.
-                    '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Mark sent</button>'.
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Mark sent</button>'.
                     '</form>'.
-                    '<form method="POST" action="'.route('property.tenants.notices.status', $n).'" class="inline-flex">'.csrf_field().
+                    '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
                     '<input type="hidden" name="status" value="acknowledged" />'.
-                    '<button type="submit" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Acknowledge</button>'.
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Acknowledge</button>'.
                     '</form>'.
-                    '<form method="POST" action="'.route('property.tenants.notices.status', $n).'" class="inline-flex">'.csrf_field().
+                    '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
                     '<input type="hidden" name="status" value="closed" />'.
-                    '<button type="submit" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Close</button>'.
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-indigo-700 hover:bg-indigo-50">Close</button>'.
                     '</form>'.
+                    '</div>'.
+                    '</details>'.
                     '</div>'
                 );
             }

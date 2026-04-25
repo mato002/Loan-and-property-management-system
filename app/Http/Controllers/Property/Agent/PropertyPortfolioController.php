@@ -162,15 +162,22 @@ class PropertyPortfolioController extends Controller
                 ? 'No units'
                 : ($p->vacant_units_count > 0 ? 'Has vacancy' : 'Fully occupied');
             $action = new HtmlString(
-                '<div class="flex flex-wrap items-center gap-2">'.
-                '<a href="'.route('property.properties.show', $p).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">View</a>'.
-                '<a href="'.route('property.properties.edit', $p).'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
-                '<a href="'.route('property.properties.units', ['property_id' => $p->id], absolute: false).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Units</a>'.
-                '<a href="'.route('property.properties.list', ['property_id' => $p->id], absolute: false).'#link-landlord-form" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Link landlord</a>'.
-                '<form method="POST" action="'.route('property.properties.destroy', $p).'" class="inline-flex" data-swal-title="Delete property?" data-swal-confirm="This will permanently delete this property if it has no units." data-swal-confirm-text="Yes, delete">'.
+                '<div class="relative inline-block text-left">'.
+                '<details class="group">'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">'.
+                'Actions <span class="text-slate-400">▼</span>'.
+                '</summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<a href="'.route('property.properties.show', $p).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View</a>'.
+                '<a href="'.route('property.properties.edit', $p).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
+                '<a href="'.route('property.properties.units', ['property_id' => $p->id], absolute: false).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Units</a>'.
+                '<a href="'.route('property.properties.list', ['property_id' => $p->id], absolute: false).'#link-landlord-form" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Link landlord</a>'.
+                '<form method="POST" action="'.route('property.properties.destroy', $p).'" data-swal-title="Delete property?" data-swal-confirm="This will permanently delete this property if it has no units." data-swal-confirm-text="Yes, delete">'.
                 csrf_field().method_field('DELETE').
-                '<button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
                 '</form>'.
+                '</div>'.
+                '</details>'.
                 '</div>'
             );
 
@@ -217,6 +224,7 @@ class PropertyPortfolioController extends Controller
             'stats' => $stats,
             'columns' => ['Name', 'Code', 'Address', 'Units', 'City', 'Landlord(s)', 'Status', 'Actions'],
             'tableRows' => $rows,
+            'propertyOnboardingFields' => $this->propertyOnboardingFieldConfig(),
             'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
             'properties' => $portfolio,
             'linkableProperties' => $linkableProperties,
@@ -621,6 +629,8 @@ class PropertyPortfolioController extends Controller
                 'collection_rate' => $collectionRate,
                 'avg_arrears_per_unit' => $avgArrearsPerUnit,
             ],
+            'propertyChargeTemplates' => $this->propertyChargeTemplates((int) $property->id),
+            'unitFields' => $this->unitFieldConfig(),
         ]);
     }
 
@@ -630,25 +640,37 @@ class PropertyPortfolioController extends Controller
 
         return view('property.agent.properties.edit', [
             'property' => $property,
+            'propertyOnboardingFields' => $this->propertyOnboardingFieldConfig(),
             'propertyCommissionPercent' => $this->propertyCommissionPercent((int) $property->id),
             'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
+            'propertyChargeTemplates' => $this->propertyChargeTemplates((int) $property->id),
         ]);
     }
 
     public function updateProperty(Request $request, Property $property): RedirectResponse
     {
+        $propertyFields = $this->propertyOnboardingFieldConfig();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($propertyFields, 'name')), 'nullable', 'string', 'max:255'],
             'code' => ['nullable', 'string', 'max:64', 'unique:properties,code,'.$property->id],
             'address_line' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:128'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'charge_templates' => ['nullable', 'array', 'max:8'],
+            'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
+            'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
+            'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
+        $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
         unset($data['commission_percent']);
+        unset($data['charge_templates']);
 
         $property->update($data);
         $this->setPropertyCommissionOverride((int) $property->id, $commissionPercent);
+        $this->setPropertyChargeTemplates((int) $property->id, $chargeTemplates);
 
         return back()->with('success', 'Property updated.');
     }
@@ -852,18 +874,27 @@ class PropertyPortfolioController extends Controller
             $variance = $row['delta'] === null ? '—' : PropertyMoney::kes((float) $row['delta']);
 
             $actions = [
-                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="text-indigo-600 hover:text-indigo-700 font-medium">View property</a>',
+                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View property</a>',
             ];
             if ($u->status === PropertyUnit::STATUS_VACANT) {
-                $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="text-emerald-600 hover:text-emerald-700 font-medium">Assign tenant</a>';
-                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', ['property_unit' => $u->id], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">Publish listing</a>';
+                $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
+                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', ['property_unit' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($lease) {
-                $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="text-emerald-600 hover:text-emerald-700 font-medium">Open lease</a>';
+                $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';
                 if ($tenant?->name) {
-                    $actions[] = '<a href="'.route('property.tenants.profiles', ['q' => $tenant->name], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">View tenant</a>';
+                    $actions[] = '<a href="'.route('property.tenants.profiles', ['q' => $tenant->name], absolute: false).'" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">View tenant</a>';
                 }
             }
-            $actionHtml = new HtmlString('<div class="flex flex-wrap gap-2">'.implode('<span class="text-slate-300">|</span>', $actions).'</div>');
+            $actionHtml = new HtmlString(
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                implode('', $actions).
+                '</div>'.
+                '</details>'.
+                '</div>'
+            );
 
             return [
                 $u->label,
@@ -1115,6 +1146,7 @@ class PropertyPortfolioController extends Controller
         return view('property.agent.landlords.index', [
             'stats' => $stats,
             'landlords' => $landlords,
+            'landlordFields' => $this->landlordFieldConfig(),
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'periodLabel' => $periodLabel,
             'monthValue' => $month,
@@ -1337,9 +1369,10 @@ class PropertyPortfolioController extends Controller
 
     public function onboardLandlord(Request $request): RedirectResponse
     {
+        $landlordFields = $this->landlordFieldConfig();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($landlordFields, 'name')), 'nullable', 'string', 'max:255'],
+            'email' => [Rule::requiredIf($this->isFieldRequired($landlordFields, 'email')), 'nullable', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'max:255'],
             'property_id' => ['nullable', 'exists:properties,id'],
             'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
@@ -1422,9 +1455,10 @@ class PropertyPortfolioController extends Controller
 
     public function onboardLandlordJson(Request $request)
     {
+        $landlordFields = $this->landlordFieldConfig();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($landlordFields, 'name')), 'nullable', 'string', 'max:255'],
+            'email' => [Rule::requiredIf($this->isFieldRequired($landlordFields, 'email')), 'nullable', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'max:255'],
         ]);
 
@@ -1468,15 +1502,24 @@ class PropertyPortfolioController extends Controller
 
     public function storeProperty(Request $request): RedirectResponse
     {
+        $propertyFields = $this->propertyOnboardingFieldConfig();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($propertyFields, 'name')), 'nullable', 'string', 'max:255'],
             'code' => ['nullable', 'string', 'max:64', 'unique:properties,code'],
             'address_line' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:128'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'charge_templates' => ['nullable', 'array', 'max:8'],
+            'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
+            'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
+            'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
+        $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
         unset($data['commission_percent']);
+        unset($data['charge_templates']);
 
         if (!isset($data['code']) || trim((string) $data['code']) === '') {
             $data['code'] = $this->generateUniquePropertyCode($data['name']);
@@ -1485,6 +1528,7 @@ class PropertyPortfolioController extends Controller
 
         $property = Property::query()->create($data);
         $this->setPropertyCommissionOverride((int) $property->id, $commissionPercent);
+        $this->setPropertyChargeTemplates((int) $property->id, $chargeTemplates);
 
         return back()
             ->with('success', 'Property saved.')
@@ -1519,15 +1563,24 @@ class PropertyPortfolioController extends Controller
 
     public function storePropertyJson(Request $request)
     {
+        $propertyFields = $this->propertyOnboardingFieldConfig();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($propertyFields, 'name')), 'nullable', 'string', 'max:255'],
             'code' => ['nullable', 'string', 'max:64', 'unique:properties,code'],
             'address_line' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:128'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'charge_templates' => ['nullable', 'array', 'max:8'],
+            'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
+            'charge_templates.*.label' => ['nullable', 'string', 'max:128'],
+            'charge_templates.*.rate_per_unit' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'charge_templates.*.notes' => ['nullable', 'string', 'max:500'],
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
+        $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
         unset($data['commission_percent']);
+        unset($data['charge_templates']);
 
         if (!isset($data['code']) || trim((string) $data['code']) === '') {
             $data['code'] = $this->generateUniquePropertyCode($data['name']);
@@ -1536,6 +1589,7 @@ class PropertyPortfolioController extends Controller
 
         $property = Property::query()->create($data);
         $this->setPropertyCommissionOverride((int) $property->id, $commissionPercent);
+        $this->setPropertyChargeTemplates((int) $property->id, $chargeTemplates);
 
         return response()->json([
             'ok' => true,
@@ -1627,34 +1681,43 @@ class PropertyPortfolioController extends Controller
             $activeLease = $u->leases->first();
             $activeTenantName = (string) ($activeLease?->pmTenant?->name ?? '');
             $actions = [
-                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">View property</a>',
-                '<a href="'.route('property.units.edit', $u, absolute: false).'" data-turbo="false" class="rounded border border-blue-300 px-2 py-1 text-xs text-blue-700 hover:bg-blue-50">Edit unit</a>',
+                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View property</a>',
+                '<a href="'.route('property.units.edit', $u, absolute: false).'" data-turbo="false" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Edit unit</a>',
                 // Quick path to onboarding or takeover: create a lease (often future-dated) for this unit
-                '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id], absolute: false).'" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Add lease</a>',
+                '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Add lease</a>',
             ];
 
             if ($u->status === PropertyUnit::STATUS_VACANT) {
-                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', $u, absolute: false).'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Edit listing</a>';
+                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', $u, absolute: false).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit listing</a>';
             }
 
             foreach ([PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE] as $targetStatus) {
                 if ($targetStatus === $u->status) {
                     continue;
                 }
-                $actions[] = '<form method="POST" action="'.route('property.units.status', $u, absolute: false).'" class="inline-flex">'
+                $actions[] = '<form method="POST" action="'.route('property.units.status', $u, absolute: false).'">'
                     .csrf_field()
                     .'<input type="hidden" name="status" value="'.$targetStatus.'" />'
-                    .'<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Mark '.ucfirst($targetStatus).'</button>'
+                    .'<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Mark '.ucfirst($targetStatus).'</button>'
                     .'</form>';
             }
 
-            $actions[] = '<form method="POST" action="'.route('property.units.destroy', $u, absolute: false).'" data-swal-title="Delete unit?" data-swal-confirm="Delete '.$u->label.' from '.$u->property->name.'? This cannot be undone." data-swal-confirm-text="Yes, delete" class="inline-flex">'
+            $actions[] = '<form method="POST" action="'.route('property.units.destroy', $u, absolute: false).'" data-swal-title="Delete unit?" data-swal-confirm="Delete '.$u->label.' from '.$u->property->name.'? This cannot be undone." data-swal-confirm-text="Yes, delete">'
                 .csrf_field()
                 .method_field('DELETE')
-                .'<button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Delete</button>'
+                .'<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'
                 .'</form>';
 
-            $action = new HtmlString('<div class="flex flex-wrap gap-1">'.implode('', $actions).'</div>');
+            $action = new HtmlString(
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                implode('', $actions).
+                '</div>'.
+                '</details>'.
+                '</div>'
+            );
 
             return [
                 $u->label,
@@ -1675,6 +1738,7 @@ class PropertyPortfolioController extends Controller
             'stats' => $stats,
             'columns' => ['Unit', 'Property', 'Type', 'Beds', 'Rent', 'Status', 'Tenant', 'Vacant since', 'Actions'],
             'tableRows' => $rows,
+            'unitFields' => $this->unitFieldConfig(),
             'paginator' => $units,
             'perPage' => $perPage,
             'properties' => Property::query()
@@ -1721,6 +1785,74 @@ class PropertyPortfolioController extends Controller
             'commission_property_overrides_json',
             json_encode($overrides, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
         );
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $templates
+     * @return array<int, array{charge_type:string,label:string,rate_per_unit:float,fixed_charge:float,notes:string}>
+     */
+    private function normalizePropertyChargeTemplates(array $templates): array
+    {
+        $normalized = [];
+        foreach ($templates as $row) {
+            $rawChargeType = strtolower(trim((string) ($row['charge_type'] ?? '')));
+            $chargeType = (string) Str::of($rawChargeType)
+                ->replaceMatches('/[^a-z0-9]+/', '_')
+                ->trim('_');
+            if ($chargeType === '') {
+                continue;
+            }
+            $label = trim((string) ($row['label'] ?? ''));
+            $rate = is_numeric($row['rate_per_unit'] ?? null) ? max(0.0, (float) $row['rate_per_unit']) : 0.0;
+            $fixed = is_numeric($row['fixed_charge'] ?? null) ? max(0.0, (float) $row['fixed_charge']) : 0.0;
+            $notes = trim((string) ($row['notes'] ?? ''));
+            if ($label === '' && $rate <= 0.0 && $fixed <= 0.0 && $notes === '') {
+                continue;
+            }
+            $normalized[] = [
+                'charge_type' => $chargeType,
+                'label' => $label !== '' ? $label : ucfirst($chargeType),
+                'rate_per_unit' => round($rate, 2),
+                'fixed_charge' => round($fixed, 2),
+                'notes' => Str::limit($notes, 500, ''),
+            ];
+        }
+
+        return array_slice($normalized, 0, 8);
+    }
+
+    /**
+     * @param  array<int, array{charge_type:string,label:string,rate_per_unit:float,fixed_charge:float,notes:string}>  $templates
+     */
+    private function setPropertyChargeTemplates(int $propertyId, array $templates): void
+    {
+        $raw = (string) PropertyPortalSetting::getValue('utility_property_charge_templates_json', '{}');
+        $all = json_decode($raw, true);
+        $all = is_array($all) ? $all : [];
+
+        if ($templates === []) {
+            unset($all[(string) $propertyId]);
+        } else {
+            $all[(string) $propertyId] = array_values($templates);
+        }
+
+        PropertyPortalSetting::setValue(
+            'utility_property_charge_templates_json',
+            json_encode($all, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+    }
+
+    /**
+     * @return array<int, array{charge_type:string,label:string,rate_per_unit:float,fixed_charge:float,notes:string}>
+     */
+    private function propertyChargeTemplates(int $propertyId): array
+    {
+        $raw = (string) PropertyPortalSetting::getValue('utility_property_charge_templates_json', '{}');
+        $all = json_decode($raw, true);
+        $all = is_array($all) ? $all : [];
+        $rows = $all[(string) $propertyId] ?? [];
+
+        return $this->normalizePropertyChargeTemplates(is_array($rows) ? $rows : []);
     }
 
     private function isAgentActor(?User $user): bool
@@ -1852,12 +1984,13 @@ class PropertyPortfolioController extends Controller
 
     public function storeUnit(Request $request): RedirectResponse
     {
+        $unitFields = $this->unitFieldConfig();
         if ($request->boolean('mixed_units_mode')) {
             return $this->storeMixedUnits($request);
         }
 
         $data = $request->validate([
-            'property_id' => ['required', 'exists:properties,id'],
+            'property_id' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'property_id')), 'nullable', 'exists:properties,id'],
             'label' => ['nullable', 'string', 'max:64'],
             'unit_count' => ['nullable', 'integer', 'min:1', 'max:5000'],
             'label_prefix' => ['nullable', 'string', 'max:32'],
@@ -1866,18 +1999,18 @@ class PropertyPortfolioController extends Controller
             'occupied_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
             'notice_count' => ['nullable', 'integer', 'min:0', 'max:5000'],
             'status_mode' => ['nullable', 'in:single,split'],
-            'unit_type' => ['required', 'string', 'max:64'],
+            'unit_type' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'unit_type')), 'nullable', 'string', 'max:64'],
             // Bedrooms is conditional: some unit types have no separate bedroom and the UI disables the field.
             'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
-            'rent_amount' => ['required', 'numeric', 'min:0'],
+            'rent_amount' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
             'status' => [
-                Rule::requiredIf(fn () => (string) $request->input('status_mode', 'single') !== 'split'),
+                Rule::requiredIf(fn () => $this->isFieldRequired($unitFields, 'status') && (string) $request->input('status_mode', 'single') !== 'split'),
                 'in:vacant,occupied,notice',
             ],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
 
-        $data['unit_type'] = $this->normalizeUnitTypeValue((string) $data['unit_type']);
+        $data['unit_type'] = $this->normalizeUnitTypeValue((string) ($data['unit_type'] ?? PropertyUnit::TYPE_APARTMENT));
 
         $desc = isset($data['public_listing_description']) && trim((string) $data['public_listing_description']) !== ''
             ? $data['public_listing_description']
@@ -1886,10 +2019,12 @@ class PropertyPortfolioController extends Controller
         $requiresNoBedroom = in_array($data['unit_type'], $noBedroomTypes, true);
         if ($requiresNoBedroom) {
             $data['bedrooms'] = 0;
-        } elseif (!isset($data['bedrooms'])) {
+        } elseif ($this->isFieldRequired($unitFields, 'bedrooms') && !isset($data['bedrooms'])) {
             return back()
                 ->withErrors(['bedrooms' => __('The bedrooms field is required.')])
                 ->withInput();
+        } elseif (! isset($data['bedrooms'])) {
+            $data['bedrooms'] = 1;
         }
 
         $unitCount = (int) ($data['unit_count'] ?? 1);
@@ -2058,7 +2193,7 @@ class PropertyPortfolioController extends Controller
             'status' => ['required', 'in:vacant,occupied,notice'],
         ]);
 
-        $status = (string) $data['status'];
+        $status = (string) ($data['status'] ?? PropertyUnit::STATUS_VACANT);
         $hasActiveLease = $unit->leases()->where('pm_leases.status', PmLease::STATUS_ACTIVE)->exists();
         if ($status === PropertyUnit::STATUS_OCCUPIED && ! $hasActiveLease) {
             return back()->withErrors([
@@ -2089,6 +2224,7 @@ class PropertyPortfolioController extends Controller
 
         return view('property.agent.properties.edit_unit', [
             'unit' => $unit,
+            'unitFields' => $this->unitFieldConfig(),
             'unitTypes' => $this->propertyUnitTypeOptions((string) $unit->unit_type),
             'bedroomOptionsByType' => $this->propertyBedroomOptionsByType((string) $unit->unit_type, (int) $unit->bedrooms),
         ]);
@@ -2096,34 +2232,38 @@ class PropertyPortfolioController extends Controller
 
     public function updateUnit(Request $request, PropertyUnit $unit): RedirectResponse
     {
+        $unitFields = $this->unitFieldConfig();
         $data = $request->validate([
             'label' => [
-                'required',
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'label')),
                 'string',
                 'max:64',
                 Rule::unique('property_units', 'label')
                     ->where(fn ($q) => $q->where('property_id', $unit->property_id))
                     ->ignore($unit->id),
             ],
-            'unit_type' => ['required', 'string', 'max:64'],
+            'unit_type' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'unit_type')), 'nullable', 'string', 'max:64'],
             'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
-            'rent_amount' => ['required', 'numeric', 'min:0'],
-            'status' => ['required', 'in:vacant,occupied,notice'],
+            'rent_amount' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
+            'status' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'status')), 'nullable', 'in:vacant,occupied,notice'],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
 
-        $data['unit_type'] = $this->normalizeUnitTypeValue((string) $data['unit_type']);
+        $data['label'] = (string) ($data['label'] ?? $unit->label);
+        $data['unit_type'] = $this->normalizeUnitTypeValue((string) ($data['unit_type'] ?? $unit->unit_type));
         $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
         $requiresNoBedroom = in_array($data['unit_type'], $noBedroomTypes, true);
         if ($requiresNoBedroom) {
             $data['bedrooms'] = 0;
-        } elseif (! isset($data['bedrooms'])) {
+        } elseif ($this->isFieldRequired($unitFields, 'bedrooms') && ! isset($data['bedrooms'])) {
             return back()
                 ->withErrors(['bedrooms' => __('The bedrooms field is required.')])
                 ->withInput();
+        } elseif (! isset($data['bedrooms'])) {
+            $data['bedrooms'] = (int) $unit->bedrooms;
         }
 
-        $status = (string) $data['status'];
+        $status = (string) ($data['status'] ?? $unit->status);
         $hasActiveLease = $unit->leases()->where('pm_leases.status', PmLease::STATUS_ACTIVE)->exists();
         if ($status === PropertyUnit::STATUS_OCCUPIED && ! $hasActiveLease) {
             return back()->withErrors([
@@ -2153,17 +2293,21 @@ class PropertyPortfolioController extends Controller
 
     public function storeUnitJson(Request $request)
     {
+        $unitFields = $this->unitFieldConfig();
         $data = $request->validate([
-            'property_id' => ['required', 'integer', 'exists:properties,id'],
-            'label' => ['required', 'string', 'max:64'],
+            'property_id' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'property_id')), 'nullable', 'integer', 'exists:properties,id'],
+            'label' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'label')), 'nullable', 'string', 'max:64'],
             'unit_type' => ['nullable', 'string', 'max:64'],
             'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'rent_amount' => ['nullable', 'numeric', 'min:0'],
             'status' => ['nullable', 'in:vacant,occupied,notice'],
         ]);
 
-        $propertyId = (int) $data['property_id'];
-        $label = trim((string) $data['label']);
+        $propertyId = (int) ($data['property_id'] ?? 0);
+        $label = trim((string) ($data['label'] ?? ''));
+        if ($label === '') {
+            $label = 'UNIT-'.strtoupper(Str::random(6));
+        }
 
         $exists = PropertyUnit::query()
             ->where('property_id', $propertyId)
@@ -2205,6 +2349,99 @@ class PropertyPortfolioController extends Controller
             ],
             'message' => 'Unit created.',
         ]);
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function propertyOnboardingFieldConfig(): array
+    {
+        $defaults = [
+            'name' => ['enabled' => true, 'required' => true],
+            'code' => ['enabled' => true, 'required' => false],
+            'city' => ['enabled' => true, 'required' => false],
+            'address_line' => ['enabled' => true, 'required' => false],
+            'commission_percent' => ['enabled' => true, 'required' => false],
+        ];
+
+        return $this->configuredFieldMap('system_setup_property_onboarding_fields_json', $defaults, ['name']);
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function landlordFieldConfig(): array
+    {
+        $defaults = [
+            'name' => ['enabled' => true, 'required' => true],
+            'email' => ['enabled' => true, 'required' => true],
+            'phone' => ['enabled' => true, 'required' => false],
+            'id_number' => ['enabled' => true, 'required' => false],
+        ];
+
+        return $this->configuredFieldMap('system_setup_landlord_fields_json', $defaults, ['name', 'email']);
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function unitFieldConfig(): array
+    {
+        $defaults = [
+            'property_id' => ['enabled' => true, 'required' => true],
+            'label' => ['enabled' => true, 'required' => true],
+            'unit_type' => ['enabled' => true, 'required' => true],
+            'bedrooms' => ['enabled' => true, 'required' => false],
+            'rent_amount' => ['enabled' => true, 'required' => true],
+            'status' => ['enabled' => true, 'required' => true],
+        ];
+
+        return $this->configuredFieldMap('system_setup_unit_fields_json', $defaults, ['property_id', 'label']);
+    }
+
+    /**
+     * @param array<string,array{enabled:bool,required:bool}> $defaults
+     * @param array<int,string> $alwaysOn
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function configuredFieldMap(string $settingKey, array $defaults, array $alwaysOn = []): array
+    {
+        $map = $defaults;
+        $raw = PropertyPortalSetting::getValue($settingKey, '');
+        if (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $row) {
+                    if (! is_array($row)) {
+                        continue;
+                    }
+                    $key = trim((string) ($row['key'] ?? ''));
+                    if ($key === '' || ! array_key_exists($key, $map)) {
+                        continue;
+                    }
+                    $map[$key]['enabled'] = ! array_key_exists('enabled', $row) || (bool) $row['enabled'];
+                    $map[$key]['required'] = (bool) ($row['required'] ?? false);
+                }
+            }
+        }
+
+        foreach ($alwaysOn as $fieldKey) {
+            if (! array_key_exists($fieldKey, $map)) {
+                continue;
+            }
+            $map[$fieldKey]['enabled'] = true;
+            $map[$fieldKey]['required'] = true;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @param array<string,array{enabled:bool,required:bool}> $config
+     */
+    private function isFieldRequired(array $config, string $field): bool
+    {
+        return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
     }
 
     public function destroyUnit(PropertyUnit $unit): RedirectResponse
@@ -2605,25 +2842,34 @@ class PropertyPortfolioController extends Controller
             $lease = $u->leases->first();
             $tenant = $lease?->pmTenant;
             $actions = [
-                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="text-indigo-600 hover:text-indigo-700 font-medium">View property</a>',
+                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View property</a>',
             ];
 
             if ($u->status === PropertyUnit::STATUS_VACANT) {
-                $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="text-emerald-600 hover:text-emerald-700 font-medium">Assign tenant</a>';
-                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', ['property_unit' => $u->id], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">Publish listing</a>';
+                $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
+                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', ['property_unit' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($u->status === PropertyUnit::STATUS_OCCUPIED) {
                 if ($lease) {
-                    $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="text-emerald-600 hover:text-emerald-700 font-medium">Open lease</a>';
+                    $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';
                 }
                 if ($tenant?->name) {
-                    $actions[] = '<a href="'.route('property.tenants.profiles', ['q' => $tenant->name], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">View tenant</a>';
+                    $actions[] = '<a href="'.route('property.tenants.profiles', ['q' => $tenant->name], absolute: false).'" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">View tenant</a>';
                 }
             } elseif ($u->status === PropertyUnit::STATUS_NOTICE) {
-                $actions[] = '<a href="'.route('property.tenants.notices', ['q' => $u->label], absolute: false).'" class="text-amber-600 hover:text-amber-700 font-medium">Prepare move-out</a>';
-                $actions[] = '<a href="'.route('property.listings.vacant', ['q' => $u->property->name], absolute: false).'" class="text-blue-600 hover:text-blue-700 font-medium">Market unit</a>';
+                $actions[] = '<a href="'.route('property.tenants.notices', ['q' => $u->label], absolute: false).'" class="block px-3 py-2 text-xs text-amber-700 hover:bg-amber-50">Prepare move-out</a>';
+                $actions[] = '<a href="'.route('property.listings.vacant', ['q' => $u->property->name], absolute: false).'" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Market unit</a>';
             }
 
-            $actionHtml = new HtmlString('<div class="flex flex-wrap gap-2">'.implode('<span class="text-slate-300">|</span>', $actions).'</div>');
+            $actionHtml = new HtmlString(
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                implode('', $actions).
+                '</div>'.
+                '</details>'.
+                '</div>'
+            );
             $select = new HtmlString('<input form="occupancy-bulk-form" type="checkbox" name="unit_ids[]" value="'.$u->id.'" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />');
 
             return [

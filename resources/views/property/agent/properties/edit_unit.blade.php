@@ -8,6 +8,11 @@
     ]"
     :columns="[]"
 >
+    @php
+        $unitFieldCfg = $unitFields ?? [];
+        $unitEnabled = fn (string $k, bool $d = true) => (bool) (($unitFieldCfg[$k]['enabled'] ?? $d));
+        $unitRequired = fn (string $k, bool $d = false) => (bool) (($unitFieldCfg[$k]['required'] ?? $d) && $unitEnabled($k, $d));
+    @endphp
     <form method="post" action="{{ route('property.units.update', $unit) }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
         @csrf
         @method('PATCH')
@@ -19,46 +24,54 @@
                 <input type="text" value="{{ $unit->property?->name }}" disabled class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-gray-900/50 text-sm px-3 py-2 text-slate-600 dark:text-slate-300" />
             </div>
             <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Label <span class="text-red-600">*</span></label>
-                <input type="text" name="label" value="{{ old('label', $unit->label) }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Label @if($unitRequired('label', true))<span class="text-red-600">*</span>@endif</label>
+                <input type="text" name="label" value="{{ old('label', $unit->label) }}" @required($unitRequired('label', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('label')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
-            <div>
+            @if ($unitEnabled('unit_type', true))
+                <div>
                 <div class="flex items-center justify-between gap-2">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit type <span class="text-red-600">*</span></label>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit type @if($unitRequired('unit_type', true))<span class="text-red-600">*</span>@endif</label>
                     <button type="button" data-unit-meta-open="type" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add unit type</button>
                 </div>
-                <select id="unit_type" name="unit_type" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <select id="unit_type" name="unit_type" @required($unitRequired('unit_type', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                     @foreach ($unitTypes as $typeValue => $typeLabel)
                         <option value="{{ $typeValue }}" @selected(old('unit_type', $unit->unit_type) === $typeValue)>{{ $typeLabel }}</option>
                     @endforeach
                 </select>
                 @error('unit_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
-            <div id="bedrooms_wrapper">
+                </div>
+            @endif
+            @if ($unitEnabled('bedrooms', true))
+                <div id="bedrooms_wrapper">
                 <div class="flex items-center justify-between gap-2">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bedrooms / room setup <span class="text-red-600">*</span></label>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bedrooms / room setup @if($unitRequired('bedrooms'))<span class="text-red-600">*</span>@endif</label>
                     <button type="button" data-unit-meta-open="bedrooms" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add bedroom count</button>
                 </div>
-                <select id="bedrooms" name="bedrooms" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <select id="bedrooms" name="bedrooms" @required($unitRequired('bedrooms')) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                     <option value="">Select bedroom setup...</option>
                 </select>
                 @error('bedrooms')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent (KES) <span class="text-red-600">*</span></label>
-                <input type="number" name="rent_amount" value="{{ old('rent_amount', $unit->rent_amount) }}" step="0.01" min="0" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+            @endif
+            @if ($unitEnabled('rent_amount', true))
+                <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent (KES) @if($unitRequired('rent_amount', true))<span class="text-red-600">*</span>@endif</label>
+                <input type="number" name="rent_amount" value="{{ old('rent_amount', $unit->rent_amount) }}" step="0.01" min="0" @required($unitRequired('rent_amount', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('rent_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status <span class="text-red-600">*</span></label>
-                <select name="status" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                </div>
+            @endif
+            @if ($unitEnabled('status', true))
+                <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status @if($unitRequired('status', true))<span class="text-red-600">*</span>@endif</label>
+                <select name="status" @required($unitRequired('status', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                     <option value="vacant" @selected(old('status', $unit->status) === 'vacant')>Vacant</option>
                     <option value="occupied" @selected(old('status', $unit->status) === 'occupied')>Occupied</option>
                     <option value="notice" @selected(old('status', $unit->status) === 'notice')>Notice</option>
                 </select>
                 @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
+                </div>
+            @endif
             <div class="sm:col-span-2">
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Public listing description</label>
                 <textarea

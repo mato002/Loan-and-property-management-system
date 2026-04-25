@@ -8,6 +8,7 @@ use App\Mail\TenantPortalCredentialsMail;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\PmTenant;
+use App\Models\PropertyPortalSetting;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -207,14 +208,16 @@ class PmTenantDirectoryController extends Controller
                 : '—';
 
             $actions = new HtmlString(
-                '<div class="flex flex-wrap gap-1">'.
-                '<a href="'.route('property.tenants.show', $t).'" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'.
-                '<span class="text-slate-300">|</span>'.
-                '<a href="'.route('property.tenants.edit', $t).'" class="text-indigo-600 hover:text-indigo-700 font-medium">Edit</a>'.
-                '<span class="text-slate-300">|</span>'.
-                '<a href="'.route('property.tenants.leases').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Leases</a>'.
-                '<span class="text-slate-300">|</span>'.
-                '<a href="'.route('property.tenants.notices').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Notices</a>'.
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<a href="'.route('property.tenants.show', $t).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View</a>'.
+                '<a href="'.route('property.tenants.edit', $t).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
+                '<a href="'.route('property.tenants.leases').'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Leases</a>'.
+                '<a href="'.route('property.tenants.notices').'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Notices</a>'.
+                '</div>'.
+                '</details>'.
                 '</div>'
             );
 
@@ -234,6 +237,7 @@ class PmTenantDirectoryController extends Controller
             'pageTitle' => $pageTitle,
             'pageSubtitle' => $pageSubtitle,
             'showTenantForm' => $showTenantForm,
+            'tenantFields' => $this->tenantFieldConfig(),
             'stats' => $stats,
             'columns' => ['Tenant', 'Phone', 'Email', 'ID / ref', 'Leases', 'Lease end', 'Risk', 'Actions'],
             'tableRows' => $rows,
@@ -242,15 +246,16 @@ class PmTenantDirectoryController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $cfg = $this->tenantFieldConfig();
         $createPortal = $request->boolean('create_portal_login');
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:64'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
+            'phone' => [Rule::requiredIf($this->isFieldRequired($cfg, 'phone')), 'nullable', 'string', 'max:64'],
             'email' => $createPortal
                 ? ['required', 'email', 'max:255', Rule::unique(User::class, 'email')]
-                : ['nullable', 'email', 'max:255'],
-            'national_id' => ['nullable', 'string', 'max:64'],
+                : [Rule::requiredIf($this->isFieldRequired($cfg, 'email')), 'nullable', 'email', 'max:255'],
+            'national_id' => [Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')), 'nullable', 'string', 'max:64'],
             'risk_level' => ['required', 'in:normal,medium,high'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'create_portal_login' => ['sometimes', 'boolean'],
@@ -356,10 +361,11 @@ class PmTenantDirectoryController extends Controller
 
     public function storeJson(Request $request)
     {
+        $cfg = $this->tenantFieldConfig();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:64'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
+            'phone' => [Rule::requiredIf($this->isFieldRequired($cfg, 'phone')), 'nullable', 'string', 'max:64'],
+            'email' => [Rule::requiredIf($this->isFieldRequired($cfg, 'email')), 'nullable', 'email', 'max:255'],
         ]);
 
         $tenant = PmTenant::query()->create([
@@ -625,11 +631,12 @@ class PmTenantDirectoryController extends Controller
 
     public function update(Request $request, PmTenant $tenant): RedirectResponse
     {
+        $cfg = $this->tenantFieldConfig();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:64'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'national_id' => ['nullable', 'string', 'max:64'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
+            'phone' => [Rule::requiredIf($this->isFieldRequired($cfg, 'phone')), 'nullable', 'string', 'max:64'],
+            'email' => [Rule::requiredIf($this->isFieldRequired($cfg, 'email')), 'nullable', 'email', 'max:255'],
+            'national_id' => [Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')), 'nullable', 'string', 'max:64'],
             'risk_level' => ['required', 'in:normal,medium,high'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
@@ -637,5 +644,48 @@ class PmTenantDirectoryController extends Controller
         $tenant->update($data);
 
         return back()->with('success', 'Tenant updated.');
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function tenantFieldConfig(): array
+    {
+        $defaults = [
+            'name' => ['enabled' => true, 'required' => true],
+            'phone' => ['enabled' => true, 'required' => true],
+            'email' => ['enabled' => true, 'required' => false],
+            'id_number' => ['enabled' => true, 'required' => false],
+            'emergency_contact' => ['enabled' => true, 'required' => false],
+        ];
+        $raw = PropertyPortalSetting::getValue('system_setup_tenant_fields_json', '');
+        if (! is_string($raw) || trim($raw) === '') {
+            return $defaults;
+        }
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return $defaults;
+        }
+        foreach ($decoded as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $key = trim((string) ($row['key'] ?? ''));
+            if ($key === '' || ! array_key_exists($key, $defaults)) {
+                continue;
+            }
+            $defaults[$key]['enabled'] = ! array_key_exists('enabled', $row) || (bool) $row['enabled'];
+            $defaults[$key]['required'] = (bool) ($row['required'] ?? false);
+        }
+
+        return $defaults;
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $config
+     */
+    private function isFieldRequired(array $config, string $field): bool
+    {
+        return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
     }
 }

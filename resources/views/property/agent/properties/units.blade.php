@@ -22,6 +22,9 @@
                 || $errors->has('vacant_count')
                 || $errors->has('occupied_count')
                 || $errors->has('notice_count');
+            $unitFieldCfg = $unitFields ?? [];
+            $unitEnabled = fn (string $k, bool $d = true) => (bool) (($unitFieldCfg[$k]['enabled'] ?? $d));
+            $unitRequired = fn (string $k, bool $d = false) => (bool) (($unitFieldCfg[$k]['required'] ?? $d) && $unitEnabled($k, $d));
         @endphp
         <div x-data="{ showUnitCreateForms: @js($unitCreateFormHasErrors) }" class="space-y-4">
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
@@ -118,45 +121,52 @@
                     <input type="number" name="label_start" value="{{ old('label_start', 1) }}" min="1" step="1" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('label_start')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div>
+                @if ($unitEnabled('unit_type', true))
+                    <div>
                     <div class="flex items-center justify-between gap-2">
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit type <span class="text-red-600">*</span></label>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit type @if($unitRequired('unit_type', true))<span class="text-red-600">*</span>@endif</label>
                         <button type="button" data-unit-meta-open="type" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add unit type</button>
                     </div>
-                    <select id="unit_type" name="unit_type" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <select id="unit_type" name="unit_type" @required($unitRequired('unit_type', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="">Select unit type...</option>
                         @foreach ($unitTypes as $typeValue => $typeLabel)
                             <option value="{{ $typeValue }}" @selected(old('unit_type') === $typeValue)>{{ $typeLabel }}</option>
                         @endforeach
                     </select>
                     @error('unit_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div id="bedrooms_wrapper">
+                    </div>
+                @endif
+                @if ($unitEnabled('bedrooms', true))
+                    <div id="bedrooms_wrapper">
                     <div class="flex items-center justify-between gap-2">
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bedrooms / room setup <span class="text-red-600">*</span></label>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Bedrooms / room setup @if($unitRequired('bedrooms'))<span class="text-red-600">*</span>@endif</label>
                         <button type="button" data-unit-meta-open="bedrooms" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add bedroom count</button>
                     </div>
-                    <select id="bedrooms" name="bedrooms" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <select id="bedrooms" name="bedrooms" @required($unitRequired('bedrooms')) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="">Select bedroom setup...</option>
                     </select>
                     @error('bedrooms')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Use Unit type to distinguish Single room, Bedsitter, and Studio.</p>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent (KES) <span class="text-red-600">*</span></label>
-                    <input type="number" name="rent_amount" value="{{ old('rent_amount') }}" step="0.01" min="0" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    </div>
+                @endif
+                @if ($unitEnabled('rent_amount', true))
+                    <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent (KES) @if($unitRequired('rent_amount', true))<span class="text-red-600">*</span>@endif</label>
+                    <input type="number" name="rent_amount" value="{{ old('rent_amount') }}" step="0.01" min="0" @required($unitRequired('rent_amount', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('rent_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
+                    </div>
+                @endif
+                @if ($unitEnabled('status', true))
+                    <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status mode <span class="text-red-600">*</span></label>
                     <select id="status_mode" name="status_mode" x-model="statusMode" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="single" @selected(old('status_mode', 'single') === 'single')>One status for all units</option>
                         <option value="split" @selected(old('status_mode') === 'split')>Split by counts (vacant/occupied/notice)</option>
                     </select>
                     @error('status_mode')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
+                    </div>
                 <div id="status_single_wrapper" x-show="statusMode !== 'split'">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status <span class="text-red-600">*</span></label>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status @if($unitRequired('status', true))<span class="text-red-600">*</span>@endif</label>
                     <select id="status_single" name="status" x-bind:required="statusMode !== 'split'" x-bind:disabled="statusMode === 'split'" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="vacant" @selected(old('status') === 'vacant')>Vacant</option>
                         <option value="occupied" @selected(old('status') === 'occupied')>Occupied</option>
@@ -186,6 +196,7 @@
                     </div>
                     <p id="split_status_error" class="mt-2 text-xs text-red-600 hidden"></p>
                 </div>
+                @endif
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Public listing description</label>
                     <textarea
@@ -799,15 +810,29 @@
             noticeCount.addEventListener('input', syncSplitValidation);
             syncSplitValidation();
 
-            document.querySelectorAll('[data-unit-meta-open]').forEach((button) => {
-                button.addEventListener('click', () => {
-                    metaMode = button.getAttribute('data-unit-meta-open') === 'bedrooms' ? 'bedrooms' : 'type';
-                    openMetaModal();
+            if (!window.__unitMetaDelegatedClickBound) {
+                window.__unitMetaDelegatedClickBound = true;
+                document.addEventListener('click', (event) => {
+                    const target = event.target;
+                    if (!(target instanceof Element)) {
+                        return;
+                    }
+
+                    const openBtn = target.closest('[data-unit-meta-open]');
+                    if (openBtn instanceof Element) {
+                        event.preventDefault();
+                        metaMode = openBtn.getAttribute('data-unit-meta-open') === 'bedrooms' ? 'bedrooms' : 'type';
+                        openMetaModal();
+                        return;
+                    }
+
+                    const closeBtn = target.closest('[data-unit-meta-close]');
+                    if (closeBtn instanceof Element) {
+                        event.preventDefault();
+                        closeMetaModal();
+                    }
                 });
-            });
-            document.querySelectorAll('[data-unit-meta-close]').forEach((button) => {
-                button.addEventListener('click', closeMetaModal);
-            });
+            }
         };
 
         // Prevent duplicate global listeners when Turbo re-renders this frame.

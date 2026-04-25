@@ -8,6 +8,10 @@
     empty-title="No applications"
     empty-hint="Record applications below; attach documents in a later phase."
 >
+    @php
+        $applicationCfg = $applicationFields ?? [];
+        $applicationRequired = fn (string $k, bool $d = false) => (bool) (($applicationCfg[$k]['required'] ?? $d) && ($applicationCfg[$k]['enabled'] ?? true));
+    @endphp
     <x-slot name="above">
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
             <div class="flex flex-wrap items-center gap-2">
@@ -67,7 +71,7 @@
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Applicant name</label>
-                    <input type="text" name="applicant_name" value="{{ old('applicant_name') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input type="text" name="applicant_name" value="{{ old('applicant_name') }}" @required($applicationRequired('applicant_name', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('applicant_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -93,7 +97,7 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit (optional)</label>
                     <x-property.quick-create-select
                         name="property_unit_id"
-                        :required="false"
+                        :required="$applicationRequired('unit_id', true)"
                         placeholder="—"
                         :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
                         :create="[

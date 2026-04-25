@@ -7,6 +7,7 @@ use App\Models\PmListingApplication;
 use App\Models\PmListingLead;
 use App\Models\PmMessageLog;
 use App\Models\PmMessageTemplate;
+use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Support\CsvExport;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class PropertyListingsPipelineController extends Controller
@@ -64,6 +66,7 @@ class PropertyListingsPipelineController extends Controller
             'leads' => $leads,
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
             'filters' => $filters,
+            'leadFields' => $this->leadFieldConfig(),
         ]);
     }
 
@@ -95,14 +98,15 @@ class PropertyListingsPipelineController extends Controller
 
     public function storeLead(Request $request): RedirectResponse
     {
+        $cfg = $this->leadFieldConfig();
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:64'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'full_name')), 'nullable', 'string', 'max:255'],
+            'phone' => [Rule::requiredIf($this->isFieldRequired($cfg, 'phone')), 'nullable', 'string', 'max:64'],
+            'email' => [Rule::requiredIf($this->isFieldRequired($cfg, 'email')), 'nullable', 'email', 'max:255'],
             'source' => ['nullable', 'string', 'max:128'],
             'stage' => ['nullable', 'string', 'max:32'],
-            'notes' => ['nullable', 'string', 'max:5000'],
-            'property_unit_id' => ['nullable', 'exists:property_units,id'],
+            'notes' => [Rule::requiredIf($this->isFieldRequired($cfg, 'references')), 'nullable', 'string', 'max:5000'],
+            'property_unit_id' => [Rule::requiredIf($this->isFieldRequired($cfg, 'preferred_unit_type')), 'nullable', 'exists:property_units,id'],
         ]);
 
         PmListingLead::query()->create([
@@ -235,6 +239,7 @@ class PropertyListingsPipelineController extends Controller
             'applications' => $apps,
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
             'filters' => $filters,
+            'applicationFields' => $this->applicationFieldConfig(),
         ]);
     }
 
@@ -404,13 +409,14 @@ class PropertyListingsPipelineController extends Controller
 
     public function storeApplication(Request $request): RedirectResponse
     {
+        $cfg = $this->applicationFieldConfig();
         $data = $request->validate([
-            'applicant_name' => ['required', 'string', 'max:255'],
+            'applicant_name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'applicant_name')), 'nullable', 'string', 'max:255'],
             'applicant_phone' => ['nullable', 'string', 'max:64'],
             'applicant_email' => ['nullable', 'email', 'max:255'],
-            'property_unit_id' => ['nullable', 'exists:property_units,id'],
+            'property_unit_id' => [Rule::requiredIf($this->isFieldRequired($cfg, 'unit_id')), 'nullable', 'exists:property_units,id'],
             'status' => ['nullable', 'string', 'max:32'],
-            'notes' => ['nullable', 'string', 'max:5000'],
+            'notes' => [Rule::requiredIf($this->isFieldRequired($cfg, 'references')), 'nullable', 'string', 'max:5000'],
         ]);
 
         PmListingApplication::query()->create([
@@ -430,5 +436,72 @@ class PropertyListingsPipelineController extends Controller
         $application->update($data);
 
         return back()->with('success', __('Status updated.'));
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function leadFieldConfig(): array
+    {
+        return $this->configuredFieldMap('system_setup_lead_fields_json', [
+            'full_name' => ['enabled' => true, 'required' => true],
+            'phone' => ['enabled' => true, 'required' => true],
+            'email' => ['enabled' => true, 'required' => false],
+            'preferred_unit_type' => ['enabled' => true, 'required' => false],
+            'budget' => ['enabled' => true, 'required' => false],
+            'employment_status' => ['enabled' => true, 'required' => false],
+            'references' => ['enabled' => true, 'required' => false],
+        ]);
+    }
+
+    /**
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function applicationFieldConfig(): array
+    {
+        return $this->configuredFieldMap('system_setup_rental_application_fields_json', [
+            'applicant_name' => ['enabled' => true, 'required' => true],
+            'unit_id' => ['enabled' => true, 'required' => true],
+            'monthly_income' => ['enabled' => true, 'required' => false],
+            'employment_status' => ['enabled' => true, 'required' => false],
+            'references' => ['enabled' => true, 'required' => false],
+        ]);
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $defaults
+     * @return array<string,array{enabled:bool,required:bool}>
+     */
+    private function configuredFieldMap(string $settingKey, array $defaults): array
+    {
+        $raw = PropertyPortalSetting::getValue($settingKey, '');
+        if (! is_string($raw) || trim($raw) === '') {
+            return $defaults;
+        }
+        $decoded = json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return $defaults;
+        }
+        foreach ($decoded as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $key = trim((string) ($row['key'] ?? ''));
+            if ($key === '' || ! array_key_exists($key, $defaults)) {
+                continue;
+            }
+            $defaults[$key]['enabled'] = ! array_key_exists('enabled', $row) || (bool) $row['enabled'];
+            $defaults[$key]['required'] = (bool) ($row['required'] ?? false);
+        }
+
+        return $defaults;
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $config
+     */
+    private function isFieldRequired(array $config, string $field): bool
+    {
+        return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
     }
 }

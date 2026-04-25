@@ -100,6 +100,7 @@
                 properties: @js($propertyOptions),
                 waterUnits: @js($waterUnitOptions),
                 waterProperties: @js($waterPropertyOptions),
+                waterTemplatesByUnit: @js($waterTemplateByUnit ?? []),
                 selectedChargePropertyId: @js($oldChargePropertyId),
                 selectedChargeUnitId: @js($oldChargeUnitId),
                 selectedWaterPropertyId: @js($oldWaterPropertyId),
@@ -125,8 +126,23 @@
                     }
                     const exists = this.filteredWaterUnits().some((unit) => Number(unit.id) === Number(this.selectedReadingUnitId));
                     if (!exists) this.selectedReadingUnitId = 0;
+                    this.autofillWaterRates();
+                },
+                autofillWaterRates() {
+                    const unitId = String(this.selectedReadingUnitId || '');
+                    if (!unitId || !this.waterTemplatesByUnit[unitId]) return;
+                    const tpl = this.waterTemplatesByUnit[unitId];
+                    const singleRate = this.$refs.singleRatePerUnit;
+                    const singleFixed = this.$refs.singleFixedCharge;
+                    const bulkRate = this.$refs.bulkRatePerUnit;
+                    const bulkFixed = this.$refs.bulkFixedCharge;
+                    if (singleRate && (singleRate.value === '' || Number(singleRate.value) === 0)) singleRate.value = tpl.rate_per_unit ?? '';
+                    if (singleFixed && singleFixed.value === '') singleFixed.value = tpl.fixed_charge ?? '';
+                    if (bulkRate && (bulkRate.value === '' || Number(bulkRate.value) === 0)) bulkRate.value = tpl.rate_per_unit ?? '';
+                    if (bulkFixed && bulkFixed.value === '') bulkFixed.value = tpl.fixed_charge ?? '';
                 },
             }"
+            x-init="$watch('selectedReadingUnitId', () => autofillWaterRates())"
             class="space-y-4"
         >
         <div class="max-w-2xl">
@@ -224,9 +240,13 @@
                 <div class="grid gap-3 sm:grid-cols-3">
                     <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Month</label><input type="month" name="billing_month" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
                     <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Current reading</label><input type="number" step="0.001" min="0" name="current_reading" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
-                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label><input type="number" step="0.01" min="0" name="rate_per_unit" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label><input x-ref="singleRatePerUnit" type="number" step="0.01" min="0" name="rate_per_unit" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
                 </div>
-                <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label><input type="number" step="0.01" min="0" name="fixed_charge" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label>
+                    <input x-ref="singleFixedCharge" type="number" step="0.01" min="0" name="fixed_charge" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Rate/fixed auto-fill from property water template when available.</p>
+                </div>
                 <button type="submit" :disabled="!hasSelectedWaterProperty()" class="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-400">Save reading</button>
             </form>
             <form method="post" action="{{ route('property.revenue.utilities.water_readings.bulk') }}" class="space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700">
@@ -241,11 +261,11 @@
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label>
-                        <input type="number" name="rate_per_unit" value="{{ old('rate_per_unit') }}" step="0.01" min="0" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        <input x-ref="bulkRatePerUnit" type="number" name="rate_per_unit" value="{{ old('rate_per_unit') }}" step="0.01" min="0" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label>
-                        <input type="number" name="fixed_charge" value="{{ old('fixed_charge') }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        <input x-ref="bulkFixedCharge" type="number" name="fixed_charge" value="{{ old('fixed_charge') }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     </div>
                 </div>
                 <div>

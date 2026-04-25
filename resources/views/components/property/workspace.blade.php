@@ -145,10 +145,26 @@
                                                     : mb_strtolower(
                                                         implode(' ', array_map(static fn ($c) => strip_tags((string) $c), $row))
                                                     );
+                                                $__rowHref = null;
+                                                foreach ($row as $__rowCell) {
+                                                    $__cellHtml = (string) $__rowCell;
+                                                    if (preg_match('/<a[^>]+href=["\\\']([^"\\\']+)["\\\']/i', $__cellHtml, $__hrefMatch)) {
+                                                        $__rowHref = $__hrefMatch[1] ?? null;
+                                                        if (is_string($__rowHref) && trim($__rowHref) !== '') {
+                                                            break;
+                                                        }
+                                                    }
+                                                }
                                             @endphp
                                             <tr
-                                                class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                                                class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 {{ $__rowHref ? 'cursor-pointer' : '' }}"
                                                 data-filter-text="{{ e($__filterText) }}"
+                                                @if ($__rowHref)
+                                                    data-row-href="{{ $__rowHref }}"
+                                                    tabindex="0"
+                                                    role="link"
+                                                    aria-label="Open row details"
+                                                @endif
                                             >
                                                 @foreach ($row as $cell)
                                                     <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 whitespace-normal sm:whitespace-nowrap sm:max-w-xs sm:truncate align-top">
@@ -198,4 +214,29 @@
             </div>
         @endif
     </x-property.page>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const interactiveSelector = 'a, button, input, select, textarea, label, [role="button"], [data-row-ignore-click]';
+
+            document.querySelectorAll('tr[data-row-href]').forEach(function (row) {
+                const href = row.getAttribute('data-row-href');
+                if (!href) return;
+
+                row.addEventListener('click', function (event) {
+                    if (event.target && event.target.closest(interactiveSelector)) {
+                        return;
+                    }
+                    window.location.href = href;
+                });
+
+                row.addEventListener('keydown', function (event) {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    if (event.target && event.target.closest(interactiveSelector)) return;
+                    event.preventDefault();
+                    window.location.href = href;
+                });
+            });
+        });
+    </script>
 </x-property-layout>
