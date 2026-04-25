@@ -446,22 +446,17 @@ class LoanAccountingController extends Controller
         $payload = $this->buildChartPayload($request, $validated);
         AccountingChartAccount::create($payload);
 
+        $redirectTo = $request->string('redirect_to')->toString();
+        if ($redirectTo !== '') {
+            return redirect($redirectTo)->with('status', 'Account created.');
+        }
+
         return redirect()->route('loan.accounting.chart.index')->with('status', 'Account created.');
     }
 
-    public function chartEdit(AccountingChartAccount $accounting_chart_account): View
+    public function chartEdit(AccountingChartAccount $accounting_chart_account): RedirectResponse
     {
-        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
-        $headerAccounts = $hasAccountClass
-            ? AccountingChartAccount::query()
-                ->where('is_active', true)
-                ->where('account_class', AccountingChartAccount::CLASS_HEADER)
-                ->where('id', '!=', $accounting_chart_account->id)
-                ->orderBy('code')
-                ->get()
-            : collect();
-
-        return view('loan.accounting.chart.edit', ['account' => $accounting_chart_account, 'headerAccounts' => $headerAccounts]);
+        return redirect()->route('loan.accounting.books.chart_rules', ['edit_account' => $accounting_chart_account->id]);
     }
 
     public function chartUpdate(Request $request, AccountingChartAccount $accounting_chart_account): RedirectResponse
@@ -469,6 +464,11 @@ class LoanAccountingController extends Controller
         $validated = $this->validateChartPayload($request, $accounting_chart_account);
         $payload = $this->buildChartPayload($request, $validated, $accounting_chart_account);
         $accounting_chart_account->update($payload);
+
+        $redirectTo = $request->string('redirect_to')->toString();
+        if ($redirectTo !== '') {
+            return redirect($redirectTo)->with('status', 'Account updated.');
+        }
 
         return redirect()->route('loan.accounting.chart.index')->with('status', 'Account updated.');
     }

@@ -92,6 +92,16 @@ class LoanAccountingBooksController extends Controller
                 ->orderBy('current_balance')
                 ->get();
         }
+        $editingAccount = null;
+        $editAccountId = (int) request()->integer('edit_account');
+        if ($editAccountId > 0) {
+            $editingAccount = AccountingChartAccount::query()->find($editAccountId);
+        }
+        $duplicateAccount = null;
+        $duplicateAccountId = (int) request()->integer('duplicate_account');
+        if ($duplicateAccountId > 0) {
+            $duplicateAccount = AccountingChartAccount::query()->find($duplicateAccountId);
+        }
 
         return view('loan.accounting.books.chart-rules', compact(
             'accounts',
@@ -102,7 +112,9 @@ class LoanAccountingBooksController extends Controller
             'missingRules',
             'pendingApprovals',
             'isBalanced',
-            'overdrawnAccounts'
+            'overdrawnAccounts',
+            'editingAccount',
+            'duplicateAccount'
         ));
     }
 

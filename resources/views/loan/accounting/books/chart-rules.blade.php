@@ -4,6 +4,9 @@
             $fmtN = fn (int|float $n) => number_format((float) $n, 0);
             $assetRows = collect($accounts ?? [])->where('account_type', 'asset')->take(8)->values();
             $mappingRows = collect($postingRules ?? [])->take(8);
+            $isEditingAccount = isset($editingAccount) && $editingAccount;
+            $isDuplicatingAccount = ! $isEditingAccount && isset($duplicateAccount) && $duplicateAccount;
+            $modalAccount = $isEditingAccount ? $editingAccount : ($isDuplicatingAccount ? $duplicateAccount : null);
         @endphp
         <style>
             @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
@@ -15,7 +18,7 @@
 
         <div
             class="space-y-6"
-            x-data="{ showCreateAccountModal: {{ $errors->any() ? 'true' : 'false' }}, showOverdrawnModal: false, allowOverdraft: {{ old('allow_overdraft') ? 'true' : 'false' }} }"
+            x-data="{ showCreateAccountModal: {{ ($errors->any() || $isEditingAccount || $isDuplicatingAccount) ? 'true' : 'false' }}, showOverdrawnModal: false, allowOverdraft: {{ old('allow_overdraft', (bool) ($modalAccount->allow_overdraft ?? false)) ? 'true' : 'false' }} }"
             @keydown.escape.window="showCreateAccountModal = false; showOverdrawnModal = false"
         >
             <section class="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
@@ -99,7 +102,7 @@
                     <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div class="mb-4 flex items-center justify-between gap-3">
                             <h2 class="text-lg font-semibold text-slate-900">Manage Chart of Accounts (Cash Flow View)</h2>
-                            <button type="button" @click="showCreateAccountModal = true" class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Create New Account</button>
+                            <a href="{{ route('loan.accounting.books.chart_rules') }}" class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Create New Account</a>
                         </div>
                         <div class="overflow-x-auto rounded-lg border border-slate-200">
                             <table class="min-w-full divide-y divide-slate-200 text-sm">
@@ -136,8 +139,8 @@
                                             <td class="px-3 py-2"><input type="checkbox" @checked($row->is_active) disabled class="h-4 w-8 rounded-full border border-slate-300 text-emerald-600"></td>
                                             <td class="px-3 py-2 text-slate-500">
                                                 <div class="flex items-center gap-1">
-                                                    <a href="{{ route('loan.accounting.chart.edit', $row) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
-                                                    <a href="{{ route('loan.accounting.chart.create', ['duplicate' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Duplicate"><i class="fa-solid fa-clone" aria-hidden="true"></i></a>
+                                                    <a href="{{ route('loan.accounting.books.chart_rules', ['edit_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+                                                    <a href="{{ route('loan.accounting.books.chart_rules', ['duplicate_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Duplicate"><i class="fa-solid fa-clone" aria-hidden="true"></i></a>
                                                     <a href="{{ route('loan.accounting.journal.index', ['q' => $row->code]) }}" class="rounded p-1 hover:bg-purple-50 hover:text-purple-700" title="Audit History"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
                                                 </div>
                                             </td>
@@ -256,31 +259,35 @@
                     >
                         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
                             <div>
-                                <h3 class="text-lg font-semibold text-slate-900">Create New Account</h3>
-                                <p class="text-sm text-slate-500">Add a new chart of account without leaving this page.</p>
+                                <h3 class="text-lg font-semibold text-slate-900">{{ $isEditingAccount ? 'Edit Account' : ($isDuplicatingAccount ? 'Duplicate Account' : 'Create New Account') }}</h3>
+                                <p class="text-sm text-slate-500">{{ $isEditingAccount ? 'Update account details in this modal window.' : ($isDuplicatingAccount ? 'Create a new account from an existing one.' : 'Add a new chart of account without leaving this page.') }}</p>
                             </div>
                             <button type="button" @click="showCreateAccountModal = false" class="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">x</button>
                         </div>
 
-                        <form method="post" action="{{ route('loan.accounting.chart.store') }}" class="space-y-5 px-6 py-5">
+                        <form method="post" action="{{ $isEditingAccount ? route('loan.accounting.chart.update', $editingAccount) : route('loan.accounting.chart.store') }}" class="space-y-5 px-6 py-5">
                             @csrf
+                            <input type="hidden" name="redirect_to" value="{{ route('loan.accounting.books.chart_rules') }}" />
+                            @if($isEditingAccount)
+                                @method('patch')
+                            @endif
 
                             <div class="grid gap-4 md:grid-cols-3">
                                 <div>
                                     <label for="modal_code" class="mb-1 block text-xs font-semibold text-slate-600">Code</label>
-                                    <input id="modal_code" name="code" value="{{ old('code') }}" required class="w-full rounded-lg border-slate-200 text-sm font-mono" />
+                                    <input id="modal_code" name="code" value="{{ old('code', $isDuplicatingAccount ? (($modalAccount->code ?? '').'-COPY') : ($modalAccount->code ?? '')) }}" required class="w-full rounded-lg border-slate-200 text-sm font-mono" />
                                     @error('code')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </div>
                                 <div>
                                     <label for="modal_name" class="mb-1 block text-xs font-semibold text-slate-600">Name</label>
-                                    <input id="modal_name" name="name" value="{{ old('name') }}" required class="w-full rounded-lg border-slate-200 text-sm" />
+                                    <input id="modal_name" name="name" value="{{ old('name', $isDuplicatingAccount ? (($modalAccount->name ?? '').' Copy') : ($modalAccount->name ?? '')) }}" required class="w-full rounded-lg border-slate-200 text-sm" />
                                     @error('name')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </div>
                                 <div>
                                     <label for="modal_account_type" class="mb-1 block text-xs font-semibold text-slate-600">Type</label>
                                     <select id="modal_account_type" name="account_type" required class="w-full rounded-lg border-slate-200 text-sm">
                                         @foreach (['asset', 'liability', 'equity', 'income', 'expense'] as $t)
-                                            <option value="{{ $t }}" @selected(old('account_type', 'asset') === $t)>{{ ucfirst($t) }}</option>
+                                            <option value="{{ $t }}" @selected(old('account_type', $modalAccount->account_type ?? 'asset') === $t)>{{ ucfirst($t) }}</option>
                                         @endforeach
                                     </select>
                                     @error('account_type')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
@@ -292,7 +299,7 @@
                                     <label for="modal_account_class" class="mb-1 block text-xs font-semibold text-slate-600">Account Class</label>
                                     <select id="modal_account_class" name="account_class" class="w-full rounded-lg border-slate-200 text-sm">
                                         @foreach (['Header', 'Detail'] as $class)
-                                            <option value="{{ $class }}" @selected(old('account_class', 'Detail') === $class)>{{ $class }}</option>
+                                            <option value="{{ $class }}" @selected(old('account_class', $modalAccount->account_class ?? 'Detail') === $class)>{{ $class }}</option>
                                         @endforeach
                                     </select>
                                     @error('account_class')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
@@ -302,14 +309,15 @@
                                     <select id="modal_parent_id" name="parent_id" class="w-full rounded-lg border-slate-200 text-sm">
                                         <option value="">Top-level account</option>
                                         @foreach (($headerAccounts ?? collect()) as $header)
-                                            <option value="{{ $header->id }}" @selected((string) old('parent_id') === (string) $header->id)>{{ $header->code }} - {{ $header->name }}</option>
+                                            @continue($isEditingAccount && (int) $modalAccount->id === (int) $header->id)
+                                            <option value="{{ $header->id }}" @selected((string) old('parent_id', $modalAccount->parent_id ?? '') === (string) $header->id)>{{ $header->code }} - {{ $header->name }}</option>
                                         @endforeach
                                     </select>
                                     @error('parent_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </div>
                                 <div>
                                     <label for="modal_current_balance" class="mb-1 block text-xs font-semibold text-slate-600">Current Balance</label>
-                                    <input id="modal_current_balance" type="number" step="0.01" min="0" name="current_balance" value="{{ old('current_balance', 0) }}" class="w-full rounded-lg border-slate-200 text-sm" />
+                                    <input id="modal_current_balance" type="number" step="0.01" name="current_balance" value="{{ old('current_balance', $modalAccount->current_balance ?? 0) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                     @error('current_balance')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </div>
                                 <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -317,7 +325,7 @@
                                         <span>Allow Overdraft</span>
                                         <span>
                                             <input type="hidden" name="allow_overdraft" value="0" />
-                                            <input x-model="allowOverdraft" type="checkbox" name="allow_overdraft" value="1" class="rounded border-slate-300" />
+                                            <input x-model="allowOverdraft" type="checkbox" name="allow_overdraft" value="1" class="rounded border-slate-300" @checked(old('allow_overdraft', $modalAccount->allow_overdraft ?? false)) />
                                         </span>
                                     </label>
                                 </div>
@@ -326,17 +334,17 @@
                             <div class="grid gap-4 md:grid-cols-3">
                                 <div x-show="allowOverdraft" x-cloak>
                                     <label for="modal_overdraft_limit" class="mb-1 block text-xs font-semibold text-slate-600">Overdraft Limit</label>
-                                    <input id="modal_overdraft_limit" type="number" step="0.01" min="0" name="overdraft_limit" value="{{ old('overdraft_limit') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="Leave blank for unlimited" />
+                                    <input id="modal_overdraft_limit" type="number" step="0.01" min="0" name="overdraft_limit" value="{{ old('overdraft_limit', $modalAccount->overdraft_limit ?? '') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="Leave blank for unlimited" />
                                     @error('overdraft_limit')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </div>
                                 <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                                     <input type="hidden" name="is_cash_account" value="0" />
-                                    <input type="checkbox" name="is_cash_account" value="1" class="rounded border-slate-300" @checked(old('is_cash_account')) />
+                                    <input type="checkbox" name="is_cash_account" value="1" class="rounded border-slate-300" @checked(old('is_cash_account', $modalAccount->is_cash_account ?? false)) />
                                     Cash / bank account
                                 </label>
                                 <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                                     <input type="hidden" name="is_active" value="0" />
-                                    <input type="checkbox" name="is_active" value="1" class="rounded border-slate-300" @checked(old('is_active', true)) />
+                                    <input type="checkbox" name="is_active" value="1" class="rounded border-slate-300" @checked(old('is_active', $modalAccount->is_active ?? true)) />
                                     Active
                                 </label>
                                 <div class="flex items-center md:justify-end">
@@ -346,7 +354,7 @@
 
                             <div class="flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
                                 <button type="button" @click="showCreateAccountModal = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Save Account</button>
+                                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">{{ $isEditingAccount ? 'Update Account' : ($isDuplicatingAccount ? 'Create Copy' : 'Save Account') }}</button>
                             </div>
                         </form>
                     </div>
@@ -388,7 +396,7 @@
                                             <td class="px-3 py-2 font-semibold text-red-700">KSh {{ $fmtN((float) $a->current_balance) }}</td>
                                             <td class="px-3 py-2">{{ is_null($a->overdraft_limit) ? 'Unlimited' : 'KSh '.number_format((float) $a->overdraft_limit, 0) }}</td>
                                             <td class="px-3 py-2">
-                                                <a href="{{ route('loan.accounting.chart.edit', $a) }}" class="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+                                                <a href="{{ route('loan.accounting.books.chart_rules', ['edit_account' => $a->id]) }}" class="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
                                                 <a href="{{ route('loan.accounting.journal.index', ['q' => $a->code]) }}" class="rounded p-1 text-slate-500 hover:bg-purple-50 hover:text-purple-700" title="View Journal"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
                                             </td>
                                         </tr>
