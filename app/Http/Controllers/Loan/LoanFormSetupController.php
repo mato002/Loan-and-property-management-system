@@ -19,6 +19,15 @@ class LoanFormSetupController extends Controller
     {
         $cfg = $this->setupPageConfig($page);
 
+        if ($page === 'accounting-forms') {
+            return view('loan.system.setup.accounting_setup', [
+                'title' => 'Accounting Setup',
+                'subtitle' => 'Define the rules that govern revenue recognition, ledger posting, liquidity protection, taxation, approvals, and period closure.',
+                'backUrl' => route('loan.system.setup'),
+                'booksUrl' => route('loan.accounting.books'),
+            ]);
+        }
+
         return $this->renderForm(
             $cfg['kind'],
             $cfg['title'],

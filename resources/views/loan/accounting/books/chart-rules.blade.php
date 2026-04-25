@@ -102,7 +102,13 @@
                     <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                         <div class="mb-4 flex items-center justify-between gap-3">
                             <h2 class="text-lg font-semibold text-slate-900">Manage Chart of Accounts (Cash Flow View)</h2>
-                            <a href="{{ route('loan.accounting.books.chart_rules') }}" class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Create New Account</a>
+                            <button
+                                type="button"
+                                @click="showCreateAccountModal = true"
+                                class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+                            >
+                                Create New Account
+                            </button>
                         </div>
                         <div class="overflow-x-auto rounded-lg border border-slate-200">
                             <table class="min-w-full divide-y divide-slate-200 text-sm">

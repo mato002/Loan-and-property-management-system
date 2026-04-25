@@ -246,114 +246,231 @@ class LoanSystemHelpController extends Controller
         $this->ensureDefaultSettings();
 
         $formSetup = fn (string $page) => route('loan.system.form_setup.page', ['page' => $page]);
+        $modules = [
+            [
+                'key' => 'foundation',
+                'title' => 'Foundation',
+                'cards' => [
+                    [
+                        'title' => 'Company Settings',
+                        'desc' => 'Set company name, logo, address, contacts, and public profile.',
+                        'href' => route('loan.system.setup.company'),
+                        'icon' => 'building',
+                        'status' => 'completed',
+                        'priority' => 'required',
+                    ],
+                    [
+                        'title' => 'General Settings',
+                        'desc' => 'Configure automation defaults, approvals, and policy notes.',
+                        'href' => route('loan.system.setup.preferences'),
+                        'icon' => 'wrench',
+                        'status' => 'needs_review',
+                        'priority' => 'required',
+                    ],
+                ],
+            ],
+            [
+                'key' => 'lending',
+                'title' => 'Lending',
+                'cards' => [
+                    [
+                        'title' => 'Loans Products',
+                        'desc' => 'Setup loan products, interest rates, duty fees, and prepayments.',
+                        'href' => route('loan.system.setup.loan_products'),
+                        'icon' => 'briefcase',
+                        'status' => 'needs_review',
+                        'priority' => 'required',
+                    ],
+                    [
+                        'title' => 'Loan Settings',
+                        'desc' => 'Configure checkoffs, reschedules, and policy capture fields.',
+                        'href' => $formSetup('loan-settings'),
+                        'icon' => 'bookmark',
+                        'status' => 'not_configured',
+                        'priority' => 'required',
+                    ],
+                    [
+                        'title' => 'Salary Advances',
+                        'desc' => 'Manage salary advance requests and approvals.',
+                        'href' => route('loan.accounting.advances.index'),
+                        'icon' => 'banknote',
+                        'status' => 'needs_review',
+                        'priority' => 'recommended',
+                    ],
+                    [
+                        'title' => 'Loan Form Setup',
+                        'desc' => 'Design the fields captured on client and staff loan forms.',
+                        'href' => route('loan.system.form_setup.client'),
+                        'icon' => 'document',
+                        'status' => 'not_configured',
+                        'priority' => 'required',
+                        'badge' => 'Recommended first',
+                    ],
+                    [
+                        'title' => 'Client Settings',
+                        'desc' => 'Client settings module is reserved for upcoming onboarding controls.',
+                        'href' => null,
+                        'icon' => 'idcard',
+                        'status' => 'not_configured',
+                        'priority' => 'optional',
+                        'coming_soon' => true,
+                        'badge' => 'Coming soon',
+                    ],
+                ],
+            ],
+            [
+                'key' => 'people-hr',
+                'title' => 'People & HR',
+                'cards' => [
+                    [
+                        'title' => 'Staff Structure',
+                        'desc' => 'Define hierarchy and staff profile structure.',
+                        'href' => $formSetup('staff-structure'),
+                        'icon' => 'org',
+                        'status' => 'not_configured',
+                        'priority' => 'required',
+                    ],
+                    [
+                        'title' => 'System Access & User roles',
+                        'desc' => 'Manage login OTP settings, roles, and access permissions.',
+                        'href' => route('loan.system.setup.access_roles'),
+                        'icon' => 'access',
+                        'status' => 'needs_review',
+                        'priority' => 'required',
+                        'badge' => 'Permission required',
+                    ],
+                    [
+                        'title' => 'Staff Performance',
+                        'desc' => 'Define KPI and performance analysis setup fields.',
+                        'href' => $formSetup('staff-performance'),
+                        'icon' => 'trending',
+                        'status' => 'not_configured',
+                        'priority' => 'recommended',
+                    ],
+                    [
+                        'title' => 'Departments',
+                        'desc' => 'Add, activate, and manage organizational departments.',
+                        'href' => route('loan.system.setup.departments'),
+                        'icon' => 'org',
+                        'status' => 'completed',
+                        'priority' => 'required',
+                    ],
+                ],
+            ],
+            [
+                'key' => 'operations',
+                'title' => 'Operations',
+                'cards' => [
+                    [
+                        'title' => 'Accounting',
+                        'desc' => 'Configure accounting requisition and related forms.',
+                        'href' => $formSetup('accounting-forms'),
+                        'icon' => 'chart-bar',
+                        'status' => 'needs_review',
+                        'priority' => 'required',
+                    ],
+                    [
+                        'title' => 'SMS Configurations',
+                        'desc' => 'Prepare SMS provider configuration and notification templates.',
+                        'href' => null,
+                        'icon' => 'document',
+                        'status' => 'not_configured',
+                        'priority' => 'optional',
+                        'coming_soon' => true,
+                        'badge' => 'Coming soon',
+                    ],
+                    [
+                        'title' => 'Wallets Configurations',
+                        'desc' => 'Wallet and M-Pesa-equivalent configuration placeholders.',
+                        'href' => null,
+                        'icon' => 'banknote',
+                        'status' => 'not_configured',
+                        'priority' => 'optional',
+                        'coming_soon' => true,
+                        'badge' => 'Coming soon',
+                    ],
+                ],
+            ],
+        ];
 
-        $cards = [
+        $priorityRank = ['required' => 0, 'recommended' => 1, 'optional' => 2];
+
+        foreach ($modules as &$module) {
+            usort($module['cards'], function (array $a, array $b) use ($priorityRank): int {
+                $aRank = $priorityRank[$a['priority'] ?? 'optional'] ?? 9;
+                $bRank = $priorityRank[$b['priority'] ?? 'optional'] ?? 9;
+
+                if ($aRank === $bRank) {
+                    return strcmp($a['title'], $b['title']);
+                }
+
+                return $aRank <=> $bRank;
+            });
+
+            $total = count($module['cards']);
+            $completed = collect($module['cards'])->where('status', 'completed')->count();
+            $critical = collect($module['cards'])->where('status', 'critical')->count();
+            $attention = collect($module['cards'])->whereIn('status', ['not_configured', 'needs_review', 'critical'])->count();
+            $ready = $attention === 0;
+            $module['progress_percent'] = $total > 0 ? (int) round(($completed / $total) * 100) : 0;
+            $module['summary'] = $ready ? "{$completed}/{$total} completed" : "{$attention} pending";
+            $module['status_label'] = $ready ? 'Ready' : ($critical > 0 ? 'Incomplete' : 'Needs attention');
+            $module['status_tone'] = $ready ? 'green' : ($critical > 0 ? 'red' : 'orange');
+        }
+        unset($module);
+
+        $allCards = collect($modules)->pluck('cards')->flatten(1)->values();
+        $trackedCards = $allCards->filter(fn (array $card): bool => ! ($card['coming_soon'] ?? false))->values();
+        $trackedTotal = $trackedCards->count();
+        $trackedCompleted = $trackedCards->where('status', 'completed')->count();
+        $readinessPercent = $trackedTotal > 0 ? (int) round(($trackedCompleted / $trackedTotal) * 100) : 0;
+
+        $missingRequiredCount = $trackedCards
+            ->where('priority', 'required')
+            ->where('status', '!=', 'completed')
+            ->count();
+        $criticalCount = $trackedCards->where('status', 'critical')->count();
+        $needsAttentionCount = $trackedCards->whereIn('status', ['not_configured', 'needs_review', 'critical'])->count();
+        $resumeCard = $trackedCards->first(fn (array $card): bool => ($card['status'] ?? null) !== 'completed' && ! empty($card['href']));
+
+        $insights = [
             [
-                'title' => 'Company Settings',
-                'desc' => 'Set company name, logo, address, contacts & about us',
-                'href' => route('loan.system.setup.company'),
-                'icon' => 'building',
+                'label' => "{$missingRequiredCount} required item(s) pending",
+                'module_key' => 'lending',
             ],
             [
-                'title' => 'Departments',
-                'desc' => 'Add, activate, or remove employee departments',
-                'href' => route('loan.system.setup.departments'),
-                'icon' => 'org',
+                'label' => 'Loan Products need review',
+                'module_key' => 'lending',
             ],
             [
-                'title' => 'Job Titles',
-                'desc' => 'Manage standard organization job titles',
-                'href' => route('loan.system.setup.job_titles'),
-                'icon' => 'users',
+                'label' => 'Wallets configuration is pending',
+                'module_key' => 'operations',
+            ],
+        ];
+
+        $quickActions = [
+            [
+                'label' => 'Complete Required Setup',
+                'href' => '#module-foundation',
             ],
             [
-                'title' => 'System Access & User roles',
-                'desc' => 'Set login OTP & user access permissions in the system',
-                'href' => route('loan.system.setup.access_roles'),
-                'icon' => 'access',
+                'label' => 'Resume Last Task',
+                'href' => $resumeCard['href'] ?? '#module-lending',
             ],
             [
-                'title' => 'Loan form Setup',
-                'desc' => 'Design the structure and details to be captured in loan form',
-                'href' => route('loan.system.form_setup.client'),
-                'icon' => 'document',
-            ],
-            [
-                'title' => 'Loans Products',
-                'desc' => 'Setup loan products, interest rates, duty fees & prepayments',
-                'href' => route('loan.system.setup.loan_products'),
-                'icon' => 'briefcase',
-            ],
-            [
-                'title' => 'Salary Advances',
-                'desc' => 'View and approve salary advance requests',
-                'href' => route('loan.accounting.advances.index'),
-                'icon' => 'banknote',
-            ],
-            [
-                'title' => 'Salary advance form',
-                'desc' => 'Design fields captured on the salary advance application',
-                'href' => route('loan.system.form_setup.salary_advance'),
-                'icon' => 'document',
-            ],
-            [
-                'title' => 'Leave Settings',
-                'desc' => 'Setup staff leaves approval workflow',
-                'href' => $formSetup('leave-settings'),
-                'icon' => 'tools',
-            ],
-            [
-                'title' => 'Staff Structure',
-                'desc' => 'Set company staff hierarchy & personal details form',
-                'href' => $formSetup('staff-structure'),
-                'icon' => 'org',
-            ],
-            [
-                'title' => 'Client Bio-data Setup',
-                'desc' => 'Design client registration form details & structure',
-                'href' => $formSetup('client-biodata'),
-                'icon' => 'idcard',
-            ],
-            [
-                'title' => 'Group Lending',
-                'desc' => 'Design client groups form & related group settings',
-                'href' => $formSetup('group-lending'),
-                'icon' => 'users',
-            ],
-            [
-                'title' => 'Accounting',
-                'desc' => 'Design requisition forms & petty cashbook settings',
-                'href' => $formSetup('accounting-forms'),
-                'icon' => 'chart-bar',
-            ],
-            [
-                'title' => 'Staff Leaves',
-                'desc' => 'Design leave application form, conditions & yearly leave days',
-                'href' => $formSetup('staff-leaves'),
-                'icon' => 'bed',
-            ],
-            [
-                'title' => 'Staff Performance',
-                'desc' => 'Setup performance indicators for staff & BI analysis',
-                'href' => $formSetup('staff-performance'),
-                'icon' => 'trending',
-            ],
-            [
-                'title' => 'Loan Settings',
-                'desc' => 'Configure loan settings e.g. checkoffs & reschedule',
-                'href' => $formSetup('loan-settings'),
-                'icon' => 'bookmark',
-            ],
-            [
-                'title' => 'General Settings',
-                'desc' => 'Payment automation, approval levels & client loyalty points',
-                'href' => route('loan.system.setup.preferences'),
-                'icon' => 'wrench',
+                'label' => 'View Missing Configurations',
+                'href' => '#module-operations',
             ],
         ];
 
         return view('loan.system.setup.hub', [
-            'cards' => $cards,
+            'modules' => $modules,
+            'readinessPercent' => $readinessPercent,
+            'moduleBreakdown' => $modules,
+            'quickActions' => $quickActions,
+            'insights' => $insights,
+            'needsAttentionCount' => $needsAttentionCount,
+            'criticalCount' => $criticalCount,
         ]);
     }
 
