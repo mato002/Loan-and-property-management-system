@@ -18,7 +18,25 @@
 
         @include('loan.accounting.partials.flash')
 
-        <div class="space-y-6 bg-slate-50/70 p-2 sm:p-3 rounded-xl">
+        @php
+            $approvalEnabledOld = old('coa_approval_required', ($approvalEnabled ?? false) ? '1' : '0');
+            $approvalRowsOld = old('approvers', $coaApproverWorkflow ?? []);
+        @endphp
+
+        <div
+            class="space-y-6 bg-slate-50/70 p-2 sm:p-3 rounded-xl"
+            x-data="{
+                requireApproval: {{ $approvalEnabledOld === '1' ? 'true' : 'false' }},
+                approverRows: {{ \Illuminate\Support\Js::from(array_values($approvalRowsOld)) }},
+                addRow() {
+                    if (this.approverRows.length >= 8) return;
+                    this.approverRows.push({ user_id: '' });
+                },
+                removeRow(index) {
+                    this.approverRows.splice(index, 1);
+                }
+            }"
+        >
             <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div class="space-y-3">
@@ -61,6 +79,49 @@
                         <p class="mt-1 text-sm font-semibold text-red-700">Not configured</p>
                     </div>
                 </div>
+            </section>
+
+            <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <form method="post" action="{{ $formActionUrl }}" class="space-y-4">
+                    @csrf
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 class="text-base font-semibold text-teal-900">Chart of Accounts Approval Control</h2>
+                            <p class="mt-1 text-sm text-slate-600">Choose whether new chart of account records become active immediately or pass through sequenced approval.</p>
+                        </div>
+                        <button type="submit" class="inline-flex rounded-lg border border-blue-600 bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save Control</button>
+                    </div>
+
+                    <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+                        <span>Require approval before newly created accounts become active</span>
+                        <span>
+                            <input type="hidden" name="coa_approval_required" :value="requireApproval ? '1' : '0'" />
+                            <input type="checkbox" x-model="requireApproval" class="h-4 w-4 rounded border-slate-300 text-teal-700" />
+                        </span>
+                    </label>
+
+                    <div x-cloak x-show="requireApproval" class="space-y-3 rounded-xl border border-orange-200 bg-orange-50/60 p-4">
+                        <div class="flex items-center justify-between gap-2">
+                            <p class="text-sm font-semibold text-orange-900">Approver Sequence (max 8)</p>
+                            <button type="button" @click="addRow()" class="inline-flex rounded-lg border border-orange-300 bg-white px-3 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100">Add Approver Row</button>
+                        </div>
+
+                        <template x-for="(row, index) in approverRows" :key="index">
+                            <div class="grid grid-cols-1 gap-2 rounded-lg border border-orange-200 bg-white p-3 sm:grid-cols-[120px_1fr_auto] sm:items-center">
+                                <div class="text-xs font-semibold uppercase tracking-wide text-slate-500" x-text="'Approver ' + (index + 1)"></div>
+                                <select :name="'approvers[' + index + '][user_id]'" x-model="row.user_id" class="rounded-lg border-slate-200 text-sm">
+                                    <option value="">Select user...</option>
+                                    @foreach (($availableApprovers ?? collect()) as $approver)
+                                        <option value="{{ $approver->id }}">{{ $approver->name }}{{ $approver->email ? ' ('.$approver->email.')' : '' }}</option>
+                                    @endforeach
+                                </select>
+                                <button type="button" @click="removeRow(index)" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100">Remove</button>
+                            </div>
+                        </template>
+
+                        <p class="text-xs text-orange-800">Approvals follow sequence: Approver 1, then Approver 2, up to Approver 8.</p>
+                    </div>
+                </form>
             </section>
 
             <div class="space-y-6">

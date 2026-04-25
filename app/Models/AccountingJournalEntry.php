@@ -11,6 +11,8 @@ class AccountingJournalEntry extends Model
     public const STATUS_DRAFT = 'draft';
     public const STATUS_POSTED = 'posted';
     public const STATUS_REVERSED = 'reversed';
+    public const STATUS_PENDING_CONTROLLED_APPROVAL = 'pending_controlled_approval';
+    public const STATUS_REJECTED = 'rejected';
 
     protected $fillable = [
         'entry_date',
@@ -54,5 +56,10 @@ class AccountingJournalEntry extends Model
     public function reversals(): HasMany
     {
         return $this->hasMany(self::class, 'reversed_from_id');
+    }
+
+    public function approvalQueue(): HasMany
+    {
+        return $this->hasMany(AccountingJournalApprovalQueue::class, 'accounting_journal_entry_id');
     }
 }

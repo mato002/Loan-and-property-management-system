@@ -9,19 +9,29 @@ use App\Models\AccountingChartAccount;
 use App\Models\AccountingCompanyAsset;
 use App\Models\AccountingCompanyExpense;
 use App\Models\AccountingJournalLine;
+use App\Models\AccountingJournalApprovalQueue;
+use App\Models\AccountingJournalEntry;
 use App\Models\AccountingPostingRule;
 use App\Models\AccountingPayrollLine;
 use App\Models\AccountingPayrollPeriod;
 use App\Models\Employee;
+use App\Models\LoanSystemSetting;
+use App\Models\User;
+use App\Services\AccountingChartCodeGeneratorService;
+use App\Services\AccountingControlledApprovalService;
 use App\Support\CsvExport;
 use App\Support\TabularExport;
 use Carbon\Carbon;
+use Illuminate\Http\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LoanAccountingBooksController extends Controller
 {
@@ -65,7 +75,7 @@ class LoanAccountingBooksController extends Controller
         $headerAccounts = $hasAccountClass
             ? AccountingChartAccount::query()
                 ->where('is_active', true)
-                ->where('account_class', AccountingChartAccount::CLASS_HEADER)
+                ->whereIn('account_class', [AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_PARENT])
                 ->orderBy('code')
                 ->get()
             : collect();
@@ -75,13 +85,20 @@ class LoanAccountingBooksController extends Controller
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
+        $hasApprovalColumns = Schema::hasColumn('accounting_chart_accounts', 'approval_status')
+            && Schema::hasColumn('accounting_chart_accounts', 'approval_current_step');
+
+        $coaApproverWorkflow = $this->coaApproverWorkflow();
+        $coaApprovalEnabled = $this->coaApprovalEnabled();
+        $currentUserId = (int) (auth()->id() ?? 0);
+        $currentApproverStep = collect($coaApproverWorkflow)->firstWhere('user_id', $currentUserId)['sequence'] ?? null;
 
         $activeAccounts = $accounts->where('is_active', true)->count();
         $newAccounts30d = AccountingChartAccount::query()
             ->where('created_at', '>=', now()->subDays(30))
             ->count();
         $missingRules = $postingRules->filter(fn (AccountingPostingRule $r) => ! $r->debit_account_id || ! $r->credit_account_id)->count();
-        $pendingApprovals = $postingRules->where('is_editable', true)->count();
+        $pendingApprovals = $hasApprovalColumns ? $accounts->where('approval_status', 'pending')->count() : 0;
         $isBalanced = abs((float) AccountingJournalLine::sum('debit') - (float) AccountingJournalLine::sum('credit')) < 0.01;
         $overdrawnAccounts = collect();
         if (Schema::hasColumn('accounting_chart_accounts', 'allow_overdraft')
@@ -103,6 +120,38 @@ class LoanAccountingBooksController extends Controller
             $duplicateAccount = AccountingChartAccount::query()->find($duplicateAccountId);
         }
 
+        $pendingAccounts = $hasApprovalColumns
+            ? AccountingChartAccount::query()
+                ->with(['parent', 'createdBy'])
+                ->where('approval_status', 'pending')
+                ->orderByDesc('created_at')
+                ->get()
+            : collect();
+        $pendingAccounts = $pendingAccounts->map(function (AccountingChartAccount $account) use ($coaApproverWorkflow, $currentUserId) {
+            $step = (int) ($account->approval_current_step ?? 1);
+            $assigned = collect($coaApproverWorkflow)->firstWhere('sequence', $step);
+            $canApprove = $assigned && (int) ($assigned['user_id'] ?? 0) === $currentUserId;
+            $statusLabel = 'Pending Approval (Step '.$step.' of '.max(1, count($coaApproverWorkflow)).')';
+
+            return [
+                'id' => $account->id,
+                'name' => $account->name,
+                'code' => $account->code,
+                'account_type' => ucfirst((string) $account->account_type),
+                'parent_group' => $account->parent?->name ?? 'Top Level',
+                'opening_balance' => (float) ($account->current_balance ?? 0),
+                'min_balance_floor' => (float) ($account->min_balance_floor ?? 0),
+                'created_by' => $account->createdBy?->name ?? 'System',
+                'created_at' => optional($account->created_at)?->format('Y-m-d H:i'),
+                'status' => $statusLabel,
+                'can_approve' => (bool) $canApprove,
+                'assigned_approver_name' => $assigned['name'] ?? null,
+                'approval_current_step' => $step,
+                'approval_history' => $account->approval_history ?? [],
+            ];
+        });
+        $availableApprovers = User::query()->orderBy('name')->get(['id', 'name', 'email']);
+
         return view('loan.accounting.books.chart-rules', compact(
             'accounts',
             'headerAccounts',
@@ -114,8 +163,414 @@ class LoanAccountingBooksController extends Controller
             'isBalanced',
             'overdrawnAccounts',
             'editingAccount',
-            'duplicateAccount'
+            'duplicateAccount',
+            'coaApprovalEnabled',
+            'coaApproverWorkflow',
+            'currentApproverStep',
+            'pendingAccounts',
+            'availableApprovers'
         ));
+    }
+
+    public function downloadChartTemplate(): StreamedResponse
+    {
+        $headers = [
+            'name',
+            'account_type',
+            'account_class',
+            'parent_code',
+        ];
+
+        $example = [
+            'Loan Disbursement Account',
+            'asset',
+            'Detail',
+            '',
+        ];
+
+        return response()->streamDownload(function () use ($headers, $example): void {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+            fputcsv($out, $headers);
+            fputcsv($out, $example);
+            fclose($out);
+        }, 'chart-of-accounts-import-template.csv', [
+            'Content-Type' => 'text/csv',
+        ]);
+    }
+
+    public function importChartTemplate(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'import_file' => ['required', 'file', 'mimes:csv,txt', 'max:5120'],
+        ]);
+
+        $file = $request->file('import_file');
+        if (! $file) {
+            throw ValidationException::withMessages([
+                'import_file' => 'Upload a valid CSV file.',
+            ]);
+        }
+
+        $handle = fopen($file->getRealPath(), 'r');
+        if ($handle === false) {
+            throw ValidationException::withMessages([
+                'import_file' => 'Could not read uploaded file.',
+            ]);
+        }
+
+        $header = fgetcsv($handle);
+        if (! is_array($header) || $header === []) {
+            fclose($handle);
+            throw ValidationException::withMessages([
+                'import_file' => 'CSV header is missing.',
+            ]);
+        }
+
+        $normalizedHeader = collect($header)->map(fn ($v) => strtolower(trim((string) $v)))->values()->all();
+        $requiredColumns = ['name', 'account_type', 'account_class'];
+        foreach ($requiredColumns as $col) {
+            if (! in_array($col, $normalizedHeader, true)) {
+                fclose($handle);
+                throw ValidationException::withMessages([
+                    'import_file' => "Missing required column: {$col}.",
+                ]);
+            }
+        }
+
+        $rows = [];
+        $lineNumber = 1;
+        while (($raw = fgetcsv($handle)) !== false) {
+            $lineNumber++;
+            $values = array_pad($raw, count($normalizedHeader), '');
+            $row = array_combine($normalizedHeader, $values);
+            if (! is_array($row)) {
+                continue;
+            }
+
+            $name = trim((string) ($row['name'] ?? ''));
+            $accountType = strtolower(trim((string) ($row['account_type'] ?? '')));
+            $accountClass = trim((string) ($row['account_class'] ?? ''));
+            $parentCode = trim((string) ($row['parent_code'] ?? ''));
+
+            if ($name === '' && $accountType === '' && $accountClass === '') {
+                continue;
+            }
+
+            if ($name === '' || ! in_array($accountType, ['asset', 'liability', 'equity', 'income', 'expense'], true) || ! in_array($accountClass, [AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_PARENT, AccountingChartAccount::CLASS_DETAIL], true)) {
+                fclose($handle);
+                throw ValidationException::withMessages([
+                    'import_file' => "Invalid row at line {$lineNumber}. Ensure name, account_type, and account_class are valid.",
+                ]);
+            }
+
+            $rows[] = [
+                'line' => $lineNumber,
+                'name' => $name,
+                'account_type' => $accountType,
+                'account_class' => $accountClass,
+                'parent_code' => $parentCode,
+                'current_balance' => (float) ($row['current_balance'] ?? 0),
+                'min_balance_floor' => (float) ($row['min_balance_floor'] ?? 0),
+                'allow_overdraft' => $this->toBool($row['allow_overdraft'] ?? '0'),
+                'overdraft_limit' => $this->nullableNumeric($row['overdraft_limit'] ?? null),
+                'is_cash_account' => $this->toBool($row['is_cash_account'] ?? '0'),
+                'is_active' => $this->toBool($row['is_active'] ?? '1'),
+                'is_controlled_account' => $this->toBool($row['is_controlled_account'] ?? '0'),
+                'control_requires_approval' => $this->toBool($row['control_requires_approval'] ?? '0'),
+                'control_approval_type' => in_array(strtolower(trim((string) ($row['control_approval_type'] ?? 'any'))), ['any', 'all', 'role'], true) ? strtolower(trim((string) ($row['control_approval_type'] ?? 'any'))) : 'any',
+                'control_approval_role' => trim((string) ($row['control_approval_role'] ?? '')) ?: null,
+                'control_always_require_approval' => $this->toBool($row['control_always_require_approval'] ?? '0'),
+                'control_threshold_enabled' => $this->toBool($row['control_threshold_enabled'] ?? '0'),
+                'control_threshold_amount' => $this->nullableNumeric($row['control_threshold_amount'] ?? null),
+                'control_applies_to' => in_array(strtolower(trim((string) ($row['control_applies_to'] ?? 'both'))), ['debit', 'credit', 'both'], true) ? strtolower(trim((string) ($row['control_applies_to'] ?? 'both'))) : 'both',
+                'control_reason_note' => trim((string) ($row['control_reason_note'] ?? '')) ?: null,
+                'floor_enabled' => $this->toBool($row['floor_enabled'] ?? '0'),
+                'floor_action' => in_array(strtolower(trim((string) ($row['floor_action'] ?? 'block'))), ['block', 'require_approval'], true) ? strtolower(trim((string) ($row['floor_action'] ?? 'block'))) : 'block',
+            ];
+        }
+        fclose($handle);
+
+        if ($rows === []) {
+            throw ValidationException::withMessages([
+                'import_file' => 'No import rows found in CSV.',
+            ]);
+        }
+
+        $createdCount = DB::transaction(function () use ($rows, $request): int {
+            $count = 0;
+            foreach ($rows as $row) {
+                $parentId = null;
+                if ($row['parent_code'] !== '') {
+                    $parent = AccountingChartAccount::query()->where('code', $row['parent_code'])->first();
+                    if (! $parent) {
+                        throw ValidationException::withMessages([
+                            'import_file' => "Parent code '{$row['parent_code']}' (line {$row['line']}) was not found. Import parent rows first.",
+                        ]);
+                    }
+                    if (! in_array((string) $parent->account_class, [AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_PARENT], true)) {
+                        throw ValidationException::withMessages([
+                            'import_file' => "Parent account '{$row['parent_code']}' (line {$row['line']}) must be Header or Parent.",
+                        ]);
+                    }
+                    $parentId = (int) $parent->id;
+                }
+
+                $generatedCode = app(AccountingChartCodeGeneratorService::class)->reserve(
+                    $row['account_type'],
+                    $row['account_class'],
+                    $parentId
+                );
+
+                $payload = [
+                    'code' => $generatedCode,
+                    'name' => $row['name'],
+                    'account_type' => $parentId ? (string) AccountingChartAccount::query()->find($parentId)?->account_type : $row['account_type'],
+                    'account_class' => $row['account_class'],
+                    'parent_id' => $parentId,
+                    'current_balance' => $row['current_balance'],
+                    'min_balance_floor' => max(0, (float) $row['min_balance_floor']),
+                    'allow_overdraft' => $row['allow_overdraft'],
+                    'overdraft_limit' => $row['allow_overdraft'] ? $row['overdraft_limit'] : null,
+                    'is_cash_account' => $row['is_cash_account'],
+                    'is_active' => $row['is_active'],
+                    'is_controlled_account' => $row['is_controlled_account'],
+                    'control_requires_approval' => $row['is_controlled_account'] ? $row['control_requires_approval'] : false,
+                    'control_approval_type' => $row['control_approval_type'],
+                    'control_approval_role' => $row['is_controlled_account'] ? $row['control_approval_role'] : null,
+                    'control_always_require_approval' => $row['is_controlled_account'] ? $row['control_always_require_approval'] : false,
+                    'control_threshold_enabled' => $row['is_controlled_account'] ? $row['control_threshold_enabled'] : false,
+                    'control_threshold_amount' => $row['is_controlled_account'] && $row['control_threshold_enabled'] ? $row['control_threshold_amount'] : null,
+                    'control_applies_to' => $row['is_controlled_account'] ? $row['control_applies_to'] : 'both',
+                    'control_reason_note' => $row['is_controlled_account'] ? $row['control_reason_note'] : null,
+                    'floor_enabled' => $row['floor_enabled'],
+                    'floor_action' => $row['floor_enabled'] ? $row['floor_action'] : 'block',
+                    'created_by' => $request->user()->id,
+                ];
+
+                if ($this->coaApprovalEnabled()) {
+                    $payload['is_active'] = false;
+                    $payload['approval_status'] = 'pending';
+                    $payload['approval_current_step'] = 1;
+                    $payload['approval_submitted_at'] = now();
+                    $payload['approval_history'] = [[
+                        'action' => 'submitted',
+                        'by_user_id' => $request->user()->id,
+                        'at' => now()->toDateTimeString(),
+                        'note' => 'Account submitted for approval from bulk import.',
+                    ]];
+                } else {
+                    $payload['approval_status'] = 'active';
+                }
+
+                AccountingChartAccount::query()->create($payload);
+                $count++;
+            }
+
+            return $count;
+        });
+
+        return redirect()
+            ->route('loan.accounting.books.chart_rules')
+            ->with('status', "Bulk import completed successfully. {$createdCount} account(s) imported.");
+    }
+
+    private function toBool(mixed $value): bool
+    {
+        $v = strtolower(trim((string) $value));
+
+        return in_array($v, ['1', 'true', 'yes', 'y', 'on'], true);
+    }
+
+    private function nullableNumeric(mixed $value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+        $v = trim((string) $value);
+        if ($v === '') {
+            return null;
+        }
+
+        return is_numeric($v) ? (float) $v : null;
+    }
+
+    public function approvePendingAccount(Request $request, AccountingChartAccount $accounting_chart_account): RedirectResponse
+    {
+        $workflow = $this->coaApproverWorkflow();
+        abort_if($workflow === [], 403, 'Approval workflow is not configured.');
+        abort_unless((string) $accounting_chart_account->approval_status === 'pending', 403);
+
+        $currentStep = (int) ($accounting_chart_account->approval_current_step ?? 1);
+        $activeStep = collect($workflow)->firstWhere('sequence', $currentStep);
+        abort_unless($activeStep && (int) $activeStep['user_id'] === (int) $request->user()->id, 403);
+
+        $history = collect($accounting_chart_account->approval_history ?? [])->values()->all();
+        $history[] = [
+            'action' => 'approved_step',
+            'step' => $currentStep,
+            'by_user_id' => $request->user()->id,
+            'at' => now()->toDateTimeString(),
+            'note' => 'Approval completed for step '.$currentStep.'.',
+        ];
+
+        $totalSteps = count($workflow);
+        if ($currentStep < $totalSteps) {
+            $accounting_chart_account->update([
+                'approval_current_step' => $currentStep + 1,
+                'approval_history' => $history,
+            ]);
+
+            return redirect()->route('loan.accounting.books.chart_rules')
+                ->with('status', 'Approval step completed. Routed to next approver.');
+        }
+
+        $history[] = [
+            'action' => 'activated',
+            'step' => $currentStep,
+            'by_user_id' => $request->user()->id,
+            'at' => now()->toDateTimeString(),
+            'note' => 'Account activated for journaling.',
+        ];
+
+        $accounting_chart_account->update([
+            'is_active' => true,
+            'approval_status' => 'active',
+            'approval_current_step' => null,
+            'approved_by' => $request->user()->id,
+            'approved_at' => now(),
+            'approval_history' => $history,
+        ]);
+
+        return redirect()->route('loan.accounting.books.chart_rules')
+            ->with('status', 'Account approved and activated.');
+    }
+
+    public function rejectPendingAccount(Request $request, AccountingChartAccount $accounting_chart_account): RedirectResponse
+    {
+        $request->validate([
+            'rejection_reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        $workflow = $this->coaApproverWorkflow();
+        abort_if($workflow === [], 403, 'Approval workflow is not configured.');
+        abort_unless((string) $accounting_chart_account->approval_status === 'pending', 403);
+        $currentStep = (int) ($accounting_chart_account->approval_current_step ?? 1);
+        $activeStep = collect($workflow)->firstWhere('sequence', $currentStep);
+        abort_unless($activeStep && (int) $activeStep['user_id'] === (int) $request->user()->id, 403);
+
+        $history = collect($accounting_chart_account->approval_history ?? [])->values()->all();
+        $history[] = [
+            'action' => 'rejected',
+            'step' => $currentStep,
+            'by_user_id' => $request->user()->id,
+            'at' => now()->toDateTimeString(),
+            'note' => (string) $request->string('rejection_reason'),
+        ];
+
+        $accounting_chart_account->update([
+            'is_active' => false,
+            'approval_status' => 'rejected',
+            'approval_current_step' => null,
+            'rejected_by' => $request->user()->id,
+            'rejected_at' => now(),
+            'rejection_reason' => (string) $request->string('rejection_reason'),
+            'approval_history' => $history,
+        ]);
+
+        return redirect()->route('loan.accounting.books.chart_rules')
+            ->with('status', 'Account rejected. Creator can edit and resubmit.');
+    }
+
+    public function journalApprovalQueue(): View
+    {
+        $rows = AccountingJournalApprovalQueue::query()
+            ->with(['journalEntry.createdByUser', 'approvedByUser', 'rejectedByUser'])
+            ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
+            ->orderByDesc('created_at')
+            ->paginate(30)
+            ->withQueryString();
+
+        return view('loan.accounting.journal.approval-queue', compact('rows'));
+    }
+
+    public function approvePendingJournal(Request $request, AccountingJournalApprovalQueue $accounting_journal_approval_queue): RedirectResponse
+    {
+        abort_unless((string) $accounting_journal_approval_queue->status === AccountingJournalApprovalQueue::STATUS_PENDING, 403);
+        abort_unless(app(AccountingControlledApprovalService::class)->userCanApprove($accounting_journal_approval_queue, $request->user()), 403);
+
+        $posted = app(AccountingControlledApprovalService::class)
+            ->applyApprovalAndPost($accounting_journal_approval_queue, $request->user());
+
+        return redirect()->route('loan.accounting.journal.approval_queue')
+            ->with('status', $posted ? 'Journal approved and posted.' : 'Approval recorded. Waiting for remaining approvers.');
+    }
+
+    public function rejectPendingJournal(Request $request, AccountingJournalApprovalQueue $accounting_journal_approval_queue): RedirectResponse
+    {
+        $request->validate([
+            'rejection_reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        abort_unless((string) $accounting_journal_approval_queue->status === AccountingJournalApprovalQueue::STATUS_PENDING, 403);
+        abort_unless(app(AccountingControlledApprovalService::class)->userCanApprove($accounting_journal_approval_queue, $request->user()), 403);
+
+        $entry = $accounting_journal_approval_queue->journalEntry;
+        if ($entry) {
+            $entry->update([
+                'status' => AccountingJournalEntry::STATUS_REJECTED,
+                'approved_by' => null,
+                'approved_at' => null,
+            ]);
+        }
+
+        $accounting_journal_approval_queue->update([
+            'status' => AccountingJournalApprovalQueue::STATUS_REJECTED,
+            'rejected_by' => $request->user()->id,
+            'rejected_at' => now(),
+            'rejection_reason' => (string) $request->string('rejection_reason'),
+        ]);
+
+        return redirect()->route('loan.accounting.journal.approval_queue')
+            ->with('status', 'Journal rejected and not posted.');
+    }
+
+    private function coaApprovalEnabled(): bool
+    {
+        return LoanSystemSetting::getValue('coa_approval_required', '0') === '1';
+    }
+
+    /**
+     * @return list<array{sequence:int,user_id:int,name:string}>
+     */
+    private function coaApproverWorkflow(): array
+    {
+        $raw = LoanSystemSetting::getValue('coa_approval_workflow', '[]') ?? '[]';
+        $rows = collect(json_decode($raw, true) ?: [])
+            ->map(fn (array $row): array => [
+                'sequence' => (int) ($row['sequence'] ?? 0),
+                'user_id' => (int) ($row['user_id'] ?? 0),
+            ])
+            ->filter(fn (array $row): bool => $row['sequence'] > 0 && $row['user_id'] > 0)
+            ->sortBy('sequence')
+            ->values();
+
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $users = User::query()->whereIn('id', $rows->pluck('user_id')->all())->pluck('name', 'id');
+
+        return $rows
+            ->map(fn (array $row): array => [
+                'sequence' => $row['sequence'],
+                'user_id' => $row['user_id'],
+                'name' => (string) ($users[$row['user_id']] ?? ('User #'.$row['user_id'])),
+            ])
+            ->values()
+            ->all();
     }
 
     /* ---------- Reports hub & financials ---------- */

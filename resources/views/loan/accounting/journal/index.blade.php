@@ -2,6 +2,7 @@
     <x-loan.page title="Posted journal entries" subtitle="Retrieve and manage posted double-entry vouchers.">
         <x-slot name="actions">
             <a href="{{ route('loan.accounting.books') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Books</a>
+            <a href="{{ route('loan.accounting.journal.approval_queue') }}" class="inline-flex items-center justify-center rounded-lg border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 shadow-sm hover:bg-purple-100 transition-colors">Approval Queue</a>
             @include('loan.accounting.partials.export_buttons')
             <a href="{{ route('loan.accounting.journal.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">New entry</a>
         </x-slot>
@@ -28,6 +29,8 @@
                         <option value="posted" @selected(($status ?? '') === 'posted')>Posted</option>
                         <option value="draft" @selected(($status ?? '') === 'draft')>Draft</option>
                         <option value="reversed" @selected(($status ?? '') === 'reversed')>Reversed</option>
+                        <option value="pending_controlled_approval" @selected(($status ?? '') === 'pending_controlled_approval')>Pending Approval</option>
+                        <option value="rejected" @selected(($status ?? '') === 'rejected')>Rejected</option>
                     </select>
                 </div>
                 <div>
@@ -69,7 +72,7 @@
                                 <td class="px-5 py-3 text-slate-600 max-w-xs truncate">{{ $e->description ?? '—' }}</td>
                                 <td class="px-5 py-3">
                                     @php($status = strtolower((string) ($e->status ?? \App\Models\AccountingJournalEntry::STATUS_POSTED)))
-                                    <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold {{ $status === 'reversed' ? 'bg-amber-100 text-amber-700' : ($status === 'draft' ? 'bg-slate-200 text-slate-700' : 'bg-emerald-100 text-emerald-700') }}">
+                                    <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold {{ $status === 'reversed' ? 'bg-amber-100 text-amber-700' : ($status === 'draft' ? 'bg-slate-200 text-slate-700' : ($status === 'pending_controlled_approval' ? 'bg-purple-100 text-purple-700' : ($status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'))) }}">
                                         {{ ucfirst($status) }}
                                     </span>
                                 </td>

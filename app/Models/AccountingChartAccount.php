@@ -4,11 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\User;
 
 class AccountingChartAccount extends Model
 {
     public const CLASS_HEADER = 'Header';
+    public const CLASS_PARENT = 'Parent';
 
     public const CLASS_DETAIL = 'Detail';
 
@@ -35,19 +38,54 @@ class AccountingChartAccount extends Model
         'overdraft_limit',
         'is_overdrawn',
         'is_active',
+        'created_by',
+        'approval_status',
+        'approval_current_step',
+        'approval_submitted_at',
+        'approved_by',
+        'approved_at',
+        'rejected_by',
+        'rejected_at',
+        'rejection_reason',
+        'approval_history',
+        'is_controlled_account',
+        'control_requires_approval',
+        'control_approval_type',
+        'control_approval_role',
+        'control_always_require_approval',
+        'control_threshold_enabled',
+        'control_threshold_amount',
+        'control_applies_to',
+        'control_reason_note',
+        'floor_enabled',
+        'floor_action',
     ];
 
     protected function casts(): array
     {
         return [
             'parent_id' => 'integer',
+            'created_by' => 'integer',
+            'approved_by' => 'integer',
+            'rejected_by' => 'integer',
+            'approval_current_step' => 'integer',
             'is_cash_account' => 'boolean',
             'allow_overdraft' => 'boolean',
             'is_overdrawn' => 'boolean',
             'is_active' => 'boolean',
+            'is_controlled_account' => 'boolean',
+            'control_requires_approval' => 'boolean',
+            'control_always_require_approval' => 'boolean',
+            'control_threshold_enabled' => 'boolean',
+            'floor_enabled' => 'boolean',
+            'approval_submitted_at' => 'datetime',
+            'approved_at' => 'datetime',
+            'rejected_at' => 'datetime',
             'current_balance' => 'decimal:2',
             'overdraft_limit' => 'decimal:2',
             'min_balance_floor' => 'decimal:2',
+            'control_threshold_amount' => 'decimal:2',
+            'approval_history' => 'array',
         ];
     }
 
@@ -66,6 +104,11 @@ class AccountingChartAccount extends Model
         return $this->hasMany(AccountingJournalLine::class, 'accounting_chart_account_id');
     }
 
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
     public function isHeader(): bool
     {
         return (string) $this->account_class === self::CLASS_HEADER;
@@ -73,7 +116,18 @@ class AccountingChartAccount extends Model
 
     public function isDetail(): bool
     {
-        return (string) $this->account_class !== self::CLASS_HEADER;
+        return (string) $this->account_class === self::CLASS_DETAIL;
+    }
+
+    public function isParent(): bool
+    {
+        return (string) $this->account_class === self::CLASS_PARENT;
+    }
+
+    public function controlledApprovers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'accounting_controlled_account_approvers', 'accounting_chart_account_id', 'user_id')
+            ->withTimestamps();
     }
 
     public function isDescendantOf(int $accountId): bool

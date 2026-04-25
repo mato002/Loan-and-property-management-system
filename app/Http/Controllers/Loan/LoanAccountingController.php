@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Models\AccountingChartAccount;
+use App\Models\AccountingControlAudit;
+use App\Models\AccountingJournalApprovalQueue;
 use App\Models\AccountingCompanyExpense;
 use App\Models\AccountingJournalEntry;
 use App\Models\AccountingJournalLine;
@@ -17,9 +19,12 @@ use App\Models\AccountingUtilityPayment;
 use App\Models\AccountingWalletSlotSetting;
 use App\Models\LoanBookDisbursement;
 use App\Models\LoanFormFieldDefinition;
+use App\Models\LoanSystemSetting;
 use App\Models\Employee;
 use App\Models\LoanBookPayment;
 use App\Services\AccountingChartBalanceService;
+use App\Services\AccountingChartCodeGeneratorService;
+use App\Services\AccountingControlledApprovalService;
 use App\Services\AccountingOverdraftGuardService;
 use App\Support\TabularExport;
 use Illuminate\Http\RedirectResponse;
@@ -32,6 +37,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Carbon\Carbon;
+use Symfony\Component\HttpFoundation\JsonResponse;
 
 class LoanAccountingController extends Controller
 {
@@ -169,7 +175,7 @@ class LoanAccountingController extends Controller
         $headerAccounts = $hasAccountClass
             ? AccountingChartAccount::query()
                 ->where('is_active', true)
-                ->where('account_class', AccountingChartAccount::CLASS_HEADER)
+                ->whereIn('account_class', [AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_PARENT])
                 ->orderBy('code')
                 ->get()
             : collect();
@@ -432,7 +438,7 @@ class LoanAccountingController extends Controller
         $headerAccounts = $hasAccountClass
             ? AccountingChartAccount::query()
                 ->where('is_active', true)
-                ->where('account_class', AccountingChartAccount::CLASS_HEADER)
+                ->whereIn('account_class', [AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_PARENT])
                 ->orderBy('code')
                 ->get()
             : collect();
@@ -440,18 +446,75 @@ class LoanAccountingController extends Controller
         return view('loan.accounting.chart.create', compact('headerAccounts'));
     }
 
+    public function chartNextCode(Request $request): JsonResponse
+    {
+        $request->validate([
+            'account_type' => ['required', 'in:asset,liability,equity,income,expense'],
+            'account_class' => ['required', Rule::in([
+                AccountingChartAccount::CLASS_HEADER,
+                AccountingChartAccount::CLASS_PARENT,
+                AccountingChartAccount::CLASS_DETAIL,
+            ])],
+            'parent_id' => ['nullable', 'integer', 'exists:accounting_chart_accounts,id'],
+        ]);
+
+        $code = app(AccountingChartCodeGeneratorService::class)->preview(
+            (string) $request->string('account_type'),
+            (string) $request->string('account_class'),
+            $request->integer('parent_id') ?: null
+        );
+
+        return response()->json(['code' => $code]);
+    }
+
     public function chartStore(Request $request): RedirectResponse
     {
         $validated = $this->validateChartPayload($request);
-        $payload = $this->buildChartPayload($request, $validated);
-        AccountingChartAccount::create($payload);
+        $created = DB::transaction(function () use ($request, $validated) {
+            $generatedCode = app(AccountingChartCodeGeneratorService::class)->reserve(
+                (string) $validated['account_type'],
+                (string) ($validated['account_class'] ?? AccountingChartAccount::CLASS_DETAIL),
+                isset($validated['parent_id']) ? (int) $validated['parent_id'] : null
+            );
+
+            $payload = $this->buildChartPayload($request, $validated, null, $generatedCode);
+            $payload['created_by'] = $request->user()->id;
+
+            if ($this->coaApprovalEnabled()) {
+                $payload['is_active'] = false;
+                $payload['approval_status'] = 'pending';
+                $payload['approval_current_step'] = 1;
+                $payload['approval_submitted_at'] = now();
+                $payload['approved_by'] = null;
+                $payload['approved_at'] = null;
+                $payload['rejected_by'] = null;
+                $payload['rejected_at'] = null;
+                $payload['rejection_reason'] = null;
+                $payload['approval_history'] = [[
+                    'action' => 'submitted',
+                    'by_user_id' => $request->user()->id,
+                    'at' => now()->toDateTimeString(),
+                    'note' => 'Account submitted for approval.',
+                ]];
+            } else {
+                $payload['approval_status'] = 'active';
+                $payload['approval_current_step'] = null;
+                $payload['approval_submitted_at'] = null;
+            }
+
+            $account = AccountingChartAccount::create($payload);
+            $this->syncControlledApprovers($account, collect($request->input('controlled_approver_ids', [])));
+            $this->logControlAudit('chart_account', $account->id, 'created', $request->user()->id, null, $payload, 'Chart account created.');
+
+            return $account;
+        });
 
         $redirectTo = $request->string('redirect_to')->toString();
         if ($redirectTo !== '') {
-            return redirect($redirectTo)->with('status', 'Account created.');
+            return redirect($redirectTo)->with('status', $this->coaApprovalEnabled() ? 'Account submitted for approval.' : 'Account created.');
         }
 
-        return redirect()->route('loan.accounting.chart.index')->with('status', 'Account created.');
+        return redirect()->route('loan.accounting.chart.index')->with('status', $this->coaApprovalEnabled() ? 'Account submitted for approval.' : 'Account created.');
     }
 
     public function chartEdit(AccountingChartAccount $accounting_chart_account): RedirectResponse
@@ -462,8 +525,32 @@ class LoanAccountingController extends Controller
     public function chartUpdate(Request $request, AccountingChartAccount $accounting_chart_account): RedirectResponse
     {
         $validated = $this->validateChartPayload($request, $accounting_chart_account);
-        $payload = $this->buildChartPayload($request, $validated, $accounting_chart_account);
+        $payload = $this->buildChartPayload($request, $validated, $accounting_chart_account, (string) $accounting_chart_account->code);
+
+        if ($this->coaApprovalEnabled() && (string) ($accounting_chart_account->approval_status ?? '') === 'rejected') {
+            $history = collect($accounting_chart_account->approval_history ?? [])->values()->all();
+            $history[] = [
+                'action' => 'resubmitted',
+                'by_user_id' => $request->user()->id,
+                'at' => now()->toDateTimeString(),
+                'note' => 'Rejected account updated and resubmitted.',
+            ];
+            $payload['is_active'] = false;
+            $payload['approval_status'] = 'pending';
+            $payload['approval_current_step'] = 1;
+            $payload['approval_submitted_at'] = now();
+            $payload['approved_by'] = null;
+            $payload['approved_at'] = null;
+            $payload['rejected_by'] = null;
+            $payload['rejected_at'] = null;
+            $payload['rejection_reason'] = null;
+            $payload['approval_history'] = $history;
+        }
+
+        $oldValues = $accounting_chart_account->only(array_keys($payload));
         $accounting_chart_account->update($payload);
+        $this->syncControlledApprovers($accounting_chart_account, collect($request->input('controlled_approver_ids', [])));
+        $this->logControlAudit('chart_account', $accounting_chart_account->id, 'updated', $request->user()->id, $oldValues, $payload, 'Chart account updated.');
 
         $redirectTo = $request->string('redirect_to')->toString();
         if ($redirectTo !== '') {
@@ -471,6 +558,11 @@ class LoanAccountingController extends Controller
         }
 
         return redirect()->route('loan.accounting.chart.index')->with('status', 'Account updated.');
+    }
+
+    private function coaApprovalEnabled(): bool
+    {
+        return LoanSystemSetting::getValue('coa_approval_required', '0') === '1';
     }
 
     public function chartDestroy(AccountingChartAccount $accounting_chart_account): RedirectResponse
@@ -490,32 +582,43 @@ class LoanAccountingController extends Controller
         $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
         $hasParentId = Schema::hasColumn('accounting_chart_accounts', 'parent_id');
         $rules = [
-            'code' => ['required', 'string', 'max:32'],
+            'code' => ['prohibited'],
             'name' => ['required', 'string', 'max:255'],
             'account_type' => ['required', 'in:asset,liability,equity,income,expense'],
             'account_class' => $hasAccountClass
-                ? ['required', Rule::in([AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_DETAIL])]
+                ? ['required', Rule::in([AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_PARENT, AccountingChartAccount::CLASS_DETAIL])]
                 : ['nullable'],
             'parent_id' => $hasParentId
                 ? ['nullable', 'integer', 'exists:accounting_chart_accounts,id']
                 : ['nullable'],
             'current_balance' => ['nullable', 'numeric'],
+            'min_balance_floor' => ['nullable', 'numeric', 'min:0'],
             'allow_overdraft' => ['sometimes', 'boolean'],
             'overdraft_limit' => ['nullable', 'numeric', 'min:0'],
             'is_cash_account' => ['sometimes', 'boolean'],
             'is_active' => ['sometimes', 'boolean'],
+            'is_controlled_account' => ['sometimes', 'boolean'],
+            'control_requires_approval' => ['sometimes', 'boolean'],
+            'control_approval_type' => ['nullable', Rule::in(['any', 'all', 'role'])],
+            'control_approval_role' => ['nullable', 'string', 'max:80'],
+            'control_always_require_approval' => ['sometimes', 'boolean'],
+            'control_threshold_enabled' => ['sometimes', 'boolean'],
+            'control_threshold_amount' => ['nullable', 'numeric', 'min:0'],
+            'control_applies_to' => ['nullable', Rule::in(['debit', 'credit', 'both'])],
+            'control_reason_note' => ['nullable', 'string', 'max:500'],
+            'controlled_approver_ids' => ['nullable', 'array', 'max:20'],
+            'controlled_approver_ids.*' => ['integer', 'exists:users,id'],
+            'floor_enabled' => ['sometimes', 'boolean'],
+            'floor_action' => ['nullable', Rule::in(['block', 'require_approval'])],
         ];
-        $rules['code'][] = $existing
-            ? Rule::unique('accounting_chart_accounts', 'code')->ignore($existing->id)
-            : Rule::unique('accounting_chart_accounts', 'code');
 
         $validated = $request->validate($rules);
 
         if ($hasAccountClass && $hasParentId && ! empty($validated['parent_id'])) {
             $parent = AccountingChartAccount::query()->find((int) $validated['parent_id']);
-            if (! $parent || ! $parent->isHeader()) {
+            if (! $parent || (! $parent->isHeader() && ! $parent->isParent())) {
                 throw ValidationException::withMessages([
-                    'parent_id' => 'Parent account must be a Header account.',
+                    'parent_id' => 'Parent account must be a Header or Parent account.',
                 ]);
             }
             if ($existing && (int) $validated['parent_id'] === (int) $existing->id) {
@@ -536,7 +639,7 @@ class LoanAccountingController extends Controller
     /** @param  array<string, mixed>  $validated
      *  @return array<string, mixed>
      */
-    private function buildChartPayload(Request $request, array $validated, ?AccountingChartAccount $existing = null): array
+    private function buildChartPayload(Request $request, array $validated, ?AccountingChartAccount $existing = null, ?string $resolvedCode = null): array
     {
         $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
         $hasParentId = Schema::hasColumn('accounting_chart_accounts', 'parent_id');
@@ -556,14 +659,28 @@ class LoanAccountingController extends Controller
         }
 
         $payload = [
-            'code' => $validated['code'],
+            'code' => $resolvedCode ?: (string) ($existing?->code ?? ''),
             'name' => $validated['name'],
             'account_type' => $accountType,
             'current_balance' => (float) ($validated['current_balance'] ?? 0),
+            'min_balance_floor' => (float) ($validated['min_balance_floor'] ?? 0),
             'allow_overdraft' => $request->boolean('allow_overdraft'),
             'overdraft_limit' => $validated['overdraft_limit'] ?? null,
             'is_cash_account' => $request->boolean('is_cash_account'),
-            'is_active' => $request->boolean('is_active', true),
+            'is_active' => $request->has('is_active')
+                ? $request->boolean('is_active')
+                : ($existing?->is_active ?? true),
+            'is_controlled_account' => $request->boolean('is_controlled_account'),
+            'control_requires_approval' => $request->boolean('control_requires_approval', true),
+            'control_approval_type' => (string) ($validated['control_approval_type'] ?? 'any'),
+            'control_approval_role' => $validated['control_approval_role'] ?? null,
+            'control_always_require_approval' => $request->boolean('control_always_require_approval'),
+            'control_threshold_enabled' => $request->boolean('control_threshold_enabled'),
+            'control_threshold_amount' => $validated['control_threshold_amount'] ?? null,
+            'control_applies_to' => (string) ($validated['control_applies_to'] ?? 'both'),
+            'control_reason_note' => $validated['control_reason_note'] ?? null,
+            'floor_enabled' => $request->boolean('floor_enabled'),
+            'floor_action' => (string) ($validated['floor_action'] ?? 'block'),
         ];
 
         if ($hasAccountClass) {
@@ -575,8 +692,58 @@ class LoanAccountingController extends Controller
         if (! $payload['allow_overdraft']) {
             $payload['overdraft_limit'] = null;
         }
+        if (! $payload['is_controlled_account']) {
+            $payload['control_requires_approval'] = false;
+            $payload['control_approval_role'] = null;
+            $payload['control_threshold_enabled'] = false;
+            $payload['control_threshold_amount'] = null;
+            $payload['control_reason_note'] = null;
+            $payload['control_always_require_approval'] = false;
+            $payload['control_applies_to'] = 'both';
+        }
+        if (! $payload['control_threshold_enabled']) {
+            $payload['control_threshold_amount'] = null;
+        }
+        if (! $payload['floor_enabled']) {
+            $payload['floor_action'] = 'block';
+        }
 
         return $payload;
+    }
+
+    private function syncControlledApprovers(AccountingChartAccount $account, Collection $approverIds): void
+    {
+        if (! $account->is_controlled_account) {
+            $account->controlledApprovers()->sync([]);
+
+            return;
+        }
+
+        $ids = $approverIds
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $account->controlledApprovers()->sync($ids);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $oldValues
+     * @param  array<string, mixed>|null  $newValues
+     */
+    private function logControlAudit(string $entityType, ?int $entityId, string $action, ?int $actorId, ?array $oldValues, ?array $newValues, ?string $context = null): void
+    {
+        AccountingControlAudit::query()->create([
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'action' => $action,
+            'actor_user_id' => $actorId,
+            'old_values' => $oldValues,
+            'new_values' => $newValues,
+            'context' => $context,
+        ]);
     }
 
     /* ---------- Journal entries ---------- */
@@ -607,6 +774,8 @@ class LoanAccountingController extends Controller
             AccountingJournalEntry::STATUS_DRAFT,
             AccountingJournalEntry::STATUS_POSTED,
             AccountingJournalEntry::STATUS_REVERSED,
+            AccountingJournalEntry::STATUS_PENDING_CONTROLLED_APPROVAL,
+            AccountingJournalEntry::STATUS_REJECTED,
         ], true)) {
             $q->where('status', $status);
         }
@@ -685,7 +854,6 @@ class LoanAccountingController extends Controller
             $delta = round((float) ($line['debit'] ?? 0) - (float) ($line['credit'] ?? 0), 2);
             $lineDeltas[$accountId] = round((float) ($lineDeltas[$accountId] ?? 0) + $delta, 2);
         }
-        app(AccountingOverdraftGuardService::class)->assertCanApplyDeltas($lineDeltas);
 
         foreach ($lines as $i => $line) {
             $d = round((float) ($line['debit'] ?? 0), 2);
@@ -708,15 +876,28 @@ class LoanAccountingController extends Controller
         }
 
         $entry = null;
-        DB::transaction(function () use ($validated, $request, $lines, $lineAccountIds, &$entry) {
+        DB::transaction(function () use ($validated, $request, $lines, $lineAccountIds, $lineAccounts, $lineDeltas, &$entry) {
+            $decision = app(AccountingControlledApprovalService::class)->evaluate($lines, $lineAccounts);
+            if ((bool) $decision['blocked']) {
+                throw ValidationException::withMessages([
+                    'lines' => (string) ($decision['blocked_message'] ?: 'The transaction is blocked by account controls.'),
+                ]);
+            }
+
+            if (! (bool) $decision['requires_approval']) {
+                app(AccountingOverdraftGuardService::class)->assertCanApplyDeltas($lineDeltas);
+            }
+
             $entry = AccountingJournalEntry::create([
                 'entry_date' => $validated['entry_date'],
                 'reference' => $validated['reference'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'created_by' => $request->user()->id,
-                'status' => AccountingJournalEntry::STATUS_POSTED,
-                'approved_by' => $request->user()->id,
-                'approved_at' => now(),
+                'status' => (bool) $decision['requires_approval']
+                    ? AccountingJournalEntry::STATUS_PENDING_CONTROLLED_APPROVAL
+                    : AccountingJournalEntry::STATUS_POSTED,
+                'approved_by' => (bool) $decision['requires_approval'] ? null : $request->user()->id,
+                'approved_at' => (bool) $decision['requires_approval'] ? null : now(),
             ]);
             foreach ($lines as $line) {
                 AccountingJournalLine::create([
@@ -727,8 +908,32 @@ class LoanAccountingController extends Controller
                     'memo' => $line['memo'] ?? null,
                 ]);
             }
-            app(AccountingChartBalanceService::class)->syncAccountsAndAncestors($lineAccountIds->all());
+            if ((bool) $decision['requires_approval']) {
+                AccountingJournalApprovalQueue::query()->create([
+                    'accounting_journal_entry_id' => $entry->id,
+                    'triggered_by_user_id' => $request->user()->id,
+                    'status' => AccountingJournalApprovalQueue::STATUS_PENDING,
+                    'reason_code' => (string) ($decision['reason_code'] ?? 'controlled_account'),
+                    'required_approval_type' => (string) ($decision['approval_type'] ?? 'any'),
+                    'required_role' => $decision['required_role'] ? (string) $decision['required_role'] : null,
+                    'required_approver_ids' => $decision['required_approver_ids'] ?? [],
+                    'approval_progress' => [],
+                    'reason_detail' => (string) ($decision['reason_detail'] ?? ''),
+                ]);
+                $this->logControlAudit('journal_entry', (int) $entry->id, 'queued_for_approval', (int) $request->user()->id, null, [
+                    'reason_code' => (string) ($decision['reason_code'] ?? 'controlled_account'),
+                    'reason_detail' => (string) ($decision['reason_detail'] ?? ''),
+                ], 'Journal queued for controlled account approval.');
+            } else {
+                app(AccountingChartBalanceService::class)->syncAccountsAndAncestors($lineAccountIds->all());
+            }
         });
+
+        if ((string) ($entry->status ?? '') === AccountingJournalEntry::STATUS_PENDING_CONTROLLED_APPROVAL) {
+            return redirect()
+                ->route('loan.accounting.journal.index')
+                ->with('status', 'This journal includes a controlled account and has been sent for approval.');
+        }
 
         return redirect()
             ->route('loan.accounting.journal.show', $entry)

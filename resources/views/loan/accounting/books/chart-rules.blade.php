@@ -2,7 +2,15 @@
     <x-loan.page title="Chart of Accounts & Rules" subtitle="Define and manage the company account structure, hierarchies, and regulatory compliance rules.">
         @php
             $fmtN = fn (int|float $n) => number_format((float) $n, 0);
-            $assetRows = collect($accounts ?? [])->where('account_type', 'asset')->take(8)->values();
+            $allAccounts = collect($accounts ?? []);
+            $typeOrder = ['asset', 'liability', 'equity', 'income', 'expense'];
+            $typeLabels = [
+                'asset' => 'Asset',
+                'liability' => 'Liability',
+                'equity' => 'Equity',
+                'income' => 'Income',
+                'expense' => 'Expense',
+            ];
             $mappingRows = collect($postingRules ?? [])->take(8);
             $isEditingAccount = isset($editingAccount) && $editingAccount;
             $isDuplicatingAccount = ! $isEditingAccount && isset($duplicateAccount) && $duplicateAccount;
@@ -18,237 +26,530 @@
 
         <div
             class="space-y-6"
-            x-data="{ showCreateAccountModal: {{ ($errors->any() || $isEditingAccount || $isDuplicatingAccount) ? 'true' : 'false' }}, showOverdrawnModal: false, allowOverdraft: {{ old('allow_overdraft', (bool) ($modalAccount->allow_overdraft ?? false)) ? 'true' : 'false' }} }"
-            @keydown.escape.window="showCreateAccountModal = false; showOverdrawnModal = false"
+            x-data="{
+                showCreateAccountModal: {{ ($errors->any() || $isEditingAccount || $isDuplicatingAccount) ? 'true' : 'false' }},
+                showImportModal: {{ $errors->has('import_file') ? 'true' : 'false' }},
+                showOverdrawnModal: false,
+                showPendingApprovalsModal: false,
+                selectedPendingAccount: null,
+                allowOverdraft: {{ old('allow_overdraft', (bool) ($modalAccount->allow_overdraft ?? false)) ? 'true' : 'false' }},
+                isControlled: {{ old('is_controlled_account', (bool) ($modalAccount->is_controlled_account ?? false)) ? 'true' : 'false' }},
+                floorEnabled: {{ old('floor_enabled', (bool) ($modalAccount->floor_enabled ?? false)) ? 'true' : 'false' }},
+                generatedCode: '{{ old('generated_code', $modalAccount->code ?? '') }}',
+                accountType: '{{ old('account_type', $modalAccount->account_type ?? 'asset') }}',
+                accountClass: '{{ old('account_class', $modalAccount->account_class ?? 'Detail') }}',
+                parentId: '{{ (string) old('parent_id', $modalAccount->parent_id ?? '') }}',
+                activeTab: 'accounts',
+                accountSearch: '',
+                accountTypeFilter: 'all',
+                accountView: 'hierarchy',
+                collapsedCategories: {},
+                collapsedRows: {},
+                toggleCategory(key) {
+                    this.collapsedCategories[key] = !this.collapsedCategories[key];
+                },
+                toggleRow(id) {
+                    this.collapsedRows[id] = !this.collapsedRows[id];
+                },
+                async refreshGeneratedCode() {
+                    if ({{ $isEditingAccount ? 'true' : 'false' }}) return;
+                    const params = new URLSearchParams({
+                        account_type: this.accountType || 'asset',
+                        account_class: this.accountClass || 'Detail',
+                    });
+                    if (this.parentId) params.append('parent_id', this.parentId);
+                    try {
+                        const response = await fetch(`{{ route('loan.accounting.chart.next_code') }}?${params.toString()}`, { headers: { 'Accept': 'application/json' } });
+                        if (!response.ok) return;
+                        const data = await response.json();
+                        this.generatedCode = data.code || '';
+                    } catch (e) { /* no-op */ }
+                }
+            }"
+            x-init="refreshGeneratedCode()"
+            @keydown.escape.window="showCreateAccountModal = false; showImportModal = false; showOverdrawnModal = false; showPendingApprovalsModal = false; selectedPendingAccount = null"
         >
             <section class="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                        <h1 class="text-2xl font-semibold text-slate-900">Chart of Accounts &amp; Rules</h1>
-                        <p class="mt-1 text-sm text-slate-600">Define and manage the company account structure, hierarchies, and regulatory compliance rules.</p>
+                        <h1 class="text-2xl font-semibold text-slate-900">Chart of Accounts</h1>
+                        <p class="mt-1 text-sm text-slate-600">Manage your organization&rsquo;s chart of accounts and financial structure.</p>
                     </div>
-                    <div class="space-y-3 lg:text-right">
-                        <p class="text-sm font-medium text-slate-600">{{ now()->format('l, F j, Y') }}</p>
-                        <span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Period: April 2026 (Open)</span>
-                        <div class="ml-auto w-full max-w-md rounded-xl border border-slate-200 bg-slate-50/80 p-4 text-left">
-                            <p class="text-sm font-semibold text-slate-900">Global Cash-Basis Settings</p>
-                            <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                                <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-                                    <span>System Accounting Mode: Cash-Basis Only</span>
-                                    <input type="checkbox" checked class="h-4 w-8 rounded-full border border-slate-300 text-blue-600 focus:ring-blue-500">
-                                </label>
-                                <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-                                    <span>Enforce Liquidity Guardrails</span>
-                                    <input type="checkbox" checked class="h-4 w-8 rounded-full border border-slate-300 text-blue-600 focus:ring-blue-500">
-                                </label>
-                            </div>
-                        </div>
+                    <div class="flex items-center gap-2">
+                        <a href="{{ route('loan.accounting.chart.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Export</a>
+                        <button type="button" @click="showCreateAccountModal = true" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors">New Account</button>
                     </div>
+                </div>
+                <div class="mt-5 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+                    <button type="button" @click="activeTab = 'overview'" :class="activeTab === 'overview' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-4 py-2 text-sm font-semibold">Overview</button>
+                    <button type="button" @click="activeTab = 'accounts'" :class="activeTab === 'accounts' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-4 py-2 text-sm font-semibold">Accounts</button>
+                    <button type="button" @click="activeTab = 'rules'" :class="activeTab === 'rules' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-4 py-2 text-sm font-semibold">Accounting Rules</button>
+                    <button type="button" @click="activeTab = 'wallet'" :class="activeTab === 'wallet' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-4 py-2 text-sm font-semibold">Wallet Accounts</button>
                 </div>
             </section>
 
-            <section class="grid gap-4 lg:grid-cols-3">
-                <article class="rounded-xl border border-orange-200 bg-white p-4 shadow-sm">
-                    <h2 class="text-sm font-semibold text-slate-900">Audit Status</h2>
-                    <div class="mt-3 space-y-2 text-sm">
-                        <div class="flex items-center justify-between rounded-lg bg-orange-50 px-3 py-2 text-orange-700">
-                            <span>Pending Account Approvals</span>
-                            <span class="font-semibold">{{ $fmtN((int) ($pendingApprovals ?? 0)) }}</span>
+            <section x-show="activeTab === 'overview'" x-cloak class="space-y-4">
+                @php
+                    $totalAccounts = (int) $allAccounts->count();
+                    $inactiveAccounts = (int) $allAccounts->where('is_active', false)->count();
+                    $activeAccountsCount = max(0, $totalAccounts - $inactiveAccounts);
+                    $overdrawnCount = (int) collect($overdrawnAccounts ?? [])->count();
+                    $totalBalance = (float) $allAccounts->sum(fn ($row) => (float) ($row->current_balance ?? 0));
+                    $typeStats = collect($typeOrder)->map(function ($typeKey) use ($allAccounts, $totalBalance) {
+                        $rows = $allAccounts->where('account_type', $typeKey)->values();
+                        $count = (int) $rows->count();
+                        $active = (int) $rows->where('is_active', true)->count();
+                        $balance = (float) $rows->sum(fn ($row) => (float) ($row->current_balance ?? 0));
+                        $pct = $totalBalance > 0 ? round(($balance / $totalBalance) * 100, 1) : 0;
+
+                        return [
+                            'key' => $typeKey,
+                            'count' => $count,
+                            'active' => $active,
+                            'balance' => $balance,
+                            'pct' => $pct,
+                        ];
+                    })->values();
+                    $assetBalance = (float) ($typeStats->firstWhere('key', 'asset')['balance'] ?? 0);
+                    $liabilityBalance = (float) ($typeStats->firstWhere('key', 'liability')['balance'] ?? 0);
+                    $equityBalance = (float) ($typeStats->firstWhere('key', 'equity')['balance'] ?? 0);
+                    $incomeBalance = (float) ($typeStats->firstWhere('key', 'income')['balance'] ?? 0);
+                    $expenseBalance = (float) ($typeStats->firstWhere('key', 'expense')['balance'] ?? 0);
+                    $netIncome = $incomeBalance - $expenseBalance;
+                @endphp
+
+                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <article class="rounded-xl border border-orange-200 bg-white p-4 shadow-sm">
+                        <div class="flex items-start justify-between">
+                            <p class="text-xs font-semibold text-slate-700">Audit Status</p>
+                            <button type="button" @click="activeTab = 'rules'" class="text-xs font-semibold text-teal-700 hover:text-teal-800">View Issues</button>
                         </div>
-                        <div class="flex items-center justify-between rounded-lg bg-orange-50 px-3 py-2 text-orange-700">
-                            <span>Accounts Missing Rules</span>
-                            <span class="font-semibold">{{ $fmtN((int) ($missingRules ?? 0)) }}</span>
-                        </div>
-                    </div>
-                </article>
-                <article class="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm">
-                    <h2 class="text-sm font-semibold text-slate-900">Financial Pulse</h2>
-                    <div class="mt-3 space-y-2 text-sm">
-                        <div class="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">
-                            <span>Active G/L Accounts</span>
-                            <span class="font-semibold">{{ $fmtN((int) ($activeAccounts ?? 0)) }}</span>
-                        </div>
-                        <div class="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">
-                            <span>New Accounts (30 Days)</span>
-                            <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold">+{{ $fmtN((int) ($newAccounts30d ?? 0)) }}</span>
-                        </div>
-                        <button type="button" @click="showOverdrawnModal = true" class="flex w-full items-center justify-between rounded-lg border px-3 py-2 {{ (int) ($overdrawnCount ?? 0) > 0 ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700' }}">
-                            <span class="inline-flex items-center gap-1">
-                                @if ((int) ($overdrawnCount ?? 0) > 0)
-                                    <i class="fa-solid fa-triangle-exclamation"></i>
-                                @else
-                                    <i class="fa-solid fa-circle-check"></i>
-                                @endif
-                                Overdrawn Accounts
-                            </span>
-                            <span class="font-semibold">{{ $fmtN((int) ($overdrawnCount ?? 0)) }}</span>
-                        </button>
-                    </div>
-                </article>
-                <article class="rounded-xl border border-teal-200 bg-white p-4 shadow-sm">
-                    <h2 class="text-sm font-semibold text-slate-900">Balanced Books Meter</h2>
-                    <p class="mt-3 text-sm text-slate-600">Total Debits Balance with Total Credits</p>
-                    <div class="mt-3">
-                        <span class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 12A8 8 0 1 1 4 12" stroke-linecap="round"/><path d="m9 12 2 2 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">{{ $fmtN((int) ($pendingApprovals ?? 0)) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Pending account approvals</p>
+                        <p class="mt-1 text-xs text-slate-500">{{ $fmtN((int) ($missingRules ?? 0)) }} accounts missing rules</p>
+                    </article>
+                    <article class="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs font-semibold text-slate-700">Financial Pulse</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">{{ $fmtN((int) ($activeAccounts ?? 0)) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Active G/L Accounts</p>
+                        <p class="mt-1 text-xs text-slate-500">New Accounts (30 Days): +{{ $fmtN((int) ($newAccounts30d ?? 0)) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Overdrawn Accounts: {{ $fmtN($overdrawnCount) }}</p>
+                    </article>
+                    <article class="rounded-xl border border-teal-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs font-semibold text-slate-700">Balanced Books Meter</p>
+                        <p class="mt-2 text-lg font-semibold {{ ($isBalanced ?? false) ? 'text-emerald-700' : 'text-red-700' }}">
                             {{ ($isBalanced ?? false) ? 'Balanced' : 'Out of Balance' }}
-                        </span>
+                        </p>
+                        <p class="mt-1 text-xs text-slate-500">Total debits balanced with total credits</p>
+                    </article>
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs font-semibold text-slate-700">System Readiness</p>
+                        <p class="mt-2 text-sm font-semibold text-emerald-700">Cash-Basis Mode: Active</p>
+                        <p class="mt-1 text-sm font-semibold text-emerald-700">Liquidity Guardrails: Enforced</p>
+                    </article>
+
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs text-slate-500">Total Assets</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">KSh {{ number_format($assetBalance, 2) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Current asset balance</p>
+                    </article>
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs text-slate-500">Total Liabilities</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">KSh {{ number_format($liabilityBalance, 2) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Outstanding obligations</p>
+                    </article>
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs text-slate-500">Total Equity</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">KSh {{ number_format($equityBalance, 2) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Owner&rsquo;s position</p>
+                    </article>
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs text-slate-500">Net Income</p>
+                        <p class="mt-2 text-lg font-semibold {{ $netIncome >= 0 ? 'text-emerald-700' : 'text-red-700' }}">KSh {{ number_format($netIncome, 2) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Revenue less expenses</p>
+                    </article>
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs text-slate-500">Total Balance</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">KSh {{ number_format($totalBalance, 2) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Net organizational value</p>
+                    </article>
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs text-slate-500">Active Accounts</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">{{ $fmtN($activeAccountsCount) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">{{ $totalAccounts > 0 ? round(($activeAccountsCount / $totalAccounts) * 100) : 0 }}% of chart</p>
+                    </article>
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-xs text-slate-500">Inactive Accounts</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">{{ $fmtN($inactiveAccounts) }}</p>
+                        <p class="mt-1 text-xs text-slate-500">{{ $totalAccounts > 0 ? round(($inactiveAccounts / $totalAccounts) * 100) : 0 }}% of chart</p>
+                    </article>
+                </div>
+
+                <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="mb-3 flex items-center justify-between">
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-900">Account Type Breakdown</h3>
+                            <p class="text-xs text-slate-500">Distribution by type and balance share.</p>
+                        </div>
+                        <div class="text-xs text-slate-500">
+                            {{ ($isBalanced ?? false) ? 'Balanced Books Meter: Balanced' : 'Balanced Books Meter: Out of Balance' }}
+                        </div>
+                    </div>
+                    <div class="space-y-3">
+                        @foreach ($typeStats as $stat)
+                            @php
+                                $barClass = match ($stat['key']) {
+                                    'asset' => 'bg-emerald-600',
+                                    'liability' => 'bg-pink-600',
+                                    'equity' => 'bg-blue-500',
+                                    'income' => 'bg-cyan-600',
+                                    default => 'bg-orange-500',
+                                };
+                            @endphp
+                            <button type="button" @click="activeTab = 'accounts'; accountTypeFilter = '{{ $stat['key'] }}'" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-left hover:bg-slate-50">
+                                <div class="mb-2 flex items-center justify-between text-xs">
+                                    <div class="flex items-center gap-2">
+                                        <span class="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-600">{{ ucfirst($stat['key']) }}</span>
+                                        <span class="text-slate-500">{{ $fmtN($stat['count']) }} accounts ({{ $fmtN($stat['active']) }} active)</span>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-semibold text-slate-700">KSh {{ number_format((float) $stat['balance'], 2) }}</p>
+                                        <p class="text-slate-500">{{ number_format((float) $stat['pct'], 1) }}% of total</p>
+                                    </div>
+                                </div>
+                                <div class="h-2 w-full rounded-full bg-slate-100">
+                                    <div class="h-2 rounded-full {{ $barClass }}" style="width: {{ min(100, max(0, (float) $stat['pct'])) }}%"></div>
+                                </div>
+                            </button>
+                        @endforeach
                     </div>
                 </article>
             </section>
 
-            <section class="grid gap-6 xl:grid-cols-10">
-                <div class="space-y-6 xl:col-span-7">
-                    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div class="mb-4 flex items-center justify-between gap-3">
-                            <h2 class="text-lg font-semibold text-slate-900">Manage Chart of Accounts (Cash Flow View)</h2>
+            <section x-show="activeTab === 'accounts'" x-cloak class="space-y-4">
+                <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div class="grid gap-3 md:grid-cols-12">
+                        <div class="md:col-span-6">
+                            <input x-model="accountSearch" type="text" placeholder="Search accounts by name or code..." class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-teal-700 focus:ring-teal-700" />
+                        </div>
+                        <div class="md:col-span-3">
+                            <select x-model="accountTypeFilter" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                                <option value="all">All Types</option>
+                                @foreach ($typeOrder as $typeKey)
+                                    <option value="{{ $typeKey }}">{{ $typeLabels[$typeKey] }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="md:col-span-3 flex items-center justify-end gap-2">
+                            <a href="{{ route('loan.accounting.books.chart_rules.template.download') }}" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" title="Download import template">
+                                <i class="fa-solid fa-download text-xs"></i>
+                                <span>Download</span>
+                            </a>
+                            <button type="button" @click="showImportModal = true" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" title="Import chart accounts">
+                                <i class="fa-solid fa-file-import text-xs"></i>
+                                <span>Import</span>
+                            </button>
+                            <button type="button" onclick="window.print()" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" title="Print current chart view">
+                                <i class="fa-solid fa-print text-xs"></i>
+                                <span>Print</span>
+                            </button>
+                            <button type="button" @click="accountView = 'hierarchy'" :class="accountView === 'hierarchy' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-3 py-2 text-sm font-semibold">Hierarchy</button>
+                            <button type="button" @click="accountView = 'table'" :class="accountView === 'table' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-3 py-2 text-sm font-semibold">Table View</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div x-show="accountView === 'hierarchy'" x-cloak class="space-y-4">
+                    <h2 class="text-lg font-semibold text-slate-900">Account Hierarchy</h2>
+                    <p class="-mt-2 text-xs text-slate-500">Navigate and explore accounts in hierarchical tree structure</p>
+                    @foreach ($typeOrder as $typeKey)
+                        @php
+                            $rows = $allAccounts
+                                ->where('account_type', $typeKey)
+                                ->sortBy(fn ($row) => (int) ($row->code ?? 0))
+                                ->values();
+                            $rowsByParent = $rows->groupBy(fn ($row) => (string) ($row->parent_id ?? 'root'));
+                            $flattenRows = function (string $parentKey = 'root', int $level = 0, array $ancestors = []) use (&$flattenRows, $rowsByParent): array {
+                                $branch = collect($rowsByParent->get($parentKey, []))
+                                    ->sortBy(fn ($row) => (int) ($row->code ?? 0))
+                                    ->values();
+                                $result = [];
+                                foreach ($branch as $node) {
+                                    $id = (int) $node->id;
+                                    $children = collect($rowsByParent->get((string) $id, []));
+                                    $hasChildren = $children->isNotEmpty();
+                                    $result[] = [
+                                        'account' => $node,
+                                        'level' => $level,
+                                        'ancestors' => $ancestors,
+                                        'hasChildren' => $hasChildren,
+                                        'isHeaderLike' => in_array((string) ($node->account_class ?? ''), ['Header', 'Parent'], true),
+                                    ];
+                                    if ($hasChildren) {
+                                        $result = array_merge(
+                                            $result,
+                                            $flattenRows((string) $id, $level + 1, array_merge($ancestors, [$id]))
+                                        );
+                                    }
+                                }
+
+                                return $result;
+                            };
+                            $flatRows = collect($flattenRows())->values();
+                            $rootCount = $flatRows->where('level', 0)->count();
+                            $typeBalance = (float) $rows->sum(fn ($row) => (float) ($row->current_balance ?? 0));
+                        @endphp
+                        <article
+                            x-show="accountTypeFilter === 'all' || accountTypeFilter === '{{ $typeKey }}'"
+                            x-cloak
+                            class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+                        >
                             <button
                                 type="button"
-                                @click="showCreateAccountModal = true"
-                                class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+                                @click="toggleCategory('{{ $typeKey }}')"
+                                class="flex w-full items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3 text-left"
                             >
-                                Create New Account
+                                <div class="flex items-center gap-2">
+                                    <span class="text-slate-500 text-xs" x-text="collapsedCategories['{{ $typeKey }}'] ? '>' : '⌄'"></span>
+                                    <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-600">{{ $typeLabels[$typeKey] }}</h3>
+                                </div>
+                                <div class="text-xs text-slate-500">
+                                    {{ $fmtN($rootCount) }} root accounts · Balance KSh {{ $fmtN($typeBalance) }}
+                                </div>
                             </button>
-                        </div>
-                        <div class="overflow-x-auto rounded-lg border border-slate-200">
-                            <table class="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                                    <tr>
-                                        <th class="px-3 py-2">Account Code</th>
-                                        <th class="px-3 py-2">Account Name</th>
-                                        <th class="px-3 py-2">Account Type</th>
-                                        <th class="px-3 py-2">Parent Group</th>
-                                        <th class="px-3 py-2">Current Balance</th>
-                                        <th class="px-3 py-2">Overdraft Policy</th>
-                                        <th class="px-3 py-2">Active State</th>
-                                        <th class="px-3 py-2">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100">
-                                    <tr class="bg-emerald-50/60 text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                                        <td colspan="8" class="px-3 py-2">Assets</td>
-                                    </tr>
-                                    @forelse ($assetRows as $row)
-                                        <tr class="group cursor-pointer hover:bg-teal-50/60">
-                                            <td class="px-3 py-2 font-mono text-xs text-slate-700">{{ $row->code }}</td>
-                                            <td class="px-3 py-2 font-medium text-slate-800">{{ $row->name }}</td>
-                                            <td class="px-3 py-2 text-slate-600">{{ ucfirst($row->account_type) }}</td>
-                                            <td class="px-3 py-2 text-slate-600">{{ $row->parent?->name ?? 'Top Level' }}</td>
-                                            <td class="px-3 py-2 font-semibold text-emerald-700">KSh {{ $fmtN((float) ($row->current_balance ?? 0)) }}</td>
-                                            <td class="px-3 py-2 text-slate-600">
-                                                @if ($row->allow_overdraft)
-                                                    Allowed @if(!is_null($row->overdraft_limit)) (Limit: KSh {{ $fmtN((float) $row->overdraft_limit) }}) @endif
+                            <div x-show="!collapsedCategories['{{ $typeKey }}']" class="overflow-x-auto px-5 py-3">
+                                <div class="mb-2 grid w-full min-w-[760px] grid-cols-[6rem_minmax(0,1fr)_9rem] border-b border-slate-100 pb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                    <div class="w-24">Account Code</div>
+                                    <div>Account Name</div>
+                                    <div class="text-right">Balance</div>
+                                </div>
+                                @forelse ($flatRows as $node)
+                                    @php
+                                        $row = $node['account'];
+                                        $levelClass = match ((int) $node['level']) {
+                                            0 => 'pl-2',
+                                            1 => 'pl-6',
+                                            2 => 'pl-10',
+                                            default => 'pl-14',
+                                        };
+                                        $isHeaderRow = $node['isHeaderLike'];
+                                    @endphp
+                                    <div
+                                        x-show="
+                                            {{ \Illuminate\Support\Js::from(strtolower((string) $row->code.' '.(string) $row->name)) }}.includes(accountSearch.toLowerCase())
+                                            && {{ \Illuminate\Support\Js::from($node['ancestors']) }}.every(id => !collapsedRows[id])
+                                        "
+                                        class="grid w-full min-w-[760px] grid-cols-[6rem_minmax(0,1fr)_9rem] items-center gap-2 border-b border-slate-100 py-2 text-sm last:border-b-0 {{ $isHeaderRow ? 'bg-slate-50/70' : 'bg-white' }}"
+                                    >
+                                        <div class="w-24 min-w-0">
+                                            <p class="font-mono text-[11px] text-slate-500">{{ $row->code }}</p>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <div class="flex items-center gap-2 {{ $levelClass }}">
+                                                @if ($node['hasChildren'])
+                                                    <button type="button" @click="toggleRow({{ (int) $row->id }})" class="text-xs text-slate-500 hover:text-slate-700">
+                                                        <span x-text="collapsedRows[{{ (int) $row->id }}] ? '>' : '⌄'"></span>
+                                                    </button>
                                                 @else
-                                                    Strict Mode
+                                                    <span class="inline-block w-3 text-xs text-slate-300">•</span>
                                                 @endif
-                                            </td>
-                                            <td class="px-3 py-2"><input type="checkbox" @checked($row->is_active) disabled class="h-4 w-8 rounded-full border border-slate-300 text-emerald-600"></td>
-                                            <td class="px-3 py-2 text-slate-500">
-                                                <div class="flex items-center gap-1">
-                                                    <a href="{{ route('loan.accounting.books.chart_rules', ['edit_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
-                                                    <a href="{{ route('loan.accounting.books.chart_rules', ['duplicate_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Duplicate"><i class="fa-solid fa-clone" aria-hidden="true"></i></a>
-                                                    <a href="{{ route('loan.accounting.journal.index', ['q' => $row->code]) }}" class="rounded p-1 hover:bg-purple-50 hover:text-purple-700" title="Audit History"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    @empty
-                                        <tr><td colspan="8" class="px-3 py-4 text-center text-slate-500">No asset accounts found.</td></tr>
-                                    @endforelse
-                                </tbody>
-                            </table>
-                        </div>
-                    </article>
-
-                    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <div class="mb-4 flex items-center justify-between">
-                            <h2 class="text-lg font-semibold text-slate-900">Automated Cash Mappings (Maker-Checker)</h2>
-                            <span class="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Governance Layer</span>
-                        </div>
-                        <div class="overflow-x-auto rounded-lg border border-slate-200">
-                            <table class="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                                    <tr>
-                                        <th class="px-3 py-2">Trigger (Business Event)</th>
-                                        <th class="px-3 py-2">Debit Account (COA)</th>
-                                        <th class="px-3 py-2">Credit Account (COA)</th>
-                                        <th class="px-3 py-2">Status</th>
-                                        <th class="px-3 py-2">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100 bg-white">
-                                    @forelse ($mappingRows as $rule)
-                                        @php
-                                            $ruleState = $rule->debit_account_id && $rule->credit_account_id ? 'Active' : 'Awaiting Approval';
-                                            $ruleClass = $ruleState === 'Active'
-                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                                : 'border-orange-200 bg-orange-50 text-orange-700';
-                                        @endphp
-                                        <tr class="hover:bg-teal-50/60">
-                                            <td class="px-3 py-2 font-medium text-slate-800">{{ $rule->label }}</td>
-                                            <td class="px-3 py-2 text-slate-700">{{ $rule->debitAccount?->name ?? '—' }}</td>
-                                            <td class="px-3 py-2 text-slate-700">{{ $rule->creditAccount?->name ?? '—' }}</td>
-                                            <td class="px-3 py-2"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold {{ $ruleClass }}">{{ $ruleState }}</span></td>
-                                            <td class="px-3 py-2 text-slate-500">
-                                                <div class="flex items-center gap-2">
-                                                    <a href="{{ route('loan.accounting.chart.index') }}" class="hover:text-blue-700" title="Edit Mapping"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
-                                                    <a href="{{ route('loan.accounting.journal.index') }}" class="hover:text-purple-700" title="Mapping History"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    @empty
-                                        <tr><td colspan="5" class="px-3 py-4 text-center text-slate-500">No mapping rules found.</td></tr>
-                                    @endforelse
-                                </tbody>
-                            </table>
-                        </div>
-                    </article>
+                                                <p class="max-w-[300px] overflow-hidden text-ellipsis whitespace-nowrap {{ $isHeaderRow ? 'font-semibold text-slate-900' : 'font-medium text-slate-700' }}">
+                                                    {{ strtoupper((string) $row->name) }}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center justify-end gap-2 text-right text-xs">
+                                            <span class="text-slate-600">KSh {{ $fmtN((float) ($row->current_balance ?? 0)) }}</span>
+                                            <span class="inline-block h-1.5 w-1.5 rounded-full {{ (bool) $row->is_active ? 'bg-emerald-500' : 'bg-slate-300' }}" title="{{ (bool) $row->is_active ? 'Active' : 'Inactive' }}"></span>
+                                        </div>
+                                    </div>
+                                @empty
+                                    <p class="text-sm text-slate-500">No {{ strtolower($typeLabels[$typeKey]) }} accounts available.</p>
+                                @endforelse
+                            </div>
+                        </article>
+                    @endforeach
                 </div>
 
-                <aside class="xl:col-span-3">
-                    <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                        <h2 class="text-lg font-semibold text-slate-900">Create / Edit Account Details</h2>
-                        <div class="mt-4 space-y-5">
-                            <section>
-                                <h3 class="mb-2 text-sm font-semibold text-slate-800">General Information</h3>
-                                <div class="space-y-3">
-                                    <input type="text" placeholder="Account Name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                                    <input type="text" placeholder="Account Code (mask-able)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                        <select class="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option>Account Type</option></select>
-                                        <select class="rounded-lg border border-slate-300 px-3 py-2 text-sm"><option>Parent Group</option></select>
-                                    </div>
-                                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                        <input type="text" placeholder="Opening Balance (KSh)" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                                        <input type="text" placeholder="Min. Required Balance (Floor)" class="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm">
-                                    </div>
-                                    <p class="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700">WARNING: Blocks transaction if balance goes below floor.</p>
-                                </div>
-                            </section>
-                            <section class="border-t border-slate-200 pt-4">
-                                <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                                    <span>Account Active</span>
-                                    <input type="checkbox" checked class="h-4 w-8 rounded-full border border-slate-300 text-emerald-600">
-                                </label>
-                            </section>
-                            <section class="border-t border-slate-200 pt-4">
-                                <h3 class="mb-3 text-sm font-semibold text-slate-800">Rules &amp; Governance Layer</h3>
-                                <div class="space-y-3">
-                                    <label class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"><span>Requires Dual Authorization (Maker-Checker)</span><input type="checkbox" checked class="h-4 w-8 rounded-full border border-slate-300 text-blue-600"></label>
-                                    <select class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option>Maker (e.g., Loan Officer)</option></select>
-                                    <select class="w-full rounded-lg border border-slate-300 bg-purple-50 px-3 py-2 text-sm"><option>Checker required (Approver)</option></select>
-                                    <label class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"><span>Enforce Transaction Limit</span><input type="checkbox" checked class="h-4 w-8 rounded-full border border-slate-300 text-blue-600"></label>
-                                    <input type="text" value="KSh 100k" class="w-full rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-900">
-                                    <label class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"><span>Requires Mandatory Cost Center Tag</span><input type="checkbox" class="h-4 w-8 rounded-full border border-slate-300 text-blue-600"></label>
-                                </div>
-                            </section>
-                            <section class="border-t border-slate-200 pt-4">
-                                <button type="button" class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Save Account</button>
-                                <p class="mt-3 inline-flex rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Account Status: Proposed (Awaiting Director Approval)</p>
-                            </section>
+                <div x-show="accountView === 'table'" x-cloak class="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            <tr>
+                                <th class="px-3 py-2">Account Code</th>
+                                <th class="px-3 py-2">Account Name</th>
+                                <th class="px-3 py-2">Account Type</th>
+                                <th class="px-3 py-2">Parent Group</th>
+                                <th class="px-3 py-2">Current Balance</th>
+                                <th class="px-3 py-2">Overdraft Policy</th>
+                                <th class="px-3 py-2">Active State</th>
+                                <th class="px-3 py-2">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            @forelse ($allAccounts as $row)
+                                <tr
+                                    x-show="(accountTypeFilter === 'all' || accountTypeFilter === {{ \Illuminate\Support\Js::from((string) $row->account_type) }}) && {{ \Illuminate\Support\Js::from(strtolower((string) $row->code.' '.(string) $row->name)) }}.includes(accountSearch.toLowerCase())"
+                                    class="hover:bg-teal-50/60"
+                                >
+                                    <td class="px-3 py-2 font-mono text-xs text-slate-700">{{ $row->code }}</td>
+                                    <td class="px-3 py-2 font-medium text-slate-800">{{ $row->name }}</td>
+                                    <td class="px-3 py-2 text-slate-600">{{ ucfirst($row->account_type) }}</td>
+                                    <td class="px-3 py-2 text-slate-600">{{ $row->parent?->name ?? 'Top Level' }}</td>
+                                    <td class="px-3 py-2 font-semibold text-emerald-700">KSh {{ $fmtN((float) ($row->current_balance ?? 0)) }}</td>
+                                    <td class="px-3 py-2 text-slate-600">
+                                        @if ($row->allow_overdraft)
+                                            Allowed @if(!is_null($row->overdraft_limit)) (Limit: KSh {{ $fmtN((float) $row->overdraft_limit) }}) @endif
+                                        @else
+                                            Strict Mode
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-2"><input type="checkbox" @checked($row->is_active) disabled class="h-4 w-8 rounded-full border border-slate-300 text-emerald-600"></td>
+                                    <td class="px-3 py-2 text-slate-500">
+                                        <div class="flex items-center gap-1">
+                                            <a href="{{ route('loan.accounting.books.chart_rules', ['edit_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+                                            <a href="{{ route('loan.accounting.books.chart_rules', ['duplicate_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Duplicate"><i class="fa-solid fa-clone" aria-hidden="true"></i></a>
+                                            <a href="{{ route('loan.accounting.journal.index', ['q' => $row->code]) }}" class="rounded p-1 hover:bg-purple-50 hover:text-purple-700" title="Audit History"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="8" class="px-3 py-4 text-center text-slate-500">No accounts found.</td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section x-show="activeTab === 'rules'" x-cloak class="space-y-6">
+                <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="mb-4 flex items-center justify-between">
+                        <h2 class="text-lg font-semibold text-slate-900">Global Cash-Basis Settings</h2>
+                        <span class="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">Editable</span>
+                    </div>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                            <span>System Accounting Mode: Cash-Basis Only</span>
+                            <input type="checkbox" checked class="h-4 w-8 rounded-full border border-slate-300 text-blue-600 focus:ring-blue-500">
+                        </label>
+                        <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                            <span>Enforce Liquidity Guardrails</span>
+                            <input type="checkbox" checked class="h-4 w-8 rounded-full border border-slate-300 text-blue-600 focus:ring-blue-500">
+                        </label>
+                    </div>
+                </article>
+
+                <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="mb-4 flex items-center justify-between">
+                        <h2 class="text-lg font-semibold text-slate-900">Automated Cash Mappings</h2>
+                        <span class="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Governance Layer</span>
+                    </div>
+                    <div class="overflow-x-auto rounded-lg border border-slate-200">
+                        <table class="min-w-full divide-y divide-slate-200 text-sm">
+                            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                <tr>
+                                    <th class="px-3 py-2">Trigger (Business Event)</th>
+                                    <th class="px-3 py-2">Debit Account (COA)</th>
+                                    <th class="px-3 py-2">Credit Account (COA)</th>
+                                    <th class="px-3 py-2">Status</th>
+                                    <th class="px-3 py-2">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 bg-white">
+                                @forelse ($mappingRows as $rule)
+                                    @php
+                                        $ruleState = $rule->debit_account_id && $rule->credit_account_id ? 'Active' : 'Awaiting Approval';
+                                        $ruleClass = $ruleState === 'Active'
+                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                            : 'border-orange-200 bg-orange-50 text-orange-700';
+                                    @endphp
+                                    <tr class="hover:bg-teal-50/60">
+                                        <td class="px-3 py-2 font-medium text-slate-800">{{ $rule->label }}</td>
+                                        <td class="px-3 py-2 text-slate-700">{{ $rule->debitAccount?->name ?? '—' }}</td>
+                                        <td class="px-3 py-2 text-slate-700">{{ $rule->creditAccount?->name ?? '—' }}</td>
+                                        <td class="px-3 py-2"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold {{ $ruleClass }}">{{ $ruleState }}</span></td>
+                                        <td class="px-3 py-2 text-slate-500">
+                                            <div class="flex items-center gap-2">
+                                                <a href="{{ route('loan.accounting.chart.index') }}" class="hover:text-blue-700" title="Edit Mapping"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+                                                <a href="{{ route('loan.accounting.journal.index') }}" class="hover:text-purple-700" title="Mapping History"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="5" class="px-3 py-4 text-center text-slate-500">No mapping rules found.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <article class="grid gap-4 lg:grid-cols-2">
+                    <div class="rounded-xl border border-orange-200 bg-white p-4 shadow-sm">
+                        <h3 class="text-sm font-semibold text-slate-900">Approval Settings</h3>
+                        <p class="mt-2 text-sm text-slate-600">Route pending chart accounts and controlled journal approvals.</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <button type="button" @click="showPendingApprovalsModal = true" class="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 hover:bg-orange-100">View Pending Account Approvals</button>
+                            <a href="{{ route('loan.accounting.journal.approval_queue') }}" class="rounded-lg border border-purple-300 bg-purple-50 px-3 py-2 text-xs font-semibold text-purple-700 hover:bg-purple-100">View Journal Approval Queue</a>
                         </div>
                     </div>
-                </aside>
+                    <div class="rounded-xl border border-red-200 bg-white p-4 shadow-sm">
+                        <h3 class="text-sm font-semibold text-slate-900">Liquidity Guardrails</h3>
+                        <p class="mt-2 text-sm text-slate-600">Monitor floor and overdraft controls for sensitive accounts.</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <button type="button" @click="showOverdrawnModal = true" class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100">View Overdrawn Accounts</button>
+                        </div>
+                    </div>
+                </article>
             </section>
+
+            <section x-show="activeTab === 'wallet'" x-cloak class="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+                <h2 class="text-lg font-semibold text-slate-900">Wallet Accounts</h2>
+                <p class="mt-2 text-sm text-slate-500">Wallet segment reserved. Logic will be added in a later step.</p>
+            </section>
+
+            <div
+                x-cloak
+                x-show="showImportModal"
+                x-transition.opacity
+                class="fixed inset-0 z-50 bg-black/50"
+                @click.self="showImportModal = false"
+            >
+                <div class="flex min-h-screen items-center justify-center p-4">
+                    <div class="w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-slate-900">Import Chart of Accounts</h3>
+                                <p class="text-sm text-slate-500">Upload a CSV created from the template download.</p>
+                            </div>
+                            <button type="button" @click="showImportModal = false" class="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">x</button>
+                        </div>
+                        <form method="post" action="{{ route('loan.accounting.books.chart_rules.import') }}" enctype="multipart/form-data" class="space-y-4 px-6 py-5">
+                            @csrf
+                            <div>
+                                <label for="import_file" class="mb-1 block text-xs font-semibold text-slate-600">CSV File</label>
+                                <input id="import_file" type="file" name="import_file" accept=".csv,.txt" required class="w-full rounded-lg border-slate-200 text-sm" />
+                                <div class="mt-2 flex flex-wrap items-center gap-2">
+                                    <a href="{{ route('loan.accounting.books.chart_rules.template.download') }}" class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                        <i class="fa-solid fa-download text-[11px]"></i>
+                                        <span>Download Template</span>
+                                    </a>
+                                    <span class="text-xs text-slate-500">Required columns: name, account_type, account_class, parent_code (optional).</span>
+                                </div>
+                                <ul class="mt-3 space-y-1 text-xs text-slate-600">
+                                    <li>- Do not include <span class="font-semibold">code</span> (system auto-generates it).</li>
+                                    <li>- If you use <span class="font-semibold">parent_code</span>, that parent must already exist (or appear earlier in a prior import).</li>
+                                    <li>- <span class="font-semibold">parent_code</span> must point to a Header or Parent account.</li>
+                                    <li>- Parent-child account type is enforced by system behavior.</li>
+                                </ul>
+                                @error('import_file')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                            </div>
+                            <div class="flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
+                                <button type="button" @click="showImportModal = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Import</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
 
             <div
                 x-cloak
@@ -278,11 +579,11 @@
                                 @method('patch')
                             @endif
 
-                            <div class="grid gap-4 md:grid-cols-3">
+                            <div class="grid gap-4 md:grid-cols-4">
                                 <div>
-                                    <label for="modal_code" class="mb-1 block text-xs font-semibold text-slate-600">Code</label>
-                                    <input id="modal_code" name="code" value="{{ old('code', $isDuplicatingAccount ? (($modalAccount->code ?? '').'-COPY') : ($modalAccount->code ?? '')) }}" required class="w-full rounded-lg border-slate-200 text-sm font-mono" />
-                                    @error('code')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                    <label for="modal_generated_code" class="mb-1 block text-xs font-semibold text-slate-600">Generated Account Code</label>
+                                    <input id="modal_generated_code" name="generated_code" x-model="generatedCode" readonly class="w-full rounded-lg border-slate-200 bg-slate-50 text-sm font-mono" />
+                                    <p class="mt-1 text-[11px] text-slate-500">Code is generated automatically based on account type, class, and parent sequence.</p>
                                 </div>
                                 <div>
                                     <label for="modal_name" class="mb-1 block text-xs font-semibold text-slate-600">Name</label>
@@ -291,7 +592,7 @@
                                 </div>
                                 <div>
                                     <label for="modal_account_type" class="mb-1 block text-xs font-semibold text-slate-600">Type</label>
-                                    <select id="modal_account_type" name="account_type" required class="w-full rounded-lg border-slate-200 text-sm">
+                                    <select id="modal_account_type" name="account_type" x-model="accountType" @change="refreshGeneratedCode()" required class="w-full rounded-lg border-slate-200 text-sm">
                                         @foreach (['asset', 'liability', 'equity', 'income', 'expense'] as $t)
                                             <option value="{{ $t }}" @selected(old('account_type', $modalAccount->account_type ?? 'asset') === $t)>{{ ucfirst($t) }}</option>
                                         @endforeach
@@ -303,8 +604,8 @@
                             <div class="grid gap-4 md:grid-cols-3">
                                 <div>
                                     <label for="modal_account_class" class="mb-1 block text-xs font-semibold text-slate-600">Account Class</label>
-                                    <select id="modal_account_class" name="account_class" class="w-full rounded-lg border-slate-200 text-sm">
-                                        @foreach (['Header', 'Detail'] as $class)
+                                    <select id="modal_account_class" name="account_class" x-model="accountClass" @change="refreshGeneratedCode()" class="w-full rounded-lg border-slate-200 text-sm">
+                                        @foreach (['Header', 'Parent', 'Detail'] as $class)
                                             <option value="{{ $class }}" @selected(old('account_class', $modalAccount->account_class ?? 'Detail') === $class)>{{ $class }}</option>
                                         @endforeach
                                     </select>
@@ -312,7 +613,7 @@
                                 </div>
                                 <div>
                                     <label for="modal_parent_id" class="mb-1 block text-xs font-semibold text-slate-600">Parent Account (Header)</label>
-                                    <select id="modal_parent_id" name="parent_id" class="w-full rounded-lg border-slate-200 text-sm">
+                                    <select id="modal_parent_id" name="parent_id" x-model="parentId" @change="refreshGeneratedCode()" class="w-full rounded-lg border-slate-200 text-sm">
                                         <option value="">Top-level account</option>
                                         @foreach (($headerAccounts ?? collect()) as $header)
                                             @continue($isEditingAccount && (int) $modalAccount->id === (int) $header->id)
@@ -325,6 +626,22 @@
                                     <label for="modal_current_balance" class="mb-1 block text-xs font-semibold text-slate-600">Current Balance</label>
                                     <input id="modal_current_balance" type="number" step="0.01" name="current_balance" value="{{ old('current_balance', $modalAccount->current_balance ?? 0) }}" class="w-full rounded-lg border-slate-200 text-sm" />
                                     @error('current_balance')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </div>
+                                <div class="space-y-2">
+                                    <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                        <input type="hidden" name="floor_enabled" value="0" />
+                                        <input type="checkbox" name="floor_enabled" value="1" x-model="floorEnabled" class="rounded border-slate-300" @checked(old('floor_enabled', $modalAccount->floor_enabled ?? false)) />
+                                        Enable Minimum Balance Floor
+                                    </label>
+                                    <div x-show="floorEnabled" x-cloak class="grid gap-2">
+                                        <input id="modal_min_balance_floor" type="number" step="0.01" min="0" name="min_balance_floor" value="{{ old('min_balance_floor', $modalAccount->min_balance_floor ?? 0) }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="Minimum balance amount" />
+                                        <select name="floor_action" class="w-full rounded-lg border-slate-200 text-sm">
+                                            <option value="block" @selected(old('floor_action', $modalAccount->floor_action ?? 'block') === 'block')>Block posting below floor</option>
+                                            <option value="require_approval" @selected(old('floor_action', $modalAccount->floor_action ?? '') === 'require_approval')>Require approval below floor</option>
+                                        </select>
+                                        <p class="text-[11px] text-orange-700">Below floor transactions require approval or are blocked.</p>
+                                    </div>
+                                    @error('min_balance_floor')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </div>
                                 <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                                     <label class="flex items-center justify-between text-sm text-slate-700">
@@ -348,21 +665,182 @@
                                     <input type="checkbox" name="is_cash_account" value="1" class="rounded border-slate-300" @checked(old('is_cash_account', $modalAccount->is_cash_account ?? false)) />
                                     Cash / bank account
                                 </label>
-                                <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                                    <input type="hidden" name="is_active" value="0" />
-                                    <input type="checkbox" name="is_active" value="1" class="rounded border-slate-300" @checked(old('is_active', $modalAccount->is_active ?? true)) />
-                                    Active
-                                </label>
+                                @if (!($coaApprovalEnabled ?? false))
+                                    <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                        <input type="hidden" name="is_active" value="0" />
+                                        <input type="checkbox" name="is_active" value="1" class="rounded border-slate-300" @checked(old('is_active', $modalAccount->is_active ?? true)) />
+                                        Active
+                                    </label>
+                                @else
+                                    <div class="flex items-center rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
+                                        New accounts will be saved as pending until approvers complete the workflow.
+                                    </div>
+                                @endif
                                 <div class="flex items-center md:justify-end">
-                                    <span class="inline-flex rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Account Status: Proposed</span>
+                                    <span x-show="isControlled" x-cloak class="inline-flex rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Controlled Account</span>
                                 </div>
                             </div>
+
+                            <section class="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                <label class="flex items-center gap-2 text-sm text-slate-700">
+                                    <input type="hidden" name="is_controlled_account" value="0" />
+                                    <input type="checkbox" name="is_controlled_account" value="1" x-model="isControlled" class="rounded border-slate-300" @checked(old('is_controlled_account', $modalAccount->is_controlled_account ?? false)) />
+                                    Controlled Account
+                                </label>
+                                <div x-show="isControlled" x-cloak class="space-y-3 rounded-lg border border-purple-200 bg-white p-3">
+                                    <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                        <span>Requires Approval</span>
+                                        <span>
+                                            <input type="hidden" name="control_requires_approval" value="0" />
+                                            <input type="checkbox" name="control_requires_approval" value="1" class="rounded border-slate-300" @checked(old('control_requires_approval', $modalAccount->control_requires_approval ?? true)) />
+                                        </span>
+                                    </label>
+                                    <div class="grid gap-3 md:grid-cols-2">
+                                        <select name="control_approval_type" class="w-full rounded-lg border-slate-200 text-sm">
+                                            <option value="any" @selected(old('control_approval_type', $modalAccount->control_approval_type ?? 'any') === 'any')>Any selected approver can approve</option>
+                                            <option value="all" @selected(old('control_approval_type', $modalAccount->control_approval_type ?? '') === 'all')>All selected approvers must approve</option>
+                                            <option value="role" @selected(old('control_approval_type', $modalAccount->control_approval_type ?? '') === 'role')>Specific role approval required</option>
+                                        </select>
+                                        <input type="text" name="control_approval_role" value="{{ old('control_approval_role', $modalAccount->control_approval_role ?? '') }}" placeholder="Role (if role-based)" class="w-full rounded-lg border-slate-200 text-sm" />
+                                    </div>
+                                    <div>
+                                        <p class="mb-1 text-xs font-semibold text-slate-600">Approvers</p>
+                                        @php
+                                            $selectedApprovers = old('controlled_approver_ids', isset($modalAccount) ? $modalAccount->controlledApprovers()->pluck('users.id')->all() : []);
+                                            $selectedApprovers = collect($selectedApprovers)->map(fn ($v) => (int) $v)->all();
+                                        @endphp
+                                        <select multiple name="controlled_approver_ids[]" class="w-full rounded-lg border-slate-200 text-sm">
+                                            @foreach (($availableApprovers ?? collect()) as $approver)
+                                                <option value="{{ $approver->id }}" @selected(in_array((int) $approver->id, $selectedApprovers, true))>
+                                                    {{ $approver->name }}{{ $approver->email ? ' ('.$approver->email.')' : '' }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="grid gap-3 md:grid-cols-2">
+                                        <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                            <input type="hidden" name="control_threshold_enabled" value="0" />
+                                            <input type="checkbox" name="control_threshold_enabled" value="1" class="rounded border-slate-300" @checked(old('control_threshold_enabled', $modalAccount->control_threshold_enabled ?? false)) />
+                                            Require approval only above threshold
+                                        </label>
+                                        <input type="number" step="0.01" min="0" name="control_threshold_amount" value="{{ old('control_threshold_amount', $modalAccount->control_threshold_amount ?? '') }}" placeholder="Threshold amount" class="w-full rounded-lg border-slate-200 text-sm" />
+                                    </div>
+                                    <div class="grid gap-3 md:grid-cols-2">
+                                        <label class="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                                            <input type="hidden" name="control_always_require_approval" value="0" />
+                                            <input type="checkbox" name="control_always_require_approval" value="1" class="rounded border-slate-300" @checked(old('control_always_require_approval', $modalAccount->control_always_require_approval ?? false)) />
+                                            Always Require Approval
+                                        </label>
+                                        <select name="control_applies_to" class="w-full rounded-lg border-slate-200 text-sm">
+                                            <option value="both" @selected(old('control_applies_to', $modalAccount->control_applies_to ?? 'both') === 'both')>Applies To: Both</option>
+                                            <option value="debit" @selected(old('control_applies_to', $modalAccount->control_applies_to ?? '') === 'debit')>Applies To: Debit entries</option>
+                                            <option value="credit" @selected(old('control_applies_to', $modalAccount->control_applies_to ?? '') === 'credit')>Applies To: Credit entries</option>
+                                        </select>
+                                    </div>
+                                    <input type="text" name="control_reason_note" value="{{ old('control_reason_note', $modalAccount->control_reason_note ?? '') }}" maxlength="500" placeholder="Reason / Governance Note" class="w-full rounded-lg border-slate-200 text-sm" />
+                                    <p class="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-700">Journal entries involving this account may require approval before posting.</p>
+                                </div>
+                            </section>
 
                             <div class="flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
                                 <button type="button" @click="showCreateAccountModal = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
                                 <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">{{ $isEditingAccount ? 'Update Account' : ($isDuplicatingAccount ? 'Create Copy' : 'Save Account') }}</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                x-cloak
+                x-show="showPendingApprovalsModal"
+                x-transition.opacity
+                class="fixed inset-0 z-50 bg-black/50"
+                @click.self="showPendingApprovalsModal = false; selectedPendingAccount = null"
+            >
+                <div class="flex min-h-screen items-center justify-center p-4">
+                    <div class="w-full max-w-7xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-slate-900">Pending Account Approvals</h3>
+                                <p class="text-sm text-slate-500">Review pending chart accounts and take approval actions where permitted.</p>
+                            </div>
+                            <button type="button" @click="showPendingApprovalsModal = false; selectedPendingAccount = null" class="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">x</button>
+                        </div>
+                        <div class="max-h-[65vh] overflow-y-auto p-6 space-y-4">
+                            <div class="overflow-x-auto rounded-lg border border-slate-200">
+                                <table class="min-w-[1280px] w-full divide-y divide-slate-200 text-sm">
+                                    <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                        <tr>
+                                            <th class="px-3 py-2">Account Name</th>
+                                            <th class="px-3 py-2">Account Code</th>
+                                            <th class="px-3 py-2">Account Type</th>
+                                            <th class="px-3 py-2">Parent Group</th>
+                                            <th class="px-3 py-2">Opening Balance</th>
+                                            <th class="px-3 py-2">Minimum Balance Floor</th>
+                                            <th class="px-3 py-2">Created By</th>
+                                            <th class="px-3 py-2">Created At</th>
+                                            <th class="px-3 py-2">Status</th>
+                                            <th class="px-3 py-2">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        @forelse (($pendingAccounts ?? collect()) as $pending)
+                                            <tr class="hover:bg-slate-50">
+                                                <td class="px-3 py-2 font-medium text-slate-900">{{ $pending['name'] }}</td>
+                                                <td class="px-3 py-2 font-mono text-xs text-slate-700">{{ $pending['code'] }}</td>
+                                                <td class="px-3 py-2">{{ $pending['account_type'] }}</td>
+                                                <td class="px-3 py-2">{{ $pending['parent_group'] }}</td>
+                                                <td class="px-3 py-2">KSh {{ $fmtN((float) $pending['opening_balance']) }}</td>
+                                                <td class="px-3 py-2">KSh {{ $fmtN((float) $pending['min_balance_floor']) }}</td>
+                                                <td class="px-3 py-2">{{ $pending['created_by'] }}</td>
+                                                <td class="px-3 py-2">{{ $pending['created_at'] }}</td>
+                                                <td class="px-3 py-2">
+                                                    <span class="inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">{{ $pending['status'] }}</span>
+                                                </td>
+                                                <td class="px-3 py-2">
+                                                    <div class="flex items-center gap-2">
+                                                        @if ($pending['can_approve'])
+                                                            <form method="post" action="{{ route('loan.accounting.books.chart_rules.approve', $pending['id']) }}">
+                                                                @csrf
+                                                                <button type="submit" class="rounded-lg border border-green-300 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-100">Approve / Activate</button>
+                                                            </form>
+                                                            <form method="post" action="{{ route('loan.accounting.books.chart_rules.reject', $pending['id']) }}" class="flex items-center gap-2">
+                                                                @csrf
+                                                                <input type="text" name="rejection_reason" required maxlength="500" placeholder="Reject reason" class="w-36 rounded-lg border border-red-200 px-2 py-1 text-xs" />
+                                                                <button type="submit" class="rounded-lg border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100">Reject</button>
+                                                            </form>
+                                                        @else
+                                                            <span class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600">Read-only (Assigned: {{ $pending['assigned_approver_name'] ?? 'N/A' }})</span>
+                                                        @endif
+                                                        <button type="button" @click='selectedPendingAccount = @json($pending)' class="rounded-lg border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100">View Details</button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="10" class="px-3 py-4 text-center text-slate-500">No pending account approvals.</td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div x-show="selectedPendingAccount" x-cloak class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                <div class="flex items-center justify-between gap-2">
+                                    <h4 class="text-sm font-semibold text-slate-900">Account Details</h4>
+                                    <button type="button" @click="selectedPendingAccount = null" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700">Close</button>
+                                </div>
+                                <dl class="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-700 md:grid-cols-2">
+                                    <div><dt class="font-semibold text-slate-500">Account</dt><dd x-text="selectedPendingAccount?.name"></dd></div>
+                                    <div><dt class="font-semibold text-slate-500">Code</dt><dd x-text="selectedPendingAccount?.code"></dd></div>
+                                    <div><dt class="font-semibold text-slate-500">Type</dt><dd x-text="selectedPendingAccount?.account_type"></dd></div>
+                                    <div><dt class="font-semibold text-slate-500">Parent Group</dt><dd x-text="selectedPendingAccount?.parent_group"></dd></div>
+                                    <div><dt class="font-semibold text-slate-500">Created By</dt><dd x-text="selectedPendingAccount?.created_by"></dd></div>
+                                    <div><dt class="font-semibold text-slate-500">Created At</dt><dd x-text="selectedPendingAccount?.created_at"></dd></div>
+                                </dl>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

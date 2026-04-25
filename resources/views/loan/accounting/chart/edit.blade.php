@@ -8,9 +8,9 @@
                 @csrf
                 @method('patch')
                 <div>
-                    <label for="code" class="block text-xs font-semibold text-slate-600 mb-1">Code</label>
-                    <input id="code" name="code" value="{{ old('code', $account->code) }}" required class="w-full rounded-lg border-slate-200 text-sm font-mono" />
-                    @error('code')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Code</label>
+                    <input value="{{ $account->code }}" readonly disabled class="w-full rounded-lg border-slate-200 bg-slate-50 text-sm font-mono text-slate-700" />
+                    <p class="mt-1 text-xs text-slate-500">Account code is system-generated and cannot be changed.</p>
                 </div>
                 <div>
                     <label for="name" class="block text-xs font-semibold text-slate-600 mb-1">Name</label>

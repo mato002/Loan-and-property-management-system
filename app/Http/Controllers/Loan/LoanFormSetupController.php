@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Models\LoanFormFieldDefinition;
+use App\Models\LoanSystemSetting;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,11 +22,33 @@ class LoanFormSetupController extends Controller
         $cfg = $this->setupPageConfig($page);
 
         if ($page === 'accounting-forms') {
+            $approvalEnabled = LoanSystemSetting::getValue('coa_approval_required', '0') === '1';
+            $rawWorkflow = LoanSystemSetting::getValue('coa_approval_workflow', '[]') ?? '[]';
+            $workflow = collect(json_decode($rawWorkflow, true) ?: [])
+                ->map(function (array $row): array {
+                    return [
+                        'sequence' => (int) ($row['sequence'] ?? 0),
+                        'user_id' => (int) ($row['user_id'] ?? 0),
+                    ];
+                })
+                ->filter(fn (array $row): bool => $row['sequence'] > 0 && $row['user_id'] > 0)
+                ->sortBy('sequence')
+                ->values()
+                ->all();
+
+            $users = User::query()
+                ->orderBy('name')
+                ->get(['id', 'name', 'email']);
+
             return view('loan.system.setup.accounting_setup', [
                 'title' => 'Accounting Setup',
                 'subtitle' => 'Define the rules that govern revenue recognition, ledger posting, liquidity protection, taxation, approvals, and period closure.',
                 'backUrl' => route('loan.system.setup'),
                 'booksUrl' => route('loan.accounting.books'),
+                'approvalEnabled' => $approvalEnabled,
+                'coaApproverWorkflow' => $workflow,
+                'availableApprovers' => $users,
+                'formActionUrl' => route('loan.system.form_setup.page.save', ['page' => $page]),
             ]);
         }
 
@@ -41,6 +65,53 @@ class LoanFormSetupController extends Controller
 
     public function setupPageSave(Request $request, string $page): RedirectResponse
     {
+        if ($page === 'accounting-forms') {
+            $enabled = $request->boolean('coa_approval_required');
+            $validated = $request->validate([
+                'coa_approval_required' => ['nullable', 'in:0,1'],
+                'approvers' => [$enabled ? 'required' : 'nullable', 'array', 'max:8'],
+                'approvers.*.user_id' => [$enabled ? 'required' : 'nullable', 'integer', 'exists:users,id'],
+            ]);
+
+            $rows = collect($validated['approvers'] ?? [])
+                ->map(function (array $row, int $index): array {
+                    return [
+                        'sequence' => $index + 1,
+                        'user_id' => (int) ($row['user_id'] ?? 0),
+                    ];
+                })
+                ->filter(fn (array $row): bool => $row['user_id'] > 0)
+                ->values();
+
+            if ($enabled && $rows->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'approvers' => 'Add at least one approver when approval control is enabled.',
+                ]);
+            }
+            if ($rows->pluck('user_id')->duplicates()->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'approvers' => 'Each approver can only appear once in the sequence.',
+                ]);
+            }
+
+            LoanSystemSetting::setValue(
+                'coa_approval_required',
+                $enabled ? '1' : '0',
+                'Require approval before newly created accounts become active',
+                'accounting'
+            );
+            LoanSystemSetting::setValue(
+                'coa_approval_workflow',
+                json_encode($rows->all()),
+                'Chart of accounts approval workflow',
+                'accounting'
+            );
+
+            return redirect()
+                ->route('loan.system.form_setup.page', ['page' => $page])
+                ->with('status', 'Chart of Accounts approval control saved.');
+        }
+
         $cfg = $this->setupPageConfig($page);
 
         return $this->saveForm(

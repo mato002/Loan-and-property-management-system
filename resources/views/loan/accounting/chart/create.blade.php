@@ -6,10 +6,8 @@
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm max-w-lg overflow-hidden">
             <form method="post" action="{{ route('loan.accounting.chart.store') }}" class="px-5 py-6 space-y-4">
                 @csrf
-                <div>
-                    <label for="code" class="block text-xs font-semibold text-slate-600 mb-1">Code</label>
-                    <input id="code" name="code" value="{{ old('code') }}" required class="w-full rounded-lg border-slate-200 text-sm font-mono" />
-                    @error('code')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    Account code is auto-generated based on account type (Assets 1000+, Liabilities 2000+, Equity 3000+, Income 4000+, Expenses 5000+).
                 </div>
                 <div>
                     <label for="name" class="block text-xs font-semibold text-slate-600 mb-1">Name</label>

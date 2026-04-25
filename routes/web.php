@@ -421,6 +421,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/books', [LoanAccountingController::class, 'books'])->name('books');
         Route::get('/books/chart-rules', [LoanAccountingBooksController::class, 'chartRules'])->name('books.chart_rules');
+        Route::get('/books/chart-rules/template/download', [LoanAccountingBooksController::class, 'downloadChartTemplate'])->name('books.chart_rules.template.download');
+        Route::post('/books/chart-rules/import', [LoanAccountingBooksController::class, 'importChartTemplate'])->name('books.chart_rules.import');
+        Route::post('/books/chart-rules/{accounting_chart_account}/approve', [LoanAccountingBooksController::class, 'approvePendingAccount'])->name('books.chart_rules.approve');
+        Route::post('/books/chart-rules/{accounting_chart_account}/reject', [LoanAccountingBooksController::class, 'rejectPendingAccount'])->name('books.chart_rules.reject');
 
         Route::get('/reports', [LoanAccountingBooksController::class, 'reportsHub'])->name('reports.hub');
         Route::get('/reports/trial-balance', [LoanAccountingBooksController::class, 'trialBalance'])->name('reports.trial_balance');
@@ -476,6 +480,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/chart-of-accounts/create', [LoanAccountingController::class, 'chartCreate'])->name('chart.create');
         Route::post('/chart-of-accounts', [LoanAccountingController::class, 'chartStore'])->name('chart.store');
+        Route::get('/chart-of-accounts/next-code', [LoanAccountingController::class, 'chartNextCode'])->name('chart.next_code');
         Route::post('/chart-of-accounts/wallet-slots', [LoanAccountingController::class, 'chartWalletSlotsUpdate'])->name('chart.wallet_slots.update');
         Route::patch('/chart-of-accounts/posting-rules/{accounting_posting_rule}', [LoanAccountingController::class, 'chartPostingRuleUpdate'])->name('chart.posting_rules.update');
         Route::get('/chart-of-accounts', [LoanAccountingController::class, 'chartIndex'])->name('chart.index');
@@ -485,6 +490,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/journal-entries/create', [LoanAccountingController::class, 'journalCreate'])->name('journal.create');
         Route::post('/journal-entries', [LoanAccountingController::class, 'journalStore'])->name('journal.store');
+        Route::get('/journal-entries/approval-queue', [LoanAccountingBooksController::class, 'journalApprovalQueue'])->name('journal.approval_queue');
+        Route::post('/journal-entries/approval-queue/{accounting_journal_approval_queue}/approve', [LoanAccountingBooksController::class, 'approvePendingJournal'])->name('journal.approval_queue.approve');
+        Route::post('/journal-entries/approval-queue/{accounting_journal_approval_queue}/reject', [LoanAccountingBooksController::class, 'rejectPendingJournal'])->name('journal.approval_queue.reject');
         Route::get('/journal-entries', [LoanAccountingController::class, 'journalIndex'])->name('journal.index');
         Route::post('/journal-entries/bulk', [LoanAccountingController::class, 'journalBulk'])->name('journal.bulk');
         Route::get('/journal-entries/{accounting_journal_entry}', [LoanAccountingController::class, 'journalShow'])->name('journal.show');
