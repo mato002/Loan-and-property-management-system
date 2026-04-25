@@ -30,6 +30,7 @@
             ['route' => 'property.settings.system_setup.movement_fields', 'title' => 'Move-in / move-out fields', 'description' => 'Configure movement scheduling/tracking fields.'],
             ['route' => 'property.settings.system_setup.forms', 'title' => 'General form switches', 'description' => 'Enable/disable broad form modules and shared JSON mappings.'],
             ['route' => 'property.settings.system_setup.workflows', 'title' => 'Workflow adjustments', 'description' => 'Automation toggles for assignment and reminders.'],
+            ['route' => 'property.settings.rules', 'title' => 'Automation rules', 'description' => 'Define business rules and triggers used for automated actions.'],
             ['route' => 'property.settings.system_setup.templates', 'title' => 'Template adjustments', 'description' => 'Default lease and notice text used by forms.'],
             ['route' => 'property.settings.system_setup.access', 'title' => 'Access control', 'description' => 'Create roles, permissions, and user role mappings.'],
         ]" />

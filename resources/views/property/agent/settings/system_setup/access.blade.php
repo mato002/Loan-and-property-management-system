@@ -22,55 +22,69 @@
                 Access-control tables are not ready yet. Run <code>php artisan migrate</code> then reload this page.
             </div>
         @else
-            <div class="grid gap-6 xl:grid-cols-2">
-                <form method="post" action="{{ route('property.settings.system_setup.access.roles.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
-                    @csrf
-                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add role</h3>
-                    <input type="text" name="name" value="{{ old('name') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Role name (e.g. Accountant)" />
-                    <input type="text" name="slug" value="{{ old('slug') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="role_slug" />
-                    <select name="portal_scope" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        @foreach (['agent' => 'Agent', 'landlord' => 'Landlord', 'tenant' => 'Tenant', 'any' => 'Any'] as $scopeKey => $scopeLabel)
-                            <option value="{{ $scopeKey }}" @selected(old('portal_scope', 'agent') === $scopeKey)>{{ $scopeLabel }}</option>
-                        @endforeach
-                    </select>
-                    <textarea name="description" rows="2" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional description">{{ old('description') }}</textarea>
-                    <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create role</button>
-                </form>
+            @php
+                $cloneFrom = (int) request()->query('clone_from', 0);
+                $cloneScope = request()->query('clone_scope', old('portal_scope', 'agent'));
+                $cloneName = request()->query('clone_name', old('name'));
+            @endphp
+            <div x-data="{ modal: @js($cloneFrom > 0 ? 'clone-role' : '') }" class="space-y-4">
+                <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" @click="modal = 'add-role'" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Add role</button>
+                        <button type="button" @click="modal = 'clone-role'" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Clone role</button>
+                        <button type="button" @click="modal = 'add-permission'" class="rounded-lg border border-indigo-300 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Add permission</button>
+                    </div>
+                </div>
 
-                @php
-                    $cloneFrom = (int) request()->query('clone_from', 0);
-                    $cloneScope = request()->query('clone_scope', old('portal_scope', 'agent'));
-                    $cloneName = request()->query('clone_name', old('name'));
-                @endphp
-                <form id="clone-role-form" method="post" action="{{ route('property.settings.system_setup.access.roles.clone') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
-                    @csrf
-                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Clone role</h3>
-                    <select name="source_role_id" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" required>
-                        <option value="">Select source role</option>
-                        @foreach ($roles as $role)
-                            <option value="{{ $role->id }}" @selected($cloneFrom === (int) $role->id)>{{ $role->name }} ({{ $role->slug }})</option>
-                        @endforeach
-                    </select>
-                    <input type="text" name="name" value="{{ $cloneName }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="New role name" />
-                    <input type="text" name="slug" value="{{ old('slug') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="new_role_slug" />
-                    <select name="portal_scope" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        @foreach (['agent' => 'Agent', 'landlord' => 'Landlord', 'tenant' => 'Tenant', 'any' => 'Any'] as $scopeKey => $scopeLabel)
-                            <option value="{{ $scopeKey }}" @selected($cloneScope === $scopeKey)>{{ $scopeLabel }}</option>
-                        @endforeach
-                    </select>
-                    <textarea name="description" rows="2" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional description">{{ old('description') }}</textarea>
-                    <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Clone role</button>
-                </form>
+                <div x-show="modal !== ''" x-cloak class="fixed inset-0 z-[7000] flex items-center justify-center bg-slate-900/50 p-4" @keydown.escape.window="modal = ''">
+                    <div class="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-800 shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700" @click.outside="modal = ''">
+                        <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-5 py-3">
+                            <h3 class="text-base font-semibold text-slate-900 dark:text-white" x-text="modal === 'add-role' ? 'Add role' : (modal === 'clone-role' ? 'Clone role' : 'Add permission')"></h3>
+                            <button type="button" class="rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="modal = ''">Close</button>
+                        </div>
 
-                <form method="post" action="{{ route('property.settings.system_setup.access.permissions.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
-                    @csrf
-                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add permission</h3>
-                    <input type="text" name="name" value="{{ old('name') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Permission name (e.g. Approve payouts)" />
-                    <input type="text" name="key" value="{{ old('key') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="permission.key (e.g. payouts.approve)" />
-                    <input type="text" name="group" value="{{ old('group', 'general') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Group (e.g. payments)" />
-                    <textarea name="description" rows="2" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional description">{{ old('description') }}</textarea>
-                    <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create permission</button>
-                </form>
+                        <form x-show="modal === 'add-role'" method="post" action="{{ route('property.settings.system_setup.access.roles.store') }}" class="p-5 space-y-3" data-turbo="false">
+                            @csrf
+                            <input type="text" name="name" value="{{ old('name') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Role name (e.g. Accountant)" />
+                            <input type="text" name="slug" value="{{ old('slug') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="role_slug" />
+                            <select name="portal_scope" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                @foreach (['agent' => 'Agent', 'landlord' => 'Landlord', 'tenant' => 'Tenant', 'any' => 'Any'] as $scopeKey => $scopeLabel)
+                                    <option value="{{ $scopeKey }}" @selected(old('portal_scope', 'agent') === $scopeKey)>{{ $scopeLabel }}</option>
+                                @endforeach
+                            </select>
+                            <textarea name="description" rows="2" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional description">{{ old('description') }}</textarea>
+                            <div class="flex justify-end"><button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create role</button></div>
+                        </form>
+
+                        <form id="clone-role-form" x-show="modal === 'clone-role'" method="post" action="{{ route('property.settings.system_setup.access.roles.clone') }}" class="p-5 space-y-3" data-turbo="false">
+                            @csrf
+                            <select name="source_role_id" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" required>
+                                <option value="">Select source role</option>
+                                @foreach ($roles as $role)
+                                    <option value="{{ $role->id }}" @selected($cloneFrom === (int) $role->id)>{{ $role->name }} ({{ $role->slug }})</option>
+                                @endforeach
+                            </select>
+                            <input type="text" name="name" value="{{ $cloneName }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="New role name" />
+                            <input type="text" name="slug" value="{{ old('slug') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="new_role_slug" />
+                            <select name="portal_scope" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                @foreach (['agent' => 'Agent', 'landlord' => 'Landlord', 'tenant' => 'Tenant', 'any' => 'Any'] as $scopeKey => $scopeLabel)
+                                    <option value="{{ $scopeKey }}" @selected($cloneScope === $scopeKey)>{{ $scopeLabel }}</option>
+                                @endforeach
+                            </select>
+                            <textarea name="description" rows="2" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional description">{{ old('description') }}</textarea>
+                            <div class="flex justify-end"><button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Clone role</button></div>
+                        </form>
+
+                        <form x-show="modal === 'add-permission'" method="post" action="{{ route('property.settings.system_setup.access.permissions.store') }}" class="p-5 space-y-3" data-turbo="false">
+                            @csrf
+                            <input type="text" name="name" value="{{ old('name') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Permission name (e.g. Approve payouts)" />
+                            <input type="text" name="key" value="{{ old('key') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="permission.key (e.g. payouts.approve)" />
+                            <input type="text" name="group" value="{{ old('group', 'general') }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Group (e.g. payments)" />
+                            <textarea name="description" rows="2" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional description">{{ old('description') }}</textarea>
+                            <div class="flex justify-end"><button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create permission</button></div>
+                        </form>
+                    </div>
+                </div>
             </div>
 
             <div class="mt-6 grid gap-6 xl:grid-cols-2">
@@ -108,42 +122,65 @@
 
             <div class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm">
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white mb-3">Assign roles to users</h3>
-                <div class="space-y-4 max-h-[520px] overflow-auto pr-1">
+                <div class="space-y-3 max-h-[520px] overflow-auto pr-1">
                     @foreach ($portalUsers as $u)
-                        <form method="post" action="{{ route('property.settings.system_setup.access.users.roles.store', $u) }}" class="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
-                            @csrf
+                        <div x-data="{ userModal: '' }" class="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
                             <div class="flex flex-wrap items-center justify-between gap-2">
-                                <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ $u->name }} <span class="text-xs text-slate-500">({{ $u->property_portal_role }})</span></p>
-                                <button type="submit" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Save user roles</button>
+                                <div>
+                                    <p class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ $u->name }} <span class="text-xs text-slate-500">({{ $u->property_portal_role }})</span></p>
+                                    <p class="text-xs text-slate-500">{{ $u->email }}</p>
+                                    <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                                        <span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-slate-700">Roles: {{ $u->pmRoles->count() }}</span>
+                                        <span class="inline-flex items-center rounded-full border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-indigo-700">Direct perms: {{ $u->pmPermissions->count() }}</span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <button type="button" @click="userModal = 'roles'" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Edit roles</button>
+                                    <button type="button" @click="userModal = 'permissions'" class="rounded-lg border border-indigo-300 px-3 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Direct permissions</button>
+                                </div>
                             </div>
-                            <p class="text-xs text-slate-500 mb-2">{{ $u->email }}</p>
-                            <div class="flex flex-wrap gap-x-4 gap-y-1">
-                                @foreach ($roles as $role)
-                                    <label class="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
-                                        <input type="checkbox" name="role_ids[]" value="{{ $role->id }}" @checked($u->pmRoles->pluck('id')->contains($role->id)) />
-                                        {{ $role->name }}
-                                    </label>
-                                @endforeach
-                            </div>
-                        </form>
 
-                        <form method="post" action="{{ route('property.settings.system_setup.access.users.permissions.store', $u) }}" class="rounded-xl border border-slate-200 dark:border-slate-700 p-3">
-                            @csrf
-                            <div class="flex flex-wrap items-center justify-between gap-2">
-                                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Direct permissions for {{ $u->name }}</p>
-                                <button type="submit" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Save direct permissions</button>
+                            <div x-show="userModal !== ''" x-cloak class="fixed inset-0 z-[7100] flex items-center justify-center bg-slate-900/50 p-4" @keydown.escape.window="userModal = ''">
+                                <div class="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-800 shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700" @click.outside="userModal = ''">
+                                    <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-5 py-3">
+                                        <h4 class="text-base font-semibold text-slate-900 dark:text-white" x-text="userModal === 'roles' ? 'Edit roles for {{ $u->name }}' : 'Direct permissions for {{ $u->name }}'"></h4>
+                                        <button type="button" class="rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="userModal = ''">Close</button>
+                                    </div>
+
+                                    <form x-show="userModal === 'roles'" method="post" action="{{ route('property.settings.system_setup.access.users.roles.store', $u) }}" class="p-5 space-y-3" data-turbo="false">
+                                        @csrf
+                                        <div class="flex flex-wrap gap-x-4 gap-y-2">
+                                            @foreach ($roles as $role)
+                                                <label class="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
+                                                    <input type="checkbox" name="role_ids[]" value="{{ $role->id }}" @checked($u->pmRoles->pluck('id')->contains($role->id)) />
+                                                    {{ $role->name }}
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                        <div class="flex justify-end">
+                                            <button type="submit" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Save user roles</button>
+                                        </div>
+                                    </form>
+
+                                    <form x-show="userModal === 'permissions'" method="post" action="{{ route('property.settings.system_setup.access.users.permissions.store', $u) }}" class="p-5 space-y-3" data-turbo="false">
+                                        @csrf
+                                        <div class="max-h-[360px] overflow-auto pr-1 flex flex-wrap gap-x-4 gap-y-1">
+                                            @foreach ($permissionsByGroup as $group => $permissions)
+                                                @foreach ($permissions as $permission)
+                                                    <label class="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
+                                                        <input type="checkbox" name="permission_ids[]" value="{{ $permission->id }}" @checked($u->pmPermissions->pluck('id')->contains($permission->id)) />
+                                                        {{ $permission->key }}
+                                                    </label>
+                                                @endforeach
+                                            @endforeach
+                                        </div>
+                                        <div class="flex justify-end">
+                                            <button type="submit" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Save direct permissions</button>
+                                        </div>
+                                    </form>
+                                </div>
                             </div>
-                            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                                @foreach ($permissionsByGroup as $group => $permissions)
-                                    @foreach ($permissions as $permission)
-                                        <label class="flex items-center gap-2 text-xs text-slate-700 dark:text-slate-200">
-                                            <input type="checkbox" name="permission_ids[]" value="{{ $permission->id }}" @checked($u->pmPermissions->pluck('id')->contains($permission->id)) />
-                                            {{ $permission->key }}
-                                        </label>
-                                    @endforeach
-                                @endforeach
-                            </div>
-                        </form>
+                        </div>
                     @endforeach
                 </div>
             </div>
