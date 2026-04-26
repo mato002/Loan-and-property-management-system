@@ -21,4 +21,5 @@ Schedule::command('rent:send-reminders')->dailyAt('08:00');
 // Water automation (enabled when workflow_auto_reminders=1 in property portal settings)
 // Same: safe to run daily because generation checks for duplicates; penalties are applied on overdue balances.
 Schedule::command('water:generate-invoices')->dailyAt('00:25')->withoutOverlapping();
+Schedule::command('loan:accrue-penalties')->dailyAt('00:35')->withoutOverlapping();
 Schedule::command('water:apply-penalties')->dailyAt('00:40')->withoutOverlapping();

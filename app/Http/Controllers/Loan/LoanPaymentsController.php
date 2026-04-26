@@ -12,6 +12,8 @@ use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Support\TabularExport;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
+use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 use Illuminate\Database\Eloquent\Builder;
@@ -364,9 +366,11 @@ class LoanPaymentsController extends Controller
 
     public function payinSummary(Request $request): View|StreamedResponse
     {
-        $from = $request->date('from') ?: now()->startOfMonth()->toDateString();
-        $to = $request->date('to') ?: now()->endOfMonth()->toDateString();
+        $from = $request->date('from')?->toDateString() ?: now()->startOfMonth()->toDateString();
+        $to = $request->date('to')?->toDateString() ?: now()->endOfMonth()->toDateString();
         $channel = trim((string) $request->query('channel', ''));
+        $fromDate = Carbon::parse($from)->startOfDay();
+        $toDate = Carbon::parse($to)->endOfDay();
 
         $format = strtolower(trim((string) $request->query('export', '')));
         if (in_array($format, ['csv', 'xls', 'pdf'], true)) {
@@ -377,8 +381,8 @@ class LoanPaymentsController extends Controller
             ->where('status', LoanBookPayment::STATUS_PROCESSED)
             ->notMergedChild()
             ->whereBetween('transaction_at', [
-                $from.' 00:00:00',
-                $to.' 23:59:59',
+                $fromDate->toDateTimeString(),
+                $toDate->toDateTimeString(),
             ]);
         $this->scopeByAssignedLoanClient($base, $request->user(), 'loan.loanClient');
         $base->when($channel !== '', fn (Builder $q) => $q->where('channel', $channel));
@@ -394,7 +398,44 @@ class LoanPaymentsController extends Controller
             'count' => (clone $base)->count(),
         ];
 
-        return view('loan.payments.payin-summary', compact('from', 'to', 'byChannel', 'totals', 'channel'));
+        $dailyRows = (clone $base)
+            ->selectRaw('DATE(transaction_at) as day, channel, SUM(amount) as total_amount, COUNT(*) as payment_count')
+            ->groupByRaw('DATE(transaction_at), channel')
+            ->orderBy('day')
+            ->orderByDesc('total_amount')
+            ->get();
+
+        $dailyByDate = [];
+        foreach ($dailyRows as $row) {
+            $day = (string) $row->day;
+            $channelLabel = ucwords(str_replace('_', ' ', (string) $row->channel));
+            $dailyByDate[$day]['breakdown'][$channelLabel] = (float) $row->total_amount;
+            $dailyByDate[$day]['count'] = ($dailyByDate[$day]['count'] ?? 0) + (int) $row->payment_count;
+        }
+
+        $weeks = [];
+        $week = [];
+        $calendarStart = $fromDate->copy()->startOfWeek(Carbon::MONDAY);
+        $calendarEnd = $toDate->copy()->endOfWeek(Carbon::SUNDAY);
+
+        foreach (CarbonPeriod::create($calendarStart, $calendarEnd) as $cursor) {
+            $dayKey = $cursor->toDateString();
+            $breakdown = $dailyByDate[$dayKey]['breakdown'] ?? [];
+            $week[] = [
+                'date' => $cursor->copy(),
+                'in_range' => $cursor->between($fromDate, $toDate),
+                'breakdown' => $breakdown,
+                'total' => array_sum($breakdown),
+                'count' => (int) ($dailyByDate[$dayKey]['count'] ?? 0),
+            ];
+
+            if (count($week) === 7) {
+                $weeks[] = $week;
+                $week = [];
+            }
+        }
+
+        return view('loan.payments.payin-summary', compact('from', 'to', 'byChannel', 'totals', 'channel', 'weeks'));
     }
 
     private function streamPayinSummaryExport(Request $request, string $format): StreamedResponse

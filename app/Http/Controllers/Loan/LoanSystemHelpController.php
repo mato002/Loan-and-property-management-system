@@ -55,6 +55,7 @@ class LoanSystemHelpController extends Controller
         'approval_levels',
         'client_loyalty_points',
         'loan_repayment_allocation_order',
+        'loan_accounting_event_mappings_json',
     ];
 
     /**
@@ -550,11 +551,16 @@ class LoanSystemHelpController extends Controller
         abort_unless(Schema::hasTable('loan_products'), 404, 'Loan products table not found. Run migrations.');
         $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
         $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
+        $hasDefaultRateType = Schema::hasColumn('loan_products', 'default_interest_rate_type');
+        $hasPenaltyAmountType = Schema::hasColumn('loan_products', 'penalty_amount_type');
+        $hasRolloverFeesType = Schema::hasColumn('loan_products', 'rollover_fees_type');
+        $hasLoanOffsetFeesType = Schema::hasColumn('loan_products', 'loan_offset_fees_type');
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'description' => ['nullable', 'string', 'max:500'],
-            'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'default_interest_rate_type' => ['nullable', 'in:fixed,percent'],
             'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'default_term_unit' => ['nullable', 'in:daily,weekly,monthly'],
             'default_interest_rate_period' => ['nullable', 'in:daily,weekly,monthly,annual'],
@@ -566,8 +572,11 @@ class LoanSystemHelpController extends Controller
             'max_loan_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
             'arrears_penalty_scope' => ['nullable', 'in:whole_loan,per_installment,none'],
             'penalty_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'penalty_amount_type' => ['nullable', 'in:fixed,percent'],
             'rollover_fees' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'rollover_fees_type' => ['nullable', 'in:fixed,percent'],
             'loan_offset_fees' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'loan_offset_fees_type' => ['nullable', 'in:fixed,percent'],
             'repay_waiver_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'client_application_scope' => ['nullable', 'in:any_client,no_running_loans,new_clients_only,existing_clients_only'],
             'installment_display_mode' => ['nullable', 'in:all_installments,due_only,summary'],
@@ -632,6 +641,18 @@ class LoanSystemHelpController extends Controller
         if ($hasDefaultRatePeriod) {
             $payload['default_interest_rate_period'] = (string) ($validated['default_interest_rate_period'] ?? 'annual');
         }
+        if ($hasDefaultRateType) {
+            $payload['default_interest_rate_type'] = (string) ($validated['default_interest_rate_type'] ?? 'percent');
+        }
+        if ($hasPenaltyAmountType) {
+            $payload['penalty_amount_type'] = (string) ($validated['penalty_amount_type'] ?? 'fixed');
+        }
+        if ($hasRolloverFeesType) {
+            $payload['rollover_fees_type'] = (string) ($validated['rollover_fees_type'] ?? 'fixed');
+        }
+        if ($hasLoanOffsetFeesType) {
+            $payload['loan_offset_fees_type'] = (string) ($validated['loan_offset_fees_type'] ?? 'fixed');
+        }
 
         $product = LoanProduct::query()->updateOrCreate(
             ['name' => $name],
@@ -666,10 +687,15 @@ class LoanSystemHelpController extends Controller
     {
         $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
         $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
+        $hasDefaultRateType = Schema::hasColumn('loan_products', 'default_interest_rate_type');
+        $hasPenaltyAmountType = Schema::hasColumn('loan_products', 'penalty_amount_type');
+        $hasRolloverFeesType = Schema::hasColumn('loan_products', 'rollover_fees_type');
+        $hasLoanOffsetFeesType = Schema::hasColumn('loan_products', 'loan_offset_fees_type');
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:160', Rule::unique('loan_products', 'name')->ignore($loan_product->id)],
             'description' => ['nullable', 'string', 'max:500'],
-            'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'default_interest_rate_type' => ['nullable', 'in:fixed,percent'],
             'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'default_term_unit' => ['nullable', 'in:daily,weekly,monthly'],
             'default_interest_rate_period' => ['nullable', 'in:daily,weekly,monthly,annual'],
@@ -681,8 +707,11 @@ class LoanSystemHelpController extends Controller
             'max_loan_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
             'arrears_penalty_scope' => ['nullable', 'in:whole_loan,per_installment,none'],
             'penalty_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'penalty_amount_type' => ['nullable', 'in:fixed,percent'],
             'rollover_fees' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'rollover_fees_type' => ['nullable', 'in:fixed,percent'],
             'loan_offset_fees' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'loan_offset_fees_type' => ['nullable', 'in:fixed,percent'],
             'repay_waiver_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'client_application_scope' => ['nullable', 'in:any_client,no_running_loans,new_clients_only,existing_clients_only'],
             'installment_display_mode' => ['nullable', 'in:all_installments,due_only,summary'],
@@ -748,6 +777,18 @@ class LoanSystemHelpController extends Controller
         }
         if ($hasDefaultRatePeriod) {
             $updatePayload['default_interest_rate_period'] = (string) ($validated['default_interest_rate_period'] ?? 'annual');
+        }
+        if ($hasDefaultRateType) {
+            $updatePayload['default_interest_rate_type'] = (string) ($validated['default_interest_rate_type'] ?? 'percent');
+        }
+        if ($hasPenaltyAmountType) {
+            $updatePayload['penalty_amount_type'] = (string) ($validated['penalty_amount_type'] ?? 'fixed');
+        }
+        if ($hasRolloverFeesType) {
+            $updatePayload['rollover_fees_type'] = (string) ($validated['rollover_fees_type'] ?? 'fixed');
+        }
+        if ($hasLoanOffsetFeesType) {
+            $updatePayload['loan_offset_fees_type'] = (string) ($validated['loan_offset_fees_type'] ?? 'fixed');
         }
         $loan_product->update($updatePayload);
 
@@ -1485,7 +1526,15 @@ class LoanSystemHelpController extends Controller
             ['key' => 'payment_automation', 'label' => 'Payment automation (notes / rules)', 'group' => 'preferences', 'value' => ''],
             ['key' => 'approval_levels', 'label' => 'Approval levels & thresholds', 'group' => 'preferences', 'value' => ''],
             ['key' => 'client_loyalty_points', 'label' => 'Client loyalty / royalty points rules', 'group' => 'preferences', 'value' => ''],
-            ['key' => 'loan_repayment_allocation_order', 'label' => 'Loan repayment allocation order (csv: fees,interest,principal)', 'group' => 'preferences', 'value' => 'fees,interest,principal'],
+            ['key' => 'loan_repayment_allocation_order', 'label' => 'Loan repayment allocation order (csv: principal,interest,fees,penalty)', 'group' => 'preferences', 'value' => 'principal,interest,fees,penalty'],
+            ['key' => 'loan_account_code_collection', 'label' => 'Collection account code (cash/bank receiving account)', 'group' => 'preferences', 'value' => '1004'],
+            ['key' => 'loan_account_code_principal', 'label' => 'Loan principal receivable account code', 'group' => 'preferences', 'value' => '1200'],
+            ['key' => 'loan_account_code_interest_income', 'label' => 'Loan interest income account code', 'group' => 'preferences', 'value' => '4002'],
+            ['key' => 'loan_account_code_fee_income', 'label' => 'Loan fee income account code', 'group' => 'preferences', 'value' => '4007'],
+            ['key' => 'loan_account_code_processing_fee_income', 'label' => 'Loan processing fee income account code', 'group' => 'preferences', 'value' => '4005'],
+            ['key' => 'loan_account_code_penalty_income', 'label' => 'Loan penalty income account code', 'group' => 'preferences', 'value' => '4003'],
+            ['key' => 'loan_account_code_overpayment_liability', 'label' => 'Loan overpayment liability account code', 'group' => 'preferences', 'value' => '2003'],
+            ['key' => 'loan_accounting_event_mappings_json', 'label' => 'Loan accounting event mappings JSON', 'group' => 'preferences', 'value' => '{"loan_disbursed":"loan_ledger","loan_repayment":"split_component_posting","loan_overpayment":"loan_overpayments","loan_c2b_reversal":"loan_ledger","penalty_raised":"loan_penalty_income"}'],
         ];
 
         foreach ($defaults as $row) {

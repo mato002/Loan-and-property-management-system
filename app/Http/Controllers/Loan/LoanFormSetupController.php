@@ -36,6 +36,40 @@ class LoanFormSetupController extends Controller
                 ->values()
                 ->all();
 
+            $mappingGovernanceRaw = LoanSystemSetting::getValue('accounting_mapping_governance', '{}') ?? '{}';
+            $mappingGovernance = json_decode($mappingGovernanceRaw, true);
+            if (! is_array($mappingGovernance)) {
+                $mappingGovernance = [];
+            }
+
+            $mappingPermissions = [
+                'create' => collect(data_get($mappingGovernance, 'permissions.create', []))->map(fn ($id) => (int) $id)->filter()->values()->all(),
+                'edit' => collect(data_get($mappingGovernance, 'permissions.edit', []))->map(fn ($id) => (int) $id)->filter()->values()->all(),
+                'delete' => collect(data_get($mappingGovernance, 'permissions.delete', []))->map(fn ($id) => (int) $id)->filter()->values()->all(),
+            ];
+            $mappingApprovalMode = (string) data_get($mappingGovernance, 'approval.mode', 'none');
+            if (! in_array($mappingApprovalMode, ['none', 'single', 'multi'], true)) {
+                $mappingApprovalMode = 'none';
+            }
+            $mappingApproverRows = collect(data_get($mappingGovernance, 'approval.approvers', []))
+                ->map(function (array $row): array {
+                    return ['user_id' => (int) ($row['user_id'] ?? 0)];
+                })
+                ->filter(fn (array $row): bool => $row['user_id'] > 0)
+                ->values()
+                ->all();
+            $controlledAccountOwners = collect(data_get($mappingGovernance, 'controlled_account_owner_ids', []))
+                ->map(fn ($id) => (int) $id)
+                ->filter()
+                ->values()
+                ->all();
+            $sensitivityThreshold = (float) data_get($mappingGovernance, 'sensitivity.amount_threshold', 0);
+            $sensitivityRules = [
+                'high_amount' => (bool) data_get($mappingGovernance, 'sensitivity.high_amount', false),
+                'critical_accounts_only' => (bool) data_get($mappingGovernance, 'sensitivity.critical_accounts_only', false),
+                'reversal_events' => (bool) data_get($mappingGovernance, 'sensitivity.reversal_events', false),
+            ];
+
             $users = User::query()
                 ->orderBy('name')
                 ->get(['id', 'name', 'email']);
@@ -49,6 +83,12 @@ class LoanFormSetupController extends Controller
                 'coaApproverWorkflow' => $workflow,
                 'availableApprovers' => $users,
                 'formActionUrl' => route('loan.system.form_setup.page.save', ['page' => $page]),
+                'mappingPermissions' => $mappingPermissions,
+                'mappingApprovalMode' => $mappingApprovalMode,
+                'mappingApproverRows' => $mappingApproverRows,
+                'controlledAccountOwnerIds' => $controlledAccountOwners,
+                'sensitivityThreshold' => $sensitivityThreshold,
+                'sensitivityRules' => $sensitivityRules,
             ]);
         }
 
@@ -67,10 +107,27 @@ class LoanFormSetupController extends Controller
     {
         if ($page === 'accounting-forms') {
             $enabled = $request->boolean('coa_approval_required');
+            $mappingApprovalMode = (string) $request->input('mapping_approval_mode', 'none');
             $validated = $request->validate([
                 'coa_approval_required' => ['nullable', 'in:0,1'],
                 'approvers' => [$enabled ? 'required' : 'nullable', 'array', 'max:8'],
                 'approvers.*.user_id' => [$enabled ? 'required' : 'nullable', 'integer', 'exists:users,id'],
+                'mapping_permissions' => ['nullable', 'array'],
+                'mapping_permissions.create' => ['nullable', 'array'],
+                'mapping_permissions.create.*' => ['integer', 'exists:users,id'],
+                'mapping_permissions.edit' => ['nullable', 'array'],
+                'mapping_permissions.edit.*' => ['integer', 'exists:users,id'],
+                'mapping_permissions.delete' => ['nullable', 'array'],
+                'mapping_permissions.delete.*' => ['integer', 'exists:users,id'],
+                'mapping_approval_mode' => ['required', Rule::in(['none', 'single', 'multi'])],
+                'mapping_approvers' => [$mappingApprovalMode === 'none' ? 'nullable' : 'required', 'array', 'max:8'],
+                'mapping_approvers.*.user_id' => [$mappingApprovalMode === 'none' ? 'nullable' : 'required', 'integer', 'exists:users,id'],
+                'controlled_account_owner_ids' => ['nullable', 'array'],
+                'controlled_account_owner_ids.*' => ['integer', 'exists:users,id'],
+                'sensitivity_high_amount' => ['nullable', 'in:0,1'],
+                'sensitivity_critical_accounts_only' => ['nullable', 'in:0,1'],
+                'sensitivity_reversal_events' => ['nullable', 'in:0,1'],
+                'sensitivity_amount_threshold' => ['nullable', 'numeric', 'min:0'],
             ]);
 
             $rows = collect($validated['approvers'] ?? [])
@@ -94,6 +151,32 @@ class LoanFormSetupController extends Controller
                 ]);
             }
 
+            $mappingApprovers = collect($validated['mapping_approvers'] ?? [])
+                ->map(function (array $row, int $index): array {
+                    return [
+                        'sequence' => $index + 1,
+                        'user_id' => (int) ($row['user_id'] ?? 0),
+                    ];
+                })
+                ->filter(fn (array $row): bool => $row['user_id'] > 0)
+                ->values();
+
+            if ($mappingApprovalMode === 'single' && $mappingApprovers->count() !== 1) {
+                throw ValidationException::withMessages([
+                    'mapping_approvers' => 'Single approver mode requires exactly one approver.',
+                ]);
+            }
+            if ($mappingApprovalMode === 'multi' && $mappingApprovers->count() < 2) {
+                throw ValidationException::withMessages([
+                    'mapping_approvers' => 'Multi-level approval requires at least two approvers.',
+                ]);
+            }
+            if ($mappingApprovers->pluck('user_id')->duplicates()->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'mapping_approvers' => 'Each mapping approver can only appear once in the sequence.',
+                ]);
+            }
+
             LoanSystemSetting::setValue(
                 'coa_approval_required',
                 $enabled ? '1' : '0',
@@ -106,10 +189,33 @@ class LoanFormSetupController extends Controller
                 'Chart of accounts approval workflow',
                 'accounting'
             );
+            LoanSystemSetting::setValue(
+                'accounting_mapping_governance',
+                json_encode([
+                    'permissions' => [
+                        'create' => array_values(array_unique(array_map('intval', data_get($validated, 'mapping_permissions.create', [])))),
+                        'edit' => array_values(array_unique(array_map('intval', data_get($validated, 'mapping_permissions.edit', [])))),
+                        'delete' => array_values(array_unique(array_map('intval', data_get($validated, 'mapping_permissions.delete', [])))),
+                    ],
+                    'approval' => [
+                        'mode' => $mappingApprovalMode,
+                        'approvers' => $mappingApprovers->values()->all(),
+                    ],
+                    'controlled_account_owner_ids' => array_values(array_unique(array_map('intval', $validated['controlled_account_owner_ids'] ?? []))),
+                    'sensitivity' => [
+                        'high_amount' => $request->boolean('sensitivity_high_amount'),
+                        'critical_accounts_only' => $request->boolean('sensitivity_critical_accounts_only'),
+                        'reversal_events' => $request->boolean('sensitivity_reversal_events'),
+                        'amount_threshold' => (float) ($validated['sensitivity_amount_threshold'] ?? 0),
+                    ],
+                ]),
+                'Automated mapping governance controls',
+                'accounting'
+            );
 
             return redirect()
                 ->route('loan.system.form_setup.page', ['page' => $page])
-                ->with('status', 'Chart of Accounts approval control saved.');
+                ->with('status', 'Accounting governance controls saved.');
         }
 
         $cfg = $this->setupPageConfig($page);

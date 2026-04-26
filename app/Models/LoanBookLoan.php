@@ -97,6 +97,11 @@ class LoanBookLoan extends Model
         return $this->hasMany(LoanBookPayment::class, 'loan_book_loan_id');
     }
 
+    public function penaltyAccruals(): HasMany
+    {
+        return $this->hasMany(LoanBookPenaltyAccrual::class, 'loan_book_loan_id');
+    }
+
     /** Used for loan-register aggregates (avoid duplicate `withSum` on `payments`). */
     public function processedRepayments(): HasMany
     {

@@ -217,98 +217,92 @@
             <section class="space-y-3">
                 <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Tier 2: The Statement Vault (2x3 Grid of Report Tiles)</h2>
                 <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                    <a href="{{ route('loan.accounting.reports.income_statement') }}" class="group block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900 group-hover:text-blue-700">
                             <svg class="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm3 5h6m-6 4h6m-6 4h4"/></svg>
                             Income Statement (P&amp;L)
                         </h3>
                         <p class="mt-1 text-sm text-slate-500">Analyze performance with realized revenue streams (interest vs processing fees).</p>
-                        <div class="mt-3 flex items-center justify-between gap-2 text-xs">
-                            <a href="{{ route('loan.accounting.reports.income_statement', ['export' => 'pdf']) }}" class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">PDF Export</a>
-                            <button type="button" class="inline-flex items-center gap-1 text-slate-500 hover:text-blue-700">
+                        <div class="mt-3 text-xs text-slate-500">
+                            <span class="inline-flex items-center gap-1">
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m-4 8a9 9 0 1 1 9-9" /></svg>
                                 Last generated: 5 mins ago
-                            </button>
+                            </span>
                         </div>
-                    </article>
+                    </a>
 
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                    <a href="{{ route('loan.accounting.reports.balance_sheet') }}" class="group block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900 group-hover:text-blue-700">
                             <svg class="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/></svg>
                             Balance Sheet
                         </h3>
                         <p class="mt-1 text-sm text-slate-500">Real-time statement of financial position focused on net loan portfolio and equity.</p>
-                        <div class="mt-3 flex items-center justify-between gap-2 text-xs">
-                            <a href="{{ route('loan.accounting.reports.balance_sheet', ['export' => 'pdf']) }}" class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">PDF Export</a>
-                            <button type="button" class="inline-flex items-center gap-1 text-slate-500 hover:text-blue-700">
+                        <div class="mt-3 text-xs text-slate-500">
+                            <span class="inline-flex items-center gap-1">
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m-4 8a9 9 0 1 1 9-9" /></svg>
                                 Last generated: 10 mins ago
-                            </button>
+                            </span>
                         </div>
-                    </article>
+                    </a>
 
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                    <a href="{{ route('loan.accounting.reports.trial_balance') }}" class="group block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900 group-hover:text-blue-700">
                             <svg class="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 18h16M6 6h12M9 6v12m6-12v12"/></svg>
                             Trial Balance
                         </h3>
                         <p class="mt-1 text-sm text-slate-500">The auditor's view: debit/credit integrity of all cash-basis accounts.</p>
-                        <div class="mt-3 flex items-center justify-between gap-2 text-xs">
-                            <a href="{{ route('loan.accounting.reports.trial_balance', ['export' => 'pdf']) }}" class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">PDF Export</a>
-                            <button type="button" class="inline-flex items-center gap-1 text-slate-500 hover:text-blue-700">
+                        <div class="mt-3 text-xs text-slate-500">
+                            <span class="inline-flex items-center gap-1">
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m-4 8a9 9 0 1 1 9-9" /></svg>
                                 Last generated: 15 mins ago
-                            </button>
+                            </span>
                         </div>
-                    </article>
+                    </a>
 
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <a href="{{ route('loan.accounting.cashflow') }}" class="group block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                         <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Board &amp; KRA Pack</p>
-                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900 group-hover:text-blue-700">
                             <svg class="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2ZM9 12h6m-6 4h6"/></svg>
                             Cash Flow Statement
                         </h3>
                         <p class="mt-1 text-sm text-slate-500">Map cash movement between M-Pesa utility and main bank accounts.</p>
-                        <div class="mt-3 flex items-center justify-between gap-2 text-xs">
-                            <a href="{{ route('loan.accounting.cashflow') }}" class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">PDF Export</a>
-                            <button type="button" class="inline-flex items-center gap-1 text-slate-500 hover:text-blue-700">
+                        <div class="mt-3 text-xs text-slate-500">
+                            <span class="inline-flex items-center gap-1">
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m-4 8a9 9 0 1 1 9-9" /></svg>
                                 Last generated: 30 mins ago
-                            </button>
+                            </span>
                         </div>
-                    </article>
+                    </a>
 
-                    <article class="rounded-2xl border border-orange-200 bg-white p-4 shadow-sm">
+                    <a href="{{ route('loan.accounting.payroll.settings.statutory') }}" class="group block rounded-2xl border border-orange-200 bg-white p-4 shadow-sm transition hover:border-orange-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-orange-500">
                         <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Strategic &amp; Compliance Pack</p>
-                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900 group-hover:text-orange-700">
                             <svg class="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 3h8l5 5v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm8 0v5h5M9 13h7M9 17h5"/></svg>
                             Tax / KRA Ledger
                         </h3>
                         <p class="mt-1 text-sm text-slate-500">Summarize PAYE, VAT, NSSF, NHIF, SHIF obligations for the period.</p>
                         <div class="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700">Next KRA Due: In 10 Days · May 5, 2026</div>
-                        <div class="mt-3 flex items-center justify-between gap-2 text-xs">
-                            <a href="{{ route('loan.accounting.payroll.settings.statutory') }}" class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">PDF Export</a>
-                            <button type="button" class="inline-flex items-center gap-1 text-slate-500 hover:text-blue-700">
+                        <div class="mt-3 text-xs text-slate-500">
+                            <span class="inline-flex items-center gap-1">
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m-4 8a9 9 0 1 1 9-9" /></svg>
                                 Last generated: 40 mins ago
-                            </button>
+                            </span>
                         </div>
-                    </article>
+                    </a>
 
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                    <a href="{{ route('loan.accounting.expense_summary') }}" class="group block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-blue-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <h3 class="inline-flex items-center gap-2 text-base font-semibold text-slate-900 group-hover:text-blue-700">
                             <svg class="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 18h16M7 15V9m5 6V6m5 9v-3"/></svg>
                             Management Report
                         </h3>
                         <p class="mt-1 text-sm text-slate-500">Consolidated view of financial and operational signals (disbursement and client performance trends).</p>
-                        <div class="mt-3 flex items-center justify-between gap-2 text-xs">
-                            <a href="{{ route('loan.accounting.expense_summary') }}" class="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">PDF Export</a>
-                            <button type="button" class="inline-flex items-center gap-1 text-slate-500 hover:text-blue-700">
+                        <div class="mt-3 text-xs text-slate-500">
+                            <span class="inline-flex items-center gap-1">
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6l4 2m-4 8a9 9 0 1 1 9-9" /></svg>
                                 Last generated: 1 hour ago
-                            </button>
+                            </span>
                         </div>
-                    </article>
+                    </a>
                 </div>
             </section>
         </div>

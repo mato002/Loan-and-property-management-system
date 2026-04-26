@@ -34,6 +34,17 @@
                     </select>
                 </div>
                 <div>
+                    <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Account</label>
+                    <select name="account_id" class="h-10 w-64 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
+                        <option value="">All accounts</option>
+                        @foreach (($accounts ?? []) as $account)
+                            <option value="{{ $account->id }}" @selected((int) ($accountId ?? 0) === (int) $account->id)>
+                                {{ $account->code }} - {{ $account->name }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
                     <label class="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Per page</label>
                     <select name="per_page" class="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20">
                         @foreach ([10, 30, 50, 100, 200] as $size)

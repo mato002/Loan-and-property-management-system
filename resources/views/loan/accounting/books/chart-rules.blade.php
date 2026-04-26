@@ -3,6 +3,10 @@
         @php
             $fmtN = fn (int|float $n) => number_format((float) $n, 0);
             $allAccounts = collect($accounts ?? []);
+            $selectAccounts = $allAccounts
+                ->where('is_active', true)
+                ->sortBy('code')
+                ->values();
             $typeOrder = ['asset', 'liability', 'equity', 'income', 'expense'];
             $typeLabels = [
                 'asset' => 'Asset',
@@ -11,7 +15,7 @@
                 'income' => 'Income',
                 'expense' => 'Expense',
             ];
-            $mappingRows = collect($postingRules ?? [])->take(8);
+            $mappingRows = collect($postingRules ?? [])->values();
             $isEditingAccount = isset($editingAccount) && $editingAccount;
             $isDuplicatingAccount = ! $isEditingAccount && isset($duplicateAccount) && $duplicateAccount;
             $modalAccount = $isEditingAccount ? $editingAccount : ($isDuplicatingAccount ? $duplicateAccount : null);
@@ -24,11 +28,14 @@
             <a href="{{ route('loan.accounting.books') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Books Hub</a>
         </x-slot>
 
+        @include('loan.accounting.partials.flash')
+
         <div
             class="space-y-6"
             x-data="{
-                showCreateAccountModal: {{ ($errors->any() || $isEditingAccount || $isDuplicatingAccount) ? 'true' : 'false' }},
+                showCreateAccountModal: {{ (($isEditingAccount || $isDuplicatingAccount) || $errors->hasAny(['name', 'account_type', 'account_class', 'current_balance', 'min_balance_floor', 'overdraft_limit', 'controlled_approver_ids'])) ? 'true' : 'false' }},
                 showImportModal: {{ $errors->has('import_file') ? 'true' : 'false' }},
+                showAddMappingModal: {{ ($errors->has('label') || $errors->has('debit_account_id') || $errors->has('credit_account_id')) ? 'true' : 'false' }},
                 showOverdrawnModal: false,
                 showPendingApprovalsModal: false,
                 selectedPendingAccount: null,
@@ -39,7 +46,7 @@
                 accountType: '{{ old('account_type', $modalAccount->account_type ?? 'asset') }}',
                 accountClass: '{{ old('account_class', $modalAccount->account_class ?? 'Detail') }}',
                 parentId: '{{ (string) old('parent_id', $modalAccount->parent_id ?? '') }}',
-                activeTab: 'accounts',
+                activeTab: '{{ in_array(request()->string('tab')->toString(), ['overview', 'accounts', 'rules', 'wallet'], true) ? request()->string('tab')->toString() : 'overview' }}',
                 accountSearch: '',
                 accountTypeFilter: 'all',
                 accountView: 'hierarchy',
@@ -64,10 +71,71 @@
                         const data = await response.json();
                         this.generatedCode = data.code || '';
                     } catch (e) { /* no-op */ }
-                }
+                },
+                mappingBusy: {},
+                mappingFeedback: {},
+                mappingEditing: {},
+                startMappingEdit(ruleId) {
+                    this.mappingEditing[ruleId] = true;
+                    this.mappingFeedback[ruleId] = null;
+                },
+                cancelMappingEdit(ruleId) {
+                    this.mappingEditing[ruleId] = false;
+                    this.mappingFeedback[ruleId] = null;
+                },
+                isMappingEditing(ruleId) {
+                    return Boolean(this.mappingEditing[ruleId]);
+                },
+                async saveMapping(event, ruleId) {
+                    const form = event.target;
+                    if (!form || this.mappingBusy[ruleId]) return;
+
+                    this.mappingBusy[ruleId] = true;
+                    this.mappingFeedback[ruleId] = { type: 'info', message: 'Saving...' };
+
+                    const formData = new FormData(form);
+                    const payload = new URLSearchParams();
+                    for (const [key, value] of formData.entries()) {
+                        payload.append(key, value == null ? '' : String(value));
+                    }
+
+                    try {
+                        const response = await fetch(form.action, {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-TOKEN': String(formData.get('_token') || ''),
+                            },
+                            body: payload.toString(),
+                        });
+
+                        if (response.status === 422) {
+                            const data = await response.json();
+                            const msg = data?.errors?.debit_account_id?.[0]
+                                || data?.errors?.credit_account_id?.[0]
+                                || data?.message
+                                || 'Unable to save mapping.';
+                            this.mappingFeedback[ruleId] = { type: 'error', message: msg };
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            throw new Error('Request failed');
+                        }
+
+                        this.mappingFeedback[ruleId] = { type: 'success', message: 'Mapping saved.' };
+                        this.mappingEditing[ruleId] = false;
+                    } catch (error) {
+                        this.mappingFeedback[ruleId] = { type: 'error', message: 'Save failed. Please retry.' };
+                    } finally {
+                        this.mappingBusy[ruleId] = false;
+                    }
+                },
             }"
             x-init="refreshGeneratedCode()"
-            @keydown.escape.window="showCreateAccountModal = false; showImportModal = false; showOverdrawnModal = false; showPendingApprovalsModal = false; selectedPendingAccount = null"
+            @keydown.escape.window="showCreateAccountModal = false; showImportModal = false; showAddMappingModal = false; showOverdrawnModal = false; showPendingApprovalsModal = false; selectedPendingAccount = null"
         >
             <section class="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -406,9 +474,22 @@
                                     <td class="px-3 py-2"><input type="checkbox" @checked($row->is_active) disabled class="h-4 w-8 rounded-full border border-slate-300 text-emerald-600"></td>
                                     <td class="px-3 py-2 text-slate-500">
                                         <div class="flex items-center gap-1">
-                                            <a href="{{ route('loan.accounting.books.chart_rules', ['edit_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
-                                            <a href="{{ route('loan.accounting.books.chart_rules', ['duplicate_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Duplicate"><i class="fa-solid fa-clone" aria-hidden="true"></i></a>
-                                            <a href="{{ route('loan.accounting.journal.index', ['q' => $row->code]) }}" class="rounded p-1 hover:bg-purple-50 hover:text-purple-700" title="Audit History"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
+                                            <a href="{{ route('loan.accounting.books.chart_rules', ['tab' => 'accounts', 'edit_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+                                            <a href="{{ route('loan.accounting.books.chart_rules', ['tab' => 'accounts', 'duplicate_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Duplicate"><i class="fa-solid fa-clone" aria-hidden="true"></i></a>
+                                            <form method="post" action="{{ route('loan.accounting.chart.destroy', $row->id) }}" class="inline">
+                                                @csrf
+                                                @method('DELETE')
+                                                <input type="hidden" name="redirect_to" value="{{ route('loan.accounting.books.chart_rules', ['tab' => 'accounts']) }}">
+                                                <button
+                                                    type="submit"
+                                                    onclick="return confirm('Delete this account? If it has journal history, deletion will be blocked.');"
+                                                    class="rounded p-1 hover:bg-red-50 hover:text-red-700"
+                                                    title="Delete Account"
+                                                >
+                                                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                                </button>
+                                            </form>
+                                            <a href="{{ route('loan.accounting.ledger', ['account_id' => $row->id, 'recent' => 1, 'limit' => 50, 'tab' => 'accounts']) }}" class="rounded p-1 hover:bg-purple-50 hover:text-purple-700" title="Account History (General Ledger)"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
                                         </div>
                                     </td>
                                 </tr>
@@ -441,9 +522,15 @@
                 <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div class="mb-4 flex items-center justify-between">
                         <h2 class="text-lg font-semibold text-slate-900">Automated Cash Mappings</h2>
-                        <span class="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Governance Layer</span>
+                        <div class="flex items-center gap-2">
+                            <button type="button" @click="showAddMappingModal = true" class="inline-flex items-center rounded-lg border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">
+                                <i class="fa-solid fa-plus mr-1 text-[10px]" aria-hidden="true"></i>
+                                Add
+                            </button>
+                            <span class="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Governance Layer</span>
+                        </div>
                     </div>
-                    <div class="overflow-x-auto rounded-lg border border-slate-200">
+                    <div class="max-h-[75vh] overflow-auto rounded-lg border border-slate-200">
                         <table class="min-w-full divide-y divide-slate-200 text-sm">
                             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                                 <tr>
@@ -462,18 +549,79 @@
                                             ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                                             : 'border-orange-200 bg-orange-50 text-orange-700';
                                     @endphp
-                                    <tr class="hover:bg-teal-50/60">
-                                        <td class="px-3 py-2 font-medium text-slate-800">{{ $rule->label }}</td>
-                                        <td class="px-3 py-2 text-slate-700">{{ $rule->debitAccount?->name ?? '—' }}</td>
-                                        <td class="px-3 py-2 text-slate-700">{{ $rule->creditAccount?->name ?? '—' }}</td>
-                                        <td class="px-3 py-2"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold {{ $ruleClass }}">{{ $ruleState }}</span></td>
-                                        <td class="px-3 py-2 text-slate-500">
-                                            <div class="flex items-center gap-2">
-                                                <a href="{{ route('loan.accounting.chart.index') }}" class="hover:text-blue-700" title="Edit Mapping"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
-                                                <a href="{{ route('loan.accounting.journal.index') }}" class="hover:text-purple-700" title="Mapping History"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                    @if ($rule->is_editable)
+                                        <tr class="hover:bg-teal-50/60">
+                                            <td class="px-3 py-2 font-medium text-slate-800">{{ $rule->label }}</td>
+                                            <td class="px-3 py-2 text-slate-700">
+                                                <form id="mapping-form-{{ (int) $rule->id }}" method="post" action="{{ route('loan.accounting.chart.posting_rules.update', $rule->rule_key) }}" @submit.prevent="saveMapping($event, {{ (int) $rule->id }})" class="hidden">
+                                                    @csrf
+                                                    @method('patch')
+                                                </form>
+                                                <template x-if="isMappingEditing({{ (int) $rule->id }})">
+                                                    <select name="debit_account_id" form="mapping-form-{{ (int) $rule->id }}" class="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600">
+                                                        <option value="">Select debit account</option>
+                                                        @foreach ($selectAccounts as $acc)
+                                                            <option value="{{ $acc->id }}" @selected((int) $rule->debit_account_id === (int) $acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </template>
+                                                <template x-if="!isMappingEditing({{ (int) $rule->id }})">
+                                                    <span>{{ $rule->debitAccount?->name ?? '—' }}</span>
+                                                </template>
+                                            </td>
+                                            <td class="px-3 py-2 text-slate-700">
+                                                <template x-if="isMappingEditing({{ (int) $rule->id }})">
+                                                    <select name="credit_account_id" form="mapping-form-{{ (int) $rule->id }}" class="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600">
+                                                        <option value="">Select credit account</option>
+                                                        @foreach ($selectAccounts as $acc)
+                                                            <option value="{{ $acc->id }}" @selected((int) $rule->credit_account_id === (int) $acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </template>
+                                                <template x-if="!isMappingEditing({{ (int) $rule->id }})">
+                                                    <span>{{ $rule->creditAccount?->name ?? '—' }}</span>
+                                                </template>
+                                            </td>
+                                            <td class="px-3 py-2"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold {{ $ruleClass }}">{{ $ruleState }}</span></td>
+                                            <td class="px-3 py-2 text-slate-500">
+                                                <div class="flex items-center gap-2">
+                                                    <template x-if="isMappingEditing({{ (int) $rule->id }})">
+                                                        <div class="flex items-center gap-2">
+                                                            <button type="submit" form="mapping-form-{{ (int) $rule->id }}" :disabled="Boolean(mappingBusy[{{ (int) $rule->id }}])" class="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60" x-text="mappingBusy[{{ (int) $rule->id }}] ? 'Saving...' : 'Save'">Save</button>
+                                                            <button type="button" @click="cancelMappingEdit({{ (int) $rule->id }})" class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                                                        </div>
+                                                    </template>
+                                                    <template x-if="!isMappingEditing({{ (int) $rule->id }})">
+                                                        <div class="flex items-center gap-2">
+                                                            <button type="button" @click="startMappingEdit({{ (int) $rule->id }})" class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100" title="Edit mapping">Edit</button>
+                                                            <form method="post" action="{{ route('loan.accounting.chart.posting_rules.destroy', $rule->rule_key) }}" onsubmit="return confirm('Delete this mapping rule?');" class="inline">
+                                                                @csrf
+                                                                @method('DELETE')
+                                                                <button type="submit" class="inline-flex items-center justify-center rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" title="Delete mapping">Delete</button>
+                                                            </form>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                                <template x-if="mappingFeedback[{{ (int) $rule->id }}]">
+                                                    <p class="mt-1 text-xs"
+                                                       :class="mappingFeedback[{{ (int) $rule->id }}].type === 'success' ? 'text-emerald-700' : 'text-orange-700'"
+                                                       x-text="mappingFeedback[{{ (int) $rule->id }}].message"></p>
+                                                </template>
+                                            </td>
+                                        </tr>
+                                    @else
+                                        <tr class="hover:bg-teal-50/60">
+                                            <td class="px-3 py-2 font-medium text-slate-800">{{ $rule->label }}</td>
+                                            <td class="px-3 py-2 text-slate-700">{{ $rule->debitAccount?->name ?? '—' }}</td>
+                                            <td class="px-3 py-2 text-slate-700">{{ $rule->creditAccount?->name ?? '—' }}</td>
+                                            <td class="px-3 py-2"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold {{ $ruleClass }}">{{ $ruleState }}</span></td>
+                                            <td class="px-3 py-2 text-slate-500">
+                                                <div class="flex items-center gap-2">
+                                                    <a href="{{ route('loan.accounting.journal.index') }}" class="hover:text-purple-700" title="Mapping History"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    @endif
                                 @empty
                                     <tr><td colspan="5" class="px-3 py-4 text-center text-slate-500">No mapping rules found.</td></tr>
                                 @endforelse
@@ -890,6 +1038,60 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                x-cloak
+                x-show="showAddMappingModal"
+                x-transition.opacity
+                class="fixed inset-0 z-50 bg-black/50"
+                @click.self="showAddMappingModal = false"
+            >
+                <div class="flex min-h-screen items-center justify-center p-4">
+                    <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-slate-900">Add Automated Mapping</h3>
+                                <p class="text-sm text-slate-500">Create a business-event mapping with debit and credit accounts.</p>
+                            </div>
+                            <button type="button" @click="showAddMappingModal = false" class="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">x</button>
+                        </div>
+                        <form method="post" action="{{ route('loan.accounting.chart.posting_rules.store') }}" class="space-y-4 px-6 py-5">
+                            @csrf
+                            <div class="grid gap-3 sm:grid-cols-1">
+                                <label class="text-xs font-semibold text-slate-600">
+                                    Business Event
+                                    <input type="text" name="label" value="{{ old('label') }}" placeholder="e.g. Loan Top-up Disbursed" required class="mt-1 w-full rounded-lg border-slate-200 text-sm">
+                                    @error('label')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </label>
+                                <label class="text-xs font-semibold text-slate-600">
+                                    Debit Account (COA)
+                                    <select name="debit_account_id" class="mt-1 w-full rounded-lg border-slate-200 text-sm">
+                                        <option value="">Select debit account</option>
+                                        @foreach ($selectAccounts as $acc)
+                                            <option value="{{ $acc->id }}" @selected((int) old('debit_account_id') === (int) $acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('debit_account_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </label>
+                                <label class="text-xs font-semibold text-slate-600">
+                                    Credit Account (COA)
+                                    <select name="credit_account_id" class="mt-1 w-full rounded-lg border-slate-200 text-sm">
+                                        <option value="">Select credit account</option>
+                                        @foreach ($selectAccounts as $acc)
+                                            <option value="{{ $acc->id }}" @selected((int) old('credit_account_id') === (int) $acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error('credit_account_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </label>
+                            </div>
+                            <div class="flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
+                                <button type="button" @click="showAddMappingModal = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Save</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>

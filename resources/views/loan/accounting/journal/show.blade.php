@@ -6,6 +6,7 @@
             $entryStatus = strtolower((string) ($entry->status ?? \App\Models\AccountingJournalEntry::STATUS_POSTED));
             $isBalanced = abs($totalDebit - $totalCredit) < 0.005;
             $currency = config('app.currency', 'KES');
+            $reversalBlockers = collect($reversalBlockers ?? []);
         @endphp
         <x-slot name="actions">
             <a href="{{ route('loan.accounting.journal.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
@@ -57,6 +58,25 @@
                 <p class="mt-1 text-sm text-slate-700">{{ $entry->description ?: 'No narration provided.' }}</p>
             </div>
         </div>
+
+        @if ($entryStatus === \App\Models\AccountingJournalEntry::STATUS_POSTED && $reversalBlockers->isNotEmpty())
+            <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+                <p class="text-sm font-semibold text-amber-800">Reversal likely to fail on liquidity rules</p>
+                <p class="mt-1 text-xs text-amber-700">One or more accounts would go below allowed limits if reversed now.</p>
+                <ul class="mt-3 list-disc space-y-1 pl-5 text-xs text-amber-800">
+                    @foreach ($reversalBlockers as $blocker)
+                        <li>
+                            {{ $blocker['code'] }} - {{ $blocker['name'] }}:
+                            @if (($blocker['reason'] ?? '') === 'overdraft_limit')
+                                overdraft limit exceeded (projected {{ number_format((float) ($blocker['projected_balance'] ?? 0), 2) }}, limit {{ number_format((float) ($blocker['overdraft_limit'] ?? 0), 2) }}).
+                            @else
+                                insufficient funds (projected {{ number_format((float) ($blocker['projected_balance'] ?? 0), 2) }}).
+                            @endif
+                        </li>
+                    @endforeach
+                </ul>
+            </div>
+        @endif
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden max-w-3xl">
             <table class="min-w-full text-sm">

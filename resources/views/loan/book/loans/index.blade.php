@@ -80,6 +80,81 @@
                 }
             }"
         >
+        @php
+            $portfolioIndicators = $portfolioIndicators ?? [];
+            $netLoanPortfolio = (float) ($portfolioIndicators['netLoanPortfolio'] ?? 0);
+            $grossLoanPortfolio = (float) ($portfolioIndicators['grossLoanPortfolio'] ?? 0);
+            $provisionAmount = (float) ($portfolioIndicators['provisionAmount'] ?? 0);
+            $nplRatio = (float) ($portfolioIndicators['nplRatio'] ?? 0);
+            $provisionCoverage = (float) ($portfolioIndicators['provisionCoverage'] ?? 0);
+            $par30Ratio = (float) ($portfolioIndicators['par30Ratio'] ?? 0);
+            $writeOffRatio = (float) ($portfolioIndicators['writeOffRatio'] ?? 0);
+            $agingRows = $portfolioIndicators['agingRows'] ?? [];
+            $formatMoney = fn (float $value): string => 'KSh '.number_format($value, 2);
+        @endphp
+
+        <div class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="grid gap-4 xl:grid-cols-2">
+                <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <h3 class="text-sm font-semibold text-slate-900">Net Loan Portfolio</h3>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">{{ $formatMoney($netLoanPortfolio) }}</p>
+                    <dl class="mt-3 space-y-2 text-sm">
+                        <div class="flex items-center justify-between">
+                            <dt class="text-slate-600">Gross Loan Portfolio</dt>
+                            <dd class="font-medium text-slate-800">{{ $formatMoney($grossLoanPortfolio) }}</dd>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <dt class="text-slate-600">Less: Provision</dt>
+                            <dd class="font-medium text-red-600">{{ $formatMoney(-$provisionAmount) }}</dd>
+                        </div>
+                        <div class="flex items-center justify-between border-t border-slate-200 pt-2">
+                            <dt class="font-semibold text-slate-700">Net Portfolio</dt>
+                            <dd class="font-semibold text-slate-900">{{ $formatMoney($netLoanPortfolio) }}</dd>
+                        </div>
+                    </dl>
+                </section>
+
+                <section class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <h3 class="text-sm font-semibold text-slate-900">Portfolio Quality Indicators</h3>
+                    <div class="mt-3 grid grid-cols-2 gap-2">
+                        <div class="rounded-lg border border-slate-200 bg-white p-3">
+                            <p class="text-xs text-slate-500">NPL Ratio</p>
+                            <p class="mt-1 text-base font-semibold text-orange-600">{{ number_format($nplRatio, 1) }}%</p>
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-white p-3">
+                            <p class="text-xs text-slate-500">Provision Coverage</p>
+                            <p class="mt-1 text-base font-semibold text-emerald-600">{{ number_format($provisionCoverage, 1) }}%</p>
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-white p-3">
+                            <p class="text-xs text-slate-500">At Risk (PAR &gt; 30)</p>
+                            <p class="mt-1 text-base font-semibold text-red-600">{{ number_format($par30Ratio, 1) }}%</p>
+                        </div>
+                        <div class="rounded-lg border border-slate-200 bg-white p-3">
+                            <p class="text-xs text-slate-500">Write-off Ratio</p>
+                            <p class="mt-1 text-base font-semibold text-slate-900">{{ number_format($writeOffRatio, 1) }}%</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <section class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <h3 class="text-sm font-semibold text-slate-900">Aging Summary</h3>
+                <div class="mt-3 grid gap-3 lg:grid-cols-2">
+                    @foreach ($agingRows as $row)
+                        <div>
+                            <div class="mb-1 flex items-center justify-between text-xs">
+                                <span class="text-slate-600">{{ $row['label'] }}</span>
+                                <span class="font-medium text-slate-700">{{ $formatMoney((float) $row['amount']) }} • {{ number_format((float) $row['pct'], 1) }}%</span>
+                            </div>
+                            <div class="h-2 rounded-full bg-slate-200">
+                                <div class="h-2 rounded-full bg-blue-500" style="width: {{ max(0, min(100, (float) $row['pct'])) }}%;"></div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </section>
+        </div>
+
         <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div class="flex flex-wrap items-end gap-2">
                 <div>

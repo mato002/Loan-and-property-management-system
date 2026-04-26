@@ -13,6 +13,7 @@
                         'name' => (string) $product->name,
                         'description' => (string) ($product->description ?? ''),
                         'default_interest_rate' => $product->default_interest_rate !== null ? (float) $product->default_interest_rate : null,
+                        'default_interest_rate_type' => (string) ($product->default_interest_rate_type ?? 'percent'),
                         'default_term_months' => $product->default_term_months !== null ? (int) $product->default_term_months : null,
                         'default_interest_rate_period' => (string) ($product->default_interest_rate_period ?? 'annual'),
                         'default_term_unit' => (string) ($product->default_term_unit ?? 'monthly'),
@@ -24,8 +25,11 @@
                         'max_loan_amount' => $product->max_loan_amount !== null ? (float) $product->max_loan_amount : null,
                         'arrears_penalty_scope' => (string) ($product->arrears_penalty_scope ?? ''),
                         'penalty_amount' => $product->penalty_amount !== null ? (float) $product->penalty_amount : null,
+                        'penalty_amount_type' => (string) ($product->penalty_amount_type ?? 'fixed'),
                         'rollover_fees' => $product->rollover_fees !== null ? (float) $product->rollover_fees : null,
+                        'rollover_fees_type' => (string) ($product->rollover_fees_type ?? 'fixed'),
                         'loan_offset_fees' => $product->loan_offset_fees !== null ? (float) $product->loan_offset_fees : null,
+                        'loan_offset_fees_type' => (string) ($product->loan_offset_fees_type ?? 'fixed'),
                         'repay_waiver_days' => $product->repay_waiver_days !== null ? (int) $product->repay_waiver_days : null,
                         'client_application_scope' => (string) ($product->client_application_scope ?? ''),
                         'installment_display_mode' => (string) ($product->installment_display_mode ?? ''),
@@ -68,7 +72,8 @@
                                 <td class="px-4 py-3 text-slate-600">{{ $product->description ?: '—' }}</td>
                                 <td class="px-4 py-3 text-right tabular-nums text-slate-700 whitespace-nowrap">
                                     @if ($product->default_interest_rate !== null)
-                                        {{ number_format((float) $product->default_interest_rate, 4) }}% / {{ $product->default_interest_rate_period ?? 'annual' }}
+                                        @php($interestType = (string) ($product->default_interest_rate_type ?? 'percent'))
+                                        {{ $interestType === 'percent' ? number_format((float) $product->default_interest_rate, 4).'%' : number_format((float) $product->default_interest_rate, 2) }} / {{ $product->default_interest_rate_period ?? 'annual' }}
                                     @else
                                         —
                                     @endif
@@ -91,7 +96,16 @@
                                 </td>
                                 <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
                                     @if ($product->penalty_amount !== null || $product->exempt_from_checkoffs)
-                                        <div>{{ $product->arrears_penalty_scope ? str_replace('_', ' ', $product->arrears_penalty_scope) : 'Penalty' }}: {{ $product->penalty_amount !== null ? number_format((float) $product->penalty_amount, 2) : '—' }}</div>
+                                        @php($penaltyType = (string) ($product->penalty_amount_type ?? 'fixed'))
+                                        <div>{{ $product->arrears_penalty_scope ? str_replace('_', ' ', $product->arrears_penalty_scope) : 'Penalty' }}: {{ $product->penalty_amount !== null ? ($penaltyType === 'percent' ? number_format((float) $product->penalty_amount, 4).'%' : number_format((float) $product->penalty_amount, 2)) : '—' }}</div>
+                                        @if ($product->rollover_fees !== null)
+                                            @php($rolloverType = (string) ($product->rollover_fees_type ?? 'fixed'))
+                                            <div>Rollover: {{ $rolloverType === 'percent' ? number_format((float) $product->rollover_fees, 4).'%' : number_format((float) $product->rollover_fees, 2) }}</div>
+                                        @endif
+                                        @if ($product->loan_offset_fees !== null)
+                                            @php($offsetType = (string) ($product->loan_offset_fees_type ?? 'fixed'))
+                                            <div>Loan offset: {{ $offsetType === 'percent' ? number_format((float) $product->loan_offset_fees, 4).'%' : number_format((float) $product->loan_offset_fees, 2) }}</div>
+                                        @endif
                                         <div class="text-slate-500">Checkoff exempt: {{ $product->exempt_from_checkoffs ? 'Yes' : 'No' }}</div>
                                     @else
                                         —
@@ -159,7 +173,11 @@
                 @method('patch')
                 <input id="edit_name" name="name" class="md:col-span-3 rounded border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-800" placeholder="Product name" />
                 <input id="edit_description" name="description" class="md:col-span-3 rounded border-slate-200 px-2 py-1.5 text-xs" placeholder="Description" />
-                <input id="edit_default_interest_rate" name="default_interest_rate" type="number" step="0.0001" min="0" max="100" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Rate %" />
+                <input id="edit_default_interest_rate" name="default_interest_rate" type="number" step="0.0001" min="0" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Interest value" />
+                <select id="edit_default_interest_rate_type" name="default_interest_rate_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
+                    <option value="percent">Interest %</option>
+                    <option value="fixed">Fixed amount</option>
+                </select>
                 <input id="edit_default_term_months" name="default_term_months" type="number" min="1" max="600" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Length" />
                 <select id="edit_default_interest_rate_period" name="default_interest_rate_period" class="rounded border-slate-200 px-2 py-1.5 text-xs">
                     <option value="daily">Per day</option>
@@ -195,8 +213,20 @@
                     <option value="none">No penalty</option>
                 </select>
                 <input id="edit_penalty_amount" name="penalty_amount" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Penalty amount" />
+                <select id="edit_penalty_amount_type" name="penalty_amount_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
+                    <option value="fixed">Penalty fixed</option>
+                    <option value="percent">Penalty %</option>
+                </select>
                 <input id="edit_rollover_fees" name="rollover_fees" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Rollover fees" />
+                <select id="edit_rollover_fees_type" name="rollover_fees_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
+                    <option value="fixed">Rollover fixed</option>
+                    <option value="percent">Rollover %</option>
+                </select>
                 <input id="edit_loan_offset_fees" name="loan_offset_fees" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Loan offset fees" />
+                <select id="edit_loan_offset_fees_type" name="loan_offset_fees_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
+                    <option value="fixed">Offset fixed</option>
+                    <option value="percent">Offset %</option>
+                </select>
                 <input id="edit_repay_waiver_days" name="repay_waiver_days" type="number" min="0" max="365" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Repay waiver days" />
                 <select id="edit_client_application_scope" name="client_application_scope" class="rounded border-slate-200 px-2 py-1.5 text-xs">
                     <option value="">Client scope</option>
@@ -259,6 +289,7 @@
             editForm.querySelector('#edit_name').value = product.name ?? '';
             editForm.querySelector('#edit_description').value = product.description ?? '';
             editForm.querySelector('#edit_default_interest_rate').value = product.default_interest_rate ?? '';
+            editForm.querySelector('#edit_default_interest_rate_type').value = product.default_interest_rate_type ?? 'percent';
             editForm.querySelector('#edit_default_term_months').value = product.default_term_months ?? '';
             editForm.querySelector('#edit_default_interest_rate_period').value = product.default_interest_rate_period ?? 'annual';
             editForm.querySelector('#edit_default_term_unit').value = product.default_term_unit ?? 'monthly';
@@ -271,8 +302,11 @@
             editForm.querySelector('#edit_max_loan_amount').value = product.max_loan_amount ?? '';
             editForm.querySelector('#edit_arrears_penalty_scope').value = product.arrears_penalty_scope ?? '';
             editForm.querySelector('#edit_penalty_amount').value = product.penalty_amount ?? '';
+            editForm.querySelector('#edit_penalty_amount_type').value = product.penalty_amount_type ?? 'fixed';
             editForm.querySelector('#edit_rollover_fees').value = product.rollover_fees ?? '';
+            editForm.querySelector('#edit_rollover_fees_type').value = product.rollover_fees_type ?? 'fixed';
             editForm.querySelector('#edit_loan_offset_fees').value = product.loan_offset_fees ?? '';
+            editForm.querySelector('#edit_loan_offset_fees_type').value = product.loan_offset_fees_type ?? 'fixed';
             editForm.querySelector('#edit_repay_waiver_days').value = product.repay_waiver_days ?? '';
             editForm.querySelector('#edit_client_application_scope').value = product.client_application_scope ?? '';
             editForm.querySelector('#edit_installment_display_mode').value = product.installment_display_mode ?? '';

@@ -3038,7 +3038,7 @@
     $assetRows = $coaRows->filter(fn ($r) => strtolower((string) data_get($r, 'account_type')) === 'asset')->values();
     $liabilityRows = $coaRows->filter(fn ($r) => strtolower((string) data_get($r, 'account_type')) === 'liability')->values();
     $otherRows = $coaRows->reject(fn ($r) => in_array(strtolower((string) data_get($r, 'account_type')), ['asset', 'liability'], true))->values();
-    $mappingRows = collect($postingRules ?? [])->take(4);
+    $mappingRows = collect($postingRules ?? [])->values();
     if ($mappingRows->isEmpty()) {
         $mappingRows = collect([
             (object) ['label' => 'New Loan Disbursed', 'debitAccount' => (object) ['name' => 'Loan Portfolio (Principal)'], 'creditAccount' => (object) ['name' => 'M-Pesa Bulk Utility']],
@@ -3136,7 +3136,7 @@
                             <button type="button" @click="newAccount()" class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">Create New Account</button>
                         </div>
 
-                        <div class="overflow-x-auto rounded-lg border border-slate-200">
+                        <div class="max-h-[75vh] overflow-auto rounded-lg border border-slate-200">
                             <table class="min-w-full divide-y divide-slate-200 text-sm">
                                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
                                     <tr>

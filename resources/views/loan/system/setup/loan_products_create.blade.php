@@ -22,8 +22,15 @@
                     <input name="name" value="{{ old('name') }}" required class="w-full rounded-lg border-slate-200 text-sm" />
                 </div>
                 <div class="md:col-span-2">
-                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default interest %</label>
-                    <input name="default_interest_rate" type="number" step="0.0001" min="0" max="100" value="{{ old('default_interest_rate') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default interest value</label>
+                    <input name="default_interest_rate" type="number" step="0.0001" min="0" value="{{ old('default_interest_rate') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default interest type</label>
+                    <select name="default_interest_rate_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="percent" @selected(old('default_interest_rate_type', 'percent') === 'percent')>Percentage (%)</option>
+                        <option value="fixed" @selected(old('default_interest_rate_type') === 'fixed')>Fixed amount</option>
+                    </select>
                 </div>
                 <div class="md:col-span-2">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Default term length</label>
@@ -97,12 +104,33 @@
                     <input name="penalty_amount" type="number" min="0" step="0.01" value="{{ old('penalty_amount') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                 </div>
                 <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Penalty type</label>
+                    <select name="penalty_amount_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="fixed" @selected(old('penalty_amount_type', 'fixed') === 'fixed')>Fixed amount</option>
+                        <option value="percent" @selected(old('penalty_amount_type') === 'percent')>Percentage (%)</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Rollover fees</label>
                     <input name="rollover_fees" type="number" min="0" step="0.01" value="{{ old('rollover_fees', '0') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                 </div>
                 <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Rollover fee type</label>
+                    <select name="rollover_fees_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="fixed" @selected(old('rollover_fees_type', 'fixed') === 'fixed')>Fixed amount</option>
+                        <option value="percent" @selected(old('rollover_fees_type') === 'percent')>Percentage (%)</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Loan offset fees</label>
                     <input name="loan_offset_fees" type="number" min="0" step="0.01" value="{{ old('loan_offset_fees', '0') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Loan offset fee type</label>
+                    <select name="loan_offset_fees_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="fixed" @selected(old('loan_offset_fees_type', 'fixed') === 'fixed')>Fixed amount</option>
+                        <option value="percent" @selected(old('loan_offset_fees_type') === 'percent')>Percentage (%)</option>
+                    </select>
                 </div>
                 <div class="md:col-span-2">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Repay waiver days</label>
@@ -187,7 +215,7 @@
                                 min="0"
                                 step="0.0001"
                                 class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs tabular-nums"
-                                placeholder="Amount"
+                                placeholder="Amount or %"
                             />
                             <button
                                 type="button"

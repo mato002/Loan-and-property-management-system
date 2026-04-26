@@ -10,11 +10,45 @@
 
         <div
             class="grid max-w-7xl grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]"
-            x-data="loanProductPicker(@js($productMetaByName ?? []), @js((string) old('term_unit', '')))"
+            x-data="loanProductPicker(
+                @js($productMetaByName ?? []),
+                @js((string) old('term_unit', $draftApplication?->term_unit ?? '')),
+                @js((string) old('suspense_payment_id', data_get($draftApplication?->form_meta, 'fee_selected_payment_id', ''))),
+                @js((int) (($pendingDrafts ?? collect())->count()))
+            )"
             data-products-store-url="{{ route('loan.book.applications.products.store') }}"
+            data-suspense-options-url="{{ route('loan.book.applications.suspense_options') }}"
         >
+            @php($draftId = (int) old('draft_id', $draftApplication?->id ?? 0))
+            <div class="xl:col-span-2 rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm" x-show="pendingDraftCount > 0">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-amber-900">Pending fee drafts</h3>
+                        <p class="text-xs text-amber-700">
+                            <span x-text="pendingDraftCount"></span>
+                            application draft(s) need fee fulfillment before complete save.
+                        </p>
+                    </div>
+                    <a href="#pending-drafts" class="inline-flex items-center rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100">View drafts</a>
+                </div>
+                @if(($pendingDrafts ?? collect())->isNotEmpty())
+                    <div id="pending-drafts" class="mt-3 max-h-44 space-y-2 overflow-y-auto pr-1">
+                        @foreach($pendingDrafts as $draft)
+                            <a
+                                href="{{ route('loan.book.applications.create', ['draft_id' => $draft->id]) }}"
+                                class="flex items-center justify-between rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs text-slate-700 hover:bg-amber-50"
+                            >
+                                <span>{{ $draft->reference }} · {{ $draft->loanClient?->full_name ?? 'Unknown client' }}</span>
+                                <span class="font-semibold text-amber-700">Resume</span>
+                            </a>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
             <form method="post" action="{{ route('loan.book.applications.store') }}" enctype="multipart/form-data" class="rounded-xl border border-slate-200 bg-white px-5 py-6 shadow-sm space-y-4">
                 @csrf
+                <input type="hidden" name="draft_id" value="{{ $draftId > 0 ? $draftId : '' }}">
+                <input type="hidden" name="save_as_draft" x-model="saveAsDraft">
                 <div>
                     <label for="loan_client_id" class="block text-xs font-semibold text-slate-600 mb-1">Client</label>
                     <select
@@ -39,7 +73,7 @@
                                 data-guarantor-id-number="{{ trim((string) ($c->guarantor_1_id_number ?? '')) }}"
                                 data-guarantor-phone="{{ trim((string) ($c->guarantor_1_phone ?? '')) }}"
                                 data-search="{{ strtolower(trim((string) ($c->full_name.' '.$c->client_number.' '.($c->phone ?? '').' '.($c->id_number ?? '')))) }}"
-                                @selected((string) old('loan_client_id', $selectedClientId ?? '') === (string) $c->id)
+                                @selected((string) old('loan_client_id', $draftApplication?->loan_client_id ?? $selectedClientId ?? '') === (string) $c->id)
                             >{{ $c->full_name }} · {{ $c->client_number }}</option>
                         @endforeach
                     </select>
@@ -51,7 +85,7 @@
                         <select id="product_name" name="product_name" required class="w-full rounded-lg border-slate-200 text-sm">
                             <option value="">Select product...</option>
                             @foreach (($productOptions ?? []) as $productName)
-                                <option value="{{ $productName }}" @selected(old('product_name', $defaultProductName ?? '') === $productName)>{{ $productName }}</option>
+                                <option value="{{ $productName }}" @selected(old('product_name', $draftApplication?->product_name ?? $defaultProductName ?? '') === $productName)>{{ $productName }}</option>
                             @endforeach
                         </select>
                         <button
@@ -67,15 +101,15 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="amount_requested" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['amount_requested']['label'] ?? 'Amount requested' }}</label>
-                        <input id="amount_requested" name="amount_requested" type="number" step="0.01" min="0" value="{{ old('amount_requested') }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                        <input id="amount_requested" name="amount_requested" type="number" step="0.01" min="0" value="{{ old('amount_requested', $draftApplication?->amount_requested) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
                         <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">Term unit</label>
                         <select id="term_unit" name="term_unit" required class="w-full rounded-lg border-slate-200 text-sm" x-model="termUnit" @change="onTermUnitChange()">
-                            <option value="" @selected(old('term_unit', '') === '')>Select term unit…</option>
+                            <option value="" @selected(old('term_unit', $draftApplication?->term_unit ?? '') === '')>Select term unit…</option>
                             @foreach (['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'] as $v => $lab)
-                                <option value="{{ $v }}" @selected(old('term_unit', '') === $v)>{{ $lab }}</option>
+                                <option value="{{ $v }}" @selected(old('term_unit', $draftApplication?->term_unit ?? '') === $v)>{{ $lab }}</option>
                             @endforeach
                         </select>
                         <p class="mt-1 text-[11px] text-slate-500" x-show="termUnit === ''">Choose how the loan term is measured (days, weeks, or months).</p>
@@ -83,19 +117,19 @@
                     </div>
                     <div x-show="termUnit !== ''" x-cloak>
                         <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['term_value']['label'] ?? 'Term length' }}</label>
-                        <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="e.g. 6" />
+                        <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', $draftApplication?->term_value) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="e.g. 6" />
                         @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
                         <label for="interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Interest rate (%)</label>
-                        <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="1000" value="{{ old('interest_rate') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                        <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="1000" value="{{ old('interest_rate', $draftApplication?->interest_rate) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div class="sm:col-span-2">
                         <label for="interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">Interest period</label>
                         <select id="interest_rate_period" name="interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
                             @foreach (['daily' => 'Per day', 'weekly' => 'Per week', 'monthly' => 'Per month', 'annual' => 'Per year'] as $v => $lab)
-                                <option value="{{ $v }}" @selected(old('interest_rate_period', 'annual') === $v)>{{ $lab }}</option>
+                                <option value="{{ $v }}" @selected(old('interest_rate_period', $draftApplication?->interest_rate_period ?? 'annual') === $v)>{{ $lab }}</option>
                             @endforeach
                         </select>
                         @error('interest_rate_period')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -106,7 +140,7 @@
                     <select id="stage" name="stage" required class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach ($stages as $value => $label)
                             @continue($value === \App\Models\LoanBookApplication::STAGE_DISBURSED)
-                            <option value="{{ $value }}" @selected(old('stage', \App\Models\LoanBookApplication::STAGE_SUBMITTED) === $value)>{{ $label }}</option>
+                            <option value="{{ $value }}" @selected(old('stage', $draftApplication?->stage ?? \App\Models\LoanBookApplication::STAGE_SUBMITTED) === $value)>{{ $label }}</option>
                         @endforeach
                     </select>
                     <p class="mt-1 text-[11px] text-slate-500">Disbursed is set automatically after a completed disbursement record.</p>
@@ -118,7 +152,7 @@
                         <select id="branch" name="branch" class="w-full rounded-lg border-slate-200 text-sm">
                             <option value="">Select branch...</option>
                             @foreach (($branchOptions ?? []) as $branchName)
-                                <option value="{{ $branchName }}" @selected(old('branch') === $branchName)>{{ $branchName }}</option>
+                                <option value="{{ $branchName }}" @selected(old('branch', $draftApplication?->branch) === $branchName)>{{ $branchName }}</option>
                             @endforeach
                         </select>
                         <button
@@ -132,7 +166,7 @@
                 </div>
                 <div>
                     <label for="purpose" class="block text-xs font-semibold text-slate-600 mb-1">Purpose</label>
-                    <textarea id="purpose" name="purpose" rows="3" class="w-full rounded-lg border-slate-200 text-sm">{{ old('purpose', $defaultPurpose ?? '') }}</textarea>
+                    <textarea id="purpose" name="purpose" rows="3" class="w-full rounded-lg border-slate-200 text-sm">{{ old('purpose', $draftApplication?->purpose ?? $defaultPurpose ?? '') }}</textarea>
                     @error('purpose')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
 
@@ -190,66 +224,52 @@
                         </div>
                     </div>
                     @if (!empty($customFormFields))
-                    <div class="border-t border-slate-200 pt-4">
-                        <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">Additional setup fields</h4>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            @foreach ($customFormFields as $field)
-                                @php
-                                    $fieldKey = (string) ($field['key'] ?? '');
-                                    $fieldType = (string) ($field['data_type'] ?? 'alphanumeric');
-                                    $fieldLabel = (string) ($field['label'] ?? $fieldKey);
-                                    $fieldValue = old("form_meta.$fieldKey", data_get($application ?? null, "form_meta.$fieldKey"));
-                                    $options = (array) ($field['select_options'] ?? []);
-                                @endphp
-                                @if ($fieldType === 'long_text')
-                                    <div class="sm:col-span-2">
-                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
-                                        <textarea id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" rows="3" class="w-full rounded-lg border-slate-200 text-sm">{{ $fieldValue }}</textarea>
-                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                                    </div>
-                                @elseif ($fieldType === 'number')
-                                    <div>
-                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
-                                        <input id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" type="number" step="0.01" value="{{ $fieldValue }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
-                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                                    </div>
-                                @elseif ($fieldType === 'select')
-                                    <div>
-                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
-                                        <select id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" class="w-full rounded-lg border-slate-200 text-sm">
-                                            <option value="">Select…</option>
-                                            @foreach ($options as $option)
-                                                <option value="{{ $option }}" @selected((string) $fieldValue === (string) $option)>{{ $option }}</option>
-                                            @endforeach
-                                        </select>
-                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                                    </div>
-                                @elseif ($fieldType === 'image')
-                                    <div>
-                                        <label for="form_files_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
-                                        <input id="form_files_{{ $fieldKey }}" name="form_files[{{ $fieldKey }}]" type="file" accept="image/*" class="w-full rounded-lg border-slate-200 text-sm" />
-                                        @error("form_files.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                                    </div>
-                                @else
-                                    <div>
-                                        <label for="form_meta_{{ $fieldKey }}" class="block text-xs font-semibold text-slate-600 mb-1">{{ $fieldLabel }}</label>
-                                        <input id="form_meta_{{ $fieldKey }}" name="form_meta[{{ $fieldKey }}]" type="text" value="{{ $fieldValue }}" class="w-full rounded-lg border-slate-200 text-sm" />
-                                        @error("form_meta.$fieldKey")<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                                    </div>
-                                @endif
-                            @endforeach
-                        </div>
-                    </div>
+                        @include('loan.book.applications.partials.custom-fields', [
+                            'customFormFields' => $customFormFields,
+                            'draftApplication' => $draftApplication ?? null,
+                        ])
                     @endif
                 </div>
 
                 <div>
                     <label for="notes" class="block text-xs font-semibold text-slate-600 mb-1">Internal notes</label>
-                    <textarea id="notes" name="notes" rows="2" class="w-full rounded-lg border-slate-200 text-sm">{{ old('notes') }}</textarea>
+                    <textarea id="notes" name="notes" rows="2" class="w-full rounded-lg border-slate-200 text-sm">{{ old('notes', $draftApplication?->notes) }}</textarea>
                     @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                <div class="rounded-lg border border-indigo-200 bg-indigo-50/50 p-4 space-y-3">
+                    <div class="flex items-center justify-between gap-2">
+                        <h4 class="text-sm font-semibold text-indigo-900">Required pre-booking fees</h4>
+                        <span class="text-xs font-semibold text-indigo-700" x-text="requiredFeeBadge"></span>
+                    </div>
+                    <p class="text-xs text-indigo-800">
+                        Charges for <strong>application</strong>, <strong>loan booking</strong>, and <strong>disbursement</strong> are enforced here.
+                    </p>
+                    <template x-if="requiredFeeBreakdown.length > 0">
+                        <div class="space-y-1 text-xs text-slate-700">
+                            <template x-for="fee in requiredFeeBreakdown" :key="fee.key">
+                                <p>
+                                    <span class="font-semibold text-slate-800" x-text="fee.name"></span>
+                                    · <span x-text="fee.stageLabel"></span>
+                                    · <span x-text="fee.amountLabel"></span>
+                                </p>
+                            </template>
+                        </div>
+                    </template>
+                    <div>
+                        <label for="suspense_payment_id" class="block text-xs font-semibold text-slate-700 mb-1">Attach one suspense payment</label>
+                        <select id="suspense_payment_id" name="suspense_payment_id" class="w-full rounded-lg border-slate-200 text-sm" x-model="selectedSuspensePaymentId" @change="onSuspenseSelectionChange()">
+                            <option value="">Select suspense payment...</option>
+                            <template x-for="option in suspenseOptions" :key="option.id">
+                                <option :value="String(option.id)" x-text="option.label"></option>
+                            </template>
+                        </select>
+                        @error('suspense_payment_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        <p class="mt-1 text-[11px] text-slate-600" x-text="suspenseCoverageHint"></p>
+                    </div>
+                </div>
                 <div class="flex flex-wrap gap-2 pt-2">
-                    <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Save application</button>
+                    <button type="submit" @click="saveAsDraft='1'" class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Save draft</button>
+                    <button type="submit" @click="saveAsDraft='0'" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Save application</button>
                 </div>
             </form>
             <aside class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm xl:sticky xl:top-4" x-data="{ mobileClientPreviewOpen: false }">
@@ -326,10 +346,17 @@
                         </div>
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
-                                <label for="new_product_interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Default interest % (optional)</label>
-                                <input id="new_product_interest_rate" x-model.trim="newProductInterestRate" type="number" step="0.0001" min="0" max="100" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                                <label for="new_product_interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Default interest value (optional)</label>
+                                <input id="new_product_interest_rate" x-model.trim="newProductInterestRate" type="number" step="0.0001" min="0" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                             </div>
                             <div>
+                                <label for="new_product_interest_rate_type" class="block text-xs font-semibold text-slate-600 mb-1">Default interest type</label>
+                                <select id="new_product_interest_rate_type" x-model="newProductInterestRateType" class="w-full rounded-lg border-slate-200 text-sm">
+                                    <option value="percent">Percentage (%)</option>
+                                    <option value="fixed">Fixed amount</option>
+                                </select>
+                            </div>
+                            <div class="sm:col-span-2">
                                 <label for="new_product_interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">Default interest period</label>
                                 <select id="new_product_interest_rate_period" x-model="newProductInterestRatePeriod" class="w-full rounded-lg border-slate-200 text-sm">
                                     <option value="daily">Per day</option>
@@ -397,15 +424,24 @@
 </x-loan-layout>
 
 <script>
-    function loanProductPicker(productMetaByName = {}, initialTermUnit = '') {
+    function loanProductPicker(productMetaByName = {}, initialTermUnit = '', initialSuspensePaymentId = '', pendingDraftCount = 0) {
         const productStoreUrl = @json(route('loan.book.applications.products.store'));
+        const suspenseOptionsUrl = @json(route('loan.book.applications.suspense_options'));
         return {
             productMetaByName,
             termUnit: initialTermUnit ? String(initialTermUnit) : '',
+            pendingDraftCount: Number(pendingDraftCount || 0),
+            saveAsDraft: '0',
+            selectedSuspensePaymentId: initialSuspensePaymentId ? String(initialSuspensePaymentId) : '',
+            suspenseOptions: [],
+            requiredFeeTotal: 0,
+            requiredFeeBreakdown: [],
+            suspenseCoverageHint: 'Select client and product to load required fees and eligible suspense payment.',
             showProductModal: false,
             newProductName: '',
             newProductDescription: '',
             newProductInterestRate: '',
+            newProductInterestRateType: 'percent',
             newProductTermMonths: '',
             newProductTermUnit: 'monthly',
             newProductInterestRatePeriod: 'annual',
@@ -441,13 +477,93 @@
                     this.$watch('selectedClientId', () => this.autofillFromSelectedClient());
                     this.autofillFromSelectedClient();
                     this.applyProductDefaults();
+                    this.refreshFeeAndSuspenseOptions();
                     const termUnitSelect = this.$el.querySelector('#term_unit');
                     if (termUnitSelect) {
                         this.termUnit = termUnitSelect.value || '';
                     }
                     const productSelect = this.$el.querySelector('#product_name');
-                    productSelect?.addEventListener('change', () => this.applyProductDefaults());
+                    productSelect?.addEventListener('change', () => {
+                        this.applyProductDefaults();
+                        this.refreshFeeAndSuspenseOptions();
+                    });
+                    const amountInput = this.$el.querySelector('#amount_requested');
+                    amountInput?.addEventListener('change', () => this.refreshFeeAndSuspenseOptions());
+                    amountInput?.addEventListener('input', () => this.refreshFeeAndSuspenseOptions());
                 });
+            },
+            get requiredFeeBadge() {
+                if (this.requiredFeeTotal <= 0) {
+                    return 'No required fee';
+                }
+                return `Required total: ${this.requiredFeeTotal.toFixed(2)}`;
+            },
+            onSuspenseSelectionChange() {
+                const selected = this.suspenseOptions.find((item) => String(item.id) === String(this.selectedSuspensePaymentId));
+                if (!selected) {
+                    if (this.requiredFeeTotal > 0) {
+                        this.suspenseCoverageHint = `Select one suspense payment with amount >= ${this.requiredFeeTotal.toFixed(2)}.`;
+                    }
+                    return;
+                }
+                const delta = Number(selected.amount || 0) - Number(this.requiredFeeTotal || 0);
+                if (delta >= 0) {
+                    this.suspenseCoverageHint = `Fee covered. Excess to wallet: ${delta.toFixed(2)}.`;
+                } else {
+                    this.suspenseCoverageHint = `Short by ${Math.abs(delta).toFixed(2)}. Save as draft or pick another payment.`;
+                }
+            },
+            async refreshFeeAndSuspenseOptions() {
+                const clientId = String(this.selectedClientId || '').trim();
+                const productName = String(this.$el.querySelector('#product_name')?.value || '').trim();
+                const amountRequested = String(this.$el.querySelector('#amount_requested')?.value || '').trim();
+                const draftId = String(this.$el.querySelector('input[name="draft_id"]')?.value || '').trim();
+                if (!clientId) {
+                    this.suspenseOptions = [];
+                    this.requiredFeeBreakdown = [];
+                    this.requiredFeeTotal = 0;
+                    this.suspenseCoverageHint = 'Select a client to load suspense options.';
+                    return;
+                }
+                try {
+                    const params = new URLSearchParams({
+                        loan_client_id: clientId,
+                        product_name: productName,
+                        amount_requested: amountRequested,
+                        draft_id: draftId,
+                    });
+                    const response = await fetch(`${suspenseOptionsUrl}?${params.toString()}`, {
+                        headers: {
+                            'Accept': 'application/json',
+                        },
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data?.ok) {
+                        this.suspenseOptions = [];
+                        this.requiredFeeBreakdown = [];
+                        this.requiredFeeTotal = 0;
+                        this.suspenseCoverageHint = 'Unable to load suspense options right now.';
+                        return;
+                    }
+                    this.suspenseOptions = Array.isArray(data.options) ? data.options : [];
+                    this.requiredFeeTotal = Number(data.required_fee_total || 0);
+                    this.requiredFeeBreakdown = (Array.isArray(data.required_fee_breakdown) ? data.required_fee_breakdown : []).map((item, index) => ({
+                        key: `${item.name || 'fee'}-${index}`,
+                        name: String(item.name || 'Fee'),
+                        stageLabel: String(item.stage || '').replace('_', ' '),
+                        amountLabel: Number(item.computed_amount || 0).toFixed(2),
+                    }));
+                    const stillExists = this.suspenseOptions.some((item) => String(item.id) === String(this.selectedSuspensePaymentId));
+                    if (!stillExists) {
+                        this.selectedSuspensePaymentId = '';
+                    }
+                    this.onSuspenseSelectionChange();
+                } catch (error) {
+                    this.suspenseOptions = [];
+                    this.requiredFeeBreakdown = [];
+                    this.requiredFeeTotal = 0;
+                    this.suspenseCoverageHint = 'Unable to load suspense options right now.';
+                }
             },
             setupApplicationPreview() {
                 const form = this.$el.querySelector('form');
@@ -607,6 +723,7 @@
                 this.newProductName = '';
                 this.newProductDescription = '';
                 this.newProductInterestRate = '';
+                this.newProductInterestRateType = 'percent';
                 this.newProductTermMonths = '';
                 this.newProductTermUnit = 'monthly';
                 this.newProductInterestRatePeriod = 'annual';
@@ -633,13 +750,17 @@
                 const parts = [];
                 if (meta.default_interest_rate !== null && meta.default_interest_rate !== undefined) {
                     const defaultInterestPeriod = String(meta.default_interest_rate_period ?? 'annual').toLowerCase();
+                    const defaultInterestType = String(meta.default_interest_rate_type ?? 'percent').toLowerCase();
                     const interestPeriodLabel = {
                         daily: 'day',
                         weekly: 'week',
                         monthly: 'month',
                         annual: 'year',
                     }[defaultInterestPeriod] ?? defaultInterestPeriod;
-                    parts.push(`Default interest: ${Number(meta.default_interest_rate).toFixed(4)}% per ${interestPeriodLabel}.`);
+                    const defaultInterestValue = defaultInterestType === 'percent'
+                        ? `${Number(meta.default_interest_rate).toFixed(4)}%`
+                        : Number(meta.default_interest_rate).toFixed(2);
+                    parts.push(`Default interest: ${defaultInterestValue} per ${interestPeriodLabel}.`);
                     const currentRate = (interestInput?.value ?? '').trim();
                     if (interestInput && currentRate === '') {
                         interestInput.value = String(meta.default_interest_rate);
@@ -732,6 +853,7 @@
                 const selectedOption = this.selectedClientOption();
                 this.selectedClientLabel = selectedOption?.label ?? '';
                 this.updateClientPreview(data);
+                this.refreshFeeAndSuspenseOptions();
                 if (!data) return;
 
                 this.setIfSafe('branch', data.branch);
@@ -767,6 +889,7 @@
                             name: this.newProductName,
                             description: this.newProductDescription,
                             default_interest_rate: this.newProductInterestRate,
+                            default_interest_rate_type: this.newProductInterestRateType,
                             default_term_months: this.newProductTermMonths,
                             default_term_unit: this.newProductTermUnit,
                             default_interest_rate_period: this.newProductInterestRatePeriod,
@@ -789,6 +912,7 @@
                     }
                     this.productMetaByName[data.product.name] = {
                         default_interest_rate: data.product.default_interest_rate ?? null,
+                        default_interest_rate_type: data.product.default_interest_rate_type ?? 'percent',
                         default_term_months: data.product.default_term_months ?? null,
                         default_term_unit: data.product.default_term_unit ?? 'monthly',
                         default_interest_rate_period: data.product.default_interest_rate_period ?? 'annual',

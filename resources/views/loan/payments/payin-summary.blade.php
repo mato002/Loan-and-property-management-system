@@ -41,6 +41,57 @@
             </div>
         </div>
 
+        <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mb-6">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <h2 class="text-sm font-semibold text-slate-700">Daily pay-ins</h2>
+                <p class="text-xs text-slate-500">{{ \Carbon\Carbon::parse($from)->format('d M Y') }} - {{ \Carbon\Carbon::parse($to)->format('d M Y') }}</p>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-[1100px] w-full text-xs">
+                    <thead class="bg-slate-50 text-slate-500 uppercase tracking-wide">
+                        <tr>
+                            @foreach (['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as $dayName)
+                                <th class="px-3 py-2 text-left font-semibold border-b border-slate-200">{{ $dayName }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (($weeks ?? []) as $week)
+                            <tr>
+                                @foreach ($week as $cell)
+                                    <td class="align-top border-b border-r border-slate-100 p-2 {{ $cell['in_range'] ? 'bg-white' : 'bg-slate-50 text-slate-400' }}">
+                                        <p class="text-[11px] font-semibold {{ $cell['in_range'] ? 'text-slate-700' : 'text-slate-400' }}">
+                                            {{ $cell['date']->format('d-m-Y') }}
+                                        </p>
+                                        @if ($cell['in_range'])
+                                            <div class="mt-1 space-y-0.5">
+                                                @forelse ($cell['breakdown'] as $label => $amount)
+                                                    <div class="flex items-center justify-between gap-2">
+                                                        <span class="truncate text-[11px] text-slate-600">{{ $label }}</span>
+                                                        <span class="tabular-nums text-[11px] font-medium text-slate-700">{{ number_format((float) $amount, 0) }}</span>
+                                                    </div>
+                                                @empty
+                                                    <p class="text-[11px] text-slate-400">No pay-ins</p>
+                                                @endforelse
+                                            </div>
+                                            <div class="mt-1 border-t border-slate-200 pt-1 flex items-center justify-between">
+                                                <span class="text-[11px] font-semibold text-slate-700">Total</span>
+                                                <span class="tabular-nums text-[11px] font-bold text-slate-900">{{ number_format((float) $cell['total'], 0) }}</span>
+                                            </div>
+                                            <div class="mt-0.5 flex items-center justify-between">
+                                                <span class="text-[11px] text-slate-500">Count</span>
+                                                <span class="tabular-nums text-[11px] text-slate-600">{{ number_format((int) $cell['count']) }}</span>
+                                            </div>
+                                        @endif
+                                    </td>
+                                @endforeach
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-slate-100">
                 <h2 class="text-sm font-semibold text-slate-700">By channel</h2>

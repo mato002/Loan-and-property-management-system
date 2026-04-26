@@ -21,6 +21,18 @@
         @php
             $approvalEnabledOld = old('coa_approval_required', ($approvalEnabled ?? false) ? '1' : '0');
             $approvalRowsOld = old('approvers', $coaApproverWorkflow ?? []);
+            $mappingPermissionsOld = old('mapping_permissions', $mappingPermissions ?? ['create' => [], 'edit' => [], 'delete' => []]);
+            $mappingApprovalModeOld = old('mapping_approval_mode', $mappingApprovalMode ?? 'none');
+            $mappingApproversOld = old('mapping_approvers', $mappingApproverRows ?? []);
+            $controlledAccountOwnerIdsOld = old('controlled_account_owner_ids', $controlledAccountOwnerIds ?? []);
+            $sensitivityRulesOld = old('sensitivity_rules', $sensitivityRules ?? []);
+            $sensitivityHighAmountOld = old('sensitivity_high_amount', (data_get($sensitivityRulesOld, 'high_amount', false) ? '1' : '0'));
+            $sensitivityCriticalAccountsOld = old('sensitivity_critical_accounts_only', (data_get($sensitivityRulesOld, 'critical_accounts_only', false) ? '1' : '0'));
+            $sensitivityReversalOld = old('sensitivity_reversal_events', (data_get($sensitivityRulesOld, 'reversal_events', false) ? '1' : '0'));
+            $sensitivityThresholdOld = old('sensitivity_amount_threshold', $sensitivityThreshold ?? 0);
+            $eventMappingStatus = $mappingApprovalModeOld === 'none'
+                ? 'Needs setup'
+                : ($mappingApprovalModeOld === 'single' ? 'Single approver ready' : 'Multi-level ready');
         @endphp
 
         <div
@@ -28,14 +40,41 @@
             x-data="{
                 requireApproval: {{ $approvalEnabledOld === '1' ? 'true' : 'false' }},
                 approverRows: {{ \Illuminate\Support\Js::from(array_values($approvalRowsOld)) }},
+                mappingApprovalMode: '{{ $mappingApprovalModeOld }}',
+                mappingApproverRows: {{ \Illuminate\Support\Js::from(array_values($mappingApproversOld)) }},
                 addRow() {
                     if (this.approverRows.length >= 8) return;
                     this.approverRows.push({ user_id: '' });
                 },
                 removeRow(index) {
                     this.approverRows.splice(index, 1);
+                },
+                addMappingApproverRow() {
+                    if (this.mappingApproverRows.length >= 8) return;
+                    this.mappingApproverRows.push({ user_id: '' });
+                },
+                removeMappingApproverRow(index) {
+                    this.mappingApproverRows.splice(index, 1);
+                },
+                enforceMappingApprovalRows() {
+                    if (this.mappingApprovalMode === 'none') {
+                        this.mappingApproverRows = [];
+                        return;
+                    }
+                    if (this.mappingApprovalMode === 'single') {
+                        if (this.mappingApproverRows.length === 0) {
+                            this.mappingApproverRows = [{ user_id: '' }];
+                        } else if (this.mappingApproverRows.length > 1) {
+                            this.mappingApproverRows = [this.mappingApproverRows[0]];
+                        }
+                        return;
+                    }
+                    if (this.mappingApproverRows.length < 2) {
+                        this.mappingApproverRows.push({ user_id: '' });
+                    }
                 }
             }"
+            x-init="enforceMappingApprovalRows()"
         >
             <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -121,6 +160,107 @@
 
                         <p class="text-xs text-orange-800">Approvals follow sequence: Approver 1, then Approver 2, up to Approver 8.</p>
                     </div>
+
+                    <div class="rounded-xl border border-blue-200 bg-blue-50/60 p-4 space-y-4">
+                        <h3 class="text-sm font-semibold text-blue-900">Automated Event Mapping Governance</h3>
+                        <p class="text-xs text-blue-800">Define who can create, edit, and delete mappings before posting rules can be changed.</p>
+
+                        <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                            <label class="rounded-lg border border-blue-200 bg-white p-3 text-xs font-semibold text-slate-600">
+                                Who can create mappings
+                                <select name="mapping_permissions[create][]" multiple class="mt-1 min-h-[110px] w-full rounded-lg border-slate-200 text-sm">
+                                    @foreach (($availableApprovers ?? collect()) as $approver)
+                                        <option value="{{ $approver->id }}" @selected(in_array((int) $approver->id, array_map('intval', (array) data_get($mappingPermissionsOld, 'create', [])), true))>{{ $approver->name }}{{ $approver->email ? ' ('.$approver->email.')' : '' }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <label class="rounded-lg border border-blue-200 bg-white p-3 text-xs font-semibold text-slate-600">
+                                Who can edit mappings
+                                <select name="mapping_permissions[edit][]" multiple class="mt-1 min-h-[110px] w-full rounded-lg border-slate-200 text-sm">
+                                    @foreach (($availableApprovers ?? collect()) as $approver)
+                                        <option value="{{ $approver->id }}" @selected(in_array((int) $approver->id, array_map('intval', (array) data_get($mappingPermissionsOld, 'edit', [])), true))>{{ $approver->name }}{{ $approver->email ? ' ('.$approver->email.')' : '' }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <label class="rounded-lg border border-blue-200 bg-white p-3 text-xs font-semibold text-slate-600">
+                                Who can delete mappings
+                                <select name="mapping_permissions[delete][]" multiple class="mt-1 min-h-[110px] w-full rounded-lg border-slate-200 text-sm">
+                                    @foreach (($availableApprovers ?? collect()) as $approver)
+                                        <option value="{{ $approver->id }}" @selected(in_array((int) $approver->id, array_map('intval', (array) data_get($mappingPermissionsOld, 'delete', [])), true))>{{ $approver->name }}{{ $approver->email ? ' ('.$approver->email.')' : '' }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                            <label class="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                                Mapping change approval mode
+                                <select name="mapping_approval_mode" x-model="mappingApprovalMode" @change="enforceMappingApprovalRows()" class="mt-1 w-full rounded-lg border-slate-200 text-sm">
+                                    <option value="none">No approval</option>
+                                    <option value="single">Single approver</option>
+                                    <option value="multi">Multi-level approval</option>
+                                </select>
+                            </label>
+                            <label class="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+                                Sensitivity amount threshold (KSh)
+                                <input type="number" min="0" step="0.01" name="sensitivity_amount_threshold" value="{{ $sensitivityThresholdOld }}" class="mt-1 w-full rounded-lg border-slate-200 text-sm" />
+                            </label>
+                        </div>
+
+                        <div x-cloak x-show="mappingApprovalMode !== 'none'" class="space-y-3 rounded-lg border border-purple-200 bg-white p-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <p class="text-sm font-semibold text-purple-900">Mapping approver hierarchy</p>
+                                <button type="button" @click="addMappingApproverRow()" :disabled="mappingApprovalMode === 'single' && mappingApproverRows.length >= 1" class="inline-flex rounded-lg border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed">Add approver</button>
+                            </div>
+                            <template x-for="(row, index) in mappingApproverRows" :key="index">
+                                <div class="grid grid-cols-1 gap-2 rounded-lg border border-purple-200 bg-purple-50/40 p-3 sm:grid-cols-[140px_1fr_auto] sm:items-center">
+                                    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500" x-text="'Approver ' + (index + 1)"></div>
+                                    <select :name="'mapping_approvers[' + index + '][user_id]'" x-model="row.user_id" class="rounded-lg border-slate-200 text-sm">
+                                        <option value="">Select user...</option>
+                                        @foreach (($availableApprovers ?? collect()) as $approver)
+                                            <option value="{{ $approver->id }}">{{ $approver->name }}{{ $approver->email ? ' ('.$approver->email.')' : '' }}</option>
+                                        @endforeach
+                                    </select>
+                                    <button type="button" @click="removeMappingApproverRow(index)" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100">Remove</button>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                            <label class="rounded-lg border border-blue-200 bg-white p-3 text-xs font-semibold text-slate-600">
+                                Who can introduce controlled accounts (Sensitivity Rules owners)
+                                <select name="controlled_account_owner_ids[]" multiple class="mt-1 min-h-[110px] w-full rounded-lg border-slate-200 text-sm">
+                                    @foreach (($availableApprovers ?? collect()) as $approver)
+                                        <option value="{{ $approver->id }}" @selected(in_array((int) $approver->id, array_map('intval', (array) $controlledAccountOwnerIdsOld), true))>{{ $approver->name }}{{ $approver->email ? ' ('.$approver->email.')' : '' }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <div class="space-y-2 rounded-lg border border-blue-200 bg-white p-3">
+                                <p class="text-xs font-semibold text-slate-600">Sensitivity rules</p>
+                                <label class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                    High amount transaction rule
+                                    <span>
+                                        <input type="hidden" name="sensitivity_high_amount" value="0">
+                                        <input type="checkbox" name="sensitivity_high_amount" value="1" @checked((string) $sensitivityHighAmountOld === '1') class="h-4 w-4 rounded border-slate-300 text-blue-700">
+                                    </span>
+                                </label>
+                                <label class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                    Critical accounts only
+                                    <span>
+                                        <input type="hidden" name="sensitivity_critical_accounts_only" value="0">
+                                        <input type="checkbox" name="sensitivity_critical_accounts_only" value="1" @checked((string) $sensitivityCriticalAccountsOld === '1') class="h-4 w-4 rounded border-slate-300 text-blue-700">
+                                    </span>
+                                </label>
+                                <label class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                    Reversal events require sensitivity
+                                    <span>
+                                        <input type="hidden" name="sensitivity_reversal_events" value="0">
+                                        <input type="checkbox" name="sensitivity_reversal_events" value="1" @checked((string) $sensitivityReversalOld === '1') class="h-4 w-4 rounded border-slate-300 text-blue-700">
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </form>
             </section>
 
@@ -176,13 +316,13 @@
                     <article class="rounded-xl border border-orange-200 bg-orange-50/50 p-4 transition hover:-translate-y-0.5 hover:shadow-sm">
                         <div class="flex items-start justify-between gap-3">
                             <h3 class="text-sm font-semibold text-slate-900">Automated Event Mapping</h3>
-                            <span class="rounded-full border border-orange-200 bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700">Needs setup</span>
+                            <span class="rounded-full border px-2 py-0.5 text-xs font-semibold {{ $mappingApprovalModeOld === 'none' ? 'border-orange-200 bg-orange-100 text-orange-700' : 'border-green-200 bg-green-100 text-green-700' }}">{{ $eventMappingStatus }}</span>
                         </div>
                         <p class="mt-2 text-sm text-slate-700">Loan Disbursed -&gt; Debit Loan Portfolio (Principal), Credit M-Pesa Bulk Utility.</p>
                         <div class="mt-4 flex flex-wrap gap-2">
-                            <button type="button" class="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">View event mappings</button>
-                            <button type="button" class="inline-flex rounded-lg border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Add mapping</button>
-                            <button type="button" class="inline-flex rounded-lg border border-orange-300 bg-orange-100 px-3 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-200">Validate mapping coverage</button>
+                            <a href="{{ route('loan.accounting.books.chart_rules') }}" class="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">View event mappings</a>
+                            <a href="{{ route('loan.accounting.books.chart_rules') }}" class="inline-flex rounded-lg border border-blue-600 bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Add mapping</a>
+                            <a href="{{ route('loan.accounting.books.chart_rules') }}" class="inline-flex rounded-lg border border-orange-300 bg-orange-100 px-3 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-200">Validate mapping coverage</a>
                         </div>
                     </article>
 

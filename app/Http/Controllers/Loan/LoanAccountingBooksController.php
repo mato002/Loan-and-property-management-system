@@ -72,6 +72,18 @@ class LoanAccountingBooksController extends Controller
             ->orderBy('account_type')
             ->orderBy('code')
             ->get();
+
+        $liveBalances = AccountingJournalLine::query()
+            ->selectRaw('accounting_chart_account_id, COALESCE(SUM(debit - credit), 0) as balance')
+            ->groupBy('accounting_chart_account_id')
+            ->pluck('balance', 'accounting_chart_account_id');
+
+        $accounts = $accounts->map(function (AccountingChartAccount $account) use ($liveBalances) {
+            // Use ledger-derived running balance for display on chart-rules views.
+            $account->current_balance = (float) ($liveBalances->get($account->id) ?? 0);
+
+            return $account;
+        });
         $headerAccounts = $hasAccountClass
             ? AccountingChartAccount::query()
                 ->where('is_active', true)
@@ -100,15 +112,10 @@ class LoanAccountingBooksController extends Controller
         $missingRules = $postingRules->filter(fn (AccountingPostingRule $r) => ! $r->debit_account_id || ! $r->credit_account_id)->count();
         $pendingApprovals = $hasApprovalColumns ? $accounts->where('approval_status', 'pending')->count() : 0;
         $isBalanced = abs((float) AccountingJournalLine::sum('debit') - (float) AccountingJournalLine::sum('credit')) < 0.01;
-        $overdrawnAccounts = collect();
-        if (Schema::hasColumn('accounting_chart_accounts', 'allow_overdraft')
-            && Schema::hasColumn('accounting_chart_accounts', 'current_balance')) {
-            $overdrawnAccounts = AccountingChartAccount::query()
-                ->where('allow_overdraft', true)
-                ->where('current_balance', '<', 0)
-                ->orderBy('current_balance')
-                ->get();
-        }
+        $overdrawnAccounts = $accounts
+            ->filter(fn (AccountingChartAccount $account): bool => (bool) $account->allow_overdraft && (float) $account->current_balance < 0)
+            ->sortBy('current_balance')
+            ->values();
         $editingAccount = null;
         $editAccountId = (int) request()->integer('edit_account');
         if ($editAccountId > 0) {
@@ -127,7 +134,7 @@ class LoanAccountingBooksController extends Controller
                 ->orderByDesc('created_at')
                 ->get()
             : collect();
-        $pendingAccounts = $pendingAccounts->map(function (AccountingChartAccount $account) use ($coaApproverWorkflow, $currentUserId) {
+        $pendingAccounts = $pendingAccounts->map(function (AccountingChartAccount $account) use ($coaApproverWorkflow, $currentUserId, $liveBalances) {
             $step = (int) ($account->approval_current_step ?? 1);
             $assigned = collect($coaApproverWorkflow)->firstWhere('sequence', $step);
             $canApprove = $assigned && (int) ($assigned['user_id'] ?? 0) === $currentUserId;
@@ -139,7 +146,7 @@ class LoanAccountingBooksController extends Controller
                 'code' => $account->code,
                 'account_type' => ucfirst((string) $account->account_type),
                 'parent_group' => $account->parent?->name ?? 'Top Level',
-                'opening_balance' => (float) ($account->current_balance ?? 0),
+                'opening_balance' => (float) ($liveBalances->get($account->id) ?? 0),
                 'min_balance_floor' => (float) ($account->min_balance_floor ?? 0),
                 'created_by' => $account->createdBy?->name ?? 'System',
                 'created_at' => optional($account->created_at)?->format('Y-m-d H:i'),
@@ -496,28 +503,28 @@ class LoanAccountingBooksController extends Controller
         return view('loan.accounting.journal.approval-queue', compact('rows'));
     }
 
-    public function approvePendingJournal(Request $request, AccountingJournalApprovalQueue $accounting_journal_approval_queue): RedirectResponse
+    public function approvePendingJournal(Request $request, AccountingJournalApprovalQueue $approval_queue): RedirectResponse
     {
-        abort_unless((string) $accounting_journal_approval_queue->status === AccountingJournalApprovalQueue::STATUS_PENDING, 403);
-        abort_unless(app(AccountingControlledApprovalService::class)->userCanApprove($accounting_journal_approval_queue, $request->user()), 403);
+        abort_unless((string) $approval_queue->status === AccountingJournalApprovalQueue::STATUS_PENDING, 403);
+        abort_unless(app(AccountingControlledApprovalService::class)->userCanApprove($approval_queue, $request->user()), 403);
 
         $posted = app(AccountingControlledApprovalService::class)
-            ->applyApprovalAndPost($accounting_journal_approval_queue, $request->user());
+            ->applyApprovalAndPost($approval_queue, $request->user());
 
         return redirect()->route('loan.accounting.journal.approval_queue')
             ->with('status', $posted ? 'Journal approved and posted.' : 'Approval recorded. Waiting for remaining approvers.');
     }
 
-    public function rejectPendingJournal(Request $request, AccountingJournalApprovalQueue $accounting_journal_approval_queue): RedirectResponse
+    public function rejectPendingJournal(Request $request, AccountingJournalApprovalQueue $approval_queue): RedirectResponse
     {
         $request->validate([
             'rejection_reason' => ['required', 'string', 'max:500'],
         ]);
 
-        abort_unless((string) $accounting_journal_approval_queue->status === AccountingJournalApprovalQueue::STATUS_PENDING, 403);
-        abort_unless(app(AccountingControlledApprovalService::class)->userCanApprove($accounting_journal_approval_queue, $request->user()), 403);
+        abort_unless((string) $approval_queue->status === AccountingJournalApprovalQueue::STATUS_PENDING, 403);
+        abort_unless(app(AccountingControlledApprovalService::class)->userCanApprove($approval_queue, $request->user()), 403);
 
-        $entry = $accounting_journal_approval_queue->journalEntry;
+        $entry = $approval_queue->journalEntry;
         if ($entry) {
             $entry->update([
                 'status' => AccountingJournalEntry::STATUS_REJECTED,
@@ -526,7 +533,7 @@ class LoanAccountingBooksController extends Controller
             ]);
         }
 
-        $accounting_journal_approval_queue->update([
+        $approval_queue->update([
             'status' => AccountingJournalApprovalQueue::STATUS_REJECTED,
             'rejected_by' => $request->user()->id,
             'rejected_at' => now(),

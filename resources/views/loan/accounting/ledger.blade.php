@@ -6,7 +6,25 @@
         </x-slot>
 
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-5 mb-6">
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+                <a
+                    href="{{ route('loan.accounting.ledger', ['account_id' => request('account_id'), 'recent' => 1, 'limit' => 50]) }}"
+                    class="inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-semibold {{ !empty($isRecentHistory) ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100' }}"
+                >
+                    Recent 50
+                </a>
+                <a
+                    href="{{ route('loan.accounting.ledger', ['account_id' => request('account_id'), 'from' => $from, 'to' => $to]) }}"
+                    class="inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-semibold {{ empty($isRecentHistory) ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50' }}"
+                >
+                    Date Range
+                </a>
+            </div>
             <form method="get" action="{{ route('loan.accounting.ledger') }}" class="flex flex-wrap items-end gap-3">
+                @if (!empty($isRecentHistory))
+                    <input type="hidden" name="recent" value="1" />
+                    <input type="hidden" name="limit" value="{{ (int) ($historyLimit ?? 50) }}" />
+                @endif
                 <div>
                     <label for="account_id" class="block text-xs font-semibold text-slate-600 mb-1">Account</label>
                     <select id="account_id" name="account_id" class="rounded-lg border-slate-200 text-sm min-w-[220px]">
@@ -26,6 +44,9 @@
                 </div>
                 <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Run</button>
             </form>
+            @if (!empty($isRecentHistory))
+                <p class="mt-2 text-xs text-slate-500">Showing latest {{ (int) ($historyLimit ?? 50) }} ledger entries for the selected account.</p>
+            @endif
         </div>
 
         @if ($account)

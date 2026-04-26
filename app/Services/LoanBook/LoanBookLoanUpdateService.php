@@ -95,7 +95,7 @@ class LoanBookLoanUpdateService
                     break;
                 }
 
-                if ($bucket === 'fees') {
+                if ($bucket === 'fees' || $bucket === 'penalty') {
                     $apply = min($remaining, max(0.0, (float) $loan->fees_outstanding));
                     $loan->fees_outstanding = round((float) $loan->fees_outstanding - $apply, 2);
                     $remaining -= $apply;
@@ -127,17 +127,17 @@ class LoanBookLoanUpdateService
     }
 
     /**
-     * @return list<'fees'|'interest'|'principal'>
+     * @return list<'principal'|'interest'|'fees'|'penalty'>
      */
     private function repaymentOrder(): array
     {
-        $raw = (string) (LoanSystemSetting::getValue(self::SETTING_REPAYMENT_ORDER, 'fees,interest,principal') ?? '');
+        $raw = (string) (LoanSystemSetting::getValue(self::SETTING_REPAYMENT_ORDER, 'principal,interest,fees,penalty') ?? '');
         $parts = array_values(array_filter(array_map(
             static fn (string $p) => strtolower(trim($p)),
             explode(',', $raw)
         )));
 
-        $valid = ['fees', 'interest', 'principal'];
+        $valid = ['principal', 'interest', 'fees', 'penalty'];
         $order = array_values(array_intersect($parts, $valid));
         foreach ($valid as $v) {
             if (! in_array($v, $order, true)) {

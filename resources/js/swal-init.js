@@ -51,6 +51,10 @@ document.addEventListener(
         if (!(form instanceof HTMLFormElement)) {
             return;
         }
+        if (form.dataset.swalSubmitting === '1') {
+            delete form.dataset.swalSubmitting;
+            return;
+        }
         const action = form.getAttribute('action') || '';
         if (action.includes('/loan/book/applications/undefined')) {
             const currentPath = window.location.pathname.replace(/\/+$/, '');
@@ -98,6 +102,10 @@ document.addEventListener(
             cancelButtonText: submitter?.getAttribute('data-swal-cancel-text') || form.getAttribute('data-swal-cancel-text') || 'Cancel',
         }).then((result) => {
             if (result.isConfirmed) {
+                form.dataset.swalSubmitting = '1';
+                // Prevent the native confirm() prompt from re-blocking submit on forms
+                // that still use inline onsubmit="return confirm(...)"
+                form.removeAttribute('onsubmit');
                 form.removeAttribute('data-swal-confirm');
                 form.removeAttribute('data-swal-title');
                 form.removeAttribute('data-swal-confirm-text');
@@ -108,8 +116,12 @@ document.addEventListener(
                 submitter?.removeAttribute('data-swal-cancel-text');
 
                 if (submitter && typeof form.requestSubmit === 'function') {
-                    form.requestSubmit(submitter);
-                    return;
+                    try {
+                        form.requestSubmit(submitter);
+                        return;
+                    } catch (err) {
+                        // Fallback for edge-cases where submitter-bound requestSubmit fails.
+                    }
                 }
 
                 form.submit();

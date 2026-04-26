@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\LoanBookApplication;
 use App\Models\LoanBookLoan;
+use App\Models\LoanBookPayment;
 use App\Models\LoanBranch;
 use App\Models\LoanClient;
 use App\Models\LoanFormFieldDefinition;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -333,6 +335,33 @@ class LoanBookApplicationsController extends Controller
             ->orderBy('last_name')
             ->orderBy('first_name');
 
+        $draftApplication = null;
+        $draftId = (int) $request->query('draft_id', 0);
+        if ($draftId > 0) {
+            $draftApplication = LoanBookApplication::query()
+                ->with('loanClient')
+                ->find($draftId);
+            if ($draftApplication && $draftApplication->loanClient) {
+                $this->ensureLoanClientOwner($draftApplication->loanClient);
+            } else {
+                $draftApplication = null;
+            }
+        }
+
+        $pendingDrafts = LoanBookApplication::query()
+            ->with('loanClient')
+            ->where('stage', LoanBookApplication::STAGE_SUBMITTED)
+            ->where(function (Builder $query): void {
+                $query->whereNull('form_meta->fee_fulfillment_status')
+                    ->orWhere('form_meta->fee_fulfillment_status', 'pending');
+            });
+        $this->scopeByAssignedLoanClient($pendingDrafts, $request->user());
+        $pendingDrafts = $pendingDrafts
+            ->whereDoesntHave('loan')
+            ->orderByDesc('created_at')
+            ->limit(25)
+            ->get();
+
         return view('loan.book.applications.create', [
             'title' => 'Create application',
             'subtitle' => 'Start a new LoanBook file for an onboarded client.',
@@ -346,6 +375,8 @@ class LoanBookApplicationsController extends Controller
             'branchOptions' => $this->branchOptions(),
             'loanFormMappedFields' => $this->clientLoanMappedFields(),
             'loanFormCustomFields' => $this->clientLoanCustomFields(),
+            'draftApplication' => $draftApplication,
+            'pendingDrafts' => $pendingDrafts,
         ]);
     }
 
@@ -360,6 +391,8 @@ class LoanBookApplicationsController extends Controller
         }
 
         $validated = $request->validate([
+            'draft_id' => ['nullable', 'integer', 'exists:loan_book_applications,id'],
+            'save_as_draft' => ['nullable', 'boolean'],
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
             'product_name' => ['required', 'string', 'max:160'],
             'amount_requested' => ['required', 'numeric', 'min:0'],
@@ -378,6 +411,7 @@ class LoanBookApplicationsController extends Controller
             'guarantor_id_number' => ['nullable', 'string', 'max:80'],
             'guarantor_phone' => ['nullable', 'string', 'max:40'],
             'guarantor_signature_name' => ['nullable', 'string', 'max:200'],
+            'suspense_payment_id' => ['nullable', 'integer', 'exists:loan_book_payments,id'],
         ] + $this->clientLoanDynamicValidationRules());
         $validated['submission_source'] = 'manual_internal';
         $validated['repayment_agreement_accepted'] = $request->boolean('repayment_agreement_accepted');
@@ -394,6 +428,9 @@ class LoanBookApplicationsController extends Controller
         if ($this->applicationFormMetaSupported()) {
             $validated['form_meta'] = $this->resolveClientLoanFormMeta($request);
         }
+        $saveAsDraft = $request->boolean('save_as_draft');
+        $draftId = (int) ($validated['draft_id'] ?? 0);
+        $suspensePaymentId = (int) ($validated['suspense_payment_id'] ?? 0);
 
         if (LoanBookLoan::query()
             ->where('loan_client_id', $validated['loan_client_id'])
@@ -413,16 +450,124 @@ class LoanBookApplicationsController extends Controller
             $validated['branch'] = $client->branch;
         }
         $validated['product_name'] = $this->ensureProductRegistered((string) $validated['product_name']);
+        $feeSnapshot = $this->requiredFeeSnapshot(
+            (string) $validated['product_name'],
+            (float) $validated['amount_requested']
+        );
+        $requiredFeeAmount = (float) ($feeSnapshot['required_total'] ?? 0);
+        $selectedPayment = null;
+        if ($suspensePaymentId > 0) {
+            $selectedPayment = $this->eligibleSuspensePaymentsForClient($client, $draftId)
+                ->firstWhere('id', $suspensePaymentId);
+            if (! $selectedPayment) {
+                return redirect()
+                    ->back()
+                    ->withErrors([
+                        'suspense_payment_id' => 'Selected suspense payment is no longer available.',
+                    ])
+                    ->withInput();
+            }
+        }
+        $selectedPaymentAmount = (float) ($selectedPayment?->amount ?? 0);
+        $feeCovered = $requiredFeeAmount <= 0 || $selectedPaymentAmount >= $requiredFeeAmount;
+        if (! $feeCovered && ! $saveAsDraft) {
+            return redirect()
+                ->back()
+                ->withErrors([
+                    'suspense_payment_id' => 'Required booking/application/disbursement fees are not fully covered. Attach one eligible suspense payment or save as draft.',
+                ])
+                ->withInput();
+        }
 
-        $next = (LoanBookApplication::query()->max('id') ?? 0) + 1;
-        $validated['reference'] = 'APP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
         $validated['submitted_at'] = now();
+        $validated['submission_source'] = 'manual_internal';
+        $validated['form_meta'] = array_merge((array) ($validated['form_meta'] ?? []), [
+            'fee_fulfillment_status' => $feeCovered ? 'fulfilled' : 'pending',
+            'fee_required_total' => round($requiredFeeAmount, 2),
+            'fee_required_breakdown' => $feeSnapshot['charges'] ?? [],
+            'fee_selected_payment_id' => $selectedPayment?->id,
+            'fee_selected_payment_amount' => $selectedPayment ? round((float) $selectedPayment->amount, 2) : null,
+            'fee_selected_payment_reference' => $selectedPayment?->reference,
+            'fee_excess_to_wallet' => $selectedPayment ? round(max(0, (float) $selectedPayment->amount - $requiredFeeAmount), 2) : 0,
+        ]);
 
-        LoanBookApplication::query()->create($validated);
+        DB::transaction(function () use (&$validated, $selectedPayment, $request): void {
+            $draftId = (int) ($validated['draft_id'] ?? 0);
+            unset($validated['draft_id'], $validated['suspense_payment_id'], $validated['save_as_draft']);
+            $application = null;
+            if ($draftId > 0) {
+                $application = LoanBookApplication::query()->find($draftId);
+                if ($application && $application->loanClient) {
+                    $this->ensureLoanClientOwner($application->loanClient, $request->user());
+                    $validated['reference'] = $application->reference;
+                    $application->update($validated);
+                }
+            }
+            if (! $application) {
+                $next = (LoanBookApplication::query()->max('id') ?? 0) + 1;
+                $validated['reference'] = 'APP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+                $application = LoanBookApplication::query()->create($validated);
+            }
+
+            if ($selectedPayment) {
+                $payment = LoanBookPayment::query()->lockForUpdate()->find($selectedPayment->id);
+                if ($payment && $payment->loan_book_application_id === null) {
+                    $existingNotes = trim((string) ($payment->notes ?? ''));
+                    $consumeNote = 'Consumed for application fee allocation: '.$application->reference;
+                    $payment->update([
+                        'loan_book_application_id' => $application->id,
+                        'notes' => $existingNotes !== ''
+                            ? $existingNotes."\n".$consumeNote
+                            : $consumeNote,
+                    ]);
+                }
+            }
+        });
 
         return redirect()
             ->route('loan.book.applications.index')
-            ->with('status', __('Application saved.'));
+            ->with('status', $feeCovered ? __('Application saved.') : __('Application saved as draft. Complete fee allocation later.'));
+    }
+
+    public function suspenseOptions(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'loan_client_id' => ['required', 'exists:loan_clients,id'],
+            'product_name' => ['nullable', 'string', 'max:160'],
+            'amount_requested' => ['nullable', 'numeric', 'min:0'],
+            'draft_id' => ['nullable', 'integer', 'exists:loan_book_applications,id'],
+        ]);
+        $client = LoanClient::query()->clients()->findOrFail((int) $validated['loan_client_id']);
+        $this->ensureLoanClientOwner($client, $request->user());
+        $productName = trim((string) ($validated['product_name'] ?? ''));
+        $amountRequested = (float) ($validated['amount_requested'] ?? 0);
+        $feeSnapshot = $this->requiredFeeSnapshot($productName, $amountRequested);
+
+        $options = $this->eligibleSuspensePaymentsForClient($client, (int) ($validated['draft_id'] ?? 0))
+            ->map(fn (LoanBookPayment $payment): array => [
+                'id' => (int) $payment->id,
+                'reference' => (string) ($payment->reference ?? ('PAY-#'.$payment->id)),
+                'amount' => round((float) $payment->amount, 2),
+                'payment_kind' => (string) ($payment->payment_kind ?? ''),
+                'status' => (string) ($payment->status ?? ''),
+                'channel' => (string) ($payment->channel ?? ''),
+                'transaction_at' => (string) optional($payment->transaction_at)->format('Y-m-d H:i'),
+                'label' => sprintf(
+                    '%s | %s %s | %s',
+                    (string) ($payment->reference ?? ('PAY-#'.$payment->id)),
+                    number_format((float) $payment->amount, 2),
+                    (string) ($payment->currency ?? 'KES'),
+                    ucfirst(str_replace('_', ' ', (string) ($payment->payment_kind ?? 'normal')))
+                ),
+            ])
+            ->values();
+
+        return response()->json([
+            'ok' => true,
+            'required_fee_total' => round((float) ($feeSnapshot['required_total'] ?? 0), 2),
+            'required_fee_breakdown' => $feeSnapshot['charges'] ?? [],
+            'options' => $options,
+        ]);
     }
 
     public function storeProduct(Request $request): JsonResponse
@@ -430,7 +575,8 @@ class LoanBookApplicationsController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:160'],
             'description' => ['nullable', 'string', 'max:500'],
-            'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'default_interest_rate_type' => ['nullable', 'string', 'in:fixed,percent'],
             'default_term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'default_term_unit' => ['nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
             'default_interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
@@ -440,6 +586,7 @@ class LoanBookApplicationsController extends Controller
         $description = trim((string) ($validated['description'] ?? ''));
         $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
         $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
+        $hasDefaultRateType = Schema::hasColumn('loan_products', 'default_interest_rate_type');
 
         $createPayload = [
             'description' => $description !== '' ? $description : null,
@@ -457,6 +604,9 @@ class LoanBookApplicationsController extends Controller
         if ($hasDefaultRatePeriod) {
             $createPayload['default_interest_rate_period'] = (string) ($validated['default_interest_rate_period'] ?? 'annual');
         }
+        if ($hasDefaultRateType) {
+            $createPayload['default_interest_rate_type'] = (string) ($validated['default_interest_rate_type'] ?? 'percent');
+        }
 
         $product = LoanProduct::query()->firstOrCreate(
             ['name' => $name],
@@ -469,6 +619,7 @@ class LoanBookApplicationsController extends Controller
                 'id' => $product->id,
                 'name' => $product->name,
                 'default_interest_rate' => $product->default_interest_rate,
+                'default_interest_rate_type' => $hasDefaultRateType ? ($product->default_interest_rate_type ?? 'percent') : 'percent',
                 'default_term_months' => $product->default_term_months,
                 'default_term_unit' => $hasDefaultTermUnit ? ($product->default_term_unit ?? 'monthly') : 'monthly',
                 'default_interest_rate_period' => $hasDefaultRatePeriod ? ($product->default_interest_rate_period ?? 'annual') : 'annual',
@@ -912,6 +1063,7 @@ class LoanBookApplicationsController extends Controller
     /**
      * @return array<string, array{
      *     default_interest_rate: ?float,
+ *     default_interest_rate_type: string,
      *     default_term_months: ?int,
      *     default_term_unit: string,
  *     default_interest_rate_period: string,
@@ -926,12 +1078,16 @@ class LoanBookApplicationsController extends Controller
 
         $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
         $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
+        $hasDefaultRateType = Schema::hasColumn('loan_products', 'default_interest_rate_type');
         $select = ['name', 'default_interest_rate', 'default_term_months'];
         if ($hasDefaultTermUnit) {
             $select[] = 'default_term_unit';
         }
         if ($hasDefaultRatePeriod) {
             $select[] = 'default_interest_rate_period';
+        }
+        if ($hasDefaultRateType) {
+            $select[] = 'default_interest_rate_type';
         }
         $hasCharges = Schema::hasTable('loan_product_charges');
 
@@ -942,6 +1098,7 @@ class LoanBookApplicationsController extends Controller
             ->mapWithKeys(fn (LoanProduct $product) => [
                 trim((string) $product->name) => [
                     'default_interest_rate' => $product->default_interest_rate !== null ? (float) $product->default_interest_rate : null,
+                    'default_interest_rate_type' => $hasDefaultRateType ? (string) ($product->default_interest_rate_type ?? 'percent') : 'percent',
                     'default_term_months' => $product->default_term_months !== null ? (int) $product->default_term_months : null,
                     'default_term_unit' => $hasDefaultTermUnit ? (string) ($product->default_term_unit ?? 'monthly') : 'monthly',
                     'default_interest_rate_period' => $hasDefaultRatePeriod ? (string) ($product->default_interest_rate_period ?? 'annual') : 'annual',
@@ -954,9 +1111,125 @@ class LoanBookApplicationsController extends Controller
                             return trim((string) $charge->charge_name).' '.$amount.' ('.str_replace('_', ' ', (string) $charge->applies_to_stage).')';
                         })->implode('; ')
                         : '',
+                    'charges' => $hasCharges
+                        ? $product->charges->map(fn ($charge): array => [
+                            'name' => trim((string) $charge->charge_name),
+                            'amount_type' => (string) $charge->amount_type,
+                            'amount' => (float) $charge->amount,
+                            'applies_to_stage' => (string) $charge->applies_to_stage,
+                            'applies_to_client_scope' => (string) $charge->applies_to_client_scope,
+                        ])->values()->all()
+                        : [],
                 ],
             ])
             ->all();
+    }
+
+    /**
+     * @return array{required_total:float,charges:list<array{name:string,stage:string,computed_amount:float}>}
+     */
+    private function requiredFeeSnapshot(string $productName, float $principal): array
+    {
+        $name = trim($productName);
+        if ($name === '' || ! Schema::hasTable('loan_product_charges')) {
+            return ['required_total' => 0.0, 'charges' => []];
+        }
+
+        $product = LoanProduct::query()
+            ->where('name', $name)
+            ->with(['charges' => fn ($q) => $q
+                ->where('is_active', true)
+                ->whereIn('applies_to_stage', ['application', 'loan', 'disbursement'])
+                ->orderBy('id')])
+            ->first();
+        if (! $product) {
+            return ['required_total' => 0.0, 'charges' => []];
+        }
+
+        $required = [];
+        $total = 0.0;
+        $base = max(0.0, $principal);
+        foreach ($product->charges as $charge) {
+            $amount = (string) $charge->amount_type === 'percent'
+                ? $base * ((float) $charge->amount / 100)
+                : (float) $charge->amount;
+            $computed = round(max(0.0, $amount), 2);
+            if ($computed <= 0) {
+                continue;
+            }
+            $total += $computed;
+            $required[] = [
+                'name' => trim((string) $charge->charge_name),
+                'stage' => (string) $charge->applies_to_stage,
+                'computed_amount' => $computed,
+            ];
+        }
+
+        return [
+            'required_total' => round($total, 2),
+            'charges' => $required,
+        ];
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, LoanBookPayment>
+     */
+    private function eligibleSuspensePaymentsForClient(LoanClient $client, int $draftId = 0)
+    {
+        $phoneVariants = $this->phoneVariants((string) ($client->phone ?? ''));
+
+        $unpostedUnassigned = LoanBookPayment::query()
+            ->where(function (Builder $query) use ($draftId): void {
+                $query->whereNull('loan_book_application_id');
+                if ($draftId > 0) {
+                    $query->orWhere('loan_book_application_id', $draftId);
+                }
+            })
+            ->whereNull('loan_book_loan_id')
+            ->where('status', LoanBookPayment::STATUS_UNPOSTED)
+            ->when($phoneVariants !== [], fn (Builder $q) => $q->whereIn('payer_msisdn', $phoneVariants))
+            ->orderByDesc('transaction_at')
+            ->get();
+
+        $overpayments = LoanBookPayment::query()
+            ->with('loan')
+            ->where(function (Builder $query) use ($draftId): void {
+                $query->whereNull('loan_book_application_id');
+                if ($draftId > 0) {
+                    $query->orWhere('loan_book_application_id', $draftId);
+                }
+            })
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->where('payment_kind', LoanBookPayment::KIND_OVERPAYMENT)
+            ->whereHas('loan', fn (Builder $q) => $q->where('loan_client_id', $client->id))
+            ->orderByDesc('transaction_at')
+            ->get();
+
+        return $overpayments
+            ->concat($unpostedUnassigned)
+            ->unique('id')
+            ->values();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function phoneVariants(string $phone): array
+    {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+        if ($digits === '') {
+            return [];
+        }
+
+        $variants = [$digits];
+        if (str_starts_with($digits, '254') && strlen($digits) >= 12) {
+            $variants[] = '0'.substr($digits, 3);
+        }
+        if (str_starts_with($digits, '0') && strlen($digits) >= 10) {
+            $variants[] = '254'.substr($digits, 1);
+        }
+
+        return array_values(array_unique(array_filter($variants)));
     }
 
     /**

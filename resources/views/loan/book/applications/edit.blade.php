@@ -266,13 +266,17 @@
                 const parts = [];
                 if (meta.default_interest_rate !== null && meta.default_interest_rate !== undefined) {
                     const defaultInterestPeriod = String(meta.default_interest_rate_period ?? 'annual').toLowerCase();
+                    const defaultInterestType = String(meta.default_interest_rate_type ?? 'percent').toLowerCase();
                     const interestPeriodLabel = {
                         daily: 'day',
                         weekly: 'week',
                         monthly: 'month',
                         annual: 'year',
                     }[defaultInterestPeriod] ?? defaultInterestPeriod;
-                    parts.push(`Default interest: ${Number(meta.default_interest_rate).toFixed(4)}% per ${interestPeriodLabel}.`);
+                    const defaultInterestValue = defaultInterestType === 'percent'
+                        ? `${Number(meta.default_interest_rate).toFixed(4)}%`
+                        : Number(meta.default_interest_rate).toFixed(2);
+                    parts.push(`Default interest: ${defaultInterestValue} per ${interestPeriodLabel}.`);
                     const currentRate = (interestInput?.value ?? '').trim();
                     if (interestInput && currentRate === '') {
                         interestInput.value = String(meta.default_interest_rate);

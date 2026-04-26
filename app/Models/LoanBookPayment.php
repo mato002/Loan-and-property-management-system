@@ -33,6 +33,7 @@ class LoanBookPayment extends Model
     protected $fillable = [
         'reference',
         'loan_book_loan_id',
+        'loan_book_application_id',
         'amount',
         'currency',
         'channel',
@@ -65,6 +66,11 @@ class LoanBookPayment extends Model
     public function loan(): BelongsTo
     {
         return $this->belongsTo(LoanBookLoan::class, 'loan_book_loan_id');
+    }
+
+    public function application(): BelongsTo
+    {
+        return $this->belongsTo(LoanBookApplication::class, 'loan_book_application_id');
     }
 
     public function mergedInto(): BelongsTo
@@ -104,7 +110,9 @@ class LoanBookPayment extends Model
 
     public function scopeUnpostedQueue(Builder $q): Builder
     {
-        return $q->where('status', self::STATUS_UNPOSTED)->notMergedChild();
+        return $q->where('status', self::STATUS_UNPOSTED)
+            ->whereNull('loan_book_application_id')
+            ->notMergedChild();
     }
 
     public function scopeProcessedQueue(Builder $q): Builder

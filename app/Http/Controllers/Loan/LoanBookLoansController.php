@@ -53,8 +53,7 @@ class LoanBookLoansController extends Controller
         ];
 
         $query = LoanBookLoan::query()
-            ->with(['loanClient.assignedEmployee', 'application'])
-            ->withSum('processedRepayments', 'amount');
+            ->with(['loanClient.assignedEmployee', 'application']);
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $q = trim((string) $request->query('q', ''));
         $status = trim((string) $request->query('status', ''));
@@ -84,7 +83,12 @@ class LoanBookLoansController extends Controller
                                 ->orWhere('email', 'like', '%'.$q.'%')
                                 ->orWhere('phone', 'like', '%'.$q.'%')
                                 ->orWhereHas('assignedEmployee', function (Builder $employee) use ($q): void {
-                                    $employee->where('name', 'like', '%'.$q.'%');
+                                    $employee->where(function (Builder $employeeInner) use ($q): void {
+                                        $employeeInner
+                                            ->whereRaw("TRIM(CONCAT(COALESCE(first_name,''), ' ', COALESCE(last_name,''))) like ?", ['%'.$q.'%'])
+                                            ->orWhere('first_name', 'like', '%'.$q.'%')
+                                            ->orWhere('last_name', 'like', '%'.$q.'%');
+                                    });
                                 });
                         });
                 });
@@ -106,6 +110,59 @@ class LoanBookLoansController extends Controller
             ->when($maturityFrom !== '', fn (Builder $builder) => $builder->whereDate('maturity_date', '>=', $maturityFrom))
             ->when($maturityTo !== '', fn (Builder $builder) => $builder->whereDate('maturity_date', '<=', $maturityTo));
 
+        $portfolioRollup = (clone $query)
+            ->selectRaw('
+                COALESCE(SUM(principal), 0) as gross_loan_portfolio,
+                COALESCE(SUM(balance), 0) as outstanding_balance,
+                COALESCE(SUM(interest_outstanding), 0) as interest_outstanding,
+                COALESCE(SUM(fees_outstanding), 0) as fees_outstanding,
+                COALESCE(SUM(CASE WHEN status = ? THEN balance ELSE 0 END), 0) as active_balance,
+                COALESCE(SUM(CASE WHEN status = ? AND dpd > 30 THEN balance ELSE 0 END), 0) as par30_balance,
+                COALESCE(SUM(CASE WHEN status = ? THEN principal ELSE 0 END), 0) as written_off_amount
+            ', [
+                LoanBookLoan::STATUS_ACTIVE,
+                LoanBookLoan::STATUS_ACTIVE,
+                LoanBookLoan::STATUS_WRITTEN_OFF,
+            ])
+            ->first();
+
+        $grossLoanPortfolio = max(0.0, (float) ($portfolioRollup->gross_loan_portfolio ?? 0));
+        $outstandingBalance = max(0.0, (float) ($portfolioRollup->outstanding_balance ?? 0));
+        $interestOutstanding = max(0.0, (float) ($portfolioRollup->interest_outstanding ?? 0));
+        $feesOutstanding = max(0.0, (float) ($portfolioRollup->fees_outstanding ?? 0));
+        $activeBalance = max(0.0, (float) ($portfolioRollup->active_balance ?? 0));
+        $par30Balance = max(0.0, (float) ($portfolioRollup->par30_balance ?? 0));
+        $writtenOffAmount = max(0.0, (float) ($portfolioRollup->written_off_amount ?? 0));
+
+        $provisionAmount = $interestOutstanding + $feesOutstanding;
+        $netLoanPortfolio = max(0.0, $grossLoanPortfolio - $provisionAmount);
+        $nplRatio = $activeBalance > 0 ? ($par30Balance / $activeBalance) * 100 : 0.0;
+        $provisionCoverage = $par30Balance > 0 ? min(999.9, ($provisionAmount / $par30Balance) * 100) : 0.0;
+        $par30Ratio = $activeBalance > 0 ? ($par30Balance / $activeBalance) * 100 : 0.0;
+        $writeOffRatio = $grossLoanPortfolio > 0 ? ($writtenOffAmount / $grossLoanPortfolio) * 100 : 0.0;
+
+        $agingRollup = (clone $query)
+            ->selectRaw('
+                COALESCE(SUM(CASE WHEN dpd BETWEEN 0 AND 30 THEN balance ELSE 0 END), 0) as bucket_0_30,
+                COALESCE(SUM(CASE WHEN dpd BETWEEN 31 AND 60 THEN balance ELSE 0 END), 0) as bucket_31_60,
+                COALESCE(SUM(CASE WHEN dpd BETWEEN 61 AND 90 THEN balance ELSE 0 END), 0) as bucket_61_90,
+                COALESCE(SUM(CASE WHEN dpd BETWEEN 91 AND 180 THEN balance ELSE 0 END), 0) as bucket_91_180,
+                COALESCE(SUM(CASE WHEN dpd > 180 THEN balance ELSE 0 END), 0) as bucket_180_plus
+            ')
+            ->first();
+        $agingTotal = max(0.01, $outstandingBalance);
+        $agingRows = [
+            ['label' => '0-30 days', 'amount' => max(0.0, (float) ($agingRollup->bucket_0_30 ?? 0))],
+            ['label' => '31-60 days', 'amount' => max(0.0, (float) ($agingRollup->bucket_31_60 ?? 0))],
+            ['label' => '61-90 days', 'amount' => max(0.0, (float) ($agingRollup->bucket_61_90 ?? 0))],
+            ['label' => '91-180 days', 'amount' => max(0.0, (float) ($agingRollup->bucket_91_180 ?? 0))],
+            ['label' => '180+ days', 'amount' => max(0.0, (float) ($agingRollup->bucket_180_plus ?? 0))],
+        ];
+        $agingRows = array_map(
+            fn (array $row): array => $row + ['pct' => ($row['amount'] / $agingTotal) * 100],
+            $agingRows
+        );
+
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
             $requestedCols = array_values(array_filter(array_map(
@@ -119,7 +176,11 @@ class LoanBookLoansController extends Controller
                 $selectedCols = array_keys($exportColumnMap);
             }
 
-            $rows = (clone $query)->orderByDesc('created_at')->limit(5000)->get();
+            $rows = (clone $query)
+                ->withSum('processedRepayments', 'amount')
+                ->orderByDesc('created_at')
+                ->limit(5000)
+                ->get();
 
             return TabularExport::stream(
                 'loanbook-loans-'.now()->format('Ymd_His'),
@@ -174,7 +235,11 @@ class LoanBookLoansController extends Controller
             );
         }
 
-        $loans = $query->orderByDesc('created_at')->paginate($perPage)->withQueryString();
+        $loans = (clone $query)
+            ->withSum('processedRepayments', 'amount')
+            ->orderByDesc('created_at')
+            ->paginate($perPage)
+            ->withQueryString();
         $branches = LoanBookLoan::query()->whereNotNull('branch')->where('branch', '!=', '')->distinct()->orderBy('branch')->pluck('branch');
 
         return view('loan.book.loans.index', [
@@ -193,6 +258,17 @@ class LoanBookLoansController extends Controller
             'perPage' => $perPage,
             'statuses' => $this->statusOptions(),
             'branches' => $branches,
+            'portfolioIndicators' => [
+                'netLoanPortfolio' => $netLoanPortfolio,
+                'grossLoanPortfolio' => $grossLoanPortfolio,
+                'provisionAmount' => $provisionAmount,
+                'outstandingBalance' => $outstandingBalance,
+                'nplRatio' => $nplRatio,
+                'provisionCoverage' => $provisionCoverage,
+                'par30Ratio' => $par30Ratio,
+                'writeOffRatio' => $writeOffRatio,
+                'agingRows' => $agingRows,
+            ],
         ]);
     }
 
@@ -768,7 +844,7 @@ class LoanBookLoansController extends Controller
                     if ($remaining <= 0.0) {
                         break;
                     }
-                    if ($bucket === 'fees') {
+                    if ($bucket === 'fees' || $bucket === 'penalty') {
                         $apply = min($remaining, max(0.0, $feesOutstanding));
                         $feesOutstanding = round($feesOutstanding - $apply, 2);
                         $remaining -= $apply;
@@ -1149,16 +1225,16 @@ class LoanBookLoansController extends Controller
     }
 
     /**
-     * @return list<'fees'|'interest'|'principal'>
+     * @return list<'principal'|'interest'|'fees'|'penalty'>
      */
     private function repaymentOrder(): array
     {
-        $raw = (string) (LoanSystemSetting::getValue('loan_repayment_allocation_order', 'fees,interest,principal') ?? '');
+        $raw = (string) (LoanSystemSetting::getValue('loan_repayment_allocation_order', 'principal,interest,fees,penalty') ?? '');
         $parts = array_values(array_filter(array_map(
             static fn (string $p) => strtolower(trim($p)),
             explode(',', $raw)
         )));
-        $valid = ['fees', 'interest', 'principal'];
+        $valid = ['principal', 'interest', 'fees', 'penalty'];
         $order = array_values(array_intersect($parts, $valid));
         foreach ($valid as $v) {
             if (! in_array($v, $order, true)) {

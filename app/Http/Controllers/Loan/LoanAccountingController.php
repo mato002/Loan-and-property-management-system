@@ -29,10 +29,12 @@ use App\Services\AccountingOverdraftGuardService;
 use App\Support\TabularExport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -408,6 +410,20 @@ class LoanAccountingController extends Controller
 
     public function chartPostingRuleUpdate(Request $request, AccountingPostingRule $accounting_posting_rule): RedirectResponse
     {
+        $governanceRaw = LoanSystemSetting::getValue('accounting_mapping_governance', '{}') ?? '{}';
+        $governance = json_decode($governanceRaw, true);
+        if (! is_array($governance)) {
+            $governance = [];
+        }
+        $allowedEditors = collect(data_get($governance, 'permissions.edit', []))
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->values();
+        $currentUserId = (int) ($request->user()->id ?? 0);
+        if ($allowedEditors->isNotEmpty() && ! $allowedEditors->contains($currentUserId)) {
+            abort(403, 'You are not allowed to edit automated mapping rules.');
+        }
+
         if (! $accounting_posting_rule->is_editable) {
             abort(403);
         }
@@ -430,6 +446,80 @@ class LoanAccountingController extends Controller
         ]);
 
         return redirect()->route('loan.accounting.chart.index')->with('status', 'Accounting rule updated.');
+    }
+
+    public function chartPostingRuleStore(Request $request): RedirectResponse
+    {
+        $governanceRaw = LoanSystemSetting::getValue('accounting_mapping_governance', '{}') ?? '{}';
+        $governance = json_decode($governanceRaw, true);
+        if (! is_array($governance)) {
+            $governance = [];
+        }
+        $allowedCreators = collect(data_get($governance, 'permissions.create', []))
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->values();
+        $currentUserId = (int) ($request->user()->id ?? 0);
+        if ($allowedCreators->isNotEmpty() && ! $allowedCreators->contains($currentUserId)) {
+            abort(403, 'You are not allowed to create automated mapping rules.');
+        }
+
+        $validated = $request->validate([
+            'label' => ['required', 'string', 'max:150'],
+            'debit_account_id' => ['nullable', 'integer', 'exists:accounting_chart_accounts,id'],
+            'credit_account_id' => ['nullable', 'integer', 'exists:accounting_chart_accounts,id'],
+        ]);
+
+        $baseKey = Str::slug((string) $validated['label'], '_');
+        if ($baseKey === '') {
+            $baseKey = 'business_event';
+        }
+        $ruleKey = $baseKey;
+        $suffix = 2;
+        while (AccountingPostingRule::query()->where('rule_key', $ruleKey)->exists()) {
+            $ruleKey = $baseKey.'_'.$suffix;
+            $suffix++;
+        }
+
+        $nextSortOrder = (int) AccountingPostingRule::query()->max('sort_order') + 1;
+
+        AccountingPostingRule::query()->create([
+            'rule_key' => $ruleKey,
+            'label' => (string) $validated['label'],
+            'debit_account_id' => $validated['debit_account_id'] ?? null,
+            'credit_account_id' => $validated['credit_account_id'] ?? null,
+            'is_editable' => true,
+            'sort_order' => $nextSortOrder,
+        ]);
+
+        return redirect()->route('loan.accounting.books.chart_rules', ['tab' => 'rules'])->with('status', 'Mapping rule added.');
+    }
+
+    public function chartPostingRuleDestroy(Request $request, AccountingPostingRule $accounting_posting_rule): RedirectResponse
+    {
+        $governanceRaw = LoanSystemSetting::getValue('accounting_mapping_governance', '{}') ?? '{}';
+        $governance = json_decode($governanceRaw, true);
+        if (! is_array($governance)) {
+            $governance = [];
+        }
+        $allowedDeleters = collect(data_get($governance, 'permissions.delete', []))
+            ->map(fn ($id): int => (int) $id)
+            ->filter(fn (int $id): bool => $id > 0)
+            ->values();
+        $currentUserId = (int) ($request->user()->id ?? 0);
+        if ($allowedDeleters->isNotEmpty() && ! $allowedDeleters->contains($currentUserId)) {
+            abort(403, 'You are not allowed to delete automated mapping rules.');
+        }
+
+        if (! $accounting_posting_rule->is_editable) {
+            return back()->withErrors([
+                'mapping_rule' => 'This mapping rule is protected and cannot be deleted.',
+            ]);
+        }
+
+        $accounting_posting_rule->delete();
+
+        return redirect()->route('loan.accounting.books.chart_rules', ['tab' => 'rules'])->with('status', 'Mapping rule deleted.');
     }
 
     public function chartCreate(): View
@@ -565,13 +655,44 @@ class LoanAccountingController extends Controller
         return LoanSystemSetting::getValue('coa_approval_required', '0') === '1';
     }
 
-    public function chartDestroy(AccountingChartAccount $accounting_chart_account): RedirectResponse
+    public function chartDestroy(Request $request, AccountingChartAccount $accounting_chart_account): RedirectResponse
     {
-        if (AccountingJournalLine::query()->where('accounting_chart_account_id', $accounting_chart_account->id)->exists()) {
+        $hasJournalHistory = AccountingJournalEntry::query()
+            ->whereHas('lines', fn ($q) => $q->where('accounting_chart_account_id', $accounting_chart_account->id))
+            ->exists();
+
+        if ($hasJournalHistory) {
             return redirect()->back()->withErrors(['delete' => 'This account has journal history and cannot be deleted.']);
         }
 
-        $accounting_chart_account->delete();
+        try {
+            DB::transaction(function () use ($accounting_chart_account): void {
+                // Keep chart config clean before deleting an account.
+                AccountingPostingRule::query()
+                    ->where('debit_account_id', $accounting_chart_account->id)
+                    ->update(['debit_account_id' => null]);
+                AccountingPostingRule::query()
+                    ->where('credit_account_id', $accounting_chart_account->id)
+                    ->update(['credit_account_id' => null]);
+                AccountingWalletSlotSetting::query()
+                    ->where('accounting_chart_account_id', $accounting_chart_account->id)
+                    ->update(['accounting_chart_account_id' => null]);
+                AccountingChartAccount::query()
+                    ->where('parent_id', $accounting_chart_account->id)
+                    ->update(['parent_id' => null]);
+
+                $accounting_chart_account->delete();
+            });
+        } catch (QueryException $e) {
+            return redirect()->back()->withErrors([
+                'delete' => 'Account cannot be deleted because it is linked to other records. Remove those links first, then try again.',
+            ]);
+        }
+
+        $redirectTo = $request->string('redirect_to')->toString();
+        if ($redirectTo !== '') {
+            return redirect($redirectTo)->with('status', 'Account removed.');
+        }
 
         return redirect()->route('loan.accounting.chart.index')->with('status', 'Account removed.');
     }
@@ -755,6 +876,7 @@ class LoanAccountingController extends Controller
         $reference = request()->string('reference')->toString();
         $status = strtolower(request()->string('status')->toString());
         $createdBy = request()->integer('created_by');
+        $accountId = request()->integer('account_id');
         $export = request()->string('export')->toString();
 
         $q = AccountingJournalEntry::query()
@@ -782,6 +904,11 @@ class LoanAccountingController extends Controller
         if ($createdBy) {
             $q->where('created_by', $createdBy);
         }
+        if ($accountId > 0) {
+            $q->whereHas('lines', function ($lineQuery) use ($accountId) {
+                $lineQuery->where('accounting_chart_account_id', $accountId);
+            });
+        }
 
         $q->orderByDesc('entry_date')->orderByDesc('id');
 
@@ -802,10 +929,17 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
+        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
+        $accounts = AccountingChartAccount::query()
+            ->where('is_active', true)
+            ->when($hasAccountClass, fn ($query) => $query->where('account_class', AccountingChartAccount::CLASS_DETAIL))
+            ->orderBy('code')
+            ->get(['id', 'code', 'name']);
+
         $perPage = max(10, min(200, (int) request()->input('per_page', 20)));
         $entries = $q->paginate($perPage)->withQueryString();
 
-        return view('loan.accounting.journal.index', compact('entries', 'from', 'to', 'reference', 'status', 'createdBy', 'perPage'));
+        return view('loan.accounting.journal.index', compact('entries', 'from', 'to', 'reference', 'status', 'createdBy', 'accountId', 'accounts', 'perPage'));
     }
 
     public function journalCreate(): View
@@ -961,7 +1095,79 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        return view('loan.accounting.journal.show', ['entry' => $accounting_journal_entry]);
+        $reversalBlockers = $this->buildReversalBlockersPreview($accounting_journal_entry);
+
+        return view('loan.accounting.journal.show', [
+            'entry' => $accounting_journal_entry,
+            'reversalBlockers' => $reversalBlockers,
+        ]);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildReversalBlockersPreview(AccountingJournalEntry $entry): array
+    {
+        if (($entry->status ?? AccountingJournalEntry::STATUS_POSTED) !== AccountingJournalEntry::STATUS_POSTED) {
+            return [];
+        }
+
+        $reversalDeltas = [];
+        foreach ($entry->lines as $line) {
+            $accountId = (int) $line->accounting_chart_account_id;
+            $delta = round((float) ($line->credit ?? 0) - (float) ($line->debit ?? 0), 2);
+            $reversalDeltas[$accountId] = round((float) ($reversalDeltas[$accountId] ?? 0) + $delta, 2);
+        }
+
+        if (empty($reversalDeltas)) {
+            return [];
+        }
+
+        $accounts = AccountingChartAccount::query()
+            ->whereIn('id', array_keys($reversalDeltas))
+            ->get()
+            ->keyBy('id');
+
+        $blockers = [];
+        foreach ($reversalDeltas as $accountId => $delta) {
+            $account = $accounts->get((int) $accountId);
+            if (! $account) {
+                continue;
+            }
+
+            $current = (float) ($account->current_balance ?? 0);
+            $projected = round($current + (float) $delta, 2);
+            if ($projected >= 0) {
+                continue;
+            }
+
+            if (! (bool) $account->allow_overdraft) {
+                $blockers[] = [
+                    'code' => (string) $account->code,
+                    'name' => (string) $account->name,
+                    'reason' => 'insufficient_funds',
+                    'current_balance' => $current,
+                    'projected_balance' => $projected,
+                    'delta' => (float) $delta,
+                ];
+                continue;
+            }
+
+            $limit = $account->overdraft_limit;
+            if ($limit !== null && $projected < (0 - (float) $limit)) {
+                $blockers[] = [
+                    'code' => (string) $account->code,
+                    'name' => (string) $account->name,
+                    'reason' => 'overdraft_limit',
+                    'current_balance' => $current,
+                    'projected_balance' => $projected,
+                    'delta' => (float) $delta,
+                    'overdraft_limit' => (float) $limit,
+                ];
+            }
+        }
+
+        return $blockers;
     }
 
     public function journalDestroy(AccountingJournalEntry $accounting_journal_entry): RedirectResponse
@@ -1076,6 +1282,8 @@ class LoanAccountingController extends Controller
         $accounts = AccountingChartAccount::query()->where('is_active', true)->orderBy('code')->get();
 
         $accountId = $request->integer('account_id');
+        $historyLimit = max(1, min(200, $request->integer('limit') ?: 50));
+        $isRecentHistory = $request->boolean('recent');
         $from = $request->date('from') ?: now()->startOfMonth()->toDateString();
         $to = $request->date('to') ?: now()->endOfMonth()->toDateString();
 
@@ -1087,28 +1295,63 @@ class LoanAccountingController extends Controller
         if ($accountId) {
             $account = AccountingChartAccount::query()->find($accountId);
             if ($account) {
-                $base = AccountingJournalLine::query()
-                    ->where('accounting_chart_account_id', $account->id)
-                    ->whereHas('entry', function ($q) use ($from) {
-                        $q->where('entry_date', '<', $from);
-                    });
-                $opening = (float) $base->sum('debit') - (float) $base->sum('credit');
+                if ($isRecentHistory) {
+                    $latest = AccountingJournalLine::query()
+                        ->where('accounting_chart_account_id', $account->id)
+                        ->whereHas('entry')
+                        ->with(['entry'])
+                        ->get()
+                        ->sortByDesc(function (AccountingJournalLine $line) {
+                            return [
+                                optional($line->entry?->entry_date)->format('Y-m-d'),
+                                (int) ($line->entry?->id ?? 0),
+                                (int) $line->id,
+                            ];
+                        })
+                        ->take($historyLimit)
+                        ->values();
 
-                $lines = AccountingJournalLine::query()
-                    ->where('accounting_chart_account_id', $account->id)
-                    ->whereHas('entry', function ($q) use ($from, $to) {
-                        $q->whereBetween('entry_date', [$from, $to]);
-                    })
-                    ->with(['entry'])
-                    ->get()
-                    ->sortBy(function (AccountingJournalLine $line) {
-                        return [
-                            $line->entry->entry_date->format('Y-m-d'),
-                            $line->entry->id,
-                            $line->id,
-                        ];
-                    })
-                    ->values();
+                    $lines = $latest
+                        ->sortBy(function (AccountingJournalLine $line) {
+                            return [
+                                optional($line->entry?->entry_date)->format('Y-m-d'),
+                                (int) ($line->entry?->id ?? 0),
+                                (int) $line->id,
+                            ];
+                        })
+                        ->values();
+
+                    if ($lines->isNotEmpty()) {
+                        $from = optional($lines->first()->entry?->entry_date)->format('Y-m-d') ?: $from;
+                        $to = optional($lines->last()->entry?->entry_date)->format('Y-m-d') ?: $to;
+                    }
+
+                    $opening = 0.0;
+                    $closing = (float) $lines->sum('debit') - (float) $lines->sum('credit');
+                } else {
+                    $base = AccountingJournalLine::query()
+                        ->where('accounting_chart_account_id', $account->id)
+                        ->whereHas('entry', function ($q) use ($from) {
+                            $q->where('entry_date', '<', $from);
+                        });
+                    $opening = (float) $base->sum('debit') - (float) $base->sum('credit');
+
+                    $lines = AccountingJournalLine::query()
+                        ->where('accounting_chart_account_id', $account->id)
+                        ->whereHas('entry', function ($q) use ($from, $to) {
+                            $q->whereBetween('entry_date', [$from, $to]);
+                        })
+                        ->with(['entry'])
+                        ->get()
+                        ->sortBy(function (AccountingJournalLine $line) {
+                            return [
+                                $line->entry->entry_date->format('Y-m-d'),
+                                $line->entry->id,
+                                $line->id,
+                            ];
+                        })
+                        ->values();
+                }
 
                 $period = (float) $lines->sum('debit') - (float) $lines->sum('credit');
                 $closing = $opening + $period;
@@ -1146,7 +1389,7 @@ class LoanAccountingController extends Controller
             }, $export);
         }
 
-        return view('loan.accounting.ledger', compact('accounts', 'account', 'lines', 'from', 'to', 'opening', 'closing'));
+        return view('loan.accounting.ledger', compact('accounts', 'account', 'lines', 'from', 'to', 'opening', 'closing', 'isRecentHistory', 'historyLimit'));
     }
 
     /* ---------- Requisitions ---------- */
