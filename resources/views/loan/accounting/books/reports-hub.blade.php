@@ -6,6 +6,11 @@
         @php
             $fmt = fn (float|int $value) => 'KSh '.number_format((float) $value, 2);
             $todayLabel = now()->format('l, F j, Y');
+            $periodLabel = $from->format('M j, Y').' - '.$to->format('M j, Y');
+            $openPeriodLabel = $from->format('F Y').($to->isSameMonth($from) ? ' (Open)' : '');
+            $surplusDelta = $surplusGrowthPct === null
+                ? null
+                : (($surplusGrowthPct >= 0 ? '+' : '').number_format($surplusGrowthPct, 1).'%');
         @endphp
 
         <x-slot name="actions">
@@ -30,7 +35,7 @@
                                 </svg>
                                 {{ $todayLabel }}
                             </p>
-                            <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Period: April 2026 (Open)</span>
+                            <span class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Period: {{ $openPeriodLabel }}</span>
                         </div>
 
                         <div class="rounded-xl border border-slate-200 bg-slate-50/90 p-3 text-left">
@@ -40,7 +45,7 @@
                                     <svg class="h-4 w-4 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 2m6-2a9 9 0 1 1-2.64-6.36" />
                                     </svg>
-                                    April 1 - April 24, 2026
+                                    {{ $periodLabel }}
                                 </button>
                                 <button type="button" data-modal-open="quickAccessModal" class="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800">
                                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -89,22 +94,24 @@
 
                         <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Net Cash Surplus</p>
                         <button type="button" data-peek-title="Net Cash Surplus Journal Triggers" data-peek-content="Mapped cash-basis postings from collected interest and processing fees less realized OPEX and payroll disbursements for the selected period." class="mt-1 text-left text-4xl font-semibold tracking-tight text-emerald-700">
-                            {{ $fmt(3250300.20) }}
+                            {{ $fmt($netCashSurplus) }}
                         </button>
-                        <p class="mt-1 text-xs font-medium text-emerald-700">12% higher than March 2026</p>
+                        <p class="mt-1 text-xs font-medium text-emerald-700">
+                            {{ $surplusDelta !== null ? $surplusDelta.' vs previous matched period' : 'No previous period baseline available' }}
+                        </p>
 
                         <div class="mt-4 grid grid-cols-2 gap-3 text-xs">
                             <button type="button" data-peek-title="Total Cash Collected - Journal Entries" data-peek-content="Collections are sourced from posted cash receipts tagged to Interest Income and Processing Fee Income within the selected range." class="rounded-lg border border-slate-200 bg-slate-50 p-2 text-left">
                                 <p class="font-semibold text-slate-700">Total Cash Collected</p>
-                                <p class="mt-1 text-lg font-semibold text-slate-900">{{ $fmt(1650000) }}</p>
-                                <p class="text-slate-500">Interest: {{ $fmt(1200000) }}</p>
-                                <p class="text-slate-500">Processing Fees: {{ $fmt(450000) }}</p>
+                                <p class="mt-1 text-lg font-semibold text-slate-900">{{ $fmt($totalCashCollected) }}</p>
+                                <p class="text-slate-500">Interest: {{ $fmt($interestIncome) }}</p>
+                                <p class="text-slate-500">Processing Fees: {{ $fmt($processingFees) }}</p>
                             </button>
                             <button type="button" data-peek-title="Total Cash Spent - Journal Entries" data-peek-content="Cash outflows include realized OPEX and payroll settlements posted against cash accounts in the same time window." class="rounded-lg border border-slate-200 bg-slate-50 p-2 text-left">
                                 <p class="font-semibold text-slate-700">Total Cash Spent</p>
-                                <p class="mt-1 text-lg font-semibold text-slate-900">{{ $fmt(1349699.80) }}</p>
-                                <p class="text-slate-500">OPEX: {{ $fmt(300000) }}</p>
-                                <p class="text-slate-500">Salaries: {{ $fmt(1100000) }}</p>
+                                <p class="mt-1 text-lg font-semibold text-slate-900">{{ $fmt($totalCashSpent) }}</p>
+                                <p class="text-slate-500">OPEX: {{ $fmt($opexCash) }}</p>
+                                <p class="text-slate-500">Salaries: {{ $fmt($salaryCash) }}</p>
                             </button>
                         </div>
 
@@ -139,23 +146,23 @@
 
                         <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Aggregate Cash Position</p>
                         <button type="button" data-peek-title="Aggregate Cash Position Sources" data-peek-content="Combined visibility across mapped bank ledgers and M-Pesa utility accounts with intraday refresh from posted books." class="mt-1 text-left text-4xl font-semibold tracking-tight text-blue-700">
-                            {{ $fmt(4120000) }}
+                            {{ $fmt($aggregateCashPosition) }}
                         </button>
 
                         <div class="mt-4 space-y-2 text-sm">
                             <p class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-slate-700">
                                 <span>Equity Bank (All Accounts)</span>
-                                <span class="font-semibold">KSh 2.90M</span>
+                                <span class="font-semibold">{{ $fmt($equityBankBalance) }}</span>
                             </p>
                             <p class="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-slate-700">
                                 <span>M-Pesa Utility (Till &amp; Float)</span>
-                                <span class="font-semibold">KSh 1.20M</span>
+                                <span class="font-semibold">{{ $fmt($mpesaBalance) }}</span>
                             </p>
                         </div>
 
                         <div class="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm">
                             <p class="font-semibold text-orange-700">Estimated KRA Liability <span class="float-right">Due in 10 Days</span></p>
-                            <p class="mt-1 text-orange-700">PAYE: KSh 80k · VAT: KSh 110k · Corporate Tax (Est.): KSh 50k</p>
+                            <p class="mt-1 text-orange-700">PAYE: {{ $fmt($payeLiability) }} · VAT: {{ $fmt($vatLiability) }} · Corporate Tax (Est.): {{ $fmt($corporateTaxLiability) }}</p>
                         </div>
 
                         <svg class="mt-4 h-16 w-full" viewBox="0 0 260 70" fill="none" aria-hidden="true">
@@ -190,17 +197,17 @@
 
                         <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Operating Margin</p>
                         <button id="operatingMarginValue" type="button" data-peek-title="Operating Margin Drivers" data-peek-content="Margin tracks realized cash revenue against immediately realized OPEX. Comparison mode overlays prior period variance for early burn detection." class="mt-1 text-left text-4xl font-semibold tracking-tight text-orange-700">
-                            34.5%
+                            {{ number_format($operatingMargin, 1) }}%
                         </button>
 
                         <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
                             <p class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
                                 Cost Per Client
-                                <span class="mt-1 block text-xl font-semibold text-slate-900">KSh 1,200</span>
+                                <span class="mt-1 block text-xl font-semibold text-slate-900">{{ $fmt($costPerClient) }}</span>
                             </p>
                             <p class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
                                 Collection Efficiency
-                                <span class="mt-1 block text-xl font-semibold text-slate-900">98.2%</span>
+                                <span class="mt-1 block text-xl font-semibold text-slate-900">{{ number_format($collectionEfficiency, 1) }}%</span>
                             </p>
                         </div>
 
@@ -330,10 +337,10 @@
                 <p class="mt-2 text-sm text-slate-600">Synchronize every financial intelligence tile to a single reporting range.</p>
                 <div class="mt-4 grid gap-3 sm:grid-cols-2">
                     <label class="text-sm text-slate-700">Start Date
-                        <input type="date" value="2026-04-01" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                        <input type="date" value="{{ $from->toDateString() }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
                     </label>
                     <label class="text-sm text-slate-700">End Date
-                        <input type="date" value="2026-04-24" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
+                        <input type="date" value="{{ $to->toDateString() }}" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2">
                     </label>
                 </div>
                 <p class="mt-2 text-xs text-slate-500">Real-time data synced to this range</p>
@@ -434,10 +441,13 @@
                 });
 
                 if (comparisonToggle) {
+                    const baseMarginLabel = operatingMarginValue ? operatingMarginValue.textContent : '';
                     comparisonToggle.addEventListener('change', () => {
                         const isOn = comparisonToggle.checked;
                         trendOverlayLine.classList.toggle('hidden', !isOn);
-                        operatingMarginValue.textContent = isOn ? '32.8%' : '34.5%';
+                        if (operatingMarginValue) {
+                            operatingMarginValue.textContent = baseMarginLabel;
+                        }
                         managementCard.classList.toggle('ring-2', isOn);
                         managementCard.classList.toggle('ring-orange-200', isOn);
                     });

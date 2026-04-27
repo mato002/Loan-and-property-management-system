@@ -15,29 +15,18 @@
                 </a>
             </div>
 
-            <form method="post" action="{{ route('loan.system.setup.loan_products.store') }}" class="grid grid-cols-1 gap-3 p-5 md:grid-cols-8" x-data="{ charges: [{name: '', type: 'fixed', amount: ''}] }">
+            <form method="post" action="{{ route('loan.system.setup.loan_products.store') }}" class="grid grid-cols-1 gap-3 p-5 md:grid-cols-8">
                 @csrf
                 <div class="md:col-span-4">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Product name</label>
                     <input name="name" value="{{ old('name') }}" required class="w-full rounded-lg border-slate-200 text-sm" />
                 </div>
                 <div class="md:col-span-2">
-                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default interest value</label>
-                    <input name="default_interest_rate" type="number" step="0.0001" min="0" value="{{ old('default_interest_rate') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
-                </div>
-                <div class="md:col-span-2">
-                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default interest type</label>
-                    <select name="default_interest_rate_type" class="w-full rounded-lg border-slate-200 text-sm">
-                        <option value="percent" @selected(old('default_interest_rate_type', 'percent') === 'percent')>Percentage (%)</option>
-                        <option value="fixed" @selected(old('default_interest_rate_type') === 'fixed')>Fixed amount</option>
-                    </select>
-                </div>
-                <div class="md:col-span-2">
-                    <label class="mb-1 block text-xs font-semibold text-slate-600">Default term length</label>
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Loan duration</label>
                     <input name="default_term_months" type="number" min="1" max="600" value="{{ old('default_term_months') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                 </div>
                 <div class="md:col-span-2">
-                    <label class="mb-1 block text-xs font-semibold text-slate-600">Term unit</label>
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Installment pattern</label>
                     <select name="default_term_unit" class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="daily" @selected(old('default_term_unit') === 'daily')>Daily</option>
                         <option value="weekly" @selected(old('default_term_unit') === 'weekly')>Weekly</option>
@@ -65,8 +54,8 @@
                     <input name="payment_interval_days" type="number" min="1" max="365" value="{{ old('payment_interval_days') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                 </div>
                 <div class="md:col-span-2">
-                    <label class="mb-1 block text-xs font-semibold text-slate-600">Total interest</label>
-                    <input name="total_interest_amount" type="number" min="0" step="0.01" value="{{ old('total_interest_amount') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Total interest (Percentage % or Flat figure)</label>
+                    <input name="total_interest_amount" type="text" value="{{ old('total_interest_amount') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="e.g. 15 or 15%" />
                 </div>
                 <div class="md:col-span-2">
                     <label class="mb-1 block text-xs font-semibold text-slate-600">Interest duration</label>
@@ -171,46 +160,60 @@
                     <input name="description" value="{{ old('description') }}" class="w-full rounded-lg border-slate-200 text-sm" />
                 </div>
 
-                <div class="md:col-span-8 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                @php
+                    $initialCharges = collect(old('charges', [['name' => '', 'type' => 'fixed', 'amount' => '']]))
+                        ->map(function ($charge) {
+                            return [
+                                'name' => (string) data_get($charge, 'name', ''),
+                                'applies_to_stage' => (string) data_get($charge, 'applies_to_stage', 'installment'),
+                                'applies_to_client_scope' => (string) data_get($charge, 'applies_to_client_scope', 'all'),
+                                'type' => (string) data_get($charge, 'type', 'fixed'),
+                                'amount' => (string) data_get($charge, 'amount', ''),
+                            ];
+                        })
+                        ->values();
+                @endphp
+                <div class="md:col-span-8 rounded-lg border border-slate-200 bg-slate-50/60 p-3" id="product-charges-box" data-initial-charges='@json($initialCharges)'>
                     <div class="mb-2 flex items-center justify-between gap-2">
                         <p class="text-xs font-semibold text-slate-700">Product charges</p>
                         <button
                             type="button"
-                            @click="charges.push({name: '', type: 'fixed', amount: ''})"
+                            id="add-charge-row"
                             class="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
                         >
                             + Add charge
                         </button>
                     </div>
 
-                    <template x-for="(charge, index) in charges" :key="index">
-                        <div class="mb-2 grid grid-cols-1 gap-2 md:grid-cols-12">
+                    <div id="charge-rows"></div>
+                    <template id="charge-row-template">
+                        <div class="mb-2 grid grid-cols-1 gap-2 md:grid-cols-12 js-charge-row">
                             <input
-                                :name="`charges[${index}][name]`"
-                                x-model="charge.name"
+                                data-field="name"
                                 class="md:col-span-3 rounded-lg border-slate-200 px-2 py-1.5 text-xs"
                                 placeholder="Charge name (e.g., Processing fee)"
                             />
-                            <select :name="`charges[${index}][applies_to_stage]`" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs">
-                                <option value="application">On application</option>
-                                <option value="loan" selected>On loan booking</option>
-                                <option value="disbursement">On disbursement</option>
-                                <option value="installment">Per installment</option>
+                            <select data-field="applies_to_stage" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs">
+                                <option value="installment">Every installment</option>
+                                <option value="application">Loan application</option>
+                                <option value="repeat_application">Repeat application</option>
+                                <option value="certain_installments">Certain installments</option>
+                                <option value="loan_deduction">Loan deduction</option>
+                                <option value="added_to_loan">Added to loan</option>
                             </select>
-                            <select :name="`charges[${index}][applies_to_client_scope]`" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs">
+                            <select data-field="applies_to_client_scope" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs">
                                 <option value="all">All clients</option>
                                 <option value="new_clients">New clients</option>
                                 <option value="existing_clients">Existing clients</option>
                                 <option value="checkoff_only">Checkoff only</option>
                                 <option value="non_checkoff">Non-checkoff</option>
                             </select>
-                            <select :name="`charges[${index}][type]`" x-model="charge.type" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs">
+                            <select data-field="type" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs">
                                 <option value="fixed">Fixed amount</option>
                                 <option value="percent">Percentage</option>
                             </select>
                             <input
-                                :name="`charges[${index}][amount]`"
-                                x-model="charge.amount"
+                                data-field="amount"
                                 type="number"
                                 min="0"
                                 step="0.0001"
@@ -219,8 +222,7 @@
                             />
                             <button
                                 type="button"
-                                @click="charges.splice(index, 1)"
-                                class="md:col-span-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                                class="md:col-span-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 js-remove-charge"
                             >
                                 Remove
                             </button>
@@ -241,3 +243,64 @@
         </div>
     </x-loan.page>
 </x-loan-layout>
+<script>
+    (() => {
+        const chargesBox = document.getElementById('product-charges-box');
+        const addBtn = document.getElementById('add-charge-row');
+        const rowsContainer = document.getElementById('charge-rows');
+        const rowTemplate = document.getElementById('charge-row-template');
+
+        if (!chargesBox || !addBtn || !rowsContainer || !rowTemplate) {
+            return;
+        }
+
+        const parseInitialCharges = () => {
+            try {
+                const parsed = JSON.parse(chargesBox.dataset.initialCharges || '[]');
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return parsed;
+                }
+            } catch (error) {
+                // Ignore malformed payload and continue with fallback defaults.
+            }
+
+            return [{name: '', applies_to_stage: 'installment', applies_to_client_scope: 'all', type: 'fixed', amount: ''}];
+        };
+
+        const reindexRows = () => {
+            const rows = rowsContainer.querySelectorAll('.js-charge-row');
+            rows.forEach((row, index) => {
+                row.querySelector('[data-field="name"]').name = `charges[${index}][name]`;
+                row.querySelector('[data-field="applies_to_stage"]').name = `charges[${index}][applies_to_stage]`;
+                row.querySelector('[data-field="applies_to_client_scope"]').name = `charges[${index}][applies_to_client_scope]`;
+                row.querySelector('[data-field="type"]').name = `charges[${index}][type]`;
+                row.querySelector('[data-field="amount"]').name = `charges[${index}][amount]`;
+            });
+        };
+
+        const addRow = (charge = {}) => {
+            const fragment = rowTemplate.content.cloneNode(true);
+            const row = fragment.querySelector('.js-charge-row');
+            if (!row) {
+                return;
+            }
+
+            row.querySelector('[data-field="name"]').value = charge.name ?? '';
+            row.querySelector('[data-field="applies_to_stage"]').value = charge.applies_to_stage ?? 'installment';
+            row.querySelector('[data-field="applies_to_client_scope"]').value = charge.applies_to_client_scope ?? 'all';
+            row.querySelector('[data-field="type"]').value = charge.type ?? 'fixed';
+            row.querySelector('[data-field="amount"]').value = charge.amount ?? '';
+
+            row.querySelector('.js-remove-charge')?.addEventListener('click', () => {
+                row.remove();
+                reindexRows();
+            });
+
+            rowsContainer.appendChild(fragment);
+            reindexRows();
+        };
+
+        parseInitialCharges().forEach((charge) => addRow(charge));
+        addBtn.addEventListener('click', () => addRow());
+    })();
+</script>

@@ -485,13 +485,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/chart-of-accounts/posting-rules', [LoanAccountingController::class, 'chartPostingRuleStore'])->name('chart.posting_rules.store');
         Route::patch('/chart-of-accounts/posting-rules/{accounting_posting_rule}', [LoanAccountingController::class, 'chartPostingRuleUpdate'])->name('chart.posting_rules.update');
         Route::delete('/chart-of-accounts/posting-rules/{accounting_posting_rule}', [LoanAccountingController::class, 'chartPostingRuleDestroy'])->name('chart.posting_rules.destroy');
-        Route::get('/chart-of-accounts', [LoanAccountingController::class, 'chartIndex'])->name('chart.index');
         Route::get('/chart-of-accounts/{accounting_chart_account}/edit', [LoanAccountingController::class, 'chartEdit'])->name('chart.edit');
         Route::patch('/chart-of-accounts/{accounting_chart_account}', [LoanAccountingController::class, 'chartUpdate'])->name('chart.update');
         Route::delete('/chart-of-accounts/{accounting_chart_account}', [LoanAccountingController::class, 'chartDestroy'])->name('chart.destroy');
 
         Route::get('/journal-entries/create', [LoanAccountingController::class, 'journalCreate'])->name('journal.create');
+        Route::get('/journal-entries/{accounting_journal_entry}/edit', [LoanAccountingController::class, 'journalEdit'])->name('journal.edit');
         Route::post('/journal-entries', [LoanAccountingController::class, 'journalStore'])->name('journal.store');
+        Route::post('/journal-entries/templates', [LoanAccountingController::class, 'journalTemplateStore'])->name('journal.templates.store');
+        Route::post('/journal-entries/templates/{accounting_journal_template}', [LoanAccountingController::class, 'journalTemplateUpdate'])->name('journal.templates.update');
+        Route::post('/journal-entries/templates/{accounting_journal_template}/delete', [LoanAccountingController::class, 'journalTemplateDestroy'])->name('journal.templates.destroy');
         Route::get('/journal-entries/approval-queue', [LoanAccountingBooksController::class, 'journalApprovalQueue'])->name('journal.approval_queue');
         Route::post('/journal-entries/approval-queue/{approval_queue}/approve', [LoanAccountingBooksController::class, 'approvePendingJournal'])->name('journal.approval_queue.approve');
         Route::post('/journal-entries/approval-queue/{approval_queue}/reject', [LoanAccountingBooksController::class, 'rejectPendingJournal'])->name('journal.approval_queue.reject');
@@ -697,6 +700,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/setup/company', [LoanSystemHelpController::class, 'setupCompanyUpdate'])->name('setup.company.update');
         Route::get('/setup/preferences', [LoanSystemHelpController::class, 'setupPreferences'])->name('setup.preferences');
         Route::post('/setup/preferences', [LoanSystemHelpController::class, 'setupPreferencesUpdate'])->name('setup.preferences.update');
+        Route::get('/setup/client-settings', [LoanSystemHelpController::class, 'setupClientSettings'])->name('setup.client_settings');
+        Route::post('/setup/client-settings', [LoanSystemHelpController::class, 'setupClientSettingsUpdate'])->name('setup.client_settings.update');
         Route::get('/setup/loan-products', [LoanSystemHelpController::class, 'setupLoanProducts'])->name('setup.loan_products');
         Route::get('/setup/loan-products/create', [LoanSystemHelpController::class, 'setupLoanProductsCreate'])->name('setup.loan_products.create');
         Route::post('/setup/loan-products', [LoanSystemHelpController::class, 'setupLoanProductsStore'])->name('setup.loan_products.store');
@@ -735,6 +740,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('form_setup.page.save');
 
         Route::get('/access-logs', [LoanSystemHelpController::class, 'accessLogsIndex'])->name('access_logs.index');
+        Route::post('/access-logs/{loan_access_log}/concerns', [LoanSystemHelpController::class, 'accessLogsConcernStore'])->name('access_logs.concerns.store');
     });
     });
 });

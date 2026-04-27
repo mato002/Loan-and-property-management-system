@@ -91,6 +91,9 @@
                                 <td class="px-5 py-3 text-slate-600 text-xs">{{ $e->createdByUser?->name ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('loan.accounting.journal.show', $e) }}" class="text-indigo-600 font-medium text-sm mr-3">View</a>
+                                    @if (($e->status ?? \App\Models\AccountingJournalEntry::STATUS_POSTED) === \App\Models\AccountingJournalEntry::STATUS_DRAFT || ($e->status ?? \App\Models\AccountingJournalEntry::STATUS_POSTED) === \App\Models\AccountingJournalEntry::STATUS_REJECTED)
+                                        <a href="{{ route('loan.accounting.journal.edit', $e) }}" class="text-blue-700 font-medium text-sm mr-3">Edit</a>
+                                    @endif
                                     @if (($e->status ?? \App\Models\AccountingJournalEntry::STATUS_POSTED) === \App\Models\AccountingJournalEntry::STATUS_POSTED)
                                         <button
                                             type="submit"

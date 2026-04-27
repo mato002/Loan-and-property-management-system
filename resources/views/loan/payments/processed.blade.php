@@ -42,57 +42,10 @@
                 </article>
                 <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     @php
-                        $principalProcessed = 0.0;
-                        $interestProcessed = 0.0;
-                        $chargesProcessed = 0.0;
                         $totalProcessedForBreakdown = (float) ($totalAmount ?? $processedVisibleAmount);
-
-                        foreach ($pageItems as $payment) {
-                            $paymentAmount = (float) ($payment->amount ?? 0);
-                            $lines = collect($payment->accountingJournalEntry?->lines ?? []);
-
-                            if ($lines->isEmpty()) {
-                                $principalProcessed += $paymentAmount;
-                                continue;
-                            }
-
-                            $bucketPrincipal = 0.0;
-                            $bucketInterest = 0.0;
-                            $bucketCharges = 0.0;
-
-                            foreach ($lines as $line) {
-                                $lineAmount = (float) (($line->debit ?: $line->credit) ?: 0);
-                                if ($lineAmount <= 0) {
-                                    continue;
-                                }
-
-                                $accountName = strtolower((string) ($line->account?->name ?? ''));
-                                if (str_contains($accountName, 'interest')) {
-                                    $bucketInterest += $lineAmount;
-                                } elseif (
-                                    str_contains($accountName, 'fee') ||
-                                    str_contains($accountName, 'penalt') ||
-                                    str_contains($accountName, 'charge') ||
-                                    str_contains($accountName, 'insurance') ||
-                                    str_contains($accountName, 'levy')
-                                ) {
-                                    $bucketCharges += $lineAmount;
-                                } else {
-                                    $bucketPrincipal += $lineAmount;
-                                }
-                            }
-
-                            $bucketTotal = $bucketPrincipal + $bucketInterest + $bucketCharges;
-                            if ($bucketTotal <= 0.0) {
-                                $principalProcessed += $paymentAmount;
-                                continue;
-                            }
-
-                            $scale = $paymentAmount > 0 ? ($paymentAmount / $bucketTotal) : 0.0;
-                            $principalProcessed += $bucketPrincipal * $scale;
-                            $interestProcessed += $bucketInterest * $scale;
-                            $chargesProcessed += $bucketCharges * $scale;
-                        }
+                        $principalProcessed = (float) ($principalProcessed ?? 0.0);
+                        $interestProcessed = (float) ($interestProcessed ?? 0.0);
+                        $chargesProcessed = (float) ($chargesProcessed ?? 0.0);
 
                         if ($totalProcessedForBreakdown <= 0) {
                             $totalProcessedForBreakdown = $principalProcessed + $interestProcessed + $chargesProcessed;
@@ -251,34 +204,12 @@
                                 <td class="border-b border-r border-slate-200 px-4 py-3 text-right tabular-nums font-semibold text-emerald-700">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
                                 <td class="border-b border-r border-slate-200 px-4 py-3 text-slate-600">
                                     @php
-                                        $journalLines = collect($p->accountingJournalEntry?->lines ?? []);
-                                        $principalAmount = 0.0;
-                                        $interestAmount = 0.0;
-                                        $chargesAmount = 0.0;
-
-                                        foreach ($journalLines as $line) {
-                                            $lineAmount = (float) (($line->debit ?: $line->credit) ?: 0);
-                                            if ($lineAmount <= 0) {
-                                                continue;
-                                            }
-
-                                            $accountName = strtolower((string) ($line->account?->name ?? ''));
-                                            if (str_contains($accountName, 'interest')) {
-                                                $interestAmount += $lineAmount;
-                                            } elseif (
-                                                str_contains($accountName, 'fee') ||
-                                                str_contains($accountName, 'penalt') ||
-                                                str_contains($accountName, 'charge') ||
-                                                str_contains($accountName, 'insurance') ||
-                                                str_contains($accountName, 'levy')
-                                            ) {
-                                                $chargesAmount += $lineAmount;
-                                            } else {
-                                                $principalAmount += $lineAmount;
-                                            }
-                                        }
-
-                                        $breakdownTotal = $principalAmount + $interestAmount + $chargesAmount;
+                                        $rowBreakdown = $processedBreakdowns[$p->id] ?? ['principal' => 0.0, 'interest' => 0.0, 'charges' => 0.0, 'unclassified' => 0.0, 'total' => 0.0];
+                                        $principalAmount = (float) ($rowBreakdown['principal'] ?? 0.0);
+                                        $interestAmount = (float) ($rowBreakdown['interest'] ?? 0.0);
+                                        $chargesAmount = (float) ($rowBreakdown['charges'] ?? 0.0);
+                                        $unclassifiedAmount = (float) ($rowBreakdown['unclassified'] ?? 0.0);
+                                        $breakdownTotal = (float) ($rowBreakdown['total'] ?? 0.0);
                                     @endphp
                                     <ul class="list-disc space-y-0.5 pl-4">
                                         @if ($breakdownTotal > 0)
@@ -290,6 +221,9 @@
                                             @endif
                                             @if ($chargesAmount > 0)
                                                 <li>Charges - {{ number_format($chargesAmount, 2) }}</li>
+                                            @endif
+                                            @if ($unclassifiedAmount > 0)
+                                                <li>Unclassified - {{ number_format($unclassifiedAmount, 2) }}</li>
                                             @endif
                                         @else
                                             <li>{{ ucfirst(str_replace('_', ' ', (string) $p->payment_kind)) }} - {{ number_format((float) $p->amount, 2) }}</li>

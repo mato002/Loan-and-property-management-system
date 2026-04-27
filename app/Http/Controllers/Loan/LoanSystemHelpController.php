@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Models\LoanAccessLog;
+use App\Models\LoanAuditConcern;
+use App\Models\LoanAuditConcernMessage;
 use App\Models\LoanBookLoan;
 use App\Models\LoanDepartment;
 use App\Models\LoanJobTitle;
@@ -17,12 +19,15 @@ use App\Models\User;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class LoanSystemHelpController extends Controller
@@ -56,6 +61,19 @@ class LoanSystemHelpController extends Controller
         'client_loyalty_points',
         'loan_repayment_allocation_order',
         'loan_accounting_event_mappings_json',
+    ];
+
+    /** @var list<string> */
+    private const CLIENT_SETTINGS_KEYS = [
+        'client_onboarding_required_documents',
+        'client_onboarding_kyc_mode',
+        'client_onboarding_auto_activate',
+        'client_onboarding_requires_guarantor',
+        'client_onboarding_minimum_age',
+        'client_onboarding_maximum_age',
+        'client_onboarding_default_client_status',
+        'client_onboarding_blacklist_screening',
+        'client_onboarding_notes',
     ];
 
     /**
@@ -309,13 +327,12 @@ class LoanSystemHelpController extends Controller
                     ],
                     [
                         'title' => 'Client Settings',
-                        'desc' => 'Client settings module is reserved for upcoming onboarding controls.',
-                        'href' => null,
+                        'desc' => 'Configure client onboarding defaults, KYC controls, and eligibility rules.',
+                        'href' => route('loan.system.setup.client_settings'),
                         'icon' => 'idcard',
-                        'status' => 'not_configured',
+                        'status' => 'needs_review',
                         'priority' => 'optional',
-                        'coming_soon' => true,
-                        'badge' => 'Coming soon',
+                        'badge' => 'Onboarding controls',
                     ],
                 ],
             ],
@@ -507,6 +524,22 @@ class LoanSystemHelpController extends Controller
         return $this->persistSettingsSubset($request, self::PREFERENCES_SETTING_KEYS, 'loan.system.setup.preferences');
     }
 
+    public function setupClientSettings(): View
+    {
+        $this->ensureDefaultSettings();
+
+        return view('loan.system.setup.client_settings', [
+            'title' => 'Client settings',
+            'subtitle' => 'Onboarding defaults, KYC controls, and client eligibility policies.',
+            'settings' => $this->settingsRowsOrdered(self::CLIENT_SETTINGS_KEYS),
+        ]);
+    }
+
+    public function setupClientSettingsUpdate(Request $request): RedirectResponse
+    {
+        return $this->persistSettingsSubset($request, self::CLIENT_SETTINGS_KEYS, 'loan.system.setup.client_settings');
+    }
+
     public function setupLoanProducts(): View
     {
         abort_unless(Schema::hasTable('loan_products'), 404, 'Loan products table not found. Run migrations.');
@@ -565,7 +598,7 @@ class LoanSystemHelpController extends Controller
             'default_term_unit' => ['nullable', 'in:daily,weekly,monthly'],
             'default_interest_rate_period' => ['nullable', 'in:daily,weekly,monthly,annual'],
             'payment_interval_days' => ['nullable', 'integer', 'min:1', 'max:365'],
-            'total_interest_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'total_interest_amount' => ['nullable', 'string', 'max:30'],
             'interest_duration_value' => ['nullable', 'integer', 'min:1', 'max:600'],
             'interest_type' => ['nullable', 'in:flat_rate,reducing_balance,amortized,simple_interest'],
             'min_loan_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
@@ -587,7 +620,7 @@ class LoanSystemHelpController extends Controller
             'charges.*.name' => ['nullable', 'string', 'max:160'],
             'charges.*.type' => ['nullable', 'in:fixed,percent'],
             'charges.*.amount' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
-            'charges.*.applies_to_stage' => ['nullable', 'in:application,loan,disbursement,installment'],
+            'charges.*.applies_to_stage' => ['nullable', 'in:application,installment,repeat_application,certain_installments,loan_deduction,added_to_loan'],
             'charges.*.applies_to_client_scope' => ['nullable', 'in:all,new_clients,existing_clients,checkoff_only,non_checkoff'],
         ]);
 
@@ -603,9 +636,7 @@ class LoanSystemHelpController extends Controller
             'payment_interval_days' => isset($validated['payment_interval_days']) && $validated['payment_interval_days'] !== ''
                 ? (int) $validated['payment_interval_days']
                 : null,
-            'total_interest_amount' => isset($validated['total_interest_amount']) && $validated['total_interest_amount'] !== ''
-                ? (float) $validated['total_interest_amount']
-                : null,
+            'total_interest_amount' => $this->parseTotalInterestAmount($validated['total_interest_amount'] ?? null),
             'interest_duration_value' => isset($validated['interest_duration_value']) && $validated['interest_duration_value'] !== ''
                 ? (int) $validated['interest_duration_value']
                 : null,
@@ -666,7 +697,7 @@ class LoanSystemHelpController extends Controller
                         'charge_name' => trim((string) ($charge['name'] ?? '')),
                         'amount_type' => (string) ($charge['type'] ?? 'fixed'),
                         'amount' => (float) ($charge['amount'] ?? 0),
-                        'applies_to_stage' => (string) ($charge['applies_to_stage'] ?? 'loan'),
+                        'applies_to_stage' => (string) ($charge['applies_to_stage'] ?? 'installment'),
                         'applies_to_client_scope' => (string) ($charge['applies_to_client_scope'] ?? 'all'),
                     ];
                 })
@@ -700,7 +731,7 @@ class LoanSystemHelpController extends Controller
             'default_term_unit' => ['nullable', 'in:daily,weekly,monthly'],
             'default_interest_rate_period' => ['nullable', 'in:daily,weekly,monthly,annual'],
             'payment_interval_days' => ['nullable', 'integer', 'min:1', 'max:365'],
-            'total_interest_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
+            'total_interest_amount' => ['nullable', 'string', 'max:30'],
             'interest_duration_value' => ['nullable', 'integer', 'min:1', 'max:600'],
             'interest_type' => ['nullable', 'in:flat_rate,reducing_balance,amortized,simple_interest'],
             'min_loan_amount' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
@@ -721,6 +752,12 @@ class LoanSystemHelpController extends Controller
             'apply_to_existing_active_loans' => ['nullable', 'in:0,1'],
             'repricing_effective_date' => ['nullable', 'date'],
             'repricing_note' => ['nullable', 'string', 'max:500'],
+            'charges' => ['nullable', 'array'],
+            'charges.*.name' => ['nullable', 'string', 'max:160'],
+            'charges.*.type' => ['nullable', 'in:fixed,percent'],
+            'charges.*.amount' => ['nullable', 'numeric', 'min:0', 'max:100000000'],
+            'charges.*.applies_to_stage' => ['nullable', 'in:application,installment,repeat_application,certain_installments,loan_deduction,added_to_loan'],
+            'charges.*.applies_to_client_scope' => ['nullable', 'in:all,new_clients,existing_clients,checkoff_only,non_checkoff'],
         ]);
 
         $newDefaultInterestRate = isset($validated['default_interest_rate']) && $validated['default_interest_rate'] !== ''
@@ -740,9 +777,7 @@ class LoanSystemHelpController extends Controller
             'payment_interval_days' => isset($validated['payment_interval_days']) && $validated['payment_interval_days'] !== ''
                 ? (int) $validated['payment_interval_days']
                 : null,
-            'total_interest_amount' => isset($validated['total_interest_amount']) && $validated['total_interest_amount'] !== ''
-                ? (float) $validated['total_interest_amount']
-                : null,
+            'total_interest_amount' => $this->parseTotalInterestAmount($validated['total_interest_amount'] ?? null),
             'interest_duration_value' => isset($validated['interest_duration_value']) && $validated['interest_duration_value'] !== ''
                 ? (int) $validated['interest_duration_value']
                 : null,
@@ -791,6 +826,27 @@ class LoanSystemHelpController extends Controller
             $updatePayload['loan_offset_fees_type'] = (string) ($validated['loan_offset_fees_type'] ?? 'fixed');
         }
         $loan_product->update($updatePayload);
+        if (Schema::hasTable('loan_product_charges')) {
+            $charges = collect($validated['charges'] ?? [])
+                ->map(function (array $charge): array {
+                    return [
+                        'charge_name' => trim((string) ($charge['name'] ?? '')),
+                        'amount_type' => (string) ($charge['type'] ?? 'fixed'),
+                        'amount' => (float) ($charge['amount'] ?? 0),
+                        'applies_to_stage' => (string) ($charge['applies_to_stage'] ?? 'installment'),
+                        'applies_to_client_scope' => (string) ($charge['applies_to_client_scope'] ?? 'all'),
+                    ];
+                })
+                ->filter(fn (array $charge): bool => $charge['charge_name'] !== '' && $charge['amount'] > 0)
+                ->values();
+
+            $loan_product->charges()->delete();
+            if ($charges->isNotEmpty()) {
+                $loan_product->charges()->createMany(
+                    $charges->map(fn (array $charge): array => array_merge($charge, ['is_active' => true]))->all()
+                );
+            }
+        }
 
         if ($newName !== $oldName) {
             $renameAudit = '[Product rename '.now()->format('Y-m-d H:i').'] Product name changed from "'.$oldName.'" to "'.$newName.'" by '
@@ -1414,13 +1470,19 @@ class LoanSystemHelpController extends Controller
 
     public function accessLogsIndex(Request $request)
     {
-        $logsQuery = LoanAccessLog::query()->with('user')->orderByDesc('created_at');
+        $logsQuery = LoanAccessLog::query()->with(['user', 'concerns.messages.user'])->orderByDesc('created_at');
 
         if ($request->filled('user_id')) {
             $logsQuery->where('user_id', $request->integer('user_id'));
         }
         if ($request->filled('method')) {
             $logsQuery->where('method', strtoupper($request->string('method')));
+        }
+        if ($request->filled('result')) {
+            $logsQuery->where('result', $request->string('result'));
+        }
+        if ($request->filled('risk_level')) {
+            $logsQuery->where('risk_level', $request->string('risk_level'));
         }
         if ($request->filled('route_name')) {
             $logsQuery->where('route_name', $request->string('route_name'));
@@ -1436,10 +1498,23 @@ class LoanSystemHelpController extends Controller
         }
         if ($request->filled('q')) {
             $term = '%'.$request->string('q').'%';
-            $logsQuery->where(function ($w) use ($term) {
+            $booleanMode = $request->boolean('boolean_search');
+            $advancedBoolean = $request->boolean('advanced_boolean');
+            $logsQuery->where(function ($w) use ($term, $booleanMode, $advancedBoolean, $request) {
                 $w->where('path', 'like', $term)
                     ->orWhere('route_name', 'like', $term)
-                    ->orWhere('activity', 'like', $term);
+                    ->orWhere('activity', 'like', $term)
+                    ->orWhere('risk_reason', 'like', $term)
+                    ->orWhere('audit_token', 'like', $term)
+                    ->orWhere('checksum', 'like', $term);
+
+                if ($booleanMode) {
+                    $w->orWhere('method', strtoupper((string) $request->string('q')));
+                }
+                if ($advancedBoolean) {
+                    $w->orWhere('event_category', 'like', $term)
+                        ->orWhere('action_type', 'like', $term);
+                }
             });
         }
         if ($request->filled('activity_type')) {
@@ -1460,7 +1535,7 @@ class LoanSystemHelpController extends Controller
 
             return TabularExport::stream(
                 'loan-access-logs-'.now()->format('Ymd_His'),
-                ['When', 'User', 'Method', 'Activity', 'Path', 'Route', 'IP'],
+                ['When', 'User', 'Method', 'Activity', 'Path', 'Route', 'IP', 'Risk', 'Result', 'Audit token'],
                 function () use ($rows) {
                     foreach ($rows as $row) {
                         yield [
@@ -1471,6 +1546,9 @@ class LoanSystemHelpController extends Controller
                             (string) ($row->path ?? ''),
                             (string) ($row->route_name ?? ''),
                             (string) ($row->ip_address ?? ''),
+                            (string) (($row->risk_level ? strtoupper((string) $row->risk_level).' ' : '').($row->risk_score ?? '')),
+                            (string) ($row->result ?? ''),
+                            (string) ($row->audit_token ?? ''),
                         ];
                     }
                 },
@@ -1480,6 +1558,7 @@ class LoanSystemHelpController extends Controller
 
         $perPage = min(200, max(20, (int) $request->query('per_page', 40)));
         $logs = $logsQuery->paginate($perPage)->withQueryString();
+        /** @var LengthAwarePaginator $logs */
         $users = User::query()->orderBy('name')->get(['id', 'name']);
         $routes = LoanAccessLog::query()
             ->whereNotNull('route_name')
@@ -1494,6 +1573,110 @@ class LoanSystemHelpController extends Controller
             ->orderBy('ip_address')
             ->pluck('ip_address');
 
+        $today = Carbon::today();
+        $todayQuery = LoanAccessLog::query()->whereDate('created_at', $today);
+        $last7DaysStart = now()->subDays(6)->startOfDay();
+        $last7DaysQuery = LoanAccessLog::query()->where('created_at', '>=', $last7DaysStart);
+        $recent = (clone $todayQuery)
+            ->select([
+                'id',
+                'user_id',
+                'activity',
+                'path',
+                'route_name',
+                'ip_address',
+                'created_at',
+                'risk_score',
+                'risk_level',
+                'result',
+                'is_foreign_ip',
+                'is_privileged',
+                'action_type',
+                'checksum',
+            ])
+            ->get();
+
+        $riskDistribution = [
+            'critical' => $recent->where('risk_score', '>=', 90)->count(),
+            'high' => $recent->filter(fn ($r) => (int) $r->risk_score >= 70 && (int) $r->risk_score < 90)->count(),
+            'medium' => $recent->filter(fn ($r) => (int) $r->risk_score >= 40 && (int) $r->risk_score < 70)->count(),
+            'low' => $recent->filter(fn ($r) => (int) $r->risk_score < 40)->count(),
+        ];
+        $riskDistribution['total'] = array_sum($riskDistribution);
+
+        $todayCount = $recent->count();
+        $eventsPerMinute = (clone $todayQuery)->where('created_at', '>=', now()->subMinute())->count();
+        $activeSessions = DB::table('sessions')
+            ->where('last_activity', '>=', now()->subMinutes(15)->timestamp)
+            ->count();
+        $activeUsersOnline = DB::table('sessions')
+            ->where('last_activity', '>=', now()->subMinutes(15)->timestamp)
+            ->whereNotNull('user_id')
+            ->distinct('user_id')
+            ->count('user_id');
+        $anomaliesDetected = $recent->whereIn('risk_level', ['high', 'critical'])->count();
+        $interceptedAttempts = $recent->whereIn('result', ['blocked', 'failed'])->count();
+        $foreignIpBlocked = $recent->where('is_foreign_ip', true)->whereIn('result', ['blocked', 'failed'])->count();
+        $gatedCriticalEvents = $recent->where('is_privileged', true)->where('risk_score', '>=', 70)->count();
+        $coaDnaModificationCount = (clone $todayQuery)->where('path', 'like', '%chart-of-accounts%')->where('method', '!=', 'GET')->count();
+        $floorOverrideCount = (clone $todayQuery)->where(function ($w) {
+            $w->where('activity', 'like', '%floor override%')
+                ->orWhere('route_name', 'like', '%floor%');
+        })->count();
+        $manualReversalCount = (clone $todayQuery)->where(function ($w) {
+            $w->where('activity', 'like', '%reversal%')
+                ->orWhere('route_name', 'like', '%reverse%');
+        })->count();
+        $importCount = (clone $todayQuery)->where('action_type', 'import')->count();
+        $exportCount = (clone $todayQuery)->where('action_type', 'export')->count();
+        $downloadCount = (clone $todayQuery)->where('action_type', 'download')->count();
+        $failedDistinctPages = (clone $todayQuery)
+            ->whereIn('result', ['blocked', 'failed'])
+            ->whereNotNull('path')
+            ->distinct('path')
+            ->count('path');
+        $failedDistinctPages7d = (clone $last7DaysQuery)
+            ->whereIn('result', ['blocked', 'failed'])
+            ->whereNotNull('path')
+            ->distinct('path')
+            ->count('path');
+
+        $importCount7d = (clone $last7DaysQuery)->where('action_type', 'import')->count();
+        $exportCount7d = (clone $last7DaysQuery)->where('action_type', 'export')->count();
+        $downloadCount7d = (clone $last7DaysQuery)->where('action_type', 'download')->count();
+
+        $topVisitedPaths = (clone $last7DaysQuery)
+            ->whereNotNull('path')
+            ->where('path', '!=', '')
+            ->selectRaw('path, COUNT(*) AS hits')
+            ->groupBy('path')
+            ->orderByDesc('hits')
+            ->limit(5)
+            ->get();
+
+        $mostActiveHour = (clone $last7DaysQuery)
+            ->selectRaw("DATE_FORMAT(created_at, '%H:00') AS hour_slot, COUNT(*) AS hits")
+            ->groupBy('hour_slot')
+            ->orderByDesc('hits')
+            ->first();
+        $checkerRequired = DB::table('accounting_journal_approval_queues')->where('status', 'pending')->count() > 0;
+
+        $integrityScore = $todayCount > 0
+            ? (int) round(($recent->whereNotNull('checksum')->count() / $todayCount) * 100)
+            : 100;
+        $checksumVerified = $recent->whereNotNull('checksum')->count();
+        $shadowLedgerActive = LoanSystemSetting::getValue('loan_accounting_event_mappings_json') !== null;
+
+        $topRiskyUsers = LoanAccessLog::query()
+            ->with('user:id,name')
+            ->whereDate('created_at', $today)
+            ->whereNotNull('user_id')
+            ->selectRaw('user_id, SUM(COALESCE(risk_score, 0)) AS risk_points')
+            ->groupBy('user_id')
+            ->orderByDesc('risk_points')
+            ->limit(4)
+            ->get();
+
         return view('loan.system.access_logs.index', [
             'title' => 'Access logs',
             'subtitle' => 'Loan portal page views and actions (from sign-in onward).',
@@ -1503,7 +1686,100 @@ class LoanSystemHelpController extends Controller
             'ips' => $ips,
             'perPage' => $perPage,
             'activityTypes' => ['viewed', 'submitted', 'updated', 'deleted', 'failed'],
+            'kpis' => [
+                'eventsPerMinute' => $eventsPerMinute,
+                'activeSessions' => $activeSessions,
+                'activeUsersOnline' => $activeUsersOnline,
+                'anomaliesDetected' => $anomaliesDetected,
+                'interceptedAttempts' => $interceptedAttempts,
+                'foreignIpBlocked' => $foreignIpBlocked,
+                'infoHarvesting' => (clone $todayQuery)
+                    ->where('path', 'like', '%report%')
+                    ->where('risk_score', '>=', 70)
+                    ->count(),
+                'gatedCriticalEvents' => $gatedCriticalEvents,
+                'coaDnaModificationCount' => $coaDnaModificationCount,
+                'floorOverrideCount' => $floorOverrideCount,
+                'manualReversalCount' => $manualReversalCount,
+                'checkerRequired' => $checkerRequired,
+                'integrityScore' => $integrityScore,
+                'checksumVerified' => $checksumVerified,
+                'shadowLedgerActive' => $shadowLedgerActive,
+                'criticalEvents' => $riskDistribution['critical'],
+                'highRiskActions' => $riskDistribution['high'],
+                'blockedAttempts' => $interceptedAttempts,
+                'successfulLogins' => $recent->where('result', 'success')->count(),
+                'importCount' => $importCount,
+                'exportCount' => $exportCount,
+                'downloadCount' => $downloadCount,
+                'importCount7d' => $importCount7d,
+                'exportCount7d' => $exportCount7d,
+                'downloadCount7d' => $downloadCount7d,
+                'failedDistinctPages' => $failedDistinctPages,
+                'failedDistinctPages7d' => $failedDistinctPages7d,
+                'topVisitedPaths' => $topVisitedPaths,
+                'mostActiveHour' => $mostActiveHour?->hour_slot ?? 'N/A',
+                'mostActiveHourHits' => (int) ($mostActiveHour?->hits ?? 0),
+                'digestLastSentAt' => now()->setTime(8, 0)->format('Y-m-d H:i'),
+            ],
+            'riskDistribution' => $riskDistribution,
+            'topRiskyUsers' => $topRiskyUsers,
         ]);
+    }
+
+    public function accessLogsConcernStore(Request $request, LoanAccessLog $loan_access_log): RedirectResponse
+    {
+        $data = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+            'reason' => ['required', 'string', 'max:5000'],
+            'priority' => ['nullable', Rule::in(['normal', 'high', 'critical'])],
+        ]);
+
+        $concern = LoanAuditConcern::query()->create([
+            'loan_access_log_id' => $loan_access_log->id,
+            'opened_by_user_id' => (int) $request->user()->id,
+            'owner_user_id' => null,
+            'status' => 'open',
+            'priority' => $data['priority'] ?? 'high',
+            'title' => $data['title'],
+            'reason' => $data['reason'],
+        ]);
+
+        LoanAuditConcernMessage::query()->create([
+            'loan_audit_concern_id' => $concern->id,
+            'user_id' => (int) $request->user()->id,
+            'message' => $data['reason'],
+        ]);
+
+        return redirect()->route('loan.system.access_logs.index', ['q' => $loan_access_log->audit_token])->with('status', 'Concern opened for review.');
+    }
+
+    private function parseTotalInterestAmount(mixed $value): ?float
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        if (! preg_match('/^\d+(?:\.\d+)?%?$/', $raw)) {
+            throw ValidationException::withMessages([
+                'total_interest_amount' => 'Enter total interest as a number (e.g. 15) or percentage (e.g. 15%).',
+            ]);
+        }
+
+        $normalized = rtrim($raw, '%');
+        $amount = (float) $normalized;
+        if ($amount < 0 || $amount > 1000000000) {
+            throw ValidationException::withMessages([
+                'total_interest_amount' => 'Total interest must be between 0 and 1000000000.',
+            ]);
+        }
+
+        return $amount;
     }
 
     private function ensureDefaultSettings(): void
@@ -1535,6 +1811,15 @@ class LoanSystemHelpController extends Controller
             ['key' => 'loan_account_code_penalty_income', 'label' => 'Loan penalty income account code', 'group' => 'preferences', 'value' => '4003'],
             ['key' => 'loan_account_code_overpayment_liability', 'label' => 'Loan overpayment liability account code', 'group' => 'preferences', 'value' => '2003'],
             ['key' => 'loan_accounting_event_mappings_json', 'label' => 'Loan accounting event mappings JSON', 'group' => 'preferences', 'value' => '{"loan_disbursed":"loan_ledger","loan_repayment":"split_component_posting","loan_overpayment":"loan_overpayments","loan_c2b_reversal":"loan_ledger","penalty_raised":"loan_penalty_income"}'],
+            ['key' => 'client_onboarding_required_documents', 'label' => 'Required onboarding documents (csv)', 'group' => 'client_settings', 'value' => 'national_id,passport_photo,proof_of_address'],
+            ['key' => 'client_onboarding_kyc_mode', 'label' => 'KYC mode (basic|enhanced)', 'group' => 'client_settings', 'value' => 'basic'],
+            ['key' => 'client_onboarding_auto_activate', 'label' => 'Auto-activate client after review (yes|no)', 'group' => 'client_settings', 'value' => 'no'],
+            ['key' => 'client_onboarding_requires_guarantor', 'label' => 'Require guarantor on onboarding (yes|no)', 'group' => 'client_settings', 'value' => 'no'],
+            ['key' => 'client_onboarding_minimum_age', 'label' => 'Minimum onboarding age', 'group' => 'client_settings', 'value' => '18'],
+            ['key' => 'client_onboarding_maximum_age', 'label' => 'Maximum onboarding age', 'group' => 'client_settings', 'value' => '75'],
+            ['key' => 'client_onboarding_default_client_status', 'label' => 'Default client status after onboarding', 'group' => 'client_settings', 'value' => 'pending_review'],
+            ['key' => 'client_onboarding_blacklist_screening', 'label' => 'Enable blacklist screening (yes|no)', 'group' => 'client_settings', 'value' => 'yes'],
+            ['key' => 'client_onboarding_notes', 'label' => 'Onboarding policy notes', 'group' => 'client_settings', 'value' => ''],
         ];
 
         foreach ($defaults as $row) {

@@ -7,6 +7,9 @@ use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
+use App\Models\LoanSystemSetting;
+use App\Models\AccountingChartAccount;
+use App\Models\AccountingPostingRule;
 use App\Models\PropertyPortalSetting;
 use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Support\TabularExport;
@@ -149,6 +152,18 @@ class LoanPaymentsController extends Controller
             ->orderByDesc('transaction_at')
             ->paginate($filters['perPage'])
             ->withQueryString();
+        $classificationAccountIds = $this->processedPaymentClassificationAccountIds();
+        $processedBreakdowns = [];
+        foreach ($payments->getCollection() as $payment) {
+            $processedBreakdowns[(int) $payment->id] = $this->processedPaymentBreakdown(
+                $payment,
+                $classificationAccountIds
+            );
+        }
+
+        $principalProcessed = array_sum(array_map(fn (array $row): float => (float) ($row['principal'] ?? 0.0), $processedBreakdowns));
+        $interestProcessed = array_sum(array_map(fn (array $row): float => (float) ($row['interest'] ?? 0.0), $processedBreakdowns));
+        $chargesProcessed = array_sum(array_map(fn (array $row): float => (float) ($row['charges'] ?? 0.0), $processedBreakdowns));
         $totalAmount = (clone $query)->sum('amount');
         $displayDate = $to = trim((string) ($filters['to'] ?? ''));
         if ($displayDate === '') {
@@ -174,10 +189,111 @@ class LoanPaymentsController extends Controller
             'payMode',
             'corporate',
             'totalAmount',
+            'processedBreakdowns',
+            'principalProcessed',
+            'interestProcessed',
+            'chargesProcessed',
             'displayDate',
             'corporateOptions',
             'payModeOptions'
         ), $filters));
+    }
+
+    /**
+     * @return array{principal:array<int,true>,interest:array<int,true>,charges:array<int,true>}
+     */
+    private function processedPaymentClassificationAccountIds(): array
+    {
+        $principalCode = trim((string) (LoanSystemSetting::getValue('loan_account_code_principal', '1200') ?? '1200'));
+        $interestCode = trim((string) (LoanSystemSetting::getValue('loan_account_code_interest_income', '4002') ?? '4002'));
+        $feeCode = trim((string) (LoanSystemSetting::getValue('loan_account_code_fee_income', '4007') ?? '4007'));
+        $penaltyCode = trim((string) (LoanSystemSetting::getValue('loan_account_code_penalty_income', '4003') ?? '4003'));
+
+        $codes = array_values(array_filter(array_unique([
+            $principalCode,
+            $interestCode,
+            $feeCode,
+            $penaltyCode,
+        ])));
+
+        $codeToId = AccountingChartAccount::query()
+            ->whereIn('code', $codes)
+            ->pluck('id', 'code');
+
+        $principalIds = [];
+        if ($principalCode !== '' && isset($codeToId[$principalCode])) {
+            $principalIds[(int) $codeToId[$principalCode]] = true;
+        }
+        $interestIds = [];
+        if ($interestCode !== '' && isset($codeToId[$interestCode])) {
+            $interestIds[(int) $codeToId[$interestCode]] = true;
+        }
+        $chargesIds = [];
+        if ($feeCode !== '' && isset($codeToId[$feeCode])) {
+            $chargesIds[(int) $codeToId[$feeCode]] = true;
+        }
+        if ($penaltyCode !== '' && isset($codeToId[$penaltyCode])) {
+            $chargesIds[(int) $codeToId[$penaltyCode]] = true;
+        }
+
+        $loanLedgerRule = AccountingPostingRule::query()->where('rule_key', 'loan_ledger')->first();
+        if ($loanLedgerRule?->credit_account_id) {
+            $principalIds[(int) $loanLedgerRule->credit_account_id] = true;
+        }
+
+        return [
+            'principal' => $principalIds,
+            'interest' => $interestIds,
+            'charges' => $chargesIds,
+        ];
+    }
+
+    /**
+     * @param  array{principal:array<int,true>,interest:array<int,true>,charges:array<int,true>}  $classificationAccountIds
+     * @return array{principal:float,interest:float,charges:float,unclassified:float,total:float}
+     */
+    private function processedPaymentBreakdown(LoanBookPayment $payment, array $classificationAccountIds): array
+    {
+        $lines = collect($payment->accountingJournalEntry?->lines ?? []);
+        $principal = 0.0;
+        $interest = 0.0;
+        $charges = 0.0;
+        $unclassified = 0.0;
+
+        foreach ($lines as $line) {
+            $creditAmount = round((float) ($line->credit ?? 0), 2);
+            if ($creditAmount <= 0.0) {
+                continue;
+            }
+            $accountId = (int) ($line->accounting_chart_account_id ?? 0);
+            if ($accountId > 0 && isset($classificationAccountIds['principal'][$accountId])) {
+                $principal += $creditAmount;
+                continue;
+            }
+            if ($accountId > 0 && isset($classificationAccountIds['interest'][$accountId])) {
+                $interest += $creditAmount;
+                continue;
+            }
+            if ($accountId > 0 && isset($classificationAccountIds['charges'][$accountId])) {
+                $charges += $creditAmount;
+                continue;
+            }
+            $unclassified += $creditAmount;
+        }
+
+        $total = round($principal + $interest + $charges + $unclassified, 2);
+        if ($total <= 0.0) {
+            $principal = round((float) $payment->amount, 2);
+            $total = $principal;
+        }
+
+        return [
+            'principal' => round($principal, 2),
+            'interest' => round($interest, 2),
+            'charges' => round($charges, 2),
+            'unclassified' => round($unclassified, 2),
+            'total' => $total,
+        ];
     }
 
     public function processedPrint(Request $request): View

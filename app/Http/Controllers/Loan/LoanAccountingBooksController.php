@@ -15,6 +15,9 @@ use App\Models\AccountingPostingRule;
 use App\Models\AccountingPayrollLine;
 use App\Models\AccountingPayrollPeriod;
 use App\Models\Employee;
+use App\Models\LoanBookCollectionEntry;
+use App\Models\LoanBookCollectionRate;
+use App\Models\LoanClient;
 use App\Models\LoanSystemSetting;
 use App\Models\User;
 use App\Services\AccountingChartCodeGeneratorService;
@@ -584,7 +587,198 @@ class LoanAccountingBooksController extends Controller
 
     public function reportsHub(): View
     {
-        return view('loan.accounting.books.reports-hub');
+        $today = now()->startOfDay();
+        $from = request()->date('from') ?: $today->copy()->startOfMonth();
+        $to = request()->date('to') ?: $today->copy();
+        if ($to->lt($from)) {
+            [$from, $to] = [$to->copy(), $from->copy()];
+        }
+
+        $periodDays = max(1, $from->diffInDays($to) + 1);
+        $previousTo = $from->copy()->subDay();
+        $previousFrom = $previousTo->copy()->subDays($periodDays - 1);
+
+        $periodLines = AccountingJournalLine::query()
+            ->join('accounting_journal_entries as je', 'je.id', '=', 'accounting_journal_lines.accounting_journal_entry_id')
+            ->join('accounting_chart_accounts as a', 'a.id', '=', 'accounting_journal_lines.accounting_chart_account_id')
+            ->where('je.status', AccountingJournalEntry::STATUS_POSTED)
+            ->whereBetween('je.entry_date', [$from->toDateString(), $to->toDateString()])
+            ->groupBy('a.id', 'a.name', 'a.account_type', 'a.income_statement_category', 'a.is_cash_account')
+            ->get([
+                'a.id as account_id',
+                'a.name as account_name',
+                'a.account_type',
+                'a.income_statement_category',
+                'a.is_cash_account',
+                DB::raw('COALESCE(SUM(accounting_journal_lines.debit),0) as total_debit'),
+                DB::raw('COALESCE(SUM(accounting_journal_lines.credit),0) as total_credit'),
+            ]);
+
+        $previousLines = AccountingJournalLine::query()
+            ->join('accounting_journal_entries as je', 'je.id', '=', 'accounting_journal_lines.accounting_journal_entry_id')
+            ->join('accounting_chart_accounts as a', 'a.id', '=', 'accounting_journal_lines.accounting_chart_account_id')
+            ->where('je.status', AccountingJournalEntry::STATUS_POSTED)
+            ->whereBetween('je.entry_date', [$previousFrom->toDateString(), $previousTo->toDateString()])
+            ->groupBy('a.id', 'a.account_type', 'a.income_statement_category')
+            ->get([
+                'a.account_type',
+                'a.income_statement_category',
+                DB::raw('COALESCE(SUM(accounting_journal_lines.debit),0) as total_debit'),
+                DB::raw('COALESCE(SUM(accounting_journal_lines.credit),0) as total_credit'),
+            ]);
+
+        $revenueCash = 0.0;
+        $interestIncome = 0.0;
+        $processingFees = 0.0;
+        $opexCash = 0.0;
+        $salaryCash = 0.0;
+        foreach ($periodLines as $line) {
+            $accountType = (string) $line->account_type;
+            $category = (string) ($line->income_statement_category ?? '');
+            $name = strtolower((string) ($line->account_name ?? ''));
+            $dr = (float) $line->total_debit;
+            $cr = (float) $line->total_credit;
+
+            if ($accountType === AccountingChartAccount::TYPE_INCOME) {
+                $amount = $cr - $dr;
+                if ($amount > 0) {
+                    $revenueCash += $amount;
+                    if (str_contains($name, 'interest')) {
+                        $interestIncome += $amount;
+                    }
+                    if (str_contains($name, 'processing')) {
+                        $processingFees += $amount;
+                    }
+                }
+            }
+
+            if ($accountType === AccountingChartAccount::TYPE_EXPENSE) {
+                $amount = $dr - $cr;
+                if ($amount > 0) {
+                    if (in_array($category, [
+                        AccountingChartAccount::INCOME_STATEMENT_CATEGORY_OPERATING_EXPENSE,
+                        AccountingChartAccount::INCOME_STATEMENT_CATEGORY_DIRECT_COST,
+                        AccountingChartAccount::INCOME_STATEMENT_CATEGORY_OTHER_EXPENSE,
+                    ], true)) {
+                        $opexCash += $amount;
+                    }
+                    if (str_contains($name, 'salary') || str_contains($name, 'payroll') || str_contains($name, 'wage')) {
+                        $salaryCash += $amount;
+                    }
+                }
+            }
+        }
+
+        $totalCashCollected = $revenueCash;
+        $totalCashSpent = $opexCash + $salaryCash;
+        $netCashSurplus = $totalCashCollected - $totalCashSpent;
+
+        $previousRevenue = 0.0;
+        $previousExpense = 0.0;
+        foreach ($previousLines as $line) {
+            $dr = (float) $line->total_debit;
+            $cr = (float) $line->total_credit;
+            if ((string) $line->account_type === AccountingChartAccount::TYPE_INCOME) {
+                $previousRevenue += ($cr - $dr);
+            }
+            if ((string) $line->account_type === AccountingChartAccount::TYPE_EXPENSE) {
+                $previousExpense += ($dr - $cr);
+            }
+        }
+        $previousNet = $previousRevenue - $previousExpense;
+        $surplusGrowthPct = abs($previousNet) > 0.00001
+            ? (($netCashSurplus - $previousNet) / abs($previousNet)) * 100
+            : null;
+
+        $cashByAccount = AccountingJournalLine::query()
+            ->join('accounting_journal_entries as je', 'je.id', '=', 'accounting_journal_lines.accounting_journal_entry_id')
+            ->join('accounting_chart_accounts as a', 'a.id', '=', 'accounting_journal_lines.accounting_chart_account_id')
+            ->where('je.status', AccountingJournalEntry::STATUS_POSTED)
+            ->where('a.is_cash_account', true)
+            ->whereDate('je.entry_date', '<=', $to->toDateString())
+            ->groupBy('a.id', 'a.name')
+            ->get([
+                'a.id as account_id',
+                'a.name as account_name',
+                DB::raw('COALESCE(SUM(accounting_journal_lines.debit - accounting_journal_lines.credit),0) as net_balance'),
+            ]);
+
+        $aggregateCashPosition = (float) $cashByAccount->sum('net_balance');
+        $equityBankBalance = (float) $cashByAccount
+            ->filter(fn ($row) => str_contains(strtolower((string) $row->account_name), 'equity'))
+            ->sum('net_balance');
+        $mpesaBalance = (float) $cashByAccount
+            ->filter(fn ($row) => str_contains(strtolower((string) $row->account_name), 'mpesa') || str_contains(strtolower((string) $row->account_name), 'm-pesa'))
+            ->sum('net_balance');
+
+        $taxLiabilityRows = AccountingJournalLine::query()
+            ->join('accounting_journal_entries as je', 'je.id', '=', 'accounting_journal_lines.accounting_journal_entry_id')
+            ->join('accounting_chart_accounts as a', 'a.id', '=', 'accounting_journal_lines.accounting_chart_account_id')
+            ->where('je.status', AccountingJournalEntry::STATUS_POSTED)
+            ->whereDate('je.entry_date', '<=', $to->toDateString())
+            ->where('a.account_type', AccountingChartAccount::TYPE_LIABILITY)
+            ->where(function ($q) {
+                $q->where('a.name', 'like', '%paye%')
+                    ->orWhere('a.name', 'like', '%vat%')
+                    ->orWhere('a.name', 'like', '%tax%');
+            })
+            ->groupBy('a.id', 'a.name')
+            ->get([
+                'a.name as account_name',
+                DB::raw('COALESCE(SUM(accounting_journal_lines.credit - accounting_journal_lines.debit),0) as liability_balance'),
+            ]);
+
+        $payeLiability = (float) $taxLiabilityRows
+            ->filter(fn ($row) => str_contains(strtolower((string) $row->account_name), 'paye'))
+            ->sum('liability_balance');
+        $vatLiability = (float) $taxLiabilityRows
+            ->filter(fn ($row) => str_contains(strtolower((string) $row->account_name), 'vat'))
+            ->sum('liability_balance');
+        $corporateTaxLiability = (float) $taxLiabilityRows
+            ->filter(fn ($row) => str_contains(strtolower((string) $row->account_name), 'corporate'))
+            ->sum('liability_balance');
+
+        $operatingMargin = $totalCashCollected > 0
+            ? (($totalCashCollected - $totalCashSpent) / $totalCashCollected) * 100
+            : 0.0;
+
+        $activeClientCount = LoanClient::query()->clients()->count();
+        $periodExpenses = (float) AccountingCompanyExpense::query()
+            ->whereBetween('expense_date', [$from->toDateString(), $to->toDateString()])
+            ->sum('amount');
+        $costPerClient = $activeClientCount > 0 ? ($periodExpenses / $activeClientCount) : 0.0;
+
+        $periodCollected = (float) LoanBookCollectionEntry::query()
+            ->whereBetween('collected_on', [$from->toDateString(), $to->toDateString()])
+            ->sum('amount');
+        $fromPeriod = ((int) $from->year * 100) + (int) $from->month;
+        $toPeriod = ((int) $to->year * 100) + (int) $to->month;
+        $collectionTarget = (float) LoanBookCollectionRate::query()
+            ->whereRaw('(year * 100 + month) BETWEEN ? AND ?', [$fromPeriod, $toPeriod])
+            ->sum('target_amount');
+        $collectionEfficiency = $collectionTarget > 0 ? min(100, ($periodCollected / $collectionTarget) * 100) : 0.0;
+
+        return view('loan.accounting.books.reports-hub', compact(
+            'from',
+            'to',
+            'netCashSurplus',
+            'surplusGrowthPct',
+            'totalCashCollected',
+            'interestIncome',
+            'processingFees',
+            'totalCashSpent',
+            'opexCash',
+            'salaryCash',
+            'aggregateCashPosition',
+            'equityBankBalance',
+            'mpesaBalance',
+            'payeLiability',
+            'vatLiability',
+            'corporateTaxLiability',
+            'operatingMargin',
+            'costPerClient',
+            'collectionEfficiency'
+        ));
     }
 
     public function trialBalance(Request $request): View
@@ -634,46 +828,130 @@ class LoanAccountingBooksController extends Controller
 
     public function incomeStatement(Request $request): View
     {
-        $from = $request->date('from') ?: now()->startOfYear();
-        $to = $request->date('to') ?: now()->endOfMonth();
+        $today = now()->startOfDay();
+        $range = (string) $request->string('range')->toString();
+        if (! in_array($range, ['current_month', 'previous_month', 'ytd', 'custom'], true)) {
+            $range = 'ytd';
+        }
 
-        $totals = $this->journalTotalsForAccounts($from, $to);
+        if ($range === 'current_month') {
+            $from = $today->copy()->startOfMonth();
+            $to = $today->copy();
+        } elseif ($range === 'previous_month') {
+            $from = $today->copy()->subMonthNoOverflow()->startOfMonth();
+            $to = $today->copy()->subMonthNoOverflow()->endOfMonth();
+        } elseif ($range === 'custom') {
+            $from = $request->date('from') ?: $today->copy()->startOfMonth();
+            $to = $request->date('to') ?: $today->copy();
+        } else {
+            $from = $today->copy()->startOfYear();
+            $to = $today->copy();
+        }
+        if ($to->lt($from)) {
+            [$from, $to] = [$to->copy(), $from->copy()];
+        }
+
+        $rows = AccountingJournalLine::query()
+            ->join('accounting_journal_entries as je', 'je.id', '=', 'accounting_journal_lines.accounting_journal_entry_id')
+            ->join('accounting_chart_accounts as a', 'a.id', '=', 'accounting_journal_lines.accounting_chart_account_id')
+            ->where('je.status', AccountingJournalEntry::STATUS_POSTED)
+            ->whereBetween('je.entry_date', [$from->toDateString(), $to->toDateString()])
+            ->whereIn('a.account_type', [AccountingChartAccount::TYPE_INCOME, AccountingChartAccount::TYPE_EXPENSE])
+            ->groupBy('a.id', 'a.code', 'a.name', 'a.account_type', 'a.income_statement_category')
+            ->orderBy('a.code')
+            ->get([
+                'a.id as account_id',
+                'a.code as account_code',
+                'a.name as account_name',
+                'a.account_type',
+                'a.income_statement_category',
+                DB::raw('COALESCE(SUM(accounting_journal_lines.debit),0) as total_debit'),
+                DB::raw('COALESCE(SUM(accounting_journal_lines.credit),0) as total_credit'),
+                DB::raw('COUNT(accounting_journal_lines.id) as transaction_count'),
+            ]);
+
+        $sections = [
+            'revenue' => ['label' => 'Revenue', 'rows' => [], 'total' => 0.0, 'account_ids' => [], 'transaction_count' => 0],
+            'direct_cost' => ['label' => 'Direct Cost', 'rows' => [], 'total' => 0.0, 'account_ids' => [], 'transaction_count' => 0],
+            'operating_expense' => ['label' => 'Operating Expenses', 'rows' => [], 'total' => 0.0, 'account_ids' => [], 'transaction_count' => 0],
+            'tax_expense' => ['label' => 'Tax Expense', 'rows' => [], 'total' => 0.0, 'account_ids' => [], 'transaction_count' => 0],
+            'other_income' => ['label' => 'Other Income', 'rows' => [], 'total' => 0.0, 'account_ids' => [], 'transaction_count' => 0],
+            'other_expense' => ['label' => 'Other Expense', 'rows' => [], 'total' => 0.0, 'account_ids' => [], 'transaction_count' => 0],
+            'unclassified' => ['label' => 'Unclassified', 'rows' => [], 'total' => 0.0, 'account_ids' => [], 'transaction_count' => 0],
+        ];
 
         $incomeTotal = 0.0;
         $expenseTotal = 0.0;
-        $incomeRows = [];
-        $expenseRows = [];
-
-        $accounts = AccountingChartAccount::query()->where('is_active', true)->orderBy('code')->get();
-        foreach ($accounts as $a) {
-            $t = $totals->get($a->id);
-            if (! $t) {
+        foreach ($rows as $row) {
+            $dr = (float) $row->total_debit;
+            $cr = (float) $row->total_credit;
+            $amount = (string) $row->account_type === AccountingChartAccount::TYPE_INCOME
+                ? ($cr - $dr)
+                : ($dr - $cr);
+            if (abs($amount) < 0.00001) {
                 continue;
             }
-            $dr = (float) $t->total_debit;
-            $cr = (float) $t->total_credit;
-            if ($a->account_type === AccountingChartAccount::TYPE_INCOME) {
-                $amt = $cr - $dr;
-                if (abs($amt) < 0.00001) {
-                    continue;
-                }
-                $incomeRows[] = ['account' => $a, 'amount' => $amt];
-                $incomeTotal += $amt;
+
+            $category = (string) ($row->income_statement_category ?? '');
+            if (! in_array($category, AccountingChartAccount::INCOME_STATEMENT_CATEGORIES, true)) {
+                $category = 'unclassified';
             }
-            if ($a->account_type === AccountingChartAccount::TYPE_EXPENSE) {
-                $amt = $dr - $cr;
-                if (abs($amt) < 0.00001) {
-                    continue;
-                }
-                $expenseRows[] = ['account' => $a, 'amount' => $amt];
-                $expenseTotal += $amt;
+
+            $item = [
+                'account_id' => (int) $row->account_id,
+                'account_code' => (string) $row->account_code,
+                'account_name' => (string) $row->account_name,
+                'account_type' => (string) $row->account_type,
+                'amount' => (float) $amount,
+                'transaction_count' => (int) $row->transaction_count,
+                'date_range' => [
+                    'from' => $from->toDateString(),
+                    'to' => $to->toDateString(),
+                ],
+            ];
+
+            $sections[$category]['rows'][] = $item;
+            $sections[$category]['total'] += (float) $amount;
+            $sections[$category]['account_ids'][] = (int) $row->account_id;
+            $sections[$category]['transaction_count'] += (int) $row->transaction_count;
+
+            if ((string) $row->account_type === AccountingChartAccount::TYPE_INCOME) {
+                $incomeTotal += (float) $amount;
+            } else {
+                $expenseTotal += (float) $amount;
             }
         }
+
+        foreach (array_keys($sections) as $key) {
+            $sections[$key]['account_ids'] = array_values(array_unique($sections[$key]['account_ids']));
+            $sections[$key]['drilldown'] = [
+                'account_ids' => $sections[$key]['account_ids'],
+                'total_amount' => (float) $sections[$key]['total'],
+                'transaction_count' => (int) $sections[$key]['transaction_count'],
+                'date_range' => [
+                    'from' => $from->toDateString(),
+                    'to' => $to->toDateString(),
+                ],
+            ];
+        }
+
+        $unclassifiedWarning = [
+            'account_count' => count($sections['unclassified']['account_ids']),
+            'transaction_count' => (int) $sections['unclassified']['transaction_count'],
+            'amount' => (float) $sections['unclassified']['total'],
+        ];
 
         $netIncome = $incomeTotal - $expenseTotal;
 
         return view('loan.accounting.books.income-statement', compact(
-            'from', 'to', 'incomeRows', 'expenseRows', 'incomeTotal', 'expenseTotal', 'netIncome'
+            'from',
+            'to',
+            'range',
+            'sections',
+            'incomeTotal',
+            'expenseTotal',
+            'netIncome',
+            'unclassifiedWarning'
         ));
     }
 

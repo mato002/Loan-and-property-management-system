@@ -274,6 +274,55 @@ class LoanClientsController extends Controller
             ->limit(20)
             ->get();
 
+        $loanHistory = $loan_client->loanBookLoans ?? collect();
+        $activeLoans = $loanHistory->whereIn('status', [
+            LoanBookLoan::STATUS_ACTIVE,
+            LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+            LoanBookLoan::STATUS_RESTRUCTURED,
+        ]);
+        $totalOutstanding = (float) $activeLoans->sum(fn (LoanBookLoan $loan): float => (float) ($loan->balance ?? 0));
+        $totalArrearsDays = (float) $activeLoans->sum(fn (LoanBookLoan $loan): float => (float) ($loan->dpd ?? 0));
+        $totalPrincipal = (float) $loanHistory->sum(fn (LoanBookLoan $loan): float => (float) ($loan->principal ?? 0));
+        $totalRepaid = (float) $loanHistory->sum(fn (LoanBookLoan $loan): float => (float) ($loan->processed_repayments_sum_amount ?? 0));
+        $averageDpd = (float) $activeLoans->avg(fn (LoanBookLoan $loan): float => (float) ($loan->dpd ?? 0));
+        $creditScore = (int) max(420, min(850, round(790 - ($averageDpd * 7))));
+        $completionNumerator = (int) $loanHistory->sum(
+            fn (LoanBookLoan $loan): int => min((int) ($loan->term_value ?? 0), (int) (($loan->processedRepayments ?? collect())->count()))
+        );
+        $completionDenominator = (int) max(1, $loanHistory->sum(fn (LoanBookLoan $loan): int => (int) ($loan->term_value ?? 0)));
+        $completionPercent = (int) min(100, round(($completionNumerator / max(1, $completionDenominator)) * 100));
+
+        $walletBalance = (float) LoanBookPayment::query()
+            ->processedQueue()
+            ->where('channel', 'like', 'wallet%')
+            ->whereHas('loan', fn (Builder $query) => $query->where('loan_client_id', $loan_client->id))
+            ->sum('amount');
+
+        // Derive realized income from actual repayment allocation:
+        // payment allocation in this system settles fees, then interest, then principal.
+        // So income earned = net repaid - principal recovered.
+        $principalRecovered = (float) $loanHistory->sum(function (LoanBookLoan $loan): float {
+            $principal = (float) ($loan->principal ?? 0);
+            $principalOutstanding = max(0.0, (float) ($loan->principal_outstanding ?? $principal));
+
+            return max(0.0, $principal - $principalOutstanding);
+        });
+        $lifetimeEarnings = max(0.0, $totalRepaid - $principalRecovered);
+
+        $dashboardMetrics = [
+            'total_outstanding' => $totalOutstanding,
+            'total_arrears_days' => $totalArrearsDays,
+            'total_principal' => $totalPrincipal,
+            'total_repaid' => $totalRepaid,
+            'loan_cycles' => (int) $loanHistory->count(),
+            'completion_numerator' => $completionNumerator,
+            'completion_denominator' => $completionDenominator,
+            'completion_percent' => $completionPercent,
+            'credit_score' => $creditScore,
+            'wallet_balance' => $walletBalance,
+            'lifetime_value' => $lifetimeEarnings,
+        ];
+
         return view('loan.clients.show', [
             'loan_client' => $loan_client,
             'biodataLabels' => $this->clientBiodataLabels(),
@@ -281,6 +330,7 @@ class LoanClientsController extends Controller
             'recentDisbursements' => $recentDisbursements,
             'recentPayments' => $recentPayments,
             'collectionAgents' => $collectionAgents,
+            'dashboardMetrics' => $dashboardMetrics,
         ]);
     }
 
@@ -1057,9 +1107,9 @@ class LoanClientsController extends Controller
             ],
             'first_name' => ['required', 'string', 'max:120'],
             'last_name' => ['required', 'string', 'max:120'],
-            'phone' => ['nullable', 'string', 'max:40'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'id_number' => ['nullable', 'string', 'max:80'],
+            'phone' => ['nullable', 'string', 'max:40', 'unique:loan_clients,phone'.($id ? ','.$id.',id' : '')],
+            'email' => ['nullable', 'email', 'max:255', 'unique:loan_clients,email'.($id ? ','.$id.',id' : '')],
+            'id_number' => ['nullable', 'string', 'max:80', 'unique:loan_clients,id_number'.($id ? ','.$id.',id' : '')],
             'gender' => ['nullable', 'string', 'in:male,female,other'],
             'next_of_kin_name' => ['nullable', 'string', 'max:200'],
             'next_of_kin_contact' => ['nullable', 'string', 'max:40'],

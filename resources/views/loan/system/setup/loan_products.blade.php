@@ -6,7 +6,7 @@
         </x-slot>
 
         @php
-            $productModalPayload = $products->mapWithKeys(function ($product) use ($activeLoanCounts) {
+            $productModalPayload = $products->mapWithKeys(function ($product) use ($activeLoanCounts, $hasProductCharges) {
                 return [
                     (string) $product->id => [
                         'id' => (int) $product->id,
@@ -37,6 +37,15 @@
                         'cluster_name' => (string) ($product->cluster_name ?? ''),
                         'is_active' => (bool) $product->is_active,
                         'active_loans' => (int) ($activeLoanCounts[$product->name] ?? 0),
+                        'charges' => ($hasProductCharges ?? false)
+                            ? $product->charges->map(fn ($charge) => [
+                                'name' => (string) $charge->charge_name,
+                                'type' => (string) ($charge->amount_type ?? 'fixed'),
+                                'amount' => $charge->amount !== null ? (float) $charge->amount : null,
+                                'applies_to_stage' => (string) ($charge->applies_to_stage ?? 'installment'),
+                                'applies_to_client_scope' => (string) ($charge->applies_to_client_scope ?? 'all'),
+                            ])->values()->all()
+                            : [],
                     ],
                 ];
             })->all();
@@ -163,98 +172,225 @@
         </div>
 
         <div id="product-edit-modal" class="fixed inset-0 z-[80] hidden items-center justify-center bg-slate-900/40 p-4">
-            <div class="w-full max-w-3xl rounded-xl border border-slate-200 bg-white p-0 shadow-xl">
+            <div class="w-full max-w-6xl max-h-[95vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-0 shadow-xl">
                 <div class="border-b border-slate-100 px-4 py-3 flex items-center justify-between">
                     <h3 class="text-sm font-semibold text-slate-800">Edit loan product</h3>
                     <button id="close-edit-product-modal" type="button" class="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700">✕</button>
                 </div>
-                <form id="product-edit-form" method="post" class="p-4 grid grid-cols-1 gap-3 md:grid-cols-12 js-product-update-form">
+                <form id="product-edit-form" method="post" class="grid grid-cols-1 gap-3 p-5 md:grid-cols-8 js-product-update-form">
                 @csrf
                 @method('patch')
-                <input id="edit_name" name="name" class="md:col-span-3 rounded border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-800" placeholder="Product name" />
-                <input id="edit_description" name="description" class="md:col-span-3 rounded border-slate-200 px-2 py-1.5 text-xs" placeholder="Description" />
-                <input id="edit_default_interest_rate" name="default_interest_rate" type="number" step="0.0001" min="0" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Interest value" />
-                <select id="edit_default_interest_rate_type" name="default_interest_rate_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="percent">Interest %</option>
-                    <option value="fixed">Fixed amount</option>
-                </select>
-                <input id="edit_default_term_months" name="default_term_months" type="number" min="1" max="600" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Length" />
-                <select id="edit_default_interest_rate_period" name="default_interest_rate_period" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="daily">Per day</option>
-                    <option value="weekly">Per week</option>
-                    <option value="monthly">Per month</option>
-                    <option value="annual">Per year</option>
-                </select>
-                <select id="edit_default_term_unit" name="default_term_unit" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="daily">Daily</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="monthly">Monthly</option>
-                </select>
-                <select id="edit_is_active" name="is_active" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="1">Active</option>
-                    <option value="0">Inactive</option>
-                </select>
-                <input id="edit_payment_interval_days" name="payment_interval_days" type="number" min="1" max="365" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Payment interval days" />
-                <input id="edit_total_interest_amount" name="total_interest_amount" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Total interest" />
-                <input id="edit_interest_duration_value" name="interest_duration_value" type="number" min="1" max="600" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Interest duration" />
-                <select id="edit_interest_type" name="interest_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="">Interest type</option>
-                    <option value="flat_rate">Flat rate</option>
-                    <option value="reducing_balance">Reducing balance</option>
-                    <option value="amortized">Amortized</option>
-                    <option value="simple_interest">Simple interest</option>
-                </select>
-                <input id="edit_min_loan_amount" name="min_loan_amount" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Min amount" />
-                <input id="edit_max_loan_amount" name="max_loan_amount" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Max amount" />
-                <select id="edit_arrears_penalty_scope" name="arrears_penalty_scope" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="">Arrears penalty</option>
-                    <option value="whole_loan">For whole loan</option>
-                    <option value="per_installment">Per installment</option>
-                    <option value="none">No penalty</option>
-                </select>
-                <input id="edit_penalty_amount" name="penalty_amount" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Penalty amount" />
-                <select id="edit_penalty_amount_type" name="penalty_amount_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="fixed">Penalty fixed</option>
-                    <option value="percent">Penalty %</option>
-                </select>
-                <input id="edit_rollover_fees" name="rollover_fees" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Rollover fees" />
-                <select id="edit_rollover_fees_type" name="rollover_fees_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="fixed">Rollover fixed</option>
-                    <option value="percent">Rollover %</option>
-                </select>
-                <input id="edit_loan_offset_fees" name="loan_offset_fees" type="number" min="0" step="0.01" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Loan offset fees" />
-                <select id="edit_loan_offset_fees_type" name="loan_offset_fees_type" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="fixed">Offset fixed</option>
-                    <option value="percent">Offset %</option>
-                </select>
-                <input id="edit_repay_waiver_days" name="repay_waiver_days" type="number" min="0" max="365" class="rounded border-slate-200 px-2 py-1.5 text-xs tabular-nums text-right" placeholder="Repay waiver days" />
-                <select id="edit_client_application_scope" name="client_application_scope" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="">Client scope</option>
-                    <option value="any_client">Any client</option>
-                    <option value="no_running_loans">No running loans</option>
-                    <option value="new_clients_only">New clients only</option>
-                    <option value="existing_clients_only">Existing clients only</option>
-                </select>
-                <select id="edit_installment_display_mode" name="installment_display_mode" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="">Installment display</option>
-                    <option value="all_installments">All installments</option>
-                    <option value="due_only">Due only</option>
-                    <option value="summary">Summary</option>
-                </select>
-                <select id="edit_exempt_from_checkoffs" name="exempt_from_checkoffs" class="rounded border-slate-200 px-2 py-1.5 text-xs">
-                    <option value="0">Checkoff exempt: No</option>
-                    <option value="1">Checkoff exempt: Yes</option>
-                </select>
-                <input id="edit_cluster_name" name="cluster_name" class="rounded border-slate-200 px-2 py-1.5 text-xs" placeholder="Cluster name" />
-                <input id="edit_repricing_effective_date" name="repricing_effective_date" type="date" class="rounded border-slate-200 px-2 py-1.5 text-xs" title="Optional effective date for audit note" />
-                <input id="edit_repricing_note" name="repricing_note" class="md:col-span-4 rounded border-slate-200 px-2 py-1.5 text-xs" placeholder="Optional repricing note" />
-                <label class="md:col-span-4 inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+                <div class="md:col-span-4">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Product name</label>
+                    <input id="edit_name" name="name" required class="w-full rounded-lg border-slate-200 text-sm" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Loan duration</label>
+                    <input id="edit_default_term_months" name="default_term_months" type="number" min="1" max="600" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Installment pattern</label>
+                    <select id="edit_default_term_unit" name="default_term_unit" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Interest value</label>
+                    <input id="edit_default_interest_rate" name="default_interest_rate" type="number" step="0.0001" min="0" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Interest type</label>
+                    <select id="edit_default_interest_rate_type" name="default_interest_rate_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="percent">Percentage (%)</option>
+                        <option value="fixed">Fixed amount</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Interest period</label>
+                    <select id="edit_default_interest_rate_period" name="default_interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="daily">Per day</option>
+                        <option value="weekly">Per week</option>
+                        <option value="monthly">Per month</option>
+                        <option value="annual">Per year</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Active</label>
+                    <select id="edit_is_active" name="is_active" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="1">Yes</option>
+                        <option value="0">No</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Payment interval (days)</label>
+                    <input id="edit_payment_interval_days" name="payment_interval_days" type="number" min="1" max="365" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Total interest (Percentage % or Flat figure)</label>
+                    <input id="edit_total_interest_amount" name="total_interest_amount" type="text" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="e.g. 15 or 15%" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Interest duration</label>
+                    <input id="edit_interest_duration_value" name="interest_duration_value" type="number" min="1" max="600" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Loan math type</label>
+                    <select id="edit_interest_type" name="interest_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="">Select type</option>
+                        <option value="flat_rate">Flat rate</option>
+                        <option value="reducing_balance">Reducing balance</option>
+                        <option value="amortized">Amortized</option>
+                        <option value="simple_interest">Simple interest</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Min loan amount</label>
+                    <input id="edit_min_loan_amount" name="min_loan_amount" type="number" min="0" step="0.01" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Max amount</label>
+                    <input id="edit_max_loan_amount" name="max_loan_amount" type="number" min="0" step="0.01" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Arrears penalty</label>
+                    <select id="edit_arrears_penalty_scope" name="arrears_penalty_scope" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="">None</option>
+                        <option value="whole_loan">For whole loan</option>
+                        <option value="per_installment">Per installment</option>
+                        <option value="none">No penalty</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Penalty amount</label>
+                    <input id="edit_penalty_amount" name="penalty_amount" type="number" min="0" step="0.01" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Penalty type</label>
+                    <select id="edit_penalty_amount_type" name="penalty_amount_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="fixed">Fixed amount</option>
+                        <option value="percent">Percentage (%)</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Rollover fees</label>
+                    <input id="edit_rollover_fees" name="rollover_fees" type="number" min="0" step="0.01" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Rollover fee type</label>
+                    <select id="edit_rollover_fees_type" name="rollover_fees_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="fixed">Fixed amount</option>
+                        <option value="percent">Percentage (%)</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Loan offset fees</label>
+                    <input id="edit_loan_offset_fees" name="loan_offset_fees" type="number" min="0" step="0.01" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Loan offset fee type</label>
+                    <select id="edit_loan_offset_fees_type" name="loan_offset_fees_type" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="fixed">Fixed amount</option>
+                        <option value="percent">Percentage (%)</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Repay waiver days</label>
+                    <input id="edit_repay_waiver_days" name="repay_waiver_days" type="number" min="0" max="365" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Clients apply with</label>
+                    <select id="edit_client_application_scope" name="client_application_scope" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="">Any client</option>
+                        <option value="no_running_loans">No running loans</option>
+                        <option value="new_clients_only">New clients only</option>
+                        <option value="existing_clients_only">Existing clients only</option>
+                        <option value="any_client">All clients</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Installment display</label>
+                    <select id="edit_installment_display_mode" name="installment_display_mode" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="">Default</option>
+                        <option value="all_installments">All installments</option>
+                        <option value="due_only">Due only</option>
+                        <option value="summary">Summary</option>
+                    </select>
+                </div>
+                <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Exempt from checkoffs</label>
+                    <select id="edit_exempt_from_checkoffs" name="exempt_from_checkoffs" class="w-full rounded-lg border-slate-200 text-sm">
+                        <option value="0">No</option>
+                        <option value="1">Yes</option>
+                    </select>
+                </div>
+                <div class="md:col-span-4">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Cluster name</label>
+                    <input id="edit_cluster_name" name="cluster_name" class="w-full rounded-lg border-slate-200 text-sm" />
+                </div>
+                <div class="md:col-span-8">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Description (optional)</label>
+                    <input id="edit_description" name="description" class="w-full rounded-lg border-slate-200 text-sm" />
+                </div>
+
+                <div class="md:col-span-8 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                    <div class="mb-2 flex items-center justify-between gap-2">
+                        <p class="text-xs font-semibold text-slate-700">Product charges</p>
+                        <button
+                            type="button"
+                            id="edit-add-charge-row"
+                            class="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                        >
+                            + Add charge
+                        </button>
+                    </div>
+                    <div id="edit-charge-rows"></div>
+                    <template id="edit-charge-row-template">
+                        <div class="mb-2 grid grid-cols-1 gap-2 md:grid-cols-12 js-edit-charge-row">
+                            <input data-field="name" class="md:col-span-3 rounded-lg border-slate-200 px-2 py-1.5 text-xs" placeholder="Charge name (e.g., Processing fee)" />
+                            <select data-field="applies_to_stage" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs">
+                                <option value="installment">Every installment</option>
+                                <option value="application">Loan application</option>
+                                <option value="repeat_application">Repeat application</option>
+                                <option value="certain_installments">Certain installments</option>
+                                <option value="loan_deduction">Loan deduction</option>
+                                <option value="added_to_loan">Added to loan</option>
+                            </select>
+                            <select data-field="applies_to_client_scope" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs">
+                                <option value="all">All clients</option>
+                                <option value="new_clients">New clients</option>
+                                <option value="existing_clients">Existing clients</option>
+                                <option value="checkoff_only">Checkoff only</option>
+                                <option value="non_checkoff">Non-checkoff</option>
+                            </select>
+                            <select data-field="type" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs">
+                                <option value="fixed">Fixed amount</option>
+                                <option value="percent">Percentage</option>
+                            </select>
+                            <input data-field="amount" type="number" min="0" step="0.0001" class="md:col-span-2 rounded-lg border-slate-200 px-2 py-1.5 text-xs tabular-nums" placeholder="Amount or %" />
+                            <button type="button" class="md:col-span-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 js-remove-edit-charge">Remove</button>
+                        </div>
+                    </template>
+                    <p class="text-[11px] text-slate-500">Charges are captured for setup consistency and can be mapped to pricing rules.</p>
+                </div>
+
+                <div class="md:col-span-4">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Repricing effective date (optional)</label>
+                    <input id="edit_repricing_effective_date" name="repricing_effective_date" type="date" class="w-full rounded-lg border-slate-200 text-sm" />
+                </div>
+                <div class="md:col-span-4">
+                    <label class="mb-1 block text-xs font-semibold text-slate-600">Repricing note (optional)</label>
+                    <input id="edit_repricing_note" name="repricing_note" class="w-full rounded-lg border-slate-200 text-sm" />
+                </div>
+                <label class="md:col-span-8 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     <input id="edit_apply_to_existing_active_loans" type="checkbox" name="apply_to_existing_active_loans" value="1" class="rounded border-amber-300 text-amber-700 focus:ring-amber-500 js-apply-existing" />
                     Apply rate to existing active loans
                 </label>
-                <div class="md:col-span-4 flex justify-end gap-2">
-                    <button type="button" id="cancel-edit-product-modal" class="rounded border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                    <button type="submit" class="rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">Update</button>
+
+                <div class="md:col-span-8 flex justify-end gap-2 border-t border-slate-100 pt-3">
+                    <button type="button" id="cancel-edit-product-modal" class="rounded border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="rounded bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#264040]">Update product</button>
                 </div>
             </form>
             </div>
@@ -268,6 +404,9 @@
     const editForm = document.getElementById('product-edit-form');
     const closeEditBtn = document.getElementById('close-edit-product-modal');
     const cancelEditBtn = document.getElementById('cancel-edit-product-modal');
+    const editChargeRows = document.getElementById('edit-charge-rows');
+    const editChargeRowTemplate = document.getElementById('edit-charge-row-template');
+    const addEditChargeBtn = document.getElementById('edit-add-charge-row');
     const openEditModal = () => {
         editModal?.classList.remove('hidden');
         editModal?.classList.add('flex');
@@ -275,6 +414,41 @@
     const closeEditModal = () => {
         editModal?.classList.add('hidden');
         editModal?.classList.remove('flex');
+    };
+
+    const reindexEditChargeRows = () => {
+        editChargeRows?.querySelectorAll('.js-edit-charge-row').forEach((row, index) => {
+            row.querySelector('[data-field="name"]').name = `charges[${index}][name]`;
+            row.querySelector('[data-field="applies_to_stage"]').name = `charges[${index}][applies_to_stage]`;
+            row.querySelector('[data-field="applies_to_client_scope"]').name = `charges[${index}][applies_to_client_scope]`;
+            row.querySelector('[data-field="type"]').name = `charges[${index}][type]`;
+            row.querySelector('[data-field="amount"]').name = `charges[${index}][amount]`;
+        });
+    };
+
+    const addEditChargeRow = (charge = {}) => {
+        if (!editChargeRows || !editChargeRowTemplate) {
+            return;
+        }
+
+        const fragment = editChargeRowTemplate.content.cloneNode(true);
+        const row = fragment.querySelector('.js-edit-charge-row');
+        if (!row) {
+            return;
+        }
+
+        row.querySelector('[data-field="name"]').value = charge.name ?? '';
+        row.querySelector('[data-field="applies_to_stage"]').value = charge.applies_to_stage ?? 'installment';
+        row.querySelector('[data-field="applies_to_client_scope"]').value = charge.applies_to_client_scope ?? 'all';
+        row.querySelector('[data-field="type"]').value = charge.type ?? 'fixed';
+        row.querySelector('[data-field="amount"]').value = charge.amount ?? '';
+        row.querySelector('.js-remove-edit-charge')?.addEventListener('click', () => {
+            row.remove();
+            reindexEditChargeRows();
+        });
+
+        editChargeRows.appendChild(fragment);
+        reindexEditChargeRows();
     };
 
     document.querySelectorAll('.js-edit-product').forEach((btn) => {
@@ -315,8 +489,18 @@
             editForm.querySelector('#edit_repricing_effective_date').value = '';
             editForm.querySelector('#edit_repricing_note').value = '';
             editForm.querySelector('#edit_apply_to_existing_active_loans').checked = false;
+            if (editChargeRows) {
+                editChargeRows.innerHTML = '';
+                const charges = Array.isArray(product.charges) && product.charges.length > 0
+                    ? product.charges
+                    : [{name: '', type: 'fixed', amount: '', applies_to_stage: 'installment', applies_to_client_scope: 'all'}];
+                charges.forEach((charge) => addEditChargeRow(charge));
+            }
             openEditModal();
         });
+    });
+    addEditChargeBtn?.addEventListener('click', () => {
+        addEditChargeRow();
     });
 
     [closeEditBtn, cancelEditBtn].forEach((el) => {

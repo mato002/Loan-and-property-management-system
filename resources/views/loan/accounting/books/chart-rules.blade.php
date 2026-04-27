@@ -24,7 +24,7 @@
             @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
         </style>
         <x-slot name="actions">
-            <a href="{{ route('loan.accounting.chart.index') }}" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors">Open Chart of Accounts</a>
+            <a href="{{ route('loan.accounting.books.chart_rules') }}" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors">Refresh Chart Rules</a>
             <a href="{{ route('loan.accounting.books') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Books Hub</a>
         </x-slot>
 
@@ -33,7 +33,7 @@
         <div
             class="space-y-6"
             x-data="{
-                showCreateAccountModal: {{ (($isEditingAccount || $isDuplicatingAccount) || $errors->hasAny(['name', 'account_type', 'account_class', 'current_balance', 'min_balance_floor', 'overdraft_limit', 'controlled_approver_ids'])) ? 'true' : 'false' }},
+                showCreateAccountModal: {{ (($isEditingAccount || $isDuplicatingAccount) || $errors->hasAny(['name', 'account_type', 'income_statement_category', 'account_class', 'current_balance', 'min_balance_floor', 'overdraft_limit', 'controlled_approver_ids'])) ? 'true' : 'false' }},
                 showImportModal: {{ $errors->has('import_file') ? 'true' : 'false' }},
                 showAddMappingModal: {{ ($errors->has('label') || $errors->has('debit_account_id') || $errors->has('credit_account_id')) ? 'true' : 'false' }},
                 showOverdrawnModal: false,
@@ -144,7 +144,7 @@
                         <p class="mt-1 text-sm text-slate-600">Manage your organization&rsquo;s chart of accounts and financial structure.</p>
                     </div>
                     <div class="flex items-center gap-2">
-                        <a href="{{ route('loan.accounting.chart.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Export</a>
+                        <a href="{{ route('loan.accounting.books.chart_rules') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Refresh</a>
                         <button type="button" @click="showCreateAccountModal = true" class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors">New Account</button>
                     </div>
                 </div>
@@ -746,6 +746,20 @@
                                         @endforeach
                                     </select>
                                     @error('account_type')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                </div>
+                                <div>
+                                    <label for="modal_income_statement_category" class="mb-1 block text-xs font-semibold text-slate-600">Income Statement Category</label>
+                                    <select id="modal_income_statement_category" name="income_statement_category" class="w-full rounded-lg border-slate-200 text-sm">
+                                        <option value="">Not applicable</option>
+                                        <option value="revenue" @selected(old('income_statement_category', $modalAccount->income_statement_category ?? '') === 'revenue')>Revenue</option>
+                                        <option value="direct_cost" @selected(old('income_statement_category', $modalAccount->income_statement_category ?? '') === 'direct_cost')>Direct Cost</option>
+                                        <option value="operating_expense" @selected(old('income_statement_category', $modalAccount->income_statement_category ?? '') === 'operating_expense')>Operating Expense</option>
+                                        <option value="tax_expense" @selected(old('income_statement_category', $modalAccount->income_statement_category ?? '') === 'tax_expense')>Tax Expense</option>
+                                        <option value="other_income" @selected(old('income_statement_category', $modalAccount->income_statement_category ?? '') === 'other_income')>Other Income</option>
+                                        <option value="other_expense" @selected(old('income_statement_category', $modalAccount->income_statement_category ?? '') === 'other_expense')>Other Expense</option>
+                                    </select>
+                                    <p class="mt-1 text-[11px] text-slate-500">Required for income and expense accounts.</p>
+                                    @error('income_statement_category')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </div>
                             </div>
 

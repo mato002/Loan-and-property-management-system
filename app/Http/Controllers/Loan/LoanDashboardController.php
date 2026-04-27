@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
+use App\Models\AccountingChartAccount;
 use App\Models\AccountingJournalEntry;
+use App\Models\AccountingJournalLine;
 use App\Models\AccountingRequisition;
 use App\Models\AccountingSalaryAdvance;
 use App\Models\Employee;
@@ -15,6 +17,7 @@ use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
 use App\Models\LoanClient;
 use App\Models\LoanSupportTicket;
+use App\Models\LoanSystemSetting;
 use App\Models\PropertyPortalSetting;
 use App\Models\StaffLeave;
 use App\Services\BulkSmsService;
@@ -42,6 +45,8 @@ class LoanDashboardController extends Controller
 
     public function index(): View
     {
+        $userRole = strtolower((string) (auth()->user()?->effectiveLoanRole() ?? ''));
+        $canAccessAccounting = in_array($userRole, ['accountant', 'admin', 'manager'], true);
         $bookReady = Schema::hasTable('loan_book_loans');
         $paymentsReady = Schema::hasTable('loan_book_payments');
         $clientsReady = Schema::hasTable('loan_clients');
@@ -79,7 +84,9 @@ class LoanDashboardController extends Controller
             'applicationStages' => $applicationsReady ? $this->applicationsByStage() : ['labels' => [], 'values' => []],
         ];
 
-        $opsStrip = $this->buildOpsStrip();
+        $opsStrip = $canAccessAccounting
+            ? $this->buildOpsStrip()
+            : ['pending_requisitions' => 0, 'journal_last_30' => 0];
         $performanceIndicators = $bookReady ? $this->buildPerformanceIndicators() : collect();
         $profileCard = $this->buildProfileCard();
         $summaryStrip = $this->buildSummaryStrip($bookReady, $clientsReady);
@@ -105,6 +112,7 @@ class LoanDashboardController extends Controller
             'performanceIndicators' => $performanceIndicators,
             'profileCard' => $profileCard,
             'summaryStrip' => $summaryStrip,
+            'canAccessAccounting' => $canAccessAccounting,
         ]);
     }
 
@@ -509,14 +517,7 @@ class LoanDashboardController extends Controller
             : 0;
         $loanDelta = $createdThisMonth - $createdLastMonth;
 
-        $portfolioStatuses = [
-            LoanBookLoan::STATUS_ACTIVE,
-            LoanBookLoan::STATUS_RESTRUCTURED,
-            LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
-        ];
-        $outstanding = $book
-            ? (float) $this->loanQuery()->whereIn('status', $portfolioStatuses)->sum('balance')
-            : 0.0;
+        $outstanding = $this->outstandingLoanBookFromGl();
 
         $pipeline = $applications
             ? $this->applicationQuery()
@@ -811,6 +812,34 @@ class LoanDashboardController extends Controller
             'pending_requisitions' => $pendingReq,
             'journal_last_30' => $journal30,
         ];
+    }
+
+    private function outstandingLoanBookFromGl(): float
+    {
+        if (! Schema::hasTable('accounting_chart_accounts')
+            || ! Schema::hasTable('accounting_journal_entries')
+            || ! Schema::hasTable('accounting_journal_lines')) {
+            return 0.0;
+        }
+
+        $principalCode = trim((string) (LoanSystemSetting::getValue('loan_account_code_principal', '1200') ?? '1200'));
+        if ($principalCode === '') {
+            $principalCode = '1200';
+        }
+
+        $accountId = (int) (AccountingChartAccount::query()
+            ->where('code', $principalCode)
+            ->value('id') ?? 0);
+        if ($accountId <= 0) {
+            return 0.0;
+        }
+
+        return (float) AccountingJournalLine::query()
+            ->join('accounting_journal_entries as je', 'je.id', '=', 'accounting_journal_lines.accounting_journal_entry_id')
+            ->where('je.status', AccountingJournalEntry::STATUS_POSTED)
+            ->where('accounting_journal_lines.accounting_chart_account_id', $accountId)
+            ->selectRaw('COALESCE(SUM(accounting_journal_lines.debit - accounting_journal_lines.credit), 0) as outstanding')
+            ->value('outstanding');
     }
 
     private function humanizeLoanStatus(string $status): string

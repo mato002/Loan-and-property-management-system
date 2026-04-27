@@ -9,6 +9,7 @@ use App\Models\AccountingJournalApprovalQueue;
 use App\Models\AccountingCompanyExpense;
 use App\Models\AccountingJournalEntry;
 use App\Models\AccountingJournalLine;
+use App\Models\AccountingJournalTemplate;
 use App\Models\AccountingPayrollPeriod;
 use App\Models\AccountingPettyCashEntry;
 use App\Models\AccountingPostingRule;
@@ -129,265 +130,6 @@ class LoanAccountingController extends Controller
         ];
     }
 
-    public function chartIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
-    {
-        $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
-        $export = request()->string('export')->toString();
-        $q = request()->string('q')->toString();
-        $active = request()->string('active')->toString(); // '', '1', '0'
-
-        $accountsQuery = AccountingChartAccount::query()->with('parent');
-        if ($active === '1') {
-            $accountsQuery->where('is_active', true);
-        } elseif ($active === '0') {
-            $accountsQuery->where('is_active', false);
-        }
-        if ($q !== '') {
-            $accountsQuery->where(function ($qq) use ($q) {
-                $qq->where('code', 'like', '%'.$q.'%')
-                    ->orWhere('name', 'like', '%'.$q.'%');
-            });
-        }
-
-        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
-            return TabularExport::stream('chart-of-accounts', [
-                'Code', 'Name', 'Type', 'Active', 'Cash Account',
-            ], function () use ($accountsQuery) {
-                return $accountsQuery->orderBy('code')->get()->map(function (AccountingChartAccount $a) {
-                    return [
-                        (string) ($a->code ?? ''),
-                        (string) ($a->name ?? ''),
-                        (string) ($a->account_type ?? ''),
-                        $a->is_active ? 'yes' : 'no',
-                        $a->is_cash_account ? 'yes' : 'no',
-                    ];
-                });
-            }, $export);
-        }
-
-        $accounts = $accountsQuery->orderBy('code')->get();
-
-        $accountsByType = $accounts->groupBy('account_type');
-
-        $selectAccounts = AccountingChartAccount::query()
-            ->where('is_active', true)
-            ->when($hasAccountClass, fn ($q) => $q->where('account_class', AccountingChartAccount::CLASS_DETAIL))
-            ->orderBy('code')
-            ->get();
-        $headerAccounts = $hasAccountClass
-            ? AccountingChartAccount::query()
-                ->where('is_active', true)
-                ->whereIn('account_class', [AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_PARENT])
-                ->orderBy('code')
-                ->get()
-            : collect();
-
-        $slotLabels = $this->walletSlotLabels();
-        $slotSettings = AccountingWalletSlotSetting::query()
-            ->whereIn('slot_key', array_keys($slotLabels))
-            ->get()
-            ->keyBy('slot_key');
-
-        $walletSlots = collect($slotLabels)->map(function (string $label, string $key) use ($slotSettings) {
-            $row = $slotSettings->get($key);
-
-            return [
-                'key' => $key,
-                'label' => $label,
-                'setting_id' => $row?->id,
-                'account_id' => $row?->accounting_chart_account_id,
-            ];
-        });
-
-        $postingRules = AccountingPostingRule::query()
-            ->with(['debitAccount', 'creditAccount'])
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get();
-
-        $chartOverview = $this->buildChartOfAccountsOverview($accounts, $walletSlots, $postingRules);
-        $financialOverview = $this->buildFinancialIntelligenceOverview();
-        $reports = $this->buildFinancialReportTiles();
-        $periodStart = now()->startOfMonth();
-        $periodEnd = now();
-        $periodLabel = $periodStart->format('F Y').' (Open)';
-        $dateRangeLabel = $periodStart->format('F j').' - '.$periodEnd->format('F j, Y');
-
-        return view('loan.accounting.chart.index', compact(
-            'accounts',
-            'accountsByType',
-            'selectAccounts',
-            'headerAccounts',
-            'walletSlots',
-            'postingRules',
-            'chartOverview',
-            'financialOverview',
-            'reports',
-            'periodLabel',
-            'dateRangeLabel',
-            'q',
-            'active'
-        ));
-    }
-
-    /** @return array<string, float|int> */
-    private function buildFinancialIntelligenceOverview(): array
-    {
-        $incomeAccountIds = AccountingChartAccount::query()->where('account_type', 'income')->pluck('id');
-        $expenseAccountIds = AccountingChartAccount::query()->where('account_type', 'expense')->pluck('id');
-        $cashAccountIds = AccountingChartAccount::query()->where('is_cash_account', true)->pluck('id');
-
-        $cashCollected = (float) AccountingJournalLine::query()
-            ->when($incomeAccountIds->isNotEmpty(), fn ($q) => $q->whereIn('accounting_chart_account_id', $incomeAccountIds))
-            ->sum('credit');
-
-        $cashSpent = (float) AccountingJournalLine::query()
-            ->when($expenseAccountIds->isNotEmpty(), fn ($q) => $q->whereIn('accounting_chart_account_id', $expenseAccountIds))
-            ->sum('debit');
-
-        $interestCollected = (float) AccountingJournalLine::query()
-            ->whereHas('account', fn ($q) => $q->where('account_type', 'income')->where('name', 'like', '%interest%'))
-            ->sum('credit');
-
-        $processingFeesCollected = (float) AccountingJournalLine::query()
-            ->whereHas('account', fn ($q) => $q->where('account_type', 'income')->where('name', 'like', '%processing%'))
-            ->sum('credit');
-
-        $opexSpent = (float) AccountingJournalLine::query()
-            ->whereHas('account', fn ($q) => $q->where('account_type', 'expense')->where('name', 'like', '%opex%'))
-            ->sum('debit');
-
-        $salariesSpent = (float) AccountingJournalLine::query()
-            ->whereHas('account', fn ($q) => $q->where('account_type', 'expense')->where('name', 'like', '%salar%'))
-            ->sum('debit');
-
-        $aggregateCashPosition = (float) AccountingJournalLine::query()
-            ->when($cashAccountIds->isNotEmpty(), fn ($q) => $q->whereIn('accounting_chart_account_id', $cashAccountIds))
-            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
-            ->value('balance');
-
-        $cashBankPosition = (float) AccountingJournalLine::query()
-            ->whereHas('account', function ($q) {
-                $q->where('is_cash_account', true)->where('name', 'like', '%bank%');
-            })
-            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
-            ->value('balance');
-
-        $cashMpesaPosition = (float) AccountingJournalLine::query()
-            ->whereHas('account', function ($q) {
-                $q->where('is_cash_account', true)->where('name', 'like', '%m-pesa%');
-            })
-            ->selectRaw('COALESCE(SUM(debit - credit), 0) as balance')
-            ->value('balance');
-
-        $entriesTotal = (int) AccountingJournalEntry::query()->count();
-        $entriesPosted = Schema::hasColumn('accounting_journal_entries', 'status')
-            ? (int) AccountingJournalEntry::query()->where('status', AccountingJournalEntry::STATUS_POSTED)->count()
-            : $entriesTotal;
-        $collectionEfficiency = $entriesTotal > 0 ? round(($entriesPosted / $entriesTotal) * 100, 1) : 0.0;
-
-        $employeesCount = max(1, (int) Employee::query()->count());
-        $costPerClient = $cashSpent / $employeesCount;
-        $netCashSurplus = $cashCollected - $cashSpent;
-        $operatingMarginPct = $cashCollected > 0 ? round(($netCashSurplus / $cashCollected) * 100, 1) : 0.0;
-        $taxEstimate = max(0.0, round($netCashSurplus * 0.08, 2));
-        $kraDeadlineDays = max(0, now()->diffInDays(now()->endOfMonth(), false));
-
-        return [
-            'cash_collected' => $cashCollected,
-            'cash_spent' => $cashSpent,
-            'interest_collected' => $interestCollected,
-            'processing_fees_collected' => $processingFeesCollected,
-            'opex_spent' => $opexSpent,
-            'salaries_spent' => $salariesSpent,
-            'net_cash_surplus' => $netCashSurplus,
-            'aggregate_cash_position' => $aggregateCashPosition,
-            'bank_cash_position' => $cashBankPosition,
-            'mpesa_cash_position' => $cashMpesaPosition,
-            'tax_estimate' => $taxEstimate,
-            'kra_deadline_days' => $kraDeadlineDays,
-            'operating_margin_pct' => $operatingMarginPct,
-            'cost_per_client' => $costPerClient,
-            'collection_efficiency_pct' => $collectionEfficiency,
-        ];
-    }
-
-    /** @return array<int, array<string, string>> */
-    private function buildFinancialReportTiles(): array
-    {
-        $lastGenerated = AccountingJournalEntry::query()->latest('updated_at')->value('updated_at');
-        $lastGeneratedLabel = $lastGenerated
-            ? Carbon::parse($lastGenerated)->diffForHumans()
-            : 'No generated runs';
-
-        return [
-            ['title' => 'Income Statement (P&L)', 'description' => 'Cash-basis performance with realized revenue streams.', 'last' => $lastGeneratedLabel],
-            ['title' => 'Balance Sheet', 'description' => 'Net loan portfolio and equity position snapshot.', 'last' => $lastGeneratedLabel],
-            ['title' => 'Trial Balance', 'description' => 'Debit/credit integrity audit view for cash-basis accounts.', 'last' => $lastGeneratedLabel],
-            ['title' => 'Cash Flow Statement', 'description' => 'Tracks M-Pesa to bank movement and cash concentration.', 'last' => $lastGeneratedLabel],
-            ['title' => 'Tax / KRA Ledger', 'description' => 'PAYE, VAT, NSSF, NHIF, SHIF obligations and due posture.', 'last' => $lastGeneratedLabel],
-            ['title' => 'Management Report', 'description' => 'Hybrid financial and operational intelligence for leadership.', 'last' => $lastGeneratedLabel],
-        ];
-    }
-
-    /**
-     * @param  Collection<int, AccountingChartAccount>  $accounts
-     * @param  Collection<string, array<string, mixed>>  $walletSlots
-     * @param  Collection<int, AccountingPostingRule>  $postingRules
-     * @return array<string, mixed>
-     */
-    private function buildChartOfAccountsOverview($accounts, $walletSlots, $postingRules): array
-    {
-        $typeOrder = ['asset', 'liability', 'equity', 'income', 'expense'];
-        $byType = [];
-        foreach ($typeOrder as $t) {
-            $byType[$t] = 0;
-        }
-        foreach ($accounts as $a) {
-            $t = (string) $a->account_type;
-            if (array_key_exists($t, $byType)) {
-                $byType[$t]++;
-            }
-        }
-
-        $active = $accounts->where('is_active', true)->count();
-        $total = $accounts->count();
-        $walletTotal = $walletSlots->count();
-        $walletFilled = $walletSlots->filter(fn (array $s): bool => ! empty($s['account_id']))->count();
-        $rulesTotal = $postingRules->count();
-        $rulesMapped = $postingRules->filter(function (AccountingPostingRule $r): bool {
-            return $r->debit_account_id !== null && $r->credit_account_id !== null;
-        })->count();
-
-        $journal30 = 0;
-        if (Schema::hasTable('accounting_journal_entries')) {
-            $journal30 = AccountingJournalEntry::query()
-                ->where('entry_date', '>=', now()->subDays(30)->toDateString())
-                ->count();
-        }
-
-        $typeLabels = ['Asset', 'Liability', 'Equity', 'Income', 'Expense'];
-        $typeValues = array_map(fn (string $t): int => $byType[$t] ?? 0, $typeOrder);
-
-        return [
-            'accounts_total' => $total,
-            'accounts_active' => $active,
-            'accounts_inactive' => max(0, $total - $active),
-            'cash_accounts' => $accounts->where('is_cash_account', true)->count(),
-            'wallet_filled' => $walletFilled,
-            'wallet_total' => $walletTotal,
-            'wallet_pct' => $walletTotal > 0 ? round(100 * $walletFilled / $walletTotal) : 0,
-            'rules_mapped' => $rulesMapped,
-            'rules_total' => $rulesTotal,
-            'rules_pct' => $rulesTotal > 0 ? round(100 * $rulesMapped / $rulesTotal) : 0,
-            'journal_entries_30d' => $journal30,
-            'type_chart' => [
-                'labels' => $typeLabels,
-                'values' => $typeValues,
-            ],
-        ];
-    }
-
     public function chartWalletSlotsUpdate(Request $request): RedirectResponse
     {
         $keys = array_keys($this->walletSlotLabels());
@@ -405,7 +147,7 @@ class LoanAccountingController extends Controller
             );
         }
 
-        return redirect()->route('loan.accounting.chart.index')->with('status', 'Wallet account mappings updated.');
+        return redirect()->route('loan.accounting.books.chart_rules')->with('status', 'Wallet account mappings updated.');
     }
 
     public function chartPostingRuleUpdate(Request $request, AccountingPostingRule $accounting_posting_rule): RedirectResponse
@@ -445,7 +187,7 @@ class LoanAccountingController extends Controller
             'credit_account_id' => $validated['credit_account_id'] ?? null,
         ]);
 
-        return redirect()->route('loan.accounting.chart.index')->with('status', 'Accounting rule updated.');
+        return redirect()->route('loan.accounting.books.chart_rules')->with('status', 'Accounting rule updated.');
     }
 
     public function chartPostingRuleStore(Request $request): RedirectResponse
@@ -604,7 +346,7 @@ class LoanAccountingController extends Controller
             return redirect($redirectTo)->with('status', $this->coaApprovalEnabled() ? 'Account submitted for approval.' : 'Account created.');
         }
 
-        return redirect()->route('loan.accounting.chart.index')->with('status', $this->coaApprovalEnabled() ? 'Account submitted for approval.' : 'Account created.');
+        return redirect()->route('loan.accounting.books.chart_rules')->with('status', $this->coaApprovalEnabled() ? 'Account submitted for approval.' : 'Account created.');
     }
 
     public function chartEdit(AccountingChartAccount $accounting_chart_account): RedirectResponse
@@ -647,7 +389,7 @@ class LoanAccountingController extends Controller
             return redirect($redirectTo)->with('status', 'Account updated.');
         }
 
-        return redirect()->route('loan.accounting.chart.index')->with('status', 'Account updated.');
+        return redirect()->route('loan.accounting.books.chart_rules')->with('status', 'Account updated.');
     }
 
     private function coaApprovalEnabled(): bool
@@ -694,7 +436,7 @@ class LoanAccountingController extends Controller
             return redirect($redirectTo)->with('status', 'Account removed.');
         }
 
-        return redirect()->route('loan.accounting.chart.index')->with('status', 'Account removed.');
+        return redirect()->route('loan.accounting.books.chart_rules')->with('status', 'Account removed.');
     }
 
     /** @return array<string, mixed> */
@@ -706,6 +448,7 @@ class LoanAccountingController extends Controller
             'code' => ['prohibited'],
             'name' => ['required', 'string', 'max:255'],
             'account_type' => ['required', 'in:asset,liability,equity,income,expense'],
+            'income_statement_category' => ['nullable', Rule::in(AccountingChartAccount::INCOME_STATEMENT_CATEGORIES)],
             'account_class' => $hasAccountClass
                 ? ['required', Rule::in([AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_PARENT, AccountingChartAccount::CLASS_DETAIL])]
                 : ['nullable'],
@@ -754,6 +497,17 @@ class LoanAccountingController extends Controller
             }
         }
 
+        $selectedType = (string) ($validated['account_type'] ?? '');
+        $selectedCategory = (string) ($validated['income_statement_category'] ?? '');
+        if (in_array($selectedType, [AccountingChartAccount::TYPE_INCOME, AccountingChartAccount::TYPE_EXPENSE], true) && $selectedCategory === '') {
+            throw ValidationException::withMessages([
+                'income_statement_category' => 'Income statement category is required for income and expense accounts.',
+            ]);
+        }
+        if (! in_array($selectedType, [AccountingChartAccount::TYPE_INCOME, AccountingChartAccount::TYPE_EXPENSE], true)) {
+            $validated['income_statement_category'] = null;
+        }
+
         return $validated;
     }
 
@@ -783,6 +537,9 @@ class LoanAccountingController extends Controller
             'code' => $resolvedCode ?: (string) ($existing?->code ?? ''),
             'name' => $validated['name'],
             'account_type' => $accountType,
+            'income_statement_category' => in_array($accountType, [AccountingChartAccount::TYPE_INCOME, AccountingChartAccount::TYPE_EXPENSE], true)
+                ? ($validated['income_statement_category'] ?? null)
+                : null,
             'current_balance' => (float) ($validated['current_balance'] ?? 0),
             'min_balance_floor' => (float) ($validated['min_balance_floor'] ?? 0),
             'allow_overdraft' => $request->boolean('allow_overdraft'),
@@ -951,11 +708,60 @@ class LoanAccountingController extends Controller
             ->orderBy('code')
             ->get();
 
-        return view('loan.accounting.journal.create', compact('accounts'));
+        $pendingApprovals = AccountingJournalApprovalQueue::query()
+            ->where('status', AccountingJournalApprovalQueue::STATUS_PENDING)
+            ->count();
+        $draftCount = AccountingJournalEntry::query()->where('status', AccountingJournalEntry::STATUS_DRAFT)->count();
+        $blockedCount = AccountingJournalEntry::query()->where('status', AccountingJournalEntry::STATUS_REJECTED)->count();
+        $recentActivities = AccountingJournalEntry::query()
+            ->with('createdByUser')
+            ->whereNotNull('created_by')
+            ->orderByDesc('entry_date')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get();
+
+        $templates = collect();
+        if (Schema::hasTable('accounting_journal_templates')) {
+            $templates = AccountingJournalTemplate::query()
+                ->where('is_active', true)
+                ->where(function ($q) {
+                    $q->where('scope', 'system')
+                        ->orWhere('created_by', auth()->id());
+                })
+                ->orderBy('scope')
+                ->orderBy('name')
+                ->get();
+        }
+
+        return view('loan.accounting.journal.create', compact(
+            'accounts',
+            'pendingApprovals',
+            'draftCount',
+            'blockedCount',
+            'recentActivities',
+            'templates',
+        ));
+    }
+
+    public function journalEdit(AccountingJournalEntry $accounting_journal_entry): View
+    {
+        abort_unless(in_array((string) $accounting_journal_entry->status, [
+            AccountingJournalEntry::STATUS_DRAFT,
+            AccountingJournalEntry::STATUS_REJECTED,
+        ], true), 403);
+
+        return $this->journalCreate()->with('draftEntry', $accounting_journal_entry->load('lines'));
     }
 
     public function journalStore(Request $request): RedirectResponse
     {
+        $action = (string) $request->input('action', 'post');
+        if (! in_array($action, ['post', 'submit_for_approval', 'save_draft'], true)) {
+            $action = 'post';
+        }
+        $draftId = (int) $request->input('journal_entry_id', 0);
+
         $compactLines = collect($request->input('lines', []))
             ->filter(fn (array $l) => ! empty($l['accounting_chart_account_id']))
             ->values()
@@ -1005,12 +811,56 @@ class LoanAccountingController extends Controller
 
         $totalDebit = round($lines->sum(fn ($l) => (float) ($l['debit'] ?? 0)), 2);
         $totalCredit = round($lines->sum(fn ($l) => (float) ($l['credit'] ?? 0)), 2);
-        if ($totalDebit !== $totalCredit || $totalDebit <= 0) {
+        if ($action !== 'save_draft' && ($totalDebit !== $totalCredit || $totalDebit <= 0)) {
             return back()->withErrors(['lines' => 'Total debits must equal total credits and be greater than zero.'])->withInput();
         }
 
         $entry = null;
-        DB::transaction(function () use ($validated, $request, $lines, $lineAccountIds, $lineAccounts, $lineDeltas, &$entry) {
+        DB::transaction(function () use ($validated, $request, $lines, $lineAccountIds, $lineAccounts, $lineDeltas, $action, $draftId, &$entry) {
+            $existingDraft = null;
+            if ($draftId > 0) {
+                $existingDraft = AccountingJournalEntry::query()->find($draftId);
+                if (! $existingDraft || ! in_array((string) $existingDraft->status, [
+                    AccountingJournalEntry::STATUS_DRAFT,
+                    AccountingJournalEntry::STATUS_REJECTED,
+                ], true)) {
+                    throw ValidationException::withMessages([
+                        'journal' => 'Only draft or rejected entries can be edited.',
+                    ]);
+                }
+            }
+
+            if ($action === 'save_draft') {
+                $payload = [
+                    'entry_date' => $validated['entry_date'],
+                    'reference' => $validated['reference'] ?? null,
+                    'description' => $validated['description'] ?? null,
+                    'created_by' => $request->user()->id,
+                    'status' => AccountingJournalEntry::STATUS_DRAFT,
+                    'approved_by' => null,
+                    'approved_at' => null,
+                ];
+                if ($existingDraft) {
+                    $existingDraft->update($payload);
+                    $existingDraft->lines()->delete();
+                    $entry = $existingDraft;
+                } else {
+                    $entry = AccountingJournalEntry::create($payload);
+                }
+
+                foreach ($lines as $line) {
+                    AccountingJournalLine::create([
+                        'accounting_journal_entry_id' => $entry->id,
+                        'accounting_chart_account_id' => $line['accounting_chart_account_id'],
+                        'debit' => round((float) ($line['debit'] ?? 0), 2),
+                        'credit' => round((float) ($line['credit'] ?? 0), 2),
+                        'memo' => $line['memo'] ?? null,
+                    ]);
+                }
+
+                return;
+            }
+
             $decision = app(AccountingControlledApprovalService::class)->evaluate($lines, $lineAccounts);
             if ((bool) $decision['blocked']) {
                 throw ValidationException::withMessages([
@@ -1018,21 +868,39 @@ class LoanAccountingController extends Controller
                 ]);
             }
 
-            if (! (bool) $decision['requires_approval']) {
+            if ($action === 'post' && (bool) $decision['requires_approval']) {
+                throw ValidationException::withMessages([
+                    'lines' => 'This journal requires approval. Use "Submit for approval".',
+                ]);
+            }
+            if ($action === 'submit_for_approval' && ! (bool) $decision['requires_approval']) {
+                throw ValidationException::withMessages([
+                    'lines' => 'This journal does not require approval. Use "Post transaction".',
+                ]);
+            }
+
+            if ($action === 'post') {
                 app(AccountingOverdraftGuardService::class)->assertCanApplyDeltas($lineDeltas);
             }
 
-            $entry = AccountingJournalEntry::create([
+            $entryPayload = [
                 'entry_date' => $validated['entry_date'],
                 'reference' => $validated['reference'] ?? null,
                 'description' => $validated['description'] ?? null,
                 'created_by' => $request->user()->id,
-                'status' => (bool) $decision['requires_approval']
+                'status' => $action === 'submit_for_approval'
                     ? AccountingJournalEntry::STATUS_PENDING_CONTROLLED_APPROVAL
                     : AccountingJournalEntry::STATUS_POSTED,
-                'approved_by' => (bool) $decision['requires_approval'] ? null : $request->user()->id,
-                'approved_at' => (bool) $decision['requires_approval'] ? null : now(),
-            ]);
+                'approved_by' => $action === 'submit_for_approval' ? null : $request->user()->id,
+                'approved_at' => $action === 'submit_for_approval' ? null : now(),
+            ];
+            if ($existingDraft) {
+                $existingDraft->update($entryPayload);
+                $existingDraft->lines()->delete();
+                $entry = $existingDraft;
+            } else {
+                $entry = AccountingJournalEntry::create($entryPayload);
+            }
             foreach ($lines as $line) {
                 AccountingJournalLine::create([
                     'accounting_journal_entry_id' => $entry->id,
@@ -1042,7 +910,7 @@ class LoanAccountingController extends Controller
                     'memo' => $line['memo'] ?? null,
                 ]);
             }
-            if ((bool) $decision['requires_approval']) {
+            if ($action === 'submit_for_approval') {
                 AccountingJournalApprovalQueue::query()->create([
                     'accounting_journal_entry_id' => $entry->id,
                     'triggered_by_user_id' => $request->user()->id,
@@ -1063,6 +931,11 @@ class LoanAccountingController extends Controller
             }
         });
 
+        if ($action === 'save_draft') {
+            return redirect()
+                ->route('loan.accounting.journal.edit', $entry)
+                ->with('status', 'Draft saved.');
+        }
         if ((string) ($entry->status ?? '') === AccountingJournalEntry::STATUS_PENDING_CONTROLLED_APPROVAL) {
             return redirect()
                 ->route('loan.accounting.journal.index')
@@ -1072,6 +945,100 @@ class LoanAccountingController extends Controller
         return redirect()
             ->route('loan.accounting.journal.show', $entry)
             ->with('status', 'Journal entry posted.');
+    }
+
+    public function journalTemplateStore(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('accounting_journal_templates')) {
+            return back()->withErrors([
+                'template' => 'Journal templates table is missing. Run migrations first.',
+            ]);
+        }
+
+        $rawTemplateLines = $request->input('template_lines', []);
+        if (is_string($rawTemplateLines)) {
+            $decoded = json_decode($rawTemplateLines, true);
+            $rawTemplateLines = is_array($decoded) ? $decoded : [];
+        }
+        $request->merge(['template_lines' => $rawTemplateLines]);
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'scope' => ['required', Rule::in(['personal', 'system'])],
+            'reference_prefix' => ['nullable', 'string', 'max:30'],
+            'default_action' => ['required', Rule::in(['post', 'submit_for_approval', 'save_draft'])],
+            'template_lines' => ['required', 'array', 'min:1'],
+            'template_lines.*.accounting_chart_account_id' => ['required', 'exists:accounting_chart_accounts,id'],
+            'template_lines.*.debit' => ['nullable', 'numeric', 'min:0'],
+            'template_lines.*.credit' => ['nullable', 'numeric', 'min:0'],
+            'template_lines.*.memo' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        AccountingJournalTemplate::query()->create([
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'scope' => $validated['scope'],
+            'created_by' => $request->user()->id,
+            'is_active' => true,
+            'reference_prefix' => $validated['reference_prefix'] ?? null,
+            'default_action' => $validated['default_action'],
+            'template_lines' => collect($validated['template_lines'])
+                ->map(fn (array $line): array => [
+                    'accounting_chart_account_id' => (int) $line['accounting_chart_account_id'],
+                    'debit' => round((float) ($line['debit'] ?? 0), 2),
+                    'credit' => round((float) ($line['credit'] ?? 0), 2),
+                    'memo' => $line['memo'] ?? null,
+                ])->values()->all(),
+        ]);
+
+        return redirect()->route('loan.accounting.journal.create')->with('status', 'Template saved.');
+    }
+
+    public function journalTemplateUpdate(Request $request, AccountingJournalTemplate $accounting_journal_template): RedirectResponse
+    {
+        abort_unless(
+            (int) ($accounting_journal_template->created_by ?? 0) === (int) $request->user()->id || (bool) $request->user()->is_super_admin,
+            403
+        );
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:120'],
+            'description' => ['nullable', 'string', 'max:500'],
+            'reference_prefix' => ['nullable', 'string', 'max:30'],
+            'template_lines' => ['required', 'array', 'min:1'],
+            'template_lines.*.accounting_chart_account_id' => ['required', 'exists:accounting_chart_accounts,id'],
+            'template_lines.*.debit' => ['nullable', 'numeric', 'min:0'],
+            'template_lines.*.credit' => ['nullable', 'numeric', 'min:0'],
+            'template_lines.*.memo' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $accounting_journal_template->update([
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'reference_prefix' => $validated['reference_prefix'] ?? null,
+            'template_lines' => collect($validated['template_lines'])
+                ->map(fn (array $line): array => [
+                    'accounting_chart_account_id' => (int) $line['accounting_chart_account_id'],
+                    'debit' => round((float) ($line['debit'] ?? 0), 2),
+                    'credit' => round((float) ($line['credit'] ?? 0), 2),
+                    'memo' => $line['memo'] ?? null,
+                ])->values()->all(),
+        ]);
+
+        return redirect()->route('loan.accounting.journal.create')->with('status', 'Template updated.');
+    }
+
+    public function journalTemplateDestroy(Request $request, AccountingJournalTemplate $accounting_journal_template): RedirectResponse
+    {
+        abort_unless(
+            (int) ($accounting_journal_template->created_by ?? 0) === (int) $request->user()->id || (bool) $request->user()->is_super_admin,
+            403
+        );
+
+        $accounting_journal_template->delete();
+
+        return redirect()->route('loan.accounting.journal.create')->with('status', 'Template deleted.');
     }
 
     public function journalShow(AccountingJournalEntry $accounting_journal_entry): View|\Symfony\Component\HttpFoundation\StreamedResponse

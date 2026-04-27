@@ -12,28 +12,44 @@ use Symfony\Component\HttpFoundation\Response;
 class LogLoanPortalAccess
 {
     private static ?bool $hasActivityColumn = null;
+    private static ?bool $hasForensicsColumns = null;
 
     public function handle(Request $request, Closure $next): Response
     {
         $response = $next($request);
 
-        if (! $request->user() || ! str_starts_with($request->path(), 'loan/')) {
+        if (! str_starts_with($request->path(), 'loan/')) {
             return $response;
         }
 
         try {
+            $userId = $request->user()?->id;
             $payload = [
-                'user_id' => $request->user()->id,
+                'user_id' => $userId,
+                'session_id' => $request->session()->getId(),
+                'device_fingerprint' => substr(hash('sha256', (string) $request->userAgent()), 0, 40),
                 'route_name' => $request->route()?->getName(),
                 'method' => $request->method(),
                 'path' => '/'.$request->path(),
                 'ip_address' => $request->ip(),
+                'country_code' => $this->detectCountryCode($request->ip()),
+                'geo_label' => $this->geoLabel($request->ip()),
+                'is_foreign_ip' => $this->isForeignIp($request->ip()),
                 'user_agent' => mb_substr((string) $request->userAgent(), 0, 512),
                 'created_at' => now(),
             ];
 
             if ($this->supportsActivityColumn()) {
                 $payload['activity'] = $this->buildActivitySummary($request, $response);
+            }
+            if ($this->supportsForensicsColumns()) {
+                $risk = $this->calculateRisk($request, $response, $payload['activity'] ?? null);
+                $payload = array_merge($payload, $risk, [
+                    'audit_token' => $this->makeAuditToken((int) ($userId ?? 0)),
+                    'previous_hash' => LoanAccessLog::query()->latest('id')->value('checksum'),
+                    'mfa_verified' => null,
+                ]);
+                $payload['checksum'] = $this->buildChecksum($payload);
             }
 
             LoanAccessLog::query()->create($payload);
@@ -57,6 +73,23 @@ class LogLoanPortalAccess
         }
 
         return self::$hasActivityColumn;
+    }
+
+    private function supportsForensicsColumns(): bool
+    {
+        if (self::$hasForensicsColumns !== null) {
+            return self::$hasForensicsColumns;
+        }
+
+        try {
+            self::$hasForensicsColumns = Schema::hasColumn('loan_access_logs', 'risk_score')
+                && Schema::hasColumn('loan_access_logs', 'checksum')
+                && Schema::hasColumn('loan_access_logs', 'audit_token');
+        } catch (\Throwable) {
+            self::$hasForensicsColumns = false;
+        }
+
+        return self::$hasForensicsColumns;
     }
 
     private function buildActivitySummary(Request $request, Response $response): string
@@ -156,5 +189,191 @@ class LogLoanPortalAccess
         return $segments !== []
             ? Str::headline(implode(' ', $segments))
             : 'Loan portal';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function calculateRisk(Request $request, Response $response, ?string $activity): array
+    {
+        $method = strtoupper((string) $request->method());
+        $route = (string) ($request->route()?->getName() ?? '');
+        $path = '/'.$request->path();
+        $statusCode = $response->getStatusCode();
+
+        $score = 10;
+        $reasons = [];
+        $actionType = $this->detectActionType($method, $route, $path);
+
+        if ($actionType !== 'view') {
+            $score += 15;
+        }
+
+        if ($statusCode >= 400) {
+            $score += 35;
+            $reasons[] = 'Request failed';
+        }
+
+        $sensitivePatterns = ['accounting', 'journal', 'reversal', 'income_statement', 'balance_sheet', 'export', 'clients.update'];
+        if ($route !== '' && collect($sensitivePatterns)->contains(fn (string $p) => Str::contains($route, $p))) {
+            $score += 25;
+            $reasons[] = 'Sensitive route access';
+        }
+
+        if ($this->isForeignIp($request->ip())) {
+            $score += 35;
+            $reasons[] = 'Foreign IP';
+        }
+
+        if ($activity && Str::contains(Str::lower($activity), ['failed', 'blocked', 'reversal', 'override'])) {
+            $score += 20;
+            $reasons[] = 'High-risk activity keyword';
+        }
+
+        $score = min(100, $score);
+
+        $riskLevel = match (true) {
+            $score >= 90 => 'critical',
+            $score >= 70 => 'high',
+            $score >= 40 => 'medium',
+            default => 'low',
+        };
+
+        return [
+            'event_category' => $this->eventCategoryFromRoute($route),
+            'action_type' => $actionType,
+            'result' => $statusCode >= 400 ? 'blocked' : 'success',
+            'risk_score' => $score,
+            'risk_level' => $riskLevel,
+            'risk_reason' => implode('; ', $reasons) ?: 'Routine activity',
+            'requires_reason' => $this->requiresReason($route),
+            'reason_text' => null,
+            'is_privileged' => $this->isPrivilegedAction($route),
+        ];
+    }
+
+    private function detectActionType(string $method, string $route, string $path): string
+    {
+        $needle = Str::lower($route.' '.$path);
+
+        if (Str::contains($needle, ['import'])) {
+            return 'import';
+        }
+        if (Str::contains($needle, ['export'])) {
+            return 'export';
+        }
+        if (Str::contains($needle, ['download', 'template'])) {
+            return 'download';
+        }
+
+        if ($method === 'GET') {
+            return 'view';
+        }
+
+        return match ($method) {
+            'POST' => 'create',
+            'PUT', 'PATCH' => 'update',
+            'DELETE' => 'delete',
+            default => 'action',
+        };
+    }
+
+    private function eventCategoryFromRoute(string $routeName): string
+    {
+        if (Str::contains($routeName, 'accounting')) {
+            return 'accounting';
+        }
+        if (Str::contains($routeName, 'payments') || Str::contains($routeName, 'book')) {
+            return 'loan';
+        }
+        if (Str::contains($routeName, 'system')) {
+            return 'system';
+        }
+        if (Str::contains($routeName, 'dashboard') || Str::contains($routeName, 'report')) {
+            return 'report';
+        }
+
+        return 'access';
+    }
+
+    private function requiresReason(string $routeName): bool
+    {
+        return Str::contains($routeName, [
+            'chart',
+            'journal.reverse',
+            'clients.update',
+            'reports.income_statement',
+            'reports.balance_sheet',
+        ]);
+    }
+
+    private function isPrivilegedAction(string $routeName): bool
+    {
+        return Str::contains($routeName, [
+            'accounting',
+            'setup.access_roles',
+            'journal.reverse',
+            'requisitions.approve',
+            'advances.approve',
+        ]);
+    }
+
+    private function makeAuditToken(int $userId): string
+    {
+        return strtoupper('AUD'.dechex((int) now()->timestamp).'-'.$userId.'-'.Str::upper(Str::random(4)));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function buildChecksum(array $payload): string
+    {
+        $hashSource = implode('|', [
+            $payload['user_id'] ?? '',
+            $payload['session_id'] ?? '',
+            $payload['route_name'] ?? '',
+            $payload['method'] ?? '',
+            $payload['path'] ?? '',
+            $payload['activity'] ?? '',
+            $payload['result'] ?? '',
+            $payload['risk_score'] ?? '',
+            $payload['previous_hash'] ?? '',
+            (string) now()->toIso8601String(),
+        ]);
+
+        return hash('sha256', $hashSource);
+    }
+
+    private function detectCountryCode(?string $ip): ?string
+    {
+        if ($ip === null || $ip === '') {
+            return null;
+        }
+        if ($ip === '127.0.0.1' || $ip === '::1') {
+            return 'KE';
+        }
+        if (Str::startsWith($ip, ['192.168.', '10.', '172.16.'])) {
+            return 'KE';
+        }
+
+        return 'UNK';
+    }
+
+    private function geoLabel(?string $ip): ?string
+    {
+        $country = $this->detectCountryCode($ip);
+        if ($country === null) {
+            return null;
+        }
+
+        return match ($country) {
+            'KE' => 'Nairobi, KE',
+            default => 'Unknown',
+        };
+    }
+
+    private function isForeignIp(?string $ip): bool
+    {
+        return $this->detectCountryCode($ip) !== 'KE';
     }
 }

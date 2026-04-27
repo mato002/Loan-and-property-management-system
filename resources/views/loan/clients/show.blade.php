@@ -1,21 +1,23 @@
 <x-loan-layout>
     @php
         $loanHistory = $loan_client->loanBookLoans ?? collect();
+        $metrics = $dashboardMetrics ?? [];
         $activeLoans = $loanHistory->whereIn('status', [
             \App\Models\LoanBookLoan::STATUS_ACTIVE,
             \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
             \App\Models\LoanBookLoan::STATUS_RESTRUCTURED,
         ]);
-        $totalOutstanding = (float) $activeLoans->sum(fn ($loan) => (float) ($loan->balance ?? 0));
-        $totalArrears = (float) $activeLoans->sum(fn ($loan) => (float) ($loan->dpd ?? 0));
-        $totalPrincipal = (float) $loanHistory->sum(fn ($loan) => (float) ($loan->principal ?? 0));
-        $totalRepaid = (float) $loanHistory->sum(fn ($loan) => (float) ($loan->processed_repayments_sum_amount ?? 0));
-        $completionNumerator = (int) $loanHistory->sum(fn ($loan) => min((int) ($loan->term_value ?? 0), (int) (($loan->processedRepayments ?? collect())->count())));
-        $completionDenominator = (int) max(1, $loanHistory->sum(fn ($loan) => (int) ($loan->term_value ?? 0)));
-        $completionPercent = min(100, (int) round(($completionNumerator / max(1, $completionDenominator)) * 100));
-        $ltv = $totalRepaid + max(0, $totalOutstanding * 0.18);
-        $averageDpd = (int) round((float) $activeLoans->avg(fn ($loan) => (float) ($loan->dpd ?? 0)));
-        $creditScore = max(420, min(850, 780 - ($averageDpd * 6)));
+        $totalOutstanding = (float) ($metrics['total_outstanding'] ?? $activeLoans->sum(fn ($loan) => (float) ($loan->balance ?? 0)));
+        $totalArrears = (float) ($metrics['total_arrears_days'] ?? $activeLoans->sum(fn ($loan) => (float) ($loan->dpd ?? 0)));
+        $totalPrincipal = (float) ($metrics['total_principal'] ?? $loanHistory->sum(fn ($loan) => (float) ($loan->principal ?? 0)));
+        $totalRepaid = (float) ($metrics['total_repaid'] ?? $loanHistory->sum(fn ($loan) => (float) ($loan->processed_repayments_sum_amount ?? 0)));
+        $completionNumerator = (int) ($metrics['completion_numerator'] ?? $loanHistory->sum(fn ($loan) => min((int) ($loan->term_value ?? 0), (int) (($loan->processedRepayments ?? collect())->count()))));
+        $completionDenominator = (int) ($metrics['completion_denominator'] ?? max(1, $loanHistory->sum(fn ($loan) => (int) ($loan->term_value ?? 0))));
+        $completionPercent = (int) ($metrics['completion_percent'] ?? min(100, (int) round(($completionNumerator / max(1, $completionDenominator)) * 100)));
+        $loanCycles = (int) ($metrics['loan_cycles'] ?? $loanHistory->count());
+        $ltv = (float) ($metrics['lifetime_value'] ?? $totalRepaid);
+        $creditScore = (int) ($metrics['credit_score'] ?? 780);
+        $walletBalance = (float) ($metrics['wallet_balance'] ?? 0);
         $riskLabel = $creditScore >= 740 ? 'Low Risk' : ($creditScore >= 660 ? 'Medium Risk' : 'High Risk');
         $riskClass = $creditScore >= 740
             ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -112,7 +114,7 @@
                             <p class="mt-2 text-3xl font-semibold text-slate-900">{{ $creditScore }}</p>
                             <p class="mt-1 text-xs font-medium text-emerald-700">{{ $riskLabel }}</p>
                             <p class="mt-1 text-xs text-slate-500">Based on active portfolio behavior.</p>
-                            <a href="#" class="mt-2 inline-flex text-xs font-semibold text-teal-700 hover:text-teal-800">View details</a>
+                            <a href="{{ route('loan.book.loan_arrears', ['q' => $loan_client->client_number]) }}" class="mt-2 inline-flex text-xs font-semibold text-teal-700 hover:text-teal-800">View details</a>
                         </div>
                         <svg class="h-16 w-16 shrink-0" viewBox="0 0 100 100" role="img" aria-label="Credit score meter">
                             <circle cx="50" cy="50" r="38" fill="none" stroke="#e2e8f0" stroke-width="8"></circle>
@@ -125,8 +127,8 @@
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Client Wallet</p>
-                            <p class="mt-2 text-2xl font-semibold text-slate-900">KSh {{ number_format($totalRepaid, 2) }}</p>
-                            <a href="#" class="mt-2 inline-flex text-xs font-semibold text-teal-700 hover:text-teal-800">View Wallet</a>
+                            <p class="mt-2 text-2xl font-semibold text-slate-900">KSh {{ number_format($walletBalance, 2) }}</p>
+                            <a href="{{ route('loan.payments.processed', ['q' => $loan_client->client_number, 'channel' => 'wallet']) }}" class="mt-2 inline-flex text-xs font-semibold text-teal-700 hover:text-teal-800">View Wallet</a>
                         </div>
                         <svg class="h-10 w-10 text-teal-700" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <rect x="2" y="5" width="20" height="14" rx="3" stroke="currentColor" stroke-width="1.5"></rect>
@@ -156,7 +158,7 @@
                     <p class="mt-2 text-3xl font-semibold text-slate-900">KSh {{ number_format($ltv, 2) }}</p>
                     <dl class="mt-2 space-y-1 text-xs text-slate-600">
                         <div class="flex items-center justify-between"><dt>Total Disbursed</dt><dd class="font-semibold text-slate-800">KSh {{ number_format($totalPrincipal, 2) }}</dd></div>
-                        <div class="flex items-center justify-between"><dt>Total Repaid</dt><dd class="font-semibold text-slate-800">KSh {{ number_format($totalRepaid, 2) }}</dd></div>
+                        <div class="flex items-center justify-between"><dt>Loan Cycles</dt><dd class="font-semibold text-slate-800">{{ number_format($loanCycles) }}</dd></div>
                     </dl>
                 </article>
 

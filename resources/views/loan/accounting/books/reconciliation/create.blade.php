@@ -3,7 +3,7 @@
         <x-slot name="actions"><a href="{{ route('loan.accounting.reconciliation.index') }}" class="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Back</a></x-slot>
         <div class="bg-white border border-slate-200 rounded-xl max-w-lg p-6 space-y-4">
             @if ($cashAccounts->isEmpty())
-                <p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-4">No cash-flagged accounts in the chart. Open <a href="{{ route('loan.accounting.chart.index') }}" class="font-semibold underline">chart of accounts</a> and mark bank/cash lines as cash accounts.</p>
+                <p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-4">No cash-flagged accounts in the chart. Open <a href="{{ route('loan.accounting.books.chart_rules') }}" class="font-semibold underline">chart rules</a> and mark bank/cash lines as cash accounts.</p>
             @else
             <form method="post" action="{{ route('loan.accounting.reconciliation.store') }}">
                 @csrf

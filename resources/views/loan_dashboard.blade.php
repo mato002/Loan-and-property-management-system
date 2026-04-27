@@ -2,6 +2,7 @@
     $currencyCode = $currencyCode ?? 'KES';
     $fmt = fn (float|int $n) => $currencyCode . ' ' . number_format((float) $n, 2);
     $fmtInt = fn (int $n) => number_format($n);
+    $canAccessAccounting = (bool) ($canAccessAccounting ?? false);
     $colMeta = $charts['collections']['meta'] ?? ['total' => 0, 'average' => 0, 'peak_month' => null, 'peak_value' => 0, 'is_empty' => true, 'payments_6mo' => 0, 'sheet_6mo' => 0];
     $disbMeta = $charts['disbursements']['meta'] ?? ['total' => 0, 'average' => 0, 'peak_month' => null, 'peak_value' => 0, 'is_empty' => true];
     $dpdVals = $charts['dpd']['values'] ?? [];
@@ -91,7 +92,11 @@
                             <div class="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs">
                                 <a href="{{ route('loan.employees.leaves.create') }}" class="text-sky-600 hover:underline font-medium">Apply Leave</a>
                                 <span class="text-slate-300">|</span>
-                                <a href="{{ route('loan.accounting.advances.create') }}" class="text-sky-600 hover:underline font-medium">Request Advance</a>
+                                @if ($canAccessAccounting)
+                                    <a href="{{ route('loan.accounting.advances.create') }}" class="text-sky-600 hover:underline font-medium">Request Advance</a>
+                                @else
+                                    <span class="text-slate-400 font-medium cursor-not-allowed" title="Requires accountant, manager, or admin role">Request Advance</span>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -158,7 +163,7 @@
                     <p class="mt-1 text-2xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
                 </div>
                 <div class="rounded-xl border border-rose-200 bg-rose-400 text-white p-2.5">
-                    <p class="text-xs font-semibold uppercase">Loan Arrears (Ksh)</p>
+                    <p class="text-xs font-semibold uppercase">Loan Arrears ({{ $currencyCode }})</p>
                     <p class="mt-1 text-2xl font-bold tabular-nums">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
                 </div>
                 <div class="rounded-xl border border-slate-200 bg-white p-2.5">
@@ -191,7 +196,7 @@
                 <div class="min-w-0">
                     <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Outstanding book</p>
                     <p class="text-2xl font-bold text-slate-900 tabular-nums mt-1 truncate" title="{{ $fmt($kpis['outstanding']) }}">{{ $fmt($kpis['outstanding']) }}</p>
-                    <p class="text-xs text-slate-500 mt-0.5">Active, restructured &amp; pending disbursement balances</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Posted GL balance (principal loan book account)</p>
                 </div>
             </div>
 
@@ -513,32 +518,34 @@
         </div>
 
         {{-- Accounting / ops strip --}}
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex items-center justify-between gap-3">
-                <div>
-                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Requisitions</p>
-                    <p class="text-xl font-bold text-slate-900 tabular-nums mt-0.5">{{ $fmtInt($opsStrip['pending_requisitions']) }}</p>
-                    <p class="text-xs text-slate-500">Pending approval</p>
+        @if ($canAccessAccounting)
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Requisitions</p>
+                        <p class="text-xl font-bold text-slate-900 tabular-nums mt-0.5">{{ $fmtInt($opsStrip['pending_requisitions']) }}</p>
+                        <p class="text-xs text-slate-500">Pending approval</p>
+                    </div>
+                    <a href="{{ route('loan.accounting.requisitions.index') }}" class="text-xs font-semibold text-indigo-600 hover:underline shrink-0">Open →</a>
                 </div>
-                <a href="{{ route('loan.accounting.requisitions.index') }}" class="text-xs font-semibold text-indigo-600 hover:underline shrink-0">Open →</a>
-            </div>
-            <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex items-center justify-between gap-3">
-                <div>
-                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Journal</p>
-                    <p class="text-xl font-bold text-slate-900 tabular-nums mt-0.5">{{ $fmtInt($opsStrip['journal_last_30']) }}</p>
-                    <p class="text-xs text-slate-500">Entries last 30 days</p>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Journal</p>
+                        <p class="text-xl font-bold text-slate-900 tabular-nums mt-0.5">{{ $fmtInt($opsStrip['journal_last_30']) }}</p>
+                        <p class="text-xs text-slate-500">Entries last 30 days</p>
+                    </div>
+                    <a href="{{ route('loan.accounting.journal.index') }}" class="text-xs font-semibold text-indigo-600 hover:underline shrink-0">Ledger →</a>
                 </div>
-                <a href="{{ route('loan.accounting.journal.index') }}" class="text-xs font-semibold text-indigo-600 hover:underline shrink-0">Ledger →</a>
-            </div>
-            <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex items-center justify-between gap-3">
-                <div>
-                    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Books of account</p>
-                    <p class="text-sm font-semibold text-slate-800 mt-1">Reports &amp; registers</p>
-                    <p class="text-xs text-slate-500">COA, payroll, assets</p>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Books of account</p>
+                        <p class="text-sm font-semibold text-slate-800 mt-1">Reports &amp; registers</p>
+                        <p class="text-xs text-slate-500">COA, payroll, assets</p>
+                    </div>
+                    <a href="{{ route('loan.accounting.books') }}" class="text-xs font-semibold text-indigo-600 hover:underline shrink-0">Hub →</a>
                 </div>
-                <a href="{{ route('loan.accounting.books') }}" class="text-xs font-semibold text-indigo-600 hover:underline shrink-0">Hub →</a>
             </div>
-        </div>
+        @endif
 
         {{-- Performance indicators --}}
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -607,7 +614,9 @@
                 <a href="{{ route('loan.payments.create') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">Record pay-in</a>
                 <a href="{{ route('loan.book.collection_sheet.index') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">Collection sheet</a>
                 <a href="{{ route('loan.book.disbursements.create') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">New disbursement</a>
-                <a href="{{ route('loan.accounting.chart.index') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">Chart of accounts</a>
+                @if ($canAccessAccounting)
+                    <a href="{{ route('loan.accounting.books.chart_rules') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">Chart rules</a>
+                @endif
                 <a href="{{ route('loan.book.loan_arrears') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-[#2f4f4f] bg-[#2f4f4f] px-3 py-2 text-xs font-semibold text-white hover:bg-[#264040] transition-colors">Loan arrears</a>
                 <a href="{{ route('loan.payments.report') }}" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors">Payments report</a>
             </div>

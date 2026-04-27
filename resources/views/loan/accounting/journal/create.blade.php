@@ -1,850 +1,337 @@
 @php
-    $accountOptions = collect($accounts ?? [])->map(function ($a) {
-        $name = strtolower((string) $a->name);
-        $isCashLike = str_contains($name, 'cash') || str_contains($name, 'bank') || str_contains($name, 'm-pesa');
-        return [
-            'id' => (int) $a->id,
-            'code' => (string) $a->code,
-            'name' => (string) $a->name,
-            'restricted' => str_contains($name, 'director') || str_contains($name, 'equity'),
-            'floor' => $isCashLike ? 5000 : 0,
-            'starting_balance' => $isCashLike ? 52000 : 120000,
-        ];
-    })->values();
-
     $seedLines = old('lines');
     if (!is_array($seedLines) || count($seedLines) === 0) {
-        $seedLines = [
-            ['accounting_chart_account_id' => null, 'debit' => 5000, 'credit' => 0, 'memo' => 'Transfer from M-Pesa'],
-            ['accounting_chart_account_id' => null, 'debit' => 0, 'credit' => 5000, 'memo' => 'Cash deposit'],
-            ['accounting_chart_account_id' => null, 'debit' => 0, 'credit' => 0, 'memo' => 'Optional note'],
-        ];
+        if (isset($draftEntry) && $draftEntry?->lines?->count()) {
+            $seedLines = $draftEntry->lines->map(fn ($line) => [
+                'accounting_chart_account_id' => (int) $line->accounting_chart_account_id,
+                'debit' => (float) $line->debit,
+                'credit' => (float) $line->credit,
+                'memo' => (string) ($line->memo ?? ''),
+            ])->values()->all();
+        } else {
+            $seedLines = [
+                ['accounting_chart_account_id' => null, 'debit' => 0, 'credit' => 0, 'memo' => ''],
+                ['accounting_chart_account_id' => null, 'debit' => 0, 'credit' => 0, 'memo' => ''],
+            ];
+        }
     }
+
+    $accountOptions = collect($accounts ?? [])->map(fn ($a) => [
+        'id' => (int) $a->id,
+        'code' => (string) $a->code,
+        'name' => (string) $a->name,
+        'restricted' => (bool) $a->is_controlled_account && (bool) $a->control_requires_approval,
+        'threshold' => (float) ($a->control_threshold_amount ?? 0),
+        'floor' => (float) ($a->min_balance_floor ?? 0),
+        'starting_balance' => (float) ($a->current_balance ?? 0),
+    ])->values();
+
+    $templatePayload = collect($templates ?? [])->map(fn ($template) => [
+        'id' => (int) $template->id,
+        'name' => (string) $template->name,
+        'description' => (string) ($template->description ?? ''),
+        'scope' => (string) $template->scope,
+        'default_action' => (string) $template->default_action,
+        'reference_prefix' => (string) ($template->reference_prefix ?? ''),
+        'template_lines' => collect($template->template_lines ?? [])->map(fn ($line) => [
+            'accounting_chart_account_id' => (int) ($line['accounting_chart_account_id'] ?? 0),
+            'debit' => (float) ($line['debit'] ?? 0),
+            'credit' => (float) ($line['credit'] ?? 0),
+            'memo' => (string) ($line['memo'] ?? ''),
+        ])->values()->all(),
+    ])->values();
 @endphp
 
 <x-loan-layout>
-    <x-loan.page title="Journal Entry Command Center" subtitle="Manage manual journal entries, adjustments, and non-routine cash movements.">
-        <div class="min-h-full space-y-4 bg-slate-50 p-3 sm:p-5 lg:p-6"
-            x-data="journalCommandCenter(@js($accountOptions), @js($seedLines))"
-            @keydown.escape.window="closeModal()"
-        >
-            <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                        <h1 class="text-2xl font-semibold text-slate-900">Journal Entry Command Center</h1>
-                        <p class="mt-1 text-sm text-slate-600">Manage manual journal entries, adjustments, and non-routine cash movements.</p>
-                    </div>
-                    <div class="flex flex-col items-start gap-3 lg:items-end">
-                        <div class="flex flex-wrap items-center gap-2 text-sm">
-                            <span class="font-medium text-slate-600">Thursday, April 23, 2026</span>
-                            <span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Period: April 2026 (Open)</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button type="button" @click="openModal()" class="inline-flex items-center gap-2 rounded-lg bg-teal-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-900">
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v5H4zM4 14h10v5H4zM17 14h3v5h-3"></path></svg>
-                                Quick Access &amp; Templates
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-                            </button>
-                            <button type="button" @click="openModal()" class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition hover:bg-blue-700" aria-label="Open template modal">
-                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round"></path></svg>
-                            </button>
+    <x-loan.page title="Journal Entry Command Center" subtitle="Create, draft, and submit manual journal entries with real approval governance.">
+        @include('loan.accounting.partials.flash')
+        <div class="space-y-4" x-data="journalCommandCenter(@js($accountOptions), @js($seedLines), @js($templatePayload))">
+            <section class="grid gap-3 md:grid-cols-3">
+                <article class="rounded-xl border border-orange-200 bg-white p-4 shadow-sm">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Blocked / Rejected</p>
+                    <p class="mt-2 text-3xl font-semibold text-orange-700">{{ (int) ($blockedCount ?? 0) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Needs correction before posting.</p>
+                </article>
+                <article class="rounded-xl border border-purple-200 bg-white p-4 shadow-sm">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-purple-700">Approval Queue</p>
+                    <p class="mt-2 text-3xl font-semibold text-purple-700">{{ (int) ($pendingApprovals ?? 0) }}</p>
+                    <div class="mt-2 border-t border-purple-100 pt-2 text-xs text-purple-800">
+                        <div class="flex items-center justify-between">
+                            <span>Entries waiting approval</span>
+                            <span class="font-semibold">{{ (int) ($pendingApprovals ?? 0) }}</span>
                         </div>
                     </div>
-                </div>
+                </article>
+                <article class="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Drafts</p>
+                    <p class="mt-2 text-3xl font-semibold text-blue-700">{{ (int) ($draftCount ?? 0) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Saved entries pending completion.</p>
+                </article>
             </section>
 
             <section class="grid gap-4 xl:grid-cols-12">
-                <aside class="space-y-4 xl:col-span-3">
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h2 class="text-base font-semibold text-slate-900">Templates &amp; Quick Access</h2>
-                        <div class="mt-4 space-y-4">
-                            <div>
-                                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Personal Favorites</p>
-                                <div class="mt-2 space-y-2">
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-left text-sm text-blue-700">M-Pesa to Bank Transfer <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-left text-sm text-blue-700">Petty Cash Replenishment <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-purple-100 bg-purple-50/80 px-3 py-2 text-left text-sm text-purple-700">Director Equity Contribution <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-purple-100 bg-purple-50/80 px-3 py-2 text-left text-sm text-purple-700">Salary Advance Issuance <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-orange-100 bg-orange-50/80 px-3 py-2 text-left text-sm text-orange-700">Reversal of Previous Journal <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
+                <aside class="xl:col-span-3 space-y-4">
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <h3 class="text-sm font-semibold text-slate-900">Saved Templates</h3>
+                        <div class="mt-3 space-y-2 max-h-72 overflow-y-auto">
+                            @forelse ($templates as $template)
+                                <div class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                    <div class="flex items-start justify-between gap-2">
+                                        <button type="button" class="text-left flex-1 hover:text-blue-700" @click="applyTemplate({{ (int) $template->id }})">
+                                            <div class="font-medium text-slate-800">{{ $template->name }}</div>
+                                            <div class="text-xs text-slate-500">{{ ucfirst($template->scope) }} template</div>
+                                        </button>
+                                        <div class="flex items-center gap-1">
+                                            <button type="button" @click="editTemplate({{ (int) $template->id }})" class="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-blue-700" title="Edit template" aria-label="Edit template">
+                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+                                            </button>
+                                            <form method="post" action="{{ route('loan.accounting.journal.templates.destroy', $template) }}">
+                                                @csrf
+                                                <button type="submit" class="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-red-700" title="Delete template" aria-label="Delete template" data-swal-confirm="Delete this template?">
+                                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div>
-                                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">System Defined</p>
-                                <div class="mt-2 space-y-2">
-                                    <button type="button" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-blue-700">Inter-Account Transfer</button>
-                                    <button type="button" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-blue-700">Bank Charges Allocation</button>
-                                    <button type="button" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-blue-700">Interest Income Recognition</button>
-                                    <button type="button" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-blue-700">Loan Write-Off Adjustment</button>
-                                </div>
-                            </div>
-                            <button type="button" class="w-full rounded-lg bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm">View Full Posted History</button>
+                            @empty
+                                <p class="text-xs text-slate-500">No templates yet.</p>
+                            @endforelse
                         </div>
                     </article>
-                </aside>
-
-                <main class="space-y-4 xl:col-span-6">
-                    <section class="grid gap-3 md:grid-cols-3">
-                        <article class="rounded-xl border border-orange-200 bg-white p-4 shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Blocked Drafts (The Liquidity Queue)</p>
-                                <svg class="h-4 w-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 8v4l3 2"></path><circle cx="12" cy="12" r="9"></circle></svg>
-                            </div>
-                            <p class="mt-2 text-3xl font-semibold text-orange-700">7 Entries</p>
-                            <p class="mt-1 text-xs text-slate-500">Violations of Min. Balance Floor rules.</p>
-                        </article>
-                        <article class="rounded-xl border border-purple-200 bg-white p-4 shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs font-semibold uppercase tracking-wide text-purple-700">Approval Queue</p>
-                                <svg class="h-4 w-4 text-purple-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 7v5c0 5 3.4 8.9 8 10 4.6-1.1 8-5 8-10V7l-8-4Z"></path></svg>
-                            </div>
-                            <p class="mt-2 text-3xl font-semibold text-purple-700">3 Entries</p>
-                            <p class="mt-1 text-xs text-slate-500">Awaiting Director authorization</p>
-                        </article>
-                        <article class="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Drafts &amp; Unposted</p>
-                                <svg class="h-4 w-4 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg>
-                            </div>
-                            <p class="mt-2 text-3xl font-semibold text-blue-700">5 Entries</p>
-                            <p class="mt-1 text-xs text-slate-500">Not yet posted to the general ledger</p>
-                        </article>
-                    </section>
-
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                        <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <h2 class="text-lg font-semibold text-slate-900">Smart Journal Entry Form</h2>
-                                <p class="text-sm text-slate-600">New Journal Entry</p>
-                            </div>
-                            <span class="inline-flex items-center gap-2 self-start rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
-                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 7v5c0 5 3.4 8.9 8 10 4.6-1.1 8-5 8-10V7l-8-4Z"></path></svg>
-                                DNA Check: Director Approval Required
-                            </span>
-                        </div>
-
-                        <form method="post" action="{{ route('loan.accounting.journal.store') }}" class="space-y-4">
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <h3 class="text-sm font-semibold text-slate-900" x-text="editingTemplateId ? 'Edit Template' : 'Create Template'"></h3>
+                        <form method="post" :action="editingTemplateId ? templateUpdateUrl(editingTemplateId) : '{{ route('loan.accounting.journal.templates.store') }}'" class="mt-3 space-y-2">
                             @csrf
-                            <div class="grid gap-3 md:grid-cols-3">
-                                <label class="block text-sm">
-                                    <span class="mb-1 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Date <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></span>
-                                    <input name="entry_date" type="date" value="{{ old('entry_date', now()->toDateString()) }}" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800">
-                                    @error('entry_date')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-                                </label>
-                                <label class="block text-sm">
-                                    <span class="mb-1 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Reference <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></span>
-                                    <input name="reference" value="{{ old('reference') }}" placeholder="Reference" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800">
-                                </label>
-                                <label class="block text-sm">
-                                    <span class="mb-1 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Description <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></span>
-                                    <input name="description" value="{{ old('description') }}" placeholder="Enter description of transaction" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800">
-                                </label>
-                            </div>
-
-                            <p class="text-xs text-slate-500">DNA Check is enabled for selected accounts <span class="font-medium text-slate-700">if applicable based on account rules.</span></p>
-                            @error('lines')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
-
-                            <div class="overflow-x-auto rounded-xl border border-slate-200">
-                                <table class="min-w-[820px] w-full text-sm">
-                                    <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                            <input type="text" name="name" x-model="templateForm.name" required maxlength="120" placeholder="Template name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                            <input type="text" name="description" x-model="templateForm.description" maxlength="500" placeholder="Description" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                            <input type="hidden" name="scope" value="personal">
+                            <input type="hidden" name="default_action" value="post">
+                            <input type="text" name="reference_prefix" x-model="templateForm.reference_prefix" maxlength="30" placeholder="Reference prefix (optional)" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                            <div class="overflow-x-auto rounded-lg border border-slate-200">
+                                <table class="min-w-[420px] w-full text-xs">
+                                    <thead class="bg-slate-50 text-slate-600 uppercase">
                                         <tr>
-                                            <th class="px-3 py-2">Account</th>
-                                            <th class="px-3 py-2 text-right">Debit</th>
-                                            <th class="px-3 py-2 text-right">Credit</th>
-                                            <th class="px-3 py-2">Notes</th>
-                                            <th class="px-3 py-2 text-right">Projected Balance</th>
-                                            <th class="px-3 py-2 text-center">Audit</th>
-                                            <th class="px-3 py-2 text-center"></th>
+                                            <th class="px-2 py-2 text-left">Account</th>
+                                            <th class="px-2 py-2 text-right">Debit</th>
+                                            <th class="px-2 py-2 text-right">Credit</th>
+                                            <th class="px-2 py-2 text-left">Memo</th>
+                                            <th class="px-2 py-2"></th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-100">
-                                        <template x-for="(line, i) in lines" :key="line.uid">
+                                        <template x-for="(line, i) in templateLines" :key="line.uid">
                                             <tr>
-                                                <td class="px-3 py-2">
-                                                    <select :name="`lines[${i}][accounting_chart_account_id]`" x-model.number="line.accountId" @change="syncLine(i)" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
-                                                        <option value="">—</option>
-                                                        <template x-for="opt in accountOptions" :key="opt.id">
-                                                            <option :value="opt.id" x-text="`${opt.code} · ${opt.name}`"></option>
+                                                <td class="px-2 py-2">
+                                                    <select :name="`template_lines[${i}][accounting_chart_account_id]`" x-model.number="line.accounting_chart_account_id" class="w-full rounded border border-slate-300 px-2 py-1 text-xs">
+                                                        <option value="">--</option>
+                                                        <template x-for="a in accountOptions" :key="`t-${a.id}`">
+                                                            <option :value="a.id" x-text="`${a.code}`"></option>
                                                         </template>
                                                     </select>
                                                 </td>
-                                                <td class="px-3 py-2 text-right">
-                                                    <input type="number" min="0" step="0.01" :name="`lines[${i}][debit]`" x-model.number="line.debit" @input="syncLine(i)" class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm">
+                                                <td class="px-2 py-2">
+                                                    <input type="number" min="0" step="0.01" :name="`template_lines[${i}][debit]`" x-model.number="line.debit" class="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs">
                                                 </td>
-                                                <td class="px-3 py-2 text-right">
-                                                    <input type="number" min="0" step="0.01" :name="`lines[${i}][credit]`" x-model.number="line.credit" @input="syncLine(i)" class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm">
+                                                <td class="px-2 py-2">
+                                                    <input type="number" min="0" step="0.01" :name="`template_lines[${i}][credit]`" x-model.number="line.credit" class="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs">
                                                 </td>
-                                                <td class="px-3 py-2">
-                                                    <input type="text" :name="`lines[${i}][memo]`" x-model="line.memo" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+                                                <td class="px-2 py-2">
+                                                    <input type="text" :name="`template_lines[${i}][memo]`" x-model="line.memo" class="w-full rounded border border-slate-300 px-2 py-1 text-xs">
                                                 </td>
-                                                <td class="px-3 py-2 text-right">
-                                                    <span class="font-semibold" :class="line.belowFloor ? 'text-orange-700' : 'text-emerald-700'" x-text="formatKsh(line.projectedBalance)"></span>
-                                                </td>
-                                                <td class="px-3 py-2 text-center">
-                                                    <svg class="mx-auto h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg>
-                                                </td>
-                                                <td class="px-3 py-2 text-center">
-                                                    <button type="button" @click="removeLine(i)" class="text-slate-400 hover:text-red-600" title="Remove line">×</button>
+                                                <td class="px-2 py-2">
+                                                    <button type="button" @click="removeTemplateLine(i)" class="text-slate-500 hover:text-red-600">x</button>
                                                 </td>
                                             </tr>
                                         </template>
                                     </tbody>
                                 </table>
                             </div>
-
-                            <div class="flex flex-wrap items-center justify-between gap-3">
-                                <button type="button" @click="addLine()" class="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg>
-                                    Add Journal Line
-                                </button>
-                                <div class="text-xs font-semibold text-slate-600">
-                                    Total Debit (KSh): <span x-text="formatKsh(totalDebit)"></span>
-                                    <span class="mx-2 text-slate-300">|</span>
-                                    Total Credit (KSh): <span x-text="formatKsh(totalCredit)"></span>
-                                </div>
+                            <button type="button" @click="addTemplateLine()" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Add template line</button>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button type="button" x-show="editingTemplateId" @click="resetTemplateForm()" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancel edit</button>
+                                <button type="submit" class="rounded-lg bg-teal-800 px-3 py-2 text-sm font-semibold text-white" x-text="editingTemplateId ? 'Update Template' : 'Save Template'"></button>
                             </div>
-
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span x-show="attachmentRequired" class="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
-                                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 11V7a4 4 0 1 1 8 0v4"></path><rect x="5" y="11" width="14" height="10" rx="2"></rect></svg>
-                                    Attachment Required
-                                </span>
-                                <div x-show="hasFloorViolation" class="rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700">
-                                    Projected Balance: <span x-text="formatKsh(lowestProjectedBalance)"></span> (Below COA Floor: <span x-text="formatKsh(lowestFloor)"></span>)
-                                </div>
-                            </div>
-
-                            <div class="flex flex-wrap items-center gap-2">
-                                <button type="submit" x-show="!hasFloorViolation && !requiresApproval" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">Post Transaction</button>
-                                <button type="button" x-show="!hasFloorViolation && requiresApproval" class="rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800">Submit for Approval</button>
-                                <button type="button" x-show="hasFloorViolation" class="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700">Save as Blocked Draft</button>
-                                <button type="button" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Save as Draft</button>
-                            </div>
-
-                            <p class="text-xs text-slate-500">When a high-value account is selected, or the amount pushes the projected balance below the COA floor, the amount field highlights in orange.</p>
                         </form>
                     </article>
-                </main>
-
-                <aside class="space-y-4 xl:col-span-3">
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h2 class="text-base font-semibold text-slate-900">Last 15 Journal Activities</h2>
-                        <div class="mt-3 max-h-[760px] space-y-2 overflow-y-auto pr-1">
-                            <template x-for="a in activities" :key="a.id">
-                                <div class="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                                    <div class="flex items-start justify-between gap-2">
-                                        <div>
-                                            <p class="text-xs font-semibold text-slate-500" x-text="a.time"></p>
-                                            <p class="text-sm font-medium text-slate-800" x-text="a.title"></p>
-                                        </div>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" x-show="a.status === 'Posted'" class="rounded p-1 text-orange-600 hover:bg-orange-50" aria-label="Reverse">
-                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7H3v4"></path><path d="M3 11a9 9 0 1 0 3-6.7"></path></svg>
-                                            </button>
-                                            <button type="button" x-show="a.status === 'Blocked Draft'" class="rounded p-1 text-blue-600 hover:bg-blue-50" aria-label="Retry">
-                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg>
-                                            </button>
-                                            <button type="button" class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="History">
-                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="mt-1 flex items-center justify-between">
-                                        <span class="text-xs font-semibold" :class="a.status === 'Posted' ? 'text-emerald-700' : (a.status === 'Pending Approval' ? 'text-purple-700' : 'text-orange-700')" x-text="a.status"></span>
-                                        <span class="text-xs text-slate-500" x-text="a.amount"></span>
-                                    </div>
-                                </div>
-                            </template>
-                        </div>
-                    </article>
-                </aside>
-            </section>
-
-            <div x-show="templateModalOpen" x-transition.opacity class="fixed inset-0 z-40 bg-slate-900/45" @click="closeModal()"></div>
-            <section x-show="templateModalOpen" class="fixed inset-x-3 top-[7%] z-50 mx-auto w-full max-w-5xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:inset-x-6 sm:p-6" role="dialog" aria-modal="true">
-                <div class="mb-4 flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
-                    <div>
-                        <h3 class="text-xl font-semibold text-slate-900">Create New Quick Access Template</h3>
-                        <p class="mt-1 text-sm text-slate-500">Configure reusable accounting templates with governance and approval controls.</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">Config Popup</span>
-                        <button type="button" @click="closeModal()" class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close">
-                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 6 12 12M18 6 6 18"></path></svg>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="grid gap-4 lg:grid-cols-3">
-                    <section class="rounded-xl border border-slate-200 p-3">
-                        <h4 class="text-sm font-semibold text-slate-900">1. General Information</h4>
-                        <div class="mt-3 space-y-2">
-                            <input type="text" placeholder="Template Name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                            <textarea rows="2" placeholder="Description" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
-                            <select class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option>Personal</option><option>System</option></select>
-                            <button type="button" class="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">View / Manage All</button>
-                        </div>
-                    </section>
-
-                    <section class="rounded-xl border border-slate-200 p-3">
-                        <div class="flex items-center justify-between">
-                            <h4 class="text-sm font-semibold text-slate-900">2. Accounting DNA Mappings</h4>
-                            <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">DNA-checked</span>
-                        </div>
-                        <div class="mt-3 space-y-2">
-                            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600">Debit Account (COA)</label>
-                            <select x-model.number="templateDebitId" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                                <option value="">Select account</option>
-                                <template x-for="opt in accountOptions" :key="`d-${opt.id}`"><option :value="opt.id" x-text="`${opt.code} · ${opt.name}`"></option></template>
-                            </select>
-                            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600">Credit Account (COA)</label>
-                            <select x-model.number="templateCreditId" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                                <option value="">Select account</option>
-                                <template x-for="opt in accountOptions" :key="`c-${opt.id}`"><option :value="opt.id" x-text="`${opt.code} · ${opt.name}`"></option></template>
-                            </select>
-                            <input type="text" placeholder="Reference Prefix" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                            <div class="space-y-1 pt-1 text-sm">
-                                <label class="flex items-center gap-2"><input type="radio" name="amount_type" checked class="h-4 w-4 border-slate-300 text-blue-600"> Fixed Amount</label>
-                                <label class="flex items-center gap-2"><input type="radio" name="amount_type" class="h-4 w-4 border-slate-300 text-blue-600"> Variable Amount</label>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="rounded-xl border border-slate-200 p-3">
-                        <h4 class="text-sm font-semibold text-slate-900">3. Governance &amp; Rules Builder</h4>
-                        <div class="mt-3 space-y-2 text-sm">
-                            <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span>Requires Dual Authorization</span><input type="checkbox" checked class="h-4 w-4 border-slate-300 text-blue-600"></label>
-                            <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span>Requires Mandatory Cost Center Tag</span><input type="checkbox" class="h-4 w-4 border-slate-300 text-blue-600"></label>
-                            <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span>Requires Mandatory Client / Loan ID</span><input type="checkbox" class="h-4 w-4 border-slate-300 text-blue-600"></label>
-                            <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span>Enforce Transaction Limit</span><input type="checkbox" checked class="h-4 w-4 border-slate-300 text-blue-600"></label>
-                            <select class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option>Authorized Approver / Checker</option></select>
-                            <input type="text" value="100,000.00" class="w-full rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-900">
-                        </div>
-                        <div class="mt-3 flex flex-wrap gap-1.5 text-[11px] font-semibold">
-                            <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">Active</span>
-                            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">History</span>
-                            <span class="rounded-full bg-orange-100 px-2 py-0.5 text-orange-700">Access Restricted</span>
-                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-purple-700">COA Rules Applied</span>
-                        </div>
-                    </section>
-                </div>
-
-                <div x-show="templateAccessRestricted" class="mt-4 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-800">You are not authorized to create templates for this account. <span class="font-semibold">Access Restricted</span></div>
-
-                <div class="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
-                    <span class="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Account Status: Active (COA Rules Applied)</span>
-                    <div class="flex items-center gap-2">
-                        <button type="button" @click="closeModal()" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                        <button type="button" :disabled="templateAccessRestricted" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-blue-300">Create Template</button>
-                    </div>
-                </div>
-            </section>
-        </div>
-    </x-loan.page>
-
-    <script>
-        function journalCommandCenter(accountOptionsInput, seedLines) {
-            const fallbackAccounts = [
-                { id: 1, code: '4099', name: 'M-Pesa Utility', restricted: false, floor: 5000, starting_balance: 52000 },
-                { id: 2, code: '4021', name: 'Cash Account', restricted: false, floor: 5000, starting_balance: 9500 },
-                { id: 3, code: '61001', name: 'Equity Bank', restricted: false, floor: 10000, starting_balance: 120000 },
-                { id: 4, code: '70010', name: 'Director Equity', restricted: true, floor: 0, starting_balance: 200000 },
-            ];
-            const accountOptions = Array.isArray(accountOptionsInput) && accountOptionsInput.length > 0 ? accountOptionsInput : fallbackAccounts;
-
-            const makeLine = (raw, idx) => ({
-                uid: `${Date.now()}-${idx}-${Math.random().toString(16).slice(2)}`,
-                accountId: raw && raw.accounting_chart_account_id ? Number(raw.accounting_chart_account_id) : null,
-                debit: Number(raw && raw.debit ? raw.debit : 0),
-                credit: Number(raw && raw.credit ? raw.credit : 0),
-                memo: raw && raw.memo ? String(raw.memo) : '',
-                projectedBalance: 0,
-                floor: 0,
-                belowFloor: false,
-                restricted: false,
-            });
-
-            return {
-                accountOptions,
-                templateModalOpen: false,
-                templateDebitId: '',
-                templateCreditId: '',
-                lines: (Array.isArray(seedLines) ? seedLines : []).map((line, i) => makeLine(line, i)),
-                activities: [
-                    { id: 1, time: '10:45 AM', title: 'KSh 1.2M M-Pesa to Bank', status: 'Posted', amount: 'KSh 1,200,000' },
-                    { id: 2, time: '09:55 AM', title: 'Salary adjustment posted', status: 'Pending Approval', amount: 'KSh 180,000' },
-                    { id: 3, time: '09:05 AM', title: 'Loan recovery reversal draft saved', status: 'Blocked Draft', amount: 'KSh 42,500' },
-                    { id: 4, time: '08:40 AM', title: 'Batch charges allocation', status: 'Posted', amount: 'KSh 2,350' },
-                    { id: 5, time: '08:15 AM', title: 'Suspense account clearance', status: 'Pending Approval', amount: 'KSh 95,000' },
-                    { id: 6, time: '07:52 AM', title: 'Inter-account transfer', status: 'Posted', amount: 'KSh 30,000' },
-                    { id: 7, time: '07:33 AM', title: 'Utility float top-up', status: 'Posted', amount: 'KSh 25,000' },
-                    { id: 8, time: '07:14 AM', title: 'Manual interest recognition', status: 'Pending Approval', amount: 'KSh 110,000' },
-                    { id: 9, time: '06:58 AM', title: 'Suspense reclass', status: 'Blocked Draft', amount: 'KSh 12,000' },
-                    { id: 10, time: '06:35 AM', title: 'Tax withholding adjustment', status: 'Posted', amount: 'KSh 8,200' },
-                    { id: 11, time: '06:10 AM', title: 'Cash float correction', status: 'Posted', amount: 'KSh 5,400' },
-                    { id: 12, time: '05:52 AM', title: 'Director equity contribution', status: 'Pending Approval', amount: 'KSh 250,000' },
-                    { id: 13, time: '05:35 AM', title: 'Error reversal draft', status: 'Blocked Draft', amount: 'KSh 6,900' },
-                    { id: 14, time: '05:18 AM', title: 'Reconciliation adjustment', status: 'Posted', amount: 'KSh 14,200' },
-                    { id: 15, time: '05:02 AM', title: 'Cost center balancing line', status: 'Posted', amount: 'KSh 19,500' },
-                ],
-                init() {
-                    if (!Array.isArray(this.lines) || this.lines.length === 0) {
-                        this.lines = [makeLine({}, 0), makeLine({}, 1), makeLine({}, 2)];
-                    }
-                    this.lines.forEach((_, i) => this.syncLine(i));
-                },
-                get totalDebit() { return this.lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0); },
-                get totalCredit() { return this.lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0); },
-                get hasFloorViolation() { return this.lines.some((l) => l.belowFloor); },
-                get requiresApproval() { return this.lines.some((l) => l.restricted) || this.totalDebit >= 100000; },
-                get attachmentRequired() { return this.requiresApproval; },
-                get lowestProjectedBalance() {
-                    if (this.lines.length === 0) return 0;
-                    return this.lines.reduce((min, l) => Math.min(min, Number(l.projectedBalance) || 0), Number(this.lines[0].projectedBalance) || 0);
-                },
-                get lowestFloor() {
-                    const floors = this.lines.map((l) => Number(l.floor) || 0).filter((f) => f > 0);
-                    return floors.length ? Math.min(...floors) : 0;
-                },
-                get templateAccessRestricted() {
-                    const debit = this.accountOptions.find((a) => Number(a.id) === Number(this.templateDebitId));
-                    const credit = this.accountOptions.find((a) => Number(a.id) === Number(this.templateCreditId));
-                    return Boolean(debit?.restricted || credit?.restricted);
-                },
-                syncLine(i) {
-                    const line = this.lines[i];
-                    if (!line) return;
-                    const account = this.accountOptions.find((a) => Number(a.id) === Number(line.accountId));
-                    if (!account) {
-                        line.floor = 0;
-                        line.projectedBalance = 0;
-                        line.belowFloor = false;
-                        line.restricted = false;
-                        return;
-                    }
-                    line.floor = Number(account.floor) || 0;
-                    line.restricted = Boolean(account.restricted);
-                    line.projectedBalance = (Number(account.starting_balance) || 0) + (Number(line.debit) || 0) - (Number(line.credit) || 0);
-                    line.belowFloor = line.floor > 0 && line.projectedBalance < line.floor;
-                },
-                addLine() {
-                    this.lines.push(makeLine({}, this.lines.length));
-                },
-                removeLine(i) {
-                    if (this.lines.length <= 1) {
-                        this.lines[0] = makeLine({}, 0);
-                        return;
-                    }
-                    this.lines.splice(i, 1);
-                },
-                formatKsh(v) {
-                    return `KSh ${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                },
-                openModal() { this.templateModalOpen = true; },
-                closeModal() { this.templateModalOpen = false; },
-            };
-        }
-    </script>
-</x-loan-layout>
-@php
-    $accountPayload = collect($accounts ?? [])->map(function ($a) {
-        $name = strtolower((string) $a->name);
-        $isCashLike = str_contains($name, 'cash') || str_contains($name, 'bank') || str_contains($name, 'm-pesa');
-        return [
-            'id' => (int) $a->id,
-            'code' => (string) $a->code,
-            'name' => (string) $a->name,
-            'restricted' => str_contains($name, 'director') || str_contains($name, 'equity'),
-            'floor' => $isCashLike ? 5000 : 0,
-            'starting_balance' => $isCashLike ? 52000 : 120000,
-        ];
-    })->values();
-@endphp
-
-<x-loan-layout>
-    <x-loan.page title="Journal Entry Command Center" subtitle="Manage manual journal entries, adjustments, and non-routine cash movements.">
-        <div class="min-h-full space-y-4 bg-slate-50 p-3 sm:p-5 lg:p-6" x-data="journalCommandCenter(@js($accountPayload))" @keydown.escape.window="closeModal()">
-            <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div>
-                        <h1 class="text-2xl font-semibold text-slate-900">Journal Entry Command Center</h1>
-                        <p class="mt-1 text-sm text-slate-600">Manage manual journal entries, adjustments, and non-routine cash movements.</p>
-                    </div>
-                    <div class="flex flex-col items-start gap-3 lg:items-end">
-                        <div class="flex flex-wrap items-center gap-2 text-sm">
-                            <span class="font-medium text-slate-600">Thursday, April 23, 2026</span>
-                            <span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">Period: April 2026 (Open)</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button type="button" @click="openModal()" class="inline-flex items-center gap-2 rounded-lg bg-teal-800 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-900">
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 5h16v5H4zM4 14h10v5H4zM17 14h3v5h-3"></path></svg>
-                                Quick Access &amp; Templates
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 9 6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-                            </button>
-                            <button type="button" @click="openModal()" class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition hover:bg-blue-700" aria-label="Open quick access modal">
-                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14" stroke-linecap="round"></path></svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <section class="grid gap-4 xl:grid-cols-12">
-                <aside class="space-y-4 xl:col-span-3">
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h2 class="text-base font-semibold text-slate-900">Templates &amp; Quick Access</h2>
-                        <div class="mt-4 space-y-4">
-                            <div>
-                                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Personal Favorites</p>
-                                <div class="mt-2 space-y-2">
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-left text-sm text-blue-700">M-Pesa to Bank Transfer <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-left text-sm text-blue-700">Petty Cash Replenishment <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-purple-100 bg-purple-50/80 px-3 py-2 text-left text-sm text-purple-700">Director Equity Contribution <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-purple-100 bg-purple-50/80 px-3 py-2 text-left text-sm text-purple-700">Salary Advance Issuance <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
-                                    <button type="button" class="flex w-full items-center justify-between rounded-lg border border-orange-100 bg-orange-50/80 px-3 py-2 text-left text-sm text-orange-700">Reversal of Previous Journal <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></button>
-                                </div>
-                            </div>
-                            <div>
-                                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">System Defined</p>
-                                <div class="mt-2 space-y-2">
-                                    <button type="button" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-blue-700">Inter-Account Transfer</button>
-                                    <button type="button" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-blue-700">Bank Charges Allocation</button>
-                                    <button type="button" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-blue-700">Interest Income Recognition</button>
-                                </div>
-                            </div>
-                            <button type="button" class="w-full rounded-lg bg-teal-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm">View Full Posted History</button>
-                        </div>
-                    </article>
                 </aside>
 
-                <main class="space-y-4 xl:col-span-6">
-                    <section class="grid gap-3 md:grid-cols-3">
-                        <article class="rounded-xl border border-orange-200 bg-white p-4 shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs font-semibold uppercase tracking-wide text-orange-700">Blocked Drafts (The Liquidity Queue)</p>
-                                <svg class="h-4 w-4 text-orange-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 8v4l3 2"></path><circle cx="12" cy="12" r="9"></circle></svg>
-                            </div>
-                            <p class="mt-2 text-3xl font-semibold text-orange-700">7 Entries</p>
-                            <p class="mt-1 text-xs text-slate-500">Violations of Min. Balance Floor rules.</p>
-                        </article>
-                        <article class="rounded-xl border border-purple-200 bg-white p-4 shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs font-semibold uppercase tracking-wide text-purple-700">Approval Queue</p>
-                                <svg class="h-4 w-4 text-purple-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 7v5c0 5 3.4 8.9 8 10 4.6-1.1 8-5 8-10V7l-8-4Z"></path></svg>
-                            </div>
-                            <p class="mt-2 text-3xl font-semibold text-purple-700">3 Entries</p>
-                            <p class="mt-1 text-xs text-slate-500">Awaiting Director authorization</p>
-                        </article>
-                        <article class="rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
-                            <div class="flex items-center justify-between">
-                                <p class="text-xs font-semibold uppercase tracking-wide text-blue-700">Drafts &amp; Unposted</p>
-                                <svg class="h-4 w-4 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg>
-                            </div>
-                            <p class="mt-2 text-3xl font-semibold text-blue-700">5 Entries</p>
-                            <p class="mt-1 text-xs text-slate-500">Not yet posted to the general ledger</p>
-                        </article>
-                    </section>
-
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                        <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <h2 class="text-lg font-semibold text-slate-900">Smart Journal Entry Form</h2>
-                                <p class="text-sm text-slate-600">New Journal Entry</p>
-                            </div>
-                            <span class="inline-flex items-center gap-2 self-start rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
-                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 4 7v5c0 5 3.4 8.9 8 10 4.6-1.1 8-5 8-10V7l-8-4Z"></path></svg>
-                                DNA Check: Director Approval Required
-                            </span>
-                        </div>
-
-                        <form method="post" action="{{ route('loan.accounting.journal.store') }}" class="space-y-4">
+                <main class="xl:col-span-6">
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <h2 class="text-lg font-semibold text-slate-900">Smart Journal Entry Form</h2>
+                        <form method="post" action="{{ route('loan.accounting.journal.store') }}" class="mt-4 space-y-4">
                             @csrf
+                            <input type="hidden" name="journal_entry_id" value="{{ (int) old('journal_entry_id', $draftEntry->id ?? 0) }}">
                             <div class="grid gap-3 md:grid-cols-3">
-                                <label class="block text-sm">
-                                    <span class="mb-1 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Date <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></span>
-                                    <input name="entry_date" type="date" value="{{ old('entry_date', now()->toDateString()) }}" required class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800">
-                                    @error('entry_date')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-                                </label>
-                                <label class="block text-sm">
-                                    <span class="mb-1 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Reference <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></span>
-                                    <input name="reference" value="{{ old('reference') }}" placeholder="Reference" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800">
-                                </label>
-                                <label class="block text-sm">
-                                    <span class="mb-1 inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-600">Description <svg class="h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></span>
-                                    <input name="description" value="{{ old('description') }}" placeholder="Enter description of the transaction" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800">
-                                </label>
+                                <input name="entry_date" type="date" value="{{ old('entry_date', optional($draftEntry->entry_date ?? now())->format('Y-m-d')) }}" required class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                <input name="reference" value="{{ old('reference', $draftEntry->reference ?? '') }}" placeholder="Reference" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                <input name="description" value="{{ old('description', $draftEntry->description ?? '') }}" placeholder="Description" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
                             </div>
-
-                            <p class="text-xs text-slate-500">DNA Check is enabled for selected accounts <span class="font-medium text-slate-700">if applicable based on account rules.</span></p>
                             @error('lines')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
 
                             <div class="overflow-x-auto rounded-xl border border-slate-200">
-                                <table class="min-w-[780px] w-full text-sm">
-                                    <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                                <table class="min-w-[760px] w-full text-sm">
+                                    <thead class="bg-slate-50 text-xs uppercase text-slate-600">
                                         <tr>
-                                            <th class="px-3 py-2">Account (DNA-checked)</th>
-                                            <th class="px-3 py-2 text-right">Debit (KSh)</th>
-                                            <th class="px-3 py-2 text-right">Credit (KSh)</th>
-                                            <th class="px-3 py-2">Notes</th>
-                                            <th class="px-3 py-2 text-right">Projected Balance (KSh)</th>
-                                            <th class="px-3 py-2 text-center">Audit</th>
+                                            <th class="px-3 py-2 text-left">Account</th>
+                                            <th class="px-3 py-2 text-right">Debit</th>
+                                            <th class="px-3 py-2 text-right">Credit</th>
+                                            <th class="px-3 py-2 text-left">Memo</th>
+                                            <th class="px-3 py-2 text-right">Projected</th>
+                                            <th class="px-3 py-2"></th>
                                         </tr>
                                     </thead>
-                                    @php
-                                        $oldLines = old('lines', []);
-                                        $rows = is_array($oldLines) && count($oldLines) > 0 ? array_values($oldLines) : [
-                                            ['accounting_chart_account_id' => null, 'debit' => null, 'credit' => null, 'memo' => ''],
-                                            ['accounting_chart_account_id' => null, 'debit' => null, 'credit' => null, 'memo' => ''],
-                                            ['accounting_chart_account_id' => null, 'debit' => null, 'credit' => null, 'memo' => ''],
-                                        ];
-                                    @endphp
-                                    <tbody id="journal-lines-body" class="divide-y divide-slate-100" data-next-index="{{ count($rows) }}">
-                                        @foreach ($rows as $i => $line)
+                                    <tbody class="divide-y divide-slate-100">
+                                        <template x-for="(line, i) in lines" :key="line.uid">
                                             <tr>
                                                 <td class="px-3 py-2">
-                                                    <select name="lines[{{ $i }}][accounting_chart_account_id]" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" x-model.number="rows[{{ $i }}].accountId" @change="syncRow({{ $i }})">
-                                                        <option value="">—</option>
-                                                        @foreach ($accounts as $a)
-                                                            <option value="{{ $a->id }}" @selected((string) data_get($line, 'accounting_chart_account_id') === (string) $a->id)>{{ $a->code }} · {{ $a->name }}</option>
-                                                        @endforeach
+                                                    <select :name="`lines[${i}][accounting_chart_account_id]`" x-model.number="line.accounting_chart_account_id" @change="syncLine(i)" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">
+                                                        <option value="">--</option>
+                                                        <template x-for="a in accountOptions" :key="a.id">
+                                                            <option :value="a.id" x-text="`${a.code} · ${a.name}`"></option>
+                                                        </template>
                                                     </select>
                                                 </td>
-                                                <td class="px-3 py-2 text-right">
-                                                    <input type="number" step="0.01" min="0" name="lines[{{ $i }}][debit]" value="{{ data_get($line, 'debit') }}" class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" x-model.number="rows[{{ $i }}].debit" @input="syncRow({{ $i }})">
-                                                </td>
-                                                <td class="px-3 py-2 text-right">
-                                                    <input type="number" step="0.01" min="0" name="lines[{{ $i }}][credit]" value="{{ data_get($line, 'credit') }}" class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" x-model.number="rows[{{ $i }}].credit" @input="syncRow({{ $i }})">
-                                                </td>
-                                                <td class="px-3 py-2">
-                                                    <input type="text" name="lines[{{ $i }}][memo]" value="{{ data_get($line, 'memo') }}" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" x-model="rows[{{ $i }}].memo">
-                                                </td>
-                                                <td class="px-3 py-2 text-right">
-                                                    <span class="font-semibold" :class="rows[{{ $i }}].belowFloor ? 'text-orange-700' : 'text-emerald-700'" x-text="formatKsh(rows[{{ $i }}].projectedBalance)"></span>
-                                                </td>
-                                                <td class="px-3 py-2 text-center">
-                                                    <button type="button" class="text-slate-400 hover:text-slate-700" aria-label="Audit history">
-                                                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg>
-                                                    </button>
-                                                </td>
+                                                <td class="px-3 py-2"><input type="number" step="0.01" min="0" :name="`lines[${i}][debit]`" x-model.number="line.debit" @input="syncLine(i)" class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right"></td>
+                                                <td class="px-3 py-2"><input type="number" step="0.01" min="0" :name="`lines[${i}][credit]`" x-model.number="line.credit" @input="syncLine(i)" class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right"></td>
+                                                <td class="px-3 py-2"><input type="text" :name="`lines[${i}][memo]`" x-model="line.memo" class="w-full rounded-lg border border-slate-300 px-2 py-1.5"></td>
+                                                <td class="px-3 py-2 text-right"><span :class="line.belowFloor ? 'text-orange-700 font-semibold' : 'text-emerald-700 font-semibold'" x-text="formatKsh(line.projectedBalance)"></span></td>
+                                                <td class="px-3 py-2"><button type="button" @click="removeLine(i)" class="text-slate-500 hover:text-red-600">x</button></td>
                                             </tr>
-                                        @endforeach
+                                        </template>
                                     </tbody>
                                 </table>
                             </div>
 
-                            <div class="flex flex-wrap items-center justify-between gap-3">
-                                <button type="button" id="add-line-btn" class="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"></path></svg>
-                                    Add Journal Line
-                                </button>
-                                <div class="text-xs font-semibold text-slate-600">
-                                    Total Debit (KSh): <span x-text="formatKsh(totalDebit)"></span>
-                                    <span class="mx-2 text-slate-300">|</span>
-                                    Total Credit (KSh): <span x-text="formatKsh(totalCredit)"></span>
-                                </div>
+                            <div class="flex items-center justify-between">
+                                <button type="button" @click="addLine()" class="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">Add Line</button>
+                                <div class="text-xs font-semibold text-slate-600">Debit: <span x-text="formatKsh(totalDebit)"></span> | Credit: <span x-text="formatKsh(totalCredit)"></span></div>
                             </div>
 
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span x-show="attachmentRequired" class="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
-                                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 11V7a4 4 0 1 1 8 0v4"></path><rect x="5" y="11" width="14" height="10" rx="2"></rect></svg>
-                                    Attachment Required
-                                </span>
-                                <div x-show="hasFloorViolation" class="rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700">
-                                    Projected Balance: <span x-text="formatKsh(lowestProjectedBalance)"></span> (Below COA Floor: <span x-text="formatKsh(lowestFloor)"></span>)
-                                </div>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="submit" name="action" value="post" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">Post Transaction</button>
+                                <button type="submit" name="action" value="submit_for_approval" class="rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white">Submit for Approval</button>
+                                <button type="submit" name="action" value="save_draft" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700">Save as Draft</button>
                             </div>
-
-                            <div class="flex flex-wrap items-center gap-2">
-                                <button type="submit" x-show="!hasFloorViolation && !requiresApproval" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">Post Transaction</button>
-                                <button type="button" x-show="!hasFloorViolation && requiresApproval" class="rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-800">Submit for Approval</button>
-                                <button type="button" x-show="hasFloorViolation" class="rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700">Save as Blocked Draft</button>
-                                <button type="button" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Save as Draft</button>
-                            </div>
-
-                            <p class="text-xs text-slate-500">When a high-value account is selected, or the amount pushes the projected balance below the COA floor, the amount field highlights in orange.</p>
                         </form>
                     </article>
                 </main>
 
-                <aside class="space-y-4 xl:col-span-3">
-                    <article class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                        <h2 class="text-base font-semibold text-slate-900">Last 15 Journal Activities</h2>
-                        <div class="mt-3 max-h-[760px] space-y-2 overflow-y-auto pr-1">
-                            <template x-for="activity in activities" :key="activity.id">
-                                <div class="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
-                                    <div class="flex items-start justify-between gap-2">
-                                        <div>
-                                            <p class="text-xs font-semibold text-slate-500" x-text="activity.time"></p>
-                                            <p class="text-sm font-medium text-slate-800" x-text="activity.title"></p>
-                                        </div>
-                                        <div class="flex items-center gap-1">
-                                            <button type="button" x-show="activity.status === 'Posted'" class="rounded p-1 text-orange-600 hover:bg-orange-50" aria-label="Reverse">
-                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 7H3v4"></path><path d="M3 11a9 9 0 1 0 3-6.7"></path></svg>
-                                            </button>
-                                            <button type="button" x-show="activity.status === 'Blocked Draft'" class="rounded p-1 text-blue-600 hover:bg-blue-50" aria-label="Retry">
-                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a9 9 0 1 1-3-6.7"></path><path d="M21 3v6h-6"></path></svg>
-                                            </button>
-                                            <button type="button" class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="History">
-                                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="mt-1 flex items-center justify-between">
-                                        <span class="text-xs font-semibold" :class="activity.status === 'Posted' ? 'text-emerald-700' : (activity.status === 'Pending Approval' ? 'text-purple-700' : 'text-orange-700')" x-text="activity.status"></span>
-                                        <span class="text-xs text-slate-500" x-text="activity.amount"></span>
+                <aside class="xl:col-span-3">
+                    <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <h3 class="text-sm font-semibold text-slate-900">Last 10 Manual Journal Activities</h3>
+                        <div class="mt-3 max-h-[560px] space-y-2 overflow-y-auto">
+                            @forelse ($recentActivities as $entry)
+                                <div class="rounded-lg border border-slate-200 px-3 py-2">
+                                    <div class="text-xs text-slate-500">{{ optional($entry->entry_date)->format('Y-m-d') }} · {{ $entry->createdByUser?->name ?? 'System' }}</div>
+                                    <a href="{{ route('loan.accounting.journal.show', $entry) }}" class="text-sm font-medium text-slate-800 hover:text-blue-700">{{ $entry->reference ?: ('JE-'.$entry->id) }}</a>
+                                    <div class="mt-1 text-xs text-slate-600">{{ ucfirst((string) $entry->status) }}</div>
+                                    <div class="mt-2 flex items-center gap-2">
+                                        @if (in_array((string) $entry->status, [\App\Models\AccountingJournalEntry::STATUS_DRAFT, \App\Models\AccountingJournalEntry::STATUS_REJECTED], true))
+                                            <a href="{{ route('loan.accounting.journal.edit', $entry) }}" class="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700">Edit</a>
+                                        @endif
+                                        @if ((string) $entry->status === \App\Models\AccountingJournalEntry::STATUS_POSTED)
+                                            <form method="post" action="{{ route('loan.accounting.journal.reverse', $entry) }}">
+                                                @csrf
+                                                <button type="submit" class="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700" data-swal-confirm="Reverse this posted journal entry?">Reverse</button>
+                                            </form>
+                                        @endif
                                     </div>
                                 </div>
-                            </template>
+                            @empty
+                                <p class="text-xs text-slate-500">No journal activity yet.</p>
+                            @endforelse
                         </div>
                     </article>
                 </aside>
-            </section>
-
-            <div x-show="templateModalOpen" x-transition.opacity class="fixed inset-0 z-40 bg-slate-900/45" @click="closeModal()"></div>
-            <section x-show="templateModalOpen" class="fixed inset-x-3 top-[7%] z-50 mx-auto w-full max-w-5xl rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:inset-x-6 sm:p-6" role="dialog" aria-modal="true">
-                <div class="mb-4 flex items-start justify-between gap-3 border-b border-slate-200 pb-3">
-                    <div>
-                        <h3 class="text-xl font-semibold text-slate-900">Create New Quick Access Template</h3>
-                        <p class="mt-1 text-sm text-slate-500">Configure reusable accounting templates with governance and approval controls.</p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">Config Popup</span>
-                        <button type="button" @click="closeModal()" class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close">
-                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 6 12 12M18 6 6 18"></path></svg>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="grid gap-4 lg:grid-cols-3">
-                    <section class="rounded-xl border border-slate-200 p-3">
-                        <h4 class="text-sm font-semibold text-slate-900">1. General Information</h4>
-                        <div class="mt-3 space-y-2">
-                            <input type="text" placeholder="Template Name" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                            <textarea rows="2" placeholder="Description" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
-                            <select class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option>Personal</option><option>System</option></select>
-                            <button type="button" class="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">View / Manage All</button>
-                        </div>
-                    </section>
-
-                    <section class="rounded-xl border border-slate-200 p-3">
-                        <div class="flex items-center justify-between">
-                            <h4 class="text-sm font-semibold text-slate-900">2. Accounting DNA Mappings</h4>
-                            <span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">DNA-checked</span>
-                        </div>
-                        <div class="mt-3 space-y-2">
-                            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600">Debit Account (COA)</label>
-                            <select x-model.number="templateDebitId" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                                <option value="">Select account</option>
-                                <template x-for="opt in accountOptions" :key="`d-${opt.id}`"><option :value="opt.id" x-text="`${opt.code} · ${opt.name}`"></option></template>
-                            </select>
-                            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-600">Credit Account (COA)</label>
-                            <select x-model.number="templateCreditId" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                                <option value="">Select account</option>
-                                <template x-for="opt in accountOptions" :key="`c-${opt.id}`"><option :value="opt.id" x-text="`${opt.code} · ${opt.name}`"></option></template>
-                            </select>
-                            <input type="text" placeholder="Reference Prefix" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                            <div class="space-y-1 pt-1 text-sm">
-                                <label class="flex items-center gap-2"><input type="radio" name="amount_type" checked class="h-4 w-4 border-slate-300 text-blue-600"> Fixed Amount</label>
-                                <label class="flex items-center gap-2"><input type="radio" name="amount_type" class="h-4 w-4 border-slate-300 text-blue-600"> Variable Amount</label>
-                            </div>
-                        </div>
-                    </section>
-
-                    <section class="rounded-xl border border-slate-200 p-3">
-                        <h4 class="text-sm font-semibold text-slate-900">3. Governance &amp; Rules Builder</h4>
-                        <div class="mt-3 space-y-2 text-sm">
-                            <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span>Requires Dual Authorization</span><input type="checkbox" checked class="h-4 w-4 border-slate-300 text-blue-600"></label>
-                            <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span>Requires Mandatory Cost Center Tag</span><input type="checkbox" class="h-4 w-4 border-slate-300 text-blue-600"></label>
-                            <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span>Requires Mandatory Client / Loan ID</span><input type="checkbox" class="h-4 w-4 border-slate-300 text-blue-600"></label>
-                            <label class="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span>Enforce Transaction Limit</span><input type="checkbox" checked class="h-4 w-4 border-slate-300 text-blue-600"></label>
-                            <select class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"><option>Authorized Approver / Checker</option></select>
-                            <input type="text" value="100,000.00" class="w-full rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-900">
-                        </div>
-                        <div class="mt-3 flex flex-wrap gap-1.5 text-[11px] font-semibold">
-                            <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">Active</span>
-                            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">History</span>
-                            <span class="rounded-full bg-orange-100 px-2 py-0.5 text-orange-700">Access Restricted</span>
-                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-purple-700">COA Rules Applied</span>
-                        </div>
-                    </section>
-                </div>
-
-                <div x-show="templateAccessRestricted" class="mt-4 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-800">You are not authorized to create templates for this account. <span class="font-semibold">Access Restricted</span></div>
-
-                <div class="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
-                    <span class="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Account Status: Active (COA Rules Applied)</span>
-                    <div class="flex items-center gap-2">
-                        <button type="button" @click="closeModal()" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                        <button type="button" :disabled="templateAccessRestricted" class="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-blue-300">Create Template</button>
-                    </div>
-                </div>
             </section>
         </div>
     </x-loan.page>
 
     <script>
-        function journalCommandCenter(accountOptionsInput) {
-            const fallbackAccounts = [
-                { id: 1, code: '4099', name: 'M-Pesa Utility', restricted: false, floor: 5000, starting_balance: 52000 },
-                { id: 2, code: '4021', name: 'Cash Account', restricted: false, floor: 5000, starting_balance: 9500 },
-                { id: 3, code: '61001', name: 'Equity Bank', restricted: false, floor: 10000, starting_balance: 120000 },
-                { id: 4, code: '70010', name: 'Director Equity', restricted: true, floor: 0, starting_balance: 200000 },
-            ];
-            const accountOptions = Array.isArray(accountOptionsInput) && accountOptionsInput.length > 0 ? accountOptionsInput : fallbackAccounts;
+        function journalCommandCenter(accountOptions, seedLines, templates) {
+            const mkLine = (row = {}, idx = 0) => ({
+                uid: `${Date.now()}-${idx}-${Math.random().toString(16).slice(2)}`,
+                accounting_chart_account_id: row.accounting_chart_account_id ? Number(row.accounting_chart_account_id) : null,
+                debit: Number(row.debit || 0),
+                credit: Number(row.credit || 0),
+                memo: row.memo || '',
+                projectedBalance: 0,
+                belowFloor: false,
+            });
             return {
-                accountOptions,
-                templateModalOpen: false,
-                templateDebitId: '',
-                templateCreditId: '',
-                rows: [],
-                activities: [
-                    { id: 1, time: '10:45 AM', title: 'KSh 1.2M M-Pesa to Bank', status: 'Posted', amount: 'KSh 1,200,000' },
-                    { id: 2, time: '09:55 AM', title: 'Salary adjustment posted', status: 'Pending Approval', amount: 'KSh 180,000' },
-                    { id: 3, time: '09:05 AM', title: 'Loan recovery reversal draft saved', status: 'Blocked Draft', amount: 'KSh 42,500' },
-                    { id: 4, time: '08:40 AM', title: 'Batch charges allocation', status: 'Posted', amount: 'KSh 2,350' },
-                    { id: 5, time: '08:15 AM', title: 'Suspense account clearance', status: 'Pending Approval', amount: 'KSh 95,000' },
-                ],
-                init() {
-                    const tableRows = document.querySelectorAll('#journal-lines-body tr');
-                    this.rows = Array.from(tableRows).map((_, i) => ({ accountId: null, debit: 0, credit: 0, projectedBalance: 0, floor: 0, belowFloor: false, restricted: false }));
-                    this.rows.forEach((_, i) => this.syncRow(i));
-
-                    const addBtn = document.getElementById('add-line-btn');
-                    if (addBtn) {
-                        addBtn.addEventListener('click', () => {
-                            const tbody = document.getElementById('journal-lines-body');
-                            const next = Number(tbody.dataset.nextIndex || this.rows.length);
-                            const accountOptionsHtml = this.accountOptions.map((opt) => `<option value="${opt.id}">${opt.code} · ${opt.name}</option>`).join('');
-                            tbody.insertAdjacentHTML('beforeend', `<tr><td class="px-3 py-2"><select name="lines[${next}][accounting_chart_account_id]" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" x-model.number="rows[${next}].accountId" @change="syncRow(${next})"><option value="">—</option>${accountOptionsHtml}</select></td><td class="px-3 py-2 text-right"><input type="number" step="0.01" min="0" name="lines[${next}][debit]" class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm"></td><td class="px-3 py-2 text-right"><input type="number" step="0.01" min="0" name="lines[${next}][credit]" class="w-28 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm"></td><td class="px-3 py-2"><input type="text" name="lines[${next}][memo]" class="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm"></td><td class="px-3 py-2 text-right"><span class="text-xs text-slate-500">KSh 0.00</span></td><td class="px-3 py-2 text-center"><svg class="mx-auto h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2" stroke-linecap="round"></path></svg></td></tr>`);
-                            tbody.dataset.nextIndex = String(next + 1);
-                            this.rows.push({ accountId: null, debit: 0, credit: 0, projectedBalance: 0, floor: 0, belowFloor: false, restricted: false });
-                        });
+                accountOptions: Array.isArray(accountOptions) ? accountOptions : [],
+                templates: Array.isArray(templates) ? templates : [],
+                lines: (Array.isArray(seedLines) ? seedLines : []).map((row, i) => mkLine(row, i)),
+                editingTemplateId: null,
+                templateForm: { name: '', description: '', reference_prefix: '' },
+                templateLines: [mkLine({}, 1001), mkLine({}, 1002)],
+                init() { this.lines.forEach((_, i) => this.syncLine(i)); },
+                get totalDebit() { return this.lines.reduce((sum, line) => sum + (Number(line.debit) || 0), 0); },
+                get totalCredit() { return this.lines.reduce((sum, line) => sum + (Number(line.credit) || 0), 0); },
+                syncLine(i) {
+                    const line = this.lines[i];
+                    if (!line) return;
+                    const account = this.accountOptions.find((a) => Number(a.id) === Number(line.accounting_chart_account_id));
+                    if (!account) {
+                        line.projectedBalance = 0;
+                        line.belowFloor = false;
+                        return;
                     }
+                    line.projectedBalance = Number(account.starting_balance || 0) + Number(line.debit || 0) - Number(line.credit || 0);
+                    line.belowFloor = Number(account.floor || 0) > 0 && line.projectedBalance < Number(account.floor || 0);
                 },
-                get totalDebit() { return this.rows.reduce((sum, r) => sum + (Number(r.debit) || 0), 0); },
-                get totalCredit() { return this.rows.reduce((sum, r) => sum + (Number(r.credit) || 0), 0); },
-                get hasFloorViolation() { return this.rows.some((r) => r.belowFloor); },
-                get requiresApproval() { return this.rows.some((r) => r.restricted) || this.totalDebit >= 100000; },
-                get attachmentRequired() { return this.requiresApproval; },
-                get lowestProjectedBalance() { return this.rows.reduce((min, r) => Math.min(min, Number(r.projectedBalance) || 0), this.rows[0]?.projectedBalance || 0); },
-                get lowestFloor() { return this.rows.reduce((min, r) => r.floor > 0 ? Math.min(min, r.floor) : min, Number.MAX_SAFE_INTEGER) === Number.MAX_SAFE_INTEGER ? 0 : this.rows.reduce((min, r) => r.floor > 0 ? Math.min(min, r.floor) : min, Number.MAX_SAFE_INTEGER); },
-                get templateAccessRestricted() {
-                    const d = this.accountOptions.find((a) => Number(a.id) === Number(this.templateDebitId));
-                    const c = this.accountOptions.find((a) => Number(a.id) === Number(this.templateCreditId));
-                    return Boolean(d?.restricted || c?.restricted);
+                addLine() { this.lines.push(mkLine({}, this.lines.length)); },
+                removeLine(i) {
+                    if (this.lines.length <= 1) return;
+                    this.lines.splice(i, 1);
                 },
-                syncRow(i) {
-                    const row = this.rows[i];
-                    if (!row) return;
-                    const account = this.accountOptions.find((a) => Number(a.id) === Number(row.accountId));
-                    if (!account) return;
-                    row.floor = Number(account.floor) || 0;
-                    row.restricted = Boolean(account.restricted);
-                    row.projectedBalance = (Number(account.starting_balance) || 0) + (Number(row.debit) || 0) - (Number(row.credit) || 0);
-                    row.belowFloor = row.floor > 0 && row.projectedBalance < row.floor;
+                applyTemplate(templateId) {
+                    const template = this.templates.find((item) => Number(item.id) === Number(templateId));
+                    if (!template) return;
+                    const rows = Array.isArray(template.template_lines) ? template.template_lines : [];
+                    this.lines = rows.length > 0
+                        ? rows.map((row, i) => mkLine({
+                            accounting_chart_account_id: row.accounting_chart_account_id,
+                            debit: Number(row.debit || 0),
+                            credit: Number(row.credit || 0),
+                            memo: row.memo || '',
+                        }, i))
+                        : [mkLine({}, 0)];
+                    this.lines.forEach((_, i) => this.syncLine(i));
                 },
-                formatKsh(value) { return `KSh ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; },
-                openModal() { this.templateModalOpen = true; },
-                closeModal() { this.templateModalOpen = false; },
+                addTemplateLine() {
+                    this.templateLines.push(mkLine({}, 2000 + this.templateLines.length));
+                },
+                removeTemplateLine(i) {
+                    if (this.templateLines.length <= 1) return;
+                    this.templateLines.splice(i, 1);
+                },
+                editTemplate(templateId) {
+                    const template = this.templates.find((item) => Number(item.id) === Number(templateId));
+                    if (!template) return;
+                    this.editingTemplateId = Number(template.id);
+                    this.templateForm = {
+                        name: String(template.name || ''),
+                        description: String(template.description || ''),
+                        reference_prefix: String(template.reference_prefix || ''),
+                    };
+                    const rows = Array.isArray(template.template_lines) ? template.template_lines : [];
+                    this.templateLines = rows.length > 0
+                        ? rows.map((row, i) => mkLine(row, 3000 + i))
+                        : [mkLine({}, 3000)];
+                },
+                resetTemplateForm() {
+                    this.editingTemplateId = null;
+                    this.templateForm = { name: '', description: '', reference_prefix: '' };
+                    this.templateLines = [mkLine({}, 1001), mkLine({}, 1002)];
+                },
+                templateUpdateUrl(templateId) {
+                    return `{{ url('/loan/accounting/journal-entries/templates') }}/${templateId}`;
+                },
+                formatKsh(value) {
+                    return `KSh ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                },
             };
         }
     </script>

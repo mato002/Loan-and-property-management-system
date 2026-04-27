@@ -25,10 +25,27 @@ class AccountingChartAccount extends Model
 
     public const TYPE_EXPENSE = 'expense';
 
+    public const INCOME_STATEMENT_CATEGORY_REVENUE = 'revenue';
+    public const INCOME_STATEMENT_CATEGORY_DIRECT_COST = 'direct_cost';
+    public const INCOME_STATEMENT_CATEGORY_OPERATING_EXPENSE = 'operating_expense';
+    public const INCOME_STATEMENT_CATEGORY_TAX_EXPENSE = 'tax_expense';
+    public const INCOME_STATEMENT_CATEGORY_OTHER_INCOME = 'other_income';
+    public const INCOME_STATEMENT_CATEGORY_OTHER_EXPENSE = 'other_expense';
+
+    public const INCOME_STATEMENT_CATEGORIES = [
+        self::INCOME_STATEMENT_CATEGORY_REVENUE,
+        self::INCOME_STATEMENT_CATEGORY_DIRECT_COST,
+        self::INCOME_STATEMENT_CATEGORY_OPERATING_EXPENSE,
+        self::INCOME_STATEMENT_CATEGORY_TAX_EXPENSE,
+        self::INCOME_STATEMENT_CATEGORY_OTHER_INCOME,
+        self::INCOME_STATEMENT_CATEGORY_OTHER_EXPENSE,
+    ];
+
     protected $fillable = [
         'code',
         'name',
         'account_type',
+        'income_statement_category',
         'parent_id',
         'account_class',
         'current_balance',

@@ -114,7 +114,6 @@
                         ['label' => 'Books of Account', 'route' => 'loan.accounting.books', 'active_patterns' => [
                             'loan.accounting.books',
                             'loan.accounting.books.*',
-                            'loan.accounting.chart.*',
                             'loan.accounting.journal.*',
                             'loan.accounting.ledger',
                             'loan.accounting.reports.*',
