@@ -23,6 +23,20 @@
             },
             removeRow(index) {
                 this.rows.splice(index, 1);
+            },
+            async confirmRemoveRow(index) {
+                if (window.Swal && typeof window.Swal.fire === 'function') {
+                    const result = await window.Swal.fire({
+                        icon: 'warning',
+                        title: 'Remove this field row?',
+                        text: 'This only removes it from the current form until you save.',
+                        showCancelButton: true,
+                        confirmButtonText: 'Yes, remove',
+                        cancelButtonText: 'Cancel',
+                    });
+                    if (!result.isConfirmed) return;
+                }
+                this.removeRow(index);
             }
         }">
             @csrf
@@ -81,7 +95,7 @@
                                     <input :name="`fields[${index}][options]`" x-model="row.options" type="text" class="w-56 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm" placeholder="Comma-separated options" />
                                 </td>
                                 <td class="px-3 py-2 align-top">
-                                    <button type="button" @click="removeRow(index)" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Remove</button>
+                                    <button type="button" @click="confirmRemoveRow(index)" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Remove</button>
                                 </td>
                             </tr>
                         </template>

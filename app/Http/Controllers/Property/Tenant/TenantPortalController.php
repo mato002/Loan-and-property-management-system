@@ -1272,11 +1272,19 @@ class TenantPortalController extends Controller
             return 0.0;
         }
 
-        return (float) (PmInvoice::query()
+        $invoiceArrears = (float) (PmInvoice::query()
             ->where('pm_tenant_id', $tenant->id)
             ->whereColumn('amount_paid', '<', 'amount')
             ->selectRaw('COALESCE(SUM(amount - amount_paid), 0) as arrears')
             ->value('arrears') ?? 0.0);
+
+        $openingArrears = (float) ($tenant->opening_arrears_amount ?? 0);
+        $completedPayments = (float) PmPayment::query()
+            ->where('pm_tenant_id', $tenant->id)
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->sum('amount');
+
+        return max(0.0, ($invoiceArrears + $openingArrears) - $completedPayments);
     }
 
     private function portalLoansFor($user)

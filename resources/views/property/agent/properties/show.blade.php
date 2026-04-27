@@ -18,7 +18,7 @@
         <a href="{{ route('property.tenants.leases', ['property_id' => $property->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Add lease</a>
         @if ($firstVacantUnit)
             <a href="{{ route('property.tenants.leases', ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Assign tenant</a>
-            <a href="{{ route('property.listings.vacant.public.edit', ['property_unit' => $firstVacantUnit->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">Publish vacant unit</a>
+            <a href="{{ route('property.listings.create', ['selected_unit' => $firstVacantUnit->id], false) }}#listing-publish" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">Publish vacant unit</a>
         @endif
         @if (($property->landlords?->count() ?? 0) === 0)
             <a href="{{ route('property.properties.list', ['property_id' => $property->id], false) }}#link-landlord-form" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Link landlord</a>
@@ -332,46 +332,65 @@
                         <input type="hidden" name="property_id" value="{{ $property->id }}" />
                         <input type="hidden" name="unit_count" value="1" />
                         <input type="hidden" name="status_mode" value="single" />
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             <div>
                                 <label class="block text-xs font-medium text-slate-600">Unit label</label>
-                                <input type="text" name="label" required placeholder="e.g. A-12" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                                <input type="text" name="label" value="{{ old('label') }}" required placeholder="e.g. A-12" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                                @error('label')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                             </div>
                             @if ($unitEnabled('unit_type', true))
                                 <div>
-                                <label class="block text-xs font-medium text-slate-600">Type</label>
-                                <select name="unit_type" @required($unitRequired('unit_type', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                                    @foreach(\App\Models\PropertyUnit::typeOptions() as $key => $label)
-                                        <option value="{{ $key }}" @selected($key === \App\Models\PropertyUnit::TYPE_APARTMENT)>{{ $label }}</option>
+                                <div class="flex items-center justify-between gap-2">
+                                    <label class="block text-xs font-medium text-slate-600">Type</label>
+                                    <button type="button" id="show-add-unit-type" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add type</button>
+                                </div>
+                                <select id="show-unit-type" name="unit_type" @required($unitRequired('unit_type', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                                    <option value="">Select unit type...</option>
+                                    @foreach (($unitTypes ?? \App\Models\PropertyUnit::typeOptions()) as $key => $label)
+                                        <option value="{{ $key }}" @selected(old('unit_type', \App\Models\PropertyUnit::TYPE_APARTMENT) === $key)>{{ $label }}</option>
                                     @endforeach
                                 </select>
+                                @error('unit_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                                 </div>
                             @endif
                             @if ($unitEnabled('bedrooms', true))
-                                <div>
-                                <label class="block text-xs font-medium text-slate-600">Bedrooms</label>
-                                <input type="number" name="bedrooms" value="1" min="0" max="20" @required($unitRequired('bedrooms')) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                                <div id="show-bedrooms-wrapper">
+                                <div class="flex items-center justify-between gap-2">
+                                    <label class="block text-xs font-medium text-slate-600">Bedrooms / room setup</label>
+                                    <button type="button" id="show-add-bedroom-count" class="text-xs font-medium text-blue-700 hover:text-blue-800">+ Add bedrooms</button>
+                                </div>
+                                <select id="show-bedrooms" name="bedrooms" @required($unitRequired('bedrooms')) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                                    <option value="">Select bedroom setup...</option>
+                                </select>
+                                @error('bedrooms')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                                 </div>
                             @endif
                             @if ($unitEnabled('rent_amount', true))
                                 <div>
                                 <label class="block text-xs font-medium text-slate-600">Rent amount</label>
-                                <input type="number" name="rent_amount" value="0" min="0" step="0.01" @required($unitRequired('rent_amount', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                                <input type="number" name="rent_amount" value="{{ old('rent_amount', 0) }}" min="0" step="0.01" @required($unitRequired('rent_amount', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                                @error('rent_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                                 </div>
                             @endif
                             @if ($unitEnabled('status', true))
                                 <div>
                                 <label class="block text-xs font-medium text-slate-600">Status</label>
                                 <select name="status" @required($unitRequired('status', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                                    <option value="vacant">Vacant</option>
-                                    <option value="occupied">Occupied</option>
-                                    <option value="notice">Notice</option>
+                                    <option value="vacant" @selected(old('status', 'vacant') === 'vacant')>Vacant</option>
+                                    <option value="occupied" @selected(old('status') === 'occupied')>Occupied</option>
+                                    <option value="notice" @selected(old('status') === 'notice')>Notice</option>
                                 </select>
+                                @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                                 </div>
                             @endif
+                            <div class="sm:col-span-2 lg:col-span-4">
+                                <label class="block text-xs font-medium text-slate-600">Public listing description (optional)</label>
+                                <textarea name="public_listing_description" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="Describe highlights seen on the public property page.">{{ old('public_listing_description') }}</textarea>
+                                @error('public_listing_description')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                            </div>
                         </div>
                         <div class="flex items-center justify-between gap-2">
-                            <p class="text-xs text-slate-500">Use this when new units are added. For bulk additions, use the main Units page.</p>
+                            <p class="text-xs text-slate-500">Use this for single unit add. For bulk/mixed adds, use the Units page.</p>
                             <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save unit</button>
                         </div>
                     </form>
@@ -379,6 +398,232 @@
             </div>
         @endif
     </div>
+    <script>
+        (function () {
+            const unitType = document.getElementById('show-unit-type');
+            const bedrooms = document.getElementById('show-bedrooms');
+            const bedroomsWrapper = document.getElementById('show-bedrooms-wrapper');
+            const addTypeButton = document.getElementById('show-add-unit-type');
+            const addBedroomsButton = document.getElementById('show-add-bedroom-count');
+            if (!unitType || !bedrooms || !bedroomsWrapper) return;
+
+            const noBedroomTypes = new Set(['single_room', 'bedsitter', 'studio']);
+            const bedroomOptionsByType = @json($bedroomOptionsByType ?? []);
+            const oldBedrooms = @json((string) old('bedrooms', ''));
+            const storageKey = 'property_unit_meta_options_v1';
+
+            const slugify = (text) => String(text || '')
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+
+            const readStoredMeta = () => {
+                try {
+                    const raw = window.localStorage ? window.localStorage.getItem(storageKey) : null;
+                    const parsed = raw ? JSON.parse(raw) : null;
+                    const types = Array.isArray(parsed?.types) ? parsed.types : [];
+                    const bedroomsByType = parsed?.bedroomsByType && typeof parsed.bedroomsByType === 'object'
+                        ? parsed.bedroomsByType
+                        : {};
+                    return { types, bedroomsByType };
+                } catch (_) {
+                    return { types: [], bedroomsByType: {} };
+                }
+            };
+
+            const writeStoredMeta = (payload) => {
+                try {
+                    if (!window.localStorage) return;
+                    window.localStorage.setItem(storageKey, JSON.stringify(payload));
+                } catch (_) {
+                    // Ignore storage write failures.
+                }
+            };
+
+            const bedroomText = (count) => count === 0 ? 'No separate bedroom' : `${count} ${count === 1 ? 'bedroom' : 'bedrooms'}`;
+
+            const ensureOption = (select, value, label) => {
+                if (!select || !value) return;
+                if ([...select.options].some((option) => option.value === String(value))) return;
+                const option = document.createElement('option');
+                option.value = String(value);
+                option.textContent = String(label || value);
+                select.appendChild(option);
+            };
+
+            const renderBedroomsOptions = (typeValue, selectedValue = '') => {
+                const normalizedType = String(typeValue || '').trim();
+                const currentSelected = String(selectedValue ?? '');
+                bedrooms.innerHTML = '<option value="">Select bedroom setup...</option>';
+                const options = bedroomOptionsByType[normalizedType] || {};
+                Object.keys(options)
+                    .map((value) => Number.parseInt(String(value), 10))
+                    .filter((value) => Number.isFinite(value))
+                    .sort((a, b) => a - b)
+                    .forEach((value) => {
+                        const option = document.createElement('option');
+                        option.value = String(value);
+                        option.textContent = options[String(value)] || bedroomText(value);
+                        bedrooms.appendChild(option);
+                    });
+                if (currentSelected !== '' && [...bedrooms.options].some((o) => o.value === currentSelected)) {
+                    bedrooms.value = currentSelected;
+                }
+            };
+
+            const applyStoredOptions = () => {
+                const state = readStoredMeta();
+                state.types.forEach((entry) => {
+                    const value = String(entry?.value || '');
+                    const label = String(entry?.label || '').trim();
+                    if (value !== '' && label !== '') {
+                        ensureOption(unitType, value, label);
+                    }
+                });
+                Object.entries(state.bedroomsByType || {}).forEach(([typeValue, counts]) => {
+                    if (!Array.isArray(counts)) return;
+                    bedroomOptionsByType[typeValue] = bedroomOptionsByType[typeValue] || {};
+                    counts.forEach((count) => {
+                        const numeric = Number.parseInt(String(count), 10);
+                        if (!Number.isFinite(numeric) || numeric < 0 || numeric > 20) return;
+                        bedroomOptionsByType[typeValue][numeric] = bedroomText(numeric);
+                    });
+                });
+            };
+
+            const syncBedrooms = () => {
+                const requiresNoBedroom = noBedroomTypes.has(unitType.value);
+                if (requiresNoBedroom) {
+                    bedrooms.value = '0';
+                    bedrooms.disabled = true;
+                    bedrooms.required = false;
+                    bedroomsWrapper.classList.add('hidden');
+                } else {
+                    renderBedroomsOptions(unitType.value, bedrooms.value || oldBedrooms);
+                    bedrooms.disabled = false;
+                    bedrooms.required = true;
+                    bedroomsWrapper.classList.remove('hidden');
+                }
+            };
+
+            const showErrorMessage = async (message) => {
+                if (window.Swal && typeof window.Swal.fire === 'function') {
+                    await window.Swal.fire({
+                        icon: 'warning',
+                        text: message,
+                        confirmButtonText: 'OK',
+                    });
+                    return;
+                }
+                window.alert(message);
+            };
+
+            const askTextValue = async (title, inputLabel, placeholder = '') => {
+                if (window.Swal && typeof window.Swal.fire === 'function') {
+                    const result = await window.Swal.fire({
+                        title,
+                        input: 'text',
+                        inputLabel,
+                        inputPlaceholder: placeholder,
+                        showCancelButton: true,
+                        confirmButtonText: 'Save',
+                        cancelButtonText: 'Cancel',
+                        inputValidator: (value) => {
+                            if (!String(value || '').trim()) {
+                                return 'This field is required.';
+                            }
+                            return null;
+                        },
+                    });
+                    if (!result.isConfirmed) return null;
+                    return String(result.value || '').trim();
+                }
+                const value = window.prompt(inputLabel, '');
+                return value ? String(value).trim() : null;
+            };
+
+            const askBedroomCount = async (unitType) => {
+                if (window.Swal && typeof window.Swal.fire === 'function') {
+                    const result = await window.Swal.fire({
+                        title: 'Add bedroom count',
+                        input: 'number',
+                        inputLabel: `Bedrooms for "${unitType}" (0-20)`,
+                        inputAttributes: { min: '0', max: '20', step: '1' },
+                        showCancelButton: true,
+                        confirmButtonText: 'Save',
+                        cancelButtonText: 'Cancel',
+                        inputValidator: (value) => {
+                            const parsed = Number.parseInt(String(value), 10);
+                            if (!Number.isFinite(parsed) || parsed < 0 || parsed > 20) {
+                                return 'Enter a whole number between 0 and 20.';
+                            }
+                            return null;
+                        },
+                    });
+                    if (!result.isConfirmed) return null;
+                    return Number.parseInt(String(result.value), 10);
+                }
+                const raw = window.prompt(`Add bedroom count for "${unitType}" (0-20):`, '');
+                if (raw === null) return null;
+                return Number.parseInt(String(raw), 10);
+            };
+
+            applyStoredOptions();
+            unitType.addEventListener('change', syncBedrooms);
+            syncBedrooms();
+
+            addTypeButton?.addEventListener('click', async () => {
+                const label = await askTextValue(
+                    'Add unit type',
+                    'Unit type label',
+                    'e.g. Penthouse Duplex'
+                );
+                if (!label) return;
+                const normalized = slugify(label);
+                if (!normalized) return;
+
+                ensureOption(unitType, normalized, label.trim());
+                unitType.value = normalized;
+                const state = readStoredMeta();
+                if (!state.types.some((entry) => String(entry?.value) === normalized)) {
+                    state.types.push({ value: normalized, label: label.trim() });
+                    writeStoredMeta(state);
+                }
+                syncBedrooms();
+            });
+
+            addBedroomsButton?.addEventListener('click', async () => {
+                const selectedType = String(unitType.value || '').trim();
+                if (!selectedType) {
+                    await showErrorMessage('Select a unit type first.');
+                    return;
+                }
+
+                const value = await askBedroomCount(selectedType);
+                if (value === null) return;
+                if (!Number.isFinite(value) || value < 0 || value > 20) {
+                    await showErrorMessage('Bedrooms count must be between 0 and 20.');
+                    return;
+                }
+
+                bedroomOptionsByType[selectedType] = bedroomOptionsByType[selectedType] || {};
+                bedroomOptionsByType[selectedType][value] = bedroomText(value);
+
+                const state = readStoredMeta();
+                const list = Array.isArray(state.bedroomsByType?.[selectedType]) ? state.bedroomsByType[selectedType] : [];
+                if (!list.includes(value)) {
+                    list.push(value);
+                    list.sort((a, b) => a - b);
+                }
+                state.bedroomsByType[selectedType] = list;
+                writeStoredMeta(state);
+
+                syncBedrooms();
+                bedrooms.value = String(value);
+            });
+        })();
+    </script>
 
     <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
         <div class="px-4 py-3 border-b border-slate-100">

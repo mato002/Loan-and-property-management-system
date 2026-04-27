@@ -13,17 +13,17 @@
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif
 
-        <div x-data="{ showPenaltyForm: @js($errors->hasAny(['name','scope','trigger_event','grace_days','formula','percent','amount','cap','effective_from','is_active'])) }" class="space-y-3">
-            <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                @click="showPenaltyForm = !showPenaltyForm"
-            >
+        @php
+            $showPenaltyFormByDefault = $errors->hasAny(['name','scope','trigger_event','grace_days','formula','percent','amount','cap','effective_from','is_active']);
+        @endphp
+        <details class="space-y-3 group" @if($showPenaltyFormByDefault) open @endif>
+            <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
                 <i class="fa-solid fa-percent" aria-hidden="true"></i>
-                <span x-text="showPenaltyForm ? 'Hide penalty rule form' : 'Add penalty rule'"></span>
-            </button>
+                <span class="group-open:hidden">Add penalty rule</span>
+                <span class="hidden group-open:inline">Hide penalty rule form</span>
+            </summary>
 
-        <form method="post" action="{{ route('property.revenue.penalties.store') }}" x-show="showPenaltyForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+        <form method="post" action="{{ route('property.revenue.penalties.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New rule</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -71,7 +71,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save rule</button>
         </form>
-        </div>
+        </details>
     </x-slot>
 
     <x-slot name="toolbar">
@@ -119,7 +119,7 @@
         <ul class="flex flex-wrap gap-2">
             @foreach ($penaltyRules as $rule)
                 <li>
-                    <form method="post" action="{{ route('property.revenue.penalties.destroy', $rule) }}" onsubmit="return confirm('Delete this rule?');" class="inline">
+                    <form method="post" action="{{ route('property.revenue.penalties.destroy', $rule) }}" data-swal-confirm="Delete this rule?" class="inline">
                         @csrf
                         @method('DELETE')
                         <button type="submit" class="rounded-lg border border-red-200 dark:border-red-900/50 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30">{{ $rule->name }} ×</button>

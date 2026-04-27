@@ -878,7 +878,7 @@ class PropertyPortfolioController extends Controller
             ];
             if ($u->status === PropertyUnit::STATUS_VACANT) {
                 $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
-                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', ['property_unit' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
+                $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($lease) {
                 $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';
                 if ($tenant?->name) {
@@ -1688,7 +1688,7 @@ class PropertyPortfolioController extends Controller
             ];
 
             if ($u->status === PropertyUnit::STATUS_VACANT) {
-                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', $u, absolute: false).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit listing</a>';
+                $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit listing</a>';
             }
 
             foreach ([PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE] as $targetStatus) {
@@ -2163,7 +2163,7 @@ class PropertyPortfolioController extends Controller
         if ($unit->status === PropertyUnit::STATUS_VACANT) {
             array_unshift($actions, [
                 'label' => 'Edit listing (vacant unit)',
-                'href' => route('property.listings.vacant.public.edit', $unit, absolute: false),
+                'href' => route('property.listings.create', ['selected_unit' => $unit->id], absolute: false).'#listing-publish',
                 'kind' => 'primary',
                 'icon' => 'fa-solid fa-pen-to-square',
                 'turbo_frame' => 'property-main',
@@ -2847,7 +2847,7 @@ class PropertyPortfolioController extends Controller
 
             if ($u->status === PropertyUnit::STATUS_VACANT) {
                 $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
-                $actions[] = '<a href="'.route('property.listings.vacant.public.edit', ['property_unit' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
+                $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($u->status === PropertyUnit::STATUS_OCCUPIED) {
                 if ($lease) {
                     $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';
@@ -3011,7 +3011,7 @@ class PropertyPortfolioController extends Controller
                 return back()->with('error', 'Choose at least one vacant unit to publish.');
             }
 
-            return redirect()->route('property.listings.vacant.public.edit', ['property_unit' => $target->id]);
+            return redirect()->route('property.listings.create', ['selected_unit' => $target->id])->withFragment('listing-publish');
         }
 
         $target = $units->first();

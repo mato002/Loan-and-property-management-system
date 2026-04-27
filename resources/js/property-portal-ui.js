@@ -202,8 +202,7 @@ document.addEventListener('turbo:frame-load', (e) => initKenyaAddressAutocomplet
     };
 })();
 
-// Lightweight SweetAlert binding for forms with data-swal-confirm
-// Uses window.Swal if available; falls back to native confirm()
+// Lightweight SweetAlert binding for forms with data-swal-confirm.
 ;(function () {
     function onSubmit(e) {
         const form = e.target.closest('form[data-swal-confirm]');
@@ -223,10 +222,6 @@ document.addEventListener('turbo:frame-load', (e) => initKenyaAddressAutocomplet
                     form.submit();
                 }
             });
-        } else {
-            if (!window.confirm(msg)) {
-                e.preventDefault();
-            }
         }
     }
     document.addEventListener('submit', onSubmit);

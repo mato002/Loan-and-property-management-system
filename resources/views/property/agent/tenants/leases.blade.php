@@ -69,18 +69,13 @@
                 'terms_summary',
             ]);
         @endphp
-        <div class="space-y-3">
-        <button
-            type="button"
-            id="toggle-lease-form-button"
-            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            aria-controls="lease-form-wrapper"
-            aria-expanded="{{ $showLeaseFormByDefault ? 'true' : 'false' }}"
-        >
+        <details class="space-y-3 group" @if($showLeaseFormByDefault) open @endif>
+        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
             <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
-            <span id="toggle-lease-form-label">{{ $showLeaseFormByDefault ? 'Hide lease form' : 'Create lease' }}</span>
-        </button>
-        <form method="post" action="{{ route('property.leases.store') }}" id="lease-form-wrapper" class="{{ $showLeaseFormByDefault ? '' : 'hidden' }} property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+            <span class="group-open:hidden">Create lease</span>
+            <span class="hidden group-open:inline">Hide lease form</span>
+        </summary>
+        <form method="post" action="{{ route('property.leases.store') }}" id="lease-form-wrapper" class="property-attention-card mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="property-attention-title dark:text-white">New Lease</h3>
             <p class="property-attention-hint dark:text-slate-300">Allocate one vacant unit to a tenant to activate tenancy and unlock monthly billing.</p>
@@ -209,7 +204,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save lease</button>
         </form>
-        </div>
+        </details>
         @endif
     </x-slot>
 
@@ -242,22 +237,11 @@
     </x-slot>
     <script>
         (function () {
-            const leaseForm = document.getElementById('lease-form-wrapper');
-            const leaseFormToggleButton = document.getElementById('toggle-lease-form-button');
-            const leaseFormToggleLabel = document.getElementById('toggle-lease-form-label');
             const propertySelect = document.getElementById('lease-property-select');
             const unitSelect = document.getElementById('lease-unit-select');
             const monthlyRentInput = document.getElementById('lease-monthly-rent');
             const additionalDepositsWrap = document.getElementById('additional-deposits-rows');
             const addDepositRowButton = document.getElementById('add-deposit-row');
-
-            if (leaseForm && leaseFormToggleButton && leaseFormToggleLabel) {
-                leaseFormToggleButton.addEventListener('click', () => {
-                    const isHidden = leaseForm.classList.toggle('hidden');
-                    leaseFormToggleButton.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
-                    leaseFormToggleLabel.textContent = isHidden ? 'Create lease' : 'Hide lease form';
-                });
-            }
 
             if (!propertySelect || !unitSelect || !monthlyRentInput) return;
 

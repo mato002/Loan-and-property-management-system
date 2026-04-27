@@ -43,7 +43,7 @@
                                 <td class="px-5 py-3 tabular-nums">{{ number_format($t->accrual_target, 2) }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('loan.analytics.targets.edit', $t) }}" class="text-indigo-600 hover:text-indigo-500 font-medium text-sm mr-3">Edit</a>
-                                    <form method="post" action="{{ route('loan.analytics.targets.destroy', $t) }}" class="inline" onsubmit="return confirm('Delete this target row?');">
+                                    <form method="post" action="{{ route('loan.analytics.targets.destroy', $t) }}" class="inline" data-swal-confirm="Delete this target row?">
                                         @csrf
                                         @method('delete')
                                         <button type="submit" class="text-red-600 hover:text-red-500 font-medium text-sm">Delete</button>

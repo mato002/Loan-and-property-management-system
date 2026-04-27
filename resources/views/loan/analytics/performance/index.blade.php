@@ -44,7 +44,7 @@
                                 <td class="px-5 py-3 tabular-nums">{{ $r->active_borrowers_count ?? '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('loan.analytics.performance.edit', $r) }}" class="text-indigo-600 hover:text-indigo-500 font-medium text-sm mr-3">Edit</a>
-                                    <form method="post" action="{{ route('loan.analytics.performance.destroy', $r) }}" class="inline" onsubmit="return confirm('Delete this snapshot?');">
+                                    <form method="post" action="{{ route('loan.analytics.performance.destroy', $r) }}" class="inline" data-swal-confirm="Delete this snapshot?">
                                         @csrf
                                         @method('delete')
                                         <button type="submit" class="text-red-600 hover:text-red-500 font-medium text-sm">Delete</button>

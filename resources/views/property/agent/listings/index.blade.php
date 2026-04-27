@@ -3,9 +3,7 @@
 
     <x-property.page
         title="Listings"
-        subtitle="Vacant units show on the public site automatically. Setup / Vacant units add photos and publish to feature listings; Live on website lists featured units only."
     >
-        <x-property.module-status label="Listings" class="mb-4" />
 
         @if (! empty($hubStats ?? []))
             <div class="grid gap-3 sm:grid-cols-3 w-full min-w-0 mb-6">
@@ -13,20 +11,17 @@
                     <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm min-w-0">
                         <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{{ $s['label'] }}</p>
                         <p class="mt-1 text-lg font-semibold text-slate-900 dark:text-white tabular-nums break-words">{{ $s['value'] }}</p>
-                        @if (! empty($s['hint'] ?? null))
-                            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ $s['hint'] }}</p>
-                        @endif
                     </div>
                 @endforeach
             </div>
         @endif
 
         <x-property.hub-grid :items="$hubItems ?? [
-            ['route' => 'property.listings.create', 'title' => 'Setup a listing', 'description' => 'Pick a vacant unit, then photos & publish.'],
-            ['route' => 'property.listings.vacant', 'title' => 'Vacant units', 'description' => 'Full roster and status.'],
-            ['route' => 'property.listings.ads', 'title' => 'Live on website', 'description' => 'Featured units (photos + publish) and links.'],
-            ['route' => 'property.listings.leads', 'title' => 'Leads', 'description' => 'Optional pipeline (forms).'],
-            ['route' => 'property.listings.applications', 'title' => 'Applications', 'description' => 'Track applicants, units, and approval status.'],
+            ['route' => 'property.listings.create', 'title' => 'Setup a listing', 'description' => ''],
+            ['route' => 'property.listings.vacant', 'title' => 'Vacant units', 'description' => ''],
+            ['route' => 'property.listings.ads', 'title' => 'Live on website', 'description' => ''],
+            ['route' => 'property.listings.leads', 'title' => 'Leads', 'description' => ''],
+            ['route' => 'property.listings.applications', 'title' => 'Applications', 'description' => ''],
         ]" />
     </x-property.page>
 </x-property-layout>

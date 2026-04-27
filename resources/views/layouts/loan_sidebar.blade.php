@@ -385,7 +385,6 @@
             </div>
             <div x-show="sidebarDesktopOpen" x-cloak class="flex flex-col overflow-hidden min-w-0">
                 <span class="text-sm font-medium text-white truncate">{{ Auth::user()->name ?? 'Administrator' }}</span>
-                <span class="text-xs text-slate-400 truncate">{{ Auth::user()->email ?? 'admin@propertyloansystem' }}</span>
             </div>
         </a>
     </div>

@@ -67,7 +67,7 @@
 
         @isset($above)
             @if (! $above->isEmpty())
-                <div class="mb-4 space-y-4 w-full min-w-0">
+                <div class="mb-4 space-y-4 w-full min-w-0" data-workspace-above>
                     {{ $above }}
                 </div>
             @endif
@@ -109,6 +109,7 @@
             <div class="property-ws-wrap w-full min-w-0 space-y-3">
                 @if ($hasToolbar || $canShowDefaultSearch)
                     <div
+                        data-workspace-toolbar
                         class="print-hide flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center w-full min-w-0 [&_input[type=search]]:w-full [&_input[type=search]]:min-w-0 [&_input[type=search]]:sm:max-w-md [&_input[type=month]]:w-full [&_input[type=month]]:min-w-0 [&_input[type=month]]:sm:w-auto [&_select]:w-full [&_select]:min-w-0 [&_select]:sm:w-auto [&_.flex-1]:min-w-0"
                     >
                         @if ($canShowDefaultSearch)
@@ -220,6 +221,42 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            // Keep cards/alerts in "above", but force GET filter forms
+            // to render right above table in toolbar for consistent layout.
+            document.querySelectorAll('[data-workspace-above]').forEach(function (aboveWrap) {
+                const scope = aboveWrap.parentElement;
+                if (!scope) return;
+                const toolbar = scope.querySelector('[data-workspace-toolbar]');
+                if (!toolbar) return;
+
+                const filterForms = aboveWrap.querySelectorAll('form[method="get"], form[method="GET"]');
+                filterForms.forEach(function (form) {
+                    toolbar.appendChild(form);
+                });
+
+                // Also move non-form filter/search blocks accidentally placed in "above".
+                // We only move blocks that look like table filters (search + submit style controls).
+                Array.from(aboveWrap.children).forEach(function (child) {
+                    if (!(child instanceof HTMLElement)) return;
+                    if (child.hasAttribute('data-workspace-keep-above')) return;
+                    if (child.closest('[data-workspace-toolbar]')) return;
+
+                    const hasSearchLike = Boolean(
+                        child.querySelector('input[type="search"], [data-table-filter], input[name="q"], input[name="search"]')
+                    );
+                    const hasFilterInputs = Boolean(
+                        child.querySelector('select[name], input[type="date"][name], input[type="month"][name], input[type="text"][name]')
+                    );
+                    const hasApplyControl = Boolean(
+                        child.querySelector('button[type="submit"], input[type="submit"]')
+                    );
+
+                    if ((hasSearchLike && hasApplyControl) || (hasSearchLike && hasFilterInputs && hasApplyControl)) {
+                        toolbar.appendChild(child);
+                    }
+                });
+            });
+
             const interactiveSelector = 'a, button, input, select, textarea, label, summary, details, [role="button"], [data-row-ignore-click]';
 
             document.querySelectorAll('tr[data-row-href]').forEach(function (row) {

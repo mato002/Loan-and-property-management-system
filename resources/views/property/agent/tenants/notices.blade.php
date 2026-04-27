@@ -19,45 +19,6 @@
             </div>
         </div>
 
-        <form method="get" action="{{ route('property.tenants.notices') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-                <div class="lg:col-span-2">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
-                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Tenant, type, notes..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
-                    <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">All</option>
-                        @foreach (['draft', 'sent', 'acknowledged', 'closed'] as $st)
-                            <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ ucfirst($st) }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
-                    <select name="tenant_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">All</option>
-                        @foreach ($tenants as $t)
-                            <option value="{{ $t->id }}" @selected((string) ($filters['tenant_id'] ?? '') === (string) $t->id)>{{ $t->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">From</label>
-                    <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">To</label>
-                    <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-            </div>
-            <div class="flex flex-wrap gap-2">
-                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
-                <a href="{{ route('property.tenants.notices', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
-            </div>
-        </form>
-
         <div class="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm max-w-3xl">
             <p class="text-lg font-semibold text-slate-900">Early move-out / tenancy changes</p>
             <p class="mt-1 text-sm text-slate-600">Typical flow: Log notice → agree exit date → update lease to <span class="font-semibold">Terminated</span> (unit becomes Vacant automatically) → optionally publish under Listings.</p>
@@ -86,16 +47,16 @@
         @endif
 
         @if (request()->query('view') !== '1')
-            <div x-data="{ showNoticeForm: @js($errors->hasAny(['pm_tenant_id','property_unit_id','notice_type','status','due_on','notes'])) }" class="space-y-3">
-            <button
-                type="button"
-                class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                @click="showNoticeForm = !showNoticeForm"
-            >
+            @php
+                $showNoticeFormByDefault = $errors->hasAny(['pm_tenant_id','property_unit_id','notice_type','status','due_on','notes']);
+            @endphp
+            <details class="space-y-3 group" @if($showNoticeFormByDefault) open @endif>
+            <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
                 <i class="fa-solid fa-file-circle-plus" aria-hidden="true"></i>
-                <span x-text="showNoticeForm ? 'Hide notice form' : 'Add notice'"></span>
-            </button>
-            <form method="post" action="{{ route('property.tenants.notices.store') }}" x-show="showNoticeForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+                <span class="group-open:hidden">Add notice</span>
+                <span class="hidden group-open:inline">Hide notice form</span>
+            </summary>
+            <form method="post" action="{{ route('property.tenants.notices.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
                 @csrf
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New notice</h3>
                 <div class="grid gap-3 sm:grid-cols-2">
@@ -168,7 +129,7 @@
                 </div>
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save notice</button>
             </form>
-            </div>
+            </details>
         @endif
 
         <script>
@@ -196,6 +157,43 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <input type="search" data-table-filter="parent" autocomplete="off" placeholder="Search notices…" class="w-full min-w-0 sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+        <form method="get" action="{{ route('property.tenants.notices') }}" class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
+                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Tenant, type, notes..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
+                    <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">All</option>
+                        @foreach (['draft', 'sent', 'acknowledged', 'closed'] as $st)
+                            <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ ucfirst($st) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
+                    <select name="tenant_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">All</option>
+                        @foreach ($tenants as $t)
+                            <option value="{{ $t->id }}" @selected((string) ($filters['tenant_id'] ?? '') === (string) $t->id)>{{ $t->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">From</label>
+                    <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">To</label>
+                    <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
+                <a href="{{ route('property.tenants.notices', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
+            </div>
+        </form>
     </x-slot>
 </x-property.workspace>

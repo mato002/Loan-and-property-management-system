@@ -102,7 +102,7 @@
                     <svg class="h-5 w-5 text-[#c5ebe8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l9-8 9 8M5 10v10h14V10" /></svg>
                 @endif
             </span>
-            <span class="property-collapse-text min-w-0 text-sm font-semibold text-white truncate">{{ $companyName !== '' ? $companyName : 'Tenant portal' }}</span>
+            <span class="property-collapse-text min-w-0 text-sm font-semibold text-white truncate">{{ $companyName }}</span>
         </a>
 
         @foreach ($menu as $itemName => $data)
@@ -148,7 +148,6 @@
             </div>
             <div class="property-collapse-text min-w-0 flex-1">
                 <p class="text-base font-medium text-white truncate">{{ Auth::user()->name ?? 'Tenant' }}</p>
-                <p class="text-sm text-[#8db1af] truncate">{{ Auth::user()->email ?? '' }}</p>
             </div>
         </a>
     </div>

@@ -164,7 +164,7 @@
                 @foreach ($amenities as $a)
                     @if (($a->properties_count ?? 0) === 0)
                         <li>
-                            <form method="post" action="{{ route('property.properties.amenities.destroy', $a) }}" onsubmit="return confirm('Delete “{{ $a->name }}” from the library?');" class="inline">
+                            <form method="post" action="{{ route('property.properties.amenities.destroy', $a) }}" data-swal-confirm="Delete &quot;{{ $a->name }}&quot; from the library?" class="inline">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50">{{ $a->name }} ×</button>
@@ -188,7 +188,7 @@
                             @forelse ($p->amenities as $am)
                                 <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
                                     {{ $am->name }}
-                                    <form method="post" action="{{ route('property.properties.amenities.detach') }}" class="inline" onsubmit="return confirm('Remove this tag?');">
+                                    <form method="post" action="{{ route('property.properties.amenities.detach') }}" class="inline" data-swal-confirm="Remove this tag?">
                                         @csrf
                                         <input type="hidden" name="pm_amenity_id" value="{{ $am->id }}" />
                                         <input type="hidden" name="property_id" value="{{ $p->id }}" />

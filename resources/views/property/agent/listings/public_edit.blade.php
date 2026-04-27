@@ -3,7 +3,6 @@
 
     <x-property.page
         title="Public website listing"
-        subtitle="This vacant unit already appears on the public Discover page. Photos and publish turn it into a featured listing with a gallery."
     >
         <div class="flex flex-wrap items-center gap-3 mb-6">
             <a
@@ -25,7 +24,6 @@
         <div class="grid gap-6 lg:grid-cols-2 max-w-5xl">
             <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Upload photos</h3>
-                <p class="text-xs text-slate-500 dark:text-slate-400">JPEG, PNG, or WebP — up to 12 files per batch. If upload fails, exact errors appear below. Run <code class="text-xs bg-slate-100 dark:bg-slate-900 px-1 rounded">php artisan storage:link</code> if images 404 locally.</p>
                 <form
                     method="post"
                     action="{{ route('property.listings.vacant.public.photos.store', $unit) }}"
@@ -71,7 +69,7 @@
                                     method="post"
                                     action="{{ route('property.listings.vacant.public.photos.destroy', [$unit, $img]) }}"
                                     class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onsubmit="return confirm('Remove this photo?');"
+                                    data-swal-confirm="Remove this photo?"
                                 >
                                     @csrf
                                     @method('DELETE')
@@ -108,7 +106,6 @@
                         />
                         <span class="text-sm text-slate-700 dark:text-slate-300">
                             <span class="font-medium text-slate-900 dark:text-white">Published on public website</span>
-                            <span class="block text-xs text-slate-500 mt-0.5">Requires at least one photo. Only vacant units are shown.</span>
                         </span>
                     </label>
                     @error('public_listing_published')<p class="text-xs text-red-600">{{ $message }}</p>@enderror

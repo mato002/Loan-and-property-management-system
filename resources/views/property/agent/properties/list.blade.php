@@ -67,10 +67,26 @@
                         this.showChargeBuilder = true;
                         this.charges.push({ charge_type: 'water', label: '', rate_per_unit: '', fixed_charge: '', notes: '' });
                     },
-                    addChargeType(index) {
-                        const raw = window.prompt('New charge type (e.g. internet, security, sewer):', '');
-                        if (!raw) return;
-                        const normalized = String(raw)
+                    async addChargeType(index) {
+                        let raw = '';
+                        if (window.Swal && typeof window.Swal.fire === 'function') {
+                            const result = await window.Swal.fire({
+                                title: 'Add charge type',
+                                input: 'text',
+                                inputLabel: 'New charge type (e.g. internet, security, sewer)',
+                                inputPlaceholder: 'internet',
+                                showCancelButton: true,
+                                confirmButtonText: 'Save',
+                                cancelButtonText: 'Cancel',
+                            });
+                            if (!result.isConfirmed) return;
+                            raw = String(result.value || '');
+                        } else {
+                            const fallback = window.prompt('New charge type (e.g. internet, security, sewer):', '');
+                            if (!fallback) return;
+                            raw = String(fallback);
+                        }
+                        const normalized = raw
                             .trim()
                             .toLowerCase()
                             .replace(/[^a-z0-9]+/g, '_')
@@ -207,7 +223,7 @@
                         const password = (document.getElementById('new-landlord-password')?.value || '').trim();
                         if (!name || !email || !password) {
                             if (window.Swal) Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name, email and password are required.' });
-                            else alert('Name, email and password are required.');
+                            else window.Swal?.fire?.({ icon: 'warning', title: 'Missing fields', text: 'Name, email and password are required.' }) || alert('Name, email and password are required.');
                             return;
                         }
                         this.creating = true;
@@ -226,7 +242,7 @@
                             if (!res.ok || !data.ok) {
                                 const msg = (data && (data.message || data.error)) ? (data.message || data.error) : 'Could not create landlord.';
                                 if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: msg });
-                                else alert(msg);
+                                else window.Swal?.fire?.({ icon: 'error', title: 'Error', text: msg }) || alert(msg);
                                 return;
                             }
                             const u = data.user;
@@ -242,7 +258,7 @@
                             this.showNewLandlord = false;
                         } catch (e) {
                             if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: 'Network/server error while creating landlord.' });
-                            else alert('Network/server error while creating landlord.');
+                            else window.Swal?.fire?.({ icon: 'error', title: 'Error', text: 'Network/server error while creating landlord.' }) || alert('Network/server error while creating landlord.');
                         } finally {
                             this.creating = false;
                         }

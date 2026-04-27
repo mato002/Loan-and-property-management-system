@@ -9,16 +9,16 @@
     empty-hint="Create templates below; delete only when unused."
 >
     <x-slot name="above">
-        <div x-data="{ showTemplateForm: @js($errors->hasAny(['name','channel','subject','body'])) }" class="space-y-3">
-        <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showTemplateForm = !showTemplateForm"
-        >
+        @php
+            $showTemplateFormByDefault = $errors->hasAny(['name','channel','subject','body']);
+        @endphp
+        <details class="space-y-3 group" @if($showTemplateFormByDefault) open @endif>
+        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
             <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
-            <span x-text="showTemplateForm ? 'Hide template form' : 'Add template'"></span>
-        </button>
-        <form method="post" action="{{ route('property.communications.templates.store') }}" x-show="showTemplateForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+            <span class="group-open:hidden">Add template</span>
+            <span class="hidden group-open:inline">Hide template form</span>
+        </summary>
+        <form method="post" action="{{ route('property.communications.templates.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New template</h3>
             <div>
@@ -42,7 +42,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save template</button>
         </form>
-        </div>
+        </details>
     </x-slot>
 
     <x-slot name="toolbar">
@@ -54,7 +54,7 @@
         <ul class="flex flex-wrap gap-2">
             @foreach ($messageTemplates as $t)
                 <li>
-                    <form method="post" action="{{ route('property.communications.templates.destroy', $t) }}" onsubmit="return confirm('Delete template {{ $t->name }}?');" class="inline">
+                    <form method="post" action="{{ route('property.communications.templates.destroy', $t) }}" data-swal-confirm="Delete template {{ $t->name }}?" class="inline">
                         @csrf
                         @method('DELETE')
                         <button type="submit" class="rounded-lg border border-red-200 dark:border-red-900/50 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30">{{ $t->name }} ×</button>

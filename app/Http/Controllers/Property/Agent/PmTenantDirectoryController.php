@@ -473,9 +473,17 @@ class PmTenantDirectoryController extends Controller
                 Rule::unique('pm_tenants', 'national_id')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
             ],
             'risk_level' => ['required', 'in:normal,medium,high'],
+            'opening_arrears_rent' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_utilities' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_penalties' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_other' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_amount' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_as_of' => ['nullable', 'date'],
+            'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'create_portal_login' => ['sometimes', 'boolean'],
         ]);
+        $openingArrearsPayload = $this->buildOpeningArrearsPayload($data);
 
         $plainPassword = null;
         $user = null;
@@ -513,6 +521,7 @@ class PmTenantDirectoryController extends Controller
             'email' => $createPortal ? Str::lower($data['email']) : ($data['email'] ?? null),
             'national_id' => $data['national_id'] ?? null,
             'risk_level' => $data['risk_level'],
+            ...$openingArrearsPayload,
             'notes' => $data['notes'] ?? null,
         ]);
 
@@ -525,6 +534,11 @@ class PmTenantDirectoryController extends Controller
                 'phone' => $tenant->phone,
                 'email' => $tenant->email,
                 'national_id' => $tenant->national_id,
+                'opening_arrears_amount' => (float) ($tenant->opening_arrears_amount ?? 0),
+                'opening_arrears_rent' => (float) ($tenant->opening_arrears_rent ?? 0),
+                'opening_arrears_utilities' => (float) ($tenant->opening_arrears_utilities ?? 0),
+                'opening_arrears_penalties' => (float) ($tenant->opening_arrears_penalties ?? 0),
+                'opening_arrears_other' => (float) ($tenant->opening_arrears_other ?? 0),
             ],
             'actions' => [
                 [
@@ -639,7 +653,11 @@ class PmTenantDirectoryController extends Controller
 
         $invoiceTotal = (float) $tenant->invoices->sum('amount');
         $invoicePaid = (float) $tenant->invoices->sum('amount_paid');
-        $invoiceDue = max(0.0, $invoiceTotal - $invoicePaid);
+        $openingArrears = (float) ($tenant->opening_arrears_amount ?? 0);
+        $completedPayments = (float) $tenant->payments()
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->sum('amount');
+        $invoiceDue = max(0.0, ($openingArrears + $invoiceTotal) - max($invoicePaid, $completedPayments));
 
         return view('property.agent.tenants.show', [
             'tenant' => $tenant,
@@ -683,6 +701,10 @@ class PmTenantDirectoryController extends Controller
 
         $openingInvoices = 0.0;
         $openingPayments = 0.0;
+        $openingArrears = (float) ($tenant->opening_arrears_amount ?? 0);
+        $openingArrearsAsOf = $tenant->opening_arrears_as_of
+            ? Carbon::parse((string) $tenant->opening_arrears_as_of)->startOfDay()
+            : null;
         if ($fromDate) {
             $openingInvoices = (float) PmInvoice::query()
                 ->where('pm_tenant_id', $tenant->id)
@@ -694,6 +716,10 @@ class PmTenantDirectoryController extends Controller
                 ->where('status', PmPayment::STATUS_COMPLETED)
                 ->whereDate('paid_at', '<', $fromDate->toDateString())
                 ->sum('amount');
+
+            if ($openingArrears > 0 && ($openingArrearsAsOf === null || $openingArrearsAsOf->lt($fromDate))) {
+                $openingInvoices += $openingArrears;
+            }
         }
 
         $openingBalance = $openingInvoices - $openingPayments;
@@ -714,6 +740,33 @@ class PmTenantDirectoryController extends Controller
                 'credit' => 0.0,
                 'payment_id' => null,
             ]);
+        }
+
+        if ($openingArrears > 0) {
+            $entryDate = $openingArrearsAsOf?->toDateString() ?? $tenant->created_at?->toDateString() ?? now()->toDateString();
+            $entryTs = $openingArrearsAsOf?->timestamp ?? ($tenant->created_at?->timestamp ?? now()->timestamp);
+            $inRange = (! $fromDate || $entryTs >= $fromDate->timestamp) && (! $toDate || $entryTs <= $toDate->timestamp);
+            if ($inRange) {
+                $arrearsParts = collect([
+                    'Rent' => (float) ($tenant->opening_arrears_rent ?? 0),
+                    'Utilities' => (float) ($tenant->opening_arrears_utilities ?? 0),
+                    'Penalties' => (float) ($tenant->opening_arrears_penalties ?? 0),
+                    'Other' => (float) ($tenant->opening_arrears_other ?? 0),
+                ])->filter(fn (float $v): bool => $v > 0);
+                $partsText = $arrearsParts->isEmpty()
+                    ? ''
+                    : ' Breakdown: '.$arrearsParts->map(fn (float $v, string $k): string => $k.' '.PropertyMoney::kes($v))->implode(' · ');
+                $entries->push([
+                    'date' => $entryDate,
+                    'timestamp' => $entryTs,
+                    'type' => 'Opening arrears',
+                    'ref' => 'B/F-'.$tenant->id,
+                    'description' => trim((string) (($tenant->opening_arrears_notes ?: 'Brought-forward debt captured at tenant onboarding.').$partsText)),
+                    'debit' => $openingArrears,
+                    'credit' => 0.0,
+                    'payment_id' => null,
+                ]);
+            }
         }
 
         foreach ($payments as $payment) {
@@ -822,7 +875,12 @@ class PmTenantDirectoryController extends Controller
             'count' => $invoices->count(),
             'total' => (float) $invoices->sum('amount'),
             'paid' => (float) $invoices->sum('amount_paid'),
-            'outstanding' => (float) $invoices->sum(fn (PmInvoice $i) => max(0.0, (float) $i->amount - (float) $i->amount_paid)),
+            'opening_arrears' => $openingArrears,
+            'opening_arrears_rent' => (float) ($tenant->opening_arrears_rent ?? 0),
+            'opening_arrears_utilities' => (float) ($tenant->opening_arrears_utilities ?? 0),
+            'opening_arrears_penalties' => (float) ($tenant->opening_arrears_penalties ?? 0),
+            'opening_arrears_other' => (float) ($tenant->opening_arrears_other ?? 0),
+            'outstanding' => max(0.0, $running),
             'openCount' => $invoices->filter(fn (PmInvoice $i) => (float) $i->amount_paid < (float) $i->amount)->count(),
         ];
 
@@ -890,10 +948,21 @@ class PmTenantDirectoryController extends Controller
                     ->ignore($tenant->id),
             ],
             'risk_level' => ['required', 'in:normal,medium,high'],
+            'opening_arrears_rent' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_utilities' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_penalties' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_other' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_amount' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_as_of' => ['nullable', 'date'],
+            'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+        $openingArrearsPayload = $this->buildOpeningArrearsPayload($data, $tenant);
 
-        $tenant->update($data);
+        $tenant->update([
+            ...$data,
+            ...$openingArrearsPayload,
+        ]);
 
         return back()->with('success', 'Tenant updated.');
     }
@@ -967,5 +1036,33 @@ class PmTenantDirectoryController extends Controller
     private function isFieldRequired(array $config, string $field): bool
     {
         return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
+    }
+
+    /**
+     * @param  array<string,mixed>  $data
+     * @return array<string,mixed>
+     */
+    private function buildOpeningArrearsPayload(array $data, ?PmTenant $tenant = null): array
+    {
+        $rent = (float) ($data['opening_arrears_rent'] ?? 0);
+        $utilities = (float) ($data['opening_arrears_utilities'] ?? 0);
+        $penalties = (float) ($data['opening_arrears_penalties'] ?? 0);
+        $other = (float) ($data['opening_arrears_other'] ?? 0);
+        $computedTotal = $rent + $utilities + $penalties + $other;
+        $manualTotal = (float) ($data['opening_arrears_amount'] ?? 0);
+        $total = $computedTotal > 0 ? $computedTotal : $manualTotal;
+        $asOf = $total > 0
+            ? ($data['opening_arrears_as_of'] ?? ($tenant?->opening_arrears_as_of?->toDateString() ?? now()->toDateString()))
+            : null;
+
+        return [
+            'opening_arrears_rent' => $rent,
+            'opening_arrears_utilities' => $utilities,
+            'opening_arrears_penalties' => $penalties,
+            'opening_arrears_other' => $other,
+            'opening_arrears_amount' => $total,
+            'opening_arrears_as_of' => $asOf,
+            'opening_arrears_notes' => $data['opening_arrears_notes'] ?? null,
+        ];
     }
 }

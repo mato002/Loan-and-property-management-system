@@ -64,6 +64,48 @@
                 @error('risk_level')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
         </div>
+        <div class="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-3">
+            <p class="text-xs font-semibold text-amber-900">Previous debt / opening arrears</p>
+            <div class="mt-2 grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent arrears (KES)</label>
+                    <input type="number" name="opening_arrears_rent" value="{{ old('opening_arrears_rent', $tenant->opening_arrears_rent) }}" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('opening_arrears_rent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Utilities arrears (KES)</label>
+                    <input type="number" name="opening_arrears_utilities" value="{{ old('opening_arrears_utilities', $tenant->opening_arrears_utilities) }}" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('opening_arrears_utilities')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Penalties arrears (KES)</label>
+                    <input type="number" name="opening_arrears_penalties" value="{{ old('opening_arrears_penalties', $tenant->opening_arrears_penalties) }}" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('opening_arrears_penalties')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Other charges arrears (KES)</label>
+                    <input type="number" name="opening_arrears_other" value="{{ old('opening_arrears_other', $tenant->opening_arrears_other) }}" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('opening_arrears_other')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+            </div>
+            <div class="mt-2 grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Manual total override (optional)</label>
+                    <input type="number" name="opening_arrears_amount" value="{{ old('opening_arrears_amount', $tenant->opening_arrears_amount) }}" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('opening_arrears_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">As of date</label>
+                    <input type="date" name="opening_arrears_as_of" value="{{ old('opening_arrears_as_of', optional($tenant->opening_arrears_as_of)->format('Y-m-d')) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('opening_arrears_as_of')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+            </div>
+            <div class="mt-2">
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Arrears note (optional)</label>
+                <input type="text" name="opening_arrears_notes" value="{{ old('opening_arrears_notes', $tenant->opening_arrears_notes) }}" maxlength="500" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                @error('opening_arrears_notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+        </div>
         <div>
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
             <textarea name="notes" rows="3" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('notes', $tenant->notes) }}</textarea>

@@ -5,6 +5,7 @@ namespace App\Services\Property;
 use App\Models\PmInvoice;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmPayment;
+use App\Models\PmTenant;
 use App\Models\PropertyUnit;
 use Carbon\Carbon;
 
@@ -47,7 +48,7 @@ final class PropertyDashboardStats
 
     public static function outstandingBalance(): float
     {
-        return (float) PmInvoice::query()
+        $invoiceOutstanding = (float) PmInvoice::query()
             ->whereIn('status', [
                 PmInvoice::STATUS_SENT,
                 PmInvoice::STATUS_PARTIAL,
@@ -56,6 +57,10 @@ final class PropertyDashboardStats
             ->where('status', '!=', PmInvoice::STATUS_CANCELLED)
             ->selectRaw('SUM(amount - amount_paid) as t')
             ->value('t') ?? 0;
+
+        $openingArrears = (float) PmTenant::query()->sum('opening_arrears_amount');
+
+        return $invoiceOutstanding + $openingArrears;
     }
 
     public static function occupancyRate(): ?float

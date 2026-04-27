@@ -415,6 +415,21 @@
         editModal?.classList.add('hidden');
         editModal?.classList.remove('flex');
     };
+    const confirmRemoveChargeRow = async () => {
+        if (window.Swal && typeof window.Swal.fire === 'function') {
+            const result = await window.Swal.fire({
+                icon: 'warning',
+                title: 'Remove this charge row?',
+                text: 'This only removes it from the current edit form until you save.',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, remove',
+                cancelButtonText: 'Cancel',
+            });
+            return Boolean(result.isConfirmed);
+        }
+
+        return true;
+    };
 
     const reindexEditChargeRows = () => {
         editChargeRows?.querySelectorAll('.js-edit-charge-row').forEach((row, index) => {
@@ -442,7 +457,11 @@
         row.querySelector('[data-field="applies_to_client_scope"]').value = charge.applies_to_client_scope ?? 'all';
         row.querySelector('[data-field="type"]').value = charge.type ?? 'fixed';
         row.querySelector('[data-field="amount"]').value = charge.amount ?? '';
-        row.querySelector('.js-remove-edit-charge')?.addEventListener('click', () => {
+        row.querySelector('.js-remove-edit-charge')?.addEventListener('click', async () => {
+            const shouldRemove = await confirmRemoveChargeRow();
+            if (!shouldRemove) {
+                return;
+            }
             row.remove();
             reindexEditChargeRows();
         });
@@ -549,10 +568,8 @@
                 return;
             }
 
-            if (window.confirm(message)) {
-                form.submit();
-                return;
-            }
+            form.submit();
+            return;
         });
     });
 </script>

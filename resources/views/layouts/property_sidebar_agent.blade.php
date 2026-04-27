@@ -104,46 +104,29 @@
             'kicker' => 'Lean',
             'items' => [
                 [
-                    'label' => 'Create listing',
-                    'sublabel' => 'Start a new listing',
-                    'route' => 'property.listings.create',
-                    'active' => ['property.listings.create'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Vacant listings',
-                    'sublabel' => 'Units available now',
-                    'route' => 'property.listings.vacant',
+                    'label' => 'Listings workspace',
+                    'sublabel' => 'Create · vacant · published · leads · applications',
+                    'route' => 'property.listings.index',
                     'active' => [
+                        'property.listings.index',
+                        'property.listings.create',
+                        'property.listings.start',
                         'property.listings.vacant',
                         'property.listings.vacant.public.edit',
                         'property.listings.vacant.public.update',
                         'property.listings.vacant.public.photos.store',
+                        'property.listings.vacant.public.photos.main',
                         'property.listings.vacant.public.photos.destroy',
-                    ],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Published on website',
-                    'sublabel' => 'What the public sees',
-                    'route' => 'property.listings.ads',
-                    'active' => ['property.listings.ads'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Enquiries (leads)',
-                    'sublabel' => 'Calls · SMS · walk-ins',
-                    'route' => 'property.listings.leads',
-                    'active' => ['property.listings.leads', 'property.listings.leads.store', 'property.listings.leads.update'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Rental applications',
-                    'sublabel' => 'Applicants pipeline',
-                    'route' => 'property.listings.applications',
-                    'active' => [
+                        'property.listings.ads',
+                        'property.listings.leads',
+                        'property.listings.leads.export',
+                        'property.listings.leads.store',
+                        'property.listings.leads.update',
                         'property.listings.applications',
+                        'property.listings.applications.export',
                         'property.listings.applications.store',
+                        'property.listings.applications.show',
+                        'property.listings.applications.message',
                         'property.listings.applications.update',
                     ],
                     'badge' => null,
@@ -697,8 +680,7 @@
                 @endif
             </span>
             <span class="property-collapse-text flex flex-col min-w-0 leading-tight text-left">
-                <span class="text-base font-bold tracking-tight text-white truncate">{{ $companyName !== '' ? $companyName : 'Agent workspace' }}</span>
-                <span class="text-sm font-medium text-[#8db1af] truncate">Property operations</span>
+                <span class="text-base font-bold tracking-tight text-white truncate">{{ $companyName }}</span>
             </span>
         </a>
     </div>
@@ -747,9 +729,6 @@
                                     <span class="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
                                 @endif
                             </span>
-                            @if (! empty($item['sublabel']))
-                                <span class="text-sm leading-snug text-[#8db1af] group-hover:text-[#d4e4e3] group-aria-[current=page]:text-[#c5ddd9]">{{ $item['sublabel'] }}</span>
-                            @endif
                         </span>
                     </a>
                 </div>
@@ -778,9 +757,6 @@
                                 @endif
                                 <span>{{ $section['heading'] }}</span>
                             </span>
-                            @if (! empty($section['kicker']))
-                                <span class="mt-0.5 block text-xs leading-snug text-[#a8c9c7]/95 group-data-[section-active]:text-[#c5ebe8]/95">{{ $section['kicker'] }}</span>
-                            @endif
                         </span>
                     </button>
 
@@ -812,9 +788,6 @@
                                         <span class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
                                     @endif
                                 </span>
-                                @if (! empty($item['sublabel']))
-                                    <span class="text-sm leading-snug text-[#8db1af] group-hover:text-[#d4e4e3] group-aria-[current=page]:text-[#c5ddd9]">{{ $item['sublabel'] }}</span>
-                                @endif
                             </a>
                         @endforeach
                     </div>
@@ -849,7 +822,6 @@
             </div>
             <div class="property-collapse-text flex flex-col overflow-hidden min-w-0">
                 <span class="text-base font-medium text-white truncate">{{ Auth::user()->name ?? 'User' }}</span>
-                <span class="text-sm text-[#8db1af] truncate">{{ Auth::user()->email ?? '' }}</span>
             </div>
         </a>
 

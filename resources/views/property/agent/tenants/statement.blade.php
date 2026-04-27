@@ -85,6 +85,13 @@
                 <h3 class="text-sm font-semibold text-slate-900">Billing snapshot</h3>
                 <div class="mt-2 text-sm text-slate-700 space-y-1">
                     <p><span class="text-slate-500">Invoices:</span> {{ $invoiceSummary['count'] }}</p>
+                    <p><span class="text-slate-500">Opening arrears:</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceSummary['opening_arrears'] ?? 0)) }}</p>
+                    <p class="text-xs text-slate-500">
+                        Rent {{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceSummary['opening_arrears_rent'] ?? 0)) }},
+                        Utilities {{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceSummary['opening_arrears_utilities'] ?? 0)) }},
+                        Penalties {{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceSummary['opening_arrears_penalties'] ?? 0)) }},
+                        Other {{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceSummary['opening_arrears_other'] ?? 0)) }}
+                    </p>
                     <p><span class="text-slate-500">Invoiced total:</span> {{ \App\Services\Property\PropertyMoney::kes((float) $invoiceSummary['total']) }}</p>
                     <p><span class="text-slate-500">Paid on invoices:</span> {{ \App\Services\Property\PropertyMoney::kes((float) $invoiceSummary['paid']) }}</p>
                     <p><span class="text-slate-500">Outstanding:</span> {{ \App\Services\Property\PropertyMoney::kes((float) $invoiceSummary['outstanding']) }}</p>

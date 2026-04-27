@@ -59,16 +59,16 @@
             </div>
         </form>
 
-        <div x-data="{ showBulkForm: @js($errors->hasAny(['channel','segment_label','recipients','subject','message','schedule_at'])) }" class="space-y-3">
-        <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showBulkForm = !showBulkForm"
-        >
+        @php
+            $showBulkFormByDefault = $errors->hasAny(['channel','segment_label','recipients','subject','message','schedule_at']);
+        @endphp
+        <details class="space-y-3 group" @if($showBulkFormByDefault) open @endif>
+        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
             <i class="fa-solid fa-bullhorn" aria-hidden="true"></i>
-            <span x-text="showBulkForm ? 'Hide bulk form' : 'Send bulk message'"></span>
-        </button>
-        <form method="post" action="{{ route('property.communications.bulk.store') }}" x-show="showBulkForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+            <span class="group-open:hidden">Send bulk message</span>
+            <span class="hidden group-open:inline">Hide bulk form</span>
+        </summary>
+        <form method="post" action="{{ route('property.communications.bulk.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
             @csrf
             <div class="flex items-start justify-between gap-3">
                 <div>
@@ -154,11 +154,24 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Send / schedule</button>
         </form>
-        </div>
+        </details>
     </x-slot>
 </x-property.workspace>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    const showAlert = (message, title = 'Notice', icon = 'warning') => {
+        if (window.Swal && typeof window.Swal.fire === 'function') {
+            return window.Swal.fire({
+                icon,
+                title,
+                text: String(message || ''),
+                confirmButtonText: 'OK',
+            });
+        }
+        window.alert(String(message || ''));
+        return Promise.resolve();
+    };
+
     const buttons = document.querySelectorAll('.pm-load-recipients');
     const recipientsEl = document.getElementById('pm-recipients');
     const channelEl = document.getElementById('pm-bulk-channel');
@@ -224,14 +237,14 @@ document.addEventListener('DOMContentLoaded', function () {
             const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
             const json = await res.json();
             if (!json.ok) {
-                alert(json.error || 'Failed to load tenant recipients.');
+                await showAlert(json.error || 'Failed to load tenant recipients.', 'Unable to load recipients', 'error');
                 return;
             }
             tenantItems = Array.isArray(json.tenant_items) ? json.tenant_items : [];
             renderTenantOptions();
         } catch (e) {
             console.error(e);
-            alert('Failed to load tenant recipients.');
+            await showAlert('Failed to load tenant recipients.', 'Unable to load recipients', 'error');
         } finally {
             hint && (hint.textContent = 'Done', setTimeout(() => hint.classList.add('hidden'), 800));
         }
@@ -266,18 +279,18 @@ document.addEventListener('DOMContentLoaded', function () {
             const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
             const json = await res.json();
             if (!json.ok) {
-                alert(json.error || 'Failed to load recipients.');
+                await showAlert(json.error || 'Failed to load recipients.', 'Unable to load recipients', 'error');
                 return;
             }
             const list = Array.isArray(json.recipients) ? json.recipients : (Array.isArray(json.phones) ? json.phones : []);
             if (list.length === 0) {
-                alert('No recipients found for ' + type + ' (' + channel + ').');
+                await showAlert('No recipients found for ' + type + ' (' + channel + ').', 'No recipients found', 'info');
                 return;
             }
             appendRecipients(list);
         } catch (e) {
             console.error(e);
-            alert('Failed to load recipients. Check your connection.');
+            await showAlert('Failed to load recipients. Check your connection.', 'Unable to load recipients', 'error');
         } finally {
             hint && (hint.textContent = 'Done', setTimeout(() => hint.classList.add('hidden'), 800));
         }
@@ -293,7 +306,7 @@ document.addEventListener('DOMContentLoaded', function () {
         await loadTenantItems();
     });
     tenantModeEl && tenantModeEl.addEventListener('change', updateTenantUi);
-    applyTenantsBtn && applyTenantsBtn.addEventListener('click', () => {
+    applyTenantsBtn && applyTenantsBtn.addEventListener('click', async () => {
         const mode = tenantModeEl ? tenantModeEl.value : 'all';
         let list = [];
         if (mode === 'selected') {
@@ -302,7 +315,7 @@ document.addEventListener('DOMContentLoaded', function () {
             list = [...(tenantPickEl?.options || [])].map(opt => opt.getAttribute('data-recipient') || '').filter(Boolean);
         }
         if (list.length === 0) {
-            alert('No tenant recipients selected.');
+            await showAlert('No tenant recipients selected.', 'No selection', 'info');
             return;
         }
         appendRecipients(list);

@@ -59,16 +59,16 @@
             </div>
         </form>
 
-        <div x-data="{ showMessageForm: @js($errors->hasAny(['channel','to_address','subject','body'])) }" class="space-y-3">
-        <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showMessageForm = !showMessageForm"
-        >
+        @php
+            $showMessageFormByDefault = $errors->hasAny(['channel','to_address','subject','body']);
+        @endphp
+        <details class="space-y-3 group" @if($showMessageFormByDefault) open @endif>
+        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
             <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
-            <span x-text="showMessageForm ? 'Hide message form' : 'Send / log message'"></span>
-        </button>
-        <form method="post" action="{{ route('property.communications.messages.store') }}" x-show="showMessageForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl" x-data="{
+            <span class="group-open:hidden">Send / log message</span>
+            <span class="hidden group-open:inline">Hide message form</span>
+        </summary>
+        <form method="post" action="{{ route('property.communications.messages.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl" x-data="{
             channel: '{{ old('channel', 'email') }}',
             search: '',
             groupFilter: '',
@@ -176,7 +176,7 @@
             @error('body')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Submit</button>
         </form>
-        </div>
+        </details>
     </x-slot>
 
     <x-slot name="toolbar">

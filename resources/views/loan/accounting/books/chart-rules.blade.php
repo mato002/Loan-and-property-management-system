@@ -482,7 +482,7 @@
                                                 <input type="hidden" name="redirect_to" value="{{ route('loan.accounting.books.chart_rules', ['tab' => 'accounts']) }}">
                                                 <button
                                                     type="submit"
-                                                    onclick="return confirm('Delete this account? If it has journal history, deletion will be blocked.');"
+                                                    data-swal-confirm="Delete this account? If it has journal history, deletion will be blocked."
                                                     class="rounded p-1 hover:bg-red-50 hover:text-red-700"
                                                     title="Delete Account"
                                                 >
@@ -594,7 +594,7 @@
                                                     <template x-if="!isMappingEditing({{ (int) $rule->id }})">
                                                         <div class="flex items-center gap-2">
                                                             <button type="button" @click="startMappingEdit({{ (int) $rule->id }})" class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100" title="Edit mapping">Edit</button>
-                                                            <form method="post" action="{{ route('loan.accounting.chart.posting_rules.destroy', $rule->rule_key) }}" onsubmit="return confirm('Delete this mapping rule?');" class="inline">
+                                                            <form method="post" action="{{ route('loan.accounting.chart.posting_rules.destroy', $rule->rule_key) }}" data-swal-confirm="Delete this mapping rule?" class="inline">
                                                                 @csrf
                                                                 @method('DELETE')
                                                                 <button type="submit" class="inline-flex items-center justify-center rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" title="Delete mapping">Delete</button>

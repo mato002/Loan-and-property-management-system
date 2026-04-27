@@ -1,13 +1,11 @@
 <x-property.workspace
     title="Applications"
-    subtitle="Rental applications linked to units. Extend screening fields when you add compliance requirements."
     :show-search="false"
     back-route="property.listings.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
     empty-title="No applications"
-    empty-hint="Record applications below; attach documents in a later phase."
 >
     @php
         $applicationCfg = $applicationFields ?? [];
@@ -74,16 +72,16 @@
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif
 
-        <div x-data="{ showApplicationForm: @js($errors->hasAny(['applicant_name','applicant_phone','applicant_email','status','property_unit_id','notes'])) }" class="space-y-3">
-        <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showApplicationForm = !showApplicationForm"
-        >
+        @php
+            $showApplicationFormByDefault = $errors->hasAny(['applicant_name','applicant_phone','applicant_email','status','property_unit_id','notes']);
+        @endphp
+        <details class="space-y-3 group" @if($showApplicationFormByDefault) open @endif>
+        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
             <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
-            <span x-text="showApplicationForm ? 'Hide application form' : 'Add application'"></span>
-        </button>
-        <form method="post" action="{{ route('property.listings.applications.store') }}" x-show="showApplicationForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+            <span class="group-open:hidden">Add application</span>
+            <span class="hidden group-open:inline">Hide application form</span>
+        </summary>
+        <form method="post" action="{{ route('property.listings.applications.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New application</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -140,14 +138,8 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save application</button>
         </form>
-        </div>
+        </details>
     </x-slot>
-
-    <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
-        <p class="text-sm text-slate-700 dark:text-slate-200">
-            Tip: Use the <span class="font-semibold">Actions</span> column to view, message, and update status per applicant.
-        </p>
-    </div>
 
     @if (isset($applicationsPager))
         <x-slot name="footer">

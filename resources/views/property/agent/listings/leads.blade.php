@@ -1,12 +1,10 @@
 <x-property.workspace
     title="Lead tracking"
-    subtitle="Leads are stored in the database and can be linked to a unit. Stages are free-form labels for your pipeline."
     back-route="property.listings.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
     empty-title="No leads"
-    empty-hint="Add a lead below or import from your CRM when you wire CSV."
 >
     @php
         $leadCfg = $leadFields ?? [];
@@ -66,16 +64,16 @@
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif
 
-        <div x-data="{ showLeadForm: @js($errors->hasAny(['name','phone','email','source','stage','property_unit_id','notes'])) }" class="space-y-3">
-        <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showLeadForm = !showLeadForm"
-        >
+        @php
+            $showLeadFormByDefault = $errors->hasAny(['name','phone','email','source','stage','property_unit_id','notes']);
+        @endphp
+        <details class="space-y-3 group" @if($showLeadFormByDefault) open @endif>
+        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
             <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
-            <span x-text="showLeadForm ? 'Hide lead form' : 'Add lead'"></span>
-        </button>
-        <form method="post" action="{{ route('property.listings.leads.store') }}" x-show="showLeadForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+            <span class="group-open:hidden">Add lead</span>
+            <span class="hidden group-open:inline">Hide lead form</span>
+        </summary>
+        <form method="post" action="{{ route('property.listings.leads.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New lead</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -137,14 +135,11 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save lead</button>
         </form>
-        </div>
+        </details>
     </x-slot>
 
     <x-slot name="toolbar">
         <input type="search" data-table-filter="parent" autocomplete="off" placeholder="Search leads…" class="w-full min-w-0 sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
     </x-slot>
 
-    <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
-        <p class="text-sm text-slate-700 dark:text-slate-200">Use the <span class="font-semibold">Actions</span> column to update stage quickly.</p>
-    </div>
 </x-property.workspace>

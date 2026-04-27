@@ -293,7 +293,7 @@
                             }).then(function (res) {
                                 if (res.isConfirmed) doSubmit();
                             });
-                        } else if (window.confirm(text || title)) {
+                        } else {
                             doSubmit();
                         }
                     });

@@ -1,6 +1,5 @@
 <x-property.workspace
     title="Vacant unit listings"
-    subtitle="Vacant units appear on the public Discover page automatically. Add photos and publish to feature them with a gallery."
     back-route="property.listings.index"
     :stats="$stats"
     :columns="[]"
@@ -8,7 +7,6 @@
     <x-slot name="above">
         <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
             <p class="text-lg font-semibold text-slate-900">Vacancy publishing flow</p>
-            <p class="mt-1 text-sm text-slate-600">Vacant units appear on Discover automatically. Add photos and publish to feature them on the website (gallery + main image).</p>
             <div class="mt-3 flex flex-wrap gap-2">
                 <a href="{{ route('property.properties.units', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                     Unit status
@@ -94,7 +92,7 @@
                             @endif
                         </td>
                         <td class="px-3 sm:px-4 py-3">
-                            <a href="{{ route('property.listings.vacant.public.edit', $u, absolute: false) }}" data-turbo-frame="property-main" data-property-nav="property.listings.vacant.public.edit" class="text-blue-600 dark:text-blue-400 font-medium hover:underline">Photos &amp; publish</a>
+                            <a href="{{ route('property.listings.create', ['selected_unit' => $u->id], absolute: false) }}#listing-publish" data-turbo-frame="property-main" data-property-nav="property.listings.create" class="text-blue-600 dark:text-blue-400 font-medium hover:underline">Photos &amp; publish</a>
                         </td>
                     </tr>
                 @empty

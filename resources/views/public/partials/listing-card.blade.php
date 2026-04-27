@@ -1,7 +1,8 @@
 @php
     // Keep a single image size across all public listing cards for visual consistency.
     $imageHeight = 'h-64';
-    $thumb = $unit->primaryPublicImageUrl() ?? $placeholderImage;
+    $thumb = $unit->primaryPublicImageUrl();
+    $hasPhoto = $thumb !== null && $thumb !== '';
     $propertyName = (string) ($unit->property?->name ?? 'Property');
     $title = $propertyName.' — Unit '.$unit->label;
     $addr = trim(collect([$unit->property?->address_line, $unit->property?->city])->filter()->implode(', ')) ?: '—';
@@ -11,7 +12,16 @@
 @endphp
 <div class="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-2xl transition-all duration-300 hover:-translate-y-1.5 flex flex-col">
     <div class="relative {{ $imageHeight }} overflow-hidden">
-        <img src="{{ $thumb }}" alt="{{ $title }}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+        @if ($hasPhoto)
+            <img src="{{ $thumb }}" alt="{{ $title }}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700">
+        @else
+            <div class="w-full h-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
+                <div class="text-center px-4">
+                    <p class="text-sm font-semibold text-slate-700">No photo yet</p>
+                    <p class="text-xs text-slate-500 mt-1">Unit {{ $unit->label }}</p>
+                </div>
+            </div>
+        @endif
         <div class="absolute top-4 left-4 bg-white/95 backdrop-blur px-3 py-1 rounded-full text-xs font-black tracking-wider text-gray-900 shadow-sm uppercase">For Rent</div>
         @if ($unit->public_listing_published)
             <div class="absolute top-4 right-4 bg-amber-500/95 backdrop-blur px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-white shadow-sm uppercase">Featured</div>

@@ -25,6 +25,13 @@
                 <p><span class="text-slate-500">Phone:</span> {{ $tenant->phone ?: '—' }}</p>
                 <p><span class="text-slate-500">Email:</span> {{ $tenant->email ?: '—' }}</p>
                 <p><span class="text-slate-500">National ID / ref:</span> {{ $tenant->national_id ?: '—' }}</p>
+                <p><span class="text-slate-500">Opening arrears total:</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_amount ?? 0)) }}</p>
+                <p class="text-xs text-slate-500">
+                    Rent {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_rent ?? 0)) }},
+                    Utilities {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_utilities ?? 0)) }},
+                    Penalties {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_penalties ?? 0)) }},
+                    Other {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_other ?? 0)) }}
+                </p>
                 <p><span class="text-slate-500">Portal login linked:</span> {{ $tenant->user_id ? 'Yes' : 'No' }}</p>
             </div>
         </div>

@@ -45,7 +45,7 @@
                                 </td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('loan.branches.edit', $row) }}" class="text-indigo-600 font-medium text-sm hover:underline mr-3">Edit</a>
-                                    <form method="post" action="{{ route('loan.branches.destroy', $row) }}" class="inline" onsubmit="return confirm('Delete this branch?');">
+                                    <form method="post" action="{{ route('loan.branches.destroy', $row) }}" class="inline" data-swal-confirm="Delete this branch?">
                                         @csrf
                                         @method('delete')
                                         <button type="submit" class="text-red-600 font-medium text-sm hover:underline">Delete</button>

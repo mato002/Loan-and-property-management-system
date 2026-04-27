@@ -52,7 +52,7 @@
                             <button type="submit" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Save changes</button>
                         </div>
                     </form>
-                    <form method="post" action="{{ route('property.settings.system_setup.access.permissions.destroy', $permission) }}" onsubmit="return confirm('Delete this permission?')" class="mt-2 text-right">
+                    <form method="post" action="{{ route('property.settings.system_setup.access.permissions.destroy', $permission) }}" data-swal-confirm="Delete this permission?" class="mt-2 text-right">
                         @csrf
                         @method('delete')
                         <button type="submit" class="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">Delete</button>

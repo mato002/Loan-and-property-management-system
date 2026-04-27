@@ -43,7 +43,7 @@
                                 </td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('loan.regions.edit', $row) }}" class="text-indigo-600 font-medium text-sm hover:underline mr-3">Edit</a>
-                                    <form method="post" action="{{ route('loan.regions.destroy', $row) }}" class="inline" onsubmit="return confirm('Delete this region?');">
+                                    <form method="post" action="{{ route('loan.regions.destroy', $row) }}" class="inline" data-swal-confirm="Delete this region?">
                                         @csrf
                                         @method('delete')
                                         <button type="submit" class="text-red-600 font-medium text-sm hover:underline">Delete</button>

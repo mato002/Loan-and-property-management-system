@@ -346,7 +346,7 @@
                         <td class="px-3 sm:px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $c->amount) }}</td>
                         <td class="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-400 max-w-xs truncate">{{ $c->notes ?? '—' }}</td>
                         <td class="px-3 sm:px-4 py-3">
-                            <form method="post" action="{{ route('property.revenue.utilities.destroy', $c) }}" onsubmit="return confirm('Delete this charge line?');">
+                            <form method="post" action="{{ route('property.revenue.utilities.destroy', $c) }}" data-swal-confirm="Delete this charge line?">
                                 @csrf
                                 @method('DELETE')
                                 <button type="submit" class="text-xs font-medium text-red-600 dark:text-red-400 hover:underline">Remove</button>

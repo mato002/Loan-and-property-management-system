@@ -25,43 +25,32 @@ class AgentPublicListingController extends Controller
         $hubItems = [
             [
                 'route' => 'property.listings.create',
-                'title' => 'Setup a listing',
-                'description' => $vacantCount === 0
-                    ? 'Start here once you have a vacant unit — we walk you to photos & publish.'
-                    : 'Pick a vacant unit → upload photos, description, go live on Discover.',
-            ],
-            [
-                'route' => 'property.listings.vacant',
-                'title' => 'Vacant units',
-                'description' => $vacantCount === 0
-                    ? 'No vacant inventory yet — add units under Properties.'
-                    : $vacantCount.' vacant on the public Discover page — '.$publishedCount.' featured (photos + publish), '.$withPhotosCount.' with photos.',
+                'title' => 'Listings workspace',
+                'description' => '',
             ],
             [
                 'route' => 'property.listings.ads',
                 'title' => 'Live on website',
-                'description' => $publishedCount === 0
-                    ? 'No featured listings yet — vacant units still appear on Discover with a placeholder image until you add photos and publish here.'
-                    : $publishedCount.' featured listing'.($publishedCount === 1 ? '' : 's').' with gallery + public URLs.',
+                'description' => '',
             ],
             [
                 'route' => 'property.listings.leads',
                 'title' => 'Leads',
-                'description' => 'Optional pipeline — forms only; no listing record here.',
+                'description' => '',
             ],
             [
                 'route' => 'property.listings.applications',
                 'title' => 'Applications',
-                'description' => 'Roadmap: screening and documents (not wired yet).',
+                'description' => '',
             ],
         ];
 
         return view('property.agent.listings.index', [
             'hubItems' => $hubItems,
             'hubStats' => [
-                ['label' => 'Vacant', 'value' => (string) $vacantCount, 'hint' => 'Units'],
-                ['label' => 'Featured', 'value' => (string) $publishedCount, 'hint' => 'Photos + publish'],
-                ['label' => 'With photos', 'value' => (string) $withPhotosCount, 'hint' => 'Gallery ready'],
+                ['label' => 'Vacant', 'value' => (string) $vacantCount, 'hint' => null],
+                ['label' => 'Featured', 'value' => (string) $publishedCount, 'hint' => null],
+                ['label' => 'With photos', 'value' => (string) $withPhotosCount, 'hint' => null],
             ],
         ]);
     }
@@ -86,7 +75,7 @@ class AgentPublicListingController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
         $vacantUnits = PropertyUnit::query()
             ->with(['property', 'publicImages'])
@@ -94,6 +83,15 @@ class AgentPublicListingController extends Controller
             ->orderBy('property_id')
             ->orderBy('label')
             ->get();
+
+        $selectedUnit = null;
+        $selectedUnitId = (int) $request->integer('selected_unit');
+        if ($selectedUnitId > 0) {
+            $selectedUnit = $vacantUnits->firstWhere('id', $selectedUnitId);
+            if ($selectedUnit) {
+                $selectedUnit->loadMissing(['property', 'publicImages']);
+            }
+        }
 
         $stats = [
             ['label' => 'Vacant units', 'value' => (string) $vacantUnits->count(), 'hint' => 'Can get a public listing'],
@@ -104,6 +102,7 @@ class AgentPublicListingController extends Controller
         return view('property.agent.listings.create', [
             'stats' => $stats,
             'vacantUnits' => $vacantUnits,
+            'selectedUnit' => $selectedUnit,
         ]);
     }
 
@@ -116,39 +115,23 @@ class AgentPublicListingController extends Controller
         $unit = PropertyUnit::query()->findOrFail($data['property_unit_id']);
         abort_unless($unit->status === PropertyUnit::STATUS_VACANT, 404);
 
-        return redirect()->route('property.listings.vacant.public.edit', $unit);
+        return redirect()
+            ->route('property.listings.create', ['selected_unit' => $unit->id])
+            ->withFragment('listing-publish');
     }
 
-    public function index(): View
+    public function index(): RedirectResponse
     {
-        $units = PropertyUnit::query()
-            ->with(['property', 'publicImages'])
-            ->where('status', PropertyUnit::STATUS_VACANT)
-            ->orderBy('property_id')
-            ->orderBy('label')
-            ->get();
-
-        $stats = [
-            ['label' => 'Vacant units', 'value' => (string) $units->count(), 'hint' => 'Eligible to list'],
-            ['label' => 'Featured', 'value' => (string) $units->where('public_listing_published', true)->count(), 'hint' => 'Photos + publish'],
-            ['label' => 'With photos', 'value' => (string) $units->filter(fn (PropertyUnit $u) => $u->publicImages->isNotEmpty())->count(), 'hint' => 'Gallery'],
-        ];
-
-        return view('property.agent.listings.vacant', [
-            'stats' => $stats,
-            'vacantUnits' => $units,
-        ]);
+        return redirect()->route('property.listings.create');
     }
 
-    public function edit(PropertyUnit $property_unit): View
+    public function edit(PropertyUnit $property_unit): RedirectResponse
     {
         abort_unless($property_unit->status === PropertyUnit::STATUS_VACANT, 404);
 
-        $property_unit->load(['property', 'publicImages']);
-
-        return view('property.agent.listings.public_edit', [
-            'unit' => $property_unit,
-        ]);
+        return redirect()
+            ->route('property.listings.create', ['selected_unit' => $property_unit->id])
+            ->withFragment('listing-publish');
     }
 
     public function update(Request $request, PropertyUnit $property_unit): RedirectResponse

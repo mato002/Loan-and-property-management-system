@@ -1,6 +1,5 @@
 <x-property.workspace
     title="Application #{{ $application->id }}"
-    subtitle="Review applicant details, message them, and update status."
     back-route="property.listings.applications"
     :stats="[
         ['label' => 'Status', 'value' => ucfirst($application->status), 'hint' => $application->created_at?->format('Y-m-d') ?? ''],
@@ -69,7 +68,6 @@
             </div>
 
             <div class="pt-2 border-t border-slate-200 dark:border-slate-700">
-                <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">Update status</p>
                 <form method="post" action="{{ route('property.listings.applications.update', $application) }}" class="space-y-2">
                     @csrf
                     @method('PATCH')
@@ -83,20 +81,12 @@
             </div>
 
             <div class="pt-4 border-t border-slate-200 dark:border-slate-700" id="message">
-                <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">Send message (SMS / Email)</p>
-
                 @if (session('success'))
                     <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
                 @endif
                 @if ($errors->any())
                     <p class="text-xs text-rose-700 dark:text-rose-300">Could not send. Please fix the highlighted fields.</p>
                 @endif
-
-
-                <p class="text-xs text-slate-500 dark:text-slate-400">
-                    If SMS fails with “Insufficient wallet balance”, top up here:
-                    <a href="{{ route('loan.bulksms.wallet') }}" target="_blank" rel="noopener" class="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">SMS wallet</a>.
-                </p>
 
                 <form method="post" action="{{ route('property.listings.applications.message', $application) }}" class="space-y-2">
                     @csrf
@@ -134,7 +124,6 @@
                                     <option value="{{ $t->id }}" data-subject="{{ $t->subject ?? '' }}" data-body="{{ $t->body }}">{{ $t->name }}</option>
                                 @endforeach
                             </select>
-                            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Selecting a template fills subject + body.</p>
                         </div>
                     @endif
 
@@ -152,10 +141,6 @@
 
                     <button type="submit" class="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Send</button>
                 </form>
-
-                <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    Sent messages are logged under <span class="font-semibold">Communications → SMS / email</span>.
-                </p>
             </div>
         </div>
     </div>

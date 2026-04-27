@@ -24,8 +24,27 @@ class PmTenant extends Model
         'national_id',
         'account_number',
         'risk_level',
+        'opening_arrears_rent',
+        'opening_arrears_utilities',
+        'opening_arrears_penalties',
+        'opening_arrears_other',
+        'opening_arrears_amount',
+        'opening_arrears_as_of',
+        'opening_arrears_notes',
         'notes',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'opening_arrears_rent' => 'decimal:2',
+            'opening_arrears_utilities' => 'decimal:2',
+            'opening_arrears_penalties' => 'decimal:2',
+            'opening_arrears_other' => 'decimal:2',
+            'opening_arrears_amount' => 'decimal:2',
+            'opening_arrears_as_of' => 'date',
+        ];
+    }
 
     protected static function booted(): void
     {

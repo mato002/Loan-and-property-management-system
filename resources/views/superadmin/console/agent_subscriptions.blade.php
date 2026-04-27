@@ -242,7 +242,7 @@
                                         @endif
                                     </td>
                                     <td class="px-6 py-4 text-sm">
-                                        <form action="{{ route('superadmin.console.subscriptions.delete', $subscription) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this subscription?')">
+                                        <form action="{{ route('superadmin.console.subscriptions.delete', $subscription) }}" method="POST" class="inline" data-swal-confirm="Are you sure you want to delete this subscription?">
                                             @csrf
                                             @method('DELETE')
                                             <button type="submit" class="text-rose-600 hover:text-rose-900">Delete</button>
@@ -338,7 +338,7 @@
                                 }).then(function (res) {
                                     if (res.isConfirmed) doSubmit();
                                 });
-                            } else if (window.confirm(msg)) {
+                            } else {
                                 doSubmit();
                             }
                         });

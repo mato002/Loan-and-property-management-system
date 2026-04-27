@@ -1,5 +1,5 @@
 @props([
-    /** @var list<array{route: string, title: string, description: string}> $items */
+    /** @var list<array{route: string, title: string, description?: string|null}> $items */
     'items' => [],
 ])
 
@@ -12,7 +12,9 @@
             class="group block rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all"
         >
             <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{{ $item['title'] }}</h3>
-            <p class="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">{{ $item['description'] }}</p>
+            @if (! empty($item['description'] ?? null))
+                <p class="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">{{ $item['description'] }}</p>
+            @endif
         </a>
     @endforeach
 </div>

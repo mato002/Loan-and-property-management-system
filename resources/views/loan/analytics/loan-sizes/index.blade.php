@@ -40,7 +40,7 @@
                                 <td class="px-5 py-3 text-slate-600 max-w-xs truncate" title="{{ $s->description }}">{{ $s->description ?: '—' }}</td>
                                 <td class="px-5 py-3 text-right whitespace-nowrap">
                                     <a href="{{ route('loan.analytics.loan_sizes.edit', $s) }}" class="text-indigo-600 hover:text-indigo-500 font-medium text-sm mr-3">Edit</a>
-                                    <form method="post" action="{{ route('loan.analytics.loan_sizes.destroy', $s) }}" class="inline" onsubmit="return confirm('Remove this band?');">
+                                    <form method="post" action="{{ route('loan.analytics.loan_sizes.destroy', $s) }}" class="inline" data-swal-confirm="Remove this band?">
                                         @csrf
                                         @method('delete')
                                         <button type="submit" class="text-red-600 hover:text-red-500 font-medium text-sm">Delete</button>
