@@ -172,6 +172,8 @@
                         ['label' => 'Collection Agents', 'route' => 'loan.book.collection_agents.index', 'active_pattern' => 'loan.book.collection_agents.*'],
                         ['label' => 'Collection Rates', 'route' => 'loan.book.collection_rates.index', 'active_pattern' => 'loan.book.collection_rates.*'],
                         ['label' => 'Collection Reports', 'route' => 'loan.book.collection_reports', 'active_pattern' => 'loan.book.collection_reports'],
+                        ['label' => 'Collections reports', 'route' => 'loan.book.collections_reports', 'active_pattern' => 'loan.book.collections_reports'],
+                        ['label' => 'Risk & arrears', 'route' => 'loan.book.loan_arrears', 'active_pattern' => 'loan.book.loan_arrears'],
                         ['label' => 'App Loans Report', 'route' => 'loan.book.app_loans_report', 'active_pattern' => 'loan.book.app_loans_report'],
                     ],
                 ],

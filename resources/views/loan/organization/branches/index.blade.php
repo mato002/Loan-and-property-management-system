@@ -2,6 +2,9 @@
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
             <a href="{{ route('loan.branches.loan_summary') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Loan summary</a>
+            @if ($showStructureHistory)
+                <a href="{{ route('loan.branches.changes.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Change requests</a>
+            @endif
             <a href="{{ route('loan.branches.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Add branch</a>
         </x-slot>
 

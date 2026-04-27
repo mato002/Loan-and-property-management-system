@@ -199,6 +199,7 @@ class LoanClientsController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $this->validateClientPayload($request, null, LoanClient::KIND_CLIENT);
+        $validated['branch'] = $this->syncBranchDirectory($validated['branch'] ?? null);
         $validated = array_merge($validated, $this->handleClientImageUploads($request));
         $validated['biodata_meta'] = $this->resolveDynamicBiodataMeta($request);
         $validated['client_number'] = $this->generateClientNumber();
@@ -372,6 +373,7 @@ class LoanClientsController extends Controller
         $this->ensureLoanClientAccessible($loan_client);
 
         $validated = $this->validateClientPayload($request, $loan_client, $loan_client->kind);
+        $validated['branch'] = $this->syncBranchDirectory($validated['branch'] ?? null);
         $validated = array_merge($validated, $this->handleClientImageUploads($request, $loan_client));
         $validated['biodata_meta'] = $this->resolveDynamicBiodataMeta($request, $loan_client);
         // Client numbers are system-assigned and immutable after creation.
@@ -435,6 +437,7 @@ class LoanClientsController extends Controller
     public function leadsStore(Request $request): RedirectResponse
     {
         $validated = $this->validateClientPayload($request, null, LoanClient::KIND_LEAD);
+        $validated['branch'] = $this->syncBranchDirectory($validated['branch'] ?? null);
         $validated['client_number'] = $this->generateClientNumber('LD');
         $validated['kind'] = LoanClient::KIND_LEAD;
         $validated['client_status'] = 'n/a';
@@ -637,6 +640,7 @@ class LoanClientsController extends Controller
             'to_employee_id' => ['nullable', 'exists:employees,id'],
             'reason' => ['nullable', 'string', 'max:2000'],
         ]);
+        $validated['to_branch'] = $this->syncBranchDirectory($validated['to_branch'] ?? null);
 
         $client = LoanClient::query()->findOrFail($validated['loan_client_id']);
         $this->ensureLoanClientAccessible($client);
@@ -1224,6 +1228,37 @@ class LoanClientsController extends Controller
         sort($options, SORT_NATURAL | SORT_FLAG_CASE);
 
         return $options;
+    }
+
+    private function syncBranchDirectory(mixed $branchName): ?string
+    {
+        $name = trim((string) ($branchName ?? ''));
+        if ($name === '') {
+            return null;
+        }
+
+        if (! Schema::hasTable('loan_branches') || ! Schema::hasTable('loan_regions')) {
+            return $name;
+        }
+
+        $region = LoanRegion::query()->orderBy('name')->first();
+        if (! $region) {
+            $region = LoanRegion::query()->create([
+                'name' => 'Default Region',
+                'description' => 'Auto-created for quick branch setup.',
+                'is_active' => true,
+            ]);
+        }
+
+        LoanBranch::query()->firstOrCreate(
+            ['name' => $name],
+            [
+                'loan_region_id' => $region->id,
+                'is_active' => true,
+            ]
+        );
+
+        return $name;
     }
 
     /**

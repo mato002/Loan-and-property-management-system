@@ -18,6 +18,14 @@
                 @endforeach
             </select>
             <p class="text-[11px] text-slate-500 mt-1">Controls how repayments reduce outstanding buckets on posting.</p>
+        @elseif (in_array($row->key, ['org_structure_change_requires_approval', 'org_structure_effective_dated_history'], true))
+            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <input type="hidden" name="settings[{{ $row->key }}]" value="0" />
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                    <input id="setting_{{ $row->key }}" type="checkbox" name="settings[{{ $row->key }}]" value="1" class="rounded border-slate-300" @checked((string) old('settings.'.$row->key, $row->value) === '1') />
+                    <span>{{ $row->label ?? $row->key }}</span>
+                </label>
+            </div>
         @elseif (in_array($row->key, ['about_us', 'company_address', 'maintenance_notice', 'payment_automation', 'approval_levels', 'client_loyalty_points'], true))
             <textarea id="setting_{{ $row->key }}" name="settings[{{ $row->key }}]" rows="{{ $row->key === 'about_us' ? 5 : 4 }}" class="w-full rounded-lg border-slate-200 text-sm">{{ old('settings.'.$row->key, $row->value) }}</textarea>
         @else

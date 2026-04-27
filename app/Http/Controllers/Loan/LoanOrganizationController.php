@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Loan;
 use App\Http\Controllers\Controller;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBranch;
+use App\Models\LoanBranchRegionChange;
 use App\Models\LoanRegion;
+use App\Models\LoanSystemSetting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -110,6 +112,7 @@ class LoanOrganizationController extends Controller
             'title' => 'Branches',
             'subtitle' => 'Outlets linked to regions and LoanBook accounts.',
             'branches' => $branches,
+            'showStructureHistory' => $this->shouldTrackStructureHistory(),
         ]);
     }
 
@@ -127,7 +130,22 @@ class LoanOrganizationController extends Controller
     public function branchesStore(Request $request): RedirectResponse
     {
         $validated = $this->validatedBranch($request);
-        LoanBranch::query()->create($validated);
+        $branch = LoanBranch::query()->create($validated);
+
+        if ($this->shouldTrackStructureHistory()) {
+            LoanBranchRegionChange::query()->create([
+                'loan_branch_id' => $branch->id,
+                'from_loan_region_id' => null,
+                'to_loan_region_id' => $branch->loan_region_id,
+                'requested_by_user_id' => $request->user()?->id,
+                'approved_by_user_id' => $request->user()?->id,
+                'status' => LoanBranchRegionChange::STATUS_APPROVED,
+                'effective_at' => now(),
+                'approved_at' => now(),
+                'reason' => 'Initial branch assignment.',
+                'meta' => ['source' => 'branch_create'],
+            ]);
+        }
 
         return redirect()
             ->route('loan.branches.index')
@@ -137,19 +155,67 @@ class LoanOrganizationController extends Controller
     public function branchesEdit(LoanBranch $loan_branch): View
     {
         $regions = LoanRegion::query()->orderBy('name')->get();
+        $requiresApproval = LoanSystemSetting::getValue('org_structure_change_requires_approval', '0') === '1';
 
         return view('loan.organization.branches.edit', [
             'title' => 'Edit branch',
             'subtitle' => $loan_branch->name,
             'branch' => $loan_branch,
             'regions' => $regions,
+            'requiresApproval' => $requiresApproval,
         ]);
     }
 
     public function branchesUpdate(Request $request, LoanBranch $loan_branch): RedirectResponse
     {
         $validated = $this->validatedBranch($request, $loan_branch->id);
+        $currentRegionId = (int) $loan_branch->loan_region_id;
+        $targetRegionId = (int) $validated['loan_region_id'];
+        $regionChanged = $currentRegionId !== $targetRegionId;
+        $requiresApproval = LoanSystemSetting::getValue('org_structure_change_requires_approval', '0') === '1';
+
+        if ($regionChanged && $requiresApproval) {
+            $requestData = $request->validate([
+                'change_effective_at' => ['nullable', 'date'],
+                'change_reason' => ['nullable', 'string', 'max:1000'],
+            ]);
+
+            // Keep non-structural updates immediate, but queue region reassignment.
+            $nonStructural = $validated;
+            $nonStructural['loan_region_id'] = $loan_branch->loan_region_id;
+            $loan_branch->update($nonStructural);
+
+            LoanBranchRegionChange::query()->create([
+                'loan_branch_id' => $loan_branch->id,
+                'from_loan_region_id' => $currentRegionId,
+                'to_loan_region_id' => $targetRegionId,
+                'requested_by_user_id' => $request->user()?->id,
+                'status' => LoanBranchRegionChange::STATUS_PENDING,
+                'effective_at' => filled($requestData['change_effective_at'] ?? null) ? $requestData['change_effective_at'] : now(),
+                'reason' => filled($requestData['change_reason'] ?? null) ? trim((string) $requestData['change_reason']) : null,
+                'meta' => ['source' => 'branch_edit'],
+            ]);
+
+            return redirect()
+                ->route('loan.branches.index')
+                ->with('status', __('Branch details saved. Region reassignment queued for approval.'));
+        }
+
         $loan_branch->update($validated);
+        if ($regionChanged && $this->shouldTrackStructureHistory()) {
+            LoanBranchRegionChange::query()->create([
+                'loan_branch_id' => $loan_branch->id,
+                'from_loan_region_id' => $currentRegionId,
+                'to_loan_region_id' => $targetRegionId,
+                'requested_by_user_id' => $request->user()?->id,
+                'approved_by_user_id' => $request->user()?->id,
+                'status' => LoanBranchRegionChange::STATUS_APPROVED,
+                'effective_at' => now(),
+                'approved_at' => now(),
+                'reason' => 'Immediate reassignment (approval not required).',
+                'meta' => ['source' => 'branch_edit'],
+            ]);
+        }
 
         return redirect()
             ->route('loan.branches.index')
@@ -215,6 +281,67 @@ class LoanOrganizationController extends Controller
         ]);
     }
 
+    public function branchChangesIndex(): View
+    {
+        abort_unless($this->shouldTrackStructureHistory(), 404);
+
+        $rows = LoanBranchRegionChange::query()
+            ->with(['branch', 'fromRegion', 'toRegion'])
+            ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
+            ->orderByDesc('created_at')
+            ->paginate(30);
+
+        return view('loan.organization.branches.changes', [
+            'title' => 'Structure change requests',
+            'subtitle' => 'Pending and historical branch-region reassignments.',
+            'rows' => $rows,
+        ]);
+    }
+
+    public function branchChangesApprove(Request $request, LoanBranchRegionChange $change): RedirectResponse
+    {
+        abort_unless($this->shouldTrackStructureHistory(), 404);
+
+        if ($change->status !== LoanBranchRegionChange::STATUS_PENDING) {
+            return back()->with('error', __('Only pending requests can be approved.'));
+        }
+
+        DB::transaction(function () use ($change, $request): void {
+            $branch = LoanBranch::query()->findOrFail($change->loan_branch_id);
+            $branch->update(['loan_region_id' => $change->to_loan_region_id]);
+
+            $change->update([
+                'status' => LoanBranchRegionChange::STATUS_APPROVED,
+                'approved_by_user_id' => $request->user()?->id,
+                'approved_at' => now(),
+            ]);
+        });
+
+        return back()->with('status', __('Structure change approved.'));
+    }
+
+    public function branchChangesReject(Request $request, LoanBranchRegionChange $change): RedirectResponse
+    {
+        abort_unless($this->shouldTrackStructureHistory(), 404);
+
+        if ($change->status !== LoanBranchRegionChange::STATUS_PENDING) {
+            return back()->with('error', __('Only pending requests can be rejected.'));
+        }
+
+        $validated = $request->validate([
+            'reject_reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $change->update([
+            'status' => LoanBranchRegionChange::STATUS_REJECTED,
+            'rejected_by_user_id' => $request->user()?->id,
+            'rejected_at' => now(),
+            'reason' => filled($validated['reject_reason'] ?? null) ? trim((string) $validated['reject_reason']) : $change->reason,
+        ]);
+
+        return back()->with('status', __('Structure change rejected.'));
+    }
+
     private function validatedBranch(Request $request, ?int $ignoreId = null): array
     {
         $codeRules = ['nullable', 'string', 'max:40', Rule::unique('loan_branches', 'code')];
@@ -234,5 +361,10 @@ class LoanOrganizationController extends Controller
         $validated['is_active'] = $request->boolean('is_active');
 
         return $validated;
+    }
+
+    private function shouldTrackStructureHistory(): bool
+    {
+        return LoanSystemSetting::getValue('org_structure_effective_dated_history', '1') === '1';
     }
 }

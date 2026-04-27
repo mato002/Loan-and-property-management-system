@@ -216,7 +216,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/users/{user}', [SuperAdminUserController::class, 'update'])->name('users.update');
     });
 
-    Route::middleware('module.access:loan')->group(function () {
+    Route::middleware(['module.access:loan', 'loan.access_policy'])->group(function () {
         Route::get('/loan/dashboard', [LoanDashboardController::class, 'index'])->name('loan.dashboard');
         Route::post('/loan/dashboard/sms-topup', [LoanDashboardController::class, 'smsWalletTopupFromDashboard'])->name('loan.dashboard.sms_topup');
         Route::get('/loan/dashboard/performance-targets', [LoanDashboardController::class, 'performanceTargets'])->name('loan.dashboard.performance_targets');
@@ -384,6 +384,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('loan/branches')->name('loan.branches.')->group(function () {
         Route::get('/loan-summary', [LoanOrganizationController::class, 'branchLoanSummary'])->name('loan_summary');
+        Route::get('/changes', [LoanOrganizationController::class, 'branchChangesIndex'])->name('changes.index');
+        Route::post('/changes/{change}/approve', [LoanOrganizationController::class, 'branchChangesApprove'])->name('changes.approve');
+        Route::post('/changes/{change}/reject', [LoanOrganizationController::class, 'branchChangesReject'])->name('changes.reject');
         Route::get('/create', [LoanOrganizationController::class, 'branchesCreate'])->name('create');
         Route::post('/', [LoanOrganizationController::class, 'branchesStore'])->name('store');
         Route::get('/', [LoanOrganizationController::class, 'branchesIndex'])->name('index');
@@ -596,6 +599,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         Route::get('/collection-mtd', [LoanBookOperationsController::class, 'collectionMtd'])->name('collection_mtd');
         Route::get('/collection-reports', [LoanBookOperationsController::class, 'collectionReports'])->name('collection_reports');
+        Route::get('/collections-reports', [LoanBookOperationsController::class, 'collectionsReportsCommandCenter'])->name('collections_reports');
 
         Route::get('/collection-agents/create', [LoanBookOperationsController::class, 'agentsCreate'])->name('collection_agents.create');
         Route::post('/collection-agents', [LoanBookOperationsController::class, 'agentsStore'])->name('collection_agents.store');
@@ -717,12 +721,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/setup/job-titles/sync', [LoanSystemHelpController::class, 'setupJobTitlesSync'])->name('setup.job_titles.sync');
         Route::patch('/setup/job-titles/{loan_job_title}', [LoanSystemHelpController::class, 'setupJobTitlesUpdate'])->name('setup.job_titles.update');
         Route::delete('/setup/job-titles/{loan_job_title}', [LoanSystemHelpController::class, 'setupJobTitlesDestroy'])->name('setup.job_titles.destroy');
-        Route::get('/setup/access-roles', [LoanSystemHelpController::class, 'setupAccessRoles'])->middleware('loan.role:admin,manager')->name('setup.access_roles');
-        Route::post('/setup/access-roles/sync', [LoanSystemHelpController::class, 'setupAccessRolesSync'])->middleware('loan.role:admin,manager')->name('setup.access_roles.sync');
-        Route::post('/setup/access-roles', [LoanSystemHelpController::class, 'setupAccessRolesStore'])->middleware('loan.role:admin,manager')->name('setup.access_roles.store');
-        Route::patch('/setup/access-roles/{loan_role}', [LoanSystemHelpController::class, 'setupAccessRolesUpdate'])->middleware('loan.role:admin,manager')->name('setup.access_roles.update');
-        Route::post('/setup/access-roles/{loan_role}/assign', [LoanSystemHelpController::class, 'setupAccessRolesAssign'])->middleware('loan.role:admin,manager')->name('setup.access_roles.assign');
-        Route::delete('/setup/access-roles/{loan_role}', [LoanSystemHelpController::class, 'setupAccessRolesDestroy'])->middleware('loan.role:admin,manager')->name('setup.access_roles.destroy');
+        Route::get('/setup/access-roles', [LoanSystemHelpController::class, 'setupAccessRoles'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.view'])->name('setup.access_roles');
+        Route::post('/setup/access-roles/sync', [LoanSystemHelpController::class, 'setupAccessRolesSync'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.configure'])->name('setup.access_roles.sync');
+        Route::post('/setup/access-roles', [LoanSystemHelpController::class, 'setupAccessRolesStore'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.configure'])->name('setup.access_roles.store');
+        Route::post('/setup/access-roles/{loan_role}/clone', [LoanSystemHelpController::class, 'setupAccessRolesClone'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.configure'])->name('setup.access_roles.clone');
+        Route::patch('/setup/access-roles/{loan_role}', [LoanSystemHelpController::class, 'setupAccessRolesUpdate'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.configure'])->name('setup.access_roles.update');
+        Route::post('/setup/access-roles/{loan_role}/assign', [LoanSystemHelpController::class, 'setupAccessRolesAssign'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.configure'])->name('setup.access_roles.assign');
+        Route::delete('/setup/access-roles/{loan_role}', [LoanSystemHelpController::class, 'setupAccessRolesDestroy'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.configure'])->name('setup.access_roles.destroy');
+        Route::post('/setup/access-roles/security-policies', [LoanSystemHelpController::class, 'setupAccessSecurityPoliciesUpdate'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.configure'])->name('setup.access_roles.security_policies.update');
+        Route::post('/setup/access-roles/temporary-access', [LoanSystemHelpController::class, 'setupTemporaryAccessRequestStore'])->middleware('loan.permission:access_roles.request')->name('setup.access_roles.temporary_access.store');
+        Route::post('/setup/access-roles/temporary-access/{loan_temporary_access_request}/decision', [LoanSystemHelpController::class, 'setupTemporaryAccessRequestDecision'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.approve'])->name('setup.access_roles.temporary_access.decision');
+        Route::post('/setup/access-roles/devices/{user}/unbind', [LoanSystemHelpController::class, 'setupDeviceUnbind'])->middleware(['loan.role:admin,manager', 'loan.permission:device_governance.unbind'])->name('setup.access_roles.devices.unbind');
 
         Route::get('/setup/loan-form/client', [LoanFormSetupController::class, 'clientForm'])->name('form_setup.client');
         Route::post('/setup/loan-form/client', [LoanFormSetupController::class, 'clientFormSave'])->name('form_setup.client.save');
@@ -739,8 +748,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->where('page', LoanFormSetupController::FORM_SETUP_PAGE_PATTERN)
             ->name('form_setup.page.save');
 
-        Route::get('/access-logs', [LoanSystemHelpController::class, 'accessLogsIndex'])->name('access_logs.index');
-        Route::post('/access-logs/{loan_access_log}/concerns', [LoanSystemHelpController::class, 'accessLogsConcernStore'])->name('access_logs.concerns.store');
+        Route::get('/access-logs', [LoanSystemHelpController::class, 'accessLogsIndex'])->middleware('loan.permission:audit_logs.view')->name('access_logs.index');
+        Route::post('/access-logs/{loan_access_log}/concerns', [LoanSystemHelpController::class, 'accessLogsConcernStore'])->middleware('loan.permission:audit_logs.create')->name('access_logs.concerns.store');
     });
     });
 });

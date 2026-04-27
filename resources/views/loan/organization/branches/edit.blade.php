@@ -17,6 +17,23 @@
                     </select>
                     @error('loan_region_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                @if ($requiresApproval)
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        Region reassignment uses maker-checker approval. Your requested move is queued until approved.
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label for="change_effective_at" class="block text-xs font-semibold text-slate-600 mb-1">Requested effective date</label>
+                            <input id="change_effective_at" name="change_effective_at" type="datetime-local" value="{{ old('change_effective_at') }}" class="w-full rounded-lg border-slate-200 text-sm" />
+                            @error('change_effective_at')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                        <div>
+                            <label for="change_reason" class="block text-xs font-semibold text-slate-600 mb-1">Reason</label>
+                            <input id="change_reason" name="change_reason" value="{{ old('change_reason') }}" class="w-full rounded-lg border-slate-200 text-sm" maxlength="1000" />
+                            @error('change_reason')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        </div>
+                    </div>
+                @endif
                 <div>
                     <label for="name" class="block text-xs font-semibold text-slate-600 mb-1">Branch name</label>
                     <input id="name" name="name" value="{{ old('name', $branch->name) }}" required class="w-full rounded-lg border-slate-200 text-sm" />

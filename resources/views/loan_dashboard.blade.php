@@ -170,6 +170,11 @@
                     <p class="text-xs font-semibold uppercase text-slate-500">PAR %</p>
                     <p class="mt-1 text-2xl font-bold text-slate-800 tabular-nums">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
                 </div>
+                <div class="rounded-xl border border-slate-200 bg-white p-2.5 col-span-2 xl:col-span-3">
+                    <p class="text-xs font-semibold uppercase text-slate-500">Daily Collection Sheet (The Battle Plan)</p>
+                    <p class="mt-1 text-2xl font-bold text-emerald-700 tabular-nums">78</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Active Tasks (MTD)</p>
+                </div>
             </div>
         </div>
 

@@ -11,11 +11,13 @@ use App\Models\LoanDepartment;
 use App\Models\LoanJobTitle;
 use App\Models\LoanProduct;
 use App\Models\LoanRole;
+use App\Models\LoanTemporaryAccessRequest;
 use App\Models\LoanSupportTicket;
 use App\Models\LoanSupportTicketReply;
 use App\Models\LoanSystemSetting;
 use App\Support\TabularExport;
 use App\Models\User;
+use App\Services\LoanSecurityPolicyService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -59,6 +61,8 @@ class LoanSystemHelpController extends Controller
         'payment_automation',
         'approval_levels',
         'client_loyalty_points',
+        'org_structure_change_requires_approval',
+        'org_structure_effective_dated_history',
         'loan_repayment_allocation_order',
         'loan_accounting_event_mappings_json',
     ];
@@ -1187,6 +1191,7 @@ class LoanSystemHelpController extends Controller
     public function setupAccessRoles(): View
     {
         $rbacReady = Schema::hasTable('loan_roles') && Schema::hasTable('loan_user_role');
+        app(LoanSecurityPolicyService::class)->ensureDefaults();
 
         return view('loan.system.setup.access_roles', [
             'title' => 'Loan roles & permissions',
@@ -1196,7 +1201,197 @@ class LoanSystemHelpController extends Controller
             'users' => $rbacReady ? User::query()->orderBy('name')->get(['id', 'name', 'email']) : collect(),
             'permissionCatalog' => $this->loanPermissionCatalog(),
             'defaultPermissionsByBaseRole' => $this->defaultPermissionsByBaseRole(),
+            'temporaryAccessRequests' => Schema::hasTable('loan_temporary_access_requests')
+                ? LoanTemporaryAccessRequest::query()
+                    ->with(['requester:id,name,email', 'approver:id,name,email'])
+                    ->latest('created_at')
+                    ->limit(10)
+                    ->get()
+                : collect(),
+            'securityPolicySettings' => [
+                'device_governance_enabled' => LoanSystemSetting::getValue('loan_security_device_governance_enabled', '0'),
+                'role_login_windows_enabled' => LoanSystemSetting::getValue('loan_security_role_login_windows_enabled', '0'),
+                'ip_restrictions_enabled' => LoanSystemSetting::getValue('loan_security_ip_restrictions_enabled', '0'),
+                'ip_allowlist_json' => LoanSystemSetting::getValue('loan_security_ip_allowlist_json', '[]'),
+                'role_ip_overrides_json' => LoanSystemSetting::getValue('loan_security_role_ip_overrides_json', '{}'),
+                'role_login_windows_json' => LoanSystemSetting::getValue('loan_security_role_login_windows_json', '{}'),
+            ],
         ]);
+    }
+
+    public function setupAccessSecurityPoliciesUpdate(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'device_governance_enabled' => ['nullable', 'in:0,1'],
+            'role_login_windows_enabled' => ['nullable', 'in:0,1'],
+            'ip_restrictions_enabled' => ['nullable', 'in:0,1'],
+            'ip_allowlist_json' => ['nullable', 'string', 'max:10000'],
+            'role_ip_overrides_json' => ['nullable', 'string', 'max:10000'],
+            'role_login_windows_json' => ['nullable', 'string', 'max:20000'],
+        ]);
+
+        $service = app(LoanSecurityPolicyService::class);
+        $service->ensureDefaults();
+
+        LoanSystemSetting::setValue('loan_security_device_governance_enabled', (string) ($data['device_governance_enabled'] ?? '0'), 'Device governance toggle', 'security');
+        LoanSystemSetting::setValue('loan_security_role_login_windows_enabled', (string) ($data['role_login_windows_enabled'] ?? '0'), 'Role login window toggle', 'security');
+        LoanSystemSetting::setValue('loan_security_ip_restrictions_enabled', (string) ($data['ip_restrictions_enabled'] ?? '0'), 'IP restriction toggle', 'security');
+
+        foreach (['ip_allowlist_json', 'role_ip_overrides_json', 'role_login_windows_json'] as $jsonField) {
+            if (! isset($data[$jsonField])) {
+                continue;
+            }
+            $raw = trim((string) $data[$jsonField]);
+            if ($raw !== '') {
+                $decoded = json_decode($raw, true);
+                if (! is_array($decoded)) {
+                    return redirect()->route('loan.system.setup.access_roles')
+                        ->with('error', strtoupper(str_replace('_', ' ', $jsonField)).' must be valid JSON.');
+                }
+            }
+            $key = 'loan_security_'.$jsonField;
+            LoanSystemSetting::setValue($key, $raw === '' ? ($jsonField === 'ip_allowlist_json' ? '[]' : '{}') : $raw, $key, 'security');
+        }
+
+        $this->logSecurityAudit($request, 'Updated security policy toggles', [
+            'device_governance_enabled' => (string) ($data['device_governance_enabled'] ?? '0'),
+            'role_login_windows_enabled' => (string) ($data['role_login_windows_enabled'] ?? '0'),
+            'ip_restrictions_enabled' => (string) ($data['ip_restrictions_enabled'] ?? '0'),
+        ]);
+
+        return redirect()->route('loan.system.setup.access_roles')->with('status', 'Security policies updated.');
+    }
+
+    public function setupTemporaryAccessRequestStore(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('loan_temporary_access_requests')) {
+            return redirect()->route('loan.system.setup.access_roles')
+                ->with('error', 'Temporary access table is missing. Run migrations first.');
+        }
+
+        $validated = $request->validate([
+            'permission_key' => ['required', 'string', 'in:'.implode(',', array_keys($this->loanPermissionCatalog()))],
+            'scope' => ['nullable', 'string', 'max:500'],
+            'amount_limit' => ['nullable', 'numeric', 'min:0'],
+            'reason' => ['nullable', 'string', 'max:5000'],
+            'expires_at' => ['nullable', 'date', 'after:now'],
+        ]);
+
+        LoanTemporaryAccessRequest::query()->create([
+            'requester_user_id' => (int) $request->user()->id,
+            'permission_key' => $validated['permission_key'],
+            'scope' => filled($validated['scope'] ?? null) ? trim((string) $validated['scope']) : null,
+            'amount_limit' => isset($validated['amount_limit']) ? (float) $validated['amount_limit'] : null,
+            'reason' => filled($validated['reason'] ?? null) ? trim((string) $validated['reason']) : null,
+            'status' => LoanTemporaryAccessRequest::STATUS_PENDING,
+            'expires_at' => isset($validated['expires_at']) ? Carbon::parse((string) $validated['expires_at']) : now()->addHours(8),
+        ]);
+
+        $this->logSecurityAudit($request, 'Submitted temporary access request', [
+            'requester_user_id' => (int) $request->user()->id,
+            'amount_limit' => isset($validated['amount_limit']) ? (float) $validated['amount_limit'] : null,
+            'permission_key' => $validated['permission_key'],
+            'scope' => filled($validated['scope'] ?? null) ? trim((string) $validated['scope']) : null,
+        ]);
+
+        return redirect()->route('loan.system.setup.access_roles')->with('status', 'Temporary access request submitted.');
+    }
+
+    public function setupTemporaryAccessRequestDecision(Request $request, LoanTemporaryAccessRequest $loan_temporary_access_request): RedirectResponse
+    {
+        if (! Schema::hasTable('loan_temporary_access_requests')) {
+            return redirect()->route('loan.system.setup.access_roles')
+                ->with('error', 'Temporary access table is missing. Run migrations first.');
+        }
+
+        $validated = $request->validate([
+            'decision' => ['required', 'in:approve,reject'],
+            'decision_note' => ['nullable', 'string', 'max:5000'],
+            'expires_at' => ['nullable', 'date', 'after:now'],
+        ]);
+
+        $policy = app(LoanSecurityPolicyService::class);
+        if (! $policy->canApproveTemporaryAccess($request->user(), $loan_temporary_access_request)) {
+            return redirect()->route('loan.system.setup.access_roles')->with('error', 'Your role cannot approve this request threshold.');
+        }
+
+        $loan_temporary_access_request->update([
+            'status' => $validated['decision'] === 'approve'
+                ? LoanTemporaryAccessRequest::STATUS_APPROVED
+                : LoanTemporaryAccessRequest::STATUS_REJECTED,
+            'approver_user_id' => (int) $request->user()->id,
+            'approved_at' => $validated['decision'] === 'approve' ? now() : null,
+            'decision_note' => filled($validated['decision_note'] ?? null) ? trim((string) $validated['decision_note']) : null,
+            'expires_at' => isset($validated['expires_at']) ? Carbon::parse((string) $validated['expires_at']) : $loan_temporary_access_request->expires_at,
+        ]);
+
+        $this->logSecurityAudit($request, 'Temporary access request '.$loan_temporary_access_request->status, [
+            'request_id' => $loan_temporary_access_request->id,
+            'requester_user_id' => $loan_temporary_access_request->requester_user_id,
+            'permission_key' => $loan_temporary_access_request->permission_key,
+            'decision_note' => $validated['decision_note'] ?? null,
+        ]);
+
+        return redirect()->route('loan.system.setup.access_roles')->with('status', 'Temporary access request '.$loan_temporary_access_request->status.'.');
+    }
+
+    public function setupDeviceUnbind(Request $request, User $user): RedirectResponse
+    {
+        $count = app(LoanSecurityPolicyService::class)->unbindUserDevices($user);
+
+        $this->logSecurityAudit($request, 'Device unbind executed', [
+            'target_user_id' => $user->id,
+            'target_user_email' => $user->email,
+            'removed_devices' => $count,
+        ]);
+
+        return redirect()->route('loan.system.setup.access_roles')
+            ->with('status', "Device unbind completed. Removed {$count} trusted device record(s) for {$user->name}.");
+    }
+
+    /**
+     * @param  array<string, mixed>  $newValue
+     */
+    private function logSecurityAudit(Request $request, string $activity, array $newValue = []): void
+    {
+        if (! Schema::hasTable('loan_access_logs')) {
+            return;
+        }
+
+        try {
+            LoanAccessLog::query()->create([
+                'user_id' => $request->user()?->id,
+                'session_id' => $request->session()->getId(),
+                'device_fingerprint' => substr(hash('sha256', (string) $request->userAgent()), 0, 40),
+                'route_name' => (string) optional($request->route())->getName(),
+                'method' => (string) $request->method(),
+                'event_category' => 'security',
+                'action_type' => 'update',
+                'path' => '/'.ltrim((string) $request->path(), '/'),
+                'activity' => $activity,
+                'result' => 'success',
+                'risk_score' => 60,
+                'risk_level' => 'medium',
+                'risk_reason' => 'RBAC governance action',
+                'requires_reason' => false,
+                'reason_text' => null,
+                'old_value' => null,
+                'new_value' => $newValue,
+                'audit_token' => strtoupper('AUDSEC-'.dechex((int) now()->timestamp).'-'.Str::upper(Str::random(4))),
+                'checksum' => hash('sha256', $activity.'|'.json_encode($newValue).'|'.now()->toIso8601String()),
+                'previous_hash' => null,
+                'mfa_verified' => null,
+                'ip_address' => (string) $request->ip(),
+                'country_code' => null,
+                'geo_label' => null,
+                'is_foreign_ip' => null,
+                'is_privileged' => true,
+                'user_agent' => Str::limit((string) $request->userAgent(), 512, ''),
+                'created_at' => now(),
+            ]);
+        } catch (\Throwable) {
+            // Never fail security workflow due to audit logging issues.
+        }
     }
 
     public function setupAccessRolesStore(Request $request): RedirectResponse
@@ -1241,6 +1436,52 @@ class LoanSystemHelpController extends Controller
         ]);
 
         return redirect()->route('loan.system.setup.access_roles')->with('status', 'Loan access role created.');
+    }
+
+    public function setupAccessRolesClone(Request $request, LoanRole $loan_role): RedirectResponse
+    {
+        if (! Schema::hasTable('loan_roles')) {
+            return redirect()->route('loan.system.setup.access_roles')
+                ->with('error', 'Loan roles tables are missing. Run migrations first.');
+        }
+
+        $baseName = trim((string) $loan_role->name).' (Copy)';
+        $name = $baseName;
+        $suffix = 2;
+        while (LoanRole::query()->whereRaw('LOWER(name) = ?', [strtolower($name)])->exists()) {
+            $name = $baseName.' '.$suffix;
+            $suffix++;
+        }
+
+        $slug = Str::slug($name);
+        if ($slug === '') {
+            $slug = 'role-copy-'.now()->format('YmdHis');
+        }
+        $baseSlug = $slug;
+        $i = 1;
+        while (LoanRole::query()->where('slug', $slug)->exists()) {
+            $slug = Str::limit($baseSlug, 100, '').'-'.$i;
+            $i++;
+        }
+
+        LoanRole::query()->create([
+            'name' => $name,
+            'slug' => $slug,
+            'base_role' => (string) $loan_role->base_role,
+            'description' => filled($loan_role->description ?? null)
+                ? trim((string) $loan_role->description).' (Cloned)'
+                : 'Cloned from '.$loan_role->name,
+            'permissions' => is_array($loan_role->permissions) ? $loan_role->permissions : [],
+            'is_active' => (bool) $loan_role->is_active,
+        ]);
+
+        $this->logSecurityAudit($request, 'Cloned loan role', [
+            'source_role_id' => $loan_role->id,
+            'source_role_name' => $loan_role->name,
+            'cloned_name' => $name,
+        ]);
+
+        return redirect()->route('loan.system.setup.access_roles')->with('status', 'Role cloned successfully.');
     }
 
     public function setupAccessRolesUpdate(Request $request, LoanRole $loan_role): RedirectResponse
@@ -1385,18 +1626,149 @@ class LoanSystemHelpController extends Controller
     private function loanPermissionCatalog(): array
     {
         return [
-            'dashboard.view' => 'Dashboard',
-            'employees.view' => 'Employees',
-            'clients.view' => 'Clients',
+            'dashboard.view' => 'Dashboard · View',
+            'employees.view' => 'Employees · View',
+            'branches.view' => 'Branches & Regions · View',
+            'analytics.view' => 'Business Analytics · View',
+            'bulksms.view' => 'Bulk SMS · View',
+            'my_account.view' => 'My Account · View',
+            'system.help.view' => 'System & Help · View',
+
+            'clients.view' => 'Clients · View',
+            'clients.create' => 'Clients · Create',
+            'clients.update' => 'Clients · Update',
+            'clients.delete' => 'Clients · Delete',
+            'clients.approve' => 'Clients · Approve',
+            'clients.export' => 'Clients · Export',
+            'clients.reverse' => 'Clients · Reverse',
+            'clients.configure' => 'Clients · Configure',
+
+            'loan_applications.view' => 'Loan Applications · View',
+            'loan_applications.create' => 'Loan Applications · Create',
+            'loan_applications.update' => 'Loan Applications · Update',
+            'loan_applications.delete' => 'Loan Applications · Delete',
+            'loan_applications.approve' => 'Loan Applications · Approve',
+            'loan_applications.export' => 'Loan Applications · Export',
+            'loan_applications.reverse' => 'Loan Applications · Reverse',
+            'loan_applications.configure' => 'Loan Applications · Configure',
+
+            'loans.view' => 'Loans · View',
+            'loans.create' => 'Loans · Create',
+            'loans.update' => 'Loans · Update',
+            'loans.delete' => 'Loans · Delete',
+            'loans.approve' => 'Loans · Approve',
+            'loans.export' => 'Loans · Export',
+            'loans.reverse' => 'Loans · Reverse',
+            'loans.configure' => 'Loans · Configure',
+
+            'disbursements.view' => 'Disbursements · View',
+            'disbursements.create' => 'Disbursements · Create',
+            'disbursements.update' => 'Disbursements · Update',
+            'disbursements.delete' => 'Disbursements · Delete',
+            'disbursements.approve' => 'Disbursements · Approve',
+            'disbursements.export' => 'Disbursements · Export',
+            'disbursements.reverse' => 'Disbursements · Reverse',
+            'disbursements.configure' => 'Disbursements · Configure',
+
+            'collections.view' => 'Collections · View',
+            'collections.create' => 'Collections · Create',
+            'collections.update' => 'Collections · Update',
+            'collections.delete' => 'Collections · Delete',
+            'collections.approve' => 'Collections · Approve',
+            'collections.export' => 'Collections · Export',
+            'collections.reverse' => 'Collections · Reverse',
+            'collections.configure' => 'Collections · Configure',
+
+            'payments.view' => 'Payments · View',
+            'payments.create' => 'Payments · Create',
+            'payments.update' => 'Payments · Update',
+            'payments.delete' => 'Payments · Delete',
+            'payments.approve' => 'Payments · Approve',
+            'payments.export' => 'Payments · Export',
+            'payments.reverse' => 'Payments · Reverse',
+            'payments.configure' => 'Payments · Configure',
+
+            'wallets.view' => 'Wallets · View',
+            'wallets.create' => 'Wallets · Create',
+            'wallets.update' => 'Wallets · Update',
+            'wallets.delete' => 'Wallets · Delete',
+            'wallets.approve' => 'Wallets · Approve',
+            'wallets.export' => 'Wallets · Export',
+            'wallets.reverse' => 'Wallets · Reverse',
+            'wallets.configure' => 'Wallets · Configure',
+
+            'accounting.view' => 'Accounting · View',
+            'accounting.create' => 'Accounting · Create',
+            'accounting.update' => 'Accounting · Update',
+            'accounting.delete' => 'Accounting · Delete',
+            'accounting.approve' => 'Accounting · Approve',
+            'accounting.export' => 'Accounting · Export',
+            'accounting.reverse' => 'Accounting · Reverse',
+            'accounting.configure' => 'Accounting · Configure',
+
+            'journals.view' => 'Journals · View',
+            'journals.create' => 'Journals · Create',
+            'journals.update' => 'Journals · Update',
+            'journals.delete' => 'Journals · Delete',
+            'journals.approve' => 'Journals · Approve',
+            'journals.export' => 'Journals · Export',
+            'journals.reverse' => 'Journals · Reverse',
+            'journals.configure' => 'Journals · Configure',
+
+            'chart_of_accounts.view' => 'Chart of Accounts · View',
+            'chart_of_accounts.create' => 'Chart of Accounts · Create',
+            'chart_of_accounts.update' => 'Chart of Accounts · Update',
+            'chart_of_accounts.delete' => 'Chart of Accounts · Delete',
+            'chart_of_accounts.approve' => 'Chart of Accounts · Approve',
+            'chart_of_accounts.export' => 'Chart of Accounts · Export',
+            'chart_of_accounts.reverse' => 'Chart of Accounts · Reverse',
+            'chart_of_accounts.configure' => 'Chart of Accounts · Configure',
+
+            'automated_cash_mappings.view' => 'Automated Cash Mappings · View',
+            'automated_cash_mappings.create' => 'Automated Cash Mappings · Create',
+            'automated_cash_mappings.update' => 'Automated Cash Mappings · Update',
+            'automated_cash_mappings.delete' => 'Automated Cash Mappings · Delete',
+            'automated_cash_mappings.approve' => 'Automated Cash Mappings · Approve',
+            'automated_cash_mappings.export' => 'Automated Cash Mappings · Export',
+            'automated_cash_mappings.reverse' => 'Automated Cash Mappings · Reverse',
+            'automated_cash_mappings.configure' => 'Automated Cash Mappings · Configure',
+
+            'reports.view' => 'Reports · View',
+            'reports.create' => 'Reports · Create',
+            'reports.update' => 'Reports · Update',
+            'reports.delete' => 'Reports · Delete',
+            'reports.approve' => 'Reports · Approve',
+            'reports.export' => 'Reports · Export',
+            'reports.reverse' => 'Reports · Reverse',
+            'reports.configure' => 'Reports · Configure',
+
+            'system_setup.view' => 'System Setup · View',
+            'system_setup.create' => 'System Setup · Create',
+            'system_setup.update' => 'System Setup · Update',
+            'system_setup.delete' => 'System Setup · Delete',
+            'system_setup.approve' => 'System Setup · Approve',
+            'system_setup.export' => 'System Setup · Export',
+            'system_setup.reverse' => 'System Setup · Reverse',
+            'system_setup.configure' => 'System Setup · Configure',
+
+            'audit_logs.view' => 'Audit Logs · View',
+            'audit_logs.create' => 'Audit Logs · Create',
+            'audit_logs.update' => 'Audit Logs · Update',
+            'audit_logs.delete' => 'Audit Logs · Delete',
+            'audit_logs.approve' => 'Audit Logs · Approve',
+            'audit_logs.export' => 'Audit Logs · Export',
+            'audit_logs.reverse' => 'Audit Logs · Reverse',
+            'audit_logs.configure' => 'Audit Logs · Configure',
+            'access_roles.view' => 'User Roles & Access Control · View',
+            'access_roles.configure' => 'User Roles & Access Control · Configure',
+            'access_roles.request' => 'User Roles & Access Control · Request Temporary Access',
+            'access_roles.approve' => 'User Roles & Access Control · Approve Temporary Access',
+            'device_governance.unbind' => 'Device Governance · Unbind User Device',
+            'device_governance.master_key' => 'Device Governance · Master Key Override',
+
+            // Legacy coarse keys retained for backward compatibility.
             'loanbook.view' => 'LoanBook',
-            'payments.view' => 'Payments',
-            'accounting.view' => 'Accounting',
-            'financial.view' => 'Financial',
-            'branches.view' => 'Branches & Regions',
-            'analytics.view' => 'Business Analytics',
-            'bulksms.view' => 'Bulk SMS',
-            'my_account.view' => 'My Account',
-            'system.help.view' => 'System & Help',
+            'financial.view' => 'Financial · View (Legacy)',
         ];
     }
 
@@ -1408,10 +1780,24 @@ class LoanSystemHelpController extends Controller
         return [
             'admin' => array_keys($this->loanPermissionCatalog()),
             'manager' => array_keys($this->loanPermissionCatalog()),
-            'accountant' => ['dashboard.view', 'accounting.view', 'financial.view', 'payments.view', 'clients.view', 'my_account.view', 'system.help.view'],
-            'officer' => ['dashboard.view', 'employees.view', 'clients.view', 'loanbook.view', 'payments.view', 'bulksms.view', 'branches.view', 'my_account.view', 'system.help.view'],
+            'accountant' => [
+                'dashboard.view', 'clients.view', 'payments.view', 'accounting.view', 'financial.view', 'reports.view',
+                'journals.view', 'journals.create', 'journals.update', 'journals.approve',
+                'chart_of_accounts.view', 'audit_logs.view', 'access_roles.request', 'my_account.view', 'system.help.view',
+            ],
+            'officer' => [
+                'dashboard.view', 'employees.view', 'clients.view', 'clients.create', 'clients.update',
+                'loanbook.view', 'loan_applications.view', 'loan_applications.create', 'loan_applications.update',
+                'loans.view', 'loans.create', 'loans.update',
+                'disbursements.view', 'collections.view', 'collections.create', 'collections.update',
+                'payments.view', 'bulksms.view', 'branches.view', 'reports.view', 'access_roles.request', 'my_account.view', 'system.help.view',
+            ],
             'applicant' => ['dashboard.view', 'my_account.view', 'system.help.view'],
-            'user' => ['dashboard.view', 'clients.view', 'loanbook.view', 'payments.view', 'bulksms.view', 'my_account.view', 'system.help.view'],
+            'user' => [
+                'dashboard.view', 'clients.view', 'loanbook.view',
+                'loan_applications.view', 'loan_applications.create', 'loans.view',
+                'payments.view', 'bulksms.view', 'my_account.view', 'system.help.view',
+            ],
         ];
     }
 
@@ -1802,6 +2188,8 @@ class LoanSystemHelpController extends Controller
             ['key' => 'payment_automation', 'label' => 'Payment automation (notes / rules)', 'group' => 'preferences', 'value' => ''],
             ['key' => 'approval_levels', 'label' => 'Approval levels & thresholds', 'group' => 'preferences', 'value' => ''],
             ['key' => 'client_loyalty_points', 'label' => 'Client loyalty / royalty points rules', 'group' => 'preferences', 'value' => ''],
+            ['key' => 'org_structure_change_requires_approval', 'label' => 'Require maker-checker approval for structure changes (0/1)', 'group' => 'preferences', 'value' => '0'],
+            ['key' => 'org_structure_effective_dated_history', 'label' => 'Track effective-dated structure history (0/1)', 'group' => 'preferences', 'value' => '1'],
             ['key' => 'loan_repayment_allocation_order', 'label' => 'Loan repayment allocation order (csv: principal,interest,fees,penalty)', 'group' => 'preferences', 'value' => 'principal,interest,fees,penalty'],
             ['key' => 'loan_account_code_collection', 'label' => 'Collection account code (cash/bank receiving account)', 'group' => 'preferences', 'value' => '1004'],
             ['key' => 'loan_account_code_principal', 'label' => 'Loan principal receivable account code', 'group' => 'preferences', 'value' => '1200'],

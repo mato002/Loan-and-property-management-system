@@ -838,6 +838,165 @@ class LoanBookOperationsController extends Controller
         ]);
     }
 
+    public function collectionsReportsCommandCenter(Request $request): View
+    {
+        $selectedBranchId = max(0, (int) $request->query('branch_id', 0));
+
+        $branchOptions = LoanBranch::query()
+            ->with('region:id,name')
+            ->orderBy('name')
+            ->get(['id', 'name', 'loan_region_id']);
+
+        $selectedBranch = $selectedBranchId > 0
+            ? $branchOptions->firstWhere('id', $selectedBranchId)
+            : null;
+
+        $todayDate = now();
+        $dateWindowLabel = $todayDate->format('d M Y').' - '.$todayDate->copy()->addDays(6)->format('d M Y');
+
+        $metrics = [
+            'total_expected' => 2_388_700,
+            'total_collected' => 1_872_450,
+            'current_yield' => 1_872_450,
+            'arrears_recovery_yield' => 642_300,
+            'prepayment_yield' => 210_750,
+            'expected_inflow_7_days' => 5_642_100,
+            'expected_inflow_14_days' => 9_785_900,
+            'expected_inflow_30_days' => 18_964_300,
+            'available_liquidity_today' => 2_145_780,
+            'liquidity_floor_amount' => 1_800_000,
+            'projected_liquidity_breach_days' => 8,
+        ];
+
+        $metrics['collection_efficiency'] = $metrics['total_expected'] > 0
+            ? ($metrics['total_collected'] / $metrics['total_expected']) * 100
+            : 0.0;
+        $metrics['yield_gap'] = max(0, $metrics['total_expected'] - $metrics['total_collected']);
+
+        $forecastWindows = [
+            [
+                'window' => '7 Days',
+                'expected_inflow' => $metrics['expected_inflow_7_days'],
+                'expected_collected' => 4_980_300,
+            ],
+            [
+                'window' => '14 Days',
+                'expected_inflow' => $metrics['expected_inflow_14_days'],
+                'expected_collected' => 8_412_000,
+            ],
+            [
+                'window' => '30 Days',
+                'expected_inflow' => $metrics['expected_inflow_30_days'],
+                'expected_collected' => 15_105_200,
+            ],
+        ];
+
+        $forecastWindows = collect($forecastWindows)->map(function (array $row) {
+            $expectedInflow = (float) $row['expected_inflow'];
+            $expectedCollected = (float) $row['expected_collected'];
+            $gap = max(0.0, $expectedInflow - $expectedCollected);
+            $rate = $expectedInflow > 0 ? ($expectedCollected / $expectedInflow) * 100 : 0.0;
+
+            $row['gap'] = $gap;
+            $row['collection_rate'] = $rate;
+
+            return $row;
+        })->values();
+
+        $collectionMix = collect([
+            ['label' => 'Current / Due Today', 'amount' => 1_120_000, 'color' => '#0f766e'],
+            ['label' => 'Due Yesterday', 'amount' => 752_450, 'color' => '#2563eb'],
+            ['label' => 'Arrears 1-7 Days', 'amount' => 642_300, 'color' => '#f59e0b'],
+            ['label' => 'Deep Arrears 8+ Days', 'amount' => 290_180, 'color' => '#ef4444'],
+        ]);
+        $collectionMixTotal = (float) $collectionMix->sum('amount');
+        $collectionMixWithPct = $collectionMix->map(function (array $segment) use ($collectionMixTotal) {
+            $segment['percentage'] = $collectionMixTotal > 0
+                ? (((float) $segment['amount']) / $collectionMixTotal) * 100
+                : 0.0;
+
+            return $segment;
+        })->values();
+
+        $dailyCollectionRates = collect([
+            ['date' => 'Today', 'expected' => 2_388_700, 'collected' => 1_872_450, 'trend' => [58, 61, 63, 66, 70, 72, 78]],
+            ['date' => 'Yesterday', 'expected' => 2_210_500, 'collected' => 1_821_040, 'trend' => [54, 56, 59, 61, 64, 68, 74]],
+            ['date' => $todayDate->copy()->subDays(2)->format('D, d M'), 'expected' => 2_145_200, 'collected' => 1_690_100, 'trend' => [49, 51, 55, 57, 60, 63, 69]],
+            ['date' => $todayDate->copy()->subDays(3)->format('D, d M'), 'expected' => 2_008_450, 'collected' => 1_755_300, 'trend' => [52, 55, 57, 60, 64, 69, 74]],
+            ['date' => $todayDate->copy()->subDays(4)->format('D, d M'), 'expected' => 1_985_600, 'collected' => 1_472_400, 'trend' => [44, 47, 50, 54, 58, 61, 66]],
+            ['date' => $todayDate->copy()->subDays(5)->format('D, d M'), 'expected' => 2_112_300, 'collected' => 1_980_150, 'trend' => [62, 64, 67, 70, 73, 77, 81]],
+        ])->map(function (array $row) {
+            $expected = (float) $row['expected'];
+            $collected = (float) $row['collected'];
+            $rate = $expected > 0 ? ($collected / $expected) * 100 : 0.0;
+            $gap = max(0.0, $expected - $collected);
+            $row['collection_rate'] = $rate;
+            $row['yield_gap'] = $gap;
+
+            return $row;
+        })->values();
+
+        $agentPerformanceSummary = [
+            'top_agent' => 'Faith N.',
+            'top_agent_collected' => 468_900,
+            'pending_collections' => 39,
+        ];
+
+        $alerts = [
+            [
+                'severity' => 'critical',
+                'title' => 'Liquidity at risk in 8 days',
+                'description' => 'Projected cash balance crosses below liquidity floor.',
+                'time_ago' => '12m ago',
+            ],
+            [
+                'severity' => 'positive',
+                'title' => 'High arrears recovery',
+                'description' => 'Recovered KES 642,300 from late loans today.',
+                'time_ago' => '35m ago',
+            ],
+            [
+                'severity' => 'warning',
+                'title' => 'Pending collections building up',
+                'description' => '39 accounts still pending field follow-up.',
+                'time_ago' => '1h ago',
+            ],
+            [
+                'severity' => 'info',
+                'title' => 'Top performing agent',
+                'description' => 'Faith N. leads today with KES 468,900 collected.',
+                'time_ago' => '2h ago',
+            ],
+            [
+                'severity' => 'critical',
+                'title' => 'Yield gap alert',
+                'description' => 'Current gap remains at KES 516,250 versus expected.',
+                'time_ago' => '3h ago',
+            ],
+        ];
+
+        $projectedLiquidityAfter30 = 1_540_200;
+        $liquidityFloorStatus = $projectedLiquidityAfter30 < $metrics['liquidity_floor_amount'] ? 'AT RISK' : 'HEALTHY';
+
+        return view('loan.book.collections_reports', [
+            'title' => 'Collections & Reports',
+            'subtitle' => 'Real-time collection intelligence and cashflow visibility',
+            'selectedBranchId' => $selectedBranchId,
+            'selectedBranch' => $selectedBranch,
+            'branchOptions' => $branchOptions,
+            'metrics' => $metrics,
+            'forecastWindows' => $forecastWindows,
+            'collectionMix' => $collectionMixWithPct,
+            'collectionMixTotal' => $collectionMixTotal,
+            'dailyCollectionRates' => $dailyCollectionRates,
+            'agentPerformanceSummary' => $agentPerformanceSummary,
+            'alerts' => $alerts,
+            'liquidityFloorStatus' => $liquidityFloorStatus,
+            'projectedLiquidityBreachDate' => now()->addDays((int) $metrics['projected_liquidity_breach_days'])->toDateString(),
+            'dateWindowLabel' => $dateWindowLabel,
+        ]);
+    }
+
     public function agentsIndex(Request $request)
     {
         $q = trim((string) $request->query('q', ''));

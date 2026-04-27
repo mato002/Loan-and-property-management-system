@@ -251,6 +251,7 @@ class LoanEmployeesController extends Controller
 
         $employeeData = $validated;
         unset($employeeData['loan_role']);
+        $employeeData['branch'] = $this->syncBranchDirectory($employeeData['branch'] ?? null);
         $employeeData['employee_number'] = trim((string) ($employeeData['employee_number'] ?? ''));
         if ($employeeData['employee_number'] === '') {
             $employeeData['employee_number'] = $this->generateNextEmployeeNumber();
@@ -596,6 +597,7 @@ class LoanEmployeesController extends Controller
             'employment_contract_scan' => ['nullable', 'string', 'max:255'],
             'hire_date' => ['nullable', 'date'],
         ]);
+        $validated['branch'] = $this->syncBranchDirectory($validated['branch'] ?? null);
 
         $employee->update($validated);
 
@@ -1498,6 +1500,37 @@ class LoanEmployeesController extends Controller
         }
 
         return $password;
+    }
+
+    private function syncBranchDirectory(mixed $branchName): ?string
+    {
+        $name = trim((string) ($branchName ?? ''));
+        if ($name === '') {
+            return null;
+        }
+
+        if (! Schema::hasTable('loan_branches') || ! Schema::hasTable('loan_regions')) {
+            return $name;
+        }
+
+        $region = LoanRegion::query()->orderBy('name')->first();
+        if (! $region) {
+            $region = LoanRegion::query()->create([
+                'name' => 'Default Region',
+                'description' => 'Auto-created for quick branch setup.',
+                'is_active' => true,
+            ]);
+        }
+
+        LoanBranch::query()->firstOrCreate(
+            ['name' => $name],
+            [
+                'loan_region_id' => $region->id,
+                'is_active' => true,
+            ]
+        );
+
+        return $name;
     }
 
     private function isLikelyDeliverableEmail(string $email): bool

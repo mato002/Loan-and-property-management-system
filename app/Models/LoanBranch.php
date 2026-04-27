@@ -34,4 +34,9 @@ class LoanBranch extends Model
     {
         return $this->hasMany(LoanBookLoan::class, 'loan_branch_id');
     }
+
+    public function regionChanges(): HasMany
+    {
+        return $this->hasMany(LoanBranchRegionChange::class, 'loan_branch_id');
+    }
 }

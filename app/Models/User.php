@@ -72,6 +72,11 @@ class User extends Authenticatable
         return $this->hasMany(UserModuleAccess::class, 'user_id');
     }
 
+    public function loanTemporaryAccessRequests(): HasMany
+    {
+        return $this->hasMany(LoanTemporaryAccessRequest::class, 'requester_user_id');
+    }
+
     public function loanAccessRoles(): BelongsToMany
     {
         return $this->belongsToMany(LoanRole::class, 'loan_user_role')->withTimestamps();
@@ -260,24 +265,172 @@ class User extends Authenticatable
         $assignedRole = $this->activeLoanAccessRole();
         $keys = $this->loanPermissionKeys();
         if ($keys !== []) {
-            return in_array($permissionKey, $keys, true);
+            if (in_array('*', $keys, true) || in_array($permissionKey, $keys, true)) {
+                return true;
+            }
+            foreach ($this->loanPermissionLegacyFallbacks($permissionKey) as $legacyKey) {
+                if (in_array($legacyKey, $keys, true)) {
+                    return true;
+                }
+            }
+            return false;
         }
         if ($assignedRole !== null) {
-            return false;
+            return $this->hasActiveTemporaryLoanPermission($permissionKey);
         }
 
         $role = $this->effectiveLoanRole();
-        $defaultByRole = [
-            'admin' => ['*'],
-            'manager' => ['*'],
-            'accountant' => ['dashboard.view', 'accounting.view', 'financial.view', 'payments.view', 'clients.view', 'system.help.view'],
-            'officer' => ['dashboard.view', 'clients.view', 'loanbook.view', 'payments.view', 'bulksms.view', 'system.help.view'],
-            'user' => ['dashboard.view', 'clients.view', 'loanbook.view', 'payments.view', 'bulksms.view', 'system.help.view'],
-            'applicant' => ['dashboard.view', 'my_account.view', 'system.help.view'],
-        ];
+        $defaultByRole = $this->defaultLoanPermissionsByRole();
         $allowed = $defaultByRole[$role] ?? [];
 
-        return in_array('*', $allowed, true) || in_array($permissionKey, $allowed, true);
+        if (in_array('*', $allowed, true) || in_array($permissionKey, $allowed, true)) {
+            return true;
+        }
+        foreach ($this->loanPermissionLegacyFallbacks($permissionKey) as $legacyKey) {
+            if (in_array($legacyKey, $allowed, true)) {
+                return true;
+            }
+        }
+
+        return $this->hasActiveTemporaryLoanPermission($permissionKey);
+    }
+
+    private function hasActiveTemporaryLoanPermission(string $permissionKey): bool
+    {
+        if (! Schema::hasTable('loan_temporary_access_requests')) {
+            return false;
+        }
+
+        $now = now();
+        $active = LoanTemporaryAccessRequest::query()
+            ->where('requester_user_id', $this->id)
+            ->where('status', LoanTemporaryAccessRequest::STATUS_APPROVED)
+            ->where(function ($q) use ($now) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', $now);
+            })
+            ->pluck('permission_key')
+            ->map(fn ($v) => strtolower(trim((string) $v)))
+            ->filter()
+            ->values()
+            ->all();
+
+        if (in_array('*', $active, true) || in_array($permissionKey, $active, true)) {
+            return true;
+        }
+
+        foreach ($this->loanPermissionLegacyFallbacks($permissionKey) as $legacyKey) {
+            if (in_array($legacyKey, $active, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function defaultLoanPermissionsByRole(): array
+    {
+        return [
+            'admin' => ['*'],
+            'manager' => ['*'],
+            'accountant' => [
+                'dashboard.view',
+                'clients.view',
+                'payments.view',
+                'accounting.view',
+                'financial.view',
+                'reports.view',
+                'system.help.view',
+                'journals.view',
+                'journals.create',
+                'journals.update',
+                'journals.approve',
+                'chart_of_accounts.view',
+                'audit_logs.view',
+            ],
+            'officer' => [
+                'dashboard.view',
+                'clients.view',
+                'clients.create',
+                'clients.update',
+                'loan_applications.view',
+                'loan_applications.create',
+                'loan_applications.update',
+                'loans.view',
+                'loans.create',
+                'loans.update',
+                'disbursements.view',
+                'collections.view',
+                'collections.create',
+                'collections.update',
+                'payments.view',
+                'reports.view',
+                'my_account.view',
+                'system.help.view',
+            ],
+            'user' => [
+                'dashboard.view',
+                'clients.view',
+                'loan_applications.view',
+                'loan_applications.create',
+                'loans.view',
+                'collections.view',
+                'payments.view',
+                'my_account.view',
+                'system.help.view',
+            ],
+            'applicant' => ['dashboard.view', 'my_account.view', 'system.help.view'],
+        ];
+    }
+
+    /**
+     * Transitional compatibility map from granular permission to legacy coarse keys.
+     *
+     * @return list<string>
+     */
+    private function loanPermissionLegacyFallbacks(string $permissionKey): array
+    {
+        $map = [
+            'dashboard.view' => ['dashboard.view'],
+            'employees.view' => ['employees.view'],
+            'branches.view' => ['branches.view'],
+            'analytics.view' => ['analytics.view'],
+            'bulksms.view' => ['bulksms.view'],
+            'my_account.view' => ['my_account.view'],
+            'system.help.view' => ['system.help.view'],
+        ];
+
+        if (isset($map[$permissionKey])) {
+            return $map[$permissionKey];
+        }
+
+        $prefixMap = [
+            'clients.' => ['clients.view'],
+            'loan_applications.' => ['loanbook.view'],
+            'loans.' => ['loanbook.view'],
+            'disbursements.' => ['loanbook.view', 'payments.view'],
+            'collections.' => ['payments.view'],
+            'payments.' => ['payments.view'],
+            'wallets.' => ['payments.view', 'financial.view'],
+            'accounting.' => ['accounting.view', 'financial.view'],
+            'journals.' => ['accounting.view', 'financial.view'],
+            'chart_of_accounts.' => ['accounting.view', 'financial.view'],
+            'automated_cash_mappings.' => ['accounting.view', 'financial.view'],
+            'reports.' => ['analytics.view', 'financial.view'],
+            'system_setup.' => ['system.help.view'],
+            'audit_logs.' => ['system.help.view'],
+            'access_roles.' => ['system.help.view'],
+        ];
+
+        foreach ($prefixMap as $prefix => $legacyKeys) {
+            if (str_starts_with($permissionKey, $prefix)) {
+                return $legacyKeys;
+            }
+        }
+
+        return [];
     }
 
     /**

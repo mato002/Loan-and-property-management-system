@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Services\LoanSecurityPolicyService;
 use App\Services\Property\LoginActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -79,6 +80,30 @@ class AuthenticatedSessionController extends Controller
                 ->withErrors([
                     'module' => 'Your account is not approved for Property or Loan module access yet.',
                 ])
+                ->withInput($request->only('email'));
+        }
+
+        // Enforce role login windows and device governance (when enabled).
+        $policyError = app(LoanSecurityPolicyService::class)->evaluateLoginPolicies($request, $user);
+        if ($policyError !== null) {
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            app(LoginActivityLogger::class)->log(
+                (int) $user->id,
+                'failed',
+                'Staff login blocked by security policy',
+                (string) $user->email,
+                [
+                    'portal' => 'staff',
+                    'ip' => (string) $request->ip(),
+                    'reason' => $policyError,
+                ]
+            );
+
+            return redirect()->route('login')
+                ->withErrors(['email' => $policyError])
                 ->withInput($request->only('email'));
         }
 
