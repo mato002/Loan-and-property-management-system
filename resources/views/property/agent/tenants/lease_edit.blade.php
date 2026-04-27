@@ -8,7 +8,26 @@
     ]"
     :columns="[]"
 >
-    <form method="post" action="{{ route('property.leases.update', $lease) }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+    <form
+        method="post"
+        action="{{ route('property.leases.update', $lease) }}"
+        x-data="{
+            showOpeningArrearsSection: @js($errors->hasAny(['opening_arrears_items','opening_arrears_items.*.type','opening_arrears_items.*.label','opening_arrears_items.*.period','opening_arrears_items.*.amount','opening_arrears_amount','opening_arrears_as_of','opening_arrears_notes']) || count((array) old('opening_arrears_items', (array) ($lease->pmTenant->opening_arrears_items ?? []))) > 0 || (float) old('opening_arrears_amount', $lease->pmTenant->opening_arrears_amount ?? 0) > 0 || trim((string) old('opening_arrears_notes', $lease->pmTenant->opening_arrears_notes ?? '')) !== ''),
+            arrearsItems: @js(array_values((array) old('opening_arrears_items', (array) ($lease->pmTenant->opening_arrears_items ?? [])))),
+            arrearsTypeLabels: @js($openingArrearsTypeOptions ?? []),
+            addArrearsItem() {
+                this.arrearsItems.push({ type: 'water', label: '', period: '', amount: '', reference: '' });
+            },
+            removeArrearsItem(index) {
+                this.arrearsItems.splice(index, 1);
+            },
+            setDefaultLabel(item) {
+                if ((item.label ?? '').trim() !== '') return;
+                item.label = this.arrearsTypeLabels[item.type] ?? '';
+            }
+        }"
+        class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl"
+    >
         @csrf
         @method('PUT')
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Lease details</h3>
@@ -131,6 +150,79 @@
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Terms summary</label>
             <textarea name="terms_summary" rows="3" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('terms_summary', $lease->terms_summary ?: ($leaseTemplate ?? '')) }}</textarea>
             @error('terms_summary')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+        </div>
+        <button
+            type="button"
+            @click="showOpeningArrearsSection = !showOpeningArrearsSection"
+            class="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+        >
+            <i class="fa-solid fa-receipt" aria-hidden="true"></i>
+            <span x-text="showOpeningArrearsSection ? 'Hide opening arrears for this tenant' : 'Edit opening arrears for this tenant'"></span>
+        </button>
+        <div x-show="showOpeningArrearsSection" x-cloak class="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-3">
+            <p class="text-xs font-semibold text-amber-900">Opening arrears at lease setup (optional)</p>
+            <p class="mt-1 text-xs text-amber-800/90">Adjust brought-forward balance details for this tenant.</p>
+            <div class="mt-3 space-y-2">
+                <template x-for="(item, idx) in arrearsItems" :key="idx">
+                    <div class="rounded-lg border border-amber-200 bg-white/90 p-3">
+                        <div class="grid gap-2 sm:grid-cols-5">
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-600">Charge type</label>
+                                <select :name="`opening_arrears_items[${idx}][type]`" x-model="item.type" @change="setDefaultLabel(item)" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-2 py-2">
+                                    @foreach (($openingArrearsTypeOptions ?? []) as $optionValue => $optionLabel)
+                                        <option value="{{ $optionValue }}">{{ $optionLabel }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-600">Specific charge</label>
+                                <input type="text" :name="`opening_arrears_items[${idx}][label]`" x-model="item.label" maxlength="120" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-2 py-2" placeholder="e.g. Water meter bill" />
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-600">Period (YYYY-MM)</label>
+                                <input type="month" :name="`opening_arrears_items[${idx}][period]`" x-model="item.period" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-2 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-600">Amount (KES)</label>
+                                <input type="number" min="0.01" step="0.01" :name="`opening_arrears_items[${idx}][amount]`" x-model="item.amount" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-2 py-2" placeholder="0.00" />
+                            </div>
+                            <div class="flex items-end">
+                                <button type="button" @click="removeArrearsItem(idx)" class="w-full rounded-lg border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100">Remove</button>
+                            </div>
+                        </div>
+                        <div class="mt-2">
+                            <label class="block text-[11px] font-medium text-slate-600">Reference (optional)</label>
+                            <input type="text" :name="`opening_arrears_items[${idx}][reference]`" x-model="item.reference" maxlength="120" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-2 py-2" placeholder="e.g. Water bill APT-B4" />
+                        </div>
+                    </div>
+                </template>
+                <button type="button" @click="addArrearsItem()" class="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-200">
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    Add charge line
+                </button>
+                @error('opening_arrears_items')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                @error('opening_arrears_items.*.type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                @error('opening_arrears_items.*.label')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                @error('opening_arrears_items.*.period')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                @error('opening_arrears_items.*.amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div class="mt-2 grid gap-3 sm:grid-cols-2">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Manual total override (optional)</label>
+                    <input type="number" name="opening_arrears_amount" value="{{ old('opening_arrears_amount', $lease->pmTenant->opening_arrears_amount ?? null) }}" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('opening_arrears_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">As of date</label>
+                    <input type="date" name="opening_arrears_as_of" value="{{ old('opening_arrears_as_of', optional($lease->pmTenant->opening_arrears_as_of ?? null)->format('Y-m-d')) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    @error('opening_arrears_as_of')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+            </div>
+            <div class="mt-2">
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Arrears note (optional)</label>
+                <input type="text" name="opening_arrears_notes" value="{{ old('opening_arrears_notes', $lease->pmTenant->opening_arrears_notes ?? null) }}" maxlength="500" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                @error('opening_arrears_notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
         </div>
         <div class="flex gap-2">
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save changes</button>

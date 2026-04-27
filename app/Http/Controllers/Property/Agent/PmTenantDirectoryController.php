@@ -362,6 +362,7 @@ class PmTenantDirectoryController extends Controller
             'lastImportErrors' => session('tenant_import_errors', []),
             'openImportModal' => request()->boolean('tenant_import'),
             'tenantFields' => $this->tenantFieldConfig(),
+            'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
             'stats' => $stats,
             'filters' => [
                 'q' => (string) request()->string('q'),
@@ -473,6 +474,12 @@ class PmTenantDirectoryController extends Controller
                 Rule::unique('pm_tenants', 'national_id')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
             ],
             'risk_level' => ['required', 'in:normal,medium,high'],
+            'opening_arrears_items' => ['nullable', 'array'],
+            'opening_arrears_items.*.type' => ['required_with:opening_arrears_items', Rule::in(array_keys($this->openingArrearsTypeOptions()))],
+            'opening_arrears_items.*.period' => ['required_with:opening_arrears_items', 'date_format:Y-m'],
+            'opening_arrears_items.*.amount' => ['required_with:opening_arrears_items', 'numeric', 'min:0.01'],
+            'opening_arrears_items.*.label' => ['nullable', 'string', 'max:120'],
+            'opening_arrears_items.*.reference' => ['nullable', 'string', 'max:120'],
             'opening_arrears_rent' => ['nullable', 'numeric', 'min:0'],
             'opening_arrears_utilities' => ['nullable', 'numeric', 'min:0'],
             'opening_arrears_penalties' => ['nullable', 'numeric', 'min:0'],
@@ -539,6 +546,7 @@ class PmTenantDirectoryController extends Controller
                 'opening_arrears_utilities' => (float) ($tenant->opening_arrears_utilities ?? 0),
                 'opening_arrears_penalties' => (float) ($tenant->opening_arrears_penalties ?? 0),
                 'opening_arrears_other' => (float) ($tenant->opening_arrears_other ?? 0),
+                'opening_arrears_items_count' => count((array) ($tenant->opening_arrears_items ?? [])),
             ],
             'actions' => [
                 [
@@ -747,15 +755,23 @@ class PmTenantDirectoryController extends Controller
             $entryTs = $openingArrearsAsOf?->timestamp ?? ($tenant->created_at?->timestamp ?? now()->timestamp);
             $inRange = (! $fromDate || $entryTs >= $fromDate->timestamp) && (! $toDate || $entryTs <= $toDate->timestamp);
             if ($inRange) {
-                $arrearsParts = collect([
-                    'Rent' => (float) ($tenant->opening_arrears_rent ?? 0),
-                    'Utilities' => (float) ($tenant->opening_arrears_utilities ?? 0),
-                    'Penalties' => (float) ($tenant->opening_arrears_penalties ?? 0),
-                    'Other' => (float) ($tenant->opening_arrears_other ?? 0),
-                ])->filter(fn (float $v): bool => $v > 0);
-                $partsText = $arrearsParts->isEmpty()
-                    ? ''
-                    : ' Breakdown: '.$arrearsParts->map(fn (float $v, string $k): string => $k.' '.PropertyMoney::kes($v))->implode(' · ');
+                $items = collect((array) ($tenant->opening_arrears_items ?? []))
+                    ->filter(fn ($item): bool => is_array($item) && (float) ($item['amount'] ?? 0) > 0)
+                    ->map(function (array $item): string {
+                        $customLabel = trim((string) ($item['label'] ?? ''));
+                        $label = $customLabel !== ''
+                            ? $customLabel
+                            : ($this->openingArrearsTypeOptions()[(string) ($item['type'] ?? '')] ?? ucfirst(str_replace('_', ' ', (string) ($item['type'] ?? 'Other'))));
+                        $period = (string) ($item['period'] ?? '');
+                        $ref = trim((string) ($item['reference'] ?? ''));
+                        $bits = [$label, $period !== '' ? "({$period})" : null, PropertyMoney::kes((float) ($item['amount'] ?? 0))];
+                        if ($ref !== '') {
+                            $bits[] = '['.$ref.']';
+                        }
+
+                        return implode(' ', array_values(array_filter($bits, fn ($v): bool => (string) $v !== '')));
+                    });
+                $partsText = $items->isEmpty() ? '' : ' Breakdown: '.$items->implode(' · ');
                 $entries->push([
                     'date' => $entryDate,
                     'timestamp' => $entryTs,
@@ -880,6 +896,10 @@ class PmTenantDirectoryController extends Controller
             'opening_arrears_utilities' => (float) ($tenant->opening_arrears_utilities ?? 0),
             'opening_arrears_penalties' => (float) ($tenant->opening_arrears_penalties ?? 0),
             'opening_arrears_other' => (float) ($tenant->opening_arrears_other ?? 0),
+            'opening_arrears_items' => collect((array) ($tenant->opening_arrears_items ?? []))
+                ->filter(fn ($item): bool => is_array($item) && (float) ($item['amount'] ?? 0) > 0)
+                ->values()
+                ->all(),
             'outstanding' => max(0.0, $running),
             'openCount' => $invoices->filter(fn (PmInvoice $i) => (float) $i->amount_paid < (float) $i->amount)->count(),
         ];
@@ -912,6 +932,7 @@ class PmTenantDirectoryController extends Controller
 
         return view('property.agent.tenants.edit', [
             'tenant' => $tenant,
+            'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
         ]);
     }
 
@@ -948,6 +969,12 @@ class PmTenantDirectoryController extends Controller
                     ->ignore($tenant->id),
             ],
             'risk_level' => ['required', 'in:normal,medium,high'],
+            'opening_arrears_items' => ['nullable', 'array'],
+            'opening_arrears_items.*.type' => ['required_with:opening_arrears_items', Rule::in(array_keys($this->openingArrearsTypeOptions()))],
+            'opening_arrears_items.*.period' => ['required_with:opening_arrears_items', 'date_format:Y-m'],
+            'opening_arrears_items.*.amount' => ['required_with:opening_arrears_items', 'numeric', 'min:0.01'],
+            'opening_arrears_items.*.label' => ['nullable', 'string', 'max:120'],
+            'opening_arrears_items.*.reference' => ['nullable', 'string', 'max:120'],
             'opening_arrears_rent' => ['nullable', 'numeric', 'min:0'],
             'opening_arrears_utilities' => ['nullable', 'numeric', 'min:0'],
             'opening_arrears_penalties' => ['nullable', 'numeric', 'min:0'],
@@ -1044,11 +1071,50 @@ class PmTenantDirectoryController extends Controller
      */
     private function buildOpeningArrearsPayload(array $data, ?PmTenant $tenant = null): array
     {
-        $rent = (float) ($data['opening_arrears_rent'] ?? 0);
-        $utilities = (float) ($data['opening_arrears_utilities'] ?? 0);
-        $penalties = (float) ($data['opening_arrears_penalties'] ?? 0);
-        $other = (float) ($data['opening_arrears_other'] ?? 0);
-        $computedTotal = $rent + $utilities + $penalties + $other;
+        $items = collect((array) ($data['opening_arrears_items'] ?? []))
+            ->filter(fn ($item): bool => is_array($item))
+            ->map(function (array $item): array {
+                return [
+                    'type' => (string) ($item['type'] ?? ''),
+                    'period' => (string) ($item['period'] ?? ''),
+                    'amount' => round((float) ($item['amount'] ?? 0), 2),
+                    'label' => trim((string) ($item['label'] ?? '')),
+                    'reference' => trim((string) ($item['reference'] ?? '')),
+                ];
+            })
+            ->filter(fn (array $item): bool => $item['type'] !== '' && $item['period'] !== '' && $item['amount'] > 0)
+            ->values();
+
+        $categories = [
+            'opening_arrears_rent' => 0.0,
+            'opening_arrears_utilities' => 0.0,
+            'opening_arrears_penalties' => 0.0,
+            'opening_arrears_other' => 0.0,
+        ];
+        $utilityTypes = ['water', 'electricity', 'service_charge', 'garbage', 'internet', 'parking', 'utility_other'];
+        foreach ($items as $item) {
+            $type = (string) $item['type'];
+            $amount = (float) $item['amount'];
+            if ($type === 'rent') {
+                $categories['opening_arrears_rent'] += $amount;
+            } elseif ($type === 'penalty') {
+                $categories['opening_arrears_penalties'] += $amount;
+            } elseif (in_array($type, $utilityTypes, true)) {
+                $categories['opening_arrears_utilities'] += $amount;
+            } else {
+                $categories['opening_arrears_other'] += $amount;
+            }
+        }
+
+        // Backward compatibility for older form submissions without item rows.
+        if ($items->isEmpty()) {
+            $categories['opening_arrears_rent'] = (float) ($data['opening_arrears_rent'] ?? 0);
+            $categories['opening_arrears_utilities'] = (float) ($data['opening_arrears_utilities'] ?? 0);
+            $categories['opening_arrears_penalties'] = (float) ($data['opening_arrears_penalties'] ?? 0);
+            $categories['opening_arrears_other'] = (float) ($data['opening_arrears_other'] ?? 0);
+        }
+
+        $computedTotal = array_sum($categories);
         $manualTotal = (float) ($data['opening_arrears_amount'] ?? 0);
         $total = $computedTotal > 0 ? $computedTotal : $manualTotal;
         $asOf = $total > 0
@@ -1056,13 +1122,34 @@ class PmTenantDirectoryController extends Controller
             : null;
 
         return [
-            'opening_arrears_rent' => $rent,
-            'opening_arrears_utilities' => $utilities,
-            'opening_arrears_penalties' => $penalties,
-            'opening_arrears_other' => $other,
+            'opening_arrears_rent' => (float) $categories['opening_arrears_rent'],
+            'opening_arrears_utilities' => (float) $categories['opening_arrears_utilities'],
+            'opening_arrears_penalties' => (float) $categories['opening_arrears_penalties'],
+            'opening_arrears_other' => (float) $categories['opening_arrears_other'],
             'opening_arrears_amount' => $total,
             'opening_arrears_as_of' => $asOf,
             'opening_arrears_notes' => $data['opening_arrears_notes'] ?? null,
+            'opening_arrears_items' => $items->all(),
+        ];
+    }
+
+    /**
+     * @return array<string,string>
+     */
+    private function openingArrearsTypeOptions(): array
+    {
+        return [
+            'rent' => 'Rent',
+            'water' => 'Water',
+            'electricity' => 'Electricity',
+            'service_charge' => 'Service charge',
+            'garbage' => 'Garbage',
+            'internet' => 'Internet',
+            'parking' => 'Parking',
+            'utility_other' => 'Other utility',
+            'penalty' => 'Penalty',
+            'other' => 'Other charge',
+            'custom_charge' => 'Custom charge',
         ];
     }
 }

@@ -32,6 +32,31 @@
                     Penalties {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_penalties ?? 0)) }},
                     Other {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_other ?? 0)) }}
                 </p>
+                @if (is_array($tenant->opening_arrears_items) && count($tenant->opening_arrears_items) > 0)
+                    <div class="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2">
+                        <p class="text-xs font-semibold text-amber-900">Opening arrears lines</p>
+                        <ul class="mt-1 space-y-1 text-xs text-amber-800">
+                            @foreach ($tenant->opening_arrears_items as $line)
+                                @php
+                                    $lineType = (string) ($line['type'] ?? 'other');
+                                    $lineLabel = trim((string) ($line['label'] ?? '')) !== ''
+                                        ? trim((string) ($line['label'] ?? ''))
+                                        : ucfirst(str_replace('_', ' ', $lineType));
+                                    $linePeriod = (string) ($line['period'] ?? '');
+                                    $lineAmount = (float) ($line['amount'] ?? 0);
+                                    $lineRef = trim((string) ($line['reference'] ?? ''));
+                                @endphp
+                                <li>
+                                    {{ $lineLabel }}{{ $linePeriod !== '' ? ' ('.$linePeriod.')' : '' }}:
+                                    {{ \App\Services\Property\PropertyMoney::kes($lineAmount) }}
+                                    @if ($lineRef !== '')
+                                        <span class="text-amber-700">- {{ $lineRef }}</span>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
                 <p><span class="text-slate-500">Portal login linked:</span> {{ $tenant->user_id ? 'Yes' : 'No' }}</p>
             </div>
         </div>

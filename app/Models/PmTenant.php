@@ -31,6 +31,7 @@ class PmTenant extends Model
         'opening_arrears_amount',
         'opening_arrears_as_of',
         'opening_arrears_notes',
+        'opening_arrears_items',
         'notes',
     ];
 
@@ -43,6 +44,7 @@ class PmTenant extends Model
             'opening_arrears_other' => 'decimal:2',
             'opening_arrears_amount' => 'decimal:2',
             'opening_arrears_as_of' => 'date',
+            'opening_arrears_items' => 'array',
         ];
     }
 

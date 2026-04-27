@@ -361,6 +361,7 @@ class PmLeaseWebController extends Controller
                 ->values(),
             'leaseTemplate' => $leaseTemplate,
             'leaseFields' => $this->leaseFieldConfig(),
+            'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
         ]);
     }
 
@@ -382,6 +383,15 @@ class PmLeaseWebController extends Controller
             'additional_deposits' => ['nullable', 'array', 'max:20'],
             'additional_deposits.*.label' => ['nullable', 'string', 'max:100'],
             'additional_deposits.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_items' => ['nullable', 'array'],
+            'opening_arrears_items.*.type' => ['required_with:opening_arrears_items', Rule::in(array_keys($this->openingArrearsTypeOptions()))],
+            'opening_arrears_items.*.label' => ['nullable', 'string', 'max:120'],
+            'opening_arrears_items.*.period' => ['required_with:opening_arrears_items', 'date_format:Y-m'],
+            'opening_arrears_items.*.amount' => ['required_with:opening_arrears_items', 'numeric', 'min:0.01'],
+            'opening_arrears_items.*.reference' => ['nullable', 'string', 'max:120'],
+            'opening_arrears_amount' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_as_of' => ['nullable', 'date'],
+            'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         $data['status'] = (string) ($data['status'] ?? PmLease::STATUS_DRAFT);
@@ -422,6 +432,35 @@ class PmLeaseWebController extends Controller
                 } elseif (in_array($data['status'], [PmLease::STATUS_EXPIRED, PmLease::STATUS_TERMINATED], true)) {
                     $this->vacateUnitsIfNotInAnotherActiveLease($unitIds, excludeLeaseId: $lease->id);
                     $this->ensureMovementLogged($lease, $unitIds, 'move_out', $data['end_date'] ?? null);
+                }
+            }
+
+            $openingArrearsPayload = $this->buildOpeningArrearsPayload($data);
+            if (
+                (float) ($openingArrearsPayload['opening_arrears_amount'] ?? 0) > 0
+                || ! empty($openingArrearsPayload['opening_arrears_items'])
+                || trim((string) ($openingArrearsPayload['opening_arrears_notes'] ?? '')) !== ''
+            ) {
+                $tenant = PmTenant::query()->find((int) ($data['pm_tenant_id'] ?? 0));
+                if ($tenant) {
+                    $tenantUpdate = [];
+                    foreach ([
+                        'opening_arrears_rent',
+                        'opening_arrears_utilities',
+                        'opening_arrears_penalties',
+                        'opening_arrears_other',
+                        'opening_arrears_amount',
+                        'opening_arrears_as_of',
+                        'opening_arrears_notes',
+                        'opening_arrears_items',
+                    ] as $column) {
+                        if (Schema::hasColumn('pm_tenants', $column)) {
+                            $tenantUpdate[$column] = $openingArrearsPayload[$column] ?? null;
+                        }
+                    }
+                    if ($tenantUpdate !== []) {
+                        $tenant->update($tenantUpdate);
+                    }
                 }
             }
         });
@@ -474,6 +513,84 @@ class PmLeaseWebController extends Controller
         return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
     }
 
+    /**
+     * @return array<string,string>
+     */
+    private function openingArrearsTypeOptions(): array
+    {
+        return [
+            'rent' => 'Rent',
+            'water' => 'Water',
+            'electricity' => 'Electricity',
+            'service_charge' => 'Service charge',
+            'garbage' => 'Garbage',
+            'internet' => 'Internet',
+            'parking' => 'Parking',
+            'utility_other' => 'Other utility',
+            'penalty' => 'Penalty',
+            'other' => 'Other charge',
+            'custom_charge' => 'Custom charge',
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $data
+     * @return array<string,mixed>
+     */
+    private function buildOpeningArrearsPayload(array $data): array
+    {
+        $items = collect((array) ($data['opening_arrears_items'] ?? []))
+            ->filter(fn ($item): bool => is_array($item))
+            ->map(function (array $item): array {
+                return [
+                    'type' => (string) ($item['type'] ?? ''),
+                    'period' => (string) ($item['period'] ?? ''),
+                    'amount' => round((float) ($item['amount'] ?? 0), 2),
+                    'label' => trim((string) ($item['label'] ?? '')),
+                    'reference' => trim((string) ($item['reference'] ?? '')),
+                ];
+            })
+            ->filter(fn (array $item): bool => $item['type'] !== '' && $item['period'] !== '' && $item['amount'] > 0)
+            ->values();
+
+        $categories = [
+            'opening_arrears_rent' => 0.0,
+            'opening_arrears_utilities' => 0.0,
+            'opening_arrears_penalties' => 0.0,
+            'opening_arrears_other' => 0.0,
+        ];
+        $utilityTypes = ['water', 'electricity', 'service_charge', 'garbage', 'internet', 'parking', 'utility_other'];
+        foreach ($items as $item) {
+            $type = (string) $item['type'];
+            $amount = (float) $item['amount'];
+            if ($type === 'rent') {
+                $categories['opening_arrears_rent'] += $amount;
+            } elseif ($type === 'penalty') {
+                $categories['opening_arrears_penalties'] += $amount;
+            } elseif (in_array($type, $utilityTypes, true)) {
+                $categories['opening_arrears_utilities'] += $amount;
+            } else {
+                $categories['opening_arrears_other'] += $amount;
+            }
+        }
+
+        $computedTotal = array_sum($categories);
+        $manualTotal = (float) ($data['opening_arrears_amount'] ?? 0);
+        $total = $computedTotal > 0 ? $computedTotal : $manualTotal;
+        $asOf = $total > 0 ? ($data['opening_arrears_as_of'] ?? now()->toDateString()) : null;
+
+        return [
+            'opening_arrears_rent' => (float) $categories['opening_arrears_rent'],
+            'opening_arrears_utilities' => (float) $categories['opening_arrears_utilities'],
+            'opening_arrears_penalties' => (float) $categories['opening_arrears_penalties'],
+            'opening_arrears_other' => (float) $categories['opening_arrears_other'],
+            'opening_arrears_amount' => $total,
+            'opening_arrears_as_of' => $asOf,
+            'opening_arrears_notes' => $data['opening_arrears_notes'] ?? null,
+            'opening_arrears_items' => $items->all(),
+        ];
+    }
+
     public function show(PmLease $lease): View
     {
         $lease->load([
@@ -512,6 +629,7 @@ class PmLeaseWebController extends Controller
                 ->sortBy('name')
                 ->values(),
             'leaseTemplate' => PropertyPortalSetting::getValue('template_lease_text', ''),
+            'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
         ]);
     }
 
@@ -534,6 +652,15 @@ class PmLeaseWebController extends Controller
             'additional_deposits' => ['nullable', 'array', 'max:20'],
             'additional_deposits.*.label' => ['nullable', 'string', 'max:100'],
             'additional_deposits.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_items' => ['nullable', 'array'],
+            'opening_arrears_items.*.type' => ['required_with:opening_arrears_items', Rule::in(array_keys($this->openingArrearsTypeOptions()))],
+            'opening_arrears_items.*.label' => ['nullable', 'string', 'max:120'],
+            'opening_arrears_items.*.period' => ['required_with:opening_arrears_items', 'date_format:Y-m'],
+            'opening_arrears_items.*.amount' => ['required_with:opening_arrears_items', 'numeric', 'min:0.01'],
+            'opening_arrears_items.*.reference' => ['nullable', 'string', 'max:120'],
+            'opening_arrears_amount' => ['nullable', 'numeric', 'min:0'],
+            'opening_arrears_as_of' => ['nullable', 'date'],
+            'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
         ]);
 
         DB::transaction(function () use ($data, $lease) {
@@ -585,6 +712,35 @@ class PmLeaseWebController extends Controller
                 if ($removed !== []) {
                     $this->vacateUnitsIfNotInAnotherActiveLease($removed, excludeLeaseId: $lease->id);
                     $this->ensureMovementLogged($lease, $removed, 'move_out', now()->toDateString());
+                }
+            }
+
+            $openingArrearsPayload = $this->buildOpeningArrearsPayload($data);
+            if (
+                (float) ($openingArrearsPayload['opening_arrears_amount'] ?? 0) > 0
+                || ! empty($openingArrearsPayload['opening_arrears_items'])
+                || trim((string) ($openingArrearsPayload['opening_arrears_notes'] ?? '')) !== ''
+            ) {
+                $tenant = PmTenant::query()->find((int) ($data['pm_tenant_id'] ?? 0));
+                if ($tenant) {
+                    $tenantUpdate = [];
+                    foreach ([
+                        'opening_arrears_rent',
+                        'opening_arrears_utilities',
+                        'opening_arrears_penalties',
+                        'opening_arrears_other',
+                        'opening_arrears_amount',
+                        'opening_arrears_as_of',
+                        'opening_arrears_notes',
+                        'opening_arrears_items',
+                    ] as $column) {
+                        if (Schema::hasColumn('pm_tenants', $column)) {
+                            $tenantUpdate[$column] = $openingArrearsPayload[$column] ?? null;
+                        }
+                    }
+                    if ($tenantUpdate !== []) {
+                        $tenant->update($tenantUpdate);
+                    }
                 }
             }
         });
