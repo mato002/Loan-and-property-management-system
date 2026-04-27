@@ -21,6 +21,82 @@ use Illuminate\View\View;
 class PmLeaseWebController extends Controller
 {
     /**
+     * @return array{
+     *   stats: array<int,array{label:string,value:string,hint:string}>,
+     *   columns: array<int,string>,
+     *   tableRows: array<int,array<int,mixed>>,
+     *   expiryFilterTexts: array<int,string>
+     * }
+     */
+    private function expiryTablePayload(): array
+    {
+        $leases = PmLease::query()
+            ->with(['pmTenant', 'units.property.landlords'])
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->whereDate('end_date', '>=', now()->toDateString())
+            ->whereDate('end_date', '<=', now()->addDays(90)->toDateString())
+            ->orderBy('end_date')
+            ->get();
+
+        $rentAtRisk = (float) $leases
+            ->filter(fn (PmLease $l) => $l->end_date->lte(now()->addDays(90)))
+            ->sum('monthly_rent');
+
+        $in30 = $leases->filter(fn (PmLease $l) => $l->end_date->lte(now()->addDays(30)))->count();
+        $in60 = $leases->filter(fn (PmLease $l) => $l->end_date->lte(now()->addDays(60)))->count();
+        $in90 = $leases->count();
+
+        $mapped = $leases->map(function (PmLease $l) {
+            $units = $l->units->map(fn ($u) => $u->property->name.'/'.$u->label)->implode(', ') ?: '—';
+            $daysLeft = $l->end_date->isBefore(today()) ? 0 : (int) today()->diffInDays($l->end_date);
+            $tenantName = $l->pmTenant?->name ?? '—';
+
+            $filterParts = [
+                mb_strtolower($tenantName),
+                mb_strtolower($units),
+                (string) $daysLeft,
+            ];
+            if ($daysLeft <= 30) {
+                $filterParts[] = 'within30';
+            }
+            if ($daysLeft <= 60) {
+                $filterParts[] = 'within60';
+            }
+            if ($daysLeft <= 90) {
+                $filterParts[] = 'within90';
+            }
+
+            return [
+                'filter' => implode(' ', $filterParts),
+                'cells' => [
+                    $tenantName,
+                    $units,
+                    $l->end_date->format('Y-m-d'),
+                    (string) max(0, $daysLeft),
+                    PropertyMoney::kes((float) $l->monthly_rent),
+                    $daysLeft <= 30 ? 'Urgent renewal call' : ($daysLeft <= 60 ? 'Send renewal offer' : 'Monitor'),
+                    ucfirst($l->status),
+                    new HtmlString(
+                        '<a href="'.route('property.tenants.notices').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Open notices</a>'
+                    ),
+                ],
+            ];
+        });
+
+        return [
+            'stats' => [
+                ['label' => 'Expiring ≤30d', 'value' => (string) $in30, 'hint' => 'Urgent'],
+                ['label' => 'Expiring ≤60d', 'value' => (string) $in60, 'hint' => 'Outreach'],
+                ['label' => 'Expiring ≤90d', 'value' => (string) $in90, 'hint' => 'This list'],
+                ['label' => 'Rent at risk (mo)', 'value' => PropertyMoney::kes($rentAtRisk), 'hint' => 'If not renewed'],
+            ],
+            'columns' => ['Tenant', 'Unit', 'End date', 'Days left', 'Current rent', 'Renewal offer', 'Status', 'Owner'],
+            'tableRows' => $mapped->map(fn (array $r) => $r['cells'])->values()->all(),
+            'expiryFilterTexts' => $mapped->map(fn (array $r) => $r['filter'])->values()->all(),
+        ];
+    }
+
+    /**
      * @param  array<int,array<string,mixed>>  $rows
      * @return array<int,array{label:string,amount:string}>
      */
@@ -216,6 +292,7 @@ class PmLeaseWebController extends Controller
 
     public function leases(): View
     {
+        $activeTab = request()->string('tab')->toString() === 'expiry' ? 'expiry' : 'leases';
         $leaseTemplate = PropertyPortalSetting::getValue('template_lease_text', '');
         $leases = PmLease::query()->with(['pmTenant', 'units.property'])->orderByDesc('start_date')->get();
 
@@ -263,12 +340,17 @@ class PmLeaseWebController extends Controller
             ];
         })->all();
 
+        $expiryPayload = $this->expiryTablePayload();
         $vacantUnits = $this->leaseAssignableUnits()->get();
 
         return view('property.agent.tenants.leases', [
-            'stats' => $stats,
-            'columns' => ['Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent', 'Deposit held', 'Expense paid', 'Status', 'Actions'],
-            'tableRows' => $rows,
+            'activeTab' => $activeTab,
+            'stats' => $activeTab === 'expiry' ? $expiryPayload['stats'] : $stats,
+            'columns' => $activeTab === 'expiry'
+                ? $expiryPayload['columns']
+                : ['Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent', 'Deposit held', 'Expense paid', 'Status', 'Actions'],
+            'tableRows' => $activeTab === 'expiry' ? $expiryPayload['tableRows'] : $rows,
+            'expiryFilterTexts' => $activeTab === 'expiry' ? $expiryPayload['expiryFilterTexts'] : [],
             'tenants' => $this->selectableTenants(),
             'vacantUnits' => $vacantUnits,
             'vacantProperties' => $vacantUnits
@@ -512,72 +594,6 @@ class PmLeaseWebController extends Controller
 
     public function expiry(): View
     {
-        $leases = PmLease::query()
-            ->with(['pmTenant', 'units.property.landlords'])
-            ->where('status', PmLease::STATUS_ACTIVE)
-            ->whereDate('end_date', '>=', now()->toDateString())
-            ->whereDate('end_date', '<=', now()->addDays(90)->toDateString())
-            ->orderBy('end_date')
-            ->get();
-
-        $rentAtRisk = (float) $leases
-            ->filter(fn (PmLease $l) => $l->end_date->lte(now()->addDays(90)))
-            ->sum('monthly_rent');
-
-        $in30 = $leases->filter(fn (PmLease $l) => $l->end_date->lte(now()->addDays(30)))->count();
-        $in60 = $leases->filter(fn (PmLease $l) => $l->end_date->lte(now()->addDays(60)))->count();
-        $in90 = $leases->count();
-
-        $mapped = $leases->map(function (PmLease $l) {
-            $units = $l->units->map(fn ($u) => $u->property->name.'/'.$u->label)->implode(', ') ?: '—';
-            $daysLeft = $l->end_date->isBefore(today()) ? 0 : (int) today()->diffInDays($l->end_date);
-            $tenantName = $l->pmTenant?->name ?? '—';
-
-            $filterParts = [
-                mb_strtolower($tenantName),
-                mb_strtolower($units),
-                (string) $daysLeft,
-            ];
-            if ($daysLeft <= 30) {
-                $filterParts[] = 'within30';
-            }
-            if ($daysLeft <= 60) {
-                $filterParts[] = 'within60';
-            }
-            if ($daysLeft <= 90) {
-                $filterParts[] = 'within90';
-            }
-
-            return [
-                'filter' => implode(' ', $filterParts),
-                'cells' => [
-                    $tenantName,
-                    $units,
-                    $l->end_date->format('Y-m-d'),
-                    (string) max(0, $daysLeft),
-                    PropertyMoney::kes((float) $l->monthly_rent),
-                    $daysLeft <= 30 ? 'Urgent renewal call' : ($daysLeft <= 60 ? 'Send renewal offer' : 'Monitor'),
-                    ucfirst($l->status),
-                    new HtmlString(
-                        '<a href="'.route('property.tenants.notices').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Open notices</a>'
-                    ),
-                ],
-            ];
-        });
-
-        $tableRows = $mapped->map(fn (array $r) => $r['cells'])->values()->all();
-        $filterTexts = $mapped->map(fn (array $r) => $r['filter'])->values()->all();
-
-        return view('property.agent.tenants.expiry', [
-            'stats' => [
-                ['label' => 'Expiring ≤30d', 'value' => (string) $in30, 'hint' => 'Urgent'],
-                ['label' => 'Expiring ≤60d', 'value' => (string) $in60, 'hint' => 'Outreach'],
-                ['label' => 'Expiring ≤90d', 'value' => (string) $in90, 'hint' => 'This list'],
-                ['label' => 'Rent at risk (mo)', 'value' => PropertyMoney::kes($rentAtRisk), 'hint' => 'If not renewed'],
-            ],
-            'columns' => ['Tenant', 'Unit', 'End date', 'Days left', 'Current rent', 'Renewal offer', 'Status', 'Owner'],
-            'tableRows' => $tableRows,
-            'expiryFilterTexts' => $filterTexts,
-        ]);
+        return redirect()->route('property.tenants.leases', ['tab' => 'expiry']);
     }
 }

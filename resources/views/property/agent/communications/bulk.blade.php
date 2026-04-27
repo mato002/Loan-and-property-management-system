@@ -59,7 +59,16 @@
             </div>
         </form>
 
-        <form method="post" action="{{ route('property.communications.bulk.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+        <div x-data="{ showBulkForm: @js($errors->hasAny(['channel','segment_label','recipients','subject','message','schedule_at'])) }" class="space-y-3">
+        <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showBulkForm = !showBulkForm"
+        >
+            <i class="fa-solid fa-bullhorn" aria-hidden="true"></i>
+            <span x-text="showBulkForm ? 'Hide bulk form' : 'Send bulk message'"></span>
+        </button>
+        <form method="post" action="{{ route('property.communications.bulk.store') }}" x-show="showBulkForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
             @csrf
             <div class="flex items-start justify-between gap-3">
                 <div>
@@ -145,6 +154,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Send / schedule</button>
         </form>
+        </div>
     </x-slot>
 </x-property.workspace>
 <script>

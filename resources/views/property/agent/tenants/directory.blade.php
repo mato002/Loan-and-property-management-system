@@ -1,6 +1,7 @@
 <x-property.workspace
     :title="$pageTitle"
     :subtitle="$pageSubtitle"
+    :show-search="false"
     back-route="property.tenants.index"
     :stats="$stats"
     :columns="$columns"
@@ -13,7 +14,10 @@
         $tenantRequired = fn (string $k, bool $d = false) => (bool) (($tenantCfg[$k]['required'] ?? $d) && ($tenantCfg[$k]['enabled'] ?? true));
     @endphp
     <x-slot name="above">
-        <div x-data="{ showTenantForm: @js($errors->any()) }" class="space-y-4">
+        <div
+            x-data="{ showTenantForm: @js($errors->any()), showImportForm: @js((bool) ($openImportModal ?? false) || !empty($lastImportStats ?? null) || (is_array($lastImportErrors ?? null) && count($lastImportErrors) > 0)) }"
+            class="space-y-4"
+        >
         <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
             <p class="text-lg font-semibold text-slate-900">Tenant onboarding flow</p>
             <p class="mt-1 text-sm text-slate-600">Step 1: Add tenant → Step 2: Allocate unit (Lease) → Step 3: Create rent bill (Invoice) → Step 4: Collect payment.</p>
@@ -33,7 +37,7 @@
             </div>
         </div>
 
-        <div class="max-w-3xl">
+        <div class="max-w-3xl flex flex-wrap items-center gap-3">
             <button
                 type="button"
                 class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
@@ -41,6 +45,14 @@
             >
                 <i class="fa-solid fa-user-plus text-lg" aria-hidden="true"></i>
                 <span x-text="showTenantForm ? 'Hide add tenant form' : 'Add tenant'"></span>
+            </button>
+            <button
+                type="button"
+                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-300 bg-white px-6 py-4 text-base font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:w-auto"
+                @click="showImportForm = true"
+            >
+                <i class="fa-solid fa-file-import text-lg" aria-hidden="true"></i>
+                Import tenants (CSV)
             </button>
         </div>
 
@@ -103,12 +115,134 @@
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save tenant</button>
         </form>
         @endif
+            <div
+                x-show="showImportForm"
+                x-cloak
+                class="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/50 p-4"
+                @keydown.escape.window="showImportForm = false"
+            >
+                <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl">
+                    <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+                        <div>
+                            <h3 class="text-base font-semibold text-slate-900">Import tenants</h3>
+                            <p class="mt-1 text-sm text-slate-600">Upload a CSV to bulk add or update tenants (matched by email when provided).</p>
+                        </div>
+                        <button type="button" class="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" @click="showImportForm = false" aria-label="Close import modal">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="max-h-[75vh] overflow-y-auto p-5 space-y-4">
+                        @if (! empty($lastImportStats))
+                            <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
+                                <div class="font-semibold">Last import</div>
+                                <div class="text-sm mt-1">
+                                    Created: <span class="font-semibold tabular-nums">{{ $lastImportStats['created'] ?? 0 }}</span>,
+                                    Updated: <span class="font-semibold tabular-nums">{{ $lastImportStats['updated'] ?? 0 }}</span>,
+                                    Skipped: <span class="font-semibold tabular-nums">{{ $lastImportStats['skipped'] ?? 0 }}</span>,
+                                    Portal logins created: <span class="font-semibold tabular-nums">{{ $lastImportStats['portal_logins_created'] ?? 0 }}</span>,
+                                    Errors: <span class="font-semibold tabular-nums">{{ $lastImportStats['errors'] ?? 0 }}</span>
+                                </div>
+                            </div>
+                        @endif
+
+                        @if (is_array($lastImportErrors ?? null) && count($lastImportErrors) > 0)
+                            <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900">
+                                <div class="font-semibold">Import errors (showing up to {{ count($lastImportErrors) }})</div>
+                                <ul class="mt-2 list-disc pl-5 text-sm space-y-1">
+                                    @foreach ($lastImportErrors as $err)
+                                        <li class="break-words">{{ $err }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+
+                        <div class="text-sm text-slate-600">
+                            Required columns:
+                            <span class="font-semibold text-slate-900">{{ implode(', ', $expectedColumns ?? []) }}</span>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
+                            <a
+                                href="{{ route('property.tenants.import.template') }}"
+                                class="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                                Download CSV template
+                            </a>
+                        </div>
+
+                        <form
+                            method="post"
+                            action="{{ route('property.tenants.import.store') }}"
+                            enctype="multipart/form-data"
+                            class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3"
+                        >
+                            @csrf
+                            <h4 class="text-sm font-semibold text-slate-900">Upload CSV</h4>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">CSV file</label>
+                                <input
+                                    type="file"
+                                    name="file"
+                                    accept=".csv,text/csv,text/plain"
+                                    required
+                                    class="mt-1 block w-full text-sm"
+                                />
+                                @error('file')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                            </div>
+                            <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                                Import tenants
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
         </div>
     </x-slot>
 
     <x-slot name="toolbar">
-        <input type="search" data-table-filter="parent" autocomplete="off" placeholder="Search name, phone, ID…" class="w-full min-w-0 sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+        <form method="get" action="{{ route('property.tenants.directory', absolute: false) }}" class="w-full flex flex-wrap items-end gap-2">
+            <input
+                type="search"
+                name="q"
+                value="{{ $filters['q'] ?? '' }}"
+                autocomplete="off"
+                placeholder="Search name, phone, email, ID…"
+                class="w-full min-w-0 sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2"
+            />
+            <select name="risk" class="w-full sm:w-auto rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">All risk</option>
+                <option value="normal" @selected(($filters['risk'] ?? '') === 'normal')>Normal</option>
+                <option value="medium" @selected(($filters['risk'] ?? '') === 'medium')>Medium</option>
+                <option value="high" @selected(($filters['risk'] ?? '') === 'high')>High</option>
+            </select>
+            <select name="portal" class="w-full sm:w-auto rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">Portal login: all</option>
+                <option value="with" @selected(($filters['portal'] ?? '') === 'with')>With portal login</option>
+                <option value="without" @selected(($filters['portal'] ?? '') === 'without')>Without portal login</option>
+            </select>
+            <select name="per_page" class="w-full sm:w-auto rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                @foreach ([10, 20, 50, 100] as $pageSize)
+                    <option value="{{ $pageSize }}" @selected((int) ($filters['per_page'] ?? 20) === $pageSize)>{{ $pageSize }} / page</option>
+                @endforeach
+            </select>
+            <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
+            <a href="{{ route('property.tenants.directory', absolute: false) }}" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
+            <a href="{{ route('property.tenants.directory.export', request()->query()) }}" class="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100">Export CSV</a>
+        </form>
     </x-slot>
+
+    @if (isset($tenantPager))
+        <x-slot name="footer">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-xs text-slate-500">
+                    Showing {{ $tenantPager->firstItem() ?? 0 }}-{{ $tenantPager->lastItem() ?? 0 }} of {{ $tenantPager->total() }} tenants.
+                </p>
+                <div>
+                    {{ $tenantPager->onEachSide(1)->links() }}
+                </div>
+            </div>
+        </x-slot>
+    @endif
 
     @if (session()->has('next_steps') && ($ns = session('next_steps')) && is_array($ns))
         <div

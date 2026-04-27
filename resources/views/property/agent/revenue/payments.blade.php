@@ -38,76 +38,93 @@
             </div>
         </div>
 
-        <form method="post" action="{{ route('property.payments.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
-            @csrf
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Record payment</h3>
-            <div class="grid gap-3 sm:grid-cols-2">
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
-                    <x-property.quick-create-select
-                        id="payment-tenant-select"
-                        name="pm_tenant_id"
-                        :required="true"
-                        :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id') === (string) $t->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create tenant',
-                            'endpoint' => route('property.tenants.store_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. John Tenant'],
-                                ['name' => 'phone', 'label' => 'Phone', 'required' => false, 'span' => '2', 'placeholder' => '+2547…'],
-                                ['name' => 'email', 'label' => 'Email (optional)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
-                            ],
-                        ]"
-                    />
-                    @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        This screen posts payments against an <span class="font-medium">open invoice</span>. Only tenants with an open invoice are listed.
-                    </p>
+        <div x-data="{ showPaymentForm: @js($errors->hasAny(['pm_tenant_id','channel','pm_invoice_id','amount','paid_at','external_ref'])) }" class="space-y-3">
+            <button
+                type="button"
+                class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                @click="showPaymentForm = !showPaymentForm"
+            >
+                <i class="fa-solid fa-money-check-dollar" aria-hidden="true"></i>
+                <span x-text="showPaymentForm ? 'Hide record payment form' : 'Record payment'"></span>
+            </button>
+
+            <form
+                method="post"
+                action="{{ route('property.payments.store') }}"
+                x-show="showPaymentForm"
+                x-cloak
+                class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl"
+            >
+                @csrf
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Record payment</h3>
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
+                        <x-property.quick-create-select
+                            id="payment-tenant-select"
+                            name="pm_tenant_id"
+                            :required="true"
+                            :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id') === (string) $t->id])->all()"
+                            :create="[
+                                'mode' => 'ajax',
+                                'title' => 'Create tenant',
+                                'endpoint' => route('property.tenants.store_json'),
+                                'fields' => [
+                                    ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. John Tenant'],
+                                    ['name' => 'phone', 'label' => 'Phone', 'required' => false, 'span' => '2', 'placeholder' => '+2547…'],
+                                    ['name' => 'email', 'label' => 'Email (optional)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
+                                ],
+                            ]"
+                        />
+                        @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                            This screen posts payments against an <span class="font-medium">open invoice</span>. Only tenants with an open invoice are listed.
+                        </p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Channel</label>
+                        <select name="channel" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                            @foreach (['mpesa' => 'M-Pesa', 'bank' => 'Bank', 'cash' => 'Cash', 'card' => 'Card', 'cheque' => 'Cheque'] as $value => $label)
+                                <option value="{{ $value }}" @selected(old('channel', 'mpesa') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @error('channel')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Invoice (open balance)</label>
+                        <select id="payment-invoice-select" name="pm_invoice_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                            <option value="">Select…</option>
+                            @foreach ($openInvoices as $inv)
+                                @php $open = max(0, (float) $inv->amount - (float) $inv->amount_paid); @endphp
+                                <option value="{{ $inv->id }}" data-tenant-id="{{ $inv->pm_tenant_id }}" @selected(old('pm_invoice_id') == $inv->id)>
+                                    {{ $inv->invoice_no }} · {{ $inv->tenant->name }} · bal {{ number_format($open, 2) }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('pm_invoice_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        <p id="payment-no-invoices-hint" class="mt-1 hidden text-xs text-amber-700">
+                            No open invoices for the selected tenant. Create an invoice first.
+                        </p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
+                        <input type="number" name="amount" value="{{ old('amount') }}" step="0.01" min="0.01" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Paid at</label>
+                        <input type="datetime-local" name="paid_at" value="{{ old('paid_at') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        @error('paid_at')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Channel</label>
-                    <select name="channel" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        @foreach (['mpesa' => 'M-Pesa', 'bank' => 'Bank', 'cash' => 'Cash', 'card' => 'Card', 'cheque' => 'Cheque'] as $value => $label)
-                            <option value="{{ $value }}" @selected(old('channel', 'mpesa') === $value)>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                    @error('channel')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">External ref</label>
+                    <input type="text" name="external_ref" value="{{ old('external_ref') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="M-Pesa receipt, bank ref…" />
+                    @error('external_ref')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div class="sm:col-span-2">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Invoice (open balance)</label>
-                    <select id="payment-invoice-select" name="pm_invoice_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">Select…</option>
-                        @foreach ($openInvoices as $inv)
-                            @php $open = max(0, (float) $inv->amount - (float) $inv->amount_paid); @endphp
-                            <option value="{{ $inv->id }}" data-tenant-id="{{ $inv->pm_tenant_id }}" @selected(old('pm_invoice_id') == $inv->id)>
-                                {{ $inv->invoice_no }} · {{ $inv->tenant->name }} · bal {{ number_format($open, 2) }}
-                            </option>
-                        @endforeach
-                    </select>
-                    @error('pm_invoice_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    <p id="payment-no-invoices-hint" class="mt-1 hidden text-xs text-amber-700">
-                        No open invoices for the selected tenant. Create an invoice first.
-                    </p>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
-                    <input type="number" name="amount" value="{{ old('amount') }}" step="0.01" min="0.01" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                    @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Paid at</label>
-                    <input type="datetime-local" name="paid_at" value="{{ old('paid_at') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                    @error('paid_at')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">External ref</label>
-                <input type="text" name="external_ref" value="{{ old('external_ref') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="M-Pesa receipt, bank ref…" />
-                @error('external_ref')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-            </div>
-            <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save payment</button>
-        </form>
+                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save payment</button>
+            </form>
+        </div>
 
         <script>
             (function () {

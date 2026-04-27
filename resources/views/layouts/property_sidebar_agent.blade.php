@@ -159,35 +159,14 @@
                     'label' => 'Manage tenants',
                     'sublabel' => 'Add · edit · assign',
                     'route' => 'property.tenants.directory',
-                    'active' => ['property.tenants.directory', 'property.tenants.store'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Tenant profiles',
-                    'sublabel' => 'Details & history',
-                    'route' => 'property.tenants.profiles',
-                    'active' => ['property.tenants.profiles'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Import tenants (CSV)',
-                    'sublabel' => 'Bulk upload',
-                    'route' => 'property.tenants.import',
-                    'active' => ['property.tenants.import', 'property.tenants.import.store'],
+                    'active' => ['property.tenants.directory', 'property.tenants.store', 'property.tenants.profiles'],
                     'badge' => null,
                 ],
                 [
                     'label' => 'Manage leases',
                     'sublabel' => 'Create · renew · update',
                     'route' => 'property.tenants.leases',
-                    'active' => ['property.tenants.leases', 'property.leases.store'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Lease expiries',
-                    'sublabel' => 'Next 90 days',
-                    'route' => 'property.tenants.expiry',
-                    'active' => ['property.tenants.expiry'],
+                    'active' => ['property.tenants.leases', 'property.tenants.expiry', 'property.leases.store'],
                     'badge' => null,
                 ],
                 [
@@ -295,20 +274,6 @@
                     'active' => ['property.maintenance.history'],
                     'badge' => null,
                 ],
-                [
-                    'label' => 'Maintenance costs',
-                    'sublabel' => 'Track spend',
-                    'route' => 'property.maintenance.costs',
-                    'active' => ['property.maintenance.costs'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Issue frequency report',
-                    'sublabel' => 'Common problems',
-                    'route' => 'property.maintenance.frequency',
-                    'active' => ['property.maintenance.frequency'],
-                    'badge' => null,
-                ],
             ],
         ],
         [
@@ -367,27 +332,6 @@
                     'sublabel' => 'Rent collected vs billed',
                     'route' => 'property.performance.collection_rate',
                     'active' => ['property.performance.collection_rate'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Vacancy trends',
-                    'sublabel' => 'Vacant vs occupied over time',
-                    'route' => 'property.performance.vacancy',
-                    'active' => ['property.performance.vacancy'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Arrears trends',
-                    'sublabel' => 'Debt over time',
-                    'route' => 'property.performance.arrears_trends',
-                    'active' => ['property.performance.arrears_trends'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Maintenance cost trends',
-                    'sublabel' => 'Spend over time',
-                    'route' => 'property.performance.maintenance_trends',
-                    'active' => ['property.performance.maintenance_trends'],
                     'badge' => null,
                 ],
             ],
@@ -450,17 +394,10 @@
             'kicker' => 'Owner-facing money views',
             'items' => [
                 [
-                    'label' => 'Owner overview',
-                    'sublabel' => 'Summary',
-                    'route' => 'property.financials.index',
-                    'active' => ['property.financials.index'],
-                    'badge' => null,
-                ],
-                [
                     'label' => 'Income & expenses',
                     'sublabel' => 'Profit & loss view',
                     'route' => 'property.financials.income_expenses',
-                    'active' => ['property.financials.income_expenses'],
+                    'active' => ['property.financials.index', 'property.financials.income_expenses'],
                     'badge' => null,
                 ],
                 [
@@ -492,17 +429,10 @@
             'kicker' => 'Books of accounts',
             'items' => [
                 [
-                    'label' => 'Accounting dashboard',
-                    'sublabel' => 'Books overview',
-                    'route' => 'property.accounting.index',
-                    'active' => ['property.accounting.index'],
-                    'badge' => null,
-                ],
-                [
                     'label' => 'Journal entries',
                     'sublabel' => 'Post & reverse',
                     'route' => 'property.accounting.entries',
-                    'active' => ['property.accounting.entries', 'property.accounting.entries.store', 'property.accounting.entries.reverse', 'property.accounting.entries.export'],
+                    'active' => ['property.accounting.index', 'property.accounting.entries', 'property.accounting.entries.store', 'property.accounting.entries.reverse', 'property.accounting.entries.export'],
                     'badge' => null,
                 ],
                 [
@@ -602,13 +532,6 @@
             'kicker' => null,
             'items' => [
                 [
-                    'label' => 'Settings',
-                    'sublabel' => 'Configuration hub',
-                    'route' => 'property.settings.index',
-                    'active' => ['property.settings.index'],
-                    'badge' => null,
-                ],
-                [
                     'label' => 'Users & roles',
                     'sublabel' => 'Manage access',
                     'route' => 'property.settings.roles',
@@ -620,7 +543,7 @@
                     'label' => 'Commission settings',
                     'sublabel' => 'Set commission rules',
                     'route' => 'property.settings.commission',
-                    'active' => ['property.settings.commission', 'property.settings.commission.store'],
+                    'active' => ['property.settings.index', 'property.settings.commission', 'property.settings.commission.store'],
                     'badge' => null,
                 ],
                 [
@@ -876,7 +799,7 @@
                         @foreach ($section['items'] as $item)
                             @php $active = $navActive($item['active']); @endphp
                             <a
-                                href="{{ route($item['route']) }}"
+                                href="{{ route($item['route'], $item['route_params'] ?? []) }}"
                                 data-turbo-frame="property-main"
                                 data-property-nav="{{ implode('|', $item['active']) }}"
                                 @if ($active) aria-current="page" @endif

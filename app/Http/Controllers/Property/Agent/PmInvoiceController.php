@@ -281,23 +281,28 @@ class PmInvoiceController extends Controller
                 return '<option value="'.$value.'"'.$selected.'>'.$label.'</option>';
             })->implode('');
             $actions = new HtmlString(
-                '<div class="flex flex-wrap items-center gap-2">'.
-                    '<a href="'.$showAction.'" class="text-slate-700 hover:text-slate-900 font-medium">Show</a>'.
-                    '<a href="'.$editAction.'" class="text-slate-700 hover:text-slate-900 font-medium">Edit</a>'.
-                    '<a href="'.route('property.revenue.payments').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Apply payment</a>'.
-                    '<form method="post" action="'.$statusAction.'" class="inline-flex items-center gap-1">'.
+                '<div class="relative inline-block text-left">'.
+                    '<details>'.
+                        '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                        '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                            '<a href="'.$showAction.'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Show</a>'.
+                            '<a href="'.$editAction.'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
+                            '<a href="'.route('property.revenue.payments').'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Apply payment</a>'.
+                            '<form method="post" action="'.$statusAction.'" class="block px-3 py-2">'.
                         '<input type="hidden" name="_token" value="'.$csrf.'">'.
                         '<input type="hidden" name="_method" value="patch">'.
-                        '<select name="status" class="rounded border border-slate-300 px-1.5 py-0.5 text-xs">'.
+                        '<select name="status" class="w-full rounded border border-slate-300 px-1.5 py-0.5 text-xs">'.
                             $options.
                         '</select>'.
-                        '<button type="submit" class="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-slate-700">Save</button>'.
-                    '</form>'.
-                    '<form method="post" action="'.$destroyAction.'" class="inline" data-swal-confirm="Delete this invoice? This only works for invoices without payments.">'.
+                        '<button type="submit" class="mt-2 rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-slate-700">Save</button>'.
+                            '</form>'.
+                            '<form method="post" action="'.$destroyAction.'" class="block" data-swal-confirm="Delete this invoice? This only works for invoices without payments.">'.
                         '<input type="hidden" name="_token" value="'.$csrf.'">'.
                         '<input type="hidden" name="_method" value="delete">'.
-                        '<button type="submit" class="text-red-600 hover:text-red-700 font-medium">Delete</button>'.
-                    '</form>'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-red-700 hover:bg-rose-50">Delete</button>'.
+                            '</form>'.
+                        '</div>'.
+                    '</details>'.
                 '</div>'
             );
 

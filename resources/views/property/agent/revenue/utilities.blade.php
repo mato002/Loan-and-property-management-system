@@ -156,8 +156,8 @@
             </button>
         </div>
 
-        <div x-show="showUtilityCreateForms" x-cloak class="space-y-4">
-        <form method="post" action="{{ route('property.revenue.utilities.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+        <div x-show="showUtilityCreateForms" x-cloak class="grid gap-4 lg:grid-cols-2">
+        <form method="post" action="{{ route('property.revenue.utilities.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add charge line</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -212,7 +212,7 @@
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save charge</button>
         </form>
 
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4 max-w-2xl">
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Water meter reading</h3>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property (water-enabled)</label>

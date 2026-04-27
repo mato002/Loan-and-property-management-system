@@ -51,6 +51,14 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">To</label>
                     <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rows</label>
+                    <select name="per_page" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        @foreach ([10, 20, 50, 100] as $pageSize)
+                            <option value="{{ $pageSize }}" @selected((int) ($filters['per_page'] ?? 20) === $pageSize)>{{ $pageSize }} / page</option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
             <div class="flex flex-wrap gap-2">
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
@@ -75,9 +83,20 @@
                 Maintenance request form is currently disabled in System setup.
             </div>
         @else
+        <div x-data="{ showRequestForm: @js($errors->hasAny(['property_id','property_unit_id','category','urgency','description'])) }" class="space-y-3">
+        <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showRequestForm = !showRequestForm"
+        >
+            <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
+            <span x-text="showRequestForm ? 'Hide request form' : 'Add maintenance request'"></span>
+        </button>
         <form
             method="post"
             action="{{ route('property.maintenance.requests.store') }}"
+            x-show="showRequestForm"
+            x-cloak
             class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl"
             x-data="{
                 propertyId: @js((string) old('property_id')),
@@ -148,6 +167,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Submit request</button>
         </form>
+        </div>
         @endif
     </x-slot>
 
@@ -159,4 +179,17 @@
             <option value="emergency">Emergency</option>
         </select>
     </x-slot>
+
+    @if (isset($requestPager))
+        <x-slot name="footer">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-xs text-slate-500">
+                    Showing {{ $requestPager->firstItem() ?? 0 }}-{{ $requestPager->lastItem() ?? 0 }} of {{ $requestPager->total() }} requests.
+                </p>
+                <div>
+                    {{ $requestPager->onEachSide(1)->links() }}
+                </div>
+            </div>
+        </x-slot>
+    @endif
 </x-property.workspace>

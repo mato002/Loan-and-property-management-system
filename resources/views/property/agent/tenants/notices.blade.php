@@ -86,7 +86,16 @@
         @endif
 
         @if (request()->query('view') !== '1')
-            <form method="post" action="{{ route('property.tenants.notices.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+            <div x-data="{ showNoticeForm: @js($errors->hasAny(['pm_tenant_id','property_unit_id','notice_type','status','due_on','notes'])) }" class="space-y-3">
+            <button
+                type="button"
+                class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                @click="showNoticeForm = !showNoticeForm"
+            >
+                <i class="fa-solid fa-file-circle-plus" aria-hidden="true"></i>
+                <span x-text="showNoticeForm ? 'Hide notice form' : 'Add notice'"></span>
+            </button>
+            <form method="post" action="{{ route('property.tenants.notices.store') }}" x-show="showNoticeForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
                 @csrf
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New notice</h3>
                 <div class="grid gap-3 sm:grid-cols-2">
@@ -159,6 +168,7 @@
                 </div>
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save notice</button>
             </form>
+            </div>
         @endif
 
         <script>

@@ -1,7 +1,7 @@
 <x-property.workspace
     :title="'Tenant: '.$tenant->name"
     subtitle="Tenant profile, leases, and billing snapshot."
-    back-route="property.tenants.profiles"
+    back-route="property.tenants.directory"
     :stats="[
         ['label' => 'Risk', 'value' => ucfirst($tenant->risk_level), 'hint' => 'Current'],
         ['label' => 'Leases', 'value' => (string) ($tenant->leases_count ?? 0), 'hint' => 'Linked'],

@@ -1,7 +1,7 @@
 <x-property.workspace
     :title="'Tenant Statement: '.$tenant->name"
     subtitle="Full tenant ledger — invoices, payments, and running balance."
-    back-route="property.tenants.profiles"
+    back-route="property.tenants.directory"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"

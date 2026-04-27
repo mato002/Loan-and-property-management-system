@@ -1,18 +1,41 @@
 <x-property.workspace
-    title="Lease agreements"
-    subtitle="Terms, deposits, rent, and linked units."
+    :title="($activeTab ?? 'leases') === 'expiry' ? 'Lease expiry tracking' : 'Lease agreements'"
+    :subtitle="($activeTab ?? 'leases') === 'expiry'
+        ? 'Active leases ending within the next 90 days. Use the window filter to focus renewals.'
+        : 'Terms, deposits, rent, and linked units.'"
     back-route="property.tenants.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
-    empty-title="No leases"
-    empty-hint="Create a lease and select vacant units; active leases mark units occupied."
+    :table-row-filters="($activeTab ?? 'leases') === 'expiry' ? ($expiryFilterTexts ?? []) : []"
+    :empty-title="($activeTab ?? 'leases') === 'expiry' ? 'No upcoming expiries' : 'No leases'"
+    :empty-hint="($activeTab ?? 'leases') === 'expiry'
+        ? 'When leases have end dates in the next 90 days, they appear here.'
+        : 'Create a lease and select vacant units; active leases mark units occupied.'"
 >
     @php
         $leaseCfg = $leaseFields ?? [];
         $leaseRequired = fn (string $k, bool $d = false) => (bool) (($leaseCfg[$k]['required'] ?? $d) && ($leaseCfg[$k]['enabled'] ?? true));
     @endphp
     <x-slot name="above">
+        <div class="flex flex-wrap gap-2">
+            <a
+                href="{{ route('property.tenants.leases', absolute: false) }}"
+                data-turbo-frame="property-main"
+                class="inline-flex items-center rounded-xl px-3 py-2 text-sm font-medium {{ ($activeTab ?? 'leases') === 'leases' ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50' }}"
+            >
+                All leases
+            </a>
+            <a
+                href="{{ route('property.tenants.leases', ['tab' => 'expiry'], false) }}"
+                data-turbo-frame="property-main"
+                class="inline-flex items-center rounded-xl px-3 py-2 text-sm font-medium {{ ($activeTab ?? 'leases') === 'expiry' ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50' }}"
+            >
+                Expiring soon
+            </a>
+        </div>
+
+        @if (($activeTab ?? 'leases') === 'leases')
         <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">
             <p class="text-lg font-semibold text-slate-900">Rent flow (Step 1 of 3): Allocate a unit</p>
             <p class="mt-1 text-sm text-slate-600">Create an <span class="font-semibold">Active</span> lease and select the vacant unit(s). The unit becomes <span class="font-semibold">Occupied</span> automatically.</p>
@@ -28,7 +51,36 @@
             </div>
         </div>
 
-        <form method="post" action="{{ route('property.leases.store') }}" class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+        @php
+            $showLeaseFormByDefault = $errors->hasAny([
+                'pm_tenant_id',
+                'start_date',
+                'end_date',
+                'utility_expense_type',
+                'utility_expense_amount',
+                'status',
+                'property_unit_ids',
+                'property_unit_ids.*',
+                'monthly_rent',
+                'deposit_amount',
+                'additional_deposits',
+                'additional_deposits.*.label',
+                'additional_deposits.*.amount',
+                'terms_summary',
+            ]);
+        @endphp
+        <div class="space-y-3">
+        <button
+            type="button"
+            id="toggle-lease-form-button"
+            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            aria-controls="lease-form-wrapper"
+            aria-expanded="{{ $showLeaseFormByDefault ? 'true' : 'false' }}"
+        >
+            <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+            <span id="toggle-lease-form-label">{{ $showLeaseFormByDefault ? 'Hide lease form' : 'Create lease' }}</span>
+        </button>
+        <form method="post" action="{{ route('property.leases.store') }}" id="lease-form-wrapper" class="{{ $showLeaseFormByDefault ? '' : 'hidden' }} property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="property-attention-title dark:text-white">New Lease</h3>
             <p class="property-attention-hint dark:text-slate-300">Allocate one vacant unit to a tenant to activate tenancy and unlock monthly billing.</p>
@@ -157,9 +209,28 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save lease</button>
         </form>
+        </div>
+        @endif
     </x-slot>
 
+    @if (($activeTab ?? 'leases') === 'expiry')
+    <x-slot name="actions">
+        <a
+            href="{{ route('property.workspace.form.show', 'tenants-renewal-email') }}"
+            class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto"
+        >Email renewals</a>
+    </x-slot>
+    @endif
+
     <x-slot name="toolbar">
+        @if (($activeTab ?? 'leases') === 'expiry')
+        <select data-table-filter="parent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
+            <option value="">Window: All (90d)</option>
+            <option value="within30">≤ 30 days</option>
+            <option value="within60">≤ 60 days</option>
+            <option value="within90">≤ 90 days</option>
+        </select>
+        @else
         <select data-table-filter="parent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
             <option value="">Status: All</option>
             <option value="draft">Draft</option>
@@ -167,14 +238,27 @@
             <option value="expired">Expired</option>
             <option value="terminated">Terminated</option>
         </select>
+        @endif
     </x-slot>
     <script>
         (function () {
+            const leaseForm = document.getElementById('lease-form-wrapper');
+            const leaseFormToggleButton = document.getElementById('toggle-lease-form-button');
+            const leaseFormToggleLabel = document.getElementById('toggle-lease-form-label');
             const propertySelect = document.getElementById('lease-property-select');
             const unitSelect = document.getElementById('lease-unit-select');
             const monthlyRentInput = document.getElementById('lease-monthly-rent');
             const additionalDepositsWrap = document.getElementById('additional-deposits-rows');
             const addDepositRowButton = document.getElementById('add-deposit-row');
+
+            if (leaseForm && leaseFormToggleButton && leaseFormToggleLabel) {
+                leaseFormToggleButton.addEventListener('click', () => {
+                    const isHidden = leaseForm.classList.toggle('hidden');
+                    leaseFormToggleButton.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+                    leaseFormToggleLabel.textContent = isHidden ? 'Create lease' : 'Hide lease form';
+                });
+            }
+
             if (!propertySelect || !unitSelect || !monthlyRentInput) return;
 
             const filterUnits = () => {

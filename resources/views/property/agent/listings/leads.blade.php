@@ -66,7 +66,16 @@
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif
 
-        <form method="post" action="{{ route('property.listings.leads.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+        <div x-data="{ showLeadForm: @js($errors->hasAny(['name','phone','email','source','stage','property_unit_id','notes'])) }" class="space-y-3">
+        <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showLeadForm = !showLeadForm"
+        >
+            <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+            <span x-text="showLeadForm ? 'Hide lead form' : 'Add lead'"></span>
+        </button>
+        <form method="post" action="{{ route('property.listings.leads.store') }}" x-show="showLeadForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New lead</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -128,6 +137,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save lead</button>
         </form>
+        </div>
     </x-slot>
 
     <x-slot name="toolbar">

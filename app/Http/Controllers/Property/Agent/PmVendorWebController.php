@@ -10,6 +10,8 @@ use App\Models\PmVendor;
 use App\Models\User;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
+use App\Support\CsvExport;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -19,34 +21,46 @@ use Illuminate\View\View;
 
 class PmVendorWebController extends Controller
 {
-    public function directory(): View
+    public function directory(Request $request): View
     {
-        $vendors = PmVendor::query()->orderBy('name')->get();
+        $filters = $request->only(['q', 'status', 'category', 'sort', 'dir', 'per_page']);
+        $vendorQuery = $this->directoryQuery($filters);
+        $statsSource = (clone $vendorQuery)->get();
+        $perPage = $this->directoryPerPage($filters);
+        $vendors = $vendorQuery
+            ->orderBy('name')
+            ->paginate($perPage)
+            ->withQueryString();
 
         $stats = [
-            ['label' => 'Vendors', 'value' => (string) $vendors->count(), 'hint' => ''],
-            ['label' => 'Active', 'value' => (string) $vendors->where('status', 'active')->count(), 'hint' => ''],
-            ['label' => 'Inactive', 'value' => (string) $vendors->where('status', '!=', 'active')->count(), 'hint' => ''],
+            ['label' => 'Vendors', 'value' => (string) $statsSource->count(), 'hint' => 'Filtered'],
+            ['label' => 'Active', 'value' => (string) $statsSource->where('status', 'active')->count(), 'hint' => ''],
+            ['label' => 'Inactive', 'value' => (string) $statsSource->where('status', '!=', 'active')->count(), 'hint' => ''],
         ];
 
-        $rows = $vendors->map(function (PmVendor $v) {
+        $rows = $vendors->getCollection()->map(function (PmVendor $v) {
             $nextStatus = $v->status === 'active' ? 'inactive' : 'active';
             $statusBtn = $nextStatus === 'active' ? 'Activate' : 'Deactivate';
 
             $actions = new HtmlString(
-                '<div class="flex flex-wrap gap-1">'.
-                '<a href="'.route('property.vendors.show', $v).'" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">View</a>'.
-                '<a href="'.route('property.vendors.edit', $v).'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
-                '<form method="POST" action="'.route('property.vendors.status', $v).'" class="inline-flex">'.csrf_field().
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<a href="'.route('property.vendors.show', $v).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">View</a>'.
+                '<a href="'.route('property.vendors.edit', $v).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
+                '<a href="'.route('property.vendors.quotes').'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Quotes</a>'.
+                '<form method="POST" action="'.route('property.vendors.status', $v).'" class="block">'.csrf_field().
                 '<input type="hidden" name="status" value="'.$nextStatus.'" />'.
-                '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">'.$statusBtn.'</button>'.
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">'.$statusBtn.'</button>'.
                 '</form>'.
-                '<a href="'.route('property.vendors.quotes').'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Quotes</a>'.
+                '</div>'.
+                '</details>'.
                 '</div>'
             );
 
             return [
-                $v->name,
+                new HtmlString('<a href="'.route('property.vendors.show', $v).'" class="font-medium text-slate-800 hover:text-indigo-700 hover:underline">'.$v->name.'</a>'),
                 $v->category ?? '—',
                 $v->phone ?? '—',
                 $v->email ?? '—',
@@ -61,7 +75,36 @@ class PmVendorWebController extends Controller
             'stats' => $stats,
             'columns' => ['Vendor', 'Category', 'Contact', 'Payment terms', 'Insurance until', 'Rating', 'Status', 'Actions'],
             'tableRows' => $rows,
+            'filters' => [
+                ...$filters,
+                'per_page' => $perPage,
+            ],
+            'vendorPager' => $vendors,
         ]);
+    }
+
+    public function directoryExport(Request $request)
+    {
+        $filters = $request->only(['q', 'status', 'category', 'sort', 'dir']);
+        $rows = $this->directoryQuery($filters)->orderBy('name')->get();
+
+        return CsvExport::stream(
+            'vendors_directory_'.now()->format('Ymd_His').'.csv',
+            ['ID', 'Name', 'Category', 'Phone', 'Email', 'Status', 'Rating'],
+            function () use ($rows) {
+                foreach ($rows as $vendor) {
+                    yield [
+                        $vendor->id,
+                        $vendor->name,
+                        $vendor->category,
+                        $vendor->phone,
+                        $vendor->email,
+                        $vendor->status,
+                        $vendor->rating,
+                    ];
+                }
+            }
+        );
     }
 
     public function show(PmVendor $vendor): View
@@ -626,5 +669,53 @@ class PmVendorWebController extends Controller
             'columns' => ['Date', 'Job', 'Vendor', 'Unit', 'Amount', 'Notes', 'Actions'],
             'tableRows' => $rows,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function directoryQuery(array $filters): Builder
+    {
+        $query = PmVendor::query();
+
+        $search = trim((string) ($filters['q'] ?? ''));
+        if ($search !== '') {
+            $query->where(function (Builder $builder) use ($search): void {
+                $builder
+                    ->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('category', 'like', '%'.$search.'%')
+                    ->orWhere('phone', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%');
+            });
+        }
+
+        $status = trim((string) ($filters['status'] ?? ''));
+        if (in_array($status, ['active', 'inactive'], true)) {
+            $query->where('status', $status);
+        }
+
+        $category = trim((string) ($filters['category'] ?? ''));
+        if ($category !== '') {
+            $query->where('category', 'like', '%'.$category.'%');
+        }
+
+        $sort = (string) ($filters['sort'] ?? 'name');
+        $dir = strtolower((string) ($filters['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSort = ['name', 'status', 'rating', 'created_at'];
+        if (! in_array($sort, $allowedSort, true)) {
+            $sort = 'name';
+        }
+
+        return $query->orderBy($sort, $dir)->orderBy('id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function directoryPerPage(array $filters): int
+    {
+        $value = (int) ($filters['per_page'] ?? 20);
+
+        return in_array($value, [10, 20, 50, 100], true) ? $value : 20;
     }
 }

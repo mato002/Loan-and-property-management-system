@@ -17,8 +17,31 @@
         @if ($errors->has('amenity'))
             <p class="text-sm text-red-600 dark:text-red-400">{{ $errors->first('amenity') }}</p>
         @endif
+        @php
+            $amenityLibraryFormHasErrors = $errors->hasAny(['name', 'category']);
+            $amenityAttachFormHasErrors = $errors->hasAny(['pm_amenity_id', 'property_id']);
+        @endphp
+        <div x-data="{ showAmenityLibraryForm: @js($amenityLibraryFormHasErrors), showAmenityAttachForm: @js($amenityAttachFormHasErrors) }" class="space-y-4">
+            <div class="flex flex-wrap items-center gap-3">
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                    @click="showAmenityLibraryForm = !showAmenityLibraryForm"
+                >
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    <span x-text="showAmenityLibraryForm ? 'Hide amenity library form' : 'Add amenity to library'"></span>
+                </button>
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    @click="showAmenityAttachForm = !showAmenityAttachForm"
+                >
+                    <i class="fa-solid fa-link" aria-hidden="true"></i>
+                    <span x-text="showAmenityAttachForm ? 'Hide property tag form' : 'Tag amenity to property'"></span>
+                </button>
+            </div>
         <div class="grid gap-4 lg:grid-cols-2 max-w-5xl">
-            <form method="post" action="{{ route('property.properties.amenities.store') }}" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+            <form method="post" action="{{ route('property.properties.amenities.store') }}" x-show="showAmenityLibraryForm" x-cloak class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
                 @csrf
                 <h3 class="text-sm font-semibold text-slate-900">Add to library</h3>
                 <div>
@@ -34,7 +57,7 @@
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save amenity</button>
             </form>
 
-            <form method="post" action="{{ route('property.properties.amenities.attach') }}" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3"
+            <form method="post" action="{{ route('property.properties.amenities.attach') }}" x-show="showAmenityAttachForm" x-cloak class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3"
                 x-data="{
                     selectedAmenity: '{{ old('pm_amenity_id', '') }}',
                     selectedProperty: '{{ old('property_id', '') }}',
@@ -77,6 +100,7 @@
                 </div>
                 <button type="submit" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50">Attach</button>
             </form>
+        </div>
         </div>
     </x-slot>
 

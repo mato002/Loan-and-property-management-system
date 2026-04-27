@@ -1,6 +1,7 @@
 <x-property.workspace
     title="Applications"
     subtitle="Rental applications linked to units. Extend screening fields when you add compliance requirements."
+    :show-search="false"
     back-route="property.listings.index"
     :stats="$stats"
     :columns="$columns"
@@ -54,6 +55,14 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">To</label>
                     <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rows</label>
+                    <select name="per_page" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        @foreach ([10, 20, 50, 100] as $pageSize)
+                            <option value="{{ $pageSize }}" @selected((int) ($filters['per_page'] ?? 20) === $pageSize)>{{ $pageSize }} / page</option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
             <div class="flex flex-wrap gap-2">
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
@@ -65,7 +74,16 @@
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif
 
-        <form method="post" action="{{ route('property.listings.applications.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+        <div x-data="{ showApplicationForm: @js($errors->hasAny(['applicant_name','applicant_phone','applicant_email','status','property_unit_id','notes'])) }" class="space-y-3">
+        <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showApplicationForm = !showApplicationForm"
+        >
+            <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+            <span x-text="showApplicationForm ? 'Hide application form' : 'Add application'"></span>
+        </button>
+        <form method="post" action="{{ route('property.listings.applications.store') }}" x-show="showApplicationForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New application</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -122,10 +140,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save application</button>
         </form>
-    </x-slot>
-
-    <x-slot name="toolbar">
-        <input type="search" data-table-filter="parent" autocomplete="off" placeholder="Search applications…" class="w-full min-w-0 sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+        </div>
     </x-slot>
 
     <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
@@ -133,4 +148,17 @@
             Tip: Use the <span class="font-semibold">Actions</span> column to view, message, and update status per applicant.
         </p>
     </div>
+
+    @if (isset($applicationsPager))
+        <x-slot name="footer">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p class="text-xs text-slate-500">
+                    Showing {{ $applicationsPager->firstItem() ?? 0 }}-{{ $applicationsPager->lastItem() ?? 0 }} of {{ $applicationsPager->total() }} applications.
+                </p>
+                <div>
+                    {{ $applicationsPager->onEachSide(1)->links() }}
+                </div>
+            </div>
+        </x-slot>
+    @endif
 </x-property.workspace>

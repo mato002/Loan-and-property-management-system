@@ -123,6 +123,9 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::view('/revenue', 'property.agent.revenue.index')->name('revenue.index');
 
         Route::get('/tenants/directory', [PmTenantDirectoryController::class, 'directory'])->name('tenants.directory');
+        Route::get('/tenants/directory/export.csv', [PmTenantDirectoryController::class, 'exportDirectoryCsv'])
+            ->middleware('property.permission:tenants.manage')
+            ->name('tenants.directory.export');
         Route::get('/tenants/profiles', [PmTenantDirectoryController::class, 'profiles'])->name('tenants.profiles');
         Route::get('/tenants/import', [PmTenantDirectoryController::class, 'importForm'])
             ->middleware('property.permission:tenants.manage')
@@ -139,6 +142,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/tenants/{tenant}/statement', [PmTenantDirectoryController::class, 'statement'])->whereNumber('tenant')->name('tenants.statement');
         Route::get('/tenants/{tenant}/edit', [PmTenantDirectoryController::class, 'edit'])->whereNumber('tenant')->name('tenants.edit');
         Route::put('/tenants/{tenant}', [PmTenantDirectoryController::class, 'update'])->whereNumber('tenant')->middleware('property.permission:tenants.manage')->name('tenants.update');
+        Route::delete('/tenants/{tenant}', [PmTenantDirectoryController::class, 'destroy'])->whereNumber('tenant')->middleware('property.permission:tenants.manage')->name('tenants.destroy');
         Route::get('/tenants/leases', [PmLeaseWebController::class, 'leases'])->name('tenants.leases');
         Route::post('/leases', [PmLeaseWebController::class, 'store'])->middleware('property.permission:leases.manage')->name('leases.store');
         Route::get('/leases/{lease}', [PmLeaseWebController::class, 'show'])->name('leases.show');
@@ -253,6 +257,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::view('/maintenance', 'property.agent.maintenance.index')->name('maintenance.index');
 
         Route::get('/vendors/directory', [PmVendorWebController::class, 'directory'])->name('vendors.directory');
+        Route::get('/vendors/directory/export', [PmVendorWebController::class, 'directoryExport'])->name('vendors.directory.export');
         Route::post('/vendors', [PmVendorWebController::class, 'store'])->middleware('property.permission:vendors.manage')->name('vendors.store');
         Route::post('/vendors/create-json', [PmVendorWebController::class, 'storeJson'])->middleware('property.permission:vendors.manage')->name('vendors.store_json');
         Route::get('/vendors/{vendor}/edit', [PmVendorWebController::class, 'edit'])->name('vendors.edit');

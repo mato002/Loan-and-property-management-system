@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 
 class LoanBookPayment extends Model
 {
@@ -110,9 +111,13 @@ class LoanBookPayment extends Model
 
     public function scopeUnpostedQueue(Builder $q): Builder
     {
-        return $q->where('status', self::STATUS_UNPOSTED)
-            ->whereNull('loan_book_application_id')
-            ->notMergedChild();
+        $query = $q->where('status', self::STATUS_UNPOSTED);
+
+        if (Schema::hasColumn($this->getTable(), 'loan_book_application_id')) {
+            $query->whereNull('loan_book_application_id');
+        }
+
+        return $query->notMergedChild();
     }
 
     public function scopeProcessedQueue(Builder $q): Builder

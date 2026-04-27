@@ -93,7 +93,16 @@
             <p class="text-sm text-rose-700 dark:text-rose-400">{{ session('error') }}</p>
         @endif
 
-        <form method="post" action="{{ route('property.tenants.movements.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+        <div x-data="{ showMovementForm: @js($errors->hasAny(['property_unit_id','movement_type','status','scheduled_on','completed_on','notes'])) }" class="space-y-3">
+        <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showMovementForm = !showMovementForm"
+        >
+            <i class="fa-solid fa-truck-moving" aria-hidden="true"></i>
+            <span x-text="showMovementForm ? 'Hide movement form' : 'Log movement'"></span>
+        </button>
+        <form method="post" action="{{ route('property.tenants.movements.store') }}" x-show="showMovementForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Log movement</h3>
             @if (! $tenantMoveInEnabled)
@@ -157,6 +166,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save</button>
         </form>
+        </div>
     </x-slot>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">

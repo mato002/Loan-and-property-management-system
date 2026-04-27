@@ -136,25 +136,39 @@ class PmPaymentController extends Controller
             $source = $this->sourceBadge($p);
             $receiptUrl = route('property.payments.receipt.show', ['payment' => $p->id], false);
             $actions = new HtmlString(
-                '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="text-xs font-semibold text-indigo-700 hover:text-indigo-800">View</a>'
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">View</a>'.
+                '</div>'.
+                '</details>'.
+                '</div>'
             );
             if ($p->status === PmPayment::STATUS_PENDING) {
                 $completeUrl = route('property.payments.settle', $p);
                 $failUrl = route('property.payments.settle', $p);
                 $actions = new HtmlString(
-                    '<form method="post" action="'.$completeUrl.'" class="inline-flex items-center gap-2">'.
+                    '<div class="relative inline-block text-left">'.
+                    '<details>'.
+                    '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                    '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                    '<form method="post" action="'.$completeUrl.'" class="block">'.
                     csrf_field().
                     method_field('PATCH').
                     '<input type="hidden" name="decision" value="completed">'.
-                    '<button type="submit" class="text-xs font-semibold text-emerald-700 hover:text-emerald-800">Mark complete</button>'.
-                    '</form> '.
-                    '<form method="post" action="'.$failUrl.'" class="inline-flex items-center gap-2 ml-2">'.
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-emerald-700 hover:bg-emerald-50">Mark complete</button>'.
+                    '</form>'.
+                    '<form method="post" action="'.$failUrl.'" class="block">'.
                     csrf_field().
                     method_field('PATCH').
                     '<input type="hidden" name="decision" value="failed">'.
-                    '<button type="submit" class="text-xs font-semibold text-red-700 hover:text-red-800">Mark failed</button>'.
-                    '</form> '.
-                    '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="ml-2 text-xs font-semibold text-indigo-700 hover:text-indigo-800">View</a>'
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-rose-50">Mark failed</button>'.
+                    '</form>'.
+                    '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">View</a>'.
+                    '</div>'.
+                    '</details>'.
+                    '</div>'
                 );
             }
 

@@ -47,35 +47,43 @@ class PmMaintenanceWebController extends Controller
     {
         $maintenanceEnabled = PropertyPortalSetting::getValue('form_maintenance_enabled', '1') === '1';
         $workflowAutoAssignTickets = PropertyPortalSetting::getValue('workflow_auto_assign_tickets', '0') === '1';
-        $filters = $request->only(['q', 'status', 'urgency', 'unit_id', 'from', 'to', 'sort', 'dir']);
-        $requests = $this->requestsQuery($filters)->limit(400)->get();
+        $filters = $request->only(['q', 'status', 'urgency', 'unit_id', 'from', 'to', 'sort', 'dir', 'per_page']);
+        $requestQuery = $this->requestsQuery($filters);
+        $statsSource = (clone $requestQuery)->get();
+        $perPage = $this->listPerPage($filters);
+        $requests = $requestQuery->paginate($perPage)->withQueryString();
 
         $stats = [
-            ['label' => 'Open', 'value' => (string) $requests->where('status', 'open')->count(), 'hint' => ''],
-            ['label' => 'In progress', 'value' => (string) $requests->where('status', 'in_progress')->count(), 'hint' => ''],
-            ['label' => 'Done', 'value' => (string) $requests->where('status', 'done')->count(), 'hint' => ''],
-            ['label' => 'Total', 'value' => (string) $requests->count(), 'hint' => 'Listed'],
+            ['label' => 'Open', 'value' => (string) $statsSource->where('status', 'open')->count(), 'hint' => ''],
+            ['label' => 'In progress', 'value' => (string) $statsSource->where('status', 'in_progress')->count(), 'hint' => ''],
+            ['label' => 'Done', 'value' => (string) $statsSource->where('status', 'done')->count(), 'hint' => ''],
+            ['label' => 'Total', 'value' => (string) $statsSource->count(), 'hint' => 'Filtered'],
         ];
 
-        $rows = $requests->map(function (PmMaintenanceRequest $r) {
-            $actions = new HtmlString(
-                '<a href="'.route('property.maintenance.requests.edit', $r).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'
-            );
+        $rows = $requests->getCollection()->map(function (PmMaintenanceRequest $r) {
+            $actionsBody = '<a href="'.route('property.maintenance.requests.edit', $r).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>';
             if (! in_array($r->status, ['done', 'closed'], true)) {
-                $actions = new HtmlString(
-                    '<div class="flex flex-wrap items-center gap-1">'.
-                    '<a href="'.route('property.maintenance.requests.edit', $r).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
-                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="inline-flex">'.csrf_field().
+                $actionsBody .=
+                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="block">'.csrf_field().
                     '<input type="hidden" name="status" value="in_progress" />'.
-                    '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Triage</button>'.
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Triage</button>'.
                     '</form>'.
-                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="inline-flex">'.csrf_field().
+                    '<form method="POST" action="'.route('property.maintenance.requests.status', ['requestItem' => $r]).'" class="block">'.csrf_field().
                     '<input type="hidden" name="status" value="done" />'.
-                    '<button type="submit" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Resolve</button>'.
-                    '</form>'.
-                    '</div>'
-                );
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Resolve</button>'.
+                    '</form>';
             }
+
+            $actions = new HtmlString(
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                $actionsBody.
+                '</div>'.
+                '</details>'.
+                '</div>'
+            );
 
             return [
                 '#'.$r->id,
@@ -97,7 +105,8 @@ class PmMaintenanceWebController extends Controller
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
             'maintenanceEnabled' => $maintenanceEnabled,
             'workflowAutoAssignTickets' => $workflowAutoAssignTickets,
-            'filters' => $filters,
+            'filters' => [...$filters, 'per_page' => $perPage],
+            'requestPager' => $requests,
         ]);
     }
 
@@ -230,8 +239,11 @@ class PmMaintenanceWebController extends Controller
 
     public function jobs(Request $request): View
     {
-        $filters = $request->only(['q', 'status', 'vendor_id', 'from', 'to', 'sort', 'dir']);
-        $jobs = $this->jobsQuery($filters)->limit(400)->get();
+        $filters = $request->only(['q', 'status', 'vendor_id', 'from', 'to', 'sort', 'dir', 'per_page']);
+        $jobQuery = $this->jobsQuery($filters);
+        $statsSource = (clone $jobQuery)->get();
+        $perPage = $this->listPerPage($filters);
+        $jobs = $jobQuery->paginate($perPage)->withQueryString();
 
         $mtdCompletedCount = PmMaintenanceJob::query()
             ->whereNotNull('completed_at')
@@ -245,56 +257,63 @@ class PmMaintenanceWebController extends Controller
             ->sum('quote_amount');
 
         $stats = [
-            ['label' => 'Jobs', 'value' => (string) $jobs->count(), 'hint' => 'Listed'],
+            ['label' => 'Jobs', 'value' => (string) $statsSource->count(), 'hint' => 'Filtered'],
             ['label' => 'Completed (MTD)', 'value' => (string) $mtdCompletedCount, 'hint' => ''],
             ['label' => 'Spend (MTD)', 'value' => PropertyMoney::kes($mtdSpend), 'hint' => 'Quoted'],
         ];
 
-        $rows = $jobs->map(function (PmMaintenanceJob $j) {
+        $rows = $jobs->getCollection()->map(function (PmMaintenanceJob $j) {
             $approved = in_array($j->status, ['approved', 'in_progress', 'done'], true) ? 'Yes' : 'No';
             $schedule = $j->completed_at?->format('Y-m-d') ?? ($j->updated_at?->format('Y-m-d') ?? '—');
 
-            $actions = new HtmlString(
-                '<div class="flex flex-wrap items-center gap-1">'.
-                '<a href="'.route('property.maintenance.jobs.edit', $j).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
-                '<form method="POST" action="'.route('property.maintenance.jobs.destroy', $j).'" class="inline-flex" data-swal-title="Delete job?" data-swal-confirm="Delete this job permanently?" data-swal-confirm-text="Yes, delete">'.csrf_field().method_field('DELETE').
-                '<button type="submit" class="rounded border border-rose-400 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
-                '</form>'.
-                '<a href="'.route('property.maintenance.history').'" class="text-indigo-600 hover:text-indigo-700 font-medium text-xs px-1">History</a>'.
-                '</div>'
-            );
+            $actionsBody =
+                '<a href="'.route('property.maintenance.jobs.edit', $j).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
+                '<a href="'.route('property.maintenance.history').'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">History</a>'.
+                '<form method="POST" action="'.route('property.maintenance.jobs.destroy', $j).'" class="block" data-swal-title="Delete job?" data-swal-confirm="Delete this job permanently?" data-swal-confirm-text="Yes, delete">'.csrf_field().method_field('DELETE').
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
+                '</form>';
             if (! in_array($j->status, ['done', 'cancelled'], true)) {
                 $approveButton = '';
                 if ($j->status === 'quoted') {
                     $approveButton =
-                        '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="inline-flex">'.csrf_field().
+                        '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="block">'.csrf_field().
                         '<input type="hidden" name="status" value="approved" />'.
-                        '<button type="submit" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Approve</button>'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-indigo-700 hover:bg-indigo-50">Approve</button>'.
                         '</form>';
                 }
 
-                $actions = new HtmlString(
-                    '<div class="flex flex-wrap items-center gap-1">'.
-                    '<a href="'.route('property.maintenance.jobs.edit', $j).'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
+                $actionsBody =
+                    '<a href="'.route('property.maintenance.jobs.edit', $j).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
                     $approveButton.
-                    '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="inline-flex">'.csrf_field().
+                    '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="block">'.csrf_field().
                     '<input type="hidden" name="status" value="in_progress" />'.
-                    '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Start</button>'.
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Start</button>'.
                     '</form>'.
-                    '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="inline-flex">'.csrf_field().
+                    '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="block">'.csrf_field().
                     '<input type="hidden" name="status" value="done" />'.
-                    '<button type="submit" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Mark done</button>'.
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Mark done</button>'.
                     '</form>'.
-                    '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="inline-flex" data-swal-title="Cancel job?" data-swal-confirm="Cancel this job?" data-swal-confirm-text="Yes, cancel">'.csrf_field().
+                    '<form method="POST" action="'.route('property.maintenance.jobs.status', $j).'" class="block" data-swal-title="Cancel job?" data-swal-confirm="Cancel this job?" data-swal-confirm-text="Yes, cancel">'.csrf_field().
                     '<input type="hidden" name="status" value="cancelled" />'.
-                    '<button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Cancel</button>'.
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Cancel</button>'.
                     '</form>'.
-                    '<form method="POST" action="'.route('property.maintenance.jobs.destroy', $j).'" class="inline-flex" data-swal-title="Delete job?" data-swal-confirm="Delete this job permanently?" data-swal-confirm-text="Yes, delete">'.csrf_field().method_field('DELETE').
-                    '<button type="submit" class="rounded border border-rose-400 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
+                    '<a href="'.route('property.maintenance.history').'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">History</a>'.
+                    '<form method="POST" action="'.route('property.maintenance.jobs.destroy', $j).'" class="block" data-swal-title="Delete job?" data-swal-confirm="Delete this job permanently?" data-swal-confirm-text="Yes, delete">'.csrf_field().method_field('DELETE').
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
                     '</form>'.
-                    '</div>'
-                );
+                    '';
             }
+
+            $actions = new HtmlString(
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                $actionsBody.
+                '</div>'.
+                '</details>'.
+                '</div>'
+            );
 
             return [
                 '#'.$j->id,
@@ -314,7 +333,8 @@ class PmMaintenanceWebController extends Controller
             'tableRows' => $rows,
             'requests' => PmMaintenanceRequest::query()->with('unit.property')->orderByDesc('id')->limit(100)->get(),
             'vendors' => PmVendor::query()->where('status', 'active')->orderBy('name')->get(),
-            'filters' => $filters,
+            'filters' => [...$filters, 'per_page' => $perPage],
+            'jobsPager' => $jobs,
         ]);
     }
 
@@ -629,6 +649,16 @@ class PmMaintenanceWebController extends Controller
         }
 
         return $q->orderBy($sort, $dir)->orderByDesc('id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function listPerPage(array $filters): int
+    {
+        $value = (int) ($filters['per_page'] ?? 20);
+
+        return in_array($value, [10, 20, 50, 100], true) ? $value : 20;
     }
 
     public function frequency(): View

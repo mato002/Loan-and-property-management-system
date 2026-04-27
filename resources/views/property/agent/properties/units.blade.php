@@ -810,29 +810,30 @@
             noticeCount.addEventListener('input', syncSplitValidation);
             syncSplitValidation();
 
-            if (!window.__unitMetaDelegatedClickBound) {
-                window.__unitMetaDelegatedClickBound = true;
-                document.addEventListener('click', (event) => {
-                    const target = event.target;
-                    if (!(target instanceof Element)) {
-                        return;
-                    }
-
-                    const openBtn = target.closest('[data-unit-meta-open]');
-                    if (openBtn instanceof Element) {
-                        event.preventDefault();
-                        metaMode = openBtn.getAttribute('data-unit-meta-open') === 'bedrooms' ? 'bedrooms' : 'type';
-                        openMetaModal();
-                        return;
-                    }
-
-                    const closeBtn = target.closest('[data-unit-meta-close]');
-                    if (closeBtn instanceof Element) {
-                        event.preventDefault();
-                        closeMetaModal();
-                    }
-                });
+            if (window.__unitMetaDelegatedClickHandler) {
+                document.removeEventListener('click', window.__unitMetaDelegatedClickHandler);
             }
+            window.__unitMetaDelegatedClickHandler = (event) => {
+                const target = event.target;
+                if (!(target instanceof Element)) {
+                    return;
+                }
+
+                const openBtn = target.closest('[data-unit-meta-open]');
+                if (openBtn instanceof Element) {
+                    event.preventDefault();
+                    metaMode = openBtn.getAttribute('data-unit-meta-open') === 'bedrooms' ? 'bedrooms' : 'type';
+                    openMetaModal();
+                    return;
+                }
+
+                const closeBtn = target.closest('[data-unit-meta-close]');
+                if (closeBtn instanceof Element) {
+                    event.preventDefault();
+                    closeMetaModal();
+                }
+            };
+            document.addEventListener('click', window.__unitMetaDelegatedClickHandler);
         };
 
         // Prevent duplicate global listeners when Turbo re-renders this frame.

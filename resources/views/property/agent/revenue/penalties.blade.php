@@ -13,7 +13,17 @@
             <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif
 
-        <form method="post" action="{{ route('property.revenue.penalties.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+        <div x-data="{ showPenaltyForm: @js($errors->hasAny(['name','scope','trigger_event','grace_days','formula','percent','amount','cap','effective_from','is_active'])) }" class="space-y-3">
+            <button
+                type="button"
+                class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                @click="showPenaltyForm = !showPenaltyForm"
+            >
+                <i class="fa-solid fa-percent" aria-hidden="true"></i>
+                <span x-text="showPenaltyForm ? 'Hide penalty rule form' : 'Add penalty rule'"></span>
+            </button>
+
+        <form method="post" action="{{ route('property.revenue.penalties.store') }}" x-show="showPenaltyForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New rule</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -61,6 +71,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save rule</button>
         </form>
+        </div>
     </x-slot>
 
     <x-slot name="toolbar">

@@ -35,15 +35,20 @@ class PropertyListingsPipelineController extends Controller
 
         $rows = $leads->map(function (PmListingLead $l) {
             $actions = new HtmlString(
-                '<div class="flex flex-wrap gap-1">'.
-                '<form method="POST" action="'.route('property.listings.leads.update', $l).'" class="inline-flex">'.csrf_field().method_field('PATCH').
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<form method="POST" action="'.route('property.listings.leads.update', $l).'" class="block">'.csrf_field().method_field('PATCH').
                 '<input type="hidden" name="stage" value="contacted" />'.
-                '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Contacted</button>'.
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Contacted</button>'.
                 '</form>'.
-                '<form method="POST" action="'.route('property.listings.leads.update', $l).'" class="inline-flex">'.csrf_field().method_field('PATCH').
+                '<form method="POST" action="'.route('property.listings.leads.update', $l).'" class="block">'.csrf_field().method_field('PATCH').
                 '<input type="hidden" name="stage" value="won" />'.
-                '<button type="submit" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Mark won</button>'.
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Mark won</button>'.
                 '</form>'.
+                '</div>'.
+                '</details>'.
                 '</div>'
             );
 
@@ -174,18 +179,19 @@ class PropertyListingsPipelineController extends Controller
 
     public function applications(): View
     {
-        $filters = request()->only(['q', 'status', 'unit_id', 'from', 'to', 'sort', 'dir']);
-        $apps = $this->applicationsQuery($filters)
-            ->limit(500)
-            ->get();
+        $filters = request()->only(['q', 'status', 'unit_id', 'from', 'to', 'sort', 'dir', 'per_page']);
+        $appsQuery = $this->applicationsQuery($filters);
+        $statsSource = (clone $appsQuery)->get();
+        $perPage = $this->listPerPage($filters);
+        $apps = $appsQuery->paginate($perPage)->withQueryString();
 
         $stats = [
-            ['label' => 'Applications', 'value' => (string) $apps->count(), 'hint' => ''],
-            ['label' => 'In review', 'value' => (string) $apps->where('status', 'review')->count(), 'hint' => ''],
-            ['label' => 'Approved', 'value' => (string) $apps->where('status', 'approved')->count(), 'hint' => ''],
+            ['label' => 'Applications', 'value' => (string) $statsSource->count(), 'hint' => 'Filtered'],
+            ['label' => 'In review', 'value' => (string) $statsSource->where('status', 'review')->count(), 'hint' => ''],
+            ['label' => 'Approved', 'value' => (string) $statsSource->where('status', 'approved')->count(), 'hint' => ''],
         ];
 
-        $rows = $apps->map(function (PmListingApplication $a) {
+        $rows = $apps->getCollection()->map(function (PmListingApplication $a) {
             $phone = (string) ($a->applicant_phone ?? '');
             $email = (string) ($a->applicant_email ?? '');
             $phoneDigits = preg_replace('/\D+/', '', $phone) ?? '';
@@ -199,24 +205,29 @@ class PropertyListingsPipelineController extends Controller
             $waHref = $waPhone !== '' ? 'https://wa.me/'.$waPhone.'?text='.$waText : '';
 
             $actions = new HtmlString(
-                '<div class="flex flex-wrap gap-1">'.
-                '<a href="'.$viewHref.'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">View</a>'.
-                '<a href="'.$msgHref.'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">Message</a>'.
-                ($mailtoHref !== '' ? '<a href="'.$mailtoHref.'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Email</a>' : '').
-                ($waHref !== '' ? '<a href="'.$waHref.'" target="_blank" rel="noopener" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">WhatsApp</a>' : '').
-                ($telHref !== '' ? '<a href="'.$telHref.'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Call</a>' : '').
-                '<form method="POST" action="'.route('property.listings.applications.update', $a).'" class="inline-flex">'.csrf_field().method_field('PATCH').
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<a href="'.$viewHref.'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View</a>'.
+                '<a href="'.$msgHref.'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Message</a>'.
+                ($mailtoHref !== '' ? '<a href="'.$mailtoHref.'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Email</a>' : '').
+                ($waHref !== '' ? '<a href="'.$waHref.'" target="_blank" rel="noopener" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">WhatsApp</a>' : '').
+                ($telHref !== '' ? '<a href="'.$telHref.'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Call</a>' : '').
+                '<form method="POST" action="'.route('property.listings.applications.update', $a).'" class="block">'.csrf_field().method_field('PATCH').
                 '<input type="hidden" name="status" value="review" />'.
-                '<button type="submit" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Mark review</button>'.
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Mark review</button>'.
                 '</form>'.
-                '<form method="POST" action="'.route('property.listings.applications.update', $a).'" class="inline-flex">'.csrf_field().method_field('PATCH').
+                '<form method="POST" action="'.route('property.listings.applications.update', $a).'" class="block">'.csrf_field().method_field('PATCH').
                 '<input type="hidden" name="status" value="approved" />'.
-                '<button type="submit" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Approve</button>'.
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Approve</button>'.
                 '</form>'.
-                '<form method="POST" action="'.route('property.listings.applications.update', $a).'" class="inline-flex">'.csrf_field().method_field('PATCH').
+                '<form method="POST" action="'.route('property.listings.applications.update', $a).'" class="block">'.csrf_field().method_field('PATCH').
                 '<input type="hidden" name="status" value="declined" />'.
-                '<button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Decline</button>'.
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Decline</button>'.
                 '</form>'.
+                '</div>'.
+                '</details>'.
                 '</div>'
             );
 
@@ -238,8 +249,9 @@ class PropertyListingsPipelineController extends Controller
             'tableRows' => $rows,
             'applications' => $apps,
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
-            'filters' => $filters,
+            'filters' => [...$filters, 'per_page' => $perPage],
             'applicationFields' => $this->applicationFieldConfig(),
+            'applicationsPager' => $apps,
         ]);
     }
 
@@ -310,6 +322,16 @@ class PropertyListingsPipelineController extends Controller
         }
 
         return $q->orderBy($sort, $dir)->orderByDesc('id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function listPerPage(array $filters): int
+    {
+        $value = (int) ($filters['per_page'] ?? 20);
+
+        return in_array($value, [10, 20, 50, 100], true) ? $value : 20;
     }
 
     public function showApplication(PmListingApplication $application): View

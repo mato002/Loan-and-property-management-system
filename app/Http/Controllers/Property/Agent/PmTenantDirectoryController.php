@@ -10,6 +10,7 @@ use App\Models\PmPayment;
 use App\Models\PmTenant;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -17,6 +18,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
@@ -35,28 +37,58 @@ class PmTenantDirectoryController extends Controller
         ));
     }
 
-    public function profiles(): View
+    public function profiles(): RedirectResponse
     {
-        return view('property.agent.tenants.directory', $this->tenantListPayload(
-            pageTitle: 'Tenant profiles',
-            pageSubtitle: 'Same roster — future: per-tenant profile, documents, and timeline.',
-            showTenantForm: false,
-        ));
+        return redirect()->route('property.tenants.directory');
+    }
+
+    public function exportDirectoryCsv(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $tenants = $this->buildTenantDirectoryQuery($request)
+            ->orderBy('name')
+            ->get();
+
+        $filename = 'tenant_directory_'.now()->format('Ymd_His').'.csv';
+        $headers = ['Content-Type' => 'text/csv; charset=UTF-8'];
+
+        return response()->streamDownload(function () use ($tenants): void {
+            $out = fopen('php://output', 'wb');
+            if ($out === false) {
+                return;
+            }
+
+            fputcsv($out, ['name', 'phone', 'email', 'national_id', 'risk_level', 'portal_login', 'leases_count', 'lease_end']);
+
+            foreach ($tenants as $tenant) {
+                $leaseEnd = $tenant->leases_max_end_date
+                    ? (string) Carbon::parse((string) $tenant->leases_max_end_date)->format('Y-m-d')
+                    : '';
+
+                fputcsv($out, [
+                    (string) $tenant->name,
+                    (string) ($tenant->phone ?? ''),
+                    (string) ($tenant->email ?? ''),
+                    (string) ($tenant->national_id ?? ''),
+                    (string) ($tenant->risk_level ?? 'normal'),
+                    $tenant->user_id ? 'yes' : 'no',
+                    (string) ($tenant->leases_count ?? 0),
+                    $leaseEnd,
+                ]);
+            }
+
+            fclose($out);
+        }, $filename, $headers);
     }
 
     public function importForm(): View
     {
-        return view('property.agent.tenants.import', [
-            'expectedColumns' => ['name', 'phone', 'email', 'national_id', 'risk_level', 'notes'],
-            'lastImportStats' => session('tenant_import_stats'),
-            'lastImportErrors' => session('tenant_import_errors', []),
-        ]);
+        return $this->directory();
     }
 
     public function importTemplate(): Response
     {
-        $csv = implode(',', ['name', 'phone', 'email', 'national_id', 'risk_level', 'notes'])."\n"
-            ."John Doe,+254700000000,john@example.com,ID123,normal,Notes here\n";
+        $csv = implode(',', $this->tenantImportColumns())."\n"
+            ."John Doe,+254700000000,john@example.com,ID123,normal,Notes here,no\n";
 
         return response($csv, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
@@ -66,6 +98,7 @@ class PmTenantDirectoryController extends Controller
 
     public function importStore(Request $request): RedirectResponse
     {
+        $cfg = $this->tenantFieldConfig();
         $data = $request->validate([
             'file' => ['required', 'file', 'max:5120', 'mimes:csv,txt'],
         ]);
@@ -86,11 +119,21 @@ class PmTenantDirectoryController extends Controller
             return back()->with('error', 'CSV is empty or header row is missing.');
         }
 
-        $normalize = static fn ($v) => mb_strtolower(trim((string) $v));
-        $header = array_map($normalize, $header);
+        $normalize = static fn ($v) => str_replace([' ', '-'], '_', mb_strtolower(trim((string) $v)));
+        $aliases = [
+            'id_number' => 'national_id',
+            'id_ref' => 'national_id',
+            'portal_login' => 'create_portal_login',
+        ];
 
-        $expected = ['name', 'phone', 'email', 'national_id', 'risk_level', 'notes'];
-        $missing = array_values(array_diff($expected, $header));
+        $header = array_map(function ($col) use ($normalize, $aliases) {
+            $key = $normalize($col);
+
+            return $aliases[$key] ?? $key;
+        }, $header);
+
+        $required = $this->tenantImportRequiredColumns($cfg);
+        $missing = array_values(array_diff($required, $header));
         if (count($missing) > 0) {
             fclose($fh);
             return back()->with('error', 'Missing required columns: '.implode(', ', $missing));
@@ -105,7 +148,13 @@ class PmTenantDirectoryController extends Controller
         $updated = 0;
         $skipped = 0;
         $errors = [];
+        $portalLoginsCreated = 0;
         $rowNum = 1; // header row
+        $booleanish = static function (?string $value): bool {
+            $v = trim(strtolower((string) $value));
+
+            return in_array($v, ['1', 'true', 'yes', 'y', 'on'], true);
+        };
 
         while (($row = fgetcsv($fh)) !== false) {
             $rowNum++;
@@ -129,6 +178,30 @@ class PmTenantDirectoryController extends Controller
                 continue;
             }
 
+            $phone = ($v = trim((string) ($row[$colIndex['phone']] ?? ''))) !== '' ? $v : null;
+            $nationalId = ($v = trim((string) ($row[$colIndex['national_id']] ?? ''))) !== '' ? $v : null;
+            $notes = ($v = trim((string) ($row[$colIndex['notes']] ?? ''))) !== '' ? $v : null;
+            $createPortal = isset($colIndex['create_portal_login'])
+                ? $booleanish((string) ($row[$colIndex['create_portal_login']] ?? ''))
+                : false;
+
+            if ($this->isFieldRequired($cfg, 'phone') && $phone === null) {
+                $errors[] = "Row {$rowNum}: phone is required by tenant settings.";
+                continue;
+            }
+            if ($this->isFieldRequired($cfg, 'email') && $email === null) {
+                $errors[] = "Row {$rowNum}: email is required by tenant settings.";
+                continue;
+            }
+            if ($this->isFieldRequired($cfg, 'id_number') && $nationalId === null) {
+                $errors[] = "Row {$rowNum}: national_id is required by tenant settings.";
+                continue;
+            }
+            if ($createPortal && $email === null) {
+                $errors[] = "Row {$rowNum}: create_portal_login requires an email.";
+                continue;
+            }
+
             $risk = $normalize($row[$colIndex['risk_level']] ?? 'normal');
             if ($risk === '') {
                 $risk = 'normal';
@@ -140,11 +213,11 @@ class PmTenantDirectoryController extends Controller
 
             $payload = [
                 'name' => $name,
-                'phone' => ($v = trim((string) ($row[$colIndex['phone']] ?? ''))) !== '' ? $v : null,
+                'phone' => $phone,
                 'email' => $email,
-                'national_id' => ($v = trim((string) ($row[$colIndex['national_id']] ?? ''))) !== '' ? $v : null,
+                'national_id' => $nationalId,
                 'risk_level' => $risk,
-                'notes' => ($v = trim((string) ($row[$colIndex['notes']] ?? ''))) !== '' ? $v : null,
+                'notes' => $notes,
             ];
 
             try {
@@ -152,16 +225,54 @@ class PmTenantDirectoryController extends Controller
                 if ($email !== null) {
                     $tenant = PmTenant::query()->where('email', $email)->first();
                 }
+                if (! $tenant && $phone !== null) {
+                    $tenant = PmTenant::query()->where('phone', $phone)->first();
+                }
+                if (! $tenant && $nationalId !== null) {
+                    $tenant = PmTenant::query()->where('national_id', $nationalId)->first();
+                }
+
+                $user = null;
+                if ($createPortal && $email !== null) {
+                    $user = User::query()->where('email', $email)->first();
+                    if (! $user) {
+                        $user = User::query()->create([
+                            'name' => $name,
+                            'email' => $email,
+                            'password' => Hash::make(Str::password(14, symbols: false)),
+                            'property_portal_role' => 'tenant',
+                            'email_verified_at' => now(),
+                        ]);
+                        $portalLoginsCreated++;
+                    }
+                }
 
                 if ($tenant) {
-                    $tenant->update($payload);
+                    $tenant->update([
+                        ...$payload,
+                        'user_id' => $createPortal ? ($user?->id ?? $tenant->user_id) : $tenant->user_id,
+                    ]);
                     $updated++;
                 } else {
                     PmTenant::query()->create([
                         ...$payload,
+                        'user_id' => $createPortal ? $user?->id : null,
                         'agent_user_id' => (int) auth()->id(),
                     ]);
                     $created++;
+                }
+
+                if ($createPortal && $user && Schema::hasTable('user_module_accesses')) {
+                    UserModuleAccess::query()->updateOrCreate(
+                        [
+                            'user_id' => $user->id,
+                            'module' => 'property',
+                        ],
+                        [
+                            'status' => UserModuleAccess::STATUS_APPROVED,
+                            'approved_at' => now(),
+                        ]
+                    );
                 }
             } catch (\Throwable $e) {
                 $errors[] = "Row {$rowNum}: ".$e->getMessage();
@@ -175,10 +286,11 @@ class PmTenantDirectoryController extends Controller
             'updated' => $updated,
             'skipped' => $skipped,
             'errors' => count($errors),
+            'portal_logins_created' => $portalLoginsCreated,
         ];
 
         return redirect()
-            ->route('property.tenants.import')
+            ->route('property.tenants.directory', ['tenant_import' => '1'])
             ->with('success', "Import finished. Created {$created}, updated {$updated}.")
             ->with('tenant_import_stats', $stats)
             ->with('tenant_import_errors', array_slice($errors, 0, 200));
@@ -189,23 +301,26 @@ class PmTenantDirectoryController extends Controller
      */
     private function tenantListPayload(string $pageTitle, string $pageSubtitle, bool $showTenantForm): array
     {
-        $tenants = PmTenant::query()
-            ->withCount(['leases', 'invoices'])
-            ->withMax('leases', 'end_date')
+        $tenantQuery = $this->buildTenantDirectoryQuery(request());
+        $statsSource = (clone $tenantQuery)->get();
+        $perPage = $this->directoryPerPage(request());
+        $tenants = $tenantQuery
             ->orderBy('name')
-            ->get();
+            ->paginate($perPage)
+            ->withQueryString();
 
         $stats = [
-            ['label' => 'Tenants', 'value' => (string) $tenants->count(), 'hint' => 'Records'],
-            ['label' => 'With portal login', 'value' => (string) $tenants->whereNotNull('user_id')->count(), 'hint' => 'Linked user'],
-            ['label' => 'High risk flagged', 'value' => (string) $tenants->where('risk_level', 'high')->count(), 'hint' => 'Manual'],
-            ['label' => 'Total leases', 'value' => (string) $tenants->sum('leases_count'), 'hint' => 'Linked'],
+            ['label' => 'Tenants', 'value' => (string) $statsSource->count(), 'hint' => 'Filtered records'],
+            ['label' => 'With portal login', 'value' => (string) $statsSource->whereNotNull('user_id')->count(), 'hint' => 'Linked user'],
+            ['label' => 'High risk flagged', 'value' => (string) $statsSource->where('risk_level', 'high')->count(), 'hint' => 'Manual'],
+            ['label' => 'Total leases', 'value' => (string) $statsSource->sum('leases_count'), 'hint' => 'Linked'],
         ];
 
-        $rows = $tenants->map(function (PmTenant $t) {
+        $rows = $tenants->getCollection()->map(function (PmTenant $t) {
             $leaseEnd = $t->leases_max_end_date
                 ? (string) \Illuminate\Support\Carbon::parse((string) $t->leases_max_end_date)->format('Y-m-d')
                 : '—';
+            $deleteConfirm = e("Delete {$t->name} and all related records? This cannot be undone.");
 
             $actions = new HtmlString(
                 '<div class="relative inline-block text-left">'.
@@ -216,13 +331,18 @@ class PmTenantDirectoryController extends Controller
                 '<a href="'.route('property.tenants.edit', $t).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
                 '<a href="'.route('property.tenants.leases').'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Leases</a>'.
                 '<a href="'.route('property.tenants.notices').'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Notices</a>'.
+                '<form method="POST" action="'.route('property.tenants.destroy', $t).'" onsubmit="return confirm(\''.$deleteConfirm.'\')">'.
+                csrf_field().
+                method_field('DELETE').
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
+                '</form>'.
                 '</div>'.
                 '</details>'.
                 '</div>'
             );
 
             return [
-                $t->name,
+                new HtmlString('<a href="'.route('property.tenants.show', $t).'" class="font-medium text-slate-800 hover:text-indigo-700 hover:underline">'.$t->name.'</a>'),
                 $t->phone ?? '—',
                 $t->email ?? '—',
                 $t->national_id ?? '—',
@@ -237,11 +357,89 @@ class PmTenantDirectoryController extends Controller
             'pageTitle' => $pageTitle,
             'pageSubtitle' => $pageSubtitle,
             'showTenantForm' => $showTenantForm,
+            'expectedColumns' => $this->tenantImportColumns(),
+            'lastImportStats' => session('tenant_import_stats'),
+            'lastImportErrors' => session('tenant_import_errors', []),
+            'openImportModal' => request()->boolean('tenant_import'),
             'tenantFields' => $this->tenantFieldConfig(),
             'stats' => $stats,
+            'filters' => [
+                'q' => (string) request()->string('q'),
+                'risk' => (string) request()->string('risk'),
+                'portal' => (string) request()->string('portal'),
+                'per_page' => $perPage,
+            ],
+            'tenantPager' => $tenants,
             'columns' => ['Tenant', 'Phone', 'Email', 'ID / ref', 'Leases', 'Lease end', 'Risk', 'Actions'],
             'tableRows' => $rows,
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function tenantImportColumns(): array
+    {
+        return ['name', 'phone', 'email', 'national_id', 'risk_level', 'notes', 'create_portal_login'];
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $cfg
+     * @return list<string>
+     */
+    private function tenantImportRequiredColumns(array $cfg): array
+    {
+        $required = ['name', 'risk_level'];
+        if ($this->isFieldRequired($cfg, 'phone')) {
+            $required[] = 'phone';
+        }
+        if ($this->isFieldRequired($cfg, 'email')) {
+            $required[] = 'email';
+        }
+        if ($this->isFieldRequired($cfg, 'id_number')) {
+            $required[] = 'national_id';
+        }
+
+        return $required;
+    }
+
+    private function directoryPerPage(Request $request): int
+    {
+        $value = (int) $request->integer('per_page', 20);
+
+        return in_array($value, [10, 20, 50, 100], true) ? $value : 20;
+    }
+
+    private function buildTenantDirectoryQuery(Request $request): Builder
+    {
+        $query = PmTenant::query()
+            ->withCount(['leases', 'invoices'])
+            ->withMax('leases', 'end_date');
+
+        $search = trim((string) $request->string('q'));
+        if ($search !== '') {
+            $query->where(function (Builder $builder) use ($search): void {
+                $builder
+                    ->where('name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('national_id', 'like', "%{$search}%");
+            });
+        }
+
+        $risk = trim((string) $request->string('risk'));
+        if (in_array($risk, ['normal', 'medium', 'high'], true)) {
+            $query->where('risk_level', $risk);
+        }
+
+        $portal = trim((string) $request->string('portal'));
+        if ($portal === 'with') {
+            $query->whereNotNull('user_id');
+        } elseif ($portal === 'without') {
+            $query->whereNull('user_id');
+        }
+
+        return $query;
     }
 
     public function store(Request $request): RedirectResponse
@@ -251,11 +449,29 @@ class PmTenantDirectoryController extends Controller
 
         $data = $request->validate([
             'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
-            'phone' => [Rule::requiredIf($this->isFieldRequired($cfg, 'phone')), 'nullable', 'string', 'max:64'],
+            'phone' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'phone')),
+                'nullable',
+                'string',
+                'max:64',
+                Rule::unique('pm_tenants', 'phone')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+            ],
             'email' => $createPortal
                 ? ['required', 'email', 'max:255', Rule::unique(User::class, 'email')]
-                : [Rule::requiredIf($this->isFieldRequired($cfg, 'email')), 'nullable', 'email', 'max:255'],
-            'national_id' => [Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')), 'nullable', 'string', 'max:64'],
+                : [
+                    Rule::requiredIf($this->isFieldRequired($cfg, 'email')),
+                    'nullable',
+                    'email',
+                    'max:255',
+                    Rule::unique('pm_tenants', 'email')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                ],
+            'national_id' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')),
+                'nullable',
+                'string',
+                'max:64',
+                Rule::unique('pm_tenants', 'national_id')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+            ],
             'risk_level' => ['required', 'in:normal,medium,high'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'create_portal_login' => ['sometimes', 'boolean'],
@@ -364,8 +580,20 @@ class PmTenantDirectoryController extends Controller
         $cfg = $this->tenantFieldConfig();
         $data = $request->validate([
             'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
-            'phone' => [Rule::requiredIf($this->isFieldRequired($cfg, 'phone')), 'nullable', 'string', 'max:64'],
-            'email' => [Rule::requiredIf($this->isFieldRequired($cfg, 'email')), 'nullable', 'email', 'max:255'],
+            'phone' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'phone')),
+                'nullable',
+                'string',
+                'max:64',
+                Rule::unique('pm_tenants', 'phone')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+            ],
+            'email' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'email')),
+                'nullable',
+                'email',
+                'max:255',
+                Rule::unique('pm_tenants', 'email')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+            ],
         ]);
 
         $tenant = PmTenant::query()->create([
@@ -634,9 +862,33 @@ class PmTenantDirectoryController extends Controller
         $cfg = $this->tenantFieldConfig();
         $data = $request->validate([
             'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
-            'phone' => [Rule::requiredIf($this->isFieldRequired($cfg, 'phone')), 'nullable', 'string', 'max:64'],
-            'email' => [Rule::requiredIf($this->isFieldRequired($cfg, 'email')), 'nullable', 'email', 'max:255'],
-            'national_id' => [Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')), 'nullable', 'string', 'max:64'],
+            'phone' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'phone')),
+                'nullable',
+                'string',
+                'max:64',
+                Rule::unique('pm_tenants', 'phone')
+                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                    ->ignore($tenant->id),
+            ],
+            'email' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'email')),
+                'nullable',
+                'email',
+                'max:255',
+                Rule::unique('pm_tenants', 'email')
+                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                    ->ignore($tenant->id),
+            ],
+            'national_id' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')),
+                'nullable',
+                'string',
+                'max:64',
+                Rule::unique('pm_tenants', 'national_id')
+                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                    ->ignore($tenant->id),
+            ],
             'risk_level' => ['required', 'in:normal,medium,high'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
@@ -644,6 +896,34 @@ class PmTenantDirectoryController extends Controller
         $tenant->update($data);
 
         return back()->with('success', 'Tenant updated.');
+    }
+
+    public function destroy(PmTenant $tenant): RedirectResponse
+    {
+        $tenantName = $tenant->name;
+        $portalUserId = $tenant->user_id;
+
+        DB::transaction(function () use ($tenant, $portalUserId): void {
+            if ($portalUserId) {
+                $isSharedPortalUser = PmTenant::query()
+                    ->withoutGlobalScopes()
+                    ->where('user_id', $portalUserId)
+                    ->where('id', '!=', $tenant->id)
+                    ->exists();
+
+                if (! $isSharedPortalUser) {
+                    User::query()
+                        ->whereKey($portalUserId)
+                        ->where('property_portal_role', 'tenant')
+                        ->delete();
+                }
+            }
+
+            // Tenant relations are removed by FK cascade/null-on-delete rules.
+            $tenant->delete();
+        });
+
+        return back()->with('success', "Tenant {$tenantName} deleted with all related records.");
     }
 
     /**
