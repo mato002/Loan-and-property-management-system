@@ -28,7 +28,7 @@
     <body class="min-h-screen antialiased bg-[#eef5f3] text-slate-900" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">
         <x-swal-flash />
         <div class="relative min-h-screen overflow-hidden">
-            <div class="absolute inset-0">
+            <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
                 <div class="absolute inset-0">
                     <img
                         src="{{ $heroImage }}"

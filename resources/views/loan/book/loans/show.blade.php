@@ -23,7 +23,8 @@
             $remaining = max(0, (float) $loan->balance);
             $totalRepayable = $paid + $remaining;
             $progress = $totalRepayable > 0 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
-            $isFullyPaid = $remaining <= 0.01 || $loan->status === \App\Models\LoanBookLoan::STATUS_CLOSED;
+            $displayStatus = $loan->effectiveStatus();
+            $isFullyPaid = $remaining <= 0.01 || $displayStatus === \App\Models\LoanBookLoan::STATUS_CLOSED;
             $principalDisbursed = (float) $loan->disbursements->sum('amount');
             $realizedProfit = $paid - $principalDisbursed;
             $estimatedTotalProfit = $totalRepayable - $principalDisbursed;
@@ -199,7 +200,7 @@
                     <div class="rounded-lg border border-slate-200 p-3">
                         <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Performance</p>
                         <dl class="mt-2 space-y-2 text-sm">
-                            <div><dt class="text-slate-500">Status</dt><dd class="font-medium text-slate-900">{{ str_replace('_', ' ', $loan->status) }}</dd></div>
+                            <div><dt class="text-slate-500">Status</dt><dd class="font-medium text-slate-900">{{ str_replace('_', ' ', $displayStatus) }}</dd></div>
                             <div><dt class="text-slate-500">Days past due</dt><dd class="font-medium {{ $dpd > 0 ? 'text-red-600' : 'text-slate-900' }}">{{ $dpd }}</dd></div>
                             <div><dt class="text-slate-500">Interest outstanding</dt><dd class="font-medium tabular-nums text-slate-900">{{ number_format((float) $loan->interest_outstanding, 2) }}</dd></div>
                             <div><dt class="text-slate-500">Checkoff</dt><dd class="font-medium text-slate-900">{{ $loan->is_checkoff ? 'Yes' : 'No' }}</dd></div>

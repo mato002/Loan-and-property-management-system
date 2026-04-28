@@ -364,6 +364,12 @@
                                     ? route('loan.clients.show', $app->loanClient)
                                     : route('loan.book.applications.show', $app);
                                 $applicationsAmountTotal += (float) $app->amount_requested;
+                                $hasLinkedLoan = (bool) $app->loan;
+                                $canBookLoan = in_array($app->stage, [\App\Models\LoanBookApplication::STAGE_APPROVED, \App\Models\LoanBookApplication::STAGE_DISBURSED], true)
+                                    && ! $hasLinkedLoan;
+                                $canEditApplication = ! $hasLinkedLoan
+                                    && $app->stage !== \App\Models\LoanBookApplication::STAGE_DISBURSED;
+                                $canDeleteApplication = ! $hasLinkedLoan;
                             @endphp
                             <tr
                                 class="cursor-pointer hover:bg-slate-50/80"
@@ -432,7 +438,7 @@
                                             Actions
                                         </summary>
                                         <div class="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                                            @if (in_array($app->stage, [\App\Models\LoanBookApplication::STAGE_APPROVED, \App\Models\LoanBookApplication::STAGE_DISBURSED], true) && ! $app->loan)
+                                            @if ($canBookLoan)
                                                 <a href="{{ route('loan.book.loans.create', ['application' => $app->id]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-slate-50">Book loan</a>
                                             @endif
                                             <button type="button" @click="openSchedule({
@@ -446,12 +452,16 @@
                                                 startDate: @js(optional($app->submitted_at)->format('Y-m-d')),
                                             })" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Schedule</button>
                                             <a href="{{ route('loan.book.applications.show', $app) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
-                                            <a href="{{ route('loan.book.applications.edit', $app) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-indigo-600 hover:bg-slate-50">Edit</a>
-                                            <form method="post" action="{{ route('loan.book.applications.destroy', $app) }}" data-swal-confirm="Delete this application? It must not have a loan yet.">
-                                                @csrf
-                                                @method('delete')
-                                                <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-slate-50">Delete</button>
-                                            </form>
+                                            @if ($canEditApplication)
+                                                <a href="{{ route('loan.book.applications.edit', $app) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-indigo-600 hover:bg-slate-50">Edit</a>
+                                            @endif
+                                            @if ($canDeleteApplication)
+                                                <form method="post" action="{{ route('loan.book.applications.destroy', $app) }}" data-swal-confirm="Delete this application? It must not have a loan yet.">
+                                                    @csrf
+                                                    @method('delete')
+                                                    <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-slate-50">Delete</button>
+                                                </form>
+                                            @endif
                                         </div>
                                     </details>
                                 </td>

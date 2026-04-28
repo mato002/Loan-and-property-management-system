@@ -141,7 +141,8 @@
                             @foreach ($loans as $loan)
                             @php
                                 $checkoffTotal += (float) $loan->balance;
-                                $statusClasses = match ($loan->status) {
+                                $displayStatus = $loan->effectiveStatus();
+                                $statusClasses = match ($displayStatus) {
                                     \App\Models\LoanBookLoan::STATUS_ACTIVE => 'bg-emerald-100 text-emerald-700',
                                     \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT => 'bg-amber-100 text-amber-700',
                                     \App\Models\LoanBookLoan::STATUS_CLOSED => 'bg-slate-200 text-slate-700',
@@ -149,6 +150,11 @@
                                     \App\Models\LoanBookLoan::STATUS_RESTRUCTURED => 'bg-indigo-100 text-indigo-700',
                                     default => 'bg-slate-100 text-slate-600',
                                 };
+                                $canEdit = $displayStatus !== \App\Models\LoanBookLoan::STATUS_CLOSED;
+                                $canRecordPayment = in_array($displayStatus, [
+                                    \App\Models\LoanBookLoan::STATUS_ACTIVE,
+                                    \App\Models\LoanBookLoan::STATUS_RESTRUCTURED,
+                                ], true) && ((float) $loan->balance > 0.01);
                             @endphp
                             @php
                                 $checkoffRowUrl = $loan->loanClient ? route('loan.clients.show', $loan->loanClient) : null;
@@ -203,7 +209,12 @@
                                             class="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
                                         >
                                             <a href="{{ route('loan.book.loans.show', $loan) }}" class="block px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
-                                            <a href="{{ route('loan.book.loans.edit', $loan) }}" class="block px-3 py-2 text-left text-xs font-medium text-indigo-700 hover:bg-indigo-50">Edit</a>
+                                            @if ($canRecordPayment)
+                                                <a href="{{ route('loan.payments.create', ['loan_book_loan_id' => $loan->id]) }}" class="block px-3 py-2 text-left text-xs font-medium text-teal-700 hover:bg-slate-50">Record payment</a>
+                                            @endif
+                                            @if ($canEdit)
+                                                <a href="{{ route('loan.book.loans.edit', $loan) }}" class="block px-3 py-2 text-left text-xs font-medium text-indigo-700 hover:bg-indigo-50">Edit</a>
+                                            @endif
                                         </div>
                                     </div>
                                 </td>

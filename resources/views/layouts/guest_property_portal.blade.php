@@ -31,7 +31,7 @@
     <body class="font-sans antialiased text-slate-900 bg-[#eef5f3]">
         <x-swal-flash />
         <div class="relative min-h-screen overflow-hidden">
-            <div class="absolute inset-0">
+            <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
                 <div class="absolute inset-0">
                     <img
                         src="{{ $heroImage }}"

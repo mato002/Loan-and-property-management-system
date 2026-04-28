@@ -326,7 +326,8 @@
                                 $loanToPayTotal += $totalRepayable;
                                 $loanPaidTotal += $paid;
                                 $loanBalanceTotal += $remaining;
-                                $statusClasses = match ($loan->status) {
+                                $displayStatus = $loan->effectiveStatus();
+                                $statusClasses = match ($displayStatus) {
                                     \App\Models\LoanBookLoan::STATUS_ACTIVE => 'bg-emerald-100 text-emerald-700',
                                     \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT => 'bg-amber-100 text-amber-700',
                                     \App\Models\LoanBookLoan::STATUS_CLOSED => 'bg-slate-200 text-slate-700',
@@ -334,6 +335,22 @@
                                     \App\Models\LoanBookLoan::STATUS_RESTRUCTURED => 'bg-indigo-100 text-indigo-700',
                                     default => 'bg-slate-100 text-slate-600',
                                 };
+                                $canDisburse = $displayStatus === \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT;
+                                $canRecordPayment = in_array($displayStatus, [
+                                    \App\Models\LoanBookLoan::STATUS_ACTIVE,
+                                    \App\Models\LoanBookLoan::STATUS_RESTRUCTURED,
+                                ], true) && $remaining > 0.01;
+                                $canSyncSchedule = $loan->loan_book_application_id
+                                    && in_array($displayStatus, [
+                                        \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+                                        \App\Models\LoanBookLoan::STATUS_ACTIVE,
+                                        \App\Models\LoanBookLoan::STATUS_RESTRUCTURED,
+                                    ], true);
+                                $canEdit = $displayStatus !== \App\Models\LoanBookLoan::STATUS_CLOSED;
+                                $canDelete = in_array($displayStatus, [
+                                    \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+                                    \App\Models\LoanBookLoan::STATUS_CLOSED,
+                                ], true);
                             @endphp
                             <tr
                                 class="cursor-pointer hover:bg-slate-50/80"
@@ -367,7 +384,7 @@
                                 <td x-show="cols.dpd" class="px-5 py-3 tabular-nums {{ $loan->dpd > 0 ? 'text-red-600 font-semibold' : 'text-slate-600' }}">{{ $loan->dpd }}</td>
                                 <td x-show="cols.status" class="px-5 py-3">
                                     <span class="inline-flex items-center rounded-full px-2 py-1 text-[11px] font-semibold {{ $statusClasses }}">
-                                        {{ str_replace('_', ' ', $loan->status) }}
+                                        {{ str_replace('_', ' ', $displayStatus) }}
                                     </span>
                                 </td>
                                 <td x-show="cols.maturity" class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $loan->maturity_date?->format('d-m-Y') ?? '—' }}</td>
@@ -377,12 +394,14 @@
                                             Actions
                                         </summary>
                                         <div class="absolute right-0 z-10 mt-1 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                                            @if ($loan->status === \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT)
+                                            @if ($canDisburse)
                                                 <a href="{{ route('loan.book.disbursements.create', ['loan_book_loan_id' => $loan->id]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-emerald-700 hover:bg-slate-50">Disburse</a>
                                             @endif
-                                            <a href="{{ route('loan.payments.create', ['loan_book_loan_id' => $loan->id]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-teal-700 hover:bg-slate-50">Record payment</a>
+                                            @if ($canRecordPayment)
+                                                <a href="{{ route('loan.payments.create', ['loan_book_loan_id' => $loan->id]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-teal-700 hover:bg-slate-50">Record payment</a>
+                                            @endif
                                             <a href="{{ route('loan.payments.unposted', ['q' => $loan->loan_number]) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-teal-700 hover:bg-slate-50">Unposted</a>
-                                            @if ($loan->loan_book_application_id)
+                                            @if ($canSyncSchedule)
                                                 <form method="post" action="{{ route('loan.book.loans.sync_schedule', $loan) }}" data-swal-confirm="Sync term/rate period from linked application and recompute interest snapshot?">
                                                     @csrf
                                                     <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-amber-700 hover:bg-slate-50">Sync schedule</button>
@@ -393,12 +412,16 @@
                                                 <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Rebuild</button>
                                             </form>
                                             <a href="{{ route('loan.book.loans.show', $loan) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
-                                            <a href="{{ route('loan.book.loans.edit', $loan) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-indigo-600 hover:bg-slate-50">Edit</a>
-                                            <form method="post" action="{{ route('loan.book.loans.destroy', $loan) }}" data-swal-confirm="Delete this loan? No disbursements or collections may exist.">
-                                                @csrf
-                                                @method('delete')
-                                                <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-slate-50">Delete</button>
-                                            </form>
+                                            @if ($canEdit)
+                                                <a href="{{ route('loan.book.loans.edit', $loan) }}" class="block rounded-md px-2 py-1.5 text-xs font-medium text-indigo-600 hover:bg-slate-50">Edit</a>
+                                            @endif
+                                            @if ($canDelete)
+                                                <form method="post" action="{{ route('loan.book.loans.destroy', $loan) }}" data-swal-confirm="Delete this loan? No disbursements or collections may exist.">
+                                                    @csrf
+                                                    @method('delete')
+                                                    <button type="submit" class="block w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-red-600 hover:bg-slate-50">Delete</button>
+                                                </form>
+                                            @endif
                                         </div>
                                     </details>
                                 </td>

@@ -325,11 +325,11 @@ class LoanBookApplicationsController extends Controller
                 $prefillClientId,
                 fn (Builder $query) => $query->where(function (Builder $inner) use ($prefillClientId): void {
                     $inner->whereDoesntHave('loanBookLoans', function (Builder $loan): void {
-                        $loan->where('status', '!=', LoanBookLoan::STATUS_CLOSED);
+                        $loan->openForOrigination();
                     })->orWhere('id', $prefillClientId);
                 }),
                 fn (Builder $query) => $query->whereDoesntHave('loanBookLoans', function (Builder $loan): void {
-                    $loan->where('status', '!=', LoanBookLoan::STATUS_CLOSED);
+                    $loan->openForOrigination();
                 }),
             )
             ->orderBy('last_name')
@@ -434,7 +434,7 @@ class LoanBookApplicationsController extends Controller
 
         if (LoanBookLoan::query()
             ->where('loan_client_id', $validated['loan_client_id'])
-            ->where('status', '!=', LoanBookLoan::STATUS_CLOSED)
+            ->openForOrigination()
             ->exists()) {
             return redirect()
                 ->back()
@@ -637,7 +637,7 @@ class LoanBookApplicationsController extends Controller
             ->when(! $this->canAccessAllLoanData(auth()->user()), fn (Builder $query) => $query->where('assigned_employee_id', $this->resolveLoanEmployeeId(auth()->user())))
             ->where(function (Builder $query) use ($loan_book_application): void {
                 $query->whereDoesntHave('loanBookLoans', function (Builder $loan): void {
-                    $loan->where('status', '!=', LoanBookLoan::STATUS_CLOSED);
+                    $loan->openForOrigination();
                 })->orWhere('id', $loan_book_application->loan_client_id);
             })
             ->orderBy('last_name')
@@ -729,7 +729,7 @@ class LoanBookApplicationsController extends Controller
         if ((int) $validated['loan_client_id'] !== (int) $loan_book_application->loan_client_id) {
             if (LoanBookLoan::query()
                 ->where('loan_client_id', $validated['loan_client_id'])
-                ->where('status', '!=', LoanBookLoan::STATUS_CLOSED)
+                ->openForOrigination()
                 ->exists()) {
                 return redirect()
                     ->back()

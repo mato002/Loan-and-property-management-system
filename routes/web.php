@@ -26,6 +26,7 @@ use App\Http\Controllers\PublicController;
 use App\Http\Controllers\Auth\ChooseModuleController;
 use App\Http\Controllers\SuperAdmin\SuperAdminConsoleController;
 use App\Http\Controllers\SuperAdmin\SuperAdminUserController;
+use App\Http\Middleware\EnsureLoanAccessPolicy;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Route;
@@ -216,7 +217,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/users/{user}', [SuperAdminUserController::class, 'update'])->name('users.update');
     });
 
-    Route::middleware(['module.access:loan', 'loan.access_policy'])->group(function () {
+    Route::middleware(['module.access:loan', EnsureLoanAccessPolicy::class])->group(function () {
         Route::get('/loan/dashboard', [LoanDashboardController::class, 'index'])->name('loan.dashboard');
         Route::post('/loan/dashboard/sms-topup', [LoanDashboardController::class, 'smsWalletTopupFromDashboard'])->name('loan.dashboard.sms_topup');
         Route::get('/loan/dashboard/performance-targets', [LoanDashboardController::class, 'performanceTargets'])->name('loan.dashboard.performance_targets');
