@@ -489,6 +489,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/chart-of-accounts/posting-rules', [LoanAccountingController::class, 'chartPostingRuleStore'])->name('chart.posting_rules.store');
         Route::patch('/chart-of-accounts/posting-rules/{accounting_posting_rule}', [LoanAccountingController::class, 'chartPostingRuleUpdate'])->name('chart.posting_rules.update');
         Route::delete('/chart-of-accounts/posting-rules/{accounting_posting_rule}', [LoanAccountingController::class, 'chartPostingRuleDestroy'])->name('chart.posting_rules.destroy');
+        Route::patch('/chart-of-accounts/event-mappings/{eventKey}', [LoanAccountingBooksController::class, 'updateEventMapping'])->name('chart.event_mappings.update');
         Route::get('/chart-of-accounts/{accounting_chart_account}/edit', [LoanAccountingController::class, 'chartEdit'])->name('chart.edit');
         Route::patch('/chart-of-accounts/{accounting_chart_account}', [LoanAccountingController::class, 'chartUpdate'])->name('chart.update');
         Route::delete('/chart-of-accounts/{accounting_chart_account}', [LoanAccountingController::class, 'chartDestroy'])->name('chart.destroy');

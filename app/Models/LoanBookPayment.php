@@ -104,6 +104,11 @@ class LoanBookPayment extends Model
         return $this->belongsTo(AccountingJournalEntry::class, 'accounting_journal_entry_id');
     }
 
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(LoanPaymentAllocation::class, 'loan_book_payment_id');
+    }
+
     public function scopeNotMergedChild(Builder $q): Builder
     {
         return $q->whereNull('merged_into_payment_id');

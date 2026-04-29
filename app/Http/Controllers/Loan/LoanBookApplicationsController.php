@@ -12,6 +12,7 @@ use App\Models\LoanClient;
 use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanProduct;
 use App\Models\PmInvoice;
+use App\Services\LoanBook\BorrowerClassificationService;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -26,6 +27,10 @@ use Illuminate\View\View;
 class LoanBookApplicationsController extends Controller
 {
     use ScopesLoanPortfolioAccess;
+
+    public function __construct(private readonly BorrowerClassificationService $borrowerClassifier)
+    {
+    }
 
     public function index(Request $request)
     {
@@ -432,19 +437,30 @@ class LoanBookApplicationsController extends Controller
         $draftId = (int) ($validated['draft_id'] ?? 0);
         $suspensePaymentId = (int) ($validated['suspense_payment_id'] ?? 0);
 
-        if (LoanBookLoan::query()
-            ->where('loan_client_id', $validated['loan_client_id'])
-            ->openForOrigination()
-            ->exists()) {
+        $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
+        $classification = $this->borrowerClassifier->classify($client, (float) $validated['amount_requested']);
+        $decision = (array) ($classification['borrower_decision'] ?? []);
+        if ((string) ($decision['borrower_category'] ?? '') === 'blocked') {
             return redirect()
                 ->back()
                 ->withErrors([
-                    'loan_client_id' => __('This client already has an open loan. Use another client or close the existing loan first.'),
+                    'loan_client_id' => $this->borrowerBlockingMessage($decision),
                 ])
                 ->withInput();
         }
 
-        $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
+        $validated['borrower_category'] = (string) ($decision['borrower_category'] ?? 'repeat_normal');
+        $validated['client_loan_sequence'] = (int) ($decision['client_loan_sequence'] ?? 1);
+        $validated['suggested_limit'] = (float) ($decision['suggested_max_limit'] ?? 0);
+        $validated['risk_flags_json'] = (array) ($decision['risk_flags'] ?? []);
+        $validated['classification_reason_json'] = [
+            'blocking_reasons' => (array) ($decision['blocking_reasons'] ?? []),
+            'warnings' => (array) ($decision['warnings'] ?? []),
+            'approval_level_required' => (string) ($decision['approval_level_required'] ?? 'standard'),
+            'graduation_allowed' => (bool) ($decision['graduation_allowed'] ?? false),
+            'capacity' => (array) ($classification['client_capacity'] ?? []),
+        ];
+
         $this->mergeLoanDepartmentGuarantorFromClient($validated, $client);
         if (empty($validated['branch'])) {
             $validated['branch'] = $client->branch;
@@ -489,6 +505,9 @@ class LoanBookApplicationsController extends Controller
             'fee_selected_payment_amount' => $selectedPayment ? round((float) $selectedPayment->amount, 2) : null,
             'fee_selected_payment_reference' => $selectedPayment?->reference,
             'fee_excess_to_wallet' => $selectedPayment ? round(max(0, (float) $selectedPayment->amount - $requiredFeeAmount), 2) : 0,
+            'borrower_classification' => $validated['classification_reason_json'],
+            'borrower_category' => $validated['borrower_category'],
+            'classification_override_required' => in_array('requested_amount_above_suggested_limit', (array) ($decision['warnings'] ?? []), true),
         ]);
 
         DB::transaction(function () use (&$validated, $selectedPayment, $request): void {
@@ -741,7 +760,34 @@ class LoanBookApplicationsController extends Controller
         }
 
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
+        $classification = $this->borrowerClassifier->classify($client, (float) $validated['amount_requested']);
+        $decision = (array) ($classification['borrower_decision'] ?? []);
+        if ((string) ($decision['borrower_category'] ?? '') === 'blocked') {
+            return redirect()
+                ->back()
+                ->withErrors([
+                    'loan_client_id' => $this->borrowerBlockingMessage($decision),
+                ])
+                ->withInput();
+        }
+
+        $validated['borrower_category'] = (string) ($decision['borrower_category'] ?? 'repeat_normal');
+        $validated['client_loan_sequence'] = (int) ($decision['client_loan_sequence'] ?? 1);
+        $validated['suggested_limit'] = (float) ($decision['suggested_max_limit'] ?? 0);
+        $validated['risk_flags_json'] = (array) ($decision['risk_flags'] ?? []);
+        $validated['classification_reason_json'] = [
+            'blocking_reasons' => (array) ($decision['blocking_reasons'] ?? []),
+            'warnings' => (array) ($decision['warnings'] ?? []),
+            'approval_level_required' => (string) ($decision['approval_level_required'] ?? 'standard'),
+            'graduation_allowed' => (bool) ($decision['graduation_allowed'] ?? false),
+            'capacity' => (array) ($classification['client_capacity'] ?? []),
+        ];
         $this->mergeLoanDepartmentGuarantorFromClient($validated, $client);
+        $validated['form_meta'] = array_merge((array) ($validated['form_meta'] ?? []), [
+            'borrower_classification' => $validated['classification_reason_json'],
+            'borrower_category' => $validated['borrower_category'],
+            'classification_override_required' => in_array('requested_amount_above_suggested_limit', (array) ($decision['warnings'] ?? []), true),
+        ]);
         $loan_book_application->update($validated);
 
         return redirect()
@@ -781,6 +827,20 @@ class LoanBookApplicationsController extends Controller
             return redirect()
                 ->back()
                 ->withErrors(['stage' => $stageError]);
+        }
+
+        if ((string) $validated['stage'] === LoanBookApplication::STAGE_APPROVED) {
+            $loan_book_application->loadMissing('loanClient');
+            $classification = $this->borrowerClassifier->classify(
+                $loan_book_application->loanClient,
+                (float) ($loan_book_application->amount_requested ?? 0)
+            );
+            $decision = (array) ($classification['borrower_decision'] ?? []);
+            if ((string) ($decision['borrower_category'] ?? '') === 'blocked') {
+                return redirect()
+                    ->back()
+                    ->withErrors(['stage' => $this->borrowerBlockingMessage($decision)]);
+            }
         }
 
         $loan_book_application->update(['stage' => $validated['stage']]);
@@ -1402,6 +1462,22 @@ class LoanBookApplicationsController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string,mixed>  $decision
+     */
+    private function borrowerBlockingMessage(array $decision): string
+    {
+        $reasons = (array) ($decision['blocking_reasons'] ?? []);
+        if ($reasons === []) {
+            return 'Borrower is currently blocked by risk policy.';
+        }
+
+        return 'Borrower is blocked: '.implode(', ', array_map(
+            static fn (string $reason): string => str_replace('_', ' ', $reason),
+            $reasons
+        ));
     }
 
 }

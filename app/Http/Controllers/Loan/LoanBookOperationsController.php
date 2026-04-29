@@ -16,6 +16,7 @@ use App\Models\LoanRegion;
 use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Support\TabularExport;
 use App\Services\Integrations\MpesaDarajaService;
+use App\Services\LoanBook\BorrowerClassificationService;
 use App\Services\LoanBook\LoanDisbursementPayoutService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
@@ -29,6 +30,10 @@ use Illuminate\View\View;
 class LoanBookOperationsController extends Controller
 {
     use ScopesLoanPortfolioAccess;
+
+    public function __construct(private readonly BorrowerClassificationService $borrowerClassifier)
+    {
+    }
 
     public function disbursementsIndex(Request $request)
     {
@@ -245,6 +250,14 @@ class LoanBookOperationsController extends Controller
 
         $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
         $this->ensureLoanClientOwner($loan->loanClient, $request->user());
+        $classification = $this->borrowerClassifier->classify($loan->loanClient, (float) ($loan->principal ?? 0));
+        $decision = (array) ($classification['borrower_decision'] ?? []);
+        if ((string) ($decision['borrower_category'] ?? '') === 'blocked') {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->withErrors(['loan_book_loan_id' => 'Borrower is blocked: '.implode(', ', (array) ($decision['blocking_reasons'] ?? ['risk_policy']))]);
+        }
         if ($loan->disbursements()->exists()) {
             return redirect()
                 ->back()

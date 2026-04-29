@@ -9,7 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         if (Schema::hasTable('loan_system_settings')) {
-            $this->upsertSetting('loan_repayment_allocation_order', 'Loan repayment allocation order (csv: principal,interest,fees,penalty)', 'preferences', 'principal,interest,fees,penalty');
+            $this->upsertSetting('loan_repayment_allocation_order', 'Loan repayment allocation order (csv: principal,interest,fees,penalty,overpayment)', 'preferences', 'principal,interest,fees,penalty,overpayment');
             $this->upsertSetting('loan_account_code_collection', 'Collection account code (cash/bank receiving account)', 'preferences', '1004');
             $this->upsertSetting('loan_account_code_principal', 'Loan principal receivable account code', 'preferences', '1200');
             $this->upsertSetting('loan_account_code_interest_income', 'Loan interest income account code', 'preferences', '4002');

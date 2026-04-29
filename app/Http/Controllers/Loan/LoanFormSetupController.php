@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Models\LoanFormFieldDefinition;
+use App\Models\LoanProduct;
 use App\Models\LoanSystemSetting;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -19,6 +20,10 @@ class LoanFormSetupController extends Controller
 
     public function setupPage(string $page): View
     {
+        if ($page === 'loan-settings') {
+            return $this->renderLoanSettingsPage();
+        }
+
         $cfg = $this->setupPageConfig($page);
 
         if ($page === 'accounting-forms') {
@@ -105,6 +110,10 @@ class LoanFormSetupController extends Controller
 
     public function setupPageSave(Request $request, string $page): RedirectResponse
     {
+        if ($page === 'loan-settings') {
+            return $this->saveLoanSettingsPage($request);
+        }
+
         if ($page === 'accounting-forms') {
             $enabled = $request->boolean('coa_approval_required');
             $mappingApprovalMode = (string) $request->input('mapping_approval_mode', 'none');
@@ -441,6 +450,307 @@ class LoanFormSetupController extends Controller
         );
     }
 
+    private function renderLoanSettingsPage(): View
+    {
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION);
+
+        $fields = LoanFormFieldDefinition::query()
+            ->where('form_kind', LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+
+        $fieldsPayload = $fields->map(fn (LoanFormFieldDefinition $f) => [
+            'id' => $f->id,
+            'label' => $f->label,
+            'field_key' => $f->field_key,
+            'data_type' => $f->data_type,
+            'is_required' => (bool) ($f->is_required ?? false),
+            'select_options' => (string) ($f->select_options ?? ''),
+            'prefill_from_previous' => (bool) $f->prefill_from_previous,
+            'visible_to' => (string) ($f->visible_to ?? ''),
+            'field_status' => (string) ($f->field_status ?? 'active'),
+            'product_id' => $f->product_id,
+            'is_core' => (bool) $f->is_core,
+        ])->values()->all();
+
+        return view('loan.system.form_setup.loan_settings', [
+            'title' => 'Loan settings',
+            'subtitle' => 'Configure product rules, approval controls, affordability checks, disbursement safety, and lending risk limits.',
+            'backUrl' => route('loan.system.setup'),
+            'products' => LoanProduct::query()->orderBy('name')->get(['id', 'name']),
+            'activeProductsCount' => LoanProduct::query()->where('is_active', true)->count(),
+            'fieldsPayload' => $fieldsPayload,
+            'dataTypeLabels' => LoanFormFieldDefinition::dataTypeLabels(),
+            'eligibilityRules' => $this->normalizeEligibilityRules($this->jsonSetting('loan_settings_eligibility_rules', [])),
+            'graduationRules' => $this->normalizeGraduationRules($this->jsonSetting('loan_settings_graduation_rules', [])),
+            'requiredApprovals' => $this->normalizeApprovalRules($this->jsonSetting('loan_settings_required_approvals', [])),
+            'additionalProductSettings' => $this->normalizeAdditionalProductSettings($this->jsonSetting('loan_settings_additional_product_settings', [])),
+        ]);
+    }
+
+    private function saveLoanSettingsPage(Request $request): RedirectResponse
+    {
+        $section = (string) $request->input('section', 'loan_form_setup');
+
+        if ($section === 'loan_form_setup') {
+            return $this->saveForm(
+                $request,
+                LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION,
+                'loan.system.form_setup.page',
+                'Loan form setup saved.',
+                ['page' => 'loan-settings', 'tab' => 'loan-form-setup']
+            );
+        }
+
+        if ($section === 'eligibility_rules') {
+            $validated = $request->validate([
+                'minimum_age' => ['nullable', 'integer', 'min:0', 'max:150'],
+                'maximum_age' => ['nullable', 'integer', 'min:0', 'max:150'],
+                'allowed_client_types' => ['nullable', 'string', 'max:5000'],
+                'required_documents' => ['nullable', 'string', 'max:5000'],
+                'allowed_sectors' => ['nullable', 'string', 'max:5000'],
+                'blocked_sectors' => ['nullable', 'string', 'max:5000'],
+                'minimum_repayment_history' => ['nullable', 'integer', 'min:0', 'max:1000'],
+                'minimum_client_score' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+                'guarantor_required' => ['nullable', 'in:0,1'],
+                'collateral_required' => ['nullable', 'in:0,1'],
+                'block_with_arrears' => ['nullable', 'in:0,1'],
+                'block_written_off_history' => ['nullable', 'in:0,1'],
+                'active_loan_limit' => ['nullable', 'integer', 'min:0', 'max:100'],
+            ]);
+            $payload = [
+                'minimum_age' => isset($validated['minimum_age']) ? (int) $validated['minimum_age'] : null,
+                'maximum_age' => isset($validated['maximum_age']) ? (int) $validated['maximum_age'] : null,
+                'allowed_client_types' => $this->csvToList((string) ($validated['allowed_client_types'] ?? '')),
+                'required_documents' => $this->csvToList((string) ($validated['required_documents'] ?? '')),
+                'allowed_sectors' => $this->csvToList((string) ($validated['allowed_sectors'] ?? '')),
+                'blocked_sectors' => $this->csvToList((string) ($validated['blocked_sectors'] ?? '')),
+                'minimum_repayment_history' => isset($validated['minimum_repayment_history']) ? (int) $validated['minimum_repayment_history'] : null,
+                'minimum_client_score' => isset($validated['minimum_client_score']) ? (float) $validated['minimum_client_score'] : null,
+                'guarantor_required' => $request->boolean('guarantor_required'),
+                'collateral_required' => $request->boolean('collateral_required'),
+                'block_with_arrears' => $request->boolean('block_with_arrears'),
+                'block_written_off_history' => $request->boolean('block_written_off_history'),
+                'active_loan_limit' => isset($validated['active_loan_limit']) ? (int) $validated['active_loan_limit'] : null,
+            ];
+            LoanSystemSetting::setValue(
+                'loan_settings_eligibility_rules',
+                json_encode($payload),
+                'Loan settings eligibility rules',
+                'loan_settings'
+            );
+
+            return redirect()
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'eligibility-rules'])
+                ->with('status', 'Eligibility rules saved.');
+        }
+
+        if ($section === 'graduation_logic') {
+            $validated = $request->validate([
+                'first_loan_max_limit' => ['nullable', 'numeric', 'min:0'],
+                'second_loan_max_limit' => ['nullable', 'numeric', 'min:0'],
+                'subsequent_increase_pct' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+                'increase_after_full_payment_only' => ['nullable', 'in:0,1'],
+                'block_if_arrears_exist' => ['nullable', 'in:0,1'],
+                'block_if_late_payment_exists' => ['nullable', 'in:0,1'],
+                'block_if_written_off_history_exists' => ['nullable', 'in:0,1'],
+                'reduce_limit_after_default_pct' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            ]);
+            $payload = [
+                'first_loan_max_limit' => isset($validated['first_loan_max_limit']) ? (float) $validated['first_loan_max_limit'] : null,
+                'second_loan_max_limit' => isset($validated['second_loan_max_limit']) ? (float) $validated['second_loan_max_limit'] : null,
+                'subsequent_increase_pct' => isset($validated['subsequent_increase_pct']) ? (float) $validated['subsequent_increase_pct'] : null,
+                'increase_after_full_payment_only' => $request->boolean('increase_after_full_payment_only'),
+                'block_if_arrears_exist' => $request->boolean('block_if_arrears_exist'),
+                'block_if_late_payment_exists' => $request->boolean('block_if_late_payment_exists'),
+                'block_if_written_off_history_exists' => $request->boolean('block_if_written_off_history_exists'),
+                'reduce_limit_after_default_pct' => isset($validated['reduce_limit_after_default_pct']) ? (float) $validated['reduce_limit_after_default_pct'] : null,
+            ];
+            LoanSystemSetting::setValue(
+                'loan_settings_graduation_rules',
+                json_encode($payload),
+                'Loan settings graduation rules',
+                'loan_settings'
+            );
+
+            return redirect()
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'graduation-logic'])
+                ->with('status', 'Graduation logic saved.');
+        }
+
+        if ($section === 'required_approvals') {
+            $validated = $request->validate([
+                'approval_rows' => ['nullable', 'array'],
+                'approval_rows.*.amount_from' => ['nullable', 'numeric', 'min:0'],
+                'approval_rows.*.amount_to' => ['nullable', 'numeric', 'min:0'],
+                'approval_rows.*.approver' => ['nullable', 'string', 'max:120'],
+                'approval_rows.*.risk_level' => ['nullable', 'string', 'max:80'],
+                'approval_rows.*.disbursement_approval' => ['nullable', 'in:0,1'],
+                'arrears_tolerance_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+                'penalty_on_arrears' => ['nullable', 'in:0,1'],
+                'interest_recalculation' => ['nullable', 'in:0,1'],
+                'allow_top_up' => ['nullable', 'in:0,1'],
+                'allow_early_repayment' => ['nullable', 'in:0,1'],
+                'auto_approval_low_risk' => ['nullable', 'in:0,1'],
+            ]);
+            $approvalRows = collect($validated['approval_rows'] ?? [])
+                ->map(function (array $row): array {
+                    return [
+                        'amount_from' => isset($row['amount_from']) ? (float) $row['amount_from'] : null,
+                        'amount_to' => isset($row['amount_to']) && $row['amount_to'] !== '' ? (float) $row['amount_to'] : null,
+                        'approver' => trim((string) ($row['approver'] ?? '')),
+                        'risk_level' => trim((string) ($row['risk_level'] ?? '')),
+                        'disbursement_approval' => isset($row['disbursement_approval']) && (string) $row['disbursement_approval'] === '1',
+                    ];
+                })
+                ->values()
+                ->all();
+            LoanSystemSetting::setValue(
+                'loan_settings_required_approvals',
+                json_encode($approvalRows),
+                'Loan settings required approvals',
+                'loan_settings'
+            );
+            LoanSystemSetting::setValue(
+                'loan_settings_additional_product_settings',
+                json_encode([
+                    'arrears_tolerance_days' => isset($validated['arrears_tolerance_days']) ? (int) $validated['arrears_tolerance_days'] : null,
+                    'penalty_on_arrears' => $request->boolean('penalty_on_arrears'),
+                    'interest_recalculation' => $request->boolean('interest_recalculation'),
+                    'allow_top_up' => $request->boolean('allow_top_up'),
+                    'allow_early_repayment' => $request->boolean('allow_early_repayment'),
+                    'auto_approval_low_risk' => $request->boolean('auto_approval_low_risk'),
+                ]),
+                'Loan settings additional product settings',
+                'loan_settings'
+            );
+
+            return redirect()
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'required-approvals'])
+                ->with('status', 'Required approvals saved.');
+        }
+
+        return redirect()
+            ->route('loan.system.form_setup.page', ['page' => 'loan-settings'])
+            ->with('status', 'No changes saved.');
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    private function jsonSetting(string $key, array $fallback): array
+    {
+        $raw = LoanSystemSetting::getValue($key, json_encode($fallback));
+        $decoded = is_string($raw) ? json_decode($raw, true) : null;
+
+        return is_array($decoded) ? $decoded : $fallback;
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return array<string, mixed>
+     */
+    private function normalizeEligibilityRules(mixed $raw): array
+    {
+        $arr = is_array($raw) ? $raw : [];
+
+        return [
+            'minimum_age' => data_get($arr, 'minimum_age'),
+            'maximum_age' => data_get($arr, 'maximum_age'),
+            'allowed_client_types' => is_array(data_get($arr, 'allowed_client_types')) ? data_get($arr, 'allowed_client_types') : [],
+            'required_documents' => is_array(data_get($arr, 'required_documents')) ? data_get($arr, 'required_documents') : [],
+            'allowed_sectors' => is_array(data_get($arr, 'allowed_sectors')) ? data_get($arr, 'allowed_sectors') : [],
+            'blocked_sectors' => is_array(data_get($arr, 'blocked_sectors')) ? data_get($arr, 'blocked_sectors') : [],
+            'minimum_repayment_history' => data_get($arr, 'minimum_repayment_history'),
+            'minimum_client_score' => data_get($arr, 'minimum_client_score'),
+            'guarantor_required' => (bool) data_get($arr, 'guarantor_required', false),
+            'collateral_required' => (bool) data_get($arr, 'collateral_required', false),
+            'block_with_arrears' => (bool) data_get($arr, 'block_with_arrears', false),
+            'block_written_off_history' => (bool) data_get($arr, 'block_written_off_history', false),
+            'active_loan_limit' => data_get($arr, 'active_loan_limit'),
+        ];
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return array<string, mixed>
+     */
+    private function normalizeGraduationRules(mixed $raw): array
+    {
+        $arr = is_array($raw) ? $raw : [];
+
+        return [
+            'first_loan_max_limit' => data_get($arr, 'first_loan_max_limit'),
+            'second_loan_max_limit' => data_get($arr, 'second_loan_max_limit'),
+            'subsequent_increase_pct' => data_get($arr, 'subsequent_increase_pct'),
+            'increase_after_full_payment_only' => (bool) data_get($arr, 'increase_after_full_payment_only', false),
+            'block_if_arrears_exist' => (bool) data_get($arr, 'block_if_arrears_exist', false),
+            'block_if_late_payment_exists' => (bool) data_get($arr, 'block_if_late_payment_exists', false),
+            'block_if_written_off_history_exists' => (bool) data_get($arr, 'block_if_written_off_history_exists', false),
+            'reduce_limit_after_default_pct' => data_get($arr, 'reduce_limit_after_default_pct'),
+        ];
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeApprovalRules(mixed $raw): array
+    {
+        $arr = is_array($raw) ? $raw : [];
+        if ($arr === []) {
+            return [
+                ['amount_from' => 0, 'amount_to' => 50000, 'approver' => 'Branch Manager', 'risk_level' => 'Low risk', 'disbursement_approval' => true],
+                ['amount_from' => 50001, 'amount_to' => 200000, 'approver' => 'Regional Manager', 'risk_level' => 'Medium risk', 'disbursement_approval' => true],
+                ['amount_from' => 200001, 'amount_to' => 500000, 'approver' => 'Credit Manager', 'risk_level' => 'High risk', 'disbursement_approval' => true],
+                ['amount_from' => 500001, 'amount_to' => null, 'approver' => 'Director', 'risk_level' => 'High risk', 'disbursement_approval' => true],
+            ];
+        }
+
+        return collect($arr)->map(function ($row): array {
+            $r = is_array($row) ? $row : [];
+
+            return [
+                'amount_from' => data_get($r, 'amount_from'),
+                'amount_to' => data_get($r, 'amount_to'),
+                'approver' => (string) data_get($r, 'approver', ''),
+                'risk_level' => (string) data_get($r, 'risk_level', ''),
+                'disbursement_approval' => (bool) data_get($r, 'disbursement_approval', false),
+            ];
+        })->values()->all();
+    }
+
+    /**
+     * @param  mixed  $raw
+     * @return array<string, mixed>
+     */
+    private function normalizeAdditionalProductSettings(mixed $raw): array
+    {
+        $arr = is_array($raw) ? $raw : [];
+
+        return [
+            'arrears_tolerance_days' => data_get($arr, 'arrears_tolerance_days'),
+            'penalty_on_arrears' => (bool) data_get($arr, 'penalty_on_arrears', false),
+            'interest_recalculation' => (bool) data_get($arr, 'interest_recalculation', false),
+            'allow_top_up' => (bool) data_get($arr, 'allow_top_up', false),
+            'allow_early_repayment' => (bool) data_get($arr, 'allow_early_repayment', false),
+            'auto_approval_low_risk' => (bool) data_get($arr, 'auto_approval_low_risk', false),
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function csvToList(string $raw): array
+    {
+        return collect(explode(',', $raw))
+            ->map(fn (string $item): string => trim($item))
+            ->filter(fn (string $item): bool => $item !== '')
+            ->values()
+            ->all();
+    }
+
     /**
      * @param  array<string, mixed>  $options
      */
@@ -506,10 +816,14 @@ class LoanFormSetupController extends Controller
         $validated = $request->validate([
             'fields' => ['required', 'array', 'min:1'],
             'fields.*.id' => ['nullable', 'integer'],
+            'fields.*.product_id' => ['nullable', 'integer', 'exists:loan_products,id'],
             'fields.*.label' => ['required', 'string', 'max:255'],
             'fields.*.data_type' => ['required', 'string', Rule::in($types)],
+            'fields.*.is_required' => ['nullable', 'in:0,1'],
             'fields.*.select_options' => ['nullable', 'string', 'max:10000'],
             'fields.*.prefill_from_previous' => ['nullable', 'in:0,1'],
+            'fields.*.visible_to' => ['nullable', 'string', 'max:255'],
+            'fields.*.field_status' => ['nullable', Rule::in(['active', 'draft', 'requires_approval'])],
         ]);
 
         foreach ($validated['fields'] as $i => $row) {
@@ -537,6 +851,8 @@ class LoanFormSetupController extends Controller
                     : null;
 
                 $prefill = isset($row['prefill_from_previous']) && (string) $row['prefill_from_previous'] === '1';
+                $required = isset($row['is_required']) && (string) $row['is_required'] === '1';
+                $fieldStatus = trim((string) ($row['field_status'] ?? 'active'));
 
                 $id = isset($row['id']) ? (int) $row['id'] : null;
 
@@ -547,21 +863,29 @@ class LoanFormSetupController extends Controller
                         ->firstOrFail();
 
                     $field->update([
+                        'product_id' => isset($row['product_id']) && $row['product_id'] !== '' ? (int) $row['product_id'] : null,
                         'label' => $row['label'],
                         'data_type' => $row['data_type'],
+                        'is_required' => $required,
                         'select_options' => $selectOptions,
                         'prefill_from_previous' => $field->is_core ? false : $prefill,
+                        'visible_to' => trim((string) ($row['visible_to'] ?? '')),
+                        'field_status' => $fieldStatus,
                         'sort_order' => $index,
                     ]);
                 } else {
                     LoanFormFieldDefinition::query()->create([
                         'form_kind' => $kind,
+                        'product_id' => isset($row['product_id']) && $row['product_id'] !== '' ? (int) $row['product_id'] : null,
                         'field_key' => LoanFormFieldDefinition::generateFieldKey($kind, $row['label']),
                         'label' => $row['label'],
                         'data_type' => $row['data_type'],
+                        'is_required' => $required,
                         'select_options' => $selectOptions,
                         'prefill_from_previous' => $prefill,
+                        'visible_to' => trim((string) ($row['visible_to'] ?? '')),
                         'is_core' => false,
+                        'field_status' => $fieldStatus,
                         'sort_order' => $index,
                     ]);
                 }

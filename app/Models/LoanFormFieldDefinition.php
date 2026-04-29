@@ -33,6 +33,8 @@ class LoanFormFieldDefinition extends Model
 
     public const KIND_LOAN_POLICY = 'loan_policy';
 
+    public const KIND_LOAN_SETTINGS_APPLICATION = 'loan_settings_application';
+
     public const TYPE_ALPHANUMERIC = 'alphanumeric';
 
     public const TYPE_NUMBER = 'number';
@@ -43,14 +45,26 @@ class LoanFormFieldDefinition extends Model
 
     public const TYPE_LONG_TEXT = 'long_text';
 
+    public const TYPE_MONEY = 'money';
+
+    public const TYPE_DATE = 'date';
+
+    public const TYPE_DOCUMENT = 'document';
+
+    public const TYPE_BOOLEAN = 'boolean';
+
     protected $fillable = [
         'form_kind',
+        'product_id',
         'field_key',
         'label',
         'data_type',
+        'is_required',
         'select_options',
         'prefill_from_previous',
+        'visible_to',
         'is_core',
+        'field_status',
         'sort_order',
     ];
 
@@ -58,6 +72,7 @@ class LoanFormFieldDefinition extends Model
     {
         return [
             'prefill_from_previous' => 'boolean',
+            'is_required' => 'boolean',
             'is_core' => 'boolean',
             'sort_order' => 'integer',
         ];
@@ -73,6 +88,10 @@ class LoanFormFieldDefinition extends Model
             self::TYPE_NUMBER => 'Number value',
             self::TYPE_IMAGE => 'Image file',
             self::TYPE_SELECT => 'Select list / dropdown',
+            self::TYPE_MONEY => 'Money amount',
+            self::TYPE_DATE => 'Date',
+            self::TYPE_DOCUMENT => 'Document upload',
+            self::TYPE_BOOLEAN => 'Boolean / checkbox',
             self::TYPE_LONG_TEXT => 'Long text',
         ];
     }
@@ -93,6 +112,7 @@ class LoanFormFieldDefinition extends Model
             self::KIND_STAFF_STRUCTURE => self::defaultStaffStructureFields(),
             self::KIND_STAFF_PERFORMANCE => self::defaultStaffPerformanceFields(),
             self::KIND_LOAN_POLICY => self::defaultLoanPolicyFields(),
+            self::KIND_LOAN_SETTINGS_APPLICATION => self::defaultLoanSettingsApplicationFields(),
             default => null,
         };
 
@@ -388,6 +408,37 @@ class LoanFormFieldDefinition extends Model
             ['label' => 'Checkoff day (month)', 'data_type' => self::TYPE_NUMBER, 'is_core' => false, 'sort_order' => $i++],
             ['label' => 'Max reschedule / extensions', 'data_type' => self::TYPE_NUMBER, 'is_core' => false, 'sort_order' => $i++],
             ['label' => 'Penalty or fee rule notes', 'data_type' => self::TYPE_LONG_TEXT, 'is_core' => false, 'sort_order' => $i++],
+        ];
+    }
+
+    /**
+     * @return list<array{label:string,data_type:string,select_options?:string|null,is_core:bool,sort_order:int,prefill?:bool}>
+     */
+    private static function defaultLoanSettingsApplicationFields(): array
+    {
+        $i = 0;
+
+        return [
+            ['label' => 'Loan Product', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Client ID No', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Loan Officer', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Amount', 'data_type' => self::TYPE_MONEY, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Duration', 'data_type' => self::TYPE_NUMBER, 'is_core' => true, 'sort_order' => $i++],
+            ['label' => 'Guarantor Name', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Guarantor Contact', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Guarantor Business Photo', 'data_type' => self::TYPE_IMAGE, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Residential Type', 'data_type' => self::TYPE_SELECT, 'select_options' => 'Owned,Rented,Family,Other', 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Business Name', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Business Photo', 'data_type' => self::TYPE_IMAGE, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Asset List', 'data_type' => self::TYPE_LONG_TEXT, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Income Range', 'data_type' => self::TYPE_SELECT, 'select_options' => 'Below 20k,20k-50k,50k-100k,Above 100k', 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Sector', 'data_type' => self::TYPE_SELECT, 'select_options' => 'Retail,Services,Agriculture,Transport,Other', 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Employer', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Checkoff Number', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Next of Kin', 'data_type' => self::TYPE_ALPHANUMERIC, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'Client Photo', 'data_type' => self::TYPE_IMAGE, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'ID Front', 'data_type' => self::TYPE_DOCUMENT, 'is_core' => false, 'sort_order' => $i++],
+            ['label' => 'ID Back', 'data_type' => self::TYPE_DOCUMENT, 'is_core' => false, 'sort_order' => $i++],
         ];
     }
 }

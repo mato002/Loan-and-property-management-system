@@ -6,14 +6,11 @@ use App\Models\LoanBookApplication;
 use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
-use App\Models\LoanSystemSetting;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class LoanBookLoanUpdateService
 {
-    private const SETTING_REPAYMENT_ORDER = 'loan_repayment_allocation_order';
-
     /**
      * Apply a disbursement effect to the loan record (status + disbursed_at).
      * This does not change principal; it ensures the loan is marked active and timestamps are consistent.
@@ -83,37 +80,12 @@ class LoanBookLoanUpdateService
             }
 
             $delta = abs($signed);
-            $remaining = $delta;
-
-            // Default buckets if empty: treat everything as principal.
-            if ((float) $loan->principal_outstanding <= 0 && (float) $loan->balance > 0) {
-                $loan->principal_outstanding = (float) $loan->balance;
-            }
-
-            foreach ($this->repaymentOrder() as $bucket) {
-                if ($remaining <= 0) {
-                    break;
-                }
-
-                if ($bucket === 'fees' || $bucket === 'penalty') {
-                    $apply = min($remaining, max(0.0, (float) $loan->fees_outstanding));
-                    $loan->fees_outstanding = round((float) $loan->fees_outstanding - $apply, 2);
-                    $remaining -= $apply;
-                    continue;
-                }
-                if ($bucket === 'interest') {
-                    $apply = min($remaining, max(0.0, (float) $loan->interest_outstanding));
-                    $loan->interest_outstanding = round((float) $loan->interest_outstanding - $apply, 2);
-                    $remaining -= $apply;
-                    continue;
-                }
-                if ($bucket === 'principal') {
-                    $apply = min($remaining, max(0.0, (float) $loan->principal_outstanding));
-                    $loan->principal_outstanding = round((float) $loan->principal_outstanding - $apply, 2);
-                    $remaining -= $apply;
-                    continue;
-                }
-            }
+            $allocation = app(LoanRepaymentAllocationService::class)->allocate($payment, $loan, $delta)['allocations'];
+            $loan->principal_outstanding = round(max(0.0, (float) $loan->principal_outstanding - (float) ($allocation['principal'] ?? 0.0)), 2);
+            $loan->interest_outstanding = round(max(0.0, (float) $loan->interest_outstanding - (float) ($allocation['interest'] ?? 0.0)), 2);
+            // Current data model keeps fees and penalties in one outstanding bucket.
+            $feePenaltyApplied = (float) ($allocation['fees'] ?? 0.0) + (float) ($allocation['penalty'] ?? 0.0);
+            $loan->fees_outstanding = round(max(0.0, (float) $loan->fees_outstanding - $feePenaltyApplied), 2);
 
             $loan->balance = round(max(0.0, (float) $loan->principal_outstanding + (float) $loan->interest_outstanding + (float) $loan->fees_outstanding), 2);
 
@@ -124,28 +96,6 @@ class LoanBookLoanUpdateService
 
             $loan->save();
         });
-    }
-
-    /**
-     * @return list<'principal'|'interest'|'fees'|'penalty'>
-     */
-    private function repaymentOrder(): array
-    {
-        $raw = (string) (LoanSystemSetting::getValue(self::SETTING_REPAYMENT_ORDER, 'principal,interest,fees,penalty') ?? '');
-        $parts = array_values(array_filter(array_map(
-            static fn (string $p) => strtolower(trim($p)),
-            explode(',', $raw)
-        )));
-
-        $valid = ['principal', 'interest', 'fees', 'penalty'];
-        $order = array_values(array_intersect($parts, $valid));
-        foreach ($valid as $v) {
-            if (! in_array($v, $order, true)) {
-                $order[] = $v;
-            }
-        }
-
-        return $order;
     }
 
     public function estimateInterestForLoan(LoanBookLoan $loan, float $principal, float $ratePercent): float

@@ -15,7 +15,7 @@
                 'income' => 'Income',
                 'expense' => 'Expense',
             ];
-            $mappingRows = collect($postingRules ?? [])->values();
+            $mappingRows = collect($eventMappings ?? [])->values();
             $isEditingAccount = isset($editingAccount) && $editingAccount;
             $isDuplicatingAccount = ! $isEditingAccount && isset($duplicateAccount) && $duplicateAccount;
             $modalAccount = $isEditingAccount ? $editingAccount : ($isDuplicatingAccount ? $duplicateAccount : null);
@@ -35,10 +35,13 @@
             x-data="{
                 showCreateAccountModal: {{ (($isEditingAccount || $isDuplicatingAccount) || $errors->hasAny(['name', 'account_type', 'income_statement_category', 'account_class', 'current_balance', 'min_balance_floor', 'overdraft_limit', 'controlled_approver_ids'])) ? 'true' : 'false' }},
                 showImportModal: {{ $errors->has('import_file') ? 'true' : 'false' }},
-                showAddMappingModal: {{ ($errors->has('label') || $errors->has('debit_account_id') || $errors->has('credit_account_id')) ? 'true' : 'false' }},
+                showEventMappingModal: {{ ($errors->has('debit_account_id') || $errors->has('credit_account_id')) ? 'true' : 'false' }},
+                showMappingHistoryModal: false,
                 showOverdrawnModal: false,
                 showPendingApprovalsModal: false,
                 selectedPendingAccount: null,
+                selectedEventMapping: null,
+                selectedMappingHistory: null,
                 allowOverdraft: {{ old('allow_overdraft', (bool) ($modalAccount->allow_overdraft ?? false)) ? 'true' : 'false' }},
                 isControlled: {{ old('is_controlled_account', (bool) ($modalAccount->is_controlled_account ?? false)) ? 'true' : 'false' }},
                 floorEnabled: {{ old('floor_enabled', (bool) ($modalAccount->floor_enabled ?? false)) ? 'true' : 'false' }},
@@ -72,70 +75,17 @@
                         this.generatedCode = data.code || '';
                     } catch (e) { /* no-op */ }
                 },
-                mappingBusy: {},
-                mappingFeedback: {},
-                mappingEditing: {},
-                startMappingEdit(ruleId) {
-                    this.mappingEditing[ruleId] = true;
-                    this.mappingFeedback[ruleId] = null;
+                openEventMappingModal(row) {
+                    this.selectedEventMapping = row;
+                    this.showEventMappingModal = true;
                 },
-                cancelMappingEdit(ruleId) {
-                    this.mappingEditing[ruleId] = false;
-                    this.mappingFeedback[ruleId] = null;
-                },
-                isMappingEditing(ruleId) {
-                    return Boolean(this.mappingEditing[ruleId]);
-                },
-                async saveMapping(event, ruleId) {
-                    const form = event.target;
-                    if (!form || this.mappingBusy[ruleId]) return;
-
-                    this.mappingBusy[ruleId] = true;
-                    this.mappingFeedback[ruleId] = { type: 'info', message: 'Saving...' };
-
-                    const formData = new FormData(form);
-                    const payload = new URLSearchParams();
-                    for (const [key, value] of formData.entries()) {
-                        payload.append(key, value == null ? '' : String(value));
-                    }
-
-                    try {
-                        const response = await fetch(form.action, {
-                            method: 'POST',
-                            headers: {
-                                'Accept': 'application/json',
-                                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'X-CSRF-TOKEN': String(formData.get('_token') || ''),
-                            },
-                            body: payload.toString(),
-                        });
-
-                        if (response.status === 422) {
-                            const data = await response.json();
-                            const msg = data?.errors?.debit_account_id?.[0]
-                                || data?.errors?.credit_account_id?.[0]
-                                || data?.message
-                                || 'Unable to save mapping.';
-                            this.mappingFeedback[ruleId] = { type: 'error', message: msg };
-                            return;
-                        }
-
-                        if (!response.ok) {
-                            throw new Error('Request failed');
-                        }
-
-                        this.mappingFeedback[ruleId] = { type: 'success', message: 'Mapping saved.' };
-                        this.mappingEditing[ruleId] = false;
-                    } catch (error) {
-                        this.mappingFeedback[ruleId] = { type: 'error', message: 'Save failed. Please retry.' };
-                    } finally {
-                        this.mappingBusy[ruleId] = false;
-                    }
+                openHistoryModal(row) {
+                    this.selectedMappingHistory = row;
+                    this.showMappingHistoryModal = true;
                 },
             }"
             x-init="refreshGeneratedCode()"
-            @keydown.escape.window="showCreateAccountModal = false; showImportModal = false; showAddMappingModal = false; showOverdrawnModal = false; showPendingApprovalsModal = false; selectedPendingAccount = null"
+            @keydown.escape.window="showCreateAccountModal = false; showImportModal = false; showEventMappingModal = false; showMappingHistoryModal = false; showOverdrawnModal = false; showPendingApprovalsModal = false; selectedPendingAccount = null; selectedEventMapping = null; selectedMappingHistory = null"
         >
             <section class="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
                 <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -523,10 +473,6 @@
                     <div class="mb-4 flex items-center justify-between">
                         <h2 class="text-lg font-semibold text-slate-900">Automated Cash Mappings</h2>
                         <div class="flex items-center gap-2">
-                            <button type="button" @click="showAddMappingModal = true" class="inline-flex items-center rounded-lg border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700">
-                                <i class="fa-solid fa-plus mr-1 text-[10px]" aria-hidden="true"></i>
-                                Add
-                            </button>
                             <span class="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Governance Layer</span>
                         </div>
                     </div>
@@ -544,84 +490,55 @@
                             <tbody class="divide-y divide-slate-100 bg-white">
                                 @forelse ($mappingRows as $rule)
                                     @php
-                                        $ruleState = $rule->debit_account_id && $rule->credit_account_id ? 'Active' : 'Awaiting Approval';
-                                        $ruleClass = $ruleState === 'Active'
-                                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                            : 'border-orange-200 bg-orange-50 text-orange-700';
+                                        $ruleState = (string) ($rule['status'] ?? 'Needs Setup');
+                                        $ruleClass = match ($ruleState) {
+                                            'Active' => 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                                            'Awaiting Approval' => 'border-orange-200 bg-orange-50 text-orange-700',
+                                            'Disabled' => 'border-slate-200 bg-slate-100 text-slate-600',
+                                            default => 'border-amber-200 bg-amber-50 text-amber-700',
+                                        };
                                     @endphp
-                                    @if ($rule->is_editable)
-                                        <tr class="hover:bg-teal-50/60">
-                                            <td class="px-3 py-2 font-medium text-slate-800">{{ $rule->label }}</td>
-                                            <td class="px-3 py-2 text-slate-700">
-                                                <form id="mapping-form-{{ (int) $rule->id }}" method="post" action="{{ route('loan.accounting.chart.posting_rules.update', $rule->rule_key) }}" @submit.prevent="saveMapping($event, {{ (int) $rule->id }})" class="hidden">
-                                                    @csrf
-                                                    @method('patch')
-                                                </form>
-                                                <template x-if="isMappingEditing({{ (int) $rule->id }})">
-                                                    <select name="debit_account_id" form="mapping-form-{{ (int) $rule->id }}" class="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600">
-                                                        <option value="">Select debit account</option>
-                                                        @foreach ($selectAccounts as $acc)
-                                                            <option value="{{ $acc->id }}" @selected((int) $rule->debit_account_id === (int) $acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
-                                                        @endforeach
-                                                    </select>
-                                                </template>
-                                                <template x-if="!isMappingEditing({{ (int) $rule->id }})">
-                                                    <span>{{ $rule->debitAccount?->name ?? '—' }}</span>
-                                                </template>
-                                            </td>
-                                            <td class="px-3 py-2 text-slate-700">
-                                                <template x-if="isMappingEditing({{ (int) $rule->id }})">
-                                                    <select name="credit_account_id" form="mapping-form-{{ (int) $rule->id }}" class="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800 focus:border-teal-600 focus:outline-none focus:ring-1 focus:ring-teal-600">
-                                                        <option value="">Select credit account</option>
-                                                        @foreach ($selectAccounts as $acc)
-                                                            <option value="{{ $acc->id }}" @selected((int) $rule->credit_account_id === (int) $acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
-                                                        @endforeach
-                                                    </select>
-                                                </template>
-                                                <template x-if="!isMappingEditing({{ (int) $rule->id }})">
-                                                    <span>{{ $rule->creditAccount?->name ?? '—' }}</span>
-                                                </template>
-                                            </td>
-                                            <td class="px-3 py-2"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold {{ $ruleClass }}">{{ $ruleState }}</span></td>
-                                            <td class="px-3 py-2 text-slate-500">
-                                                <div class="flex items-center gap-2">
-                                                    <template x-if="isMappingEditing({{ (int) $rule->id }})">
-                                                        <div class="flex items-center gap-2">
-                                                            <button type="submit" form="mapping-form-{{ (int) $rule->id }}" :disabled="Boolean(mappingBusy[{{ (int) $rule->id }}])" class="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60" x-text="mappingBusy[{{ (int) $rule->id }}] ? 'Saving...' : 'Save'">Save</button>
-                                                            <button type="button" @click="cancelMappingEdit({{ (int) $rule->id }})" class="inline-flex items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                                                        </div>
-                                                    </template>
-                                                    <template x-if="!isMappingEditing({{ (int) $rule->id }})">
-                                                        <div class="flex items-center gap-2">
-                                                            <button type="button" @click="startMappingEdit({{ (int) $rule->id }})" class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100" title="Edit mapping">Edit</button>
-                                                            <form method="post" action="{{ route('loan.accounting.chart.posting_rules.destroy', $rule->rule_key) }}" data-swal-confirm="Delete this mapping rule?" class="inline">
-                                                                @csrf
-                                                                @method('DELETE')
-                                                                <button type="submit" class="inline-flex items-center justify-center rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-100" title="Delete mapping">Delete</button>
-                                                            </form>
-                                                        </div>
-                                                    </template>
-                                                </div>
-                                                <template x-if="mappingFeedback[{{ (int) $rule->id }}]">
-                                                    <p class="mt-1 text-xs"
-                                                       :class="mappingFeedback[{{ (int) $rule->id }}].type === 'success' ? 'text-emerald-700' : 'text-orange-700'"
-                                                       x-text="mappingFeedback[{{ (int) $rule->id }}].message"></p>
-                                                </template>
-                                            </td>
-                                        </tr>
-                                    @else
-                                        <tr class="hover:bg-teal-50/60">
-                                            <td class="px-3 py-2 font-medium text-slate-800">{{ $rule->label }}</td>
-                                            <td class="px-3 py-2 text-slate-700">{{ $rule->debitAccount?->name ?? '—' }}</td>
-                                            <td class="px-3 py-2 text-slate-700">{{ $rule->creditAccount?->name ?? '—' }}</td>
-                                            <td class="px-3 py-2"><span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold {{ $ruleClass }}">{{ $ruleState }}</span></td>
-                                            <td class="px-3 py-2 text-slate-500">
-                                                <div class="flex items-center gap-2">
-                                                    <a href="{{ route('loan.accounting.journal.index') }}" class="hover:text-purple-700" title="Mapping History"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    @endif
+                                    <tr class="hover:bg-teal-50/60">
+                                        <td class="px-3 py-2 text-slate-800">
+                                            <p class="font-medium">{{ $rule['event_name'] }}</p>
+                                            <p class="text-xs text-slate-500">{{ $rule['description'] }}</p>
+                                        </td>
+                                        <td class="px-3 py-2 text-slate-700">
+                                            @if ($rule['debit_account'])
+                                                <span>{{ $rule['debit_account']->code }} - {{ $rule['debit_account']->name }}</span>
+                                            @else
+                                                <span>—</span>
+                                            @endif
+                                        </td>
+                                        <td class="px-3 py-2 text-slate-700">
+                                            @if ($rule['credit_account'])
+                                                <span>{{ $rule['credit_account']->code }} - {{ $rule['credit_account']->name }}</span>
+                                            @else
+                                                <span>—</span>
+                                            @endif
+                                        </td>
+                                        <td class="px-3 py-2">
+                                            <span class="inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold {{ $ruleClass }}">{{ $ruleState }}</span>
+                                        </td>
+                                        <td class="px-3 py-2 text-slate-500">
+                                            <div class="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    @click='openEventMappingModal(@json($rule))'
+                                                    class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                                                >
+                                                    Edit Mapping
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    @click='openHistoryModal(@json($rule))'
+                                                    class="inline-flex items-center justify-center rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-100"
+                                                >
+                                                    View History / Audit
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
                                 @empty
                                     <tr><td colspan="5" class="px-3 py-4 text-center text-slate-500">No mapping rules found.</td></tr>
                                 @endforelse
@@ -1058,54 +975,100 @@
 
             <div
                 x-cloak
-                x-show="showAddMappingModal"
+                x-show="showEventMappingModal && selectedEventMapping"
                 x-transition.opacity
                 class="fixed inset-0 z-50 bg-black/50"
-                @click.self="showAddMappingModal = false"
+                @click.self="showEventMappingModal = false; selectedEventMapping = null"
             >
                 <div class="flex min-h-screen items-center justify-center p-4">
                     <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
                         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
                             <div>
-                                <h3 class="text-lg font-semibold text-slate-900">Add Automated Mapping</h3>
-                                <p class="text-sm text-slate-500">Create a business-event mapping with debit and credit accounts.</p>
+                                <h3 class="text-lg font-semibold text-slate-900">Edit Mapping</h3>
+                                <p class="text-sm text-slate-500">Business event is fixed by the system; only mapping is editable.</p>
                             </div>
-                            <button type="button" @click="showAddMappingModal = false" class="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">x</button>
+                            <button type="button" @click="showEventMappingModal = false; selectedEventMapping = null" class="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">x</button>
                         </div>
-                        <form method="post" action="{{ route('loan.accounting.chart.posting_rules.store') }}" class="space-y-4 px-6 py-5">
+                        <form method="post" :action="'{{ route('loan.accounting.chart.event_mappings.update', ['eventKey' => '__EVENT_KEY__']) }}'.replace('__EVENT_KEY__', selectedEventMapping.event_key)" class="space-y-4 px-6 py-5">
                             @csrf
+                            @method('PATCH')
                             <div class="grid gap-3 sm:grid-cols-1">
+                                <div class="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                    <p class="text-sm font-semibold text-slate-800" x-text="selectedEventMapping?.event_name"></p>
+                                    <p class="mt-1 text-xs text-slate-500" x-text="selectedEventMapping?.description"></p>
+                                </div>
                                 <label class="text-xs font-semibold text-slate-600">
-                                    Business Event
-                                    <input type="text" name="label" value="{{ old('label') }}" placeholder="e.g. Loan Top-up Disbursed" required class="mt-1 w-full rounded-lg border-slate-200 text-sm">
-                                    @error('label')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                                    Debit Slot
+                                    <input type="text" readonly :value="selectedEventMapping?.debit_slot || ''" class="mt-1 w-full rounded-lg border-slate-200 bg-slate-50 text-sm" />
                                 </label>
                                 <label class="text-xs font-semibold text-slate-600">
                                     Debit Account (COA)
-                                    <select name="debit_account_id" class="mt-1 w-full rounded-lg border-slate-200 text-sm">
+                                    <select name="debit_account_id" class="mt-1 w-full rounded-lg border-slate-200 text-sm" required>
                                         <option value="">Select debit account</option>
                                         @foreach ($selectAccounts as $acc)
-                                            <option value="{{ $acc->id }}" @selected((int) old('debit_account_id') === (int) $acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
+                                            <option value="{{ $acc->id }}" :selected="String(selectedEventMapping?.debit_account?.id || '') === '{{ $acc->id }}'">{{ $acc->code }} - {{ $acc->name }}</option>
                                         @endforeach
                                     </select>
                                     @error('debit_account_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </label>
                                 <label class="text-xs font-semibold text-slate-600">
+                                    Credit Slot
+                                    <input type="text" readonly :value="selectedEventMapping?.credit_slot || ''" class="mt-1 w-full rounded-lg border-slate-200 bg-slate-50 text-sm" />
+                                </label>
+                                <label class="text-xs font-semibold text-slate-600">
                                     Credit Account (COA)
-                                    <select name="credit_account_id" class="mt-1 w-full rounded-lg border-slate-200 text-sm">
+                                    <select name="credit_account_id" class="mt-1 w-full rounded-lg border-slate-200 text-sm" required>
                                         <option value="">Select credit account</option>
                                         @foreach ($selectAccounts as $acc)
-                                            <option value="{{ $acc->id }}" @selected((int) old('credit_account_id') === (int) $acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
+                                            <option value="{{ $acc->id }}" :selected="String(selectedEventMapping?.credit_account?.id || '') === '{{ $acc->id }}'">{{ $acc->code }} - {{ $acc->name }}</option>
                                         @endforeach
                                     </select>
                                     @error('credit_account_id')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                 </label>
                             </div>
                             <div class="flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
-                                <button type="button" @click="showAddMappingModal = false" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Save</button>
+                                <button type="button" @click="showEventMappingModal = false; selectedEventMapping = null" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
+                                <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">Save Mapping</button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                x-cloak
+                x-show="showMappingHistoryModal && selectedMappingHistory"
+                x-transition.opacity
+                class="fixed inset-0 z-50 bg-black/50"
+                @click.self="showMappingHistoryModal = false; selectedMappingHistory = null"
+            >
+                <div class="flex min-h-screen items-center justify-center p-4">
+                    <div class="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                        <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-slate-900">Mapping History / Audit</h3>
+                                <p class="text-sm text-slate-500" x-text="selectedMappingHistory?.event_name"></p>
+                            </div>
+                            <button type="button" @click="showMappingHistoryModal = false; selectedMappingHistory = null" class="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700" aria-label="Close modal">x</button>
+                        </div>
+                        <div class="max-h-[65vh] overflow-y-auto px-6 py-5">
+                            <template x-if="!selectedMappingHistory?.history || selectedMappingHistory.history.length === 0">
+                                <p class="text-sm text-slate-500">No mapping history yet.</p>
+                            </template>
+                            <template x-if="selectedMappingHistory?.history && selectedMappingHistory.history.length > 0">
+                                <div class="space-y-2">
+                                    <template x-for="(item, idx) in selectedMappingHistory.history" :key="idx">
+                                        <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                                            <p><span class="font-semibold">Time:</span> <span x-text="item.at || '—'"></span></p>
+                                            <p><span class="font-semibold">Slot:</span> <span x-text="item.slot_key || '—'"></span></p>
+                                            <p><span class="font-semibold">Status:</span> <span x-text="item.status || '—'"></span></p>
+                                            <p><span class="font-semibold">Old Account ID:</span> <span x-text="item.old_account_id ?? '—'"></span></p>
+                                            <p><span class="font-semibold">New Account ID:</span> <span x-text="item.new_account_id ?? '—'"></span></p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
                     </div>
                 </div>
             </div>

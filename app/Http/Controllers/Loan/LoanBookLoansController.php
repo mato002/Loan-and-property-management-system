@@ -14,6 +14,7 @@ use App\Models\LoanProduct;
 use App\Models\LoanRegion;
 use App\Models\LoanSystemSetting;
 use App\Services\BulkSmsService;
+use App\Services\LoanBook\BorrowerClassificationService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,7 +30,10 @@ class LoanBookLoansController extends Controller
 {
     use ScopesLoanPortfolioAccess;
 
-    public function __construct(private readonly LoanBookLoanUpdateService $loanMath)
+    public function __construct(
+        private readonly LoanBookLoanUpdateService $loanMath,
+        private readonly BorrowerClassificationService $borrowerClassifier
+    )
     {
     }
 
@@ -686,6 +690,28 @@ class LoanBookLoansController extends Controller
             $validated['loan_book_application_id'] = null;
         }
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
+        $classification = $this->borrowerClassifier->classify($client, (float) ($validated['principal'] ?? 0));
+        $decision = (array) ($classification['borrower_decision'] ?? []);
+        if ((string) ($decision['borrower_category'] ?? '') === 'blocked') {
+            return redirect()
+                ->back()
+                ->withErrors([
+                    'loan_client_id' => 'Borrower is blocked: '.implode(', ', (array) ($decision['blocking_reasons'] ?? ['risk_policy'])),
+                ])
+                ->withInput();
+        }
+
+        $validated['borrower_category'] = (string) ($decision['borrower_category'] ?? 'repeat_normal');
+        $validated['client_loan_sequence'] = (int) ($decision['client_loan_sequence'] ?? 1);
+        $validated['suggested_limit'] = (float) ($decision['suggested_max_limit'] ?? 0);
+        $validated['risk_flags_json'] = (array) ($decision['risk_flags'] ?? []);
+        $validated['classification_reason_json'] = [
+            'blocking_reasons' => (array) ($decision['blocking_reasons'] ?? []),
+            'warnings' => (array) ($decision['warnings'] ?? []),
+            'approval_level_required' => (string) ($decision['approval_level_required'] ?? 'standard'),
+            'graduation_allowed' => (bool) ($decision['graduation_allowed'] ?? false),
+            'capacity' => (array) ($classification['client_capacity'] ?? []),
+        ];
         $this->applyDirectoryBranch($validated);
         if (empty($validated['branch'])) {
             $validated['branch'] = $client->branch;
@@ -1229,7 +1255,7 @@ class LoanBookLoansController extends Controller
      */
     private function repaymentOrder(): array
     {
-        $raw = (string) (LoanSystemSetting::getValue('loan_repayment_allocation_order', 'principal,interest,fees,penalty') ?? '');
+        $raw = (string) (LoanSystemSetting::getValue('loan_repayment_allocation_order', 'principal,interest,fees,penalty,overpayment') ?? '');
         $parts = array_values(array_filter(array_map(
             static fn (string $p) => strtolower(trim($p)),
             explode(',', $raw)

@@ -20,6 +20,7 @@ use App\Models\LoanBookCollectionRate;
 use App\Models\LoanClient;
 use App\Models\LoanSystemSetting;
 use App\Models\User;
+use App\Services\AccountingEventRegistryService;
 use App\Services\AccountingChartCodeGeneratorService;
 use App\Services\AccountingControlledApprovalService;
 use App\Support\CsvExport;
@@ -69,6 +70,10 @@ class LoanAccountingBooksController extends Controller
 
     public function chartRules(): View
     {
+        /** @var AccountingEventRegistryService $eventRegistry */
+        $eventRegistry = app(AccountingEventRegistryService::class);
+        $eventRegistry->ensureRequiredSlotsExist();
+
         $hasAccountClass = Schema::hasColumn('accounting_chart_accounts', 'account_class');
         $accounts = AccountingChartAccount::query()
             ->with('parent')
@@ -100,6 +105,7 @@ class LoanAccountingBooksController extends Controller
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
+        $eventMappings = $eventRegistry->eventRowsForChartRules();
         $hasApprovalColumns = Schema::hasColumn('accounting_chart_accounts', 'approval_status')
             && Schema::hasColumn('accounting_chart_accounts', 'approval_current_step');
 
@@ -112,7 +118,7 @@ class LoanAccountingBooksController extends Controller
         $newAccounts30d = AccountingChartAccount::query()
             ->where('created_at', '>=', now()->subDays(30))
             ->count();
-        $missingRules = $postingRules->filter(fn (AccountingPostingRule $r) => ! $r->debit_account_id || ! $r->credit_account_id)->count();
+        $missingRules = $eventMappings->filter(fn (array $row): bool => (string) ($row['status'] ?? '') === 'Needs Setup')->count();
         $pendingApprovals = $hasApprovalColumns ? $accounts->where('approval_status', 'pending')->count() : 0;
         $isBalanced = abs((float) AccountingJournalLine::sum('debit') - (float) AccountingJournalLine::sum('credit')) < 0.01;
         $overdrawnAccounts = $accounts
@@ -166,6 +172,7 @@ class LoanAccountingBooksController extends Controller
             'accounts',
             'headerAccounts',
             'postingRules',
+            'eventMappings',
             'activeAccounts',
             'newAccounts30d',
             'missingRules',
@@ -180,6 +187,26 @@ class LoanAccountingBooksController extends Controller
             'pendingAccounts',
             'availableApprovers'
         ));
+    }
+
+    public function updateEventMapping(Request $request, string $eventKey): RedirectResponse
+    {
+        $validated = $request->validate([
+            'debit_account_id' => ['required', 'integer', 'exists:accounting_chart_accounts,id'],
+            'credit_account_id' => ['required', 'integer', 'exists:accounting_chart_accounts,id'],
+        ]);
+
+        app(AccountingEventRegistryService::class)->saveEventMapping(
+            eventKey: $eventKey,
+            debitAccountId: (int) $validated['debit_account_id'],
+            creditAccountId: (int) $validated['credit_account_id'],
+            actorUserId: (int) $request->user()->id,
+            approvalRequired: $this->coaApprovalEnabled()
+        );
+
+        return redirect()
+            ->route('loan.accounting.books.chart_rules', ['tab' => 'rules'])
+            ->with('status', 'Event mapping saved successfully.');
     }
 
     public function downloadChartTemplate(): StreamedResponse

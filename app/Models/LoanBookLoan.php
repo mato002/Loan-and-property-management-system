@@ -38,6 +38,11 @@ class LoanBookLoan extends Model
         'interest_outstanding',
         'fees_outstanding',
         'status',
+        'borrower_category',
+        'client_loan_sequence',
+        'suggested_limit',
+        'risk_flags_json',
+        'classification_reason_json',
         'dpd',
         'disbursed_at',
         'maturity_date',
@@ -54,12 +59,15 @@ class LoanBookLoan extends Model
             'principal_outstanding' => 'decimal:2',
             'balance' => 'decimal:2',
             'interest_rate' => 'decimal:4',
+            'suggested_limit' => 'decimal:2',
             'term_value' => 'integer',
             'interest_outstanding' => 'decimal:2',
             'fees_outstanding' => 'decimal:2',
             'is_checkoff' => 'boolean',
             'disbursed_at' => 'datetime',
             'maturity_date' => 'date',
+            'risk_flags_json' => 'array',
+            'classification_reason_json' => 'array',
         ];
     }
 

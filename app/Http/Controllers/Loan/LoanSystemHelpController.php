@@ -2190,7 +2190,7 @@ class LoanSystemHelpController extends Controller
             ['key' => 'client_loyalty_points', 'label' => 'Client loyalty / royalty points rules', 'group' => 'preferences', 'value' => ''],
             ['key' => 'org_structure_change_requires_approval', 'label' => 'Require maker-checker approval for structure changes (0/1)', 'group' => 'preferences', 'value' => '0'],
             ['key' => 'org_structure_effective_dated_history', 'label' => 'Track effective-dated structure history (0/1)', 'group' => 'preferences', 'value' => '1'],
-            ['key' => 'loan_repayment_allocation_order', 'label' => 'Loan repayment allocation order (csv: principal,interest,fees,penalty)', 'group' => 'preferences', 'value' => 'principal,interest,fees,penalty'],
+            ['key' => 'loan_repayment_allocation_order', 'label' => 'Loan repayment allocation order (csv: principal,interest,fees,penalty,overpayment)', 'group' => 'preferences', 'value' => 'principal,interest,fees,penalty,overpayment'],
             ['key' => 'loan_account_code_collection', 'label' => 'Collection account code (cash/bank receiving account)', 'group' => 'preferences', 'value' => '1004'],
             ['key' => 'loan_account_code_principal', 'label' => 'Loan principal receivable account code', 'group' => 'preferences', 'value' => '1200'],
             ['key' => 'loan_account_code_interest_income', 'label' => 'Loan interest income account code', 'group' => 'preferences', 'value' => '4002'],

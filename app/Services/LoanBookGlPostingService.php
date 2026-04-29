@@ -13,7 +13,9 @@ use App\Models\LoanBookPayment;
 use App\Models\LoanBookLoan;
 use App\Models\LoanSystemSetting;
 use App\Models\User;
+use App\Services\LoanBook\LoanRepaymentAllocationService;
 use App\Services\AccountingChartBalanceService;
+use App\Services\AccountingEventRegistryService;
 use App\Services\AccountingOverdraftGuardService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Schema;
@@ -59,11 +61,12 @@ class LoanBookGlPostingService
             throw new \RuntimeException('Amount must be non-zero to post to the general ledger.');
         }
 
-        $rule = $this->resolveRuleForPayment($payment);
-        $cashId = $this->resolveCollectionAccountId((string) $payment->channel, $rule);
+        $eventRegistry = app(AccountingEventRegistryService::class);
 
         if ($payment->payment_kind === LoanBookPayment::KIND_C2B_REVERSAL) {
-            [$drId, $crId] = $this->resolvePaymentDebitCredit($payment, $rule, $cashId);
+            $reversalMap = $eventRegistry->resolveEventAccountIdsOrFail('ReversalPosted');
+            $drId = (int) $reversalMap['debit_account_id'];
+            $crId = (int) $reversalMap['credit_account_id'];
 
             $loan = $payment->loan;
             $loanLabel = $loan ? $loan->loan_number : 'Unallocated';
@@ -82,27 +85,53 @@ class LoanBookGlPostingService
             );
         }
 
-        $allocation = $this->allocatePaymentByComponent($payment, $amount);
-        if ($allocation === []) {
+        if ($payment->payment_kind === LoanBookPayment::KIND_OVERPAYMENT) {
+            $allocationResolver = app(LoanRepaymentAllocationService::class);
+            $allocationResult = $allocationResolver->allocate($payment, $payment->loan, $amount);
+            $allocationResolver->persistAllocation($payment, $allocationResult['allocations'], $allocationResult['order']);
+            $overpaymentMap = $eventRegistry->resolveEventAccountIdsOrFail('LoanOverpayment');
+            $loan = $payment->loan;
+            $loanLabel = $loan ? $loan->loan_number : 'Unallocated';
+            $ref = $payment->reference ?? 'PAY-'.$payment->id;
+            $description = 'Loan pay-in '.$ref.' — '.$loanLabel
+                .' ('.$payment->payment_kind.', '.$payment->channel.')';
+
+            return $this->persistEntry(
+                $payment->transaction_at,
+                $ref,
+                $description,
+                $user?->id,
+                (int) $overpaymentMap['debit_account_id'],
+                (int) $overpaymentMap['credit_account_id'],
+                $amount
+            );
+        }
+
+        $allocationResolver = app(LoanRepaymentAllocationService::class);
+        $allocationResult = $allocationResolver->allocate($payment, $payment->loan, $amount);
+        $allocationResolver->persistAllocation($payment, $allocationResult['allocations'], $allocationResult['order']);
+        $allocation = $allocationResult['allocations'];
+        if (round((float) array_sum($allocation), 2) <= 0.0) {
             throw new \RuntimeException('Unable to allocate payment to accounting components.');
         }
 
-        $creditLines = [];
+        $receiveMap = $eventRegistry->resolveEventAccountIdsOrFail('ClientPaymentReceived');
+        $cashAccountId = (int) $receiveMap['debit_account_id'];
+        $walletAccountId = (int) $receiveMap['credit_account_id'];
+        $debitLines = [$cashAccountId => $amount];
+        $creditLines = [$walletAccountId => $amount];
         foreach ($allocation as $component => $componentAmount) {
             if ($componentAmount <= 0.0) {
                 continue;
             }
-            $accountId = $this->resolveComponentAccountId($component, $rule);
-            if (! $accountId) {
-                $accountId = $this->resolveComponentFallbackAccountId($rule);
+            if ($component === 'overpayment') {
+                continue;
             }
-            if (! $accountId) {
-                throw new \RuntimeException('Set account mapping for payment component: '.$component.'.');
-            }
-            $creditLines[$accountId] = ($creditLines[$accountId] ?? 0.0) + $componentAmount;
-        }
-        if ($creditLines === []) {
-            throw new \RuntimeException('No accounting credit components were produced from this payment.');
+            $componentMap = $eventRegistry->resolveEventAccountIdsOrFail($this->eventKeyForPaymentComponent($component));
+            $componentDebit = (int) $componentMap['debit_account_id'];
+            $componentCredit = (int) $componentMap['credit_account_id'];
+            $debitLines[$componentDebit] = ($debitLines[$componentDebit] ?? 0.0) + $componentAmount;
+            $creditLines[$componentCredit] = ($creditLines[$componentCredit] ?? 0.0) + $componentAmount;
         }
 
         $loan = $payment->loan;
@@ -111,12 +140,12 @@ class LoanBookGlPostingService
         $description = 'Loan pay-in '.$ref.' — '.$loanLabel
             .' ('.$payment->payment_kind.', '.$payment->channel.')';
 
-        return $this->persistSplitEntry(
+        return $this->persistMultiLineEntry(
             $payment->transaction_at,
             $ref,
             $description,
             $user?->id,
-            (int) $cashId,
+            $debitLines,
             $creditLines
         );
     }
@@ -140,13 +169,9 @@ class LoanBookGlPostingService
             throw new \RuntimeException('Amount must be non-zero to post to the general ledger.');
         }
 
-        $rule = AccountingPostingRule::query()->where('rule_key', self::RULE_LOAN_LEDGER)->first();
-        if (! $rule) {
-            throw new \RuntimeException('Configure the "Loan Ledger" posting rule under Chart of accounts.');
-        }
-
-        $cashId = $this->resolveCashAccountId((string) $entry->channel);
-        [$drId, $crId] = $this->resolveInflowDebitCredit($rule, $cashId);
+        $mapped = app(AccountingEventRegistryService::class)->resolveEventAccountIdsOrFail('ClientPaymentReceived');
+        $drId = (int) $mapped['debit_account_id'];
+        $crId = (int) $mapped['credit_account_id'];
 
         $loan = $entry->loan;
         $loanLabel = $loan ? $loan->loan_number : 'Loan #'.$entry->loan_book_loan_id;
@@ -182,24 +207,9 @@ class LoanBookGlPostingService
             throw new \RuntimeException('Amount must be non-zero to post to the general ledger.');
         }
 
-        $rule = AccountingPostingRule::query()->where('rule_key', self::RULE_LOAN_LEDGER)->first();
-        if (! $rule) {
-            throw new \RuntimeException('Configure the "Loan Ledger" posting rule under Chart of accounts before recording disbursements.');
-        }
-
-        $cashId = $this->resolveCashAccountIdFromMethod((string) $disbursement->method);
-        $loanDr = $this->resolveCreditAccountId($rule);
-        $cashCr = $rule->debit_account_id ?? $cashId;
-
-        if (! $loanDr) {
-            throw new \RuntimeException('Set the credit account on the Loan Ledger rule (loan portfolio / receivable).');
-        }
-        if (! $cashCr) {
-            throw new \RuntimeException('Set the debit account on the Loan Ledger rule to your main cash/bank account, or map wallet "Transactional" / "Cash" accounts.');
-        }
-        if ((int) $loanDr === (int) $cashCr) {
-            throw new \RuntimeException('Loan Ledger debit and credit cannot be the same account.');
-        }
+        $mapped = app(AccountingEventRegistryService::class)->resolveEventAccountIdsOrFail('LoanDisbursed');
+        $loanDr = (int) $mapped['debit_account_id'];
+        $cashCr = (int) $mapped['credit_account_id'];
 
         $loan = $disbursement->loan;
         $loanLabel = $loan ? $loan->loan_number : 'Loan #'.$disbursement->loan_book_loan_id;
@@ -268,7 +278,7 @@ class LoanBookGlPostingService
 
     private function assertAccountingSchema(): void
     {
-        foreach (['accounting_journal_entries', 'accounting_journal_lines', 'accounting_chart_accounts', 'accounting_posting_rules'] as $t) {
+        foreach (['accounting_journal_entries', 'accounting_journal_lines', 'accounting_chart_accounts', 'accounting_posting_rules', 'loan_payment_allocations'] as $t) {
             if (! Schema::hasTable($t)) {
                 throw new \RuntimeException('Accounting tables are missing. Run migrations first.');
             }
@@ -297,69 +307,12 @@ class LoanBookGlPostingService
      */
     private function allocatePaymentByComponent(LoanBookPayment $payment, float $amount): array
     {
-        if ($payment->payment_kind === LoanBookPayment::KIND_OVERPAYMENT) {
-            return ['overpayment' => $amount];
-        }
+        $result = app(LoanRepaymentAllocationService::class)->allocate($payment, $payment->loan, $amount);
 
-        $loan = $payment->loan;
-        if (! $loan) {
-            return ['principal' => $amount];
-        }
-
-        $remaining = $amount;
-        $principal = max(0.0, (float) ($loan->principal_outstanding ?? 0.0));
-        $interest = max(0.0, (float) ($loan->interest_outstanding ?? 0.0));
-        $fees = max(0.0, (float) ($loan->fees_outstanding ?? 0.0));
-        if ($principal <= 0.0 && $interest <= 0.0 && $fees <= 0.0) {
-            $principal = max(0.0, (float) ($loan->balance ?? 0.0));
-        }
-
-        $allocated = [
-            'principal' => 0.0,
-            'interest' => 0.0,
-            'fees' => 0.0,
-            'penalty' => 0.0,
-            'overpayment' => 0.0,
-        ];
-
-        foreach ($this->repaymentOrder() as $bucket) {
-            if ($remaining <= 0.0) {
-                break;
-            }
-            if ($bucket === 'principal') {
-                $apply = min($remaining, $principal);
-                $principal = round($principal - $apply, 2);
-                $allocated['principal'] += $apply;
-                $remaining -= $apply;
-                continue;
-            }
-            if ($bucket === 'interest') {
-                $apply = min($remaining, $interest);
-                $interest = round($interest - $apply, 2);
-                $allocated['interest'] += $apply;
-                $remaining -= $apply;
-                continue;
-            }
-            if ($bucket === 'fees') {
-                $apply = min($remaining, $fees);
-                $fees = round($fees - $apply, 2);
-                $allocated['fees'] += $apply;
-                $remaining -= $apply;
-                continue;
-            }
-            if ($bucket === 'penalty') {
-                $apply = min($remaining, $fees);
-                $fees = round($fees - $apply, 2);
-                $allocated['penalty'] += $apply;
-                $remaining -= $apply;
-            }
-        }
-
-        if ($remaining > 0.0) {
-            $allocated['overpayment'] += $remaining;
-        }
-
-        return array_filter($allocated, static fn (float $v): bool => round($v, 2) > 0.0);
+        return array_filter(
+            $result['allocations'],
+            static fn (float $v): bool => round($v, 2) > 0.0
+        );
     }
 
     /**
@@ -421,20 +374,7 @@ class LoanBookGlPostingService
      */
     private function repaymentOrder(): array
     {
-        $raw = (string) (LoanSystemSetting::getValue(self::SETTING_REPAYMENT_ORDER, 'principal,interest,fees,penalty') ?? '');
-        $parts = array_values(array_filter(array_map(
-            static fn (string $p) => strtolower(trim($p)),
-            explode(',', $raw)
-        )));
-        $valid = ['principal', 'interest', 'fees', 'penalty'];
-        $order = array_values(array_intersect($parts, $valid));
-        foreach ($valid as $v) {
-            if (! in_array($v, $order, true)) {
-                $order[] = $v;
-            }
-        }
-
-        return $order;
+        return app(LoanRepaymentAllocationService::class)->repaymentOrder();
     }
 
     private function resolveCashAccountId(string $channel): ?int
@@ -494,6 +434,17 @@ class LoanBookGlPostingService
     {
         return $this->resolveAccountBySettingCode(self::SETTING_ACCOUNT_PRINCIPAL, '1200')
             ?: $this->resolveCreditAccountId($fallbackRule);
+    }
+
+    private function eventKeyForPaymentComponent(string $component): string
+    {
+        return match ($component) {
+            'principal' => 'PrincipalAllocated',
+            'interest' => 'InterestReceived',
+            'fees' => 'FeeReceived',
+            'penalty' => 'PenaltyReceived',
+            default => throw new \RuntimeException('Unsupported payment component: '.$component),
+        };
     }
 
     private function resolveAccountBySettingCode(string $settingKey, string $defaultCode): ?int
@@ -680,6 +631,83 @@ class LoanBookGlPostingService
 
         app(AccountingChartBalanceService::class)
             ->syncAccountsAndAncestors(array_values(array_unique($syncIds)));
+
+        return $entry;
+    }
+
+    /**
+     * @param  array<int, float>  $debitLinesByAccount
+     * @param  array<int, float>  $creditLinesByAccount
+     */
+    private function persistMultiLineEntry(
+        CarbonInterface $entryDate,
+        string $reference,
+        string $description,
+        ?int $userId,
+        array $debitLinesByAccount,
+        array $creditLinesByAccount
+    ): AccountingJournalEntry {
+        $debitLinesByAccount = array_filter($debitLinesByAccount, static fn ($v): bool => round((float) $v, 2) > 0.0);
+        $creditLinesByAccount = array_filter($creditLinesByAccount, static fn ($v): bool => round((float) $v, 2) > 0.0);
+        if ($debitLinesByAccount === [] || $creditLinesByAccount === []) {
+            throw new \RuntimeException('Posting lines are incomplete.');
+        }
+
+        $debitTotal = round(array_sum(array_map(static fn ($v): float => (float) $v, $debitLinesByAccount)), 2);
+        $creditTotal = round(array_sum(array_map(static fn ($v): float => (float) $v, $creditLinesByAccount)), 2);
+        if ($debitTotal <= 0.0 || $creditTotal <= 0.0 || $debitTotal !== $creditTotal) {
+            throw new \RuntimeException('Posting lines are not balanced.');
+        }
+
+        $accountIds = array_values(array_unique(array_merge(array_keys($debitLinesByAccount), array_keys($creditLinesByAccount))));
+        $accounts = AccountingChartAccount::query()->whereIn('id', $accountIds)->get()->keyBy('id');
+        foreach ($accountIds as $accountId) {
+            $account = $accounts->get((int) $accountId);
+            if (! $account) {
+                throw new \RuntimeException('Posting account is missing.');
+            }
+            if ($account->isHeader()) {
+                throw new \RuntimeException('Journal entries can only post to Detail accounts.');
+            }
+        }
+
+        $deltas = [];
+        foreach ($debitLinesByAccount as $accountId => $amount) {
+            $deltas[(int) $accountId] = ($deltas[(int) $accountId] ?? 0.0) + round((float) $amount, 2);
+        }
+        foreach ($creditLinesByAccount as $accountId => $amount) {
+            $deltas[(int) $accountId] = ($deltas[(int) $accountId] ?? 0.0) - round((float) $amount, 2);
+        }
+        app(AccountingOverdraftGuardService::class)->assertCanApplyDeltas($deltas);
+
+        $entry = AccountingJournalEntry::query()->create([
+            'entry_date' => $entryDate->toDateString(),
+            'reference' => Str::limit($reference, 64, ''),
+            'description' => Str::limit($description, 2000, ''),
+            'created_by' => $userId,
+        ]);
+
+        foreach ($debitLinesByAccount as $accountId => $amount) {
+            AccountingJournalLine::query()->create([
+                'accounting_journal_entry_id' => $entry->id,
+                'accounting_chart_account_id' => (int) $accountId,
+                'debit' => round((float) $amount, 2),
+                'credit' => 0,
+                'memo' => null,
+            ]);
+        }
+        foreach ($creditLinesByAccount as $accountId => $amount) {
+            AccountingJournalLine::query()->create([
+                'accounting_journal_entry_id' => $entry->id,
+                'accounting_chart_account_id' => (int) $accountId,
+                'debit' => 0,
+                'credit' => round((float) $amount, 2),
+                'memo' => null,
+            ]);
+        }
+
+        app(AccountingChartBalanceService::class)
+            ->syncAccountsAndAncestors($accountIds);
 
         return $entry;
     }

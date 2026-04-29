@@ -7,10 +7,10 @@
                 @php
                     $cur = (string) old('settings.'.$row->key, $row->value);
                     $opts = [
-                        'fees,interest,principal' => 'Fees → Interest → Principal (recommended)',
-                        'interest,principal,fees' => 'Interest → Principal → Fees',
-                        'principal,interest,fees' => 'Principal → Interest → Fees',
-                        'interest,fees,principal' => 'Interest → Fees → Principal',
+                        'principal,interest,fees,penalty,overpayment' => 'Principal → Interest → Fees → Penalty → Overpayment (default)',
+                        'fees,interest,principal,penalty,overpayment' => 'Fees → Interest → Principal → Penalty → Overpayment',
+                        'interest,principal,fees,penalty,overpayment' => 'Interest → Principal → Fees → Penalty → Overpayment',
+                        'interest,fees,principal,penalty,overpayment' => 'Interest → Fees → Principal → Penalty → Overpayment',
                     ];
                 @endphp
                 @foreach ($opts as $val => $label)
