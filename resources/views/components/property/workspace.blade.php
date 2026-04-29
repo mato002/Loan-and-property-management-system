@@ -109,8 +109,7 @@
             <div class="property-ws-wrap w-full min-w-0 space-y-3">
                 @if ($hasToolbar || $canShowDefaultSearch)
                     <div
-                        data-workspace-toolbar
-                        class="print-hide flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center w-full min-w-0 [&_input[type=search]]:w-full [&_input[type=search]]:min-w-0 [&_input[type=search]]:sm:max-w-md [&_input[type=month]]:w-full [&_input[type=month]]:min-w-0 [&_input[type=month]]:sm:w-auto [&_select]:w-full [&_select]:min-w-0 [&_select]:sm:w-auto [&_.flex-1]:min-w-0"
+                        class="print-hide flex flex-col sm:flex-row flex-wrap gap-3 items-stretch sm:items-center w-full min-w-0 [&_form]:w-full [&_form]:min-w-0 [&_form]:flex-wrap [&_input[type=search]]:w-full [&_input[type=search]]:min-w-0 [&_input[type=search]]:sm:max-w-md [&_input[type=month]]:w-full [&_input[type=month]]:min-w-0 [&_input[type=month]]:sm:w-auto [&_select]:w-full [&_select]:min-w-0 [&_select]:sm:w-auto [&_button]:max-w-full [&_a]:max-w-full [&_.flex-1]:min-w-0"
                     >
                         @if ($canShowDefaultSearch)
                             <input
@@ -128,11 +127,11 @@
                 @if ($hasTable)
                     <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm w-full min-w-0 overflow-visible">
                         <div class="overflow-x-auto overflow-y-visible w-full min-w-0 -mx-4 px-4 sm:mx-0 sm:px-0">
-                            <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_th]:dark:border-slate-700 [&_td]:border [&_td]:border-slate-200 [&_td]:dark:border-slate-700">
+                            <table class="min-w-full table-auto border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_th]:dark:border-slate-700 [&_td]:border [&_td]:border-slate-200 [&_td]:dark:border-slate-700">
                                 <thead class="bg-slate-50 dark:bg-slate-900/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
                                     <tr>
                                         @foreach ($columns as $col)
-                                            <th class="px-3 sm:px-4 py-3 whitespace-nowrap">{{ $col }}</th>
+                                            <th class="px-3 sm:px-4 py-3 whitespace-normal break-words">{{ $col }}</th>
                                         @endforeach
                                     </tr>
                                 </thead>
@@ -171,7 +170,7 @@
                                                         $cellHtml = (string) $cell;
                                                         $containsDropdown = str_contains(strtolower($cellHtml), '<details');
                                                     @endphp
-                                                    <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 align-top {{ $containsDropdown ? 'whitespace-normal overflow-visible' : 'whitespace-normal sm:whitespace-nowrap sm:max-w-xs sm:truncate' }}">
+                                                    <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 align-top {{ $containsDropdown ? 'whitespace-normal overflow-visible' : 'whitespace-normal break-words' }}">
                                                         @if ($cell instanceof \Illuminate\Support\HtmlString)
                                                             {!! $cell !!}
                                                         @else
@@ -220,48 +219,51 @@
     </x-property.page>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            // Keep cards/alerts in "above", but force GET filter forms
-            // to render right above table in toolbar for consistent layout.
-            document.querySelectorAll('[data-workspace-above]').forEach(function (aboveWrap) {
-                const scope = aboveWrap.parentElement;
-                if (!scope) return;
-                const toolbar = scope.querySelector('[data-workspace-toolbar]');
-                if (!toolbar) return;
-
-                const filterForms = aboveWrap.querySelectorAll('form[method="get"], form[method="GET"]');
-                filterForms.forEach(function (form) {
-                    toolbar.appendChild(form);
-                });
-
-                // Also move non-form filter/search blocks accidentally placed in "above".
-                // We only move blocks that look like table filters (search + submit style controls).
-                Array.from(aboveWrap.children).forEach(function (child) {
-                    if (!(child instanceof HTMLElement)) return;
-                    if (child.hasAttribute('data-workspace-keep-above')) return;
-                    if (child.closest('[data-workspace-toolbar]')) return;
-
-                    const hasSearchLike = Boolean(
-                        child.querySelector('input[type="search"], [data-table-filter], input[name="q"], input[name="search"]')
-                    );
-                    const hasFilterInputs = Boolean(
-                        child.querySelector('select[name], input[type="date"][name], input[type="month"][name], input[type="text"][name]')
-                    );
-                    const hasApplyControl = Boolean(
-                        child.querySelector('button[type="submit"], input[type="submit"]')
-                    );
-
-                    if ((hasSearchLike && hasApplyControl) || (hasSearchLike && hasFilterInputs && hasApplyControl)) {
-                        toolbar.appendChild(child);
-                    }
-                });
-            });
-
+        function setupPropertyWorkspaceUi() {
             const interactiveSelector = 'a, button, input, select, textarea, label, summary, details, [role="button"], [data-row-ignore-click]';
 
+            // Normalize toolbar exports: collapse multiple export links into one dropdown.
+            document.querySelectorAll('.property-ws-wrap form').forEach(function (form) {
+                if (form.querySelector('[data-export-dropdown-auto]')) return;
+                if (form.querySelector('select[onchange*="window.location.href"]')) return;
+
+                const exportLinks = Array.from(form.querySelectorAll('a[href*="export="]'));
+                if (exportLinks.length < 2) return;
+
+                const firstLink = exportLinks[0];
+                const dropdown = document.createElement('select');
+                dropdown.setAttribute('data-export-dropdown-auto', '1');
+                dropdown.className = 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 max-w-full';
+
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = 'Export';
+                dropdown.appendChild(placeholder);
+
+                exportLinks.forEach(function (link) {
+                    const href = link.getAttribute('href') || '';
+                    if (!href) return;
+                    const option = document.createElement('option');
+                    option.value = href;
+                    option.textContent = (link.textContent || '').trim().replace(/^Export\s+/i, '') || 'File';
+                    dropdown.appendChild(option);
+                });
+
+                dropdown.addEventListener('change', function () {
+                    if (!dropdown.value) return;
+                    window.location.href = dropdown.value;
+                    dropdown.selectedIndex = 0;
+                });
+
+                firstLink.parentNode?.insertBefore(dropdown, firstLink);
+                exportLinks.forEach(function (link) { link.remove(); });
+            });
+
             document.querySelectorAll('tr[data-row-href]').forEach(function (row) {
+                if (row.dataset.rowHrefBound === '1') return;
                 const href = row.getAttribute('data-row-href');
                 if (!href) return;
+                row.dataset.rowHrefBound = '1';
 
                 row.addEventListener('click', function (event) {
                     if (event.target && event.target.closest(interactiveSelector)) {
@@ -277,6 +279,10 @@
                     window.location.href = href;
                 });
             });
-        });
+        }
+
+        document.addEventListener('DOMContentLoaded', setupPropertyWorkspaceUi);
+        document.addEventListener('turbo:load', setupPropertyWorkspaceUi);
+        document.addEventListener('turbo:frame-load', setupPropertyWorkspaceUi);
     </script>
 </x-property-layout>

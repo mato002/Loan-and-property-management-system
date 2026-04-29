@@ -69,24 +69,26 @@
                     },
                     async addChargeType(index) {
                         let raw = '';
-                        if (window.Swal && typeof window.Swal.fire === 'function') {
+                        if (window.Swal) {
                             const result = await window.Swal.fire({
                                 title: 'Add charge type',
+                                text: 'Examples: internet, security, sewer',
                                 input: 'text',
-                                inputLabel: 'New charge type (e.g. internet, security, sewer)',
-                                inputPlaceholder: 'internet',
+                                inputPlaceholder: 'Enter charge type',
                                 showCancelButton: true,
-                                confirmButtonText: 'Save',
+                                confirmButtonText: 'Add',
                                 cancelButtonText: 'Cancel',
+                                inputValidator: (value) => {
+                                    if (!String(value || '').trim()) return 'Charge type is required.';
+                                    return null;
+                                },
                             });
-                            if (!result.isConfirmed) return;
-                            raw = String(result.value || '');
+                            raw = String(result.value || '').trim();
                         } else {
-                            const fallback = window.prompt('New charge type (e.g. internet, security, sewer):', '');
-                            if (!fallback) return;
-                            raw = String(fallback);
+                            raw = String(window.prompt('New charge type (e.g. internet, security, sewer):', '') || '').trim();
                         }
-                        const normalized = raw
+                        if (!raw) return;
+                        const normalized = String(raw)
                             .trim()
                             .toLowerCase()
                             .replace(/[^a-z0-9]+/g, '_')
@@ -168,7 +170,9 @@
                                 <div class="grid gap-2 sm:grid-cols-2">
                                     <div>
                                         <div class="flex items-center justify-between gap-2">
-                                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Charge type</label>
+                                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">
+                                                Charge type <span class="text-red-600" aria-hidden="true">*</span>
+                                            </label>
                                             <button type="button" @click="addChargeType(index)" class="rounded border border-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">+</button>
                                         </div>
                                         <select :name="`charge_templates[${index}][charge_type]`" x-model="charge.charge_type" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">

@@ -30,7 +30,12 @@ class PmLease extends Model
         'deposit_amount',
         'utility_expense_type',
         'utility_expense_amount',
+        'utility_expenses',
         'additional_deposits',
+        'opening_arrears',
+        'opening_arrears_manual_total',
+        'opening_arrears_as_of_date',
+        'opening_arrears_note',
         'status',
         'terms_summary',
     ];
@@ -43,7 +48,11 @@ class PmLease extends Model
             'monthly_rent' => 'decimal:2',
             'deposit_amount' => 'decimal:2',
             'utility_expense_amount' => 'decimal:2',
+            'utility_expenses' => 'array',
             'additional_deposits' => 'array',
+            'opening_arrears' => 'array',
+            'opening_arrears_manual_total' => 'decimal:2',
+            'opening_arrears_as_of_date' => 'date',
         ];
     }
 
@@ -82,6 +91,11 @@ class PmLease extends Model
     public function invoices(): HasMany
     {
         return $this->hasMany(PmInvoice::class, 'pm_lease_id');
+    }
+
+    public function depositLines(): HasMany
+    {
+        return $this->hasMany(LeaseDepositLine::class, 'pm_lease_id');
     }
 
     public function isActive(): bool

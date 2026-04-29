@@ -24,7 +24,7 @@ class PmInvoiceController extends Controller
             'tenant:id,name,phone,email',
             'unit:id,label,property_id',
             'unit.property:id,name',
-            'allocations.payment:id,payment_ref,paid_at,status,amount,payment_method',
+            'allocations.payment:id,external_ref,paid_at,status,amount,channel',
         ]);
 
         return view('property.agent.revenue.invoices_show', [

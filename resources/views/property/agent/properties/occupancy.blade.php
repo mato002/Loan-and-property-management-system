@@ -26,21 +26,21 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.properties.occupancy') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
-            <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search unit or property..." class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 lg:col-span-2" />
-            <select name="property_id" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+        <form method="get" action="{{ route('property.properties.occupancy') }}" class="w-full grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-12">
+            <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search unit or property..." class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 sm:col-span-2 lg:col-span-4 min-w-0" />
+            <select name="property_id" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-0 lg:col-span-2">
                 <option value="">All properties</option>
                 @foreach(($propertyOptions ?? []) as $p)
                     <option value="{{ $p->id }}" @selected((string) ($filters['property_id'] ?? '') === (string) $p->id)>{{ $p->name }}</option>
                 @endforeach
             </select>
-            <select name="status" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+            <select name="status" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-0 lg:col-span-2">
                 <option value="">All statuses</option>
                 <option value="occupied" @selected(($filters['status'] ?? '') === 'occupied')>Occupied</option>
                 <option value="vacant" @selected(($filters['status'] ?? '') === 'vacant')>Vacant</option>
                 <option value="notice" @selected(($filters['status'] ?? '') === 'notice')>Notice</option>
             </select>
-            <select name="age_bucket" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+            <select name="age_bucket" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-0 lg:col-span-2">
                 <option value="">Vacancy age: All</option>
                 <option value="0_30" @selected(($filters['age_bucket'] ?? '') === '0_30')>0-30 days</option>
                 <option value="31_60" @selected(($filters['age_bucket'] ?? '') === '31_60')>31-60 days</option>
@@ -48,12 +48,14 @@
                 <option value="90_plus" @selected(($filters['age_bucket'] ?? '') === '90_plus')>90+ days</option>
             </select>
             <input type="hidden" name="preset" value="{{ $filters['preset'] ?? '' }}" />
-            <div class="flex items-center gap-2 lg:col-span-2">
+            <div class="flex flex-wrap items-center gap-2 sm:col-span-2 lg:col-span-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
                 <a href="{{ route('property.properties.occupancy', absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
-                <a href="{{ route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">CSV</a>
-                <a href="{{ route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">PDF</a>
-                <a href="{{ route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Word</a>
+                @include('property.agent.partials.export_dropdown', [
+                    'csvUrl' => route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'csv']), false),
+                    'pdfUrl' => route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'pdf']), false),
+                    'wordUrl' => route('property.properties.occupancy', array_merge(request()->query(), ['export' => 'word']), false),
+                ])
             </div>
         </form>
 

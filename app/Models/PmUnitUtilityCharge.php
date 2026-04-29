@@ -13,6 +13,9 @@ class PmUnitUtilityCharge extends Model
         'property_unit_id',
         'charge_type',
         'billing_month',
+        'units_consumed',
+        'rate_per_unit',
+        'fixed_charge',
         'label',
         'amount',
         'notes',
@@ -23,6 +26,9 @@ class PmUnitUtilityCharge extends Model
     protected function casts(): array
     {
         return [
+            'units_consumed' => 'decimal:3',
+            'rate_per_unit' => 'decimal:2',
+            'fixed_charge' => 'decimal:2',
             'amount' => 'decimal:2',
             'is_invoiced' => 'boolean',
         ];

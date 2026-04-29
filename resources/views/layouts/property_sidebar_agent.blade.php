@@ -544,6 +544,20 @@
                     'badge' => null,
                 ],
                 [
+                    'label' => 'Property finance rules',
+                    'sublabel' => 'Charges/deposits setup',
+                    'route' => 'property.settings.deposits',
+                    'active' => ['property.settings.deposits', 'property.settings.deposits.store'],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Expense charge rules',
+                    'sublabel' => 'Charge definitions',
+                    'route' => 'property.settings.expenses',
+                    'active' => ['property.settings.expenses', 'property.settings.expenses.store'],
+                    'badge' => null,
+                ],
+                [
                     'label' => 'System setup',
                     'sublabel' => 'Forms · workflows · templates',
                     'route' => 'property.settings.system_setup',

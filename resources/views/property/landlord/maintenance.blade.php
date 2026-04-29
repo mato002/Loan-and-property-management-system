@@ -37,15 +37,15 @@
                 <p class="text-sm text-slate-500">No maintenance activity found.</p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="min-w-full text-sm">
+                    <table class="min-w-full table-auto text-sm">
                         <thead class="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200 dark:border-slate-700">
                             <tr>
-                                <th class="py-2 pr-3">Job</th>
-                                <th class="py-2 pr-3">Property / unit</th>
-                                <th class="py-2 pr-3">Vendor</th>
-                                <th class="py-2 pr-3">Quote</th>
-                                <th class="py-2 pr-3">Status</th>
-                                <th class="py-2">Action</th>
+                                <th class="py-2 pr-3 whitespace-normal break-words">Job</th>
+                                <th class="py-2 pr-3 whitespace-normal break-words">Property / unit</th>
+                                <th class="py-2 pr-3 whitespace-normal break-words">Vendor</th>
+                                <th class="py-2 pr-3 whitespace-normal break-words">Quote</th>
+                                <th class="py-2 pr-3 whitespace-normal break-words">Status</th>
+                                <th class="py-2 whitespace-normal break-words">Action</th>
                             </tr>
                         </thead>
                         <tbody>

@@ -44,9 +44,9 @@
                     <tbody class="divide-y divide-slate-100">
                         @forelse ($invoice->allocations as $allocation)
                             <tr>
-                                <td class="px-3 py-2 text-slate-700">{{ $allocation->payment?->payment_ref ?? ('PAY-'.$allocation->pm_payment_id) }}</td>
+                                <td class="px-3 py-2 text-slate-700">{{ $allocation->payment?->external_ref ?? ('PAY-'.$allocation->pm_payment_id) }}</td>
                                 <td class="px-3 py-2 text-slate-600">{{ optional($allocation->payment?->paid_at)->format('Y-m-d') ?? '—' }}</td>
-                                <td class="px-3 py-2 text-slate-600">{{ $allocation->payment?->payment_method ?? '—' }}</td>
+                                <td class="px-3 py-2 text-slate-600">{{ $allocation->payment?->channel ?? '—' }}</td>
                                 <td class="px-3 py-2 text-slate-600">{{ $allocation->payment?->status ?? '—' }}</td>
                                 <td class="px-3 py-2 text-right tabular-nums font-medium text-slate-800">KES {{ number_format((float) $allocation->amount, 2) }}</td>
                             </tr>

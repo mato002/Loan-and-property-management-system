@@ -65,9 +65,9 @@
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-4">
             <h3 class="text-sm font-semibold mb-3">Invoice lines ({{ $invoiceRows->count() }})</h3>
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm">
+                <table class="min-w-full table-auto text-sm">
                     <thead class="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200 dark:border-slate-700">
-                        <tr><th class="py-2 pr-3">Invoice</th><th class="py-2 pr-3">Property / Unit</th><th class="py-2 pr-3">Amount</th><th class="py-2">Paid</th></tr>
+                        <tr><th class="py-2 pr-3 whitespace-normal break-words">Invoice</th><th class="py-2 pr-3 whitespace-normal break-words">Property / Unit</th><th class="py-2 pr-3 whitespace-normal break-words">Amount</th><th class="py-2 whitespace-normal break-words">Paid</th></tr>
                     </thead>
                     <tbody>
                         @forelse($invoiceRows as $i)

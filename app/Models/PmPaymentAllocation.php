@@ -12,6 +12,7 @@ class PmPaymentAllocation extends Model
     protected $fillable = [
         'pm_payment_id',
         'pm_invoice_id',
+        'lease_deposit_line_id',
         'amount',
     ];
 
@@ -30,5 +31,10 @@ class PmPaymentAllocation extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(PmInvoice::class, 'pm_invoice_id');
+    }
+
+    public function leaseDepositLine(): BelongsTo
+    {
+        return $this->belongsTo(LeaseDepositLine::class, 'lease_deposit_line_id');
     }
 }

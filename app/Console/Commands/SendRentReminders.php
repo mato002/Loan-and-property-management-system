@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\PmInvoice;
 use App\Models\PmMessageLog;
+use App\Models\PmTenantNotice;
 use App\Models\PropertyPortalSetting;
 use App\Services\BulkSmsService;
 use Illuminate\Console\Command;
@@ -68,6 +69,7 @@ class SendRentReminders extends Command
                 "Due date: {$due}\n".
                 "Balance due: {$balance}\n\n".
                 "If you have already paid, please ignore this message.";
+            $noticeCreated = false;
 
             // Dedupe per invoice per day per channel.
             $alreadyEmailed = PmMessageLog::query()
@@ -95,6 +97,9 @@ class SendRentReminders extends Command
                         'body' => $body,
                     ]);
                     $sent++;
+                    if (! $noticeCreated) {
+                        $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $body);
+                    }
                 } catch (\Throwable $e) {
                     // still continue to SMS
                 }
@@ -115,6 +120,9 @@ class SendRentReminders extends Command
                             'body' => $smsMsg,
                         ]);
                         $sent++;
+                        if (! $noticeCreated) {
+                            $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $smsMsg);
+                        }
                     }
                 }
             }
@@ -122,6 +130,38 @@ class SendRentReminders extends Command
 
         $this->info("Rent reminders processed. Sent={$sent}.");
         return self::SUCCESS;
+    }
+
+    private function createArrearsNoticeIfMissing(PmInvoice $invoice, string $message): bool
+    {
+        $invoiceNo = (string) ($invoice->invoice_no ?? '');
+        if ($invoiceNo === '') {
+            return false;
+        }
+        $today = now()->toDateString();
+        $needle = 'Invoice: '.$invoiceNo;
+        $exists = PmTenantNotice::query()
+            ->where('pm_tenant_id', (int) $invoice->pm_tenant_id)
+            ->where('property_unit_id', (int) $invoice->property_unit_id)
+            ->where('notice_type', 'arrears_reminder')
+            ->whereDate('due_on', $today)
+            ->where('notes', 'like', '%'.$needle.'%')
+            ->exists();
+        if ($exists) {
+            return false;
+        }
+
+        PmTenantNotice::query()->create([
+            'pm_tenant_id' => (int) $invoice->pm_tenant_id,
+            'property_unit_id' => (int) $invoice->property_unit_id,
+            'notice_type' => 'arrears_reminder',
+            'status' => 'sent',
+            'due_on' => $today,
+            'notes' => "Auto arrears reminder\nInvoice: {$invoiceNo}\n\n{$message}",
+            'created_by_user_id' => null,
+        ]);
+
+        return true;
     }
 }
 

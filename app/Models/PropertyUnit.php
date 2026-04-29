@@ -153,6 +153,16 @@ class PropertyUnit extends Model
         return $this->hasMany(PmUnitUtilityCharge::class, 'property_unit_id');
     }
 
+    public function depositDefinitions(): HasMany
+    {
+        return $this->hasMany(DepositDefinition::class, 'property_unit_id');
+    }
+
+    public function expenseDefinitions(): HasMany
+    {
+        return $this->hasMany(ExpenseDefinition::class, 'property_unit_id');
+    }
+
     public function primaryPublicImageUrl(): ?string
     {
         $first = $this->relationLoaded('publicImages')

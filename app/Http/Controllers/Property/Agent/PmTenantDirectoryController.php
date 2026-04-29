@@ -600,6 +600,7 @@ class PmTenantDirectoryController extends Controller
     public function storeJson(Request $request)
     {
         $cfg = $this->tenantFieldConfig();
+        $createPortal = in_array(mb_strtolower(trim((string) $request->input('create_portal_login', '0'))), ['1', 'true', 'yes', 'on'], true);
         $data = $request->validate([
             'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
             'phone' => [
@@ -610,23 +611,54 @@ class PmTenantDirectoryController extends Controller
                 Rule::unique('pm_tenants', 'phone')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
             ],
             'email' => [
-                Rule::requiredIf($this->isFieldRequired($cfg, 'email')),
+                ...($createPortal
+                    ? ['required']
+                    : [Rule::requiredIf($this->isFieldRequired($cfg, 'email'))]),
                 'nullable',
                 'email',
                 'max:255',
                 Rule::unique('pm_tenants', 'email')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+                ...($createPortal ? [Rule::unique(User::class, 'email')] : []),
             ],
+            'national_id' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')),
+                'nullable',
+                'string',
+                'max:64',
+                Rule::unique('pm_tenants', 'national_id')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+            ],
+            'risk_level' => ['nullable', 'in:normal,medium,high'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'create_portal_login' => ['nullable'],
         ]);
 
+        $user = null;
+        if ($createPortal) {
+            $plainPassword = Str::password(14, symbols: false);
+            $user = User::query()->create([
+                'name' => $data['name'],
+                'email' => Str::lower((string) $data['email']),
+                'password' => Hash::make($plainPassword),
+                'property_portal_role' => 'tenant',
+                'email_verified_at' => now(),
+            ]);
+            if (Schema::hasTable('user_module_accesses')) {
+                UserModuleAccess::query()->updateOrCreate(
+                    ['user_id' => $user->id, 'module' => 'property'],
+                    ['status' => UserModuleAccess::STATUS_APPROVED, 'approved_at' => now()]
+                );
+            }
+        }
+
         $tenant = PmTenant::query()->create([
-            'user_id' => null,
+            'user_id' => $user?->id,
             'agent_user_id' => (int) $request->user()->id,
             'name' => $data['name'],
             'phone' => $data['phone'] ?? null,
-            'email' => isset($data['email']) && trim((string) $data['email']) !== '' ? Str::lower($data['email']) : null,
-            'national_id' => null,
-            'risk_level' => 'normal',
-            'notes' => null,
+            'email' => isset($data['email']) && trim((string) $data['email']) !== '' ? Str::lower((string) $data['email']) : null,
+            'national_id' => $data['national_id'] ?? null,
+            'risk_level' => $data['risk_level'] ?? 'normal',
+            'notes' => $data['notes'] ?? null,
         ]);
 
         return response()->json([

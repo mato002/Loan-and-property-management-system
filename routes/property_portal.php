@@ -84,6 +84,8 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/revenue/utilities-charges', [PropertyUtilityChargeController::class, 'store'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.store');
         Route::post('/revenue/utilities-charges/water-readings', [PropertyUtilityChargeController::class, 'storeWaterReading'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_readings.store');
         Route::post('/revenue/utilities-charges/water-readings/bulk', [PropertyUtilityChargeController::class, 'storeBulkWaterReadings'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_readings.bulk');
+        Route::post('/revenue/utilities-charges/water-readings/bulk-action', [PropertyUtilityChargeController::class, 'waterReadingsBulkAction'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_readings.bulk_action');
+        Route::post('/revenue/utilities-charges/invoices', [PropertyUtilityChargeController::class, 'generateUtilityInvoices'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.invoices.generate');
         Route::post('/revenue/utilities-charges/water-invoices', [PropertyUtilityChargeController::class, 'generateWaterInvoices'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_invoices.generate');
         Route::post('/revenue/utilities-charges/water-penalties/apply', [PropertyUtilityChargeController::class, 'applyWaterPenalties'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.utilities.water_penalties.apply');
         Route::delete('/revenue/utilities-charges/{charge}', [PropertyUtilityChargeController::class, 'destroy'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.destroy');
@@ -148,6 +150,9 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/leases/{lease}', [PmLeaseWebController::class, 'show'])->name('leases.show');
         Route::get('/leases/{lease}/edit', [PmLeaseWebController::class, 'edit'])->name('leases.edit');
         Route::put('/leases/{lease}', [PmLeaseWebController::class, 'update'])->middleware('property.permission:leases.manage')->name('leases.update');
+        Route::post('/leases/{lease}/terminate', [PmLeaseWebController::class, 'terminate'])->middleware('property.permission:leases.manage')->name('leases.terminate');
+        Route::post('/leases/{lease}/restore', [PmLeaseWebController::class, 'restore'])->middleware('property.permission:leases.manage')->name('leases.restore');
+        Route::delete('/leases/{lease}', [PmLeaseWebController::class, 'destroy'])->middleware('property.permission:leases.manage')->name('leases.destroy');
         Route::get('/tenants/movements', [PropertyTenantsOpsWebController::class, 'movements'])->name('tenants.movements');
         Route::get('/tenants/movements/export', [PropertyTenantsOpsWebController::class, 'movementsExport'])->name('tenants.movements.export');
         Route::post('/tenants/movements', [PropertyTenantsOpsWebController::class, 'storeMovement'])->middleware('property.permission:tenants.manage')->name('tenants.movements.store');
@@ -367,6 +372,10 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/settings/branding', [PropertySettingsStoreWebController::class, 'storeBranding'])->middleware('property.permission:settings.manage')->name('settings.branding.store');
         Route::get('/settings/rules', [PropertySettingsStoreWebController::class, 'rules'])->name('settings.rules');
         Route::post('/settings/rules', [PropertySettingsStoreWebController::class, 'storeRules'])->middleware('property.permission:settings.manage')->name('settings.rules.store');
+        Route::get('/settings/deposits', [PropertySettingsStoreWebController::class, 'deposits'])->name('settings.deposits');
+        Route::post('/settings/deposits', [PropertySettingsStoreWebController::class, 'storeDeposits'])->middleware('property.permission:settings.manage')->name('settings.deposits.store');
+        Route::get('/settings/expenses', [PropertySettingsStoreWebController::class, 'expenses'])->name('settings.expenses');
+        Route::post('/settings/expenses', [PropertySettingsStoreWebController::class, 'storeExpenses'])->middleware('property.permission:settings.manage')->name('settings.expenses.store');
         Route::get('/settings/system-setup', [PropertySettingsStoreWebController::class, 'systemSetup'])->middleware('superadmin')->name('settings.system_setup');
         Route::get('/settings/system-setup/forms', [PropertySettingsStoreWebController::class, 'systemSetupForms'])->middleware('superadmin')->name('settings.system_setup.forms');
         Route::post('/settings/system-setup/forms', [PropertySettingsStoreWebController::class, 'storeSystemSetupForms'])->middleware(['superadmin', 'property.permission:settings.manage'])->name('settings.system_setup.forms.store');

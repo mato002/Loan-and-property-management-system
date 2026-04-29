@@ -223,11 +223,111 @@
                     });
                 }
 
+                function wireExportDropdowns(scopeRoot) {
+                    const root = scopeRoot || document;
+                    const forms = Array.from(root.querySelectorAll('form[method="get"]'));
+
+                    forms.forEach((form) => {
+                        if (form.dataset.exportDropdownBound === '1') {
+                            return;
+                        }
+                        form.dataset.exportDropdownBound = '1';
+
+                        if (form.querySelector('[data-export-dropdown-auto]')) {
+                            return;
+                        }
+
+                        // Respect any existing manual export dropdown component.
+                        if (form.querySelector('select[onchange*="window.location.href"]')) {
+                            return;
+                        }
+
+                        const exportLinks = Array.from(form.querySelectorAll('a[href*="export="]'));
+                        const exportButtons = Array.from(form.querySelectorAll('button[name="export"][value], input[type="submit"][name="export"][value]'));
+                        const exportItems = [];
+
+                        exportLinks.forEach((link) => {
+                            const href = link.getAttribute('href') || '';
+                            if (!href) return;
+                            exportItems.push({
+                                label: (link.textContent || '').trim().replace(/^Export\s+/i, '') || 'File',
+                                mode: 'link',
+                                value: href,
+                                node: link,
+                            });
+                        });
+
+                        exportButtons.forEach((button) => {
+                            const value = button.getAttribute('value') || '';
+                            if (!value) return;
+                            exportItems.push({
+                                label: (button.textContent || button.getAttribute('value') || '').trim().replace(/^Export\s+/i, '') || String(value).toUpperCase(),
+                                mode: 'submit',
+                                value,
+                                node: button,
+                            });
+                        });
+
+                        if (exportItems.length < 2) {
+                            return;
+                        }
+
+                        const insertBeforeNode = exportItems[0].node;
+                        const dropdown = document.createElement('select');
+                        dropdown.setAttribute('data-export-dropdown-auto', '1');
+                        dropdown.className = 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 max-w-full';
+
+                        const placeholder = document.createElement('option');
+                        placeholder.value = '';
+                        placeholder.textContent = 'Export';
+                        dropdown.appendChild(placeholder);
+
+                        exportItems.forEach((item) => {
+                            const option = document.createElement('option');
+                            option.value = item.value;
+                            option.textContent = item.label;
+                            option.dataset.mode = item.mode;
+                            dropdown.appendChild(option);
+                        });
+
+                        dropdown.addEventListener('change', () => {
+                            const selected = dropdown.options[dropdown.selectedIndex];
+                            if (!selected || !selected.value) return;
+
+                            if (selected.dataset.mode === 'submit') {
+                                let hidden = form.querySelector('input[name="export"][data-auto-export="1"]');
+                                if (!hidden) {
+                                    hidden = document.createElement('input');
+                                    hidden.type = 'hidden';
+                                    hidden.name = 'export';
+                                    hidden.setAttribute('data-auto-export', '1');
+                                    form.appendChild(hidden);
+                                }
+                                hidden.value = selected.value;
+                                form.requestSubmit();
+                            } else {
+                                window.location.href = selected.value;
+                            }
+
+                            dropdown.selectedIndex = 0;
+                        });
+
+                        insertBeforeNode.parentNode?.insertBefore(dropdown, insertBeforeNode);
+                        exportItems.forEach((item) => item.node.remove());
+                    });
+                }
+
                 document.addEventListener('DOMContentLoaded', () => wireAutoFilterForms(document));
                 document.addEventListener('turbo:load', () => wireAutoFilterForms(document));
                 document.addEventListener('turbo:frame-load', (event) => wireAutoFilterForms(event.target));
                 document.addEventListener('livewire:navigated', () => wireAutoFilterForms(document));
                 document.addEventListener('alpine:navigated', () => wireAutoFilterForms(document));
+
+                document.addEventListener('DOMContentLoaded', () => wireExportDropdowns(document));
+                document.addEventListener('turbo:load', () => wireExportDropdowns(document));
+                document.addEventListener('turbo:frame-load', (event) => wireExportDropdowns(event.target));
+                document.addEventListener('livewire:navigated', () => wireExportDropdowns(document));
+                document.addEventListener('alpine:navigated', () => wireExportDropdowns(document));
             })();
         </script>
         @stack('scripts')

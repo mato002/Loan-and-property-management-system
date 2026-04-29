@@ -72,4 +72,14 @@ class Property extends Model
         return $this->belongsToMany(PmAmenity::class, 'pm_amenity_property', 'property_id', 'pm_amenity_id')
             ->withTimestamps();
     }
+
+    public function depositDefinitions(): HasMany
+    {
+        return $this->hasMany(DepositDefinition::class, 'property_id');
+    }
+
+    public function expenseDefinitions(): HasMany
+    {
+        return $this->hasMany(ExpenseDefinition::class, 'property_id');
+    }
 }

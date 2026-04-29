@@ -7,12 +7,16 @@
             ['route' => 'property.settings.payments', 'label' => 'Payment config'],
             ['route' => 'property.settings.branding', 'label' => 'Branding'],
             ['route' => 'property.settings.rules', 'label' => 'System rules'],
+            ['route' => 'property.settings.deposits', 'label' => 'Deposit rules'],
+            ['route' => 'property.settings.expenses', 'label' => 'Expense charge rules'],
         ];
         $hubItems = [
             ['route' => 'property.settings.commission', 'title' => 'Commission settings', 'description' => 'Plans and overrides.'],
             ['route' => 'property.settings.payments', 'title' => 'Payment config (M-Pesa)', 'description' => 'Paybill, STK, settlement.'],
             ['route' => 'property.settings.branding', 'title' => 'Branding', 'description' => 'Company name and logo used in printable docs.'],
             ['route' => 'property.settings.rules', 'title' => 'System rules', 'description' => 'Penalties, reminders, guardrails.'],
+            ['route' => 'property.settings.deposits', 'title' => 'Deposit rules', 'description' => 'Deposit types, required flags, formulas, ledger mapping.'],
+            ['route' => 'property.settings.expenses', 'title' => 'Expense charge rules', 'description' => 'Charge lines, required flags, formulas, and ledger mapping.'],
         ];
         if ($isSuperAdmin) {
             $tabLinks = array_merge([

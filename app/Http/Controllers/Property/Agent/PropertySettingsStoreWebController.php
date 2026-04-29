@@ -3,16 +3,21 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\DepositDefinition;
+use App\Models\ExpenseDefinition;
 use App\Models\PmPermission;
 use App\Models\PmRole;
 use App\Models\Property;
 use App\Models\PropertyPortalSetting;
+use App\Models\PropertyUnit;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class PropertySettingsStoreWebController extends Controller
@@ -1114,6 +1119,170 @@ class PropertySettingsStoreWebController extends Controller
         PropertyPortalSetting::setValue('rules_notes', $data['rules_notes'] ?? '');
 
         return back()->with('success', __('Rules saved — wire these values into invoice generation when you automate penalties.'));
+    }
+
+    public function deposits(): View
+    {
+        return view('property.agent.settings.deposits', [
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'units' => PropertyUnit::query()->with('property:id,name')->orderBy('property_id')->orderBy('label')->get(['id', 'property_id', 'label']),
+            'definitions' => Schema::hasTable('deposit_definitions')
+                ? DepositDefinition::query()->orderBy('property_id')->orderByRaw('case when property_unit_id is null then 0 else 1 end')->orderBy('sort_order')->get()
+                : collect(),
+        ]);
+    }
+
+    public function storeDeposits(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('deposit_definitions')) {
+            return back()->with('error', __('Deposit definitions table is missing. Run migrations first.'));
+        }
+
+        $data = $request->validate([
+            'definitions' => ['nullable', 'array', 'max:200'],
+            'definitions.*.property_id' => ['required', 'integer', 'exists:properties,id'],
+            'definitions.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
+            'definitions.*.deposit_key' => ['required', 'string', 'max:64'],
+            'definitions.*.label' => ['required', 'string', 'max:120'],
+            'definitions.*.is_required' => ['nullable', 'in:0,1'],
+            'definitions.*.amount_mode' => ['required', Rule::in([DepositDefinition::MODE_FIXED, DepositDefinition::MODE_PERCENT_RENT])],
+            'definitions.*.amount_value' => ['nullable', 'numeric', 'min:0'],
+            'definitions.*.is_refundable' => ['nullable', 'in:0,1'],
+            'definitions.*.ledger_account' => ['nullable', 'string', 'max:120'],
+            'definitions.*.sort_order' => ['nullable', 'integer', 'min:0', 'max:9999'],
+            'definitions.*.is_active' => ['nullable', 'in:0,1'],
+        ]);
+
+        $rows = collect($data['definitions'] ?? [])
+            ->map(function (array $row): array {
+                return [
+                    'property_id' => (int) $row['property_id'],
+                    'property_unit_id' => isset($row['property_unit_id']) && $row['property_unit_id'] !== '' ? (int) $row['property_unit_id'] : null,
+                    'deposit_key' => Str::of((string) ($row['deposit_key'] ?? ''))->lower()->replaceMatches('/[^a-z0-9_]+/i', '_')->trim('_')->toString(),
+                    'label' => trim((string) ($row['label'] ?? '')),
+                    'is_required' => (string) ($row['is_required'] ?? '0') === '1',
+                    'amount_mode' => (string) ($row['amount_mode'] ?? DepositDefinition::MODE_FIXED),
+                    'amount_value' => (float) ($row['amount_value'] ?? 0),
+                    'is_refundable' => (string) ($row['is_refundable'] ?? '1') === '1',
+                    'ledger_account' => trim((string) ($row['ledger_account'] ?? '')) ?: null,
+                    'sort_order' => (int) ($row['sort_order'] ?? 0),
+                    'is_active' => (string) ($row['is_active'] ?? '1') === '1',
+                ];
+            })
+            ->filter(fn (array $row): bool => $row['property_id'] > 0 && $row['deposit_key'] !== '' && $row['label'] !== '')
+            ->values();
+
+        DB::transaction(function () use ($rows): void {
+            DepositDefinition::query()->delete();
+            foreach ($rows as $row) {
+                DepositDefinition::query()->create($row);
+            }
+        });
+
+        return back()->with('success', __('Deposit rules saved.'));
+    }
+
+    public function expenses(): View
+    {
+        return view('property.agent.settings.expenses', [
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'units' => PropertyUnit::query()->with('property:id,name')->orderBy('property_id')->orderBy('label')->get(['id', 'property_id', 'label']),
+            'definitions' => Schema::hasTable('expense_definitions')
+                ? ExpenseDefinition::query()->orderBy('property_id')->orderByRaw('case when property_unit_id is null then 0 else 1 end')->orderBy('sort_order')->get()
+                : collect(),
+        ]);
+    }
+
+    public function storeExpenses(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('expense_definitions')) {
+            return back()->with('error', __('Expense definitions table is missing. Run migrations first.'));
+        }
+
+        $data = $request->validate([
+            'definitions' => ['nullable', 'array', 'max:200'],
+            'definitions.*.property_id' => ['required', 'integer', 'exists:properties,id'],
+            'definitions.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
+            'definitions.*.charge_key' => ['required', 'string', 'max:64'],
+            'definitions.*.label' => ['required', 'string', 'max:120'],
+            'definitions.*.is_required' => ['nullable', 'in:0,1'],
+            'definitions.*.amount_mode' => ['required', Rule::in([ExpenseDefinition::MODE_FLAT_CHARGE, ExpenseDefinition::MODE_RATE_PER_UNIT])],
+            'definitions.*.amount_value' => ['nullable', 'numeric', 'min:0'],
+            'definitions.*.ledger_account' => ['nullable', 'string', 'max:120'],
+            'definitions.*.sort_order' => ['nullable', 'integer', 'min:0', 'max:9999'],
+            'definitions.*.is_active' => ['nullable', 'in:0,1'],
+        ]);
+
+        $rows = collect($data['definitions'] ?? [])
+            ->map(function (array $row): array {
+                return [
+                    'property_id' => (int) $row['property_id'],
+                    'property_unit_id' => isset($row['property_unit_id']) && $row['property_unit_id'] !== '' ? (int) $row['property_unit_id'] : null,
+                    'charge_key' => Str::of((string) ($row['charge_key'] ?? ''))->lower()->replaceMatches('/[^a-z0-9_]+/i', '_')->trim('_')->toString(),
+                    'label' => trim((string) ($row['label'] ?? '')),
+                    'is_required' => (string) ($row['is_required'] ?? '0') === '1',
+                    'amount_mode' => (string) ($row['amount_mode'] ?? ExpenseDefinition::MODE_FLAT_CHARGE),
+                    'amount_value' => (float) ($row['amount_value'] ?? 0),
+                    'ledger_account' => trim((string) ($row['ledger_account'] ?? '')) ?: null,
+                    'sort_order' => (int) ($row['sort_order'] ?? 0),
+                    'is_active' => (string) ($row['is_active'] ?? '1') === '1',
+                ];
+            })
+            ->filter(fn (array $row): bool => $row['property_id'] > 0 && $row['charge_key'] !== '' && $row['label'] !== '')
+            ->values();
+
+        DB::transaction(function () use ($rows): void {
+            ExpenseDefinition::query()->delete();
+            foreach ($rows as $row) {
+                ExpenseDefinition::query()->create($row);
+            }
+
+            $this->syncUtilityTemplatesFromExpenseRules($rows->all());
+        });
+
+        return back()->with('success', __('Expense charge rules saved.'));
+    }
+
+    /**
+     * Keep legacy property utility templates in sync with rules.
+     *
+     * @param  array<int,array<string,mixed>>  $rows
+     */
+    private function syncUtilityTemplatesFromExpenseRules(array $rows): void
+    {
+        $groupedByProperty = collect($rows)
+            ->filter(fn (array $row): bool => ((int) ($row['property_id'] ?? 0)) > 0)
+            ->filter(fn (array $row): bool => (bool) ($row['is_active'] ?? true))
+            ->groupBy(fn (array $row): string => (string) ((int) $row['property_id']))
+            ->map(function ($propertyRows): array {
+                return collect($propertyRows)
+                    ->sortBy([
+                        fn (array $row) => (int) ($row['sort_order'] ?? 0),
+                        fn (array $row) => (string) ($row['charge_key'] ?? ''),
+                    ])
+                    ->map(function (array $row): array {
+                        $mode = (string) ($row['amount_mode'] ?? ExpenseDefinition::MODE_FLAT_CHARGE);
+                        $amount = is_numeric($row['amount_value'] ?? null) ? max(0.0, (float) $row['amount_value']) : 0.0;
+
+                        return [
+                            'property_unit_id' => isset($row['property_unit_id']) && $row['property_unit_id'] !== '' ? (int) $row['property_unit_id'] : null,
+                            'charge_type' => (string) ($row['charge_key'] ?? ''),
+                            'label' => (string) ($row['label'] ?? ''),
+                            'rate_per_unit' => $mode === ExpenseDefinition::MODE_RATE_PER_UNIT ? round($amount, 2) : 0.0,
+                            'fixed_charge' => $mode === ExpenseDefinition::MODE_RATE_PER_UNIT ? 0.0 : round($amount, 2),
+                            'notes' => '',
+                        ];
+                    })
+                    ->filter(fn (array $template): bool => $template['charge_type'] !== '')
+                    ->values()
+                    ->all();
+            })
+            ->all();
+
+        PropertyPortalSetting::setValue(
+            'utility_property_charge_templates_json',
+            json_encode($groupedByProperty, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
     }
 
     public function branding(): View

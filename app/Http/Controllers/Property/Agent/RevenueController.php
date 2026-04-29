@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PmInvoice;
 use App\Models\PmMessageLog;
 use App\Models\PmPenaltyRule;
+use App\Models\PmTenantNotice;
 use App\Support\TabularExport;
 use App\Services\BulkSmsService;
 use App\Services\Property\PropertyDashboardStats;
@@ -187,16 +188,22 @@ class RevenueController extends Controller
 
             return TabularExport::stream(
                 'arrears-'.now()->format('Ymd_His'),
-                ['Tenant', 'Unit', 'Invoice', 'Oldest due', 'Days late', 'Balance', 'Last contact', 'Workflow'],
+                ['Tenant', 'Unit', 'Invoice', 'Arrears type', 'Oldest due', 'Days late', 'Balance', 'Last contact', 'Workflow'],
                 function () use ($invoices) {
                     foreach ($invoices as $i) {
                         $bal = max(0, (float) $i->amount - (float) $i->amount_paid);
                         $days = (int) $i->due_date->startOfDay()->diffInDays(now()->startOfDay(), true);
                         $workflow = $days >= 30 ? 'Escalated' : ($days >= 14 ? 'Follow-up' : 'Reminder');
+                        $type = strtoupper((string) ($i->invoice_type ?: 'rent'));
+                        $typeLabel = $type;
+                        if (is_string($i->description) && trim($i->description) !== '') {
+                            $typeLabel .= ' - '.trim($i->description);
+                        }
                         yield [
                             (string) ($i->tenant->name ?? ''),
                             (string) (($i->unit->property->name ?? '').'/'.($i->unit->label ?? '')),
                             (string) ($i->invoice_no ?? ''),
+                            $typeLabel,
                             $i->due_date?->format('Y-m-d') ?? '',
                             (string) $days,
                             number_format($bal, 2, '.', ''),
@@ -222,6 +229,11 @@ class RevenueController extends Controller
             $bal = max(0, (float) $i->amount - (float) $i->amount_paid);
             $days = (int) $i->due_date->startOfDay()->diffInDays(now()->startOfDay(), true);
             $workflow = $days >= 30 ? 'Escalated' : ($days >= 14 ? 'Follow-up' : 'Reminder');
+            $type = strtoupper((string) ($i->invoice_type ?: 'rent'));
+            $typeLabel = $type;
+            if (is_string($i->description) && trim($i->description) !== '') {
+                $typeLabel .= ' - '.trim($i->description);
+            }
             $selector = new HtmlString(
                 '<input type="checkbox" class="arrears-invoice-pick rounded border-slate-300 text-blue-600 focus:ring-blue-500" value="'.(int) $i->id.'" aria-label="Select invoice '.e((string) $i->invoice_no).'" />'
             );
@@ -235,6 +247,7 @@ class RevenueController extends Controller
                 (string) ($i->tenant?->name ?? '—'),
                 trim(((string) ($i->unit?->property?->name ?? 'Unknown property')).'/'.((string) ($i->unit?->label ?? 'Unknown unit')), '/'),
                 (string) ($i->invoice_no ?? '—'),
+                $typeLabel,
                 $i->due_date?->format('Y-m-d') ?? '—',
                 (string) $days,
                 PropertyMoney::kes($bal),
@@ -246,7 +259,7 @@ class RevenueController extends Controller
 
         return view('property.agent.revenue.arrears', [
             'stats' => $stats,
-            'columns' => ['Pick', 'Tenant', 'Unit', 'Invoice', 'Oldest due', 'Days late', 'Balance', 'Last contact', 'Workflow', 'Owner'],
+            'columns' => ['Pick', 'Tenant', 'Unit', 'Invoice', 'Arrears type', 'Oldest due', 'Days late', 'Balance', 'Last contact', 'Workflow', 'Owner'],
             'tableRows' => $rows,
             'paginator' => $invoices,
             'perPage' => $perPage,
@@ -372,6 +385,7 @@ class RevenueController extends Controller
                 '{days_overdue}' => (string) $daysOverdue,
                 '{balance_due}' => number_format($balance, 2),
             ]);
+            $noticeCreated = false;
 
             if (in_array($data['channel'], ['email', 'both'], true)) {
                 if ($tenantEmail === '') {
@@ -401,6 +415,9 @@ class RevenueController extends Controller
                                 'sent_at' => now(),
                             ]);
                             $sentEmail++;
+                            if (! $noticeCreated) {
+                                $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $message, $request->user()?->id);
+                            }
                         } catch (\Throwable $e) {
                             $failed++;
                             $addFailedReason('email send error');
@@ -455,6 +472,9 @@ class RevenueController extends Controller
                                     'sent_at' => now(),
                                 ]);
                                 $sentSms++;
+                                if (! $noticeCreated) {
+                                    $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $message, $request->user()?->id);
+                                }
                             } else {
                                 $failed++;
                                 $addFailedReason('sms provider error');
@@ -485,6 +505,38 @@ class RevenueController extends Controller
         }
 
         return back()->with('success', $message);
+    }
+
+    private function createArrearsNoticeIfMissing(PmInvoice $invoice, string $message, ?int $userId): bool
+    {
+        $invoiceNo = (string) ($invoice->invoice_no ?? '');
+        if ($invoiceNo === '') {
+            return false;
+        }
+        $today = now()->toDateString();
+        $needle = 'Invoice: '.$invoiceNo;
+        $exists = PmTenantNotice::query()
+            ->where('pm_tenant_id', (int) $invoice->pm_tenant_id)
+            ->where('property_unit_id', (int) $invoice->property_unit_id)
+            ->where('notice_type', 'arrears_reminder')
+            ->whereDate('due_on', $today)
+            ->where('notes', 'like', '%'.$needle.'%')
+            ->exists();
+        if ($exists) {
+            return false;
+        }
+
+        PmTenantNotice::query()->create([
+            'pm_tenant_id' => (int) $invoice->pm_tenant_id,
+            'property_unit_id' => (int) $invoice->property_unit_id,
+            'notice_type' => 'arrears_reminder',
+            'status' => 'sent',
+            'due_on' => $today,
+            'notes' => "Auto arrears reminder\nInvoice: {$invoiceNo}\n\n{$message}",
+            'created_by_user_id' => $userId,
+        ]);
+
+        return true;
     }
 
     public function sendArrearsTestEmail(Request $request): RedirectResponse

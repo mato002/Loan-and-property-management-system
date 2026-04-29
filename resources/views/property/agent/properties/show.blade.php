@@ -143,6 +143,7 @@
             </div>
             <p class="mt-2 text-xs text-slate-500">Commission rate used: {{ number_format((float) ($commissionPct ?? 0), 2) }}%</p>
         </div>
+        <div class="mt-5 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <form
             method="post"
             action="{{ route('property.properties.update', $property) }}"
@@ -161,10 +162,28 @@
                 },
                 addCharge() {
                     this.showChargeBuilder = true;
-                    this.charges.push({ charge_type: 'water', label: '', rate_per_unit: '', fixed_charge: '', notes: '' });
+                    this.charges.push({ property_unit_id: '', charge_type: 'water', label: '', rate_per_unit: '', fixed_charge: '', notes: '' });
                 },
-                addChargeType(index) {
-                    const raw = window.prompt('New charge type (e.g. internet, security, sewer):', '');
+                async addChargeType(index) {
+                    let raw = '';
+                    if (window.Swal) {
+                        const result = await window.Swal.fire({
+                            title: 'Add charge type',
+                            text: 'Examples: internet, security, sewer',
+                            input: 'text',
+                            inputPlaceholder: 'Enter charge type',
+                            showCancelButton: true,
+                            confirmButtonText: 'Add',
+                            cancelButtonText: 'Cancel',
+                            inputValidator: (value) => {
+                                if (!String(value || '').trim()) return 'Charge type is required.';
+                                return null;
+                            },
+                        });
+                        raw = String(result.value || '').trim();
+                    } else {
+                        raw = String(window.prompt('New charge type (e.g. internet, security, sewer):', '') || '').trim();
+                    }
                     if (!raw) return;
                     const normalized = String(raw).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
                     if (!normalized) return;
@@ -190,15 +209,33 @@
                     <h3 class="text-sm font-semibold text-slate-900">Utility charge templates</h3>
                     <p class="text-xs text-slate-500">Maintain default rates/types here without leaving property view.</p>
                 </div>
-                <button type="button" @click="addCharge()" class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Add charge</button>
+                <button
+                    type="button"
+                    @click="addCharge()"
+                    class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm shadow-blue-200 transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                >
+                    <span aria-hidden="true">+</span>
+                    <span>Add charge</span>
+                </button>
             </div>
             <div x-show="showChargeBuilder" x-cloak class="space-y-3">
                 <template x-for="(charge, index) in charges" :key="index">
                     <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
-                        <div class="grid gap-2 sm:grid-cols-2">
+                        <div class="grid gap-2 sm:grid-cols-3">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Scope</label>
+                                <select :name="`charge_templates[${index}][property_unit_id]`" x-model="charge.property_unit_id" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                                    <option value="">Property default</option>
+                                    @foreach(($units ?? []) as $u)
+                                        <option value="{{ $u->id }}">{{ $u->label }} (Unit)</option>
+                                    @endforeach
+                                </select>
+                            </div>
                             <div>
                                 <div class="flex items-center justify-between gap-2">
-                                    <label class="block text-xs font-medium text-slate-600">Charge type</label>
+                                    <label class="block text-xs font-medium text-slate-600">
+                                        Charge type <span class="text-red-600" aria-hidden="true">*</span>
+                                    </label>
                                     <button type="button" @click="addChargeType(index)" class="rounded border border-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">+</button>
                                 </div>
                                 <select :name="`charge_templates[${index}][charge_type]`" x-model="charge.charge_type" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
@@ -230,10 +267,209 @@
                 </template>
             </div>
             <div class="flex justify-end">
-                <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save templates</button>
+                <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save utility templates</button>
             </div>
         </form>
-    </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white shadow-sm min-w-0">
+            <div class="px-4 py-3 border-b border-slate-100">
+                <h3 class="text-sm font-semibold text-slate-900">Saved utility charge templates</h3>
+                <p class="text-xs text-slate-500">Default charges currently configured for this property.</p>
+            </div>
+            <div class="overflow-x-auto">
+            <table class="w-full min-w-[36rem] border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
+            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                <tr>
+                    <th class="px-4 py-3">Scope</th>
+                    <th class="px-4 py-3">Charge type</th>
+                    <th class="px-4 py-3">Label</th>
+                    <th class="px-4 py-3">Rate / unit</th>
+                    <th class="px-4 py-3">Fixed charge</th>
+                    <th class="px-4 py-3">Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse (($propertyChargeTemplates ?? []) as $template)
+                    @php
+                        $unitId = isset($template['property_unit_id']) && $template['property_unit_id'] !== '' ? (int) $template['property_unit_id'] : 0;
+                        $scopeLabel = $unitId > 0 ? (collect($units ?? [])->firstWhere('id', $unitId)?->label ?? 'Unit #'.$unitId) : 'Property default';
+                    @endphp
+                    <tr class="border-t border-slate-100 hover:bg-slate-50/70">
+                        <td class="px-4 py-3 text-slate-700">{{ $scopeLabel }}</td>
+                        <td class="px-4 py-3 font-medium text-slate-900">{{ ucfirst(str_replace('_', ' ', (string) ($template['charge_type'] ?? 'other'))) }}</td>
+                        <td class="px-4 py-3 text-slate-700">{{ (string) ($template['label'] ?? '—') }}</td>
+                        <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($template['rate_per_unit'] ?? 0), 2) }}</td>
+                        <td class="px-4 py-3 tabular-nums">{{ number_format((float) ($template['fixed_charge'] ?? 0), 2) }}</td>
+                        <td class="px-4 py-3 text-slate-600">{{ (string) ($template['notes'] ?? '—') }}</td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-slate-500">No saved utility templates yet for this property.</td>
+                    </tr>
+                @endforelse
+            </tbody>
+            </table>
+            </div>
+        </div>
+        <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+            <form
+                method="post"
+                action="{{ route('property.properties.update', $property) }}"
+                x-data="{
+                    deposits: (() => {
+                        const seed = @js(old('deposit_definitions', $propertyDepositDefinitions ?? []));
+                        return Array.isArray(seed) ? seed : [];
+                    })(),
+                    addDeposit() {
+                        this.deposits.push({
+                            property_unit_id: '',
+                            deposit_key: '',
+                            label: '',
+                            is_required: false,
+                            amount_mode: 'fixed',
+                            amount_value: '',
+                            is_refundable: true,
+                            ledger_account: '',
+                            sort_order: this.deposits.length,
+                            is_active: true,
+                        });
+                    },
+                    removeDeposit(index) {
+                        this.deposits.splice(index, 1);
+                    }
+                }"
+                class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3"
+            >
+                @csrf
+                @method('PATCH')
+                <input type="hidden" name="name" value="{{ old('name', $property->name) }}" />
+                <input type="hidden" name="code" value="{{ old('code', $property->code) }}" />
+                <input type="hidden" name="city" value="{{ old('city', $property->city) }}" />
+                <input type="hidden" name="address_line" value="{{ old('address_line', $property->address_line) }}" />
+                <input type="hidden" name="commission_percent" value="{{ old('commission_percent', $commissionPct ?? '') }}" />
+
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-900">Deposit rules (this property)</h3>
+                        <p class="text-xs text-slate-500">Define allowed deposit types for this property and optional unit overrides.</p>
+                    </div>
+                    <button
+                        type="button"
+                        @click="addDeposit()"
+                        class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-bold text-white shadow-sm shadow-indigo-200 transition hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                    >
+                        <span aria-hidden="true">+</span>
+                        <span>Add deposit rule</span>
+                    </button>
+                </div>
+                <template x-for="(deposit, index) in deposits" :key="`deposit-${index}`">
+                    <div class="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+                        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Scope</label>
+                                <select :name="`deposit_definitions[${index}][property_unit_id]`" x-model="deposit.property_unit_id" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                                    <option value="">Property default</option>
+                                    @foreach(($units ?? []) as $u)
+                                        <option value="{{ $u->id }}">{{ $u->label }} (Unit)</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Deposit key</label>
+                                <input :name="`deposit_definitions[${index}][deposit_key]`" x-model="deposit.deposit_key" type="text" placeholder="water_deposit" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Label</label>
+                                <input :name="`deposit_definitions[${index}][label]`" x-model="deposit.label" type="text" placeholder="Water deposit" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Ledger map</label>
+                                <input :name="`deposit_definitions[${index}][ledger_account]`" x-model="deposit.ledger_account" type="text" placeholder="Deposit liability account" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                            </div>
+                        </div>
+                        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Amount mode</label>
+                                <select :name="`deposit_definitions[${index}][amount_mode]`" x-model="deposit.amount_mode" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
+                                    <option value="fixed">Fixed amount</option>
+                                    <option value="percent_rent">% of rent</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600">Default amount/value</label>
+                                <input :name="`deposit_definitions[${index}][amount_value]`" x-model="deposit.amount_value" type="number" min="0" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                            </div>
+                            <div class="flex items-center gap-4 pt-6">
+                                <label class="inline-flex items-center gap-2 text-xs text-slate-700">
+                                    <input type="hidden" :name="`deposit_definitions[${index}][is_required]`" value="0">
+                                    <input :name="`deposit_definitions[${index}][is_required]`" x-model="deposit.is_required" type="checkbox" value="1">
+                                    Required
+                                </label>
+                                <label class="inline-flex items-center gap-2 text-xs text-slate-700">
+                                    <input type="hidden" :name="`deposit_definitions[${index}][is_refundable]`" value="0">
+                                    <input :name="`deposit_definitions[${index}][is_refundable]`" x-model="deposit.is_refundable" type="checkbox" value="1">
+                                    Refundable
+                                </label>
+                            </div>
+                            <div class="flex items-center justify-end pt-6">
+                                <button type="button" @click="removeDeposit(index)" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Remove</button>
+                            </div>
+                        </div>
+                        <input type="hidden" :name="`deposit_definitions[${index}][sort_order]`" :value="index">
+                        <input type="hidden" :name="`deposit_definitions[${index}][is_active]`" :value="deposit.is_active ? 1 : 0">
+                    </div>
+                </template>
+                <div class="flex justify-end">
+                    <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Save deposit rules</button>
+                </div>
+            </form>
+
+            <div class="rounded-2xl border border-slate-200 bg-white shadow-sm min-w-0">
+                <div class="px-4 py-3 border-b border-slate-100">
+                    <h3 class="text-sm font-semibold text-slate-900">Saved deposit rules</h3>
+                    <p class="text-xs text-slate-500">Current deposit definitions configured for this property.</p>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[36rem] border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
+                        <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                            <tr>
+                                <th class="px-4 py-3">Scope</th>
+                                <th class="px-4 py-3">Key</th>
+                                <th class="px-4 py-3">Label</th>
+                                <th class="px-4 py-3">Amount</th>
+                                <th class="px-4 py-3">Required</th>
+                                <th class="px-4 py-3">Refundable</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse(($propertyDepositDefinitions ?? []) as $deposit)
+                                @php
+                                    $unitId = (int) ($deposit['property_unit_id'] ?? 0);
+                                    $unitLabel = $unitId > 0 ? (collect($units ?? [])->firstWhere('id', $unitId)?->label ?? 'Unit #'.$unitId) : 'Property default';
+                                    $amountMode = (string) ($deposit['amount_mode'] ?? 'fixed');
+                                    $amountValue = (float) ($deposit['amount_value'] ?? 0);
+                                @endphp
+                                <tr class="border-t border-slate-100 hover:bg-slate-50/70">
+                                    <td class="px-4 py-3 text-slate-700">{{ $unitLabel }}</td>
+                                    <td class="px-4 py-3 font-mono text-xs text-slate-700">{{ (string) ($deposit['deposit_key'] ?? '') }}</td>
+                                    <td class="px-4 py-3 font-medium text-slate-900">{{ (string) ($deposit['label'] ?? '—') }}</td>
+                                    <td class="px-4 py-3 tabular-nums text-slate-700">
+                                        {{ $amountMode === 'percent_rent' ? number_format($amountValue, 2).'% rent' : number_format($amountValue, 2) }}
+                                    </td>
+                                    <td class="px-4 py-3 text-slate-700">{{ !empty($deposit['is_required']) ? 'Yes' : 'No' }}</td>
+                                    <td class="px-4 py-3 text-slate-700">{{ !empty($deposit['is_refundable']) ? 'Yes' : 'No' }}</td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="6" class="px-4 py-8 text-center text-slate-500">No saved deposit rules yet for this property.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        </div>
 
     <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

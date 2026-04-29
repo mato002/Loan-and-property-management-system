@@ -44,19 +44,19 @@
                 <p class="p-5 text-sm text-slate-500">No actions recorded yet.</p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="min-w-full text-sm">
+                    <table class="min-w-full table-auto text-sm">
                         <thead class="text-left text-xs uppercase tracking-wide text-slate-500 border-b border-slate-200 dark:border-slate-700">
                             <tr>
-                                <th class="py-2 px-4">When</th>
-                                <th class="py-2 px-4">Action key</th>
-                                <th class="py-2 px-4">Notes</th>
-                                <th class="py-2 px-4">Context</th>
+                                <th class="py-2 px-4 whitespace-normal break-words">When</th>
+                                <th class="py-2 px-4 whitespace-normal break-words">Action key</th>
+                                <th class="py-2 px-4 whitespace-normal break-words">Notes</th>
+                                <th class="py-2 px-4 whitespace-normal break-words">Context</th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach ($actions as $a)
                                 <tr class="border-b border-slate-100 dark:border-slate-700/70 align-top">
-                                    <td class="py-2 px-4 whitespace-nowrap">{{ optional($a->created_at)->format('Y-m-d H:i') ?? '—' }}</td>
+                                    <td class="py-2 px-4 whitespace-normal break-words">{{ optional($a->created_at)->format('Y-m-d H:i') ?? '—' }}</td>
                                     <td class="py-2 px-4 font-medium">{{ $a->action_key }}</td>
                                     <td class="py-2 px-4">{{ $a->notes ?: '—' }}</td>
                                     <td class="py-2 px-4">

@@ -25,8 +25,16 @@
                 <p><span class="text-slate-500">Email:</span> {{ $lease->pmTenant->email ?? '—' }}</p>
                 <p><span class="text-slate-500">Start:</span> {{ $lease->start_date?->format('Y-m-d') ?? '—' }}</p>
                 <p><span class="text-slate-500">End:</span> {{ $lease->end_date?->format('Y-m-d') ?? 'Open-ended' }}</p>
-                <p><span class="text-slate-500">Utility expense:</span> {{ $lease->utility_expense_type ? ucfirst($lease->utility_expense_type) : '—' }}</p>
-                <p><span class="text-slate-500">Utility amount paid:</span> {{ $lease->utility_expense_amount ? \App\Services\Property\PropertyMoney::kes((float) $lease->utility_expense_amount) : '—' }}</p>
+                @php($utilityExpenses = collect($lease->utility_expenses ?? [])->filter(fn ($row) => is_array($row) && !empty($row['type']) && (float) ($row['amount'] ?? 0) > 0))
+                @if ($utilityExpenses->isNotEmpty())
+                    <p><span class="text-slate-500">Utility expenses:</span> {{ $utilityExpenses->count() }} item(s)</p>
+                    @foreach ($utilityExpenses as $row)
+                        <p><span class="text-slate-500">—</span> {{ ucfirst(str_replace('_', ' ', (string) ($row['type'] ?? 'other'))) }}: {{ \App\Services\Property\PropertyMoney::kes((float) ($row['amount'] ?? 0)) }}</p>
+                    @endforeach
+                @else
+                    <p><span class="text-slate-500">Utility expense:</span> {{ $lease->utility_expense_type ? ucfirst($lease->utility_expense_type) : '—' }}</p>
+                    <p><span class="text-slate-500">Utility amount paid:</span> {{ $lease->utility_expense_amount ? \App\Services\Property\PropertyMoney::kes((float) $lease->utility_expense_amount) : '—' }}</p>
+                @endif
                 <p><span class="text-slate-500">Linked unit(s):</span> {{ $unitsLabel }}</p>
             </div>
         </div>
@@ -34,6 +42,48 @@
             <h3 class="text-sm font-semibold text-slate-900">Terms summary</h3>
             <div class="mt-2 text-sm text-slate-700 whitespace-pre-wrap leading-6">
                 {{ trim((string) ($lease->terms_summary ?? '')) !== '' ? $lease->terms_summary : 'No terms summary provided.' }}
+            </div>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 class="text-sm font-semibold text-slate-900">Carry-forward & extra charges</h3>
+            <div class="mt-2 text-sm text-slate-700 space-y-2">
+                @php($openingArrears = collect($lease->opening_arrears ?? [])->filter(fn ($row) => is_array($row)))
+                @if ($openingArrears->isNotEmpty())
+                    <p class="font-medium text-slate-800">Opening arrears</p>
+                    @foreach ($openingArrears as $row)
+                        <p>
+                            <span class="text-slate-500">-</span>
+                            {{ ucfirst(str_replace('_', ' ', (string) ($row['charge_type'] ?? 'other'))) }}
+                            {{ trim((string) ($row['specific_charge'] ?? '')) !== '' ? ' / '.$row['specific_charge'] : '' }}
+                            {{ !empty($row['period']) ? ' ('.$row['period'].')' : '' }}
+                            :
+                            {{ \App\Services\Property\PropertyMoney::kes((float) ($row['amount'] ?? 0)) }}
+                        </p>
+                    @endforeach
+                    @if (!is_null($lease->opening_arrears_manual_total))
+                        <p><span class="text-slate-500">Manual total:</span> {{ \App\Services\Property\PropertyMoney::kes((float) $lease->opening_arrears_manual_total) }}</p>
+                    @endif
+                    @if (!is_null($lease->opening_arrears_as_of_date))
+                        <p><span class="text-slate-500">As of date:</span> {{ optional($lease->opening_arrears_as_of_date)->format('Y-m-d') }}</p>
+                    @endif
+                    @if (trim((string) ($lease->opening_arrears_note ?? '')) !== '')
+                        <p><span class="text-slate-500">Note:</span> {{ $lease->opening_arrears_note }}</p>
+                    @endif
+                @else
+                    <p><span class="text-slate-500">Opening arrears:</span> —</p>
+                @endif
+
+                @php($additionalDeposits = collect($lease->additional_deposits ?? [])->filter(fn ($row) => is_array($row)))
+                @if ($additionalDeposits->isNotEmpty())
+                    <p class="pt-1 font-medium text-slate-800">Additional deposits</p>
+                    @foreach ($additionalDeposits as $row)
+                        <p>
+                            <span class="text-slate-500">-</span>
+                            {{ $row['label'] ?? 'Deposit' }}:
+                            {{ \App\Services\Property\PropertyMoney::kes((float) ($row['amount'] ?? 0)) }}
+                        </p>
+                    @endforeach
+                @endif
             </div>
         </div>
     </div>
