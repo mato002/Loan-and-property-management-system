@@ -20,7 +20,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
 
@@ -379,7 +378,6 @@ class LoanBookApplicationsController extends Controller
             'productMetaByName' => $this->productMetaByName(),
             'branchOptions' => $this->branchOptions(),
             'loanFormMappedFields' => $this->clientLoanMappedFields(),
-            'loanFormCustomFields' => $this->clientLoanCustomFields(),
             'draftApplication' => $draftApplication,
             'pendingDrafts' => $pendingDrafts,
         ]);
@@ -399,27 +397,23 @@ class LoanBookApplicationsController extends Controller
             'draft_id' => ['nullable', 'integer', 'exists:loan_book_applications,id'],
             'save_as_draft' => ['nullable', 'boolean'],
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
-            'product_name' => ['required', 'string', 'max:160'],
-            'amount_requested' => ['required', 'numeric', 'min:0'],
-            'term_value' => ['required', 'integer', 'min:1', 'max:3660'],
-            'term_unit' => ['required', 'string', 'in:'.implode(',', $this->termUnitOptions())],
+            'product_name' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('product_name')), 'nullable', 'string', 'max:160'],
+            'amount_requested' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('amount_requested')), 'nullable', 'numeric', 'min:0'],
+            'term_value' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('term_value')), 'nullable', 'integer', 'min:1', 'max:3660'],
+            'term_unit' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('term_unit')), 'nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
             'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
             'purpose' => ['nullable', 'string', 'max:2000'],
-            'stage' => ['required', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
+            'stage' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('stage')), 'nullable', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
             'branch' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:5000'],
-            'applicant_pin_location_code' => ['nullable', 'string', 'max:120'],
-            'applicant_signature_name' => ['nullable', 'string', 'max:200'],
-            'guarantor_full_name' => ['nullable', 'string', 'max:200'],
-            'guarantor_id_number' => ['nullable', 'string', 'max:80'],
-            'guarantor_phone' => ['nullable', 'string', 'max:40'],
-            'guarantor_signature_name' => ['nullable', 'string', 'max:200'],
             'suspense_payment_id' => ['nullable', 'integer', 'exists:loan_book_payments,id'],
-        ] + $this->clientLoanDynamicValidationRules());
+        ]);
         $validated['submission_source'] = 'manual_internal';
-        $validated['repayment_agreement_accepted'] = $request->boolean('repayment_agreement_accepted');
+        $validated['product_name'] = trim((string) ($validated['product_name'] ?? ''));
+        $validated['amount_requested'] = (float) ($validated['amount_requested'] ?? 0);
+        $validated['stage'] = (string) ($validated['stage'] ?? LoanBookApplication::STAGE_SUBMITTED);
         $termValue = (int) ($validated['term_value'] ?? 0);
         $termUnit = (string) ($validated['term_unit'] ?? 'monthly');
         if ($termValue <= 0) {
@@ -430,9 +424,7 @@ class LoanBookApplicationsController extends Controller
         $validated['term_unit'] = $termUnit;
         $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
         $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
-        if ($this->applicationFormMetaSupported()) {
-            $validated['form_meta'] = $this->resolveClientLoanFormMeta($request);
-        }
+        $validated['form_meta'] = [];
         $saveAsDraft = $request->boolean('save_as_draft');
         $draftId = (int) ($validated['draft_id'] ?? 0);
         $suspensePaymentId = (int) ($validated['suspense_payment_id'] ?? 0);
@@ -461,7 +453,6 @@ class LoanBookApplicationsController extends Controller
             'capacity' => (array) ($classification['client_capacity'] ?? []),
         ];
 
-        $this->mergeLoanDepartmentGuarantorFromClient($validated, $client);
         if (empty($validated['branch'])) {
             $validated['branch'] = $client->branch;
         }
@@ -606,6 +597,7 @@ class LoanBookApplicationsController extends Controller
         $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
         $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
         $hasDefaultRateType = Schema::hasColumn('loan_products', 'default_interest_rate_type');
+        $hasStatus = Schema::hasColumn('loan_products', 'status');
 
         $createPayload = [
             'description' => $description !== '' ? $description : null,
@@ -625,6 +617,9 @@ class LoanBookApplicationsController extends Controller
         }
         if ($hasDefaultRateType) {
             $createPayload['default_interest_rate_type'] = (string) ($validated['default_interest_rate_type'] ?? 'percent');
+        }
+        if ($hasStatus) {
+            $createPayload['status'] = 'active';
         }
 
         $product = LoanProduct::query()->firstOrCreate(
@@ -673,7 +668,6 @@ class LoanBookApplicationsController extends Controller
             'productMetaByName' => $this->productMetaByName(),
             'branchOptions' => $this->branchOptions(),
             'loanFormMappedFields' => $this->clientLoanMappedFields(),
-            'loanFormCustomFields' => $this->clientLoanCustomFields(),
         ]);
     }
 
@@ -699,28 +693,24 @@ class LoanBookApplicationsController extends Controller
 
         $validated = $request->validate([
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
-            'product_name' => ['required', 'string', 'max:160'],
-            'amount_requested' => ['required', 'numeric', 'min:0'],
-            'term_value' => ['required', 'integer', 'min:1', 'max:3660'],
-            'term_unit' => ['required', 'string', 'in:'.implode(',', $this->termUnitOptions())],
+            'product_name' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('product_name')), 'nullable', 'string', 'max:160'],
+            'amount_requested' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('amount_requested')), 'nullable', 'numeric', 'min:0'],
+            'term_value' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('term_value')), 'nullable', 'integer', 'min:1', 'max:3660'],
+            'term_unit' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('term_unit')), 'nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
             'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
             'purpose' => ['nullable', 'string', 'max:2000'],
-            'stage' => ['required', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
+            'stage' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('stage')), 'nullable', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
             'branch' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:5000'],
-            'applicant_pin_location_code' => ['nullable', 'string', 'max:120'],
-            'applicant_signature_name' => ['nullable', 'string', 'max:200'],
-            'guarantor_full_name' => ['nullable', 'string', 'max:200'],
-            'guarantor_id_number' => ['nullable', 'string', 'max:80'],
-            'guarantor_phone' => ['nullable', 'string', 'max:40'],
-            'guarantor_signature_name' => ['nullable', 'string', 'max:200'],
-        ] + $this->clientLoanDynamicValidationRules());
+        ]);
         if (empty($loan_book_application->submission_source)) {
             $validated['submission_source'] = 'manual_internal';
         }
-        $validated['repayment_agreement_accepted'] = $request->boolean('repayment_agreement_accepted');
+        $validated['product_name'] = trim((string) ($validated['product_name'] ?? $loan_book_application->product_name ?? ''));
+        $validated['amount_requested'] = (float) ($validated['amount_requested'] ?? $loan_book_application->amount_requested ?? 0);
+        $validated['stage'] = (string) ($validated['stage'] ?? $loan_book_application->stage ?? LoanBookApplication::STAGE_SUBMITTED);
         $termValue = (int) ($validated['term_value'] ?? 0);
         $termUnit = (string) ($validated['term_unit'] ?? 'monthly');
         if ($termValue <= 0) {
@@ -731,9 +721,7 @@ class LoanBookApplicationsController extends Controller
         $validated['term_unit'] = $termUnit;
         $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
         $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
-        if ($this->applicationFormMetaSupported()) {
-            $validated['form_meta'] = $this->resolveClientLoanFormMeta($request, $loan_book_application);
-        }
+        $validated['form_meta'] = (array) ($loan_book_application->form_meta ?? []);
         $validated['product_name'] = $this->ensureProductRegistered((string) $validated['product_name']);
         if (isset($validated['stage'])) {
             $stageError = $this->stageTransitionError($loan_book_application, (string) $validated['stage']);
@@ -782,7 +770,6 @@ class LoanBookApplicationsController extends Controller
             'graduation_allowed' => (bool) ($decision['graduation_allowed'] ?? false),
             'capacity' => (array) ($classification['client_capacity'] ?? []),
         ];
-        $this->mergeLoanDepartmentGuarantorFromClient($validated, $client);
         $validated['form_meta'] = array_merge((array) ($validated['form_meta'] ?? []), [
             'borrower_classification' => $validated['classification_reason_json'],
             'borrower_category' => $validated['borrower_category'],
@@ -851,25 +838,6 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
-     * If guarantor lines are left blank on the application, copy the primary guarantor from the client record.
-     *
-     * @param  array<string, mixed>  $validated
-     */
-    private function mergeLoanDepartmentGuarantorFromClient(array &$validated, LoanClient $client): void
-    {
-        $map = [
-            'guarantor_full_name' => 'guarantor_1_full_name',
-            'guarantor_id_number' => 'guarantor_1_id_number',
-            'guarantor_phone' => 'guarantor_1_phone',
-        ];
-        foreach ($map as $appField => $clientField) {
-            if (blank($validated[$appField] ?? null) && filled($client->{$clientField} ?? null)) {
-                $validated[$appField] = $client->{$clientField};
-            }
-        }
-    }
-
-    /**
      * @return array<string, array{label:string,data_type:string,field_key:string,select_options:list<string>}>
      */
     private function clientLoanMappedFields(): array
@@ -877,17 +845,17 @@ class LoanBookApplicationsController extends Controller
         $definitions = $this->clientLoanFormDefinitions();
         $aliases = [
             'product_name' => ['loan product', 'product'],
+            'interest_rate' => ['interest rate', 'interest rate (%)'],
+            'interest_rate_period' => ['interest period', 'interest rate period'],
             'amount_requested' => ['amount', 'requested amount'],
             'term_value' => ['duration', 'term', 'term length'],
-            'guarantor_full_name' => ['guarantor name', 'guarantor full name'],
-            'guarantor_phone' => ['guarantor contact', 'guarantor phone', 'guarantor tel no'],
-            'guarantor_id_number' => ['guarantor id', 'guarantor id no', 'guarantor idno'],
-            'applicant_signature_name' => ['applicant sign', 'applicant signature', 'applicant sign (full name)'],
-            'applicant_pin_location_code' => ['home / business pin location code', 'pin location code'],
-            'guarantor_signature_name' => ['guarantor signature', 'guarantor signature (full name)'],
-            'repayment_agreement_accepted' => ['repayment agreement', 'agreement'],
+            'term_unit' => ['term unit', 'duration unit'],
             'client_id_number' => ['client idno', 'idno', 'client id'],
             'loan_officer' => ['loan officer', 'officer'],
+            'purpose' => ['purpose', 'loan purpose', 'business name'],
+            'notes' => ['notes', 'internal notes', 'asset list'],
+            'stage' => ['stage', 'status'],
+            'branch' => ['branch'],
         ];
 
         $mapped = [];
@@ -910,130 +878,26 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
-     * @return array<int, array{key:string,label:string,data_type:string,select_options:list<string>}>
-     */
-    private function clientLoanCustomFields(): array
-    {
-        $definitions = $this->clientLoanFormDefinitions();
-        $mappedKeys = collect($this->clientLoanMappedFields())
-            ->pluck('field_key')
-            ->filter()
-            ->values()
-            ->all();
-
-        return $definitions
-            ->filter(fn (LoanFormFieldDefinition $f): bool => ! in_array((string) $f->field_key, $mappedKeys, true))
-            ->map(fn (LoanFormFieldDefinition $f): array => [
-                'key' => (string) $f->field_key,
-                'label' => (string) $f->label,
-                'data_type' => (string) $f->data_type,
-                'select_options' => $this->splitSelectOptions((string) ($f->select_options ?? '')),
-            ])
-            ->values()
-            ->all();
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function clientLoanDynamicValidationRules(): array
-    {
-        if (! $this->applicationFormMetaSupported()) {
-            return [];
-        }
-
-        $rules = [];
-        foreach ($this->clientLoanCustomFields() as $field) {
-            $key = (string) ($field['key'] ?? '');
-            if ($key === '') {
-                continue;
-            }
-            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
-            if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
-                $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:4096'];
-                continue;
-            }
-            if ($type === LoanFormFieldDefinition::TYPE_NUMBER) {
-                $rules["form_meta.$key"] = ['nullable', 'numeric'];
-                continue;
-            }
-            if ($type === LoanFormFieldDefinition::TYPE_SELECT) {
-                $options = collect((array) ($field['select_options'] ?? []))
-                    ->map(fn (string $v): string => trim($v))
-                    ->filter()
-                    ->values()
-                    ->all();
-                $rules["form_meta.$key"] = $options !== []
-                    ? ['nullable', 'string', \Illuminate\Validation\Rule::in($options)]
-                    : ['nullable', 'string', 'max:255'];
-                continue;
-            }
-            $rules["form_meta.$key"] = ['nullable', 'string', 'max:5000'];
-        }
-
-        return $rules;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function resolveClientLoanFormMeta(Request $request, ?LoanBookApplication $existing = null): array
-    {
-        $existingMeta = (array) ($existing?->form_meta ?? []);
-        $meta = [];
-        foreach ($this->clientLoanCustomFields() as $field) {
-            $key = (string) ($field['key'] ?? '');
-            if ($key === '') {
-                continue;
-            }
-            $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
-            if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
-                $inputKey = "form_files.$key";
-                if ($request->hasFile($inputKey)) {
-                    $file = $request->file($inputKey);
-                    if ($file) {
-                        $newPath = $file->store('loan-applications/form-meta', 'public');
-                        $meta[$key] = $newPath;
-                        $oldPath = (string) ($existingMeta[$key] ?? '');
-                        if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
-                            Storage::disk('public')->delete($oldPath);
-                        }
-                        continue;
-                    }
-                }
-                if (array_key_exists($key, $existingMeta)) {
-                    $meta[$key] = $existingMeta[$key];
-                }
-                continue;
-            }
-
-            $value = $request->input("form_meta.$key");
-            if (is_array($value)) {
-                $value = '';
-            }
-            $meta[$key] = trim((string) ($value ?? ''));
-        }
-
-        return $meta;
-    }
-
-    private function applicationFormMetaSupported(): bool
-    {
-        return Schema::hasColumn('loan_book_applications', 'form_meta');
-    }
-
-    /**
      * @return \Illuminate\Support\Collection<int, LoanFormFieldDefinition>
      */
     private function clientLoanFormDefinitions()
     {
-        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_CLIENT_LOAN);
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION);
 
         return LoanFormFieldDefinition::query()
-            ->where('form_kind', LoanFormFieldDefinition::KIND_CLIENT_LOAN)
+            ->where('form_kind', LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION)
+            ->where(function (Builder $query): void {
+                $query->whereNull('field_status')
+                    ->orWhere('field_status', 'active');
+            })
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
+    }
+
+    private function isMappedFieldEnabled(string $fieldKey): bool
+    {
+        return array_key_exists($fieldKey, $this->clientLoanMappedFields());
     }
 
     /**
@@ -1069,7 +933,11 @@ class LoanBookApplicationsController extends Controller
     {
         $saved = Schema::hasTable('loan_products')
             ? LoanProduct::query()
-                ->where('is_active', true)
+                ->when(
+                    Schema::hasColumn('loan_products', 'status'),
+                    fn (Builder $query) => $query->where('status', 'active'),
+                    fn (Builder $query) => $query->where('is_active', true)
+                )
                 ->orderBy('name')
                 ->pluck('name')
                 ->map(fn ($name) => trim((string) $name))
@@ -1111,9 +979,13 @@ class LoanBookApplicationsController extends Controller
         }
 
         if (Schema::hasTable('loan_products')) {
+            $defaults = ['is_active' => true];
+            if (Schema::hasColumn('loan_products', 'status')) {
+                $defaults['status'] = 'active';
+            }
             LoanProduct::query()->firstOrCreate(
                 ['name' => $name],
-                ['is_active' => true]
+                $defaults
             );
         }
 

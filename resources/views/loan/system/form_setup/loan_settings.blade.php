@@ -2,12 +2,12 @@
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
             <div class="flex flex-wrap gap-2">
-                <button type="button" class="inline-flex items-center rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
+                <a href="{{ route('loan.system.form_setup.page', ['page' => 'loan-settings', 'export' => 1]) }}" class="inline-flex items-center rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50">
                     Export Policy
-                </button>
-                <button type="button" class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                </a>
+                <a href="{{ route('loan.system.access_logs.index') }}" class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                     View Audit Trail
-                </button>
+                </a>
                 <button form="loan-settings-primary-form" type="submit" class="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
                     Save Changes
                 </button>
@@ -57,23 +57,17 @@
                 </div>
             </div>
 
-            @if ($tab !== 'product-rules')
-                <div class="rounded-xl border border-slate-200 bg-white p-8 text-center">
-                    <p class="text-sm font-semibold text-slate-800">This tab is configured in the approved layout and ready for incremental wiring.</p>
-                    <p class="mt-1 text-xs text-slate-500">Use Product Rules to manage Loan Form Setup, Eligibility, Graduation Logic, Required Approvals, and Additional Product Settings.</p>
-                </div>
-            @else
                 <div class="space-y-5">
-                    <div class="rounded-xl border border-slate-200 bg-white p-5">
+                    <div id="loan-form-setup" class="rounded-xl border border-slate-200 bg-white p-5">
                         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <h3 class="text-base font-semibold text-slate-900">A. Loan Form Setup</h3>
                                 <p class="text-xs text-slate-500">Controls the fields shown during loan application booking.</p>
                             </div>
                             <div class="flex flex-wrap gap-2">
-                                <button type="button" class="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">Setup Loan Form</button>
-                                <button type="button" class="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">Preview Form</button>
-                                <button type="button" class="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">Clone Form</button>
+                                <a href="#loan-form-setup" class="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">Setup Loan Form</a>
+                                <button type="button" @click="window.dispatchEvent(new CustomEvent('loan-settings-preview-form'))" class="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">Preview Form</button>
+                                <button type="button" @click="window.dispatchEvent(new CustomEvent('loan-settings-clone-form'))" class="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">Clone Form</button>
                             </div>
                         </div>
 
@@ -110,7 +104,15 @@
                                     <tbody>
                                         <template x-for="(row, index) in rows" :key="row.id ?? ('new-'+index)">
                                             <tr class="border-t border-slate-100">
-                                                <td class="px-2 py-2"><input type="checkbox" checked class="rounded border-slate-300"></td>
+                                                <td class="px-2 py-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        class="rounded border-slate-300"
+                                                        :checked="row.field_status === 'active'"
+                                                        @change="row.field_status = $event.target.checked ? 'active' : 'draft'"
+                                                        :title="row.field_status === 'active' ? 'Included in form' : 'Excluded from form'"
+                                                    >
+                                                </td>
                                                 <td class="px-2 py-2"><input class="w-40 rounded border-slate-200 text-xs" x-model="row.label" :name="`fields[${index}][label]`" required></td>
                                                 <td class="px-2 py-2"><input class="w-40 rounded border-slate-200 bg-slate-50 text-xs" x-model="row.field_key" readonly></td>
                                                 <td class="px-2 py-2">
@@ -166,7 +168,7 @@
                     </div>
 
                     <div class="grid grid-cols-1 gap-5 xl:grid-cols-2">
-                        <div class="rounded-xl border border-slate-200 bg-white p-5">
+                        <div id="eligibility-rules" class="rounded-xl border border-slate-200 bg-white p-5">
                             <h3 class="text-base font-semibold text-slate-900">B. Eligibility Rules</h3>
                             <form method="post" action="{{ route('loan.system.form_setup.page.save', ['page' => 'loan-settings', 'tab' => 'product-rules']) }}" class="mt-3 space-y-3">
                                 @csrf
@@ -194,7 +196,7 @@
                             </form>
                         </div>
 
-                        <div class="rounded-xl border border-slate-200 bg-white p-5">
+                        <div id="graduation-logic" class="rounded-xl border border-slate-200 bg-white p-5">
                             <h3 class="text-base font-semibold text-slate-900">C. Repeat-Loan Graduation Logic</h3>
                             <form method="post" action="{{ route('loan.system.form_setup.page.save', ['page' => 'loan-settings', 'tab' => 'product-rules']) }}" class="mt-3 space-y-3">
                                 @csrf
@@ -218,7 +220,7 @@
                         </div>
                     </div>
 
-                    <div class="rounded-xl border border-slate-200 bg-white p-5">
+                    <div id="required-approvals" class="rounded-xl border border-slate-200 bg-white p-5">
                         <h3 class="text-base font-semibold text-slate-900">D. Required Approvals</h3>
                         <form method="post" action="{{ route('loan.system.form_setup.page.save', ['page' => 'loan-settings', 'tab' => 'product-rules']) }}" class="mt-3 space-y-4">
                             @csrf
@@ -267,7 +269,61 @@
                         </form>
                     </div>
                 </div>
-            @endif
         </div>
     </x-loan.page>
 </x-loan-layout>
+
+<script>
+    (() => {
+        const tabTargets = {
+            'product-rules': 'loan-form-setup',
+            'approval-matrix': 'required-approvals',
+            'disbursement-controls': 'required-approvals',
+            'eligibility-affordability': 'eligibility-rules',
+            'portfolio-limits': 'graduation-logic',
+            'staff-loans': null,
+            'dormancy-reactivation': null,
+            'overrides-security': null,
+            'audit-trail': null,
+        };
+
+        const crossPage = {
+            'staff-loans': @json(route('loan.accounting.advances.index')),
+            'dormancy-reactivation': @json(route('loan.system.setup.preferences')),
+            'overrides-security': @json(route('loan.system.setup.access_roles')),
+            'audit-trail': @json(route('loan.system.access_logs.index')),
+        };
+
+        const currentTab = @json((string) request('tab', 'product-rules'));
+        const targetId = tabTargets[currentTab] ?? null;
+        const jumpUrl = crossPage[currentTab] ?? null;
+
+        if (!targetId && jumpUrl) {
+            window.location.assign(jumpUrl);
+            return;
+        }
+        if (targetId) {
+            requestAnimationFrame(() => {
+                document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        }
+
+        const previewHandler = () => {
+            document.getElementById('loan-form-setup')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const firstInput = document.querySelector('#loan-settings-primary-form input[name="fields[0][label]"]');
+            firstInput?.focus();
+        };
+
+        const cloneHandler = () => {
+            const rows = document.querySelectorAll('#loan-settings-primary-form tbody tr');
+            if (!rows.length) {
+                return;
+            }
+            alert('Form rows are already editable and clonable by adding new rows. Use "Add Custom Field" and save.');
+            document.getElementById('loan-form-setup')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        window.addEventListener('loan-settings-preview-form', previewHandler);
+        window.addEventListener('loan-settings-clone-form', cloneHandler);
+    })();
+</script>

@@ -42,13 +42,6 @@ class LoanBookApplication extends Model
         'notes',
         'submission_source',
         'submitted_at',
-        'applicant_pin_location_code',
-        'repayment_agreement_accepted',
-        'applicant_signature_name',
-        'guarantor_full_name',
-        'guarantor_id_number',
-        'guarantor_phone',
-        'guarantor_signature_name',
         'form_meta',
     ];
 
@@ -59,7 +52,6 @@ class LoanBookApplication extends Model
             'interest_rate' => 'decimal:4',
             'suggested_limit' => 'decimal:2',
             'submitted_at' => 'datetime',
-            'repayment_agreement_accepted' => 'boolean',
             'form_meta' => 'array',
             'risk_flags_json' => 'array',
             'classification_reason_json' => 'array',

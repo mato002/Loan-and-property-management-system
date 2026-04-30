@@ -394,22 +394,20 @@ class LoanSystemHelpController extends Controller
                     [
                         'title' => 'SMS Configurations',
                         'desc' => 'Prepare SMS provider configuration and notification templates.',
-                        'href' => null,
+                        'href' => route('loan.bulksms.compose'),
                         'icon' => 'document',
-                        'status' => 'not_configured',
+                        'status' => 'needs_review',
                         'priority' => 'optional',
-                        'coming_soon' => true,
-                        'badge' => 'Coming soon',
+                        'badge' => 'SMS center',
                     ],
                     [
                         'title' => 'Wallets Configurations',
                         'desc' => 'Wallet and M-Pesa-equivalent configuration placeholders.',
-                        'href' => null,
+                        'href' => route('loan.bulksms.wallet'),
                         'icon' => 'banknote',
-                        'status' => 'not_configured',
+                        'status' => 'needs_review',
                         'priority' => 'optional',
-                        'coming_soon' => true,
-                        'badge' => 'Coming soon',
+                        'badge' => 'Wallet center',
                     ],
                 ],
             ],
@@ -586,6 +584,7 @@ class LoanSystemHelpController extends Controller
     public function setupLoanProductsStore(Request $request): RedirectResponse
     {
         abort_unless(Schema::hasTable('loan_products'), 404, 'Loan products table not found. Run migrations.');
+        $hasStatus = Schema::hasColumn('loan_products', 'status');
         $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
         $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
         $hasDefaultRateType = Schema::hasColumn('loan_products', 'default_interest_rate_type');
@@ -594,7 +593,7 @@ class LoanSystemHelpController extends Controller
         $hasLoanOffsetFeesType = Schema::hasColumn('loan_products', 'loan_offset_fees_type');
 
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:160'],
+            'name' => ['required', 'string', 'max:160', Rule::unique('loan_products', 'name')],
             'description' => ['nullable', 'string', 'max:500'],
             'default_interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000000000'],
             'default_interest_rate_type' => ['nullable', 'in:fixed,percent'],
@@ -670,6 +669,9 @@ class LoanSystemHelpController extends Controller
             'cluster_name' => filled($validated['cluster_name'] ?? null) ? trim((string) $validated['cluster_name']) : null,
             'is_active' => ($validated['is_active'] ?? '1') === '1',
         ];
+        if ($hasStatus) {
+            $payload['status'] = $payload['is_active'] ? 'active' : 'inactive';
+        }
         if ($hasDefaultTermUnit) {
             $payload['default_term_unit'] = (string) ($validated['default_term_unit'] ?? 'monthly');
         }
@@ -689,10 +691,7 @@ class LoanSystemHelpController extends Controller
             $payload['loan_offset_fees_type'] = (string) ($validated['loan_offset_fees_type'] ?? 'fixed');
         }
 
-        $product = LoanProduct::query()->updateOrCreate(
-            ['name' => $name],
-            $payload
-        );
+        $product = LoanProduct::query()->create(['name' => $name] + $payload);
 
         if (Schema::hasTable('loan_product_charges')) {
             $charges = collect($validated['charges'] ?? [])
@@ -720,6 +719,7 @@ class LoanSystemHelpController extends Controller
 
     public function setupLoanProductsUpdate(Request $request, LoanProduct $loan_product): RedirectResponse
     {
+        $hasStatus = Schema::hasColumn('loan_products', 'status');
         $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
         $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
         $hasDefaultRateType = Schema::hasColumn('loan_products', 'default_interest_rate_type');
@@ -811,6 +811,9 @@ class LoanSystemHelpController extends Controller
             'cluster_name' => filled($validated['cluster_name'] ?? null) ? trim((string) $validated['cluster_name']) : null,
             'is_active' => $validated['is_active'] === '1',
         ];
+        if ($hasStatus) {
+            $updatePayload['status'] = $updatePayload['is_active'] ? 'active' : 'inactive';
+        }
         if ($hasDefaultTermUnit) {
             $updatePayload['default_term_unit'] = (string) ($validated['default_term_unit'] ?? 'monthly');
         }
@@ -928,17 +931,18 @@ class LoanSystemHelpController extends Controller
     public function setupLoanProductsDestroy(LoanProduct $loan_product): RedirectResponse
     {
         $inUseOnLoans = \App\Models\LoanBookLoan::query()->where('product_name', $loan_product->name)->exists();
-        $inUseOnApplications = \App\Models\LoanBookApplication::query()->where('product_name', $loan_product->name)->exists();
-        if ($inUseOnLoans || $inUseOnApplications) {
-            $loan_product->update(['is_active' => false]);
+        $payload = ['is_active' => false];
+        if (Schema::hasColumn('loan_products', 'status')) {
+            $payload['status'] = 'inactive';
+        }
+        $loan_product->update($payload);
 
+        if ($inUseOnLoans) {
             return redirect()->route('loan.system.setup.loan_products')
-                ->with('status', 'Product is in use; it was deactivated instead of deleted.');
+                ->with('status', 'Product is linked to existing loans and has been deactivated.');
         }
 
-        $loan_product->delete();
-
-        return redirect()->route('loan.system.setup.loan_products')->with('status', 'Loan product removed.');
+        return redirect()->route('loan.system.setup.loan_products')->with('status', 'Loan product deactivated.');
     }
 
     public function setupDepartments(): View

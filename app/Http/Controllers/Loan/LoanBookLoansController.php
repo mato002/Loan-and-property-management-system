@@ -24,6 +24,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class LoanBookLoansController extends Controller
@@ -1070,6 +1071,7 @@ class LoanBookLoansController extends Controller
         $validated['term_unit'] = strtolower((string) ($validated['term_unit'] ?? 'monthly'));
         if ($isCreate) {
             $validated['dpd'] = 0;
+            $this->assertProductActiveForNewLoan((string) ($validated['product_name'] ?? ''));
         }
 
         return $validated;
@@ -1082,7 +1084,11 @@ class LoanBookLoansController extends Controller
     {
         $saved = Schema::hasTable('loan_products')
             ? \App\Models\LoanProduct::query()
-                ->where('is_active', true)
+                ->when(
+                    Schema::hasColumn('loan_products', 'status'),
+                    fn (Builder $query) => $query->where('status', 'active'),
+                    fn (Builder $query) => $query->where('is_active', true)
+                )
                 ->orderBy('name')
                 ->pluck('name')
                 ->map(fn ($name) => trim((string) $name))
@@ -1123,6 +1129,27 @@ class LoanBookLoansController extends Controller
         }
 
         return $all;
+    }
+
+    private function assertProductActiveForNewLoan(string $productName): void
+    {
+        $name = trim($productName);
+        if ($name === '' || ! Schema::hasTable('loan_products')) {
+            return;
+        }
+
+        $query = LoanProduct::query()->where('name', $name);
+        if (Schema::hasColumn('loan_products', 'status')) {
+            $query->where('status', 'active');
+        } elseif (Schema::hasColumn('loan_products', 'is_active')) {
+            $query->where('is_active', true);
+        }
+
+        if (! $query->exists()) {
+            throw ValidationException::withMessages([
+                'product_name' => 'Selected loan product is inactive and cannot be used for new loans.',
+            ]);
+        }
     }
 
     /**

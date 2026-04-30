@@ -2,14 +2,22 @@
 
 namespace App\Models;
 
+use LogicException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class LoanProduct extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'name',
+        'product_code',
         'description',
+        'status',
         'default_interest_rate',
         'default_interest_rate_type',
         'default_term_months',
@@ -57,6 +65,57 @@ class LoanProduct extends Model
             'exempt_from_checkoffs' => 'boolean',
             'is_active' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (LoanProduct $product): void {
+            if (Schema::hasColumn('loan_products', 'status') && blank($product->status)) {
+                $product->status = ($product->is_active ?? true) ? 'active' : 'inactive';
+            }
+
+            if (Schema::hasColumn('loan_products', 'is_active')) {
+                $product->is_active = ($product->status ?? 'active') === 'active';
+            }
+
+            if (Schema::hasColumn('loan_products', 'product_code') && blank($product->product_code)) {
+                $product->product_code = self::nextProductCode();
+            }
+        });
+
+        static::updating(function (LoanProduct $product): void {
+            if ($product->isDirty('id')) {
+                throw new LogicException('Loan product id is immutable.');
+            }
+            if ($product->isDirty('product_code')) {
+                throw new LogicException('Loan product code is immutable.');
+            }
+
+            if (Schema::hasColumn('loan_products', 'status')) {
+                if ($product->isDirty('status')) {
+                    $product->status = strtolower(trim((string) $product->status)) === 'inactive' ? 'inactive' : 'active';
+                } elseif ($product->isDirty('is_active')) {
+                    $product->status = (bool) $product->is_active ? 'active' : 'inactive';
+                }
+            }
+
+            if (Schema::hasColumn('loan_products', 'is_active')) {
+                if ($product->isDirty('status')) {
+                    $product->is_active = $product->status === 'active';
+                } elseif ($product->isDirty('is_active')) {
+                    $product->is_active = (bool) $product->is_active;
+                }
+            }
+        });
+    }
+
+    private static function nextProductCode(): string
+    {
+        do {
+            $code = 'LP-'.Str::upper(Str::random(12));
+        } while (self::withTrashed()->where('product_code', $code)->exists());
+
+        return $code;
     }
 
     public function charges(): HasMany

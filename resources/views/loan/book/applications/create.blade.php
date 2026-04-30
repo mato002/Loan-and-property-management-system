@@ -2,7 +2,6 @@
     <x-loan.page :title="$title" :subtitle="$subtitle">
         @php
             $mapped = $loanFormMappedFields ?? [];
-            $customFormFields = $loanFormCustomFields ?? [];
         @endphp
         <x-slot name="actions">
             <a href="{{ route('loan.book.applications.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
@@ -79,6 +78,7 @@
                     </select>
                     @error('loan_client_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                @if (isset($mapped['product_name']))
                 <div>
                     <label for="product_name" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['product_name']['label'] ?? 'Product' }}</label>
                     <div class="flex gap-2">
@@ -98,14 +98,18 @@
                     @error('product_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     <p class="mt-1 text-xs text-slate-500" x-text="selectedProductHint"></p>
                 </div>
+                @endif
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    @if (isset($mapped['amount_requested']))
                     <div>
                         <label for="amount_requested" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['amount_requested']['label'] ?? 'Amount requested' }}</label>
                         <input id="amount_requested" name="amount_requested" type="number" step="0.01" min="0" value="{{ old('amount_requested', $draftApplication?->amount_requested) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                    @endif
+                    @if (isset($mapped['term_unit']))
                     <div>
-                        <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">Term unit</label>
+                        <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['term_unit']['label'] ?? 'Term unit' }}</label>
                         <select id="term_unit" name="term_unit" required class="w-full rounded-lg border-slate-200 text-sm" x-model="termUnit" @change="onTermUnitChange()">
                             <option value="" @selected(old('term_unit', $draftApplication?->term_unit ?? '') === '')>Select term unit…</option>
                             @foreach (['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'] as $v => $lab)
@@ -115,18 +119,24 @@
                         <p class="mt-1 text-[11px] text-slate-500" x-show="termUnit === ''">Choose how the loan term is measured (days, weeks, or months).</p>
                         @error('term_unit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
-                    <div x-show="termUnit !== ''" x-cloak>
+                    @endif
+                    @if (isset($mapped['term_value']))
+                    <div>
                         <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['term_value']['label'] ?? 'Term length' }}</label>
                         <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', $draftApplication?->term_value) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="e.g. 6" />
                         @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                    @endif
+                    @if (isset($mapped['interest_rate']))
                     <div>
-                        <label for="interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">Interest rate (%)</label>
+                        <label for="interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['interest_rate']['label'] ?? 'Interest rate (%)' }}</label>
                         <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="1000" value="{{ old('interest_rate', $draftApplication?->interest_rate) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                    @endif
+                    @if (isset($mapped['interest_rate_period']))
                     <div class="sm:col-span-2">
-                        <label for="interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">Interest period</label>
+                        <label for="interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['interest_rate_period']['label'] ?? 'Interest period' }}</label>
                         <select id="interest_rate_period" name="interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
                             @foreach (['daily' => 'Per day', 'weekly' => 'Per week', 'monthly' => 'Per month', 'annual' => 'Per year'] as $v => $lab)
                                 <option value="{{ $v }}" @selected(old('interest_rate_period', $draftApplication?->interest_rate_period ?? 'annual') === $v)>{{ $lab }}</option>
@@ -134,9 +144,11 @@
                         </select>
                         @error('interest_rate_period')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                    @endif
                 </div>
+                @if (isset($mapped['stage']))
                 <div>
-                    <label for="stage" class="block text-xs font-semibold text-slate-600 mb-1">Stage</label>
+                    <label for="stage" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['stage']['label'] ?? 'Stage' }}</label>
                     <select id="stage" name="stage" required class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach ($stages as $value => $label)
                             @continue($value === \App\Models\LoanBookApplication::STAGE_DISBURSED)
@@ -146,8 +158,10 @@
                     <p class="mt-1 text-[11px] text-slate-500">Disbursed is set automatically after a completed disbursement record.</p>
                     @error('stage')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                @endif
+                @if (isset($mapped['branch']))
                 <div>
-                    <label for="branch" class="block text-xs font-semibold text-slate-600 mb-1">Branch (optional)</label>
+                    <label for="branch" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['branch']['label'] ?? 'Branch (optional)' }}</label>
                     <div class="flex gap-2">
                         <select id="branch" name="branch" class="w-full rounded-lg border-slate-200 text-sm">
                             <option value="">Select branch...</option>
@@ -164,78 +178,22 @@
                     </div>
                     @error('branch')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                @endif
+                @if (isset($mapped['purpose']))
                 <div>
-                    <label for="purpose" class="block text-xs font-semibold text-slate-600 mb-1">Purpose</label>
+                    <label for="purpose" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['purpose']['label'] ?? 'Purpose' }}</label>
                     <textarea id="purpose" name="purpose" rows="3" class="w-full rounded-lg border-slate-200 text-sm">{{ old('purpose', $draftApplication?->purpose ?? $defaultPurpose ?? '') }}</textarea>
                     @error('purpose')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                @endif
 
-                <div class="rounded-lg border border-slate-200 bg-slate-50/80 p-4 space-y-4">
-                    <div>
-                        <h3 class="text-sm font-semibold text-slate-800">Loan department form</h3>
-                        <p class="mt-1 text-xs text-slate-500">Applicant <strong>name</strong>, <strong>phone</strong>, <strong>home address</strong> and <strong>ID</strong> are taken from the selected client’s profile. Complete the fields below to match your paper form.</p>
-                    </div>
-                    @if (isset($mapped['applicant_pin_location_code']))
-                    <div>
-                        <label for="applicant_pin_location_code" class="block text-xs font-semibold text-slate-600 mb-1">Home / business PIN location code</label>
-                        <input id="applicant_pin_location_code" name="applicant_pin_location_code" type="text" value="{{ old('applicant_pin_location_code') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="e.g. map / PIN code for home or business" />
-                        @error('applicant_pin_location_code')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    </div>
-                    @endif
-                    @if (isset($mapped['applicant_signature_name']))
-                    <div>
-                        <label for="applicant_signature_name" class="block text-xs font-semibold text-slate-600 mb-1">Applicant sign (full name)</label>
-                        <input id="applicant_signature_name" name="applicant_signature_name" type="text" value="{{ old('applicant_signature_name') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="Type full name as on the signature line" autocomplete="name" />
-                        @error('applicant_signature_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                    </div>
-                    @endif
-                    <div class="border-t border-slate-200 pt-4">
-                        <h4 class="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">Guarantor details</h4>
-                        <p class="text-xs text-slate-500 mb-3">If left blank, primary guarantor is copied from the client profile when you save (when present).</p>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            @if (isset($mapped['guarantor_full_name']))
-                            <div class="sm:col-span-2">
-                                <label for="guarantor_full_name" class="block text-xs font-semibold text-slate-600 mb-1">Name</label>
-                                <input id="guarantor_full_name" name="guarantor_full_name" type="text" value="{{ old('guarantor_full_name') }}" class="w-full rounded-lg border-slate-200 text-sm" />
-                                @error('guarantor_full_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                            </div>
-                            @endif
-                            @if (isset($mapped['guarantor_id_number']))
-                            <div>
-                                <label for="guarantor_id_number" class="block text-xs font-semibold text-slate-600 mb-1">ID no.</label>
-                                <input id="guarantor_id_number" name="guarantor_id_number" type="text" value="{{ old('guarantor_id_number') }}" class="w-full rounded-lg border-slate-200 text-sm" />
-                                @error('guarantor_id_number')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                            </div>
-                            @endif
-                            @if (isset($mapped['guarantor_phone']))
-                            <div>
-                                <label for="guarantor_phone" class="block text-xs font-semibold text-slate-600 mb-1">Tel no.</label>
-                                <input id="guarantor_phone" name="guarantor_phone" type="text" value="{{ old('guarantor_phone') }}" class="w-full rounded-lg border-slate-200 text-sm" />
-                                @error('guarantor_phone')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                            </div>
-                            @endif
-                            @if (isset($mapped['guarantor_signature_name']))
-                            <div class="sm:col-span-2">
-                                <label for="guarantor_signature_name" class="block text-xs font-semibold text-slate-600 mb-1">Guarantor signature (full name)</label>
-                                <input id="guarantor_signature_name" name="guarantor_signature_name" type="text" value="{{ old('guarantor_signature_name') }}" class="w-full rounded-lg border-slate-200 text-sm" placeholder="Type full name as signature" />
-                                @error('guarantor_signature_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                            </div>
-                            @endif
-                        </div>
-                    </div>
-                    @if (!empty($customFormFields))
-                        @include('loan.book.applications.partials.custom-fields', [
-                            'customFormFields' => $customFormFields,
-                            'draftApplication' => $draftApplication ?? null,
-                        ])
-                    @endif
-                </div>
-
+                @if (isset($mapped['notes']))
                 <div>
-                    <label for="notes" class="block text-xs font-semibold text-slate-600 mb-1">Internal notes</label>
+                    <label for="notes" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['notes']['label'] ?? 'Internal notes' }}</label>
                     <textarea id="notes" name="notes" rows="2" class="w-full rounded-lg border-slate-200 text-sm">{{ old('notes', $draftApplication?->notes) }}</textarea>
                     @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                @endif
                 <div class="rounded-lg border border-indigo-200 bg-indigo-50/50 p-4 space-y-3">
                     <div class="flex items-center justify-between gap-2">
                         <h4 class="text-sm font-semibold text-indigo-900">Required pre-booking fees</h4>
@@ -857,13 +815,6 @@
                 if (!data) return;
 
                 this.setIfSafe('branch', data.branch);
-                this.setIfSafe('applicant_signature_name', data.fullName);
-                this.setIfSafe('guarantor_full_name', data.guarantorFullName);
-                this.setIfSafe('guarantor_id_number', data.guarantorIdNumber);
-                this.setIfSafe('guarantor_phone', data.guarantorPhone);
-
-                const guarantorSignature = data.guarantorFullName !== '' ? data.guarantorFullName : data.fullName;
-                this.setIfSafe('guarantor_signature_name', guarantorSignature);
             },
             async saveNewProduct() {
                 this.productModalError = '';

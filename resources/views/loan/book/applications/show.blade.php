@@ -73,44 +73,6 @@
                     </div>
                 </div>
 
-                <div class="mt-6 border-t border-slate-100 pt-5">
-                    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                        <div>
-                            <h3 class="text-sm font-semibold text-slate-800">Loan department form</h3>
-                            <p class="mt-1 text-xs text-slate-500">Applicant identity and contact details from the client record.</p>
-                        </div>
-                        @if ($application->loanClient)
-                            <a href="{{ route('loan.clients.show', $application->loanClient) }}" class="shrink-0 text-xs font-semibold text-[#2f4f4f] hover:underline">Open client profile</a>
-                        @endif
-                    </div>
-                    <dl class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
-                        <div><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->full_name ?? '—' }}</dd></div>
-                        <div><dt class="text-slate-500">Tel no.</dt><dd class="font-medium text-slate-900"><x-phone-link :value="$application->loanClient?->phone" /></dd></div>
-                        <div><dt class="text-slate-500">ID no.</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->id_number ?? '—' }}</dd></div>
-                        <div class="sm:col-span-2"><dt class="text-slate-500">Home address</dt><dd class="font-medium text-slate-900 whitespace-pre-line">{{ $application->loanClient?->address ?: '—' }}</dd></div>
-                        <div class="sm:col-span-2"><dt class="text-slate-500">Home / business PIN location code</dt><dd class="font-medium text-slate-900">{{ $application->applicant_pin_location_code ?: '—' }}</dd></div>
-                        <div class="sm:col-span-2"><dt class="text-slate-500">Applicant sign</dt><dd class="font-medium text-slate-900">{{ $application->applicant_signature_name ?: '—' }}</dd></div>
-                    </dl>
-                    <h4 class="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-600">Guarantor details</h4>
-                    <dl class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
-                        <div><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $application->guarantor_full_name ?: '—' }}</dd></div>
-                        <div><dt class="text-slate-500">ID no.</dt><dd class="font-medium text-slate-900">{{ $application->guarantor_id_number ?: '—' }}</dd></div>
-                        <div><dt class="text-slate-500">Tel no.</dt><dd class="font-medium text-slate-900"><x-phone-link :value="$application->guarantor_phone" /></dd></div>
-                        <div class="sm:col-span-2"><dt class="text-slate-500">Signature</dt><dd class="font-medium text-slate-900">{{ $application->guarantor_signature_name ?: '—' }}</dd></div>
-                    </dl>
-                    <h4 class="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-600">Guarantor2 details</h4>
-                    <dl class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
-                        <div><dt class="text-slate-500">Name</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->guarantor_2_full_name ?: '—' }}</dd></div>
-                        <div><dt class="text-slate-500">ID no.</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->guarantor_2_id_number ?: '—' }}</dd></div>
-                        <div><dt class="text-slate-500">Tel no.</dt><dd class="font-medium text-slate-900"><x-phone-link :value="$application->loanClient?->guarantor_2_phone" /></dd></div>
-                        <div><dt class="text-slate-500">Relationship</dt><dd class="font-medium text-slate-900">{{ $application->loanClient?->guarantor_2_relationship ?: '—' }}</dd></div>
-                    </dl>
-                    <div class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 leading-relaxed">
-                        <p class="font-semibold text-slate-800 mb-1">Repayment agreement</p>
-                        <p>I hereby agree to surrender all my properties to {{ config('app.name') }} or Auctioneers to auction my property if I fail or I don't pay the loan as agreed in the conditions.</p>
-                        <p class="mt-2 text-slate-600">Acknowledged: <span class="font-medium text-slate-900">{{ $application->repayment_agreement_accepted ? 'Yes' : 'No' }}</span></p>
-                    </div>
-                </div>
             </div>
 
             <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

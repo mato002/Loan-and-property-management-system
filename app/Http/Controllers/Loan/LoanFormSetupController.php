@@ -9,6 +9,7 @@ use App\Models\LoanSystemSetting;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -18,9 +19,12 @@ class LoanFormSetupController extends Controller
 {
     public const FORM_SETUP_PAGE_PATTERN = 'access|loan-products|leave-settings|client-biodata|group-lending|accounting-forms|staff-leaves|staff-structure|staff-performance|loan-settings';
 
-    public function setupPage(string $page): View
+    public function setupPage(Request $request, string $page): View|Response
     {
         if ($page === 'loan-settings') {
+            if ($request->boolean('export')) {
+                return $this->exportLoanSettingsPage();
+            }
             return $this->renderLoanSettingsPage();
         }
 
@@ -487,6 +491,46 @@ class LoanFormSetupController extends Controller
             'requiredApprovals' => $this->normalizeApprovalRules($this->jsonSetting('loan_settings_required_approvals', [])),
             'additionalProductSettings' => $this->normalizeAdditionalProductSettings($this->jsonSetting('loan_settings_additional_product_settings', [])),
         ]);
+    }
+
+    private function exportLoanSettingsPage(): Response
+    {
+        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION);
+
+        $fields = LoanFormFieldDefinition::query()
+            ->where('form_kind', LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (LoanFormFieldDefinition $f): array => [
+                'label' => (string) $f->label,
+                'field_key' => (string) $f->field_key,
+                'data_type' => (string) $f->data_type,
+                'is_required' => (bool) ($f->is_required ?? false),
+                'select_options' => (string) ($f->select_options ?? ''),
+                'visible_to' => (string) ($f->visible_to ?? ''),
+                'field_status' => (string) ($f->field_status ?? 'active'),
+            ])
+            ->values()
+            ->all();
+
+        $payload = [
+            'exported_at' => now()->toIso8601String(),
+            'loan_form_setup' => $fields,
+            'eligibility_rules' => $this->normalizeEligibilityRules($this->jsonSetting('loan_settings_eligibility_rules', [])),
+            'graduation_logic' => $this->normalizeGraduationRules($this->jsonSetting('loan_settings_graduation_rules', [])),
+            'required_approvals' => $this->normalizeApprovalRules($this->jsonSetting('loan_settings_required_approvals', [])),
+            'additional_product_settings' => $this->normalizeAdditionalProductSettings($this->jsonSetting('loan_settings_additional_product_settings', [])),
+        ];
+
+        return response(
+            json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            200,
+            [
+                'Content-Type' => 'application/json',
+                'Content-Disposition' => 'attachment; filename="loan-policy-export.json"',
+            ]
+        );
     }
 
     private function saveLoanSettingsPage(Request $request): RedirectResponse
