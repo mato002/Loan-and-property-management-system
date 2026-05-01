@@ -180,10 +180,10 @@ class LoanPaymentWebhookController extends Controller
             $txnAt = $txnAt->copy()->timezone(config('app.timezone', 'UTC'));
         }
 
-        $loan = $this->findLoanForPayerIdentity($normalizedPhone, $senderName !== '' ? $senderName : null);
+        $loan = $this->findLoanForPayerIdentity($normalizedPhone, $senderName !== '' ? $senderName : null, $txnAt);
         if (! $loan) {
             $reason = $normalizedPhone
-                ? 'No active loan found for payer phone (matched loan client phone).'
+                ? 'No eligible active loan found for payer phone (matched loan client phone and payment date).'
                 : 'No payer phone in SMS or forwarder payload.';
             $holding = $this->createUnpostedHoldingPayment(
                 $providerTxnCode,
@@ -657,7 +657,7 @@ class LoanPaymentWebhookController extends Controller
     /**
      * Prefer active loan by strict phone+name, fallback to phone-only.
      */
-    private function findLoanForPayerIdentity(?string $normalizedPhone, ?string $senderName): ?LoanBookLoan
+    private function findLoanForPayerIdentity(?string $normalizedPhone, ?string $senderName, mixed $txnAt = null): ?LoanBookLoan
     {
         if (! $normalizedPhone) {
             return null;
@@ -687,7 +687,7 @@ class LoanPaymentWebhookController extends Controller
                     ->orderBy('id')
                     ->get();
 
-                $loan = $this->firstActiveLoanForClients($strict);
+                $loan = $this->firstActiveLoanForClients($strict, $txnAt);
                 if ($loan) {
                     return $loan;
                 }
@@ -696,13 +696,24 @@ class LoanPaymentWebhookController extends Controller
 
         $clients = $baseClients->orderBy('id')->get();
 
-        return $this->firstActiveLoanForClients($clients);
+        return $this->firstActiveLoanForClients($clients, $txnAt);
     }
 
-    private function firstActiveLoanForClients($clients): ?LoanBookLoan
+    private function firstActiveLoanForClients($clients, mixed $txnAt = null): ?LoanBookLoan
     {
+        $txnDate = null;
+        try {
+            if ($txnAt instanceof Carbon) {
+                $txnDate = $txnAt->copy()->startOfDay();
+            } elseif ($txnAt) {
+                $txnDate = Carbon::parse((string) $txnAt)->startOfDay();
+            }
+        } catch (\Throwable) {
+            $txnDate = null;
+        }
+
         foreach ($clients as $client) {
-            $loan = LoanBookLoan::query()
+            $query = LoanBookLoan::query()
                 ->where('loan_client_id', $client->id)
                 ->whereIn('status', [
                     LoanBookLoan::STATUS_ACTIVE,
@@ -710,8 +721,14 @@ class LoanPaymentWebhookController extends Controller
                 ])
                 ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
                 ->orderByDesc('disbursed_at')
-                ->orderByDesc('id')
-                ->first();
+                ->orderByDesc('id');
+            if ($txnDate) {
+                $query->where(function ($q) use ($txnDate): void {
+                    $q->whereNull('disbursed_at')
+                        ->orWhereDate('disbursed_at', '<=', $txnDate->toDateString());
+                });
+            }
+            $loan = $query->first();
             if ($loan) {
                 return $loan;
             }

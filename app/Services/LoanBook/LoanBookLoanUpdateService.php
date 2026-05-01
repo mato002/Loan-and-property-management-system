@@ -66,6 +66,14 @@ class LoanBookLoanUpdateService
         DB::transaction(function () use ($payment) {
             /** @var LoanBookLoan $loan */
             $loan = LoanBookLoan::query()->lockForUpdate()->findOrFail($payment->loan_book_loan_id);
+            if (
+                $loan->disbursed_at
+                && $payment->transaction_at
+                && $payment->transaction_at->copy()->startOfDay()->lt($loan->disbursed_at->copy()->startOfDay())
+            ) {
+                // Guard against applying historic payments to a newer loan cycle.
+                return;
+            }
 
             // For C2B reversals we store negative amounts; treat as increasing balance back.
             $signed = (float) $payment->amount;
@@ -102,7 +110,7 @@ class LoanBookLoanUpdateService
     {
         $loan->loadMissing('application');
 
-        $ratePeriod = strtolower(trim((string) ($loan->interest_rate_period ?: ($loan->application?->interest_rate_period ?? 'annual'))));
+        $ratePeriod = strtolower(trim((string) ($loan->interest_rate_period ?: ($loan->application?->interest_rate_period ?? 'term'))));
         $termValue = $loan->term_value !== null
             ? (int) $loan->term_value
             : ($loan->application?->term_value !== null ? (int) $loan->application->term_value : null);
@@ -124,7 +132,7 @@ class LoanBookLoanUpdateService
     public function estimateInterestOutstanding(
         float $principal,
         float $ratePercent,
-        string $ratePeriod = 'annual',
+        string $ratePeriod = 'term',
         ?int $termValue = null,
         ?string $termUnit = null,
         mixed $disbursedAt = null,
@@ -155,6 +163,7 @@ class LoanBookLoanUpdateService
 
         $ratePeriod = strtolower(trim($ratePeriod));
         $periodCount = match ($ratePeriod) {
+            'term' => 1.0,
             'daily' => $unit === 'daily' ? $value : ($unit === 'weekly' ? $value * 7 : $value * 30),
             'weekly' => $unit === 'daily' ? ($value / 7) : ($unit === 'weekly' ? $value : (($value * 30) / 7)),
             'monthly' => $unit === 'daily' ? ($value / 30) : ($unit === 'weekly' ? ($value / 4) : $value),

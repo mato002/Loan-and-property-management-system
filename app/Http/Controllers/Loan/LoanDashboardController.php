@@ -18,9 +18,11 @@ use App\Models\LoanBookPayment;
 use App\Models\LoanClient;
 use App\Models\LoanSupportTicket;
 use App\Models\LoanSystemSetting;
+use App\Models\MpesaPlatformTransaction;
 use App\Models\PropertyPortalSetting;
 use App\Models\StaffLeave;
 use App\Services\BulkSmsService;
+use App\Services\Integrations\MpesaDarajaService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -116,26 +118,78 @@ class LoanDashboardController extends Controller
         ]);
     }
 
-    public function smsWalletTopupFromDashboard(Request $request, BulkSmsService $bulkSms): RedirectResponse
+    public function smsWalletTopupFromDashboard(Request $request, MpesaDarajaService $daraja): RedirectResponse
     {
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01', 'max:999999.99'],
-            'reference' => ['nullable', 'string', 'max:120'],
+            'phone' => ['required', 'string', 'max:32'],
             'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
-        try {
-            $bulkSms->topup((float) $validated['amount'], $validated['reference'] ?? null, $validated['notes'] ?? null);
-        } catch (\Throwable $e) {
+        $missingDarajaConfig = $daraja->missingConfigKeys();
+        if ($missingDarajaConfig !== []) {
             return redirect()
                 ->route('loan.dashboard')
                 ->withInput()
-                ->withErrors(['sms_topup' => 'Could not process SMS topup right now.']);
+                ->withErrors([
+                    'sms_topup' => 'M-PESA STK is not configured: missing '.implode(', ', $missingDarajaConfig).'.',
+                ]);
         }
+
+        $amount = round((float) $validated['amount'], 2);
+        $normalizedPhone = $daraja->normalizeMsisdn((string) $validated['phone']);
+        if (! preg_match('/^254[17]\d{8}$/', $normalizedPhone)) {
+            return redirect()
+                ->route('loan.dashboard')
+                ->withInput()
+                ->withErrors(['phone' => 'Enter a valid Safaricom phone number (e.g. 07XXXXXXXX).']);
+        }
+
+        $stk = $daraja->stkPush([
+            'PartyA' => $normalizedPhone,
+            'PhoneNumber' => $normalizedPhone,
+            'Amount' => max(1, (int) ceil($amount)),
+            'AccountReference' => 'SMSWALLET',
+            'TransactionDesc' => 'SMS wallet topup',
+        ]);
+
+        if (! ($stk['ok'] ?? false)) {
+            $message = trim((string) ($stk['message'] ?? 'Could not initiate M-PESA payment.'));
+            return redirect()
+                ->route('loan.dashboard')
+                ->withInput()
+                ->withErrors(['sms_topup' => $message !== '' ? $message : 'Could not initiate M-PESA payment.']);
+        }
+
+        $body = is_array($stk['body'] ?? null) ? $stk['body'] : [];
+        $checkoutRequestId = (string) ($body['CheckoutRequestID'] ?? '');
+        $merchantRequestId = (string) ($body['MerchantRequestID'] ?? '');
+
+        MpesaPlatformTransaction::query()->create([
+            'reference' => 'SMSWALLET-'.strtoupper(substr(sha1(uniqid((string) mt_rand(), true)), 0, 8)),
+            'amount' => $amount,
+            'channel' => 'stk_push',
+            'status' => 'pending',
+            'notes' => 'SMS wallet topup initiated from loan dashboard.',
+            'meta' => [
+                'purpose' => 'sms_wallet_topup',
+                'requested_by_user_id' => $request->user()?->id,
+                'requested_phone' => $normalizedPhone,
+                'requested_amount' => $amount,
+                'notes' => $validated['notes'] ?? null,
+                'daraja' => [
+                    'checkout_request_id' => $checkoutRequestId,
+                    'merchant_request_id' => $merchantRequestId,
+                    'initiation_message' => $stk['message'] ?? null,
+                    'initiation_status' => $stk['status'] ?? null,
+                    'response' => $body,
+                ],
+            ],
+        ]);
 
         return redirect()
             ->route('loan.dashboard')
-            ->with('status', 'SMS wallet topped up successfully.');
+            ->with('status', 'M-PESA prompt sent. Complete payment on your phone to top up SMS wallet.');
     }
 
     private function buildProfileCard(): array
@@ -158,8 +212,16 @@ class LoanDashboardController extends Controller
         }
 
         $smsBalance = 0.0;
+        $smsWalletIntegrity = [
+            'status' => 'unavailable',
+            'wallet_balance' => null,
+            'expected_balance' => null,
+            'difference' => null,
+        ];
         try {
-            $smsBalance = (float) app(BulkSmsService::class)->dashboardBalance();
+            $bulkSms = app(BulkSmsService::class);
+            $smsBalance = (float) $bulkSms->dashboardBalance();
+            $smsWalletIntegrity = $bulkSms->walletIntegritySnapshot();
         } catch (\Throwable) {
             $smsBalance = 0.0;
         }
@@ -171,6 +233,7 @@ class LoanDashboardController extends Controller
             'job_title' => (string) ($employee?->job_title ?? 'Staff'),
             'leave_days' => $leaveDays,
             'sms_balance' => $smsBalance,
+            'sms_wallet_integrity' => $smsWalletIntegrity,
         ];
     }
 

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\SmsLog;
 use App\Models\SmsSchedule;
 use App\Models\SmsWallet;
+use App\Models\SmsWalletTransaction;
 use App\Models\SmsWalletTopup;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -287,6 +288,25 @@ class BulkSmsService
             if ($wallet !== null && in_array($mode, ['local_wallet', 'both'], true)) {
                 $wallet->balance = round((float) $wallet->balance - $total, 2);
                 $wallet->save();
+
+                SmsWalletTransaction::query()->create([
+                    'sms_wallet_id' => $wallet->id,
+                    'direction' => 'debit',
+                    'entry_type' => 'send_now',
+                    'amount' => $total,
+                    'reference' => $scheduleId ? ('SCH-'.$scheduleId) : null,
+                    'notes' => sprintf(
+                        'Wallet debit for %d SMS message(s) via sendNow.',
+                        count($phones)
+                    ),
+                    'meta' => [
+                        'schedule_id' => $scheduleId,
+                        'recipient_count' => count($phones),
+                        'charged_per_sms' => $cost,
+                        'currency' => $this->currency(),
+                    ],
+                    'created_by' => $userId ?? Auth::id(),
+                ]);
             }
 
             return ['ok' => true, 'sent' => (int) ($send['sent'] ?? count($phones)), 'charged' => $total];
@@ -483,13 +503,77 @@ class BulkSmsService
             $wallet->balance = round((float) $wallet->balance + $amount, 2);
             $wallet->save();
 
-            SmsWalletTopup::create([
+            $topup = SmsWalletTopup::create([
                 'user_id' => Auth::id(),
                 'amount' => $amount,
                 'reference' => $reference,
                 'notes' => $notes,
             ]);
+
+            SmsWalletTransaction::query()->create([
+                'sms_wallet_id' => $wallet->id,
+                'direction' => 'credit',
+                'entry_type' => 'topup',
+                'amount' => $amount,
+                'reference' => $reference,
+                'notes' => $notes ?: 'Wallet topup',
+                'sms_wallet_topup_id' => $topup->id,
+                'meta' => [
+                    'currency' => $this->currency(),
+                ],
+                'created_by' => Auth::id(),
+            ]);
         });
+    }
+
+    /**
+     * @return array{
+     *   status:string,
+     *   wallet_balance:float|null,
+     *   expected_balance:float|null,
+     *   difference:float|null
+     * }
+     */
+    public function walletIntegritySnapshot(): array
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('sms_wallets') || ! \Illuminate\Support\Facades\Schema::hasTable('sms_wallet_transactions')) {
+            return [
+                'status' => 'unavailable',
+                'wallet_balance' => null,
+                'expected_balance' => null,
+                'difference' => null,
+            ];
+        }
+
+        $wallet = SmsWallet::query()->first();
+        if (! $wallet) {
+            return [
+                'status' => 'unavailable',
+                'wallet_balance' => null,
+                'expected_balance' => null,
+                'difference' => null,
+            ];
+        }
+
+        $credits = (float) SmsWalletTransaction::query()
+            ->where('sms_wallet_id', $wallet->id)
+            ->where('direction', 'credit')
+            ->sum('amount');
+        $debits = (float) SmsWalletTransaction::query()
+            ->where('sms_wallet_id', $wallet->id)
+            ->where('direction', 'debit')
+            ->sum('amount');
+
+        $expected = round($credits - $debits, 2);
+        $actual = round((float) $wallet->balance, 2);
+        $diff = round($actual - $expected, 2);
+
+        return [
+            'status' => abs($diff) < 0.01 ? 'ok' : 'mismatch',
+            'wallet_balance' => $actual,
+            'expected_balance' => $expected,
+            'difference' => $diff,
+        ];
     }
 
     public function createSchedule(

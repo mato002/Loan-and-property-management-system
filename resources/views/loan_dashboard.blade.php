@@ -14,17 +14,24 @@
 @endphp
 
 <x-loan-layout>
-    <div class="max-w-[1600px] mx-auto w-full space-y-6">
-        <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+    <style>
+        .fit-card {
+            min-width: 0;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+    </style>
+    <div class="max-w-[1600px] mx-auto w-full space-y-4">
+        <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-2">
             <div>
-                <h1 class="text-2xl font-semibold text-slate-900 tracking-tight">Operations dashboard</h1>
-                <p class="text-sm text-slate-500 mt-1 max-w-3xl">
-                    Live metrics from LoanBook, payments, clients, and accounting (scoped to your portfolio unless you have full access). Charts use the last six months of activity where dates apply.
-                </p>
+                <h1 class="text-xl font-semibold text-slate-900 tracking-tight">Operations dashboard</h1>
             </div>
-            <div class="flex flex-col items-end gap-2 text-xs text-slate-500">
-                @include('loan.partials.quick-links-strip')
-                <span class="font-medium text-slate-400 uppercase tracking-wide">{{ ($generatedAt ?? now())->timezone(config('app.timezone'))->format('l, M j, Y · H:i') }}</span>
+            <div class="flex flex-col items-start lg:items-end gap-1.5 text-xs text-slate-500 w-full lg:w-auto">
+                <div class="w-full lg:w-auto">
+                    @include('loan.partials.quick-links-strip')
+                </div>
                 @if ($bookReady)
                     <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100 px-2.5 py-1 font-semibold">LoanBook connected</span>
                 @else
@@ -52,7 +59,7 @@
         @endif
 
         {{-- Profile + compact summary strip --}}
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" x-data="{ smsTopupOpen: {{ ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('reference')) ? 'true' : 'false' }} }">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" x-data="{ smsTopupOpen: {{ ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('phone')) ? 'true' : 'false' }} }">
             <div class="lg:col-span-4 w-full max-w-sm lg:max-w-none bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
                     <h2 class="text-2xl font-semibold text-slate-800">Welcome {{ $profileCard['name'] ?? 'User' }}</h2>
@@ -114,65 +121,67 @@
                 x-show="smsTopupOpen"
                 x-cloak
                 x-transition.opacity
-                class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+                class="fixed inset-0 z-[70] flex items-start sm:items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-3 sm:p-6"
                 @keydown.escape.window="smsTopupOpen = false"
             >
-                <div @click.away="smsTopupOpen = false" class="w-full max-w-xl rounded-xl bg-white p-6 shadow-2xl">
-                    <div class="mb-5 flex items-start justify-between">
-                        <h3 class="text-2xl font-semibold text-slate-800">Topup SMS Wallet</h3>
-                        <button type="button" @click="smsTopupOpen = false" class="text-3xl leading-none text-slate-400 hover:text-red-500">&times;</button>
+                <div @click.away="smsTopupOpen = false" class="w-full max-w-xl mt-12 sm:mt-0 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+                    <div class="px-5 sm:px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-white via-slate-50 to-indigo-50/40">
+                        <div class="flex items-center justify-between gap-3">
+                            <h3 class="text-xl sm:text-2xl font-semibold text-slate-800 tracking-tight">Topup SMS Wallet</h3>
+                            <button type="button" @click="smsTopupOpen = false" class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors" aria-label="Close topup modal">&times;</button>
+                        </div>
                     </div>
-                    <form method="post" action="{{ route('loan.dashboard.sms_topup') }}" class="space-y-4">
+                    <form method="post" action="{{ route('loan.dashboard.sms_topup') }}" class="space-y-4 px-5 sm:px-6 py-4 sm:py-5">
                         @csrf
                         @if ($errors->has('sms_topup'))
                             <p class="text-sm text-red-600">{{ $errors->first('sms_topup') }}</p>
                         @endif
                         <div>
                             <label for="sms_topup_phone" class="mb-1 block text-sm font-medium text-slate-700">Enter MPESA Phone Number</label>
-                            <input id="sms_topup_phone" name="reference" type="text" maxlength="120" value="{{ old('reference') }}" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-[#2f4f4f] focus:outline-none" placeholder="07XXXXXXXX">
-                            @error('reference')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
+                            <input id="sms_topup_phone" name="phone" type="text" maxlength="32" value="{{ old('phone') }}" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20 focus:outline-none" placeholder="07XXXXXXXX">
+                            @error('phone')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                         </div>
                         <div>
                             <label for="sms_topup_amount" class="mb-1 block text-sm font-medium text-slate-700">Amount to topup</label>
-                            <input id="sms_topup_amount" name="amount" type="number" step="0.01" min="0.01" value="{{ old('amount') }}" required class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-[#2f4f4f] focus:outline-none" placeholder="0.00">
+                            <input id="sms_topup_amount" name="amount" type="number" step="0.01" min="0.01" value="{{ old('amount') }}" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20 focus:outline-none" placeholder="0.00">
                             @error('amount')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                         </div>
                         <input type="hidden" name="notes" value="Dashboard SMS wallet topup">
-                        <div class="pt-2 flex justify-end">
-                            <button type="submit" class="rounded bg-emerald-600 px-5 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Pay Now</button>
+                        <div class="pt-1 flex justify-end">
+                            <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-[#2f4f4f] bg-[#2f4f4f] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Pay Now</button>
                         </div>
                     </form>
                 </div>
             </div>
 
-            <div class="lg:col-span-8 grid grid-cols-2 xl:grid-cols-3 gap-2.5">
-                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
+            <div class="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">Total Clients</p>
-                    <p class="mt-1 text-2xl font-bold text-slate-800 tabular-nums">{{ number_format((int) ($summaryStrip['total_clients'] ?? 0)) }}</p>
+                    <p class="mt-1 text-xl font-bold text-slate-800 tabular-nums">{{ number_format((int) ($summaryStrip['total_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
+                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">Active Clients</p>
-                    <p class="mt-1 text-2xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['active_clients'] ?? 0)) }}</p>
+                    <p class="mt-1 text-xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['active_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
+                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">Dormant Clients</p>
-                    <p class="mt-1 text-2xl font-bold text-rose-600 tabular-nums">{{ number_format((int) ($summaryStrip['dormant_clients'] ?? 0)) }}</p>
+                    <p class="mt-1 text-xl font-bold text-rose-600 tabular-nums">{{ number_format((int) ($summaryStrip['dormant_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
+                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">Performing Loans</p>
-                    <p class="mt-1 text-2xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
+                    <p class="mt-1 text-xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
                 </div>
-                <div class="rounded-xl border border-rose-200 bg-rose-400 text-white p-2.5">
+                <div class="fit-card rounded-xl border border-rose-200 bg-rose-400 text-white p-2.5">
                     <p class="text-xs font-semibold uppercase">Loan Arrears ({{ $currencyCode }})</p>
-                    <p class="mt-1 text-2xl font-bold tabular-nums">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
+                    <p class="mt-1 text-xl font-bold tabular-nums">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-2.5">
+                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
                     <p class="text-xs font-semibold uppercase text-slate-500">PAR %</p>
-                    <p class="mt-1 text-2xl font-bold text-slate-800 tabular-nums">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
+                    <p class="mt-1 text-xl font-bold text-slate-800 tabular-nums">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-2.5 col-span-2 xl:col-span-3">
-                    <p class="text-xs font-semibold uppercase text-slate-500">Daily Collection Sheet (The Battle Plan)</p>
-                    <p class="mt-1 text-2xl font-bold text-emerald-700 tabular-nums">78</p>
+                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
+                    <p class="text-[11px] leading-tight font-semibold uppercase text-slate-500">Daily Collection Sheet (The Battle Plan)</p>
+                    <p class="mt-1 text-xl font-bold text-emerald-700 tabular-nums">78</p>
                     <p class="text-xs text-slate-500 mt-0.5">Active Tasks (MTD)</p>
                 </div>
             </div>
@@ -567,24 +576,24 @@
             </div>
             <div class="overflow-x-auto max-h-[420px] overflow-y-auto">
                 <table class="min-w-full text-xs text-slate-700">
-                    <thead class="bg-slate-700 text-slate-100">
+                    <thead class="bg-slate-700 text-slate-100 [--perf-sticky-top:32px] sm:[--perf-sticky-top:36px]">
                         <tr>
-                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-left font-semibold">Staff</th>
-                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">New Loans</th>
-                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Repeat Loans</th>
-                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Arrears</th>
-                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Performing</th>
-                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Gross Disbursement</th>
-                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold" colspan="4">Revenue</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-left font-semibold whitespace-nowrap">Staff</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold whitespace-nowrap" colspan="4">New Loans</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold whitespace-nowrap" colspan="4">Repeat Loans</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold whitespace-nowrap" colspan="4">Arrears</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold whitespace-nowrap" colspan="4">Performing</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold whitespace-nowrap" colspan="4">Gross Disbursement</th>
+                            <th class="sticky top-0 z-20 bg-slate-700 px-3 py-2 text-center font-semibold whitespace-nowrap" colspan="4">Revenue</th>
                         </tr>
                         <tr class="bg-slate-600 text-[11px]">
-                            <th class="sticky top-[36px] z-20 bg-slate-600 px-3 py-1.5 text-left font-semibold"></th>
-                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
-                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
-                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
-                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
-                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
-                            <th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[36px] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-3 py-1.5 text-left font-semibold"></th>
+                            <th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
+                            <th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Target</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Actual</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Score</th><th class="sticky top-[var(--perf-sticky-top)] z-20 bg-slate-600 px-2 py-1.5 text-right font-semibold">Pos</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">

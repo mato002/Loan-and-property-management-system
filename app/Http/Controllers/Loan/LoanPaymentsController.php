@@ -1029,6 +1029,11 @@ class LoanPaymentsController extends Controller
 
         $targetLoan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
         $this->ensureLoanClientOwner($targetLoan->loanClient, $request->user());
+        if (! $this->isLoanEligibleForPaymentDate($targetLoan, $loan_book_payment)) {
+            return redirect()
+                ->route('loan.payments.unposted')
+                ->withErrors(['loan_book_loan_id' => 'Cannot assign: payment date is older than the target loan disbursement date.']);
+        }
 
         $loan_book_payment->update($validated);
 
@@ -1268,6 +1273,10 @@ class LoanPaymentsController extends Controller
                 DB::transaction(function () use ($payment, $loanId, $request, &$matched, &$posted): void {
                     $fresh = LoanBookPayment::query()->lockForUpdate()->find($payment->id);
                     if (! $fresh || $fresh->loan_book_loan_id !== null || $fresh->status !== LoanBookPayment::STATUS_UNPOSTED) {
+                        return;
+                    }
+                    $loan = LoanBookLoan::query()->find($loanId);
+                    if (! $loan || ! $this->isLoanEligibleForPaymentDate($loan, $fresh)) {
                         return;
                     }
 
@@ -1564,9 +1573,8 @@ class LoanPaymentsController extends Controller
                 continue;
             }
             foreach ($this->phoneVariants($phone) as $variant) {
-                if (! isset($loanByPhone[$variant])) {
-                    $loanByPhone[$variant] = (int) $loan->id;
-                }
+                $loanByPhone[$variant] ??= [];
+                $loanByPhone[$variant][] = $loan;
             }
         }
 
@@ -1577,8 +1585,17 @@ class LoanPaymentsController extends Controller
                 continue;
             }
             foreach ($this->phoneVariants($payer) as $variant) {
-                if (isset($loanByPhone[$variant])) {
-                    $out[(int) $payment->id] = (int) $loanByPhone[$variant];
+                if (empty($loanByPhone[$variant])) {
+                    continue;
+                }
+                foreach ($loanByPhone[$variant] as $candidateLoan) {
+                    if (! $this->isLoanEligibleForPaymentDate($candidateLoan, $payment)) {
+                        continue;
+                    }
+                    $out[(int) $payment->id] = (int) $candidateLoan->id;
+                    break;
+                }
+                if (isset($out[(int) $payment->id])) {
                     break;
                 }
             }
@@ -1606,5 +1623,16 @@ class LoanPaymentsController extends Controller
         }
 
         return array_values(array_unique(array_filter($variants)));
+    }
+
+    private function isLoanEligibleForPaymentDate(LoanBookLoan $loan, LoanBookPayment $payment): bool
+    {
+        $loanDisbursedAt = $loan->disbursed_at;
+        $paymentAt = $payment->transaction_at;
+        if (! $loanDisbursedAt || ! $paymentAt) {
+            return true;
+        }
+
+        return $paymentAt->copy()->startOfDay()->gte($loanDisbursedAt->copy()->startOfDay());
     }
 }

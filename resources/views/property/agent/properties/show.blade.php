@@ -148,10 +148,10 @@
             method="post"
             action="{{ route('property.properties.update', $property) }}"
             x-data="{
-                showChargeBuilder: @js(count((array) old('charge_templates', $propertyChargeTemplates ?? [])) > 0),
+                showChargeBuilder: @js(count((array) old('charge_templates', [])) > 0),
                 chargeTypeOptions: ['water', 'service', 'garbage', 'other'],
                 charges: (() => {
-                    const seed = @js(old('charge_templates', $propertyChargeTemplates ?? []));
+                    const seed = @js(old('charge_templates', []));
                     return Array.isArray(seed) ? seed : [];
                 })(),
                 init() {
@@ -317,7 +317,7 @@
                 action="{{ route('property.properties.update', $property) }}"
                 x-data="{
                     deposits: (() => {
-                        const seed = @js(old('deposit_definitions', $propertyDepositDefinitions ?? []));
+                        const seed = @js(old('deposit_definitions', []));
                         return Array.isArray(seed) ? seed : [];
                     })(),
                     addDeposit() {

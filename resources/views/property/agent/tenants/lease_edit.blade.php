@@ -33,11 +33,20 @@
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Lease details</h3>
         <div class="grid gap-3 sm:grid-cols-2">
             <div class="sm:col-span-2">
+                @php
+                    $tenantSelectOptions = collect($tenants)->map(function ($t) use ($lease) {
+                        return [
+                            'value' => $t->id,
+                            'label' => $t->name,
+                            'selected' => (string) old('pm_tenant_id', $lease->pm_tenant_id) === (string) $t->id,
+                        ];
+                    })->all();
+                @endphp
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
                 <x-property.quick-create-select
                     name="pm_tenant_id"
                     :required="true"
-                    :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id', $lease->pm_tenant_id) === (string) $t->id])->all()"
+                    :options="$tenantSelectOptions"
                     :create="[
                         'mode' => 'ajax',
                         'title' => 'Create tenant',
@@ -69,7 +78,7 @@
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">End</label>
-                <input type="date" name="end_date" value="{{ old('end_date', $lease->end_date?->format('Y-m-d')) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="date" name="end_date" value="{{ old('end_date', optional($lease->end_date)->format('Y-m-d')) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('end_date')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 <p class="mt-1 text-xs text-slate-500">Optional for open-ended leases.</p>
             </div>
@@ -143,11 +152,10 @@
         </div>
         <div>
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-            @php $selectedUnitId = (string) collect(old('property_unit_ids', $lease->units->pluck('id')->all()))->first(); @endphp
             <select id="lease-unit-select" name="property_unit_ids[]" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                 <option value="">Select unit...</option>
                 @foreach ($units as $u)
-                    <option value="{{ $u->id }}" data-property-id="{{ $u->property_id }}" data-rent="{{ (float) ($u->rent_amount ?? 0) }}" @selected($selectedUnitId === (string) $u->id)>{{ $u->property->name }} / {{ $u->label }}</option>
+                    <option value="{{ $u->id }}" data-property-id="{{ $u->property_id }}" data-rent="{{ (float) ($u->rent_amount ?? 0) }}" @selected((string) collect(old('property_unit_ids', $lease->units->pluck('id')->all()))->first() === (string) $u->id)>{{ $u->property->name }} / {{ $u->label }}</option>
                 @endforeach
             </select>
             <p class="mt-1 text-xs text-slate-500">A tenant can only be assigned one unit.</p>
@@ -189,6 +197,11 @@
             @error('terms_summary')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
         @php($openingArrearsRows = old('opening_arrears', ($lease->opening_arrears ?? [])))
+        @php($existingRentArrearsRow = collect((array) ($lease->opening_arrears ?? []))->firstWhere('charge_type', 'rent_arrears') ?? [])
+        @php($existingRentArrears = $existingRentArrearsRow['amount'] ?? null)
+        @php($existingRentArrearsPeriod = $existingRentArrearsRow['period'] ?? null)
+        @php($existingRentArrearsDetails = $existingRentArrearsRow['specific_charge'] ?? null)
+        @php($openingDepositArrearsRows = old('opening_deposit_arrears', []))
         <div class="rounded-xl border border-amber-200 bg-amber-50/40 dark:border-amber-700/40 dark:bg-amber-900/10 p-3 space-y-2">
             <button type="button" id="toggle-opening-arrears-edit" class="inline-flex items-center gap-2 rounded-lg border border-amber-300 dark:border-amber-700 px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-300 hover:bg-amber-100/70 dark:hover:bg-amber-800/20">
                 <i class="fa-solid fa-receipt" aria-hidden="true"></i>
@@ -202,8 +215,6 @@
                     <button type="button" id="close-opening-arrears-edit-modal" class="rounded-md border border-slate-300 px-2 py-1 text-xs">Close</button>
                 </div>
                 <div id="opening-arrears-edit-wrap" class="space-y-3">
-                <p class="text-sm font-semibold text-amber-900 dark:text-amber-300">Opening arrears at lease setup (optional)</p>
-                <p class="text-xs text-amber-700 dark:text-amber-300">Use this when tenant starts lease with brought-forward balance.</p>
                 <button type="button" id="open-arrears-line-modal-edit" class="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-100/70 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-800/20 dark:text-amber-300">
                     <i class="fa-solid fa-plus" aria-hidden="true"></i>
                     Add charge line
@@ -254,6 +265,39 @@
                             @endforeach
                         </tbody>
                     </table>
+                </div>
+                <div class="grid gap-2 sm:grid-cols-2">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent arrears (KES)</label>
+                        <input type="number" step="0.01" min="0" name="opening_rent_arrears" value="{{ old('opening_rent_arrears', $existingRentArrears) }}" placeholder="0.00" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        @error('opening_rent_arrears')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent arrears period</label>
+                        <input type="month" name="opening_rent_arrears_period" value="{{ old('opening_rent_arrears_period', $existingRentArrearsPeriod) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        @error('opening_rent_arrears_period')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent arrears details</label>
+                        <input type="text" name="opening_rent_arrears_details" value="{{ old('opening_rent_arrears_details', $existingRentArrearsDetails) }}" placeholder="e.g. Jan-Mar unpaid rent balance" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        @error('opening_rent_arrears_details')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+                <div class="rounded-xl border border-amber-200/80 bg-white/80 p-3 space-y-2">
+                    <div class="overflow-x-auto rounded-xl border border-amber-200/80 bg-white/70">
+                        <table class="w-full text-sm">
+                            <thead class="bg-amber-50 text-left text-xs font-semibold text-amber-900">
+                                <tr>
+                                    <th class="px-3 py-2">Deposit type</th>
+                                    <th class="px-3 py-2">Amount (KES)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="opening-deposit-arrears-edit-rows"></tbody>
+                        </table>
+                    </div>
+                    <p id="opening-deposit-arrears-edit-empty" class="hidden text-xs text-slate-500">No configured deposit rules for this property/unit.</p>
+                    @error('opening_deposit_arrears')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
+                    @error('opening_deposit_arrears.*')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
                 </div>
                 <div class="grid gap-2 sm:grid-cols-2">
                     <div>
@@ -342,9 +386,10 @@
     <script>
         (function () {
             const leaseUtilityExpenseFormOld = @json(collect($_leaseUtilityRowsForJs)->values()->all());
+            const openingDepositArrearsOld = @json((array) ($openingDepositArrearsRows ?? []));
             const utilityTemplatesByProperty = @json($utilityChargeTemplatesByProperty ?? []);
             const depositDefinitionsByProperty = @json($depositDefinitionsByProperty ?? []);
-            const canCustomDepositOverride = @js((bool) ((auth()->user()?->is_super_admin ?? false) || (auth()->user()?->hasPmPermission('settings.manage') ?? false) || (\App\Models\PropertyPortalSetting::getValue('lease_deposit_allow_custom_types', '0') === '1')));
+            const canCustomDepositOverride = @js((bool) (((auth()->user() && auth()->user()->is_super_admin) ? true : false) || ((auth()->user() && auth()->user()->hasPmPermission('settings.manage')) ? true : false) || (\App\Models\PropertyPortalSetting::getValue('lease_deposit_allow_custom_types', '0') === '1')));
             const propertySelect = document.getElementById('lease-property-select');
             const unitSelect = document.getElementById('lease-unit-select');
             const monthlyRentInput = document.getElementById('lease-monthly-rent');
@@ -370,6 +415,8 @@
             const arrearsLineEditPeriod = document.getElementById('arrears-line-edit-period');
             const arrearsLineEditAmount = document.getElementById('arrears-line-edit-amount');
             const toggleOpeningArrearsEditButton = document.getElementById('toggle-opening-arrears-edit');
+            const openingDepositArrearsEditRows = document.getElementById('opening-deposit-arrears-edit-rows');
+            const openingDepositArrearsEditEmpty = document.getElementById('opening-deposit-arrears-edit-empty');
             const chargeTypeModal = document.getElementById('charge-type-modal');
             const openChargeTypeModalButton = document.getElementById('open-charge-type-modal');
             const closeChargeTypeModalButton = document.getElementById('close-charge-type-modal');
@@ -384,6 +431,12 @@
                 const num = Number(value);
                 return Number.isFinite(num) ? num.toFixed(2) : '';
             };
+            const escapeHtml = (value) => String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
             const getSelectedUnitOption = () => {
                 if (unitSelect.selectedIndex < 0) return null;
                 const selected = unitSelect.options[unitSelect.selectedIndex];
@@ -598,6 +651,34 @@
             const refreshUtilityTypeSources = () => {
                 renderUtilityDefaultsTable();
             };
+            const renderOpeningDepositArrearsRows = () => {
+                if (!openingDepositArrearsEditRows) return;
+                const defs = getEffectiveDepositDefinitions();
+                const rows = defs
+                    .filter((d) => String(d.deposit_key || '').trim() !== '')
+                    .map((d) => ({
+                        key: String(d.deposit_key || '').trim(),
+                        label: String(d.label || d.deposit_key || 'Deposit').trim(),
+                    }));
+                openingDepositArrearsEditRows.innerHTML = '';
+                if (rows.length === 0) {
+                    openingDepositArrearsEditEmpty?.classList.remove('hidden');
+                    return;
+                }
+                openingDepositArrearsEditEmpty?.classList.add('hidden');
+                rows.forEach((row) => {
+                    const currentValue = openingDepositArrearsOld[row.key] ?? '';
+                    const tr = document.createElement('tr');
+                    tr.className = 'border-t border-amber-100';
+                    tr.innerHTML = `
+                        <td class="px-3 py-2 text-slate-700">${escapeHtml(row.label)}</td>
+                        <td class="px-3 py-2">
+                            <input type="number" name="opening_deposit_arrears[${escapeHtml(row.key)}]" value="${escapeHtml(currentValue)}" step="0.01" min="0" placeholder="0.00" class="w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                        </td>
+                    `;
+                    openingDepositArrearsEditRows.appendChild(tr);
+                });
+            };
 
             const filterUnits = () => {
                 const propertyId = (propertySelect.value || '').toString();
@@ -629,6 +710,7 @@
                 }
                 syncOptionalSectionState();
                 refreshUtilityTypeSources();
+                renderOpeningDepositArrearsRows();
                 syncDepositRules();
             };
 
@@ -797,6 +879,7 @@
             propertySelect.addEventListener('change', () => {
                 filterUnits();
                 refreshUtilityTypeSources();
+                renderOpeningDepositArrearsRows();
                 syncOptionalSectionState();
                 syncDepositRules();
             });
@@ -804,6 +887,7 @@
             filterUnits();
             syncMonthlyRentFromUnit();
             refreshUtilityTypeSources();
+            renderOpeningDepositArrearsRows();
             syncOptionalSectionState();
             syncDepositRules();
         })();

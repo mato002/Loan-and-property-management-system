@@ -47,7 +47,7 @@
                         @error('principal')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     <div>
-                        <label for="balance" class="block text-xs font-semibold text-slate-600 mb-1">Balance (optional)</label>
+                        <label for="balance" class="block text-xs font-semibold text-slate-600 mb-1">Balance (amount to repay)</label>
                         <input id="balance" name="balance" type="number" step="0.01" min="0" value="{{ old('balance') }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="Defaults to principal" />
                         @error('balance')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
@@ -229,6 +229,7 @@
 <script>
     (() => {
         const applicationData = @json($applicationAutofillData);
+        const productDefaults = @json($productDefaultMap ?? []);
         const branchDirectoryMap = @json($branchDirectoryMap);
         const clientBranchById = @json($clientBranchById ?? []);
 
@@ -271,6 +272,48 @@
         const closeModal = (modal) => {
             modal?.classList.add('hidden');
             modal?.classList.remove('flex');
+        };
+        let balanceTouched = false;
+
+        const roundMoney = (value) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return 0;
+            return Math.round(n * 100) / 100;
+        };
+
+        const selectedProductRule = () => {
+            const key = String(productInput?.value || '');
+            return key && productDefaults[key] ? productDefaults[key] : null;
+        };
+
+        const applyProductDefaults = () => {
+            const rule = selectedProductRule();
+            if (!rule) return;
+            if (interestRateInput && rule.default_interest_rate !== null) {
+                interestRateInput.value = Number(rule.default_interest_rate).toFixed(4);
+            }
+            if (termValueInput && Number(rule.default_term_months || 0) > 0) {
+                termValueInput.value = String(rule.default_term_months);
+            }
+            if (termUnitSelect && rule.default_term_unit) {
+                termUnitSelect.value = String(rule.default_term_unit).toLowerCase();
+            }
+        };
+
+        const recalculateBalanceFromInputs = () => {
+            if (!balanceInput || balanceTouched) return;
+            const principal = Number(principalInput?.value || 0);
+            const rate = Number(interestRateInput?.value || 0);
+            if (!Number.isFinite(principal) || principal <= 0) {
+                balanceInput.value = '';
+                return;
+            }
+            const rule = selectedProductRule();
+            const rateType = String(rule?.default_interest_rate_type || 'percent').toLowerCase();
+            const interest = rateType === 'fixed'
+                ? Math.max(0, rate)
+                : (principal * (Math.max(0, rate) / 100));
+            balanceInput.value = roundMoney(principal + interest).toFixed(2);
         };
 
         const calculateMaturityFromSchedule = () => {
@@ -344,7 +387,10 @@
             if (clientSelect) clientSelect.value = String(selected.loan_client_id || '');
             if (productInput) productInput.value = selected.product_name || '';
             if (principalInput) principalInput.value = formattedAmount;
-            if (balanceInput && !balanceInput.value) balanceInput.value = formattedAmount;
+            if (balanceInput && !balanceInput.value) {
+                balanceTouched = false;
+                balanceInput.value = formattedAmount;
+            }
             if (branchInput) branchInput.value = selected.branch || '';
             if (loanBranchSelect) {
                 const key = String(selected.branch || '').trim().toLowerCase();
@@ -366,6 +412,7 @@
             if (maturityInput && !maturityInput.value) maturityInput.value = calculateMaturityDate(selected.term_months);
             if (notesInput && !notesInput.value) notesInput.value = 'Booked from application ' + (selected.reference || '') + '.';
             calculateMaturityFromSchedule();
+            recalculateBalanceFromInputs();
         };
 
         const applyClientBranchDefaults = () => {
@@ -392,6 +439,15 @@
                 applyApplicationDefaults();
             }
         }
+        productInput?.addEventListener('change', () => {
+            applyProductDefaults();
+            recalculateBalanceFromInputs();
+        });
+        principalInput?.addEventListener('input', recalculateBalanceFromInputs);
+        interestRateInput?.addEventListener('input', recalculateBalanceFromInputs);
+        balanceInput?.addEventListener('input', () => {
+            balanceTouched = true;
+        });
         clientSelect?.addEventListener('change', applyClientBranchDefaults);
 
         termValueInput?.addEventListener('input', calculateMaturityFromSchedule);
@@ -529,6 +585,8 @@
             }
         });
         applyClientBranchDefaults();
+        applyProductDefaults();
+        recalculateBalanceFromInputs();
         [productModal, branchModal].forEach((modal) => {
             modal?.addEventListener('click', (event) => {
                 if (event.target === modal) {

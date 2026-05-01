@@ -12,11 +12,17 @@
         ['label' => 'Accounting', 'route' => 'loan.accounting.books'],
     ];
 @endphp
-<div class="flex items-center gap-1.5 overflow-x-auto rounded-xl border border-slate-200/90 bg-white px-3 py-2 shadow-sm">
-    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1 shrink-0">Quick</span>
+<div class="flex w-full min-w-0 items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2 py-2 shadow-sm">
+    <span class="mr-1 shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">Quick</span>
     @foreach ($links as $item)
         @if (\Illuminate\Support\Facades\Route::has($item['route']))
-            <a href="{{ route($item['route']) }}" class="inline-flex shrink-0 items-center rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-[#2f4f4f] transition-colors">{{ $item['label'] }}</a>
+            <a
+                href="{{ route($item['route']) }}"
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"
+                title="{{ $item['label'] }}"
+            >
+                {{ $item['label'] }}
+            </a>
         @endif
     @endforeach
 </div>

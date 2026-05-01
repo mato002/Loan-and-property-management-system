@@ -261,7 +261,7 @@
 
                 <!-- Scrollable Content Area (Topbar/Footer remain constant) -->
                 <main class="flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar overscroll-contain">
-                    <div class="p-4 sm:p-6 lg:p-8">
+                    <div class="px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-8 lg:pb-8 lg:pt-4">
                         {{ $slot }}
                     </div>
                 </main>

@@ -675,6 +675,7 @@ class LoanBookLoansController extends Controller
             'statuses' => $this->statusOptions(),
             'branches' => $this->branchOptions(),
             'productOptions' => $this->productOptions(),
+            'productDefaultMap' => $this->productDefaultsByName(),
             'regions' => LoanRegion::query()->where('is_active', true)->orderBy('name')->get(),
             'clientBranchById' => $clients
                 ->pluck('branch', 'id')
@@ -765,6 +766,7 @@ class LoanBookLoansController extends Controller
             'statuses' => $this->statusOptions(),
             'branches' => $this->branchOptions(),
             'productOptions' => $this->productOptions($loan_book_loan->product_name),
+            'productDefaultMap' => $this->productDefaultsByName(),
             'regions' => LoanRegion::query()->where('is_active', true)->orderBy('name')->get(),
             'clientBranchById' => $clients
                 ->pluck('branch', 'id')
@@ -836,14 +838,17 @@ class LoanBookLoansController extends Controller
             $loan = LoanBookLoan::query()->lockForUpdate()->findOrFail($loan_book_loan->id);
 
             $disbursedPrincipal = (float) $loan->disbursements()->sum('amount');
+            $storedPrincipal = max(0.0, (float) $loan->principal);
             if ($disbursedPrincipal <= 0.0) {
-                $disbursedPrincipal = max(0.0, (float) $loan->principal);
+                $disbursedPrincipal = $storedPrincipal;
             }
+            // Rebuild must not mutate booked principal. Use stored principal as the base.
+            $rebuildPrincipalBase = $storedPrincipal > 0.0 ? $storedPrincipal : $disbursedPrincipal;
 
-            $principalOutstanding = $disbursedPrincipal;
+            $principalOutstanding = $rebuildPrincipalBase;
             $interestOutstanding = $this->estimateInterestOutstanding(
                 $loan,
-                $disbursedPrincipal,
+                $rebuildPrincipalBase,
                 max(0.0, (float) $loan->interest_rate)
             );
             $feesOutstanding = max(0.0, (float) $loan->fees_outstanding);
@@ -854,8 +859,17 @@ class LoanBookLoansController extends Controller
                 ->orderBy('transaction_at')
                 ->orderBy('id')
                 ->get();
+            $skippedBeforeDisbursement = 0;
 
             foreach ($payments as $payment) {
+                if (
+                    $loan->disbursed_at
+                    && $payment->transaction_at
+                    && $payment->transaction_at->copy()->startOfDay()->lt($loan->disbursed_at->copy()->startOfDay())
+                ) {
+                    $skippedBeforeDisbursement++;
+                    continue;
+                }
                 $delta = abs((float) $payment->amount);
                 if ($delta <= 0.0) {
                     continue;
@@ -895,10 +909,12 @@ class LoanBookLoansController extends Controller
 
             $audit = '[Snapshot rebuild '.now()->format('Y-m-d H:i').'] Recomputed from disbursements + processed payments by '
                 .trim((string) ($request->user()?->name ?? 'System')).'.';
+            if ($skippedBeforeDisbursement > 0) {
+                $audit .= ' Skipped '.$skippedBeforeDisbursement.' payment(s) dated before loan disbursement.';
+            }
             $existingNotes = trim((string) ($loan->notes ?? ''));
 
             $loan->update([
-                'principal' => $disbursedPrincipal,
                 'principal_outstanding' => $principalOutstanding,
                 'interest_outstanding' => $interestOutstanding,
                 'fees_outstanding' => $feesOutstanding,
@@ -941,7 +957,7 @@ class LoanBookLoansController extends Controller
 
             $termValue = $app->term_value !== null ? (int) $app->term_value : (int) ($loan->term_value ?? 12);
             $termUnit = strtolower(trim((string) ($app->term_unit ?? $loan->term_unit ?? 'monthly')));
-            $ratePeriod = strtolower(trim((string) ($app->interest_rate_period ?? $loan->interest_rate_period ?? 'annual')));
+            $ratePeriod = strtolower(trim((string) ($app->interest_rate_period ?? $loan->interest_rate_period ?? 'term')));
 
             $principalOutstanding = max(0.0, (float) $loan->principal_outstanding);
             if ($principalOutstanding <= 0.0) {
@@ -950,7 +966,7 @@ class LoanBookLoansController extends Controller
 
             $loan->term_value = $termValue;
             $loan->term_unit = in_array($termUnit, ['daily', 'weekly', 'monthly'], true) ? $termUnit : 'monthly';
-            $loan->interest_rate_period = in_array($ratePeriod, ['daily', 'weekly', 'monthly', 'annual'], true) ? $ratePeriod : 'annual';
+            $loan->interest_rate_period = in_array($ratePeriod, ['term', 'daily', 'weekly', 'monthly', 'annual'], true) ? $ratePeriod : 'term';
 
             $loan->interest_outstanding = $this->loanMath->estimateInterestForLoan(
                 $loan,
@@ -1026,7 +1042,7 @@ class LoanBookLoansController extends Controller
             'interest_rate' => ['required', 'numeric', 'min:0', 'max:100'],
             'term_value' => ['nullable', 'integer', 'min:1', 'max:3660'],
             'term_unit' => ['nullable', 'string', 'in:daily,weekly,monthly'],
-            'interest_rate_period' => ['nullable', 'string', 'in:daily,weekly,monthly,annual'],
+            'interest_rate_period' => ['nullable', 'string', 'in:term,daily,weekly,monthly,annual'],
             'status' => ['required', 'string', 'in:'.implode(',', array_keys($this->statusOptions()))],
             'dpd' => $isCreate
                 ? ['nullable', 'integer', 'min:0', 'max:9999']
@@ -1067,7 +1083,7 @@ class LoanBookLoansController extends Controller
             }
         }
 
-        $validated['interest_rate_period'] = strtolower((string) ($validated['interest_rate_period'] ?? 'annual'));
+        $validated['interest_rate_period'] = strtolower((string) ($validated['interest_rate_period'] ?? 'term'));
         $validated['term_unit'] = strtolower((string) ($validated['term_unit'] ?? 'monthly'));
         if ($isCreate) {
             $validated['dpd'] = 0;
@@ -1129,6 +1145,52 @@ class LoanBookLoansController extends Controller
         }
 
         return $all;
+    }
+
+    /**
+     * @return array<string, array{default_interest_rate: ?float, default_interest_rate_type: string, default_term_months: int, default_term_unit: string}>
+     */
+    private function productDefaultsByName(): array
+    {
+        if (! Schema::hasTable('loan_products')) {
+            return [];
+        }
+
+        $hasStatus = Schema::hasColumn('loan_products', 'status');
+        $hasDefaultRateType = Schema::hasColumn('loan_products', 'default_interest_rate_type');
+        $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
+        $select = ['name', 'default_interest_rate', 'default_term_months'];
+        if ($hasDefaultRateType) {
+            $select[] = 'default_interest_rate_type';
+        }
+        if ($hasDefaultTermUnit) {
+            $select[] = 'default_term_unit';
+        }
+
+        return LoanProduct::query()
+            ->when(
+                $hasStatus,
+                fn (Builder $query) => $query->where('status', 'active'),
+                fn (Builder $query) => $query->where('is_active', true)
+            )
+            ->orderBy('name')
+            ->get($select)
+            ->mapWithKeys(function (LoanProduct $product) use ($hasDefaultRateType, $hasDefaultTermUnit): array {
+                $name = trim((string) $product->name);
+                if ($name === '') {
+                    return [];
+                }
+
+                return [
+                    $name => [
+                        'default_interest_rate' => $product->default_interest_rate !== null ? (float) $product->default_interest_rate : null,
+                        'default_interest_rate_type' => $hasDefaultRateType ? (string) ($product->default_interest_rate_type ?? 'percent') : 'percent',
+                        'default_term_months' => max(0, (int) ($product->default_term_months ?? 0)),
+                        'default_term_unit' => $hasDefaultTermUnit ? (string) ($product->default_term_unit ?? 'monthly') : 'monthly',
+                    ],
+                ];
+            })
+            ->all();
     }
 
     private function assertProductActiveForNewLoan(string $productName): void
@@ -1206,7 +1268,7 @@ class LoanBookLoansController extends Controller
         $interestOutstanding = $this->loanMath->estimateInterestOutstanding(
             principal: $principal,
             ratePercent: $interestRate,
-            ratePeriod: strtolower((string) ($application?->interest_rate_period ?? 'annual')),
+            ratePeriod: strtolower((string) ($application?->interest_rate_period ?? 'term')),
             termValue: $application?->term_value !== null ? (int) $application->term_value : null,
             termUnit: $application?->term_unit !== null ? (string) $application->term_unit : null,
             disbursedAt: $validated['disbursed_at'] ?? null,

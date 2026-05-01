@@ -11,6 +11,8 @@
             <a href="{{ route('property.settings.payments') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment config</a>
             <a href="{{ route('property.settings.branding') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Branding</a>
             <a href="{{ route('property.settings.rules') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System rules</a>
+            <a href="{{ route('property.settings.deposits') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Deposit rules</a>
+            <a href="{{ route('property.settings.expenses') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Expense charge rules</a>
             <a href="{{ route('property.settings.system_setup') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">System setup</a>
         </div>
 
@@ -31,6 +33,8 @@
             ['route' => 'property.settings.system_setup.forms', 'title' => 'General form switches', 'description' => 'Enable/disable broad form modules and shared JSON mappings.'],
             ['route' => 'property.settings.system_setup.workflows', 'title' => 'Workflow adjustments', 'description' => 'Automation toggles for assignment and reminders.'],
             ['route' => 'property.settings.rules', 'title' => 'Automation rules', 'description' => 'Define business rules and triggers used for automated actions.'],
+            ['route' => 'property.settings.deposits', 'title' => 'Deposit rules', 'description' => 'Define deposit lines, requirements, and formulas used by leases.'],
+            ['route' => 'property.settings.expenses', 'title' => 'Expense charge rules', 'description' => 'Define utility/expense charge templates and default ledger mapping.'],
             ['route' => 'property.settings.system_setup.templates', 'title' => 'Template adjustments', 'description' => 'Default lease and notice text used by forms.'],
             ['route' => 'property.settings.system_setup.access', 'title' => 'Access control', 'description' => 'Create roles, permissions, and user role mappings.'],
         ]" />

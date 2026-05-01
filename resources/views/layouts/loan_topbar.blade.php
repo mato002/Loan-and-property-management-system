@@ -21,7 +21,7 @@
 <header class="relative md:sticky md:top-0 z-30 md:z-50 flex-shrink-0 border-b border-slate-200/90 bg-gradient-to-b from-white via-slate-50 to-white shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/90 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-gradient-to-r before:from-cyan-500 before:via-sky-500 before:to-indigo-500">
     <div class="px-4 sm:px-6 lg:px-8">
         {{-- Primary row --}}
-        <div class="flex items-center justify-between gap-3 py-3 sm:py-3.5 min-h-[4.25rem]">
+        <div class="flex items-center justify-between gap-2.5 py-2 sm:py-2.5 min-h-[3.5rem]">
             <div class="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                 <button type="button" @click="sidebarOpen = true" class="md:hidden shrink-0 p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-[#2f4f4f]/30" aria-label="Open menu">
                     <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -44,16 +44,11 @@
                 </button>
                 <div class="min-w-0 hidden sm:block">
                     <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <h1 class="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight truncate">
+                        <h1 class="text-base sm:text-lg font-semibold text-slate-900 tracking-tight truncate">
                             Good {{ $greeting }}, <span class="text-[#2f4f4f]">{{ $firstName }}</span>
                         </h1>
                         <span class="inline-flex items-center rounded-md bg-[#2f4f4f]/10 text-[#264040] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0">Loan</span>
                     </div>
-                    <p class="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        <span class="tabular-nums font-medium text-slate-600">{{ now()->format('l, F j, Y') }}</span>
-                        <span class="text-slate-300 hidden sm:inline" aria-hidden="true">·</span>
-                        <span class="hidden sm:inline">Portfolio, collections &amp; books in one place</span>
-                    </p>
                 </div>
 
                 {{-- Compact mobile title --}}
@@ -91,13 +86,13 @@
                         Help
                     </a>
 
-                    <div class="hidden sm:block w-px h-8 bg-slate-200" aria-hidden="true"></div>
+                    <div class="hidden sm:block w-px h-7 bg-slate-200" aria-hidden="true"></div>
 
                     <div class="relative z-[60]" x-data="{ bellOpen: false }" @click.outside="bellOpen = false">
                         <button
                             type="button"
                             @click="bellOpen = !bellOpen"
-                            class="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm"
+                            class="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm"
                             title="Notifications"
                         >
                             <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -138,7 +133,7 @@
 
                     <div class="relative z-[60]" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
                         <button type="button" @click="userMenuOpen = !userMenuOpen" class="flex items-center gap-2 p-1 pr-2 sm:pr-3 rounded-full bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shadow-sm">
-                            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-inner border border-white/20 overflow-hidden">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-inner border border-white/20 overflow-hidden">
                                 @if (Auth::check() && filled(Auth::user()->profile_photo_url))
                                     <img src="{{ Auth::user()->profile_photo_url }}" alt="Profile image" class="h-full w-full object-cover">
                                 @elseif (Auth::check() && Auth::user()->name)
@@ -181,12 +176,12 @@
         </div>
 
         {{-- Secondary strip: mobile quick links + hint --}}
-        <div class="lg:hidden flex flex-wrap items-center gap-2 pb-3 -mt-1 border-t border-slate-100/80 pt-2.5">
+        <div class="lg:hidden flex flex-nowrap items-center gap-2 overflow-x-auto pb-2 -mt-0.5 border-t border-slate-100/80 pt-1.5">
             @foreach (array_slice($quickLinks, 0, 4) as $link)
                 @if (Route::has($link['route']))
                     <a
                         href="{{ route($link['route']) }}"
-                        class="inline-flex items-center rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide border transition-colors {{ $link['active'] ? 'bg-[#2f4f4f] text-white border-[#2f4f4f]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50' }}"
+                        class="inline-flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide border transition-colors whitespace-nowrap {{ $link['active'] ? 'bg-[#2f4f4f] text-white border-[#2f4f4f]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50' }}"
                     >
                         {{ $link['label'] }}
                     </a>

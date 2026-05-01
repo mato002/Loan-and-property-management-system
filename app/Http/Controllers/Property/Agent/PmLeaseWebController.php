@@ -178,6 +178,75 @@ class PmLeaseWebController extends Controller
         return $normalized;
     }
 
+    /**
+     * @param  array<int,array<string,mixed>>  $openingArrearsRows
+     * @param  mixed  $rentArrearsRaw
+     * @param  mixed  $rentArrearsPeriodRaw
+     * @param  mixed  $rentArrearsDetailsRaw
+     * @param  array<string,mixed>  $depositArrears
+     * @param  array<int,int>  $unitIds
+     * @return array<int,array<string,mixed>>
+     */
+    private function mergeOpeningArrearsWithDepositArrears(
+        array $openingArrearsRows,
+        mixed $rentArrearsRaw,
+        mixed $rentArrearsPeriodRaw,
+        mixed $rentArrearsDetailsRaw,
+        array $depositArrears,
+        array $unitIds
+    ): array
+    {
+        $rentArrears = is_numeric($rentArrearsRaw) ? (float) $rentArrearsRaw : 0.0;
+        if ($rentArrears > 0) {
+            $rentPeriod = is_string($rentArrearsPeriodRaw) && preg_match('/^\d{4}-\d{2}$/', $rentArrearsPeriodRaw) === 1
+                ? $rentArrearsPeriodRaw
+                : null;
+            $rentDetails = trim((string) ($rentArrearsDetailsRaw ?? ''));
+            $openingArrearsRows[] = [
+                'charge_type' => 'rent_arrears',
+                'specific_charge' => $rentDetails !== '' ? mb_substr($rentDetails, 0, 100) : 'Rent arrears',
+                'period' => $rentPeriod,
+                'amount' => $rentArrears,
+            ];
+        }
+
+        if ($depositArrears === []) {
+            return $openingArrearsRows;
+        }
+
+        $definitions = collect();
+        if ($unitIds !== []) {
+            $unit = PropertyUnit::query()->select(['id', 'property_id'])->find((int) $unitIds[0]);
+            if ($unit) {
+                $definitions = $this->resolveDepositDefinitions((int) $unit->property_id, (int) $unit->id);
+            }
+        }
+
+        $labelByKey = $definitions
+            ->mapWithKeys(fn ($def) => [(string) $def->deposit_key => (string) ($def->label ?: $def->deposit_key)])
+            ->all();
+
+        foreach ($depositArrears as $key => $amountRaw) {
+            $amount = is_numeric($amountRaw) ? (float) $amountRaw : 0.0;
+            if ($amount <= 0) {
+                continue;
+            }
+            $normalizedKey = $this->normalizeDepositKey((string) $key);
+            if ($normalizedKey === '') {
+                continue;
+            }
+            $label = $labelByKey[$normalizedKey] ?? ucwords(str_replace('_', ' ', $normalizedKey));
+            $openingArrearsRows[] = [
+                'charge_type' => 'deposit_arrears',
+                'specific_charge' => $label.' arrears',
+                'period' => null,
+                'amount' => $amount,
+            ];
+        }
+
+        return $openingArrearsRows;
+    }
+
     private function utilityExpenseTypeLabel(?string $value): string
     {
         $type = trim((string) $value);
@@ -829,6 +898,11 @@ class PmLeaseWebController extends Controller
             'opening_arrears.*.specific_charge' => ['nullable', 'string', 'max:100'],
             'opening_arrears.*.period' => ['nullable', 'date_format:Y-m'],
             'opening_arrears.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'opening_rent_arrears' => ['nullable', 'numeric', 'min:0'],
+            'opening_rent_arrears_period' => ['nullable', 'date_format:Y-m'],
+            'opening_rent_arrears_details' => ['nullable', 'string', 'max:120'],
+            'opening_deposit_arrears' => ['nullable', 'array', 'max:20'],
+            'opening_deposit_arrears.*' => ['nullable', 'numeric', 'min:0'],
             'opening_arrears_manual_total' => ['nullable', 'numeric', 'min:0'],
             'opening_arrears_as_of_date' => ['nullable', 'date'],
             'opening_arrears_note' => ['nullable', 'string', 'max:500'],
@@ -872,7 +946,16 @@ class PmLeaseWebController extends Controller
                 $payload['additional_deposits'] = $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []));
             }
             if (Schema::hasColumn('pm_leases', 'opening_arrears')) {
-                $payload['opening_arrears'] = $this->normalizeOpeningArrears((array) ($data['opening_arrears'] ?? []));
+                $payload['opening_arrears'] = $this->normalizeOpeningArrears(
+                    $this->mergeOpeningArrearsWithDepositArrears(
+                        (array) ($data['opening_arrears'] ?? []),
+                        $data['opening_rent_arrears'] ?? null,
+                        $data['opening_rent_arrears_period'] ?? null,
+                        $data['opening_rent_arrears_details'] ?? null,
+                        (array) ($data['opening_deposit_arrears'] ?? []),
+                        $unitIds
+                    )
+                );
             }
             if (Schema::hasColumn('pm_leases', 'opening_arrears_manual_total')) {
                 $payload['opening_arrears_manual_total'] = isset($data['opening_arrears_manual_total'])
@@ -1110,6 +1193,11 @@ class PmLeaseWebController extends Controller
             'opening_arrears.*.specific_charge' => ['nullable', 'string', 'max:100'],
             'opening_arrears.*.period' => ['nullable', 'date_format:Y-m'],
             'opening_arrears.*.amount' => ['nullable', 'numeric', 'min:0'],
+            'opening_rent_arrears' => ['nullable', 'numeric', 'min:0'],
+            'opening_rent_arrears_period' => ['nullable', 'date_format:Y-m'],
+            'opening_rent_arrears_details' => ['nullable', 'string', 'max:120'],
+            'opening_deposit_arrears' => ['nullable', 'array', 'max:20'],
+            'opening_deposit_arrears.*' => ['nullable', 'numeric', 'min:0'],
             'opening_arrears_manual_total' => ['nullable', 'numeric', 'min:0'],
             'opening_arrears_as_of_date' => ['nullable', 'date'],
             'opening_arrears_note' => ['nullable', 'string', 'max:500'],
@@ -1153,7 +1241,16 @@ class PmLeaseWebController extends Controller
                 $payload['additional_deposits'] = $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []));
             }
             if (Schema::hasColumn('pm_leases', 'opening_arrears')) {
-                $payload['opening_arrears'] = $this->normalizeOpeningArrears((array) ($data['opening_arrears'] ?? []));
+                $payload['opening_arrears'] = $this->normalizeOpeningArrears(
+                    $this->mergeOpeningArrearsWithDepositArrears(
+                        (array) ($data['opening_arrears'] ?? []),
+                        $data['opening_rent_arrears'] ?? null,
+                        $data['opening_rent_arrears_period'] ?? null,
+                        $data['opening_rent_arrears_details'] ?? null,
+                        (array) ($data['opening_deposit_arrears'] ?? []),
+                        $unitIds
+                    )
+                );
             }
             if (Schema::hasColumn('pm_leases', 'opening_arrears_manual_total')) {
                 $payload['opening_arrears_manual_total'] = isset($data['opening_arrears_manual_total'])
