@@ -2,4 +2,4 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/emptyjou/property/
-    - /bin/rsync -av --delete --exclude='.git' --exclude='.env' --exclude='storage' --exclude='node_modules' /home/emptyjou/repositories/Loan-and-property-management-system/ $DEPLOYPATH
+    - /bin/rsync -av --delete --exclude='.git' --exclude='.env' --exclude='storage' --exclude='vendor' --exclude='node_modules' /home/emptyjou/repositories/Loan-and-property-management-system/ $DEPLOYPATH
