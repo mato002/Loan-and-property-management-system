@@ -59,7 +59,25 @@
         @endif
 
         {{-- Profile + compact summary strip --}}
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start" x-data="{ smsTopupOpen: {{ ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('phone')) ? 'true' : 'false' }} }">
+        <div
+            class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start"
+            x-data="{
+                smsTopupOpen: {{ ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('phone')) ? 'true' : 'false' }},
+                debug: {{ app()->environment('local') ? 'true' : 'false' }},
+                log(action, reason = '') {
+                    if (!this.debug) return;
+                    console.debug('[LoanDashboard][SMS Topup]', action, reason);
+                },
+                openSmsTopup(reason = 'manual') {
+                    this.smsTopupOpen = true;
+                    this.log('open', reason);
+                },
+                closeSmsTopup(reason = 'manual') {
+                    this.smsTopupOpen = false;
+                    this.log('close', reason);
+                }
+            }"
+        >
             <div class="lg:col-span-4 w-full max-w-sm lg:max-w-none bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
                 <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
                     <h2 class="text-2xl font-semibold text-slate-800">Welcome {{ $profileCard['name'] ?? 'User' }}</h2>
@@ -111,9 +129,17 @@
                         <p class="text-xs text-slate-600">Bulk SMS Balance</p>
                         <div class="flex items-center gap-3">
                             <p class="text-xl font-bold text-emerald-700 tabular-nums">{{ $currencyCode }} {{ number_format((float) ($profileCard['sms_balance'] ?? 0), 1) }}</p>
-                            <button type="button" @click="smsTopupOpen = true" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">Topup</button>
+                            <button type="button" @click="openSmsTopup('topup_button_click')" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">Topup</button>
                         </div>
                     </div>
+                    @if ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('reference'))
+                        <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            SMS topup could not be completed. Review the message and try again.
+                            @if ($errors->has('sms_topup'))
+                                <span class="block mt-1 font-medium">{{ $errors->first('sms_topup') }}</span>
+                            @endif
+                        </div>
+                    @endif
                 </div>
             </div>
 
@@ -122,13 +148,13 @@
                 x-cloak
                 x-transition.opacity
                 class="fixed inset-0 z-[70] flex items-start sm:items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-3 sm:p-6"
-                @keydown.escape.window="smsTopupOpen = false"
+                @keydown.escape.window="closeSmsTopup('escape_key')"
             >
-                <div @click.away="smsTopupOpen = false" class="w-full max-w-xl mt-12 sm:mt-0 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+                <div @click.away="closeSmsTopup('click_away')" class="w-full max-w-xl mt-12 sm:mt-0 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
                     <div class="px-5 sm:px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-white via-slate-50 to-indigo-50/40">
                         <div class="flex items-center justify-between gap-3">
                             <h3 class="text-xl sm:text-2xl font-semibold text-slate-800 tracking-tight">Topup SMS Wallet</h3>
-                            <button type="button" @click="smsTopupOpen = false" class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors" aria-label="Close topup modal">&times;</button>
+                            <button type="button" @click="closeSmsTopup('close_button')" class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors" aria-label="Close topup modal">&times;</button>
                         </div>
                     </div>
                     <form method="post" action="{{ route('loan.dashboard.sms_topup') }}" class="space-y-4 px-5 sm:px-6 py-4 sm:py-5">

@@ -524,14 +524,14 @@
                                             <div class="flex items-center gap-2">
                                                 <button
                                                     type="button"
-                                                    @click='openEventMappingModal(@json($rule))'
+                                                    @click="openEventMappingModal({{ \Illuminate\Support\Js::from($rule) }})"
                                                     class="inline-flex items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                                                 >
                                                     Edit Mapping
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    @click='openHistoryModal(@json($rule))'
+                                                    @click="openHistoryModal({{ \Illuminate\Support\Js::from($rule) }})"
                                                     class="inline-flex items-center justify-center rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-100"
                                                 >
                                                     View History / Audit
@@ -959,7 +959,7 @@
                                             <td class="px-3 py-2 font-semibold text-red-700">KSh {{ $fmtN((float) $a->current_balance) }}</td>
                                             <td class="px-3 py-2">{{ is_null($a->overdraft_limit) ? 'Unlimited' : 'KSh '.number_format((float) $a->overdraft_limit, 0) }}</td>
                                             <td class="px-3 py-2">
-                                                <a href="{{ route('loan.accounting.books.chart_rules', ['edit_account' => $a->id]) }}" class="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+                                                <a href="{{ route('loan.accounting.books.chart_rules', ['tab' => 'accounts', 'edit_account' => $a->id]) }}" class="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
                                                 <a href="{{ route('loan.accounting.journal.index', ['q' => $a->code]) }}" class="rounded p-1 text-slate-500 hover:bg-purple-50 hover:text-purple-700" title="View Journal"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
                                             </td>
                                         </tr>

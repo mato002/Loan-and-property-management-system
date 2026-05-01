@@ -3,6 +3,85 @@ import 'sweetalert2/dist/sweetalert2.min.css';
 
 window.Swal = Swal;
 
+const SWAL_RECOVERY_TIMEOUT_MS = 3000;
+const OVERLAY_DEBUG =
+    import.meta.env.DEV ||
+    window.__overlayDebug === true ||
+    window.localStorage?.getItem('overlay_debug') === '1';
+
+function debugLog(...args) {
+    if (!OVERLAY_DEBUG) return;
+    console.debug('[OverlaySafety]', ...args);
+}
+
+function isVisible(el) {
+    if (!el) return false;
+    const style = window.getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || '1') > 0;
+}
+
+function restoreInteractionState() {
+    document.body.classList.remove('swal2-shown', 'swal2-height-auto');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
+    document.documentElement.style.removeProperty('overflow');
+}
+
+function cleanupSwalBackdrop(reason = 'manual') {
+    const popup = document.querySelector('.swal2-popup.swal2-show');
+    if (popup && isVisible(popup)) {
+        return;
+    }
+    document.querySelectorAll('.swal2-container').forEach((el) => el.remove());
+    restoreInteractionState();
+    debugLog('SweetAlert stale cleanup', reason);
+}
+
+function cleanupRecoverableOverlays(reason = 'manual') {
+    cleanupSwalBackdrop(reason);
+
+    const recoverable = document.querySelectorAll('[data-overlay-recoverable]');
+    let removedCount = 0;
+    recoverable.forEach((overlay) => {
+        if (!isVisible(overlay)) return;
+        const dialog = overlay.querySelector('[data-overlay-dialog], [role="dialog"], dialog');
+        if (dialog && isVisible(dialog)) return;
+        overlay.remove();
+        removedCount += 1;
+    });
+
+    if (removedCount > 0) {
+        restoreInteractionState();
+        debugLog('Removed stale recoverable overlays', { reason, removedCount });
+    }
+}
+
+function safeSwalFire(opts, source = 'unknown') {
+    debugLog('SweetAlert open', source);
+    let settled = false;
+
+    const watchdog = window.setTimeout(() => {
+        if (settled) return;
+        cleanupSwalBackdrop(`watchdog:${source}`);
+    }, SWAL_RECOVERY_TIMEOUT_MS);
+
+    return Swal.fire(opts)
+        .then((result) => {
+            settled = true;
+            return result;
+        })
+        .catch((error) => {
+            settled = true;
+            debugLog('SweetAlert error', { source, error });
+            throw error;
+        })
+        .finally(() => {
+            window.clearTimeout(watchdog);
+            cleanupSwalBackdrop(`finally:${source}`);
+            debugLog('SweetAlert close', source);
+        });
+}
+
 function runFlash() {
     const queue = window.__laravelSwalFlash;
     if (!Array.isArray(queue) || queue.length === 0) {
@@ -25,7 +104,7 @@ function runFlash() {
             } else if (item.text) {
                 opts.text = item.text;
             }
-            await Swal.fire(opts);
+            await safeSwalFire(opts, 'flash_queue');
         }
     })();
 }
@@ -33,16 +112,29 @@ function runFlash() {
 window.__runSwalFlash = runFlash;
 
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', runFlash);
+    document.addEventListener('DOMContentLoaded', () => {
+        cleanupRecoverableOverlays('dom_ready');
+        runFlash();
+    });
 } else {
+    cleanupRecoverableOverlays('immediate');
     runFlash();
 }
 
 // Turbo (Hotwire) navigations do not trigger DOMContentLoaded, so also re-run
 // flashes on Turbo events across the whole app (loan + public + auth pages too).
-document.addEventListener('turbo:load', runFlash);
-document.addEventListener('turbo:render', runFlash);
-document.addEventListener('turbo:frame-load', runFlash);
+document.addEventListener('turbo:load', () => {
+    cleanupRecoverableOverlays('turbo:load');
+    runFlash();
+});
+document.addEventListener('turbo:render', () => {
+    cleanupRecoverableOverlays('turbo:render');
+    runFlash();
+});
+document.addEventListener('turbo:frame-load', () => {
+    cleanupRecoverableOverlays('turbo:frame-load');
+    runFlash();
+});
 
 document.addEventListener(
     'submit',
@@ -65,12 +157,12 @@ document.addEventListener(
             } else {
                 e.preventDefault();
                 e.stopPropagation();
-                Swal.fire({
+                safeSwalFire({
                     icon: 'error',
                     title: 'Invalid application target',
                     text: 'The form target was invalid (undefined). Please reload this page and try again.',
                     confirmButtonColor: '#2f4f4f',
-                });
+                }, 'invalid_form_target');
                 return;
             }
         }
@@ -91,7 +183,7 @@ document.addEventListener(
 
         const title = submitter?.getAttribute('data-swal-title') || form.getAttribute('data-swal-title') || 'Are you sure?';
 
-        Swal.fire({
+        safeSwalFire({
             icon: 'warning',
             title,
             text: msg,
@@ -100,7 +192,7 @@ document.addEventListener(
             cancelButtonColor: '#64748b',
             confirmButtonText: submitter?.getAttribute('data-swal-confirm-text') || form.getAttribute('data-swal-confirm-text') || 'Yes, continue',
             cancelButtonText: submitter?.getAttribute('data-swal-cancel-text') || form.getAttribute('data-swal-cancel-text') || 'Cancel',
-        }).then((result) => {
+        }, 'form_confirm').then((result) => {
             if (result.isConfirmed) {
                 form.dataset.swalSubmitting = '1';
                 // Prevent the native confirm() prompt from re-blocking submit on forms
