@@ -94,7 +94,7 @@ function runFlash() {
             const opts = {
                 icon: item.icon || 'info',
                 confirmButtonText: item.confirmButtonText || 'OK',
-                confirmButtonColor: '#2f4f4f',
+                confirmButtonColor: item.confirmButtonColor || '#2f4f4f',
             };
             if (item.title) {
                 opts.title = item.title;

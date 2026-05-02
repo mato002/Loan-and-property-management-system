@@ -4,14 +4,10 @@
     </div>
 @endif
 
-@error('accounting')
-    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-        {{ $message }}
-    </div>
-@enderror
-
-@error('loan_book_loan_id')
-    <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-        {{ $message }}
-    </div>
-@enderror
+@if ($errors->any())
+    @foreach (array_unique($errors->all()) as $message)
+        <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {{ $message }}
+        </div>
+    @endforeach
+@endif

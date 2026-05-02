@@ -7,9 +7,6 @@ use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
-use App\Models\LoanSystemSetting;
-use App\Models\AccountingChartAccount;
-use App\Models\AccountingPostingRule;
 use App\Models\PropertyPortalSetting;
 use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Support\TabularExport;
@@ -24,6 +21,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -116,7 +114,7 @@ class LoanPaymentsController extends Controller
     public function processed(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
     {
         $query = LoanBookPayment::query()
-            ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'accountingJournalEntry.lines.account'])
+            ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'allocations', 'accountingJournalEntry'])
             ->processedQueue();
         $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
         $source = trim((string) $request->query('source', ''));
@@ -152,18 +150,16 @@ class LoanPaymentsController extends Controller
             ->orderByDesc('transaction_at')
             ->paginate($filters['perPage'])
             ->withQueryString();
-        $classificationAccountIds = $this->processedPaymentClassificationAccountIds();
         $processedBreakdowns = [];
         foreach ($payments->getCollection() as $payment) {
-            $processedBreakdowns[(int) $payment->id] = $this->processedPaymentBreakdown(
-                $payment,
-                $classificationAccountIds
-            );
+            $processedBreakdowns[(int) $payment->id] = $this->processedPaymentBreakdown($payment);
         }
 
         $principalProcessed = array_sum(array_map(fn (array $row): float => (float) ($row['principal'] ?? 0.0), $processedBreakdowns));
         $interestProcessed = array_sum(array_map(fn (array $row): float => (float) ($row['interest'] ?? 0.0), $processedBreakdowns));
-        $chargesProcessed = array_sum(array_map(fn (array $row): float => (float) ($row['charges'] ?? 0.0), $processedBreakdowns));
+        $feesProcessed = array_sum(array_map(fn (array $row): float => (float) ($row['fees'] ?? 0.0), $processedBreakdowns));
+        $penaltyProcessed = array_sum(array_map(fn (array $row): float => (float) ($row['penalty'] ?? 0.0), $processedBreakdowns));
+        $overpaymentProcessed = array_sum(array_map(fn (array $row): float => (float) ($row['overpayment'] ?? 0.0), $processedBreakdowns));
         $totalAmount = (clone $query)->sum('amount');
         $displayDate = $to = trim((string) ($filters['to'] ?? ''));
         if ($displayDate === '') {
@@ -192,7 +188,9 @@ class LoanPaymentsController extends Controller
             'processedBreakdowns',
             'principalProcessed',
             'interestProcessed',
-            'chargesProcessed',
+            'feesProcessed',
+            'penaltyProcessed',
+            'overpaymentProcessed',
             'displayDate',
             'corporateOptions',
             'payModeOptions'
@@ -200,106 +198,90 @@ class LoanPaymentsController extends Controller
     }
 
     /**
-     * @return array{principal:array<int,true>,interest:array<int,true>,charges:array<int,true>}
+     * Operational breakdown for Processed Payments UI from persisted allocation rows.
+     *
+     * @return array{
+     *   principal: float,
+     *   interest: float,
+     *   fees: float,
+     *   penalty: float,
+     *   overpayment: float,
+     *   allocation_total: float,
+     *   payment_amount: float,
+     *   allocation_mismatch: bool,
+     *   fallback_message: string|null,
+     *   has_allocation_data: bool
+     * }
      */
-    private function processedPaymentClassificationAccountIds(): array
+    private function processedPaymentBreakdown(LoanBookPayment $payment): array
     {
-        $principalCode = trim((string) (LoanSystemSetting::getValue('loan_account_code_principal', '1200') ?? '1200'));
-        $interestCode = trim((string) (LoanSystemSetting::getValue('loan_account_code_interest_income', '4002') ?? '4002'));
-        $feeCode = trim((string) (LoanSystemSetting::getValue('loan_account_code_fee_income', '4007') ?? '4007'));
-        $penaltyCode = trim((string) (LoanSystemSetting::getValue('loan_account_code_penalty_income', '4003') ?? '4003'));
+        $paymentAmount = round(abs((float) $payment->amount), 2);
+        $hasJournal = $payment->accounting_journal_entry_id !== null;
 
-        $codes = array_values(array_filter(array_unique([
-            $principalCode,
-            $interestCode,
-            $feeCode,
-            $penaltyCode,
-        ])));
-
-        $codeToId = AccountingChartAccount::query()
-            ->whereIn('code', $codes)
-            ->pluck('id', 'code');
-
-        $principalIds = [];
-        if ($principalCode !== '' && isset($codeToId[$principalCode])) {
-            $principalIds[(int) $codeToId[$principalCode]] = true;
-        }
-        $interestIds = [];
-        if ($interestCode !== '' && isset($codeToId[$interestCode])) {
-            $interestIds[(int) $codeToId[$interestCode]] = true;
-        }
-        $chargesIds = [];
-        if ($feeCode !== '' && isset($codeToId[$feeCode])) {
-            $chargesIds[(int) $codeToId[$feeCode]] = true;
-        }
-        if ($penaltyCode !== '' && isset($codeToId[$penaltyCode])) {
-            $chargesIds[(int) $codeToId[$penaltyCode]] = true;
-        }
-
-        $loanLedgerRule = AccountingPostingRule::query()->where('rule_key', 'loan_ledger')->first();
-        if ($loanLedgerRule?->credit_account_id) {
-            $principalIds[(int) $loanLedgerRule->credit_account_id] = true;
-        }
-
-        return [
-            'principal' => $principalIds,
-            'interest' => $interestIds,
-            'charges' => $chargesIds,
+        $components = [
+            'principal' => 0.0,
+            'interest' => 0.0,
+            'fees' => 0.0,
+            'penalty' => 0.0,
+            'overpayment' => 0.0,
         ];
-    }
 
-    /**
-     * @param  array{principal:array<int,true>,interest:array<int,true>,charges:array<int,true>}  $classificationAccountIds
-     * @return array{principal:float,interest:float,charges:float,unclassified:float,total:float}
-     */
-    private function processedPaymentBreakdown(LoanBookPayment $payment, array $classificationAccountIds): array
-    {
-        $lines = collect($payment->accountingJournalEntry?->lines ?? []);
-        $principal = 0.0;
-        $interest = 0.0;
-        $charges = 0.0;
-        $unclassified = 0.0;
+        $allocationRows = $payment->relationLoaded('allocations')
+            ? $payment->allocations
+            : $payment->allocations()->orderBy('allocation_order')->orderBy('id')->get();
 
-        foreach ($lines as $line) {
-            $creditAmount = round((float) ($line->credit ?? 0), 2);
-            if ($creditAmount <= 0.0) {
+        foreach ($allocationRows as $row) {
+            $key = strtolower(trim((string) $row->component));
+            if (! array_key_exists($key, $components)) {
                 continue;
             }
-            $accountId = (int) ($line->accounting_chart_account_id ?? 0);
-            if ($accountId > 0 && isset($classificationAccountIds['principal'][$accountId])) {
-                $principal += $creditAmount;
-                continue;
-            }
-            if ($accountId > 0 && isset($classificationAccountIds['interest'][$accountId])) {
-                $interest += $creditAmount;
-                continue;
-            }
-            if ($accountId > 0 && isset($classificationAccountIds['charges'][$accountId])) {
-                $charges += $creditAmount;
-                continue;
-            }
-            $unclassified += $creditAmount;
+            $components[$key] = round($components[$key] + (float) $row->amount, 2);
         }
 
-        $total = round($principal + $interest + $charges + $unclassified, 2);
-        if ($total <= 0.0) {
-            $principal = round((float) $payment->amount, 2);
-            $total = $principal;
+        $allocationTotal = round(
+            $components['principal'] + $components['interest'] + $components['fees'] + $components['penalty'] + $components['overpayment'],
+            2
+        );
+
+        if ($allocationRows->isNotEmpty()) {
+            $mismatch = round(abs($allocationTotal - $paymentAmount), 2) > 0.01;
+
+            return [
+                'principal' => $components['principal'],
+                'interest' => $components['interest'],
+                'fees' => $components['fees'],
+                'penalty' => $components['penalty'],
+                'overpayment' => $components['overpayment'],
+                'allocation_total' => $allocationTotal,
+                'payment_amount' => $paymentAmount,
+                'allocation_mismatch' => $mismatch,
+                'fallback_message' => null,
+                'has_allocation_data' => true,
+            ];
         }
+
+        $fallback = $hasJournal
+            ? 'Allocation unavailable — verify journal'
+            : 'Allocation pending';
 
         return [
-            'principal' => round($principal, 2),
-            'interest' => round($interest, 2),
-            'charges' => round($charges, 2),
-            'unclassified' => round($unclassified, 2),
-            'total' => $total,
+            'principal' => 0.0,
+            'interest' => 0.0,
+            'fees' => 0.0,
+            'penalty' => 0.0,
+            'overpayment' => 0.0,
+            'allocation_total' => 0.0,
+            'payment_amount' => $paymentAmount,
+            'allocation_mismatch' => false,
+            'fallback_message' => $fallback,
+            'has_allocation_data' => false,
         ];
     }
 
     public function processedPrint(Request $request): View
     {
         $query = LoanBookPayment::query()
-            ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'accountingJournalEntry.lines.account'])
+            ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'allocations', 'accountingJournalEntry'])
             ->processedQueue();
         $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
 
@@ -338,9 +320,15 @@ class LoanPaymentsController extends Controller
 
         $totalAmount = (float) $payments->sum('amount');
 
+        $processedBreakdowns = [];
+        foreach ($payments as $payment) {
+            $processedBreakdowns[(int) $payment->id] = $this->processedPaymentBreakdown($payment);
+        }
+
         return view('loan.payments.processed-print', [
             'payments' => $payments,
             'totalAmount' => $totalAmount,
+            'processedBreakdowns' => $processedBreakdowns,
             'generatedAt' => now(),
             'generatedBy' => $request->user()?->name ?? 'System',
             'branchName' => 'Nakuru',
@@ -1089,6 +1077,12 @@ class LoanPaymentsController extends Controller
 
                 app(LoanBookLoanUpdateService::class)->onPaymentProcessed($payment->fresh());
             });
+        } catch (ValidationException $e) {
+            $message = collect($e->errors())->flatten()->first() ?? $e->getMessage();
+
+            return redirect()
+                ->back()
+                ->withErrors(['accounting' => $message]);
         } catch (\RuntimeException $e) {
             return redirect()
                 ->back()
@@ -1410,10 +1404,50 @@ class LoanPaymentsController extends Controller
             return null;
         }
 
-        $rows = $query->with(['loan.loanClient'])->limit(5000)->get();
+        $with = ['loan.loanClient'];
+        if ($basename === 'payments-processed') {
+            $with[] = 'allocations';
+        }
+        $rows = $query->with($with)->limit(5000)->get();
 
         if ($format === 'pdf' && $basename === 'payments-unposted') {
             return $this->streamUnpostedPdfReport($rows, $basename);
+        }
+
+        if ($basename === 'payments-processed') {
+            return TabularExport::stream(
+                $basename.'-'.now()->format('Ymd_His'),
+                [
+                    'Reference', 'Date', 'Loan #', 'Client #', 'Client Name', 'Amount',
+                    'Principal', 'Interest', 'Fees', 'Penalty', 'Overpayment',
+                    'Allocation status', 'Allocation mismatch', 'Channel', 'Status', 'Kind', 'Receipt',
+                ],
+                function () use ($rows) {
+                    foreach ($rows as $payment) {
+                        $b = $this->processedPaymentBreakdown($payment);
+                        yield [
+                            (string) ($payment->reference ?? ''),
+                            (string) optional($payment->transaction_at)->format('Y-m-d H:i'),
+                            (string) ($payment->loan?->loan_number ?? ''),
+                            (string) ($payment->loan?->loanClient?->client_number ?? ''),
+                            (string) ($payment->loan?->loanClient?->full_name ?? ''),
+                            number_format((float) $payment->amount, 2, '.', ''),
+                            number_format((float) $b['principal'], 2, '.', ''),
+                            number_format((float) $b['interest'], 2, '.', ''),
+                            number_format((float) $b['fees'], 2, '.', ''),
+                            number_format((float) $b['penalty'], 2, '.', ''),
+                            number_format((float) $b['overpayment'], 2, '.', ''),
+                            (string) ($b['fallback_message'] ?? ''),
+                            ($b['allocation_mismatch'] ?? false) ? 'Yes' : 'No',
+                            (string) ($payment->channel ?? ''),
+                            (string) ($payment->status ?? ''),
+                            (string) ($payment->payment_kind ?? ''),
+                            (string) ($payment->mpesa_receipt_number ?? ''),
+                        ];
+                    }
+                },
+                $format
+            );
         }
 
         return TabularExport::stream(

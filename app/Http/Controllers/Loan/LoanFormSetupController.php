@@ -11,6 +11,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -473,16 +474,30 @@ class LoanFormSetupController extends Controller
             'select_options' => (string) ($f->select_options ?? ''),
             'prefill_from_previous' => (bool) $f->prefill_from_previous,
             'visible_to' => (string) ($f->visible_to ?? ''),
-            'field_status' => (string) ($f->field_status ?? 'active'),
-            'product_id' => $f->product_id,
+            'field_status' => (string) ($f->field_status ?? ($f->is_core ? 'active' : 'draft')),
+            'product_id' => $f->product_id !== null ? (string) $f->product_id : '',
             'is_core' => (bool) $f->is_core,
         ])->values()->all();
+
+        $productsPendingLoanFormSetup = Schema::hasColumn('loan_products', 'loan_form_setup_completed_at')
+            ? LoanProduct::query()
+                ->whereNull('loan_form_setup_completed_at')
+                ->orderBy('name')
+                ->get(['id', 'name'])
+            : collect();
+
+        $productsPendingForJs = $productsPendingLoanFormSetup
+            ->map(fn (LoanProduct $p): array => ['id' => (int) $p->id, 'name' => (string) $p->name])
+            ->values()
+            ->all();
 
         return view('loan.system.form_setup.loan_settings', [
             'title' => 'Loan settings',
             'subtitle' => 'Configure product rules, approval controls, affordability checks, disbursement safety, and lending risk limits.',
             'backUrl' => route('loan.system.setup'),
             'products' => LoanProduct::query()->orderBy('name')->get(['id', 'name']),
+            'productsPendingLoanFormSetup' => $productsPendingLoanFormSetup,
+            'productsPendingForJs' => $productsPendingForJs,
             'activeProductsCount' => LoanProduct::query()->where('is_active', true)->count(),
             'fieldsPayload' => $fieldsPayload,
             'dataTypeLabels' => LoanFormFieldDefinition::dataTypeLabels(),
@@ -543,7 +558,7 @@ class LoanFormSetupController extends Controller
                 LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION,
                 'loan.system.form_setup.page',
                 'Loan form setup saved.',
-                ['page' => 'loan-settings', 'tab' => 'loan-form-setup']
+                ['page' => 'loan-settings', 'tab' => 'product-rules']
             );
         }
 
@@ -868,7 +883,12 @@ class LoanFormSetupController extends Controller
             'fields.*.prefill_from_previous' => ['nullable', 'in:0,1'],
             'fields.*.visible_to' => ['nullable', 'string', 'max:255'],
             'fields.*.field_status' => ['nullable', Rule::in(['active', 'draft', 'requires_approval'])],
+            'complete_loan_form_setup_product_id' => ['nullable', 'integer', 'exists:loan_products,id'],
         ]);
+
+        if ($kind === LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION) {
+            $this->assertPendingLoanFormProduct($request);
+        }
 
         foreach ($validated['fields'] as $i => $row) {
             if ($row['data_type'] === LoanFormFieldDefinition::TYPE_SELECT
@@ -876,6 +896,24 @@ class LoanFormSetupController extends Controller
                 throw ValidationException::withMessages([
                     "fields.$i.select_options" => 'Add comma-separated options for a dropdown field.',
                 ]);
+            }
+        }
+
+        $loanSettingsSaveReport = null;
+        if ($kind === LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION) {
+            $loanSettingsSaveReport = $this->buildLoanSettingsSaveReport($validated['fields'], $kind);
+            if ($loanSettingsSaveReport['no_changes']) {
+                if ($request->filled('complete_loan_form_setup_product_id')) {
+                    $this->finalizeLoanFormSetupForProduct($request);
+
+                    return redirect()
+                        ->route($redirectRoute, $redirectRouteParams)
+                        ->with('swal_flash', $this->loanFormSetupMarkedCompleteSwalPayload());
+                }
+
+                return redirect()
+                    ->route($redirectRoute, $redirectRouteParams)
+                    ->with('swal_flash', $this->loanSettingsSaveSwalPayload($loanSettingsSaveReport));
             }
         }
 
@@ -905,6 +943,10 @@ class LoanFormSetupController extends Controller
                         ->where('form_kind', $kind)
                         ->where('id', $id)
                         ->firstOrFail();
+
+                    if ($field->is_core) {
+                        $fieldStatus = 'active';
+                    }
 
                     $field->update([
                         'product_id' => isset($row['product_id']) && $row['product_id'] !== '' ? (int) $row['product_id'] : null,
@@ -936,8 +978,199 @@ class LoanFormSetupController extends Controller
             }
         });
 
+        if ($kind === LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION && $request->filled('complete_loan_form_setup_product_id')) {
+            $this->finalizeLoanFormSetupForProduct($request);
+        }
+
+        if ($loanSettingsSaveReport !== null) {
+            return redirect()
+                ->route($redirectRoute, $redirectRouteParams)
+                ->with('swal_flash', $this->loanSettingsSaveSwalPayload($loanSettingsSaveReport));
+        }
+
         return redirect()
             ->route($redirectRoute, $redirectRouteParams)
             ->with('status', $successMessage);
+    }
+
+    /**
+     * @param  array{active_fields:int,deleted_fields:int,created_fields:int,updated_fields:int,no_changes:bool}  $report
+     * @return array{icon:string,title:string,html:string,confirmButtonColor?:string}
+     */
+    private function loanSettingsSaveSwalPayload(array $report): array
+    {
+        if ($report['no_changes']) {
+            return [
+                'icon' => 'info',
+                'title' => 'No changes',
+                'html' => '<p class="text-sm text-slate-600 text-left">Nothing was updated. Your loan form setup is unchanged.</p>',
+                'confirmButtonColor' => '#64748b',
+            ];
+        }
+
+        $lines = [];
+        $lines[] = '<li><span class="font-semibold">Fields included (active):</span> '.e((string) $report['active_fields']).'</li>';
+        $lines[] = '<li><span class="font-semibold">Custom fields removed:</span> '.e((string) $report['deleted_fields']).'</li>';
+        if ((int) $report['created_fields'] > 0) {
+            $lines[] = '<li><span class="font-semibold">New custom fields added:</span> '.e((string) $report['created_fields']).'</li>';
+        }
+        if ((int) $report['updated_fields'] > 0) {
+            $lines[] = '<li><span class="font-semibold">Existing rows updated:</span> '.e((string) $report['updated_fields']).'</li>';
+        }
+
+        $html = '<p class="text-sm text-slate-600 text-left">Loan form setup has been saved.</p>'
+            .'<ul class="mt-2 list-disc pl-5 text-left text-sm text-slate-700 space-y-1">'
+            .implode('', $lines)
+            .'</ul>';
+
+        return [
+            'icon' => 'success',
+            'title' => 'Saved successfully',
+            'html' => $html,
+            'confirmButtonColor' => '#2563eb',
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $validatedRows
+     * @return array{active_fields:int,deleted_fields:int,created_fields:int,updated_fields:int,no_changes:bool}
+     */
+    private function buildLoanSettingsSaveReport(array $validatedRows, string $kind): array
+    {
+        $existing = LoanFormFieldDefinition::query()
+            ->where('form_kind', $kind)
+            ->get()
+            ->keyBy('id');
+
+        $submittedIds = collect($validatedRows)
+            ->pluck('id')
+            ->filter()
+            ->map(fn ($v) => (int) $v)
+            ->all();
+
+        $deletedCount = $existing
+            ->filter(fn (LoanFormFieldDefinition $f) => ! $f->is_core && ! in_array($f->id, $submittedIds, true))
+            ->count();
+
+        $createdCount = 0;
+        $updatedCount = 0;
+
+        foreach ($validatedRows as $index => $row) {
+            $id = isset($row['id']) ? (int) $row['id'] : null;
+            if (! $id) {
+                $createdCount++;
+
+                continue;
+            }
+
+            $field = $existing->get($id);
+            if (! $field instanceof LoanFormFieldDefinition) {
+                continue;
+            }
+
+            if ($this->loanSettingsFieldUpdateWouldChange($field, $row, $index)) {
+                $updatedCount++;
+            }
+        }
+
+        $activeSelectedCount = collect($validatedRows)
+            ->filter(function (array $row): bool {
+                return trim((string) ($row['field_status'] ?? 'active')) === 'active';
+            })
+            ->count();
+
+        $noChanges = $deletedCount === 0 && $createdCount === 0 && $updatedCount === 0;
+
+        return [
+            'active_fields' => $activeSelectedCount,
+            'deleted_fields' => $deletedCount,
+            'created_fields' => $createdCount,
+            'updated_fields' => $updatedCount,
+            'no_changes' => $noChanges,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function loanSettingsFieldUpdateWouldChange(LoanFormFieldDefinition $field, array $row, int $index): bool
+    {
+        $selectOptions = $row['data_type'] === LoanFormFieldDefinition::TYPE_SELECT
+            ? ($row['select_options'] ?? null)
+            : null;
+
+        $prefill = isset($row['prefill_from_previous']) && (string) $row['prefill_from_previous'] === '1';
+        $required = isset($row['is_required']) && (string) $row['is_required'] === '1';
+        $fieldStatus = trim((string) ($row['field_status'] ?? 'active'));
+        if ($field->is_core) {
+            $fieldStatus = 'active';
+            $prefill = false;
+        }
+
+        $newProductId = isset($row['product_id']) && $row['product_id'] !== '' ? (int) $row['product_id'] : null;
+
+        $norm = fn (?string $s): string => trim((string) ($s ?? ''));
+
+        return (int) ($field->product_id ?? 0) !== (int) ($newProductId ?? 0)
+            || (string) $field->label !== (string) $row['label']
+            || (string) $field->data_type !== (string) $row['data_type']
+            || (bool) ($field->is_required ?? false) !== $required
+            || $norm($field->select_options) !== $norm($selectOptions)
+            || (bool) $field->prefill_from_previous !== $prefill
+            || $norm($field->visible_to) !== $norm((string) ($row['visible_to'] ?? ''))
+            || $norm($field->field_status) !== $fieldStatus
+            || (int) $field->sort_order !== $index;
+    }
+
+    private function assertPendingLoanFormProduct(Request $request): void
+    {
+        if (! $request->filled('complete_loan_form_setup_product_id')) {
+            return;
+        }
+        if (! Schema::hasColumn('loan_products', 'loan_form_setup_completed_at')) {
+            return;
+        }
+
+        $id = (int) $request->input('complete_loan_form_setup_product_id');
+        $product = LoanProduct::query()->find($id);
+        if (! $product) {
+            throw ValidationException::withMessages([
+                'complete_loan_form_setup_product_id' => 'Invalid loan product.',
+            ]);
+        }
+        if ($product->loan_form_setup_completed_at !== null) {
+            throw ValidationException::withMessages([
+                'complete_loan_form_setup_product_id' => 'This product is already set up. Use the product selector to adjust fields.',
+            ]);
+        }
+    }
+
+    private function finalizeLoanFormSetupForProduct(Request $request): void
+    {
+        if (! $request->filled('complete_loan_form_setup_product_id')) {
+            return;
+        }
+        if (! Schema::hasColumn('loan_products', 'loan_form_setup_completed_at')) {
+            return;
+        }
+
+        $id = (int) $request->input('complete_loan_form_setup_product_id');
+        LoanProduct::query()
+            ->whereKey($id)
+            ->whereNull('loan_form_setup_completed_at')
+            ->update(['loan_form_setup_completed_at' => now()]);
+    }
+
+    /**
+     * @return array{icon:string,title:string,html:string,confirmButtonColor?:string}
+     */
+    private function loanFormSetupMarkedCompleteSwalPayload(): array
+    {
+        return [
+            'icon' => 'success',
+            'title' => 'Product form setup complete',
+            'html' => '<p class="text-sm text-slate-600 text-left">This loan product is now available in the product selector. You can add or change product-specific fields there anytime.</p>',
+            'confirmButtonColor' => '#2563eb',
+        ];
     }
 }

@@ -19,6 +19,13 @@
             $isEditingAccount = isset($editingAccount) && $editingAccount;
             $isDuplicatingAccount = ! $isEditingAccount && isset($duplicateAccount) && $duplicateAccount;
             $modalAccount = $isEditingAccount ? $editingAccount : ($isDuplicatingAccount ? $duplicateAccount : null);
+            $accountViewParam = request()->query('account_view') === 'table' ? 'table' : null;
+            $withAccountView = static function (array $params = []) use ($accountViewParam): array {
+                if ($accountViewParam === 'table') {
+                    $params['account_view'] = 'table';
+                }
+                return array_filter($params, static fn ($v) => $v !== null && $v !== '');
+            };
         @endphp
         <style>
             @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css');
@@ -52,7 +59,7 @@
                 activeTab: '{{ in_array(request()->string('tab')->toString(), ['overview', 'accounts', 'rules', 'wallet'], true) ? request()->string('tab')->toString() : 'overview' }}',
                 accountSearch: '',
                 accountTypeFilter: 'all',
-                accountView: 'hierarchy',
+                accountView: '{{ $accountViewParam === 'table' ? 'table' : 'hierarchy' }}',
                 collapsedCategories: {},
                 collapsedRows: {},
                 toggleCategory(key) {
@@ -271,8 +278,8 @@
                                 <i class="fa-solid fa-print text-xs"></i>
                                 <span>Print</span>
                             </button>
-                            <button type="button" @click="accountView = 'hierarchy'" :class="accountView === 'hierarchy' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-3 py-2 text-sm font-semibold">Hierarchy</button>
-                            <button type="button" @click="accountView = 'table'" :class="accountView === 'table' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-3 py-2 text-sm font-semibold">Table View</button>
+                            <button type="button" @click="window.location = '{{ request()->fullUrlWithoutQuery(['account_view']) }}'" :class="accountView === 'hierarchy' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-3 py-2 text-sm font-semibold">Hierarchy</button>
+                            <button type="button" @click="window.location = '{{ request()->fullUrlWithQuery(['account_view' => 'table']) }}'" :class="accountView === 'table' ? 'bg-teal-700 text-white border-teal-700' : 'bg-white text-slate-700 border-slate-200'" class="rounded-lg border px-3 py-2 text-sm font-semibold">Table View</button>
                         </div>
                     </div>
                 </div>
@@ -424,12 +431,12 @@
                                     <td class="px-3 py-2"><input type="checkbox" @checked($row->is_active) disabled class="h-4 w-8 rounded-full border border-slate-300 text-emerald-600"></td>
                                     <td class="px-3 py-2 text-slate-500">
                                         <div class="flex items-center gap-1">
-                                            <a href="{{ route('loan.accounting.books.chart_rules', ['tab' => 'accounts', 'edit_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
-                                            <a href="{{ route('loan.accounting.books.chart_rules', ['tab' => 'accounts', 'duplicate_account' => $row->id]) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Duplicate"><i class="fa-solid fa-clone" aria-hidden="true"></i></a>
+                                            <a href="{{ route('loan.accounting.books.chart_rules', $withAccountView(['tab' => 'accounts', 'edit_account' => $row->id])) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+                                            <a href="{{ route('loan.accounting.books.chart_rules', $withAccountView(['tab' => 'accounts', 'duplicate_account' => $row->id])) }}" class="rounded p-1 hover:bg-blue-50 hover:text-blue-700" title="Duplicate"><i class="fa-solid fa-clone" aria-hidden="true"></i></a>
                                             <form method="post" action="{{ route('loan.accounting.chart.destroy', $row->id) }}" class="inline">
                                                 @csrf
                                                 @method('DELETE')
-                                                <input type="hidden" name="redirect_to" value="{{ route('loan.accounting.books.chart_rules', ['tab' => 'accounts']) }}">
+                                                <input type="hidden" name="redirect_to" value="{{ route('loan.accounting.books.chart_rules', $withAccountView(['tab' => 'accounts'])) }}">
                                                 <button
                                                     type="submit"
                                                     data-swal-confirm="Delete this account? If it has journal history, deletion will be blocked."
@@ -639,7 +646,7 @@
 
                         <form method="post" action="{{ $isEditingAccount ? route('loan.accounting.chart.update', $editingAccount) : route('loan.accounting.chart.store') }}" class="space-y-5 px-6 py-5">
                             @csrf
-                            <input type="hidden" name="redirect_to" value="{{ route('loan.accounting.books.chart_rules') }}" />
+                            <input type="hidden" name="redirect_to" value="{{ route('loan.accounting.books.chart_rules', $withAccountView(request()->only(['tab']))) }}" />
                             @if($isEditingAccount)
                                 @method('patch')
                             @endif
@@ -959,7 +966,7 @@
                                             <td class="px-3 py-2 font-semibold text-red-700">KSh {{ $fmtN((float) $a->current_balance) }}</td>
                                             <td class="px-3 py-2">{{ is_null($a->overdraft_limit) ? 'Unlimited' : 'KSh '.number_format((float) $a->overdraft_limit, 0) }}</td>
                                             <td class="px-3 py-2">
-                                                <a href="{{ route('loan.accounting.books.chart_rules', ['tab' => 'accounts', 'edit_account' => $a->id]) }}" class="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
+                                                <a href="{{ route('loan.accounting.books.chart_rules', $withAccountView(['tab' => 'accounts', 'edit_account' => $a->id])) }}" class="rounded p-1 text-slate-500 hover:bg-blue-50 hover:text-blue-700" title="Edit"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></a>
                                                 <a href="{{ route('loan.accounting.journal.index', ['q' => $a->code]) }}" class="rounded p-1 text-slate-500 hover:bg-purple-50 hover:text-purple-700" title="View Journal"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></a>
                                             </td>
                                         </tr>

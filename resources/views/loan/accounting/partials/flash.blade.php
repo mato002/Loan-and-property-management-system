@@ -10,8 +10,8 @@
             const errorMessages = @json($errorMessages);
 
             const showAlert = (config) => {
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire(config);
+                if (typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function') {
+                    window.Swal.fire(config);
                     return;
                 }
 

@@ -42,6 +42,7 @@ class LoanProduct extends Model
         'exempt_from_checkoffs',
         'cluster_name',
         'is_active',
+        'loan_form_setup_completed_at',
     ];
 
     protected function casts(): array
@@ -64,6 +65,7 @@ class LoanProduct extends Model
             'repay_waiver_days' => 'integer',
             'exempt_from_checkoffs' => 'boolean',
             'is_active' => 'boolean',
+            'loan_form_setup_completed_at' => 'datetime',
         ];
     }
 

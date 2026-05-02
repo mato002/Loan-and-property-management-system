@@ -45,10 +45,13 @@
                         $totalProcessedForBreakdown = (float) ($totalAmount ?? $processedVisibleAmount);
                         $principalProcessed = (float) ($principalProcessed ?? 0.0);
                         $interestProcessed = (float) ($interestProcessed ?? 0.0);
-                        $chargesProcessed = (float) ($chargesProcessed ?? 0.0);
+                        $feesProcessed = (float) ($feesProcessed ?? 0.0);
+                        $penaltyProcessed = (float) ($penaltyProcessed ?? 0.0);
+                        $overpaymentProcessed = (float) ($overpaymentProcessed ?? 0.0);
+                        $sumComponents = $principalProcessed + $interestProcessed + $feesProcessed + $penaltyProcessed + $overpaymentProcessed;
 
                         if ($totalProcessedForBreakdown <= 0) {
-                            $totalProcessedForBreakdown = $principalProcessed + $interestProcessed + $chargesProcessed;
+                            $totalProcessedForBreakdown = $sumComponents;
                         }
                         if ($totalProcessedForBreakdown <= 0) {
                             $totalProcessedForBreakdown = 1;
@@ -56,7 +59,9 @@
 
                         $principalPercent = max(0, min(100, ($principalProcessed / $totalProcessedForBreakdown) * 100));
                         $interestPercent = max(0, min(100, ($interestProcessed / $totalProcessedForBreakdown) * 100));
-                        $chargesPercent = max(0, min(100, ($chargesProcessed / $totalProcessedForBreakdown) * 100));
+                        $feesPercent = max(0, min(100, ($feesProcessed / $totalProcessedForBreakdown) * 100));
+                        $penaltyPercent = max(0, min(100, ($penaltyProcessed / $totalProcessedForBreakdown) * 100));
+                        $overpaymentPercent = max(0, min(100, ($overpaymentProcessed / $totalProcessedForBreakdown) * 100));
                     @endphp
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Processed Breakdown (MTD)</p>
                     <p class="mt-2 text-2xl font-semibold text-slate-900">KES {{ number_format($totalProcessedForBreakdown, 2) }}</p>
@@ -70,15 +75,25 @@
                             <span class="font-semibold text-slate-800">KES {{ number_format($interestProcessed, 2) }} <span class="font-normal text-slate-500">({{ number_format($interestPercent, 0) }}%)</span></span>
                         </div>
                         <div class="flex items-center justify-between gap-2">
-                            <span class="text-slate-600">Charges Processed</span>
-                            <span class="font-semibold text-slate-800">KES {{ number_format($chargesProcessed, 2) }} <span class="font-normal text-slate-500">({{ number_format($chargesPercent, 0) }}%)</span></span>
+                            <span class="text-slate-600">Fees Processed</span>
+                            <span class="font-semibold text-slate-800">KES {{ number_format($feesProcessed, 2) }} <span class="font-normal text-slate-500">({{ number_format($feesPercent, 0) }}%)</span></span>
+                        </div>
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-slate-600">Penalty Processed</span>
+                            <span class="font-semibold text-slate-800">KES {{ number_format($penaltyProcessed, 2) }} <span class="font-normal text-slate-500">({{ number_format($penaltyPercent, 0) }}%)</span></span>
+                        </div>
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-slate-600">Overpayment Processed</span>
+                            <span class="font-semibold text-slate-800">KES {{ number_format($overpaymentProcessed, 2) }} <span class="font-normal text-slate-500">({{ number_format($overpaymentPercent, 0) }}%)</span></span>
                         </div>
                     </div>
                     <div class="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
                         <div class="flex h-full w-full">
                             <span class="h-full bg-teal-700" style="width: {{ $principalPercent }}%"></span>
                             <span class="h-full bg-emerald-600" style="width: {{ $interestPercent }}%"></span>
-                            <span class="h-full bg-amber-500" style="width: {{ $chargesPercent }}%"></span>
+                            <span class="h-full bg-amber-500" style="width: {{ $feesPercent }}%"></span>
+                            <span class="h-full bg-rose-500" style="width: {{ $penaltyPercent }}%"></span>
+                            <span class="h-full bg-violet-500" style="width: {{ $overpaymentPercent }}%"></span>
                         </div>
                     </div>
                     <p class="mt-2 text-xs text-slate-500">Distribution of processed repayments (MTD) · {{ number_format($payments->total()) }} rows · {{ $processedTodayCount }} today</p>
@@ -204,34 +219,45 @@
                                 <td class="border-b border-r border-slate-200 px-4 py-3 text-right tabular-nums font-semibold text-emerald-700">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
                                 <td class="border-b border-r border-slate-200 px-4 py-3 text-slate-600">
                                     @php
-                                        $rowBreakdown = $processedBreakdowns[$p->id] ?? ['principal' => 0.0, 'interest' => 0.0, 'charges' => 0.0, 'unclassified' => 0.0, 'total' => 0.0];
+                                        $rowBreakdown = $processedBreakdowns[$p->id] ?? [];
                                         $principalAmount = (float) ($rowBreakdown['principal'] ?? 0.0);
                                         $interestAmount = (float) ($rowBreakdown['interest'] ?? 0.0);
-                                        $chargesAmount = (float) ($rowBreakdown['charges'] ?? 0.0);
-                                        $unclassifiedAmount = (float) ($rowBreakdown['unclassified'] ?? 0.0);
-                                        $breakdownTotal = (float) ($rowBreakdown['total'] ?? 0.0);
+                                        $feesAmount = (float) ($rowBreakdown['fees'] ?? 0.0);
+                                        $penaltyAmount = (float) ($rowBreakdown['penalty'] ?? 0.0);
+                                        $overpaymentAmount = (float) ($rowBreakdown['overpayment'] ?? 0.0);
+                                        $hasAllocationData = (bool) ($rowBreakdown['has_allocation_data'] ?? false);
+                                        $fallbackMessage = $rowBreakdown['fallback_message'] ?? null;
+                                        $allocationMismatch = (bool) ($rowBreakdown['allocation_mismatch'] ?? false);
                                     @endphp
-                                    <ul class="list-disc space-y-0.5 pl-4">
-                                        @if ($breakdownTotal > 0)
-                                            @if ($principalAmount > 0)
-                                                <li>Principal - {{ number_format($principalAmount, 2) }}</li>
-                                            @endif
-                                            @if ($interestAmount > 0)
-                                                <li>Interest - {{ number_format($interestAmount, 2) }}</li>
-                                            @endif
-                                            @if ($chargesAmount > 0)
-                                                <li>Charges - {{ number_format($chargesAmount, 2) }}</li>
-                                            @endif
-                                            @if ($unclassifiedAmount > 0)
-                                                <li>Unclassified - {{ number_format($unclassifiedAmount, 2) }}</li>
-                                            @endif
-                                        @else
-                                            <li>{{ ucfirst(str_replace('_', ' ', (string) $p->payment_kind)) }} - {{ number_format((float) $p->amount, 2) }}</li>
+                                    <div class="space-y-1">
+                                        @if ($allocationMismatch)
+                                            <span class="inline-flex rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">Allocation mismatch</span>
                                         @endif
-                                        @if ($p->mpesa_receipt_number)
-                                            <li>Receipt - {{ $p->mpesa_receipt_number }}</li>
-                                        @endif
-                                    </ul>
+                                        <ul class="list-disc space-y-0.5 pl-4">
+                                            @if ($hasAllocationData)
+                                                @if ($principalAmount > 0)
+                                                    <li>Principal - {{ number_format($principalAmount, 2) }}</li>
+                                                @endif
+                                                @if ($interestAmount > 0)
+                                                    <li>Interest - {{ number_format($interestAmount, 2) }}</li>
+                                                @endif
+                                                @if ($feesAmount > 0)
+                                                    <li>Fees - {{ number_format($feesAmount, 2) }}</li>
+                                                @endif
+                                                @if ($penaltyAmount > 0)
+                                                    <li>Penalty - {{ number_format($penaltyAmount, 2) }}</li>
+                                                @endif
+                                                @if ($overpaymentAmount > 0)
+                                                    <li>Overpayment - {{ number_format($overpaymentAmount, 2) }}</li>
+                                                @endif
+                                            @elseif ($fallbackMessage)
+                                                <li class="list-none -ml-4 text-amber-800">{{ $fallbackMessage }}</li>
+                                            @endif
+                                            @if ($p->mpesa_receipt_number)
+                                                <li>Receipt - {{ $p->mpesa_receipt_number }}</li>
+                                            @endif
+                                        </ul>
+                                    </div>
                                 </td>
                                 <td class="border-b border-r border-slate-200 px-4 py-3 text-slate-600">
                                     @if ($p->loan?->loanClient)

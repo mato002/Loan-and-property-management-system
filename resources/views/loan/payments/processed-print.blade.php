@@ -68,22 +68,46 @@
                     @php
                         $status = strtolower((string) ($p->status ?? 'processed'));
                         $statusClass = in_array($status, ['posted', 'processed'], true) ? 'status-posted' : 'status-other';
-                        $journalLines = collect($p->accountingJournalEntry?->lines ?? [])->take(3);
+                        $rowBreakdown = $processedBreakdowns[$p->id] ?? [];
+                        $principalAmount = (float) ($rowBreakdown['principal'] ?? 0.0);
+                        $interestAmount = (float) ($rowBreakdown['interest'] ?? 0.0);
+                        $feesAmount = (float) ($rowBreakdown['fees'] ?? 0.0);
+                        $penaltyAmount = (float) ($rowBreakdown['penalty'] ?? 0.0);
+                        $overpaymentAmount = (float) ($rowBreakdown['overpayment'] ?? 0.0);
+                        $hasAllocationData = (bool) ($rowBreakdown['has_allocation_data'] ?? false);
+                        $fallbackMessage = $rowBreakdown['fallback_message'] ?? null;
+                        $allocationMismatch = (bool) ($rowBreakdown['allocation_mismatch'] ?? false);
                     @endphp
                     <tr>
                         <td>{{ $p->reference ?? '—' }}</td>
                         <td class="amount">{{ $p->currency }} {{ number_format((float) $p->amount, 2) }}</td>
                         <td>
+                            @if ($allocationMismatch)
+                                <span class="status-pill status-other" style="margin-bottom:4px;display:inline-block;">Allocation mismatch</span>
+                            @endif
                             <ul style="margin:0; padding-left:14px;">
-                                @forelse ($journalLines as $line)
-                                    @php $lineAmount = (float) ($line->debit ?: $line->credit ?: 0); @endphp
-                                    <li>{{ $line->account?->name ?? 'Ledger line' }} - {{ number_format($lineAmount, 2) }}</li>
-                                @empty
-                                    <li>{{ ucfirst(str_replace('_', ' ', (string) $p->payment_kind)) }} - {{ number_format((float) $p->amount, 2) }}</li>
-                                    @if ($p->mpesa_receipt_number)
-                                        <li>Receipt - {{ $p->mpesa_receipt_number }}</li>
+                                @if ($hasAllocationData)
+                                    @if ($principalAmount > 0)
+                                        <li>Principal - {{ number_format($principalAmount, 2) }}</li>
                                     @endif
-                                @endforelse
+                                    @if ($interestAmount > 0)
+                                        <li>Interest - {{ number_format($interestAmount, 2) }}</li>
+                                    @endif
+                                    @if ($feesAmount > 0)
+                                        <li>Fees - {{ number_format($feesAmount, 2) }}</li>
+                                    @endif
+                                    @if ($penaltyAmount > 0)
+                                        <li>Penalty - {{ number_format($penaltyAmount, 2) }}</li>
+                                    @endif
+                                    @if ($overpaymentAmount > 0)
+                                        <li>Overpayment - {{ number_format($overpaymentAmount, 2) }}</li>
+                                    @endif
+                                @elseif ($fallbackMessage)
+                                    <li style="list-style:none;margin-left:-14px;color:#92400e;">{{ $fallbackMessage }}</li>
+                                @endif
+                                @if ($p->mpesa_receipt_number)
+                                    <li>Receipt - {{ $p->mpesa_receipt_number }}</li>
+                                @endif
                             </ul>
                         </td>
                         <td>

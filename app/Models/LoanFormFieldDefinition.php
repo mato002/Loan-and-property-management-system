@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class LoanFormFieldDefinition extends Model
@@ -119,6 +120,9 @@ class LoanFormFieldDefinition extends Model
         if ($rows !== null) {
             self::seedIfEmpty($formKind, $rows);
             self::seedMissingCoreFields($formKind, $rows);
+            if ($formKind === self::KIND_LOAN_SETTINGS_APPLICATION) {
+                self::enforceLoanSettingsCoreFieldStatuses();
+            }
         }
     }
 
@@ -131,9 +135,11 @@ class LoanFormFieldDefinition extends Model
             return;
         }
 
+        $hasFieldStatus = Schema::hasColumn('loan_form_field_definitions', 'field_status');
+
         foreach ($rows as $row) {
             $key = self::generateFieldKey($formKind, $row['label']);
-            self::query()->create([
+            $payload = [
                 'form_kind' => $formKind,
                 'field_key' => $key,
                 'label' => $row['label'],
@@ -142,7 +148,11 @@ class LoanFormFieldDefinition extends Model
                 'prefill_from_previous' => $row['prefill'] ?? false,
                 'is_core' => $row['is_core'],
                 'sort_order' => $row['sort_order'],
-            ]);
+            ];
+            if ($hasFieldStatus && $formKind === self::KIND_LOAN_SETTINGS_APPLICATION) {
+                $payload['field_status'] = ($row['is_core'] ?? false) ? 'active' : 'draft';
+            }
+            self::query()->create($payload);
         }
     }
 
@@ -166,7 +176,7 @@ class LoanFormFieldDefinition extends Model
                 continue;
             }
 
-            self::query()->create([
+            $payload = [
                 'form_kind' => $formKind,
                 'field_key' => self::generateFieldKey($formKind, $row['label']),
                 'label' => $row['label'],
@@ -175,8 +185,27 @@ class LoanFormFieldDefinition extends Model
                 'prefill_from_previous' => false,
                 'is_core' => true,
                 'sort_order' => $row['sort_order'],
-            ]);
+            ];
+            if (Schema::hasColumn('loan_form_field_definitions', 'field_status') && $formKind === self::KIND_LOAN_SETTINGS_APPLICATION) {
+                $payload['field_status'] = 'active';
+            }
+            self::query()->create($payload);
         }
+    }
+
+    /**
+     * Core loan application fields (Loan Product, Client ID No, etc.) must stay included (active).
+     */
+    private static function enforceLoanSettingsCoreFieldStatuses(): void
+    {
+        if (! Schema::hasColumn('loan_form_field_definitions', 'field_status')) {
+            return;
+        }
+
+        self::query()
+            ->where('form_kind', self::KIND_LOAN_SETTINGS_APPLICATION)
+            ->where('is_core', true)
+            ->update(['field_status' => 'active']);
     }
 
     public static function generateFieldKey(string $formKind, string $label): string

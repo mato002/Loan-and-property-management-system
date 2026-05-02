@@ -65,25 +65,43 @@
                                 <p class="text-xs text-slate-500">Controls the fields shown during loan application booking.</p>
                             </div>
                             <div class="flex flex-wrap gap-2">
-                                <a href="#loan-form-setup" class="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">Setup Loan Form</a>
                                 <button type="button" @click="window.dispatchEvent(new CustomEvent('loan-settings-preview-form'))" class="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">Preview Form</button>
                                 <button type="button" @click="window.dispatchEvent(new CustomEvent('loan-settings-clone-form'))" class="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700">Clone Form</button>
                             </div>
                         </div>
 
-                        <form id="loan-settings-primary-form" method="post" action="{{ route('loan.system.form_setup.page.save', ['page' => 'loan-settings']) }}" class="space-y-3" x-data="{ rows: @js($fieldsPayload), add(){ this.rows.push({id:null,label:'',field_key:'',data_type:'alphanumeric',is_required:false,select_options:'',prefill_from_previous:false,visible_to:'',field_status:'draft',product_id:'',is_core:false}); }, remove(i){ if(this.rows[i].is_core){ return; } this.rows.splice(i,1); }, up(i){ if(i===0){ return; } [this.rows[i-1],this.rows[i]]=[this.rows[i],this.rows[i-1]]; }, down(i){ if(i===this.rows.length-1){ return; } [this.rows[i+1],this.rows[i]]=[this.rows[i],this.rows[i+1]]; } }">
+                        <form id="loan-settings-primary-form" method="post" action="{{ route('loan.system.form_setup.page.save', ['page' => 'loan-settings']) }}" class="space-y-3" x-data="loanSettingsLoanFormState(@js($fieldsPayload), @js($productsPendingForJs ?? []))">
                             @csrf
                             <input type="hidden" name="section" value="loan_form_setup">
+                            <input type="hidden" name="complete_loan_form_setup_product_id" :value="newProductSetupId">
 
-                            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
-                                <div>
-                                    <label class="mb-1 block text-xs font-semibold text-slate-600">Product selector</label>
-                                    <select class="w-full rounded-lg border-slate-200 text-sm">
-                                        <option>All products</option>
-                                        @foreach ($products as $product)
-                                            <option>{{ $product->name }}</option>
-                                        @endforeach
-                                    </select>
+                            <div class="rounded-xl border border-slate-200 bg-slate-50/80 p-4 sm:p-5">
+                                <div class="grid grid-cols-1 gap-6 md:gap-8 lg:grid-cols-2 lg:items-start lg:gap-10">
+                                    <div class="min-w-0 space-y-2">
+                                        <label class="block text-xs font-semibold text-slate-600">Product selector</label>
+                                        <select x-model="mainProductFilter" @change="if (String(newProductSetupId) !== '' && String(mainProductFilter) !== String(newProductSetupId)) { newProductSetupId = '' }" class="w-full min-w-0 rounded-lg border-slate-200 bg-white py-2 pl-3 pr-8 text-sm shadow-sm">
+                                            <option value="all">All products</option>
+                                            @foreach ($products as $product)
+                                                <option value="{{ $product->id }}">{{ $product->name }}</option>
+                                            @endforeach
+                                        </select>
+                                        <p class="mt-2 text-xs leading-relaxed text-slate-500">Browse fields by product after setup is complete.</p>
+                                    </div>
+                                    <div class="min-w-0 space-y-2 lg:border-l lg:border-slate-200 lg:pl-8 xl:pl-10">
+                                        <label class="block text-xs font-semibold text-slate-600">Setup loan product for new product</label>
+                                        <select x-model="newProductSetupId" @change="mainProductFilter = newProductSetupId || mainProductFilter" class="w-full min-w-0 rounded-lg border-slate-200 bg-white py-2 pl-3 pr-8 text-sm shadow-sm">
+                                            @if ($productsPendingLoanFormSetup->isEmpty())
+                                                <option value="">No new products</option>
+                                            @else
+                                                <option value="">Select a new loan product to configure…</option>
+                                                @foreach ($productsPendingLoanFormSetup as $pendingProduct)
+                                                    <option value="{{ $pendingProduct->id }}">{{ $pendingProduct->name }}</option>
+                                                @endforeach
+                                            @endif
+                                        </select>
+                                        <p class="mt-2 text-xs leading-relaxed text-slate-500" x-show="pendingProducts.length === 0">Create a product under <a href="{{ route('loan.system.setup.loan_products') }}" class="font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:text-blue-800">Loan products</a>; it appears here until you save this form.</p>
+                                        <p class="mt-2 text-xs leading-relaxed text-slate-500" x-show="pendingProducts.length > 0 && newProductSetupId">Showing mandatory fields plus rows for this product. Save to finish setup and move it into the product selector list.</p>
+                                    </div>
                                 </div>
                             </div>
 
@@ -103,14 +121,15 @@
                                     </thead>
                                     <tbody>
                                         <template x-for="(row, index) in rows" :key="row.id ?? ('new-'+index)">
-                                            <tr class="border-t border-slate-100">
+                                            <tr class="border-t border-slate-100" x-show="rowVisible(row)" x-cloak>
                                                 <td class="px-2 py-2">
                                                     <input
                                                         type="checkbox"
                                                         class="rounded border-slate-300"
                                                         :checked="row.field_status === 'active'"
                                                         @change="row.field_status = $event.target.checked ? 'active' : 'draft'"
-                                                        :title="row.field_status === 'active' ? 'Included in form' : 'Excluded from form'"
+                                                        :disabled="row.is_core"
+                                                        :title="row.is_core ? 'Required field (always included)' : (row.field_status === 'active' ? 'Included in form' : 'Excluded from form')"
                                                     >
                                                 </td>
                                                 <td class="px-2 py-2"><input class="w-40 rounded border-slate-200 text-xs" x-model="row.label" :name="`fields[${index}][label]`" required></td>
@@ -133,13 +152,13 @@
                                                 </td>
                                                 <td class="px-2 py-2">
                                                     <input class="w-40 rounded border-slate-200 text-xs" x-model="row.visible_to" :name="`fields[${index}][visible_to]`" placeholder="officer, manager">
-                                                    <select class="mt-1 w-40 rounded border-slate-200 text-xs" x-model="row.product_id" :name="`fields[${index}][product_id]`">
+                                                    <select class="mt-1 w-40 rounded border-slate-200 text-xs" x-model="row.product_id" :disabled="row.is_core" :name="`fields[${index}][product_id]`">
                                                         <option value="">All products</option>
                                                         @foreach ($products as $product)
                                                             <option value="{{ $product->id }}">{{ $product->name }}</option>
                                                         @endforeach
                                                     </select>
-                                                    <select class="mt-1 w-40 rounded border-slate-200 text-xs" x-model="row.field_status" :name="`fields[${index}][field_status]`">
+                                                    <select class="mt-1 w-40 rounded border-slate-200 text-xs" x-model="row.field_status" :disabled="row.is_core" :name="`fields[${index}][field_status]`">
                                                         <option value="active">Active</option>
                                                         <option value="draft">Draft</option>
                                                         <option value="requires_approval">Requires Approval</option>
@@ -274,6 +293,68 @@
 </x-loan-layout>
 
 <script>
+    function loanSettingsLoanFormState(rows, pendingProducts) {
+        return {
+            rows: Array.isArray(rows) ? rows : [],
+            pendingProducts: Array.isArray(pendingProducts) ? pendingProducts : [],
+            mainProductFilter: 'all',
+            newProductSetupId: '',
+            rowVisible(row) {
+                const pid = row.product_id === '' || row.product_id === null || row.product_id === undefined
+                    ? ''
+                    : String(row.product_id);
+                if (this.newProductSetupId !== '' && this.newProductSetupId !== null) {
+                    return Boolean(row.is_core) || pid === String(this.newProductSetupId);
+                }
+                if (this.mainProductFilter === 'all') {
+                    return true;
+                }
+                if (row.is_core) {
+                    return true;
+                }
+                if (!pid) {
+                    return false;
+                }
+                return pid === String(this.mainProductFilter);
+            },
+            add() {
+                this.rows.push({
+                    id: null,
+                    label: '',
+                    field_key: '',
+                    data_type: 'alphanumeric',
+                    is_required: false,
+                    select_options: '',
+                    prefill_from_previous: false,
+                    visible_to: '',
+                    field_status: 'draft',
+                    product_id: this.newProductSetupId
+                        ? String(this.newProductSetupId)
+                        : (this.mainProductFilter !== 'all' ? String(this.mainProductFilter) : ''),
+                    is_core: false,
+                });
+            },
+            remove(i) {
+                if (this.rows[i].is_core) {
+                    return;
+                }
+                this.rows.splice(i, 1);
+            },
+            up(i) {
+                if (i === 0) {
+                    return;
+                }
+                [this.rows[i - 1], this.rows[i]] = [this.rows[i], this.rows[i - 1]];
+            },
+            down(i) {
+                if (i === this.rows.length - 1) {
+                    return;
+                }
+                [this.rows[i + 1], this.rows[i]] = [this.rows[i], this.rows[i + 1]];
+            },
+        };
+    }
+
     (() => {
         const tabTargets = {
             'product-rules': 'loan-form-setup',
