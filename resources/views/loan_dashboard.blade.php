@@ -15,12 +15,17 @@
 
 <x-loan-layout>
     <style>
+        /* Compact metric tiles: capped square size; align-self prevents row stretch + empty vertical gap */
         .fit-card {
             min-width: 0;
+            width: 100%;
+            max-width: 9.25rem;
             aspect-ratio: 1 / 1;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            align-self: start;
+            justify-self: center;
         }
     </style>
     <div class="max-w-[1600px] mx-auto w-full space-y-4">
@@ -180,35 +185,35 @@
                 </div>
             </div>
 
-            <div class="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
-                    <p class="text-xs font-semibold uppercase text-slate-500">Total Clients</p>
-                    <p class="mt-1 text-xl font-bold text-slate-800 tabular-nums">{{ number_format((int) ($summaryStrip['total_clients'] ?? 0)) }}</p>
+            <div class="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 items-start justify-items-center">
+                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
+                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">Total Clients</p>
+                    <p class="mt-0.5 text-base font-bold text-slate-800 tabular-nums leading-none">{{ number_format((int) ($summaryStrip['total_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
-                    <p class="text-xs font-semibold uppercase text-slate-500">Active Clients</p>
-                    <p class="mt-1 text-xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['active_clients'] ?? 0)) }}</p>
+                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
+                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">Active Clients</p>
+                    <p class="mt-0.5 text-base font-bold text-emerald-700 tabular-nums leading-none">{{ number_format((int) ($summaryStrip['active_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
-                    <p class="text-xs font-semibold uppercase text-slate-500">Dormant Clients</p>
-                    <p class="mt-1 text-xl font-bold text-rose-600 tabular-nums">{{ number_format((int) ($summaryStrip['dormant_clients'] ?? 0)) }}</p>
+                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
+                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">Dormant Clients</p>
+                    <p class="mt-0.5 text-base font-bold text-rose-600 tabular-nums leading-none">{{ number_format((int) ($summaryStrip['dormant_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
-                    <p class="text-xs font-semibold uppercase text-slate-500">Performing Loans</p>
-                    <p class="mt-1 text-xl font-bold text-emerald-700 tabular-nums">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
+                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
+                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">Performing Loans</p>
+                    <p class="mt-0.5 text-base font-bold text-emerald-700 tabular-nums leading-none">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
                 </div>
-                <div class="fit-card rounded-xl border border-rose-200 bg-rose-400 text-white p-2.5">
-                    <p class="text-xs font-semibold uppercase">Loan Arrears ({{ $currencyCode }})</p>
-                    <p class="mt-1 text-xl font-bold tabular-nums">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
+                <div class="fit-card rounded-lg border border-rose-200 bg-rose-400 text-white p-2">
+                    <p class="text-[10px] font-semibold uppercase leading-tight">Loan Arrears ({{ $currencyCode }})</p>
+                    <p class="mt-0.5 text-base font-bold tabular-nums leading-none">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
                 </div>
-                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
-                    <p class="text-xs font-semibold uppercase text-slate-500">PAR %</p>
-                    <p class="mt-1 text-xl font-bold text-slate-800 tabular-nums">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
+                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
+                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">PAR %</p>
+                    <p class="mt-0.5 text-base font-bold text-slate-800 tabular-nums leading-none">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
                 </div>
-                <div class="fit-card rounded-xl border border-slate-200 bg-white p-2.5">
-                    <p class="text-[11px] leading-tight font-semibold uppercase text-slate-500">Daily Collection Sheet (The Battle Plan)</p>
-                    <p class="mt-1 text-xl font-bold text-emerald-700 tabular-nums">78</p>
-                    <p class="text-xs text-slate-500 mt-0.5">Active Tasks (MTD)</p>
+                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
+                    <p class="text-[10px] leading-tight font-semibold uppercase text-slate-500">Daily Collection Sheet (The Battle Plan)</p>
+                    <p class="mt-0.5 text-base font-bold text-emerald-700 tabular-nums leading-none">78</p>
+                    <p class="text-[10px] text-slate-500 mt-0.5 leading-tight">Active Tasks (MTD)</p>
                 </div>
             </div>
         </div>
