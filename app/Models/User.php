@@ -13,7 +13,6 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 #[Fillable(['name', 'email', 'password', 'profile_photo_path', 'property_portal_role', 'loan_role', 'is_super_admin'])]
@@ -273,6 +272,7 @@ class User extends Authenticatable
                     return true;
                 }
             }
+
             return false;
         }
         if ($assignedRole !== null) {
@@ -349,10 +349,18 @@ class User extends Authenticatable
                 'journals.approve',
                 'chart_of_accounts.view',
                 'audit_logs.view',
+                'wallets.view',
+                'wallets.pay_loan',
+                'wallets.refund_request',
+                'wallets.refund_approve',
+                'wallets.freeze',
             ],
             'officer' => [
                 'dashboard.view',
                 'clients.view',
+                'wallets.view',
+                'wallets.pay_loan',
+                'wallets.refund_request',
                 'clients.create',
                 'clients.update',
                 'loan_applications.view',
@@ -393,6 +401,12 @@ class User extends Authenticatable
     private function loanPermissionLegacyFallbacks(string $permissionKey): array
     {
         $map = [
+            'wallets.view' => ['clients.view', 'financial.view', 'payments.view'],
+            'wallets.pay_loan' => ['payments.view', 'clients.view'],
+            'wallets.refund_request' => ['clients.view', 'payments.view'],
+            'wallets.refund_approve' => ['financial.view', 'accounting.view', 'journals.approve'],
+            'wallets.freeze' => ['financial.view', 'clients.view'],
+            'wallets.adjust' => ['financial.view', 'accounting.view'],
             'dashboard.view' => ['dashboard.view'],
             'employees.view' => ['employees.view'],
             'branches.view' => ['branches.view'],
@@ -407,6 +421,7 @@ class User extends Authenticatable
         }
 
         $prefixMap = [
+            'wallets.' => ['clients.view', 'payments.view', 'financial.view'],
             'clients.' => ['clients.view'],
             'loan_applications.' => ['loanbook.view'],
             'loans.' => ['loanbook.view'],
@@ -498,8 +513,8 @@ class User extends Authenticatable
     public function subscriptionStatus(): string
     {
         $subscription = $this->agentSubscription();
-        
-        if (!$subscription) {
+
+        if (! $subscription) {
             return 'none';
         }
 
@@ -511,7 +526,7 @@ class User extends Authenticatable
             return 'suspended';
         }
 
-        if (!$subscription->price_paid || $subscription->payment_method === null) {
+        if (! $subscription->price_paid || $subscription->payment_method === null) {
             return 'payment_pending';
         }
 

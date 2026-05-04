@@ -5,33 +5,52 @@ namespace App\Http\Controllers\Loan;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
 use App\Models\ClientInteraction;
+use App\Models\ClientLead;
+use App\Models\ClientLeadActivity;
 use App\Models\ClientTransfer;
+use App\Models\ClientWallet;
 use App\Models\DefaultClientGroup;
 use App\Models\Employee;
-use App\Models\LoanFormFieldDefinition;
-use App\Models\LoanBranch;
 use App\Models\LoanBookApplication;
 use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
+use App\Models\LoanBranch;
 use App\Models\LoanClient;
+use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanRegion;
+use App\Models\User;
 use App\Notifications\Loan\LoanWorkflowNotification;
+use App\Services\ClientLeadIntelligenceService;
+use App\Services\ClientLeadPipelineService;
+use App\Services\ClientWalletService;
+use App\Services\LoanClientDedupService;
+use App\Services\LoanClientIdentifierNormalizer;
 use App\Support\TabularExport;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\ViewErrorBag;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LoanClientsController extends Controller
 {
     use ScopesLoanPortfolioAccess;
 
-    public function index(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function __construct(
+        private readonly LoanClientIdentifierNormalizer $clientIdentifierNormalizer,
+        private readonly LoanClientDedupService $clientDedupService,
+        private readonly ClientLeadPipelineService $clientLeadPipeline,
+        private readonly ClientLeadIntelligenceService $clientLeadIntelligence,
+    ) {}
+
+    public function index(Request $request): View|StreamedResponse
     {
         $q = LoanClient::query()
             ->clients()
@@ -198,6 +217,7 @@ class LoanClientsController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->clientIdentifierNormalizer->mergeNormalizedClientIdentifiers($request);
         $validated = $this->validateClientPayload($request, null, LoanClient::KIND_CLIENT);
         $validated['branch'] = $this->syncBranchDirectory($validated['branch'] ?? null);
         $validated = array_merge($validated, $this->handleClientImageUploads($request));
@@ -212,21 +232,52 @@ class LoanClientsController extends Controller
         if (empty($validated['client_status'])) {
             $validated['client_status'] = 'active';
         }
+        $validated['source_channel'] = LoanClient::SOURCE_INTERNAL;
+        $validated['created_by'] = $request->user()?->id;
 
-        LoanClient::create($validated);
+        $dupes = $this->clientDedupService->findPotentialDuplicates(
+            $validated['phone'] ?? null,
+            $validated['id_number'] ?? null,
+            null
+        );
+        $duplicateWarnings = $this->clientDedupService->formatDuplicateWarnings($dupes);
 
-        return redirect()
+        $client = LoanClient::create($validated);
+        try {
+            app(ClientWalletService::class)->ensureWallet($client, $request->user()?->id);
+        } catch (\Throwable) {
+            // Wallet provisioning is best-effort; backfill command can repair.
+        }
+
+        $redirect = redirect()
             ->route('loan.clients.index')
             ->with('status', 'Client saved successfully.');
+        if ($duplicateWarnings !== []) {
+            $redirect->with('duplicate_client_warnings', $duplicateWarnings);
+        }
+
+        return $redirect;
     }
 
-    public function show(LoanClient $loan_client): View
+    public function show(Request $request, LoanClient $loan_client): View|RedirectResponse
     {
         $this->ensureLoanClientAccessible($loan_client);
+
+        if ($loan_client->kind === LoanClient::KIND_LEAD) {
+            return redirect()->route('loan.clients.leads.show', $loan_client);
+        }
+
+        if ($loan_client->kind === LoanClient::KIND_CLIENT) {
+            try {
+                app(ClientWalletService::class)->ensureWallet($loan_client, $request->user()?->id);
+            } catch (\Throwable) {
+            }
+        }
 
         $loan_client->load([
             'assignedEmployee',
             'defaultGroups',
+            'wallet',
             'interactions' => fn ($q) => $q->with('user')->orderByDesc('interacted_at')->limit(8),
             'loanBookLoans' => fn ($q) => $q
                 ->with('application')
@@ -293,11 +344,11 @@ class LoanClientsController extends Controller
         $completionDenominator = (int) max(1, $loanHistory->sum(fn (LoanBookLoan $loan): int => (int) ($loan->term_value ?? 0)));
         $completionPercent = (int) min(100, round(($completionNumerator / max(1, $completionDenominator)) * 100));
 
-        $walletBalance = (float) LoanBookPayment::query()
-            ->processedQueue()
-            ->where('channel', 'like', 'wallet%')
-            ->whereHas('loan', fn (Builder $query) => $query->where('loan_client_id', $loan_client->id))
-            ->sum('amount');
+        $walletBalance = (float) ($loan_client->wallet?->balance ?? 0.0);
+        $walletStatus = (string) ($loan_client->wallet?->status ?? ClientWallet::STATUS_ACTIVE);
+        $lastWalletTransaction = $loan_client->wallet
+            ? $loan_client->walletTransactions()->orderByDesc('id')->first()
+            : null;
 
         // Derive realized income from actual repayment allocation:
         // payment allocation in this system settles fees, then interest, then principal.
@@ -321,8 +372,59 @@ class LoanClientsController extends Controller
             'completion_percent' => $completionPercent,
             'credit_score' => $creditScore,
             'wallet_balance' => $walletBalance,
+            'wallet_status' => $walletStatus,
             'lifetime_value' => $lifetimeEarnings,
         ];
+
+        $walletStatement = collect();
+        $walletTotals = ['credits' => 0.0, 'debits' => 0.0];
+        if ($loan_client->kind === LoanClient::KIND_CLIENT) {
+            $walletStatement = $loan_client->walletTransactions()
+                ->orderBy('id')
+                ->limit(500)
+                ->get();
+
+            $walletTotals = [
+                'credits' => (float) $loan_client->walletTransactions()->where('transaction_type', 'credit')->sum('amount'),
+                'debits' => (float) $loan_client->walletTransactions()->where('transaction_type', 'debit')->sum('amount'),
+            ];
+        }
+
+        $errorsBag = $request->session()->get('errors');
+        $openPayLoanModal = $request->boolean('pay_loan')
+            || (string) old('form_context', '') === 'pay_loan';
+        if ($errorsBag instanceof ViewErrorBag) {
+            $openPayLoanModal = $openPayLoanModal
+                || $errorsBag->has('wallet')
+                || $errorsBag->has('loan_book_loan_id')
+                || $errorsBag->has('amount')
+                || $errorsBag->has('payment_kind');
+        }
+
+        $openRefundRequestModal = $request->boolean('refund_request')
+            || (string) old('form_context', '') === 'refund_request';
+        if ($errorsBag instanceof ViewErrorBag) {
+            $openRefundRequestModal = $openRefundRequestModal
+                || $errorsBag->has('notes');
+            if ((string) old('form_context', '') === 'refund_request') {
+                $openRefundRequestModal = $openRefundRequestModal || $errorsBag->has('amount');
+            }
+        }
+
+        $payLoanLoans = collect();
+        if ($loan_client->kind === LoanClient::KIND_CLIENT && $request->user()?->hasLoanPermission('wallets.pay_loan')) {
+            $payLoanLoans = LoanBookLoan::query()
+                ->where('loan_client_id', $loan_client->id)
+                ->where('status', '!=', LoanBookLoan::STATUS_WRITTEN_OFF)
+                ->where(function ($q): void {
+                    $q->where('balance', '>', 0.01)
+                        ->orWhere('principal_outstanding', '>', 0.01)
+                        ->orWhere('interest_outstanding', '>', 0.01)
+                        ->orWhere('fees_outstanding', '>', 0.01);
+                })
+                ->orderBy('loan_number')
+                ->get();
+        }
 
         return view('loan.clients.show', [
             'loan_client' => $loan_client,
@@ -332,6 +434,44 @@ class LoanClientsController extends Controller
             'recentPayments' => $recentPayments,
             'collectionAgents' => $collectionAgents,
             'dashboardMetrics' => $dashboardMetrics,
+            'lastWalletTransaction' => $lastWalletTransaction,
+            'walletStatement' => $walletStatement,
+            'walletTotals' => $walletTotals,
+            'payLoanLoans' => $payLoanLoans,
+            'openPayLoanModal' => $openPayLoanModal,
+            'openRefundRequestModal' => $openRefundRequestModal,
+            'initialWalletTab' => ($openPayLoanModal || $openRefundRequestModal) ? 'wallet' : 'loan-history',
+        ]);
+    }
+
+    public function leadShow(Request $request, LoanClient $loan_client): View|RedirectResponse
+    {
+        $this->ensureLoanClientAccessible($loan_client);
+
+        if ($loan_client->kind !== LoanClient::KIND_LEAD) {
+            return redirect()->route('loan.clients.show', $loan_client);
+        }
+
+        $this->clientLeadPipeline->ensureForLoanClient($loan_client);
+
+        $loan_client->load([
+            'assignedEmployee',
+            'clientLead.assignedOfficer',
+            'clientLead.activities' => fn ($q) => $q->with('user')->orderByDesc('created_at')->limit(20),
+            'createdByUser',
+        ]);
+
+        $meta = (array) ($loan_client->biodata_meta ?? []);
+        $leadSourceLabel = null;
+        if (! empty($meta['lc_lead_source'])) {
+            $sources = config('lead_capture.sources', []);
+            $leadSourceLabel = $sources[(string) $meta['lc_lead_source']] ?? (string) $meta['lc_lead_source'];
+        }
+
+        return view('loan.clients.lead-show', [
+            'loan_client' => $loan_client,
+            'leadSourceLabel' => $leadSourceLabel,
+            'biodataLabels' => $this->clientBiodataLabels(),
         ]);
     }
 
@@ -372,13 +512,31 @@ class LoanClientsController extends Controller
     {
         $this->ensureLoanClientAccessible($loan_client);
 
+        $this->clientIdentifierNormalizer->mergeNormalizedClientIdentifiers($request);
         $validated = $this->validateClientPayload($request, $loan_client, $loan_client->kind);
         $validated['branch'] = $this->syncBranchDirectory($validated['branch'] ?? null);
         $validated = array_merge($validated, $this->handleClientImageUploads($request, $loan_client));
-        $validated['biodata_meta'] = $this->resolveDynamicBiodataMeta($request, $loan_client);
+        $dynamicBiodata = $this->resolveDynamicBiodataMeta($request, $loan_client);
+        if ($loan_client->kind === LoanClient::KIND_LEAD) {
+            $prior = (array) ($loan_client->biodata_meta ?? []);
+            $leadCaptureKeys = ['lc_lead_source', 'lc_occupation', 'lc_sector', 'lc_follow_up_date', 'lc_follow_up_notes'];
+            $preserved = array_intersect_key($prior, array_flip($leadCaptureKeys));
+            $validated['biodata_meta'] = array_merge($preserved, $dynamicBiodata);
+        } else {
+            $validated['biodata_meta'] = $dynamicBiodata;
+        }
         // Client numbers are system-assigned and immutable after creation.
         $validated['client_number'] = $loan_client->client_number;
         $loan_client->update($validated);
+
+        if ($loan_client->kind === LoanClient::KIND_LEAD) {
+            $this->clientLeadPipeline->syncLegacyLeadStatusIntoPipeline($loan_client, $request->user());
+            $lead = ClientLead::query()->where('loan_client_id', $loan_client->id)->first();
+            if ($lead) {
+                $officerId = $this->clientLeadPipeline->resolveOfficerUserIdForLoanClient($loan_client);
+                $lead->forceFill(['assigned_officer_id' => $officerId])->save();
+            }
+        }
 
         $route = $loan_client->kind === LoanClient::KIND_LEAD
             ? 'loan.clients.leads'
@@ -403,25 +561,123 @@ class LoanClientsController extends Controller
 
     public function leads(Request $request): View
     {
+        $activitySub = ClientLeadActivity::query()
+            ->selectRaw('client_lead_id, MAX(created_at) as last_activity_at')
+            ->groupBy('client_lead_id');
+
         $q = LoanClient::query()
             ->leads()
-            ->with('assignedEmployee')
-            ->orderByDesc('created_at');
+            ->with(['assignedEmployee', 'clientLead.assignedOfficer'])
+            ->leftJoin('client_leads', 'client_leads.loan_client_id', '=', 'loan_clients.id')
+            ->leftJoinSub($activitySub, 'cl_act', 'cl_act.client_lead_id', '=', 'client_leads.id')
+            ->select('loan_clients.*');
+
         $this->scopeLoanClientsToUser($q, $request->user());
 
         if ($search = trim((string) $request->get('q'))) {
             $q->where(function ($query) use ($search) {
                 $query
-                    ->where('client_number', 'like', '%'.$search.'%')
-                    ->orWhere('first_name', 'like', '%'.$search.'%')
-                    ->orWhere('last_name', 'like', '%'.$search.'%')
-                    ->orWhere('phone', 'like', '%'.$search.'%');
+                    ->where('loan_clients.client_number', 'like', '%'.$search.'%')
+                    ->orWhere('loan_clients.first_name', 'like', '%'.$search.'%')
+                    ->orWhere('loan_clients.last_name', 'like', '%'.$search.'%')
+                    ->orWhere('loan_clients.phone', 'like', '%'.$search.'%');
             });
         }
 
+        $stage = trim((string) $request->get('stage', ''));
+        if ($stage !== '') {
+            $q->where('client_leads.current_stage', $stage);
+        }
+
+        $source = trim((string) $request->get('source', ''));
+        if ($source !== '') {
+            $q->where('client_leads.lead_source', $source);
+        }
+
+        $officerId = (int) $request->get('officer_id', 0);
+        if ($officerId > 0) {
+            $q->where('client_leads.assigned_officer_id', $officerId);
+        }
+
+        $sort = strtolower(trim((string) $request->get('sort', 'created')));
+        match ($sort) {
+            'expected' => $q->orderByDesc('client_leads.expected_loan_amount')->orderByDesc('loan_clients.created_at'),
+            'aging' => $q->orderBy('loan_clients.created_at'),
+            'activity' => $q->orderByRaw('cl_act.last_activity_at IS NULL asc')->orderByDesc('cl_act.last_activity_at'),
+            default => $q->orderByDesc('loan_clients.created_at'),
+        };
+
         $leads = $q->paginate(15)->withQueryString();
 
-        return view('loan.clients.leads', compact('leads'));
+        foreach ($leads as $leadRow) {
+            if (! $leadRow->relationLoaded('clientLead') || ! $leadRow->clientLead) {
+                $this->clientLeadPipeline->ensureForLoanClient($leadRow);
+                $leadRow->load('clientLead.assignedOfficer');
+            }
+        }
+
+        $summary = $this->clientLeadIntelligence->dashboardSummary($request->user());
+        $leaderboard = $this->clientLeadIntelligence->leaderboard($request->user());
+        $insights = $this->clientLeadIntelligence->insights($request->user());
+        $alerts = $this->clientLeadIntelligence->alertsForLeads($leads->getCollection());
+
+        $officerFilterOptions = User::query()
+            ->whereIn('id', ClientLead::query()->whereNotNull('assigned_officer_id')->distinct()->pluck('assigned_officer_id'))
+            ->orderBy('name')
+            ->get();
+
+        $pipelineStages = [
+            ClientLead::STAGE_NEW => 'New',
+            ClientLead::STAGE_CONTACTED => 'Contacted',
+            ClientLead::STAGE_INTERESTED => 'Interested',
+            ClientLead::STAGE_APPLIED => 'Applied',
+            ClientLead::STAGE_APPROVED => 'Approved',
+            ClientLead::STAGE_DISBURSED => 'Disbursed',
+            ClientLead::STAGE_DROPPED => 'Dropped',
+        ];
+
+        $pipelineSources = (array) config('lead_intelligence.pipeline_source_labels', [
+            'walk_in' => 'Walk-in',
+            'referral' => 'Referral',
+            'marketing' => 'Marketing',
+            'agent' => 'Agent',
+            'digital' => 'Digital',
+        ]);
+
+        $clientLeadIds = $leads->getCollection()->map(fn (LoanClient $r) => $r->clientLead?->id)->filter()->unique()->values();
+        $latestActivityByClientLeadId = collect();
+        if ($clientLeadIds->isNotEmpty()) {
+            $latestActivityByClientLeadId = ClientLeadActivity::query()
+                ->whereIn('client_lead_id', $clientLeadIds->all())
+                ->orderByDesc('created_at')
+                ->get()
+                ->groupBy('client_lead_id')
+                ->map->first();
+        }
+
+        return view('loan.clients.leads', compact(
+            'leads',
+            'summary',
+            'leaderboard',
+            'insights',
+            'alerts',
+            'officerFilterOptions',
+            'pipelineStages',
+            'pipelineSources',
+            'latestActivityByClientLeadId'
+        ));
+    }
+
+    /**
+     * Portfolio-scoped JSON for dashboards / integrations (same logic as the leads page).
+     */
+    public function leadsIntelligence(Request $request): JsonResponse
+    {
+        return response()->json([
+            'summary' => $this->clientLeadIntelligence->dashboardSummary($request->user()),
+            'leaderboard' => $this->clientLeadIntelligence->leaderboard($request->user()),
+            'insights' => $this->clientLeadIntelligence->insights($request->user()),
+        ]);
     }
 
     public function leadsCreate(): View
@@ -431,29 +687,60 @@ class LoanClientsController extends Controller
         return view('loan.clients.leads-create', [
             'employees' => $employees,
             'branchOptions' => $this->branchOptions(),
+            'defaultAssignedEmployeeId' => $this->resolveLoanEmployeeId(auth()->user()),
+            'leadSources' => config('lead_capture.sources', []),
+            'leadSectors' => config('lead_capture.sectors', []),
         ]);
     }
 
     public function leadsStore(Request $request): RedirectResponse
     {
-        $validated = $this->validateClientPayload($request, null, LoanClient::KIND_LEAD);
+        $this->clientIdentifierNormalizer->mergeNormalizedClientIdentifiers($request);
+        $validated = $this->validateClientPayload($request, null, LoanClient::KIND_LEAD, true);
+        $validated['biodata_meta'] = $this->buildLeadCaptureBiodataMeta($validated);
+        foreach (['lead_source', 'occupation', 'sector', 'follow_up_date', 'follow_up_notes', 'expected_loan_amount'] as $k) {
+            unset($validated[$k]);
+        }
         $validated['branch'] = $this->syncBranchDirectory($validated['branch'] ?? null);
         $validated['client_number'] = $this->generateClientNumber('LD');
         $validated['kind'] = LoanClient::KIND_LEAD;
         $validated['client_status'] = 'n/a';
-        $validated['assigned_employee_id'] = $this->resolveAssignedEmployeeForCreate(
-            $request,
-            $validated['assigned_employee_id'] ?? null
-        );
+        $roundRobinEmployeeId = $this->clientLeadPipeline->resolveRoundRobinEmployeeId();
+        $validated['assigned_employee_id'] = $roundRobinEmployeeId
+            ?? $this->resolveAssignedEmployeeForCreate(
+                $request,
+                $validated['assigned_employee_id'] ?? null
+            );
         if (empty($validated['lead_status'])) {
             $validated['lead_status'] = 'new';
         }
+        $validated['source_channel'] = LoanClient::SOURCE_LEAD;
+        $validated['created_by'] = $request->user()?->id;
 
-        LoanClient::create($validated);
+        $dupes = $this->clientDedupService->findPotentialDuplicates(
+            $validated['phone'] ?? null,
+            $validated['id_number'] ?? null,
+            null
+        );
+        $duplicateWarnings = $this->clientDedupService->formatDuplicateWarnings($dupes);
 
-        return redirect()
+        $loanClient = LoanClient::create($validated);
+
+        $this->clientLeadPipeline->bootstrapNewLead($loanClient, $request->user(), [
+            'lead_source_key' => (string) $request->input('lead_source', ''),
+            'expected_loan_amount' => (float) $request->input('expected_loan_amount', 0),
+            'follow_up_date' => $request->input('follow_up_date'),
+            'follow_up_notes' => $request->input('follow_up_notes'),
+        ]);
+
+        $redirect = redirect()
             ->route('loan.clients.leads')
             ->with('status', 'Lead captured.');
+        if ($duplicateWarnings !== []) {
+            $redirect->with('duplicate_client_warnings', $duplicateWarnings);
+        }
+
+        return $redirect;
     }
 
     public function branchStore(Request $request): JsonResponse
@@ -497,7 +784,7 @@ class LoanClientsController extends Controller
         ]);
     }
 
-    public function leadsConvert(LoanClient $loan_client): RedirectResponse
+    public function leadsConvert(Request $request, LoanClient $loan_client): RedirectResponse
     {
         $this->ensureLoanClientAccessible($loan_client);
 
@@ -505,19 +792,52 @@ class LoanClientsController extends Controller
             return back()->with('status', 'Only leads can be converted.');
         }
 
+        $conflicts = $this->clientDedupService->findConflictingClientsForLeadConversion($loan_client);
+        if ($conflicts->isNotEmpty() && ! $request->boolean('lead_convert_confirmed')) {
+            return redirect()
+                ->route('loan.clients.show', $loan_client)
+                ->with('lead_convert_duplicate', [
+                    'matches' => $conflicts->map(fn (LoanClient $c): array => [
+                        'id' => $c->id,
+                        'name' => $c->full_name,
+                        'number' => $c->client_number,
+                    ])->all(),
+                ])
+                ->with('status', 'Another client already uses this phone or ID number. Confirm conversion or open the existing client.');
+        }
+
+        $otherDupes = $this->clientDedupService->findPotentialDuplicates(
+            $loan_client->phone !== null ? (string) $loan_client->phone : null,
+            $loan_client->id_number !== null ? (string) $loan_client->id_number : null,
+            $loan_client->id
+        );
+        $duplicateWarnings = $this->clientDedupService->formatDuplicateWarnings($otherDupes);
+
         $loan_client->update([
             'kind' => LoanClient::KIND_CLIENT,
             'lead_status' => null,
             'client_status' => 'active',
             'converted_at' => now(),
+            'converted_by' => $request->user()?->id,
         ]);
 
-        return redirect()
+        $loan_client->refresh();
+        try {
+            app(ClientWalletService::class)->ensureWallet($loan_client, auth()->id());
+        } catch (\Throwable) {
+        }
+
+        $redirect = redirect()
             ->route('loan.clients.show', $loan_client)
             ->with('status', 'Lead converted to client.');
+        if ($duplicateWarnings !== []) {
+            $redirect->with('duplicate_client_warnings', $duplicateWarnings);
+        }
+
+        return $redirect;
     }
 
-    public function transfer(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function transfer(Request $request): View|StreamedResponse
     {
         $clients = LoanClient::query()
             ->clients()
@@ -736,7 +1056,7 @@ class LoanClientsController extends Controller
             ->with('status', 'Group created. Add members below.');
     }
 
-    public function defaultGroupsShow(Request $request, DefaultClientGroup $default_client_group): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function defaultGroupsShow(Request $request, DefaultClientGroup $default_client_group): View|StreamedResponse
     {
         $q = trim((string) $request->query('q', ''));
         $employeeId = (int) $request->query('employee_id', 0);
@@ -746,16 +1066,16 @@ class LoanClientsController extends Controller
             ->with('assignedEmployee')
             ->withSum(['loanBookLoans as total_balance' => function ($loan) {
                 $loan->whereIn('status', [
-                    \App\Models\LoanBookLoan::STATUS_ACTIVE,
-                    \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
-                    \App\Models\LoanBookLoan::STATUS_RESTRUCTURED,
+                    LoanBookLoan::STATUS_ACTIVE,
+                    LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+                    LoanBookLoan::STATUS_RESTRUCTURED,
                 ]);
             }], 'balance')
             ->withMax(['loanBookLoans as max_dpd' => function ($loan) {
                 $loan->whereIn('status', [
-                    \App\Models\LoanBookLoan::STATUS_ACTIVE,
-                    \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
-                    \App\Models\LoanBookLoan::STATUS_RESTRUCTURED,
+                    LoanBookLoan::STATUS_ACTIVE,
+                    LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
+                    LoanBookLoan::STATUS_RESTRUCTURED,
                 ]);
             }], 'dpd')
             ->when($q !== '', function ($builder) use ($q) {
@@ -900,7 +1220,7 @@ class LoanClientsController extends Controller
         return back()->with('status', 'Member removed from group.');
     }
 
-    public function interactions(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function interactions(Request $request): View|StreamedResponse
     {
         $baseQuery = ClientInteraction::query()
             ->with(['loanClient.assignedEmployee', 'user'])
@@ -1041,7 +1361,7 @@ class LoanClientsController extends Controller
             $request->user()?->notify(new LoanWorkflowNotification(
                 'Interaction posted',
                 'Interaction logged for '.$client->full_name.'.',
-                route('loan.clients.interactions.for_client.create', $client)
+                $client->loanPortalProfileUrl()
             ));
         }
 
@@ -1087,20 +1407,34 @@ class LoanClientsController extends Controller
         $request->user()?->notify(new LoanWorkflowNotification(
             'Interaction posted',
             'New comment posted for '.$loan_client->full_name.'.',
-            route('loan.clients.interactions.for_client.create', $loan_client)
+            $loan_client->loanPortalProfileUrl()
         ));
 
+        $afterUrl = $loan_client->kind === LoanClient::KIND_LEAD
+            ? route('loan.clients.leads.show', $loan_client)
+            : route('loan.clients.interactions.for_client.create', $loan_client);
+
         return redirect()
-            ->route('loan.clients.interactions.for_client.create', $loan_client)
+            ->to($afterUrl)
             ->with('status', 'Interaction logged.');
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function validateClientPayload(Request $request, ?LoanClient $existing, string $kind): array
+    private function validateClientPayload(Request $request, ?LoanClient $existing, string $kind, bool $leadQuickCapture = false): array
     {
         $id = $existing?->id;
+
+        $phoneRules = ['nullable', 'string', 'max:40', 'unique:loan_clients,phone'.($id ? ','.$id.',id' : '')];
+        if ($kind === LoanClient::KIND_LEAD && $leadQuickCapture) {
+            $phoneRules = ['required', 'string', 'max:40', 'unique:loan_clients,phone'.($id ? ','.$id.',id' : '')];
+        }
+
+        $assignedRules = ['nullable', 'exists:employees,id'];
+        if ($kind === LoanClient::KIND_LEAD && $leadQuickCapture) {
+            $assignedRules = ['required', 'exists:employees,id'];
+        }
 
         $rules = [
             'client_number' => [
@@ -1111,7 +1445,7 @@ class LoanClientsController extends Controller
             ],
             'first_name' => ['required', 'string', 'max:120'],
             'last_name' => ['required', 'string', 'max:120'],
-            'phone' => ['nullable', 'string', 'max:40', 'unique:loan_clients,phone'.($id ? ','.$id.',id' : '')],
+            'phone' => $phoneRules,
             'email' => ['nullable', 'email', 'max:255', 'unique:loan_clients,email'.($id ? ','.$id.',id' : '')],
             'id_number' => ['nullable', 'string', 'max:80', 'unique:loan_clients,id_number'.($id ? ','.$id.',id' : '')],
             'gender' => ['nullable', 'string', 'in:male,female,other'],
@@ -1123,7 +1457,7 @@ class LoanClientsController extends Controller
             'biodata_meta' => ['nullable', 'array'],
             'address' => ['nullable', 'string', 'max:2000'],
             'branch' => ['nullable', 'string', 'max:120'],
-            'assigned_employee_id' => ['nullable', 'exists:employees,id'],
+            'assigned_employee_id' => $assignedRules,
             'notes' => ['nullable', 'string', 'max:5000'],
             'guarantor_1_full_name' => ['nullable', 'string', 'max:200'],
             'guarantor_1_phone' => ['nullable', 'string', 'max:40'],
@@ -1145,7 +1479,45 @@ class LoanClientsController extends Controller
             $rules['lead_status'] = ['nullable', 'string', 'max:40'];
         }
 
+        if ($kind === LoanClient::KIND_LEAD && $leadQuickCapture) {
+            $sourceKeys = array_keys(config('lead_capture.sources', []));
+            $sectorKeys = array_keys(config('lead_capture.sectors', []));
+            $rules['lead_source'] = ['required', 'string', Rule::in($sourceKeys)];
+            $rules['occupation'] = ['nullable', 'string', 'max:160'];
+            $rules['sector'] = ['required', 'string', Rule::in($sectorKeys)];
+            $rules['follow_up_date'] = ['nullable', 'date'];
+            $rules['follow_up_notes'] = ['nullable', 'string', 'max:2000'];
+            $rules['expected_loan_amount'] = ['nullable', 'numeric', 'min:0', 'max:100000000'];
+        }
+
         return $request->validate($rules);
+    }
+
+    /**
+     * Persist quick-capture analytics fields on leads using existing JSON column.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function buildLeadCaptureBiodataMeta(array $validated): array
+    {
+        $fd = $validated['follow_up_date'] ?? null;
+        if ($fd === '' || $fd === null) {
+            $fd = null;
+        }
+
+        $meta = [
+            'lc_lead_source' => $validated['lead_source'] ?? null,
+            'lc_occupation' => isset($validated['occupation']) ? trim((string) $validated['occupation']) : null,
+            'lc_sector' => $validated['sector'] ?? null,
+            'lc_follow_up_date' => $fd,
+            'lc_follow_up_notes' => isset($validated['follow_up_notes']) ? trim((string) $validated['follow_up_notes']) : null,
+        ];
+
+        return array_filter(
+            $meta,
+            static fn ($v): bool => $v !== null && $v !== ''
+        );
     }
 
     /**
@@ -1378,6 +1750,7 @@ class LoanClientsController extends Controller
         return $definitions
             ->filter(function (LoanFormFieldDefinition $field) use ($mappedLabels): bool {
                 $normalized = strtolower(trim((string) $field->label));
+
                 return ! in_array($normalized, $mappedLabels, true);
             })
             ->map(function (LoanFormFieldDefinition $field): array {
@@ -1425,6 +1798,7 @@ class LoanClientsController extends Controller
                         if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
                             Storage::disk('public')->delete($oldPath);
                         }
+
                         continue;
                     }
                 }
@@ -1432,6 +1806,7 @@ class LoanClientsController extends Controller
                 if (array_key_exists($key, $existingMeta)) {
                     $result[$key] = $existingMeta[$key];
                 }
+
                 continue;
             }
 
@@ -1444,5 +1819,4 @@ class LoanClientsController extends Controller
 
         return $result;
     }
-
 }

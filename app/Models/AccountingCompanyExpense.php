@@ -24,4 +24,9 @@ class AccountingCompanyExpense extends Model
     {
         return $this->belongsTo(User::class, 'recorded_by');
     }
+
+    public function journalEntry(): BelongsTo
+    {
+        return $this->belongsTo(AccountingJournalEntry::class, 'accounting_journal_entry_id');
+    }
 }

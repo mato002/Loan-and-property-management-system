@@ -204,6 +204,7 @@ class LoanFormFieldDefinition extends Model
 
         self::query()
             ->where('form_kind', self::KIND_LOAN_SETTINGS_APPLICATION)
+            ->whereNull('product_id')
             ->where('is_core', true)
             ->update(['field_status' => 'active']);
     }

@@ -4,16 +4,18 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Property\PropertyPaymentWebhookController;
+use App\Models\Employee;
+use App\Models\LoanBookCollectionEntry;
+use App\Models\LoanBookDisbursement;
 use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
 use App\Models\LoanBookPaymentSmsIngest;
-use App\Models\LoanBookDisbursement;
-use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanClient;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
 use App\Notifications\Loan\LoanWorkflowNotification;
 use App\Repositories\Equity\PaymentAuditLogRepository;
+use App\Services\ClientWalletService;
 use App\Services\Integrations\MpesaDarajaService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
@@ -544,6 +546,7 @@ class LoanPaymentWebhookController extends Controller
 
                 $this->syncCollectionEntryFromProcessedPayment($locked->fresh());
                 app(LoanBookLoanUpdateService::class)->onPaymentProcessed($locked->fresh());
+                app(ClientWalletService::class)->syncPostedPaymentWalletEffects($locked->fresh(['allocations', 'loan']));
             });
 
             $ingest->update([
@@ -585,7 +588,7 @@ class LoanPaymentWebhookController extends Controller
             $assignedUser = null;
 
             if ($assignedEmployeeId > 0) {
-                $employeeEmail = trim((string) (\App\Models\Employee::query()
+                $employeeEmail = trim((string) (Employee::query()
                     ->whereKey($assignedEmployeeId)
                     ->value('email') ?? ''));
                 if ($employeeEmail !== '') {

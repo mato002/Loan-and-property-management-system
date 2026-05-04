@@ -3,34 +3,36 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Models\AccountingBudgetLine;
 use App\Models\AccountingChartAccount;
+use App\Models\AccountingCompanyExpense;
 use App\Models\AccountingControlAudit;
 use App\Models\AccountingJournalApprovalQueue;
-use App\Models\AccountingCompanyExpense;
 use App\Models\AccountingJournalEntry;
 use App\Models\AccountingJournalLine;
 use App\Models\AccountingJournalTemplate;
 use App\Models\AccountingPayrollPeriod;
 use App\Models\AccountingPettyCashEntry;
 use App\Models\AccountingPostingRule;
-use App\Models\AccountingBudgetLine;
 use App\Models\AccountingRequisition;
 use App\Models\AccountingSalaryAdvance;
 use App\Models\AccountingUtilityPayment;
 use App\Models\AccountingWalletSlotSetting;
+use App\Models\Employee;
 use App\Models\LoanBookDisbursement;
+use App\Models\LoanBookPayment;
 use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanSystemSetting;
-use App\Models\Employee;
-use App\Models\LoanBookPayment;
 use App\Services\AccountingChartBalanceService;
 use App\Services\AccountingChartCodeGeneratorService;
 use App\Services\AccountingControlledApprovalService;
 use App\Services\AccountingOverdraftGuardService;
+use App\Services\LoanBookGlPostingService;
 use App\Support\TabularExport;
+use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -39,8 +41,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
-use Carbon\Carbon;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LoanAccountingController extends Controller
 {
@@ -175,7 +177,7 @@ class LoanAccountingController extends Controller
             'credit_account_id' => ['nullable', 'integer', 'exists:accounting_chart_accounts,id'],
         ]);
 
-        if ($accounting_posting_rule->rule_key === \App\Services\LoanBookGlPostingService::RULE_LOAN_LEDGER
+        if ($accounting_posting_rule->rule_key === LoanBookGlPostingService::RULE_LOAN_LEDGER
             && empty($validated['credit_account_id'])) {
             return back()->withErrors([
                 'credit_account_id' => 'Loan Ledger requires a credit account (loan portfolio / receivable).',
@@ -448,7 +450,7 @@ class LoanAccountingController extends Controller
             'code' => ['prohibited'],
             'name' => ['required', 'string', 'max:255'],
             'account_type' => ['required', 'in:asset,liability,equity,income,expense'],
-            'income_statement_category' => ['nullable', Rule::in(AccountingChartAccount::INCOME_STATEMENT_CATEGORIES)],
+            'income_statement_category' => ['nullable', 'string', 'max:40'],
             'account_class' => $hasAccountClass
                 ? ['required', Rule::in([AccountingChartAccount::CLASS_HEADER, AccountingChartAccount::CLASS_PARENT, AccountingChartAccount::CLASS_DETAIL])]
                 : ['nullable'],
@@ -498,13 +500,27 @@ class LoanAccountingController extends Controller
         }
 
         $selectedType = (string) ($validated['account_type'] ?? '');
-        $selectedCategory = (string) ($validated['income_statement_category'] ?? '');
-        if (in_array($selectedType, [AccountingChartAccount::TYPE_INCOME, AccountingChartAccount::TYPE_EXPENSE], true) && $selectedCategory === '') {
-            throw ValidationException::withMessages([
-                'income_statement_category' => 'Income statement category is required for income and expense accounts.',
-            ]);
-        }
-        if (! in_array($selectedType, [AccountingChartAccount::TYPE_INCOME, AccountingChartAccount::TYPE_EXPENSE], true)) {
+        $selectedCategory = trim((string) ($validated['income_statement_category'] ?? ''));
+        if (in_array($selectedType, [AccountingChartAccount::TYPE_INCOME, AccountingChartAccount::TYPE_EXPENSE], true)) {
+            if ($selectedCategory === '') {
+                throw ValidationException::withMessages([
+                    'income_statement_category' => 'Income statement category is required for income and expense accounts.',
+                ]);
+            }
+            if ($selectedType === AccountingChartAccount::TYPE_INCOME
+                && ! in_array($selectedCategory, AccountingChartAccount::INCOME_STATEMENT_CATEGORIES_FOR_INCOME_ACCOUNT, true)) {
+                throw ValidationException::withMessages([
+                    'income_statement_category' => 'Income accounts may only use categories: revenue, other_income.',
+                ]);
+            }
+            if ($selectedType === AccountingChartAccount::TYPE_EXPENSE
+                && ! in_array($selectedCategory, AccountingChartAccount::INCOME_STATEMENT_CATEGORIES_FOR_EXPENSE_ACCOUNT, true)) {
+                throw ValidationException::withMessages([
+                    'income_statement_category' => 'Expense accounts may only use categories: direct_cost, operating_expense, tax_expense, other_expense.',
+                ]);
+            }
+            $validated['income_statement_category'] = $selectedCategory;
+        } else {
             $validated['income_statement_category'] = null;
         }
 
@@ -512,7 +528,7 @@ class LoanAccountingController extends Controller
     }
 
     /** @param  array<string, mixed>  $validated
-     *  @return array<string, mixed>
+     * @return array<string, mixed>
      */
     private function buildChartPayload(Request $request, array $validated, ?AccountingChartAccount $existing = null, ?string $resolvedCode = null): array
     {
@@ -626,7 +642,7 @@ class LoanAccountingController extends Controller
 
     /* ---------- Journal entries ---------- */
 
-    public function journalIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function journalIndex(): View|StreamedResponse
     {
         $from = request()->string('from')->toString();
         $to = request()->string('to')->toString();
@@ -1041,7 +1057,7 @@ class LoanAccountingController extends Controller
         return redirect()->route('loan.accounting.journal.create')->with('status', 'Template deleted.');
     }
 
-    public function journalShow(AccountingJournalEntry $accounting_journal_entry): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function journalShow(AccountingJournalEntry $accounting_journal_entry): View|StreamedResponse
     {
         $accounting_journal_entry->load(['lines.account', 'createdByUser', 'approvedByUser', 'reversedFrom']);
 
@@ -1117,6 +1133,7 @@ class LoanAccountingController extends Controller
                     'projected_balance' => $projected,
                     'delta' => (float) $delta,
                 ];
+
                 continue;
             }
 
@@ -1149,7 +1166,7 @@ class LoanAccountingController extends Controller
 
         return redirect()->route('loan.accounting.journal.index')->with('status', 'Journal entry deleted.');
     }
-    
+
     public function journalBulk(Request $request): RedirectResponse
     {
         $action = $request->string('action')->toString();
@@ -1169,6 +1186,7 @@ class LoanAccountingController extends Controller
 
             return back()->with('status', 'Selected draft journal entries deleted.');
         }
+
         return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
     }
 
@@ -1243,7 +1261,7 @@ class LoanAccountingController extends Controller
 
     /* ---------- Ledger ---------- */
 
-    public function ledger(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function ledger(Request $request): View|StreamedResponse
     {
         $export = $request->string('export')->toString();
         $accounts = AccountingChartAccount::query()->where('is_active', true)->orderBy('code')->get();
@@ -1361,7 +1379,7 @@ class LoanAccountingController extends Controller
 
     /* ---------- Requisitions ---------- */
 
-    public function requisitionsIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function requisitionsIndex(): View|StreamedResponse
     {
         $status = request()->string('status')->toString();
         $month = request()->string('month')->toString(); // YYYY-MM
@@ -1521,7 +1539,7 @@ class LoanAccountingController extends Controller
 
         return redirect()->route('loan.accounting.requisitions.index')->with('status', 'Requisition removed.');
     }
-    
+
     public function requisitionsBulk(Request $request): RedirectResponse
     {
         $action = $request->string('action')->toString();
@@ -1535,8 +1553,10 @@ class LoanAccountingController extends Controller
                 ->whereIn('id', $ids)
                 ->where('status', '!=', AccountingRequisition::STATUS_PAID)
                 ->delete();
+
             return back()->with('status', 'Selected requisitions removed (excluding paid).');
         }
+
         return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
     }
 
@@ -1575,7 +1595,7 @@ class LoanAccountingController extends Controller
 
     /* ---------- Utility payments ---------- */
 
-    public function utilitiesIndex(): \Illuminate\View\View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function utilitiesIndex(): View|StreamedResponse
     {
         $type = request()->string('utility_type')->toString();
         $from = request()->string('from')->toString();
@@ -1704,7 +1724,7 @@ class LoanAccountingController extends Controller
 
         return redirect()->route('loan.accounting.utilities.index')->with('status', 'Record removed.');
     }
-    
+
     public function utilitiesBulk(Request $request): RedirectResponse
     {
         $action = $request->string('action')->toString();
@@ -1714,14 +1734,16 @@ class LoanAccountingController extends Controller
         }
         if ($action === 'delete') {
             AccountingUtilityPayment::query()->whereIn('id', $ids)->delete();
+
             return back()->with('status', 'Selected utility payments removed.');
         }
+
         return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
     }
 
     /* ---------- Petty cash ---------- */
 
-    public function pettyIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function pettyIndex(): View|StreamedResponse
     {
         $kind = request()->string('kind')->toString();
         $from = request()->string('from')->toString();
@@ -1732,8 +1754,7 @@ class LoanAccountingController extends Controller
         $q = AccountingPettyCashEntry::query()
             ->with('recordedByUser')
             ->orderByDesc('entry_date')
-            ->orderByDesc('id')
-            ;
+            ->orderByDesc('id');
 
         if ($kind !== '' && in_array($kind, [AccountingPettyCashEntry::KIND_RECEIPT, AccountingPettyCashEntry::KIND_DISBURSEMENT], true)) {
             $q->where('kind', $kind);
@@ -1830,7 +1851,7 @@ class LoanAccountingController extends Controller
 
         return redirect()->route('loan.accounting.petty.index')->with('status', 'Entry removed.');
     }
-    
+
     public function pettyBulk(Request $request): RedirectResponse
     {
         $action = $request->string('action')->toString();
@@ -1840,14 +1861,16 @@ class LoanAccountingController extends Controller
         }
         if ($action === 'delete') {
             AccountingPettyCashEntry::query()->whereIn('id', $ids)->delete();
+
             return back()->with('status', 'Selected petty cash entries removed.');
         }
+
         return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
     }
 
     /* ---------- Salary advances ---------- */
 
-    public function advancesIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function advancesIndex(): View|StreamedResponse
     {
         $status = request()->string('status')->toString();
         $from = request()->string('from')->toString();
@@ -1989,7 +2012,7 @@ class LoanAccountingController extends Controller
 
         return redirect()->route('loan.accounting.advances.index')->with('status', 'Advance removed.');
     }
-    
+
     public function advancesBulk(Request $request): RedirectResponse
     {
         $action = $request->string('action')->toString();
@@ -2002,8 +2025,10 @@ class LoanAccountingController extends Controller
                 ->whereIn('id', $ids)
                 ->where('status', '!=', AccountingSalaryAdvance::STATUS_SETTLED)
                 ->delete();
+
             return back()->with('status', 'Selected advances removed (excluding settled).');
         }
+
         return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
     }
 
@@ -2045,7 +2070,7 @@ class LoanAccountingController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, LoanFormFieldDefinition>
+     * @return Collection<int, LoanFormFieldDefinition>
      */
     private function accountingFormsDefinitions()
     {
@@ -2059,7 +2084,7 @@ class LoanAccountingController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @param  Collection<int, LoanFormFieldDefinition>  $fields
      * @return array<string, array<string, mixed>>
      */
     private function mappedAccountingRequisitionFields(Collection $fields): array
@@ -2071,10 +2096,12 @@ class LoanAccountingController extends Controller
             $hay = strtolower($key.' '.$label);
             if (! isset($mapped['title']) && (str_contains($hay, 'request title') || str_contains($hay, 'title'))) {
                 $mapped['title'] = $this->normalizedDefinitionField($field);
+
                 continue;
             }
             if (! isset($mapped['amount']) && str_contains($hay, 'amount')) {
                 $mapped['amount'] = $this->normalizedDefinitionField($field);
+
                 continue;
             }
             if (! isset($mapped['purpose']) && (str_contains($hay, 'narration') || str_contains($hay, 'purpose') || str_contains($hay, 'details'))) {
@@ -2107,7 +2134,7 @@ class LoanAccountingController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @param  Collection<int, LoanFormFieldDefinition>  $fields
      * @param  array<string, array<string, mixed>>  $mapped
      * @return list<array<string, mixed>>
      */
@@ -2143,10 +2170,12 @@ class LoanAccountingController extends Controller
             $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
             if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
                 $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:4096'];
+
                 continue;
             }
             if ($type === LoanFormFieldDefinition::TYPE_NUMBER) {
                 $rules["form_meta.$key"] = ['nullable', 'numeric'];
+
                 continue;
             }
             if ($type === LoanFormFieldDefinition::TYPE_SELECT) {
@@ -2158,6 +2187,7 @@ class LoanAccountingController extends Controller
                 $rules["form_meta.$key"] = $options !== []
                     ? ['nullable', 'string', Rule::in($options)]
                     : ['nullable', 'string', 'max:255'];
+
                 continue;
             }
             $rules["form_meta.$key"] = ['nullable', 'string', 'max:5000'];
@@ -2196,12 +2226,14 @@ class LoanAccountingController extends Controller
                         if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
                             Storage::disk('public')->delete($oldPath);
                         }
+
                         continue;
                     }
                 }
                 if (array_key_exists($key, $existingMeta)) {
                     $meta[$key] = $existingMeta[$key];
                 }
+
                 continue;
             }
 
@@ -2234,7 +2266,7 @@ class LoanAccountingController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, LoanFormFieldDefinition>
+     * @return Collection<int, LoanFormFieldDefinition>
      */
     private function salaryAdvanceFormDefinitions()
     {
@@ -2248,7 +2280,7 @@ class LoanAccountingController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @param  Collection<int, LoanFormFieldDefinition>  $fields
      * @return array<string, array<string, mixed>>
      */
     private function mappedSalaryAdvanceFields(Collection $fields): array
@@ -2265,6 +2297,7 @@ class LoanAccountingController extends Controller
                     'data_type' => (string) $field->data_type,
                     'select_options' => $this->splitSelectOptions((string) ($field->select_options ?? '')),
                 ];
+
                 continue;
             }
             if (! isset($mapped['reason_for_request']) && (str_contains($hay, 'reason') || str_contains($hay, 'purpose'))) {
@@ -2305,7 +2338,7 @@ class LoanAccountingController extends Controller
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, LoanFormFieldDefinition>  $fields
+     * @param  Collection<int, LoanFormFieldDefinition>  $fields
      * @param  array<string, array<string, mixed>>  $mapped
      * @return list<array<string, mixed>>
      */
@@ -2345,10 +2378,12 @@ class LoanAccountingController extends Controller
             $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
             if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
                 $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:4096'];
+
                 continue;
             }
             if ($type === LoanFormFieldDefinition::TYPE_NUMBER) {
                 $rules["form_meta.$key"] = ['nullable', 'numeric'];
+
                 continue;
             }
             if ($type === LoanFormFieldDefinition::TYPE_SELECT) {
@@ -2360,6 +2395,7 @@ class LoanAccountingController extends Controller
                 $rules["form_meta.$key"] = $options !== []
                     ? ['nullable', 'string', Rule::in($options)]
                     : ['nullable', 'string', 'max:255'];
+
                 continue;
             }
             $rules["form_meta.$key"] = ['nullable', 'string', 'max:5000'];
@@ -2400,12 +2436,14 @@ class LoanAccountingController extends Controller
                         if ($oldPath !== '' && Storage::disk('public')->exists($oldPath)) {
                             Storage::disk('public')->delete($oldPath);
                         }
+
                         continue;
                     }
                 }
                 if (array_key_exists($key, $existingMeta)) {
                     $meta[$key] = $existingMeta[$key];
                 }
+
                 continue;
             }
 

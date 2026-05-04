@@ -483,6 +483,13 @@
                             <span class="rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">Governance Layer</span>
                         </div>
                     </div>
+                    <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                        <p class="font-semibold text-slate-900">Client wallet GL behaviour</p>
+                        <ul class="mt-2 list-disc space-y-1 pl-5">
+                            <li>Wallet-to-loan repayments use the existing allocation events (no extra trigger): <span class="font-mono text-xs">PrincipalAllocated</span>, <span class="font-mono text-xs">InterestReceived</span>, <span class="font-mono text-xs">FeeReceived</span>, <span class="font-mono text-xs">PenaltyReceived</span>.</li>
+                            <li>Manual wallet corrections post under <span class="font-mono text-xs">WalletAdjustment</span> once the offset account slot is mapped below.</li>
+                        </ul>
+                    </div>
                     <div class="max-h-[75vh] overflow-auto rounded-lg border border-slate-200">
                         <table class="min-w-full divide-y divide-slate-200 text-sm">
                             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -573,9 +580,14 @@
                 </article>
             </section>
 
-            <section x-show="activeTab === 'wallet'" x-cloak class="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
-                <h2 class="text-lg font-semibold text-slate-900">Wallet Accounts</h2>
-                <p class="mt-2 text-sm text-slate-500">Wallet segment reserved. Logic will be added in a later step.</p>
+            <section x-show="activeTab === 'wallet'" x-cloak class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 class="text-lg font-semibold text-slate-900">Wallet accounts</h2>
+                <p class="mt-2 text-sm text-slate-600">
+                    Client wallet <strong>general ledger</strong> mappings are maintained under <strong>Accounting Rules</strong> in <strong>Automated Cash Mappings</strong> (same event registry as loan pay-ins). Map <span class="font-mono text-xs">client_wallet_liability_account</span>, <span class="font-mono text-xs">collection_cash_account</span>, allocation events, <span class="font-mono text-xs">LoanOverpayment</span>, <span class="font-mono text-xs">RefundIssued</span>, and <span class="font-mono text-xs">WalletAdjustment</span> there.
+                </p>
+                <p class="mt-3 text-sm text-slate-600">
+                    This tab is reserved for future wallet-specific tooling (e.g. quick links or slot filters). Use <strong>Accounting Rules → Automated Cash Mappings</strong> to review and approve account links today.
+                </p>
             </section>
 
             <div

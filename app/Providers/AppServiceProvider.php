@@ -3,12 +3,16 @@
 namespace App\Providers;
 
 use App\Models\AccountingChartAccount;
+use App\Models\LoanBookApplication;
+use App\Models\LoanBookLoan;
+use App\Observers\LoanBookApplicationClientLeadObserver;
+use App\Observers\LoanBookLoanClientLeadObserver;
 use App\View\Compilers\AppBladeCompiler;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\View\DynamicComponent;
-use Illuminate\Support\Facades\View;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,6 +42,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        LoanBookApplication::observe(LoanBookApplicationClientLeadObserver::class);
+        LoanBookLoan::observe(LoanBookLoanClientLeadObserver::class);
+
         Paginator::defaultView('pagination::tailwind');
         Paginator::defaultSimpleView('pagination::simple-tailwind');
 

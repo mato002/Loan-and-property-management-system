@@ -1,0 +1,2026 @@
+﻿
+   FAIL  Tests\Feature\Loan\LeadCaptureVerificationTest
+  Γ¿» lead capture verification flow                                                                             100.96s  
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ  
+   FAILED  Tests\Feature\Loan\LeadCaptureVerificationTest > lead capture verification flow                              
+  Expected: <!DOCTYPE html>\n
+<html lang="en" class="h-full">\n
+    <head>\n
+                <meta charset="utf-8">\n
+        <meta name="viewport" content="width=device-width, initial-scale=1">\n
+        <meta name="csrf-token" content="YR1v9jqlYRtSmNRskWdDalefQEYahWSvMQ59uZy7">\n
+\n
+        <title>Laravel</title>\n
+        <link rel="icon" href="http://localhost/favicon.ico?v=480267b7baec">\n
+        <link rel="shortcut icon" href="http://localhost/favicon.ico?v=480267b7baec">\n
+        <link rel="apple-touch-icon" href="http://localhost/favicon.ico?v=480267b7baec">\n
+\n
+        <!-- Fonts -->\n
+        <link rel="preconnect" href="https://fonts.bunny.net">\n
+        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />\n
+\n
+        <!-- Scripts -->\n
+        <link rel="preload" as="style" href="http://localhost/build/assets/app-uOJv-rNS.css" /><link rel="preload" as="style" href="http://localhost/build/assets/app-BSwJ7dgP.css" /><link rel="modulepreload" as="script" href="http://localhost/build/assets/app-ByjJgpkj.js" /><link rel="stylesheet" href="http://localhost/build/assets/app-uOJv-rNS.css" /><link rel="stylesheet" href="http://localhost/build/assets/app-BSwJ7dgP.css" /><script type="module" src="http://localhost/build/assets/app-ByjJgpkj.js"></script>        \n
+        <style>\n
+            [x-cloak] { display: none !important; }\n
+            .custom-scrollbar::-webkit-scrollbar {\n
+                width: 6px;\n
+            }\n
+            .custom-scrollbar::-webkit-scrollbar-track {\n
+                background: transparent;\n
+            }\n
+            .custom-scrollbar::-webkit-scrollbar-thumb {\n
+                background: #475569;\n
+                border-radius: 10px;\n
+            }\n
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover {\n
+                background: #64748b;\n
+            }\n
+            /* Firefox + stable gutter */\n
+            .custom-scrollbar {\n
+                scrollbar-width: auto;\n
+                scrollbar-color: #475569 transparent;\n
+                scrollbar-gutter: stable;\n
+            }\n
+\n
+            @media print {\n
+                html, body {\n
+                    height: auto !important;\n
+                    overflow: visible !important;\n
+                    background: #fff !important;\n
+                }\n
+\n
+                @page {\n
+                    size: landscape;\n
+                    margin: 10mm;\n
+                }\n
+\n
+                aside,\n
+                .no-print,\n
+                #global-table-print-btn {\n
+                    display: none !important;\n
+                }\n
+\n
+                #loan-app-shell {\n
+                    display: none !important;\n
+                }\n
+\n
+                #global-print-surface {\n
+                    display: block !important;\n
+                }\n
+\n
+                .h-full,\n
+                .flex,\n
+                .flex-1,\n
+                main {\n
+                    display: block !important;\n
+                    height: auto !important;\n
+                    min-height: 0 !important;\n
+                    overflow: visible !important;\n
+                }\n
+\n
+                main > div {\n
+                    padding: 0 !important;\n
+                    margin: 0 !important;\n
+                    width: 100% !important;\n
+                    max-width: 100% !important;\n
+                }\n
+\n
+                table {\n
+                    width: 100% !important;\n
+                    table-layout: auto !important;\n
+                    border-collapse: collapse !important;\n
+                }\n
+\n
+                thead {\n
+                    display: table-header-group !important;\n
+                }\n
+\n
+                tr {\n
+                    page-break-inside: avoid !important;\n
+                    break-inside: avoid !important;\n
+                }\n
+\n
+                th,\n
+                td {\n
+                    color: #000 !important;\n
+                    font-size: 9pt !important;\n
+                    background: #fff !important;\n
+                    box-shadow: none !important;\n
+                }\n
+            }\n
+\n
+            #global-print-surface {\n
+                display: none;\n
+                background: #fff;\n
+                color: #111827;\n
+                padding: 0;\n
+            }\n
+            #global-print-surface .print-head {\n
+                border-bottom: 2px solid #1a5f7a;\n
+                padding-bottom: 8px;\n
+                margin-bottom: 10px;\n
+            }\n
+            #global-print-surface .print-head-grid {\n
+                display: flex;\n
+                justify-content: space-between;\n
+                align-items: flex-start;\n
+                gap: 12px;\n
+            }\n
+            #global-print-surface .print-head-right {\n
+                text-align: right;\n
+                font-size: 10px;\n
+                color: #475569;\n
+                line-height: 1.35;\n
+                max-width: 42%;\n
+            }\n
+            #global-print-surface .print-brand {\n
+                font-size: 20px;\n
+                font-weight: 700;\n
+                color: #0f172a;\n
+            }\n
+            #global-print-surface .print-brand-wrap {\n
+                display: flex;\n
+                align-items: center;\n
+                gap: 8px;\n
+            }\n
+            #global-print-surface .print-logo {\n
+                max-height: 28px;\n
+                max-width: 120px;\n
+                object-fit: contain;\n
+            }\n
+            #global-print-surface .print-title {\n
+                font-size: 14px;\n
+                font-weight: 700;\n
+                margin-top: 4px;\n
+            }\n
+            #global-print-surface .print-meta {\n
+                font-size: 10px;\n
+                color: #64748b;\n
+                margin-top: 2px;\n
+            }\n
+            #global-print-surface table {\n
+                width: 100%;\n
+                border-collapse: collapse;\n
+                table-layout: auto;\n
+            }\n
+            #global-print-surface thead {\n
+                display: table-header-group;\n
+            }\n
+            #global-print-surface tr {\n
+                page-break-inside: avoid;\n
+                break-inside: avoid;\n
+            }\n
+            #global-print-surface th,\n
+            #global-print-surface td {\n
+                border: 1px solid #d1d5db;\n
+                padding: 5px;\n
+                font-size: 9px;\n
+                vertical-align: top;\n
+                word-break: break-word;\n
+            }\n
+            #global-print-surface th {\n
+                background: #1a5f7a;\n
+                color: #fff;\n
+                text-transform: uppercase;\n
+                letter-spacing: 0.02em;\n
+                font-size: 8px;\n
+                text-align: left;\n
+            }\n
+            #global-print-surface .print-footer {\n
+                margin-top: 8px;\n
+                border-top: 1px solid #d1d5db;\n
+                padding-top: 6px;\n
+                font-size: 8px;\n
+                color: #6b7280;\n
+                font-style: italic;\n
+                display: flex;\n
+                justify-content: space-between;\n
+                align-items: center;\n
+            }\n
+\n
+            @media (max-width: 1024px) {\n
+                main .mobile-table-scroll {\n
+                    overflow-x: auto;\n
+                    -webkit-overflow-scrolling: touch;\n
+                }\n
+                main .mobile-table-scroll > table {\n
+                    min-width: max-content;\n
+                }\n
+            }\n
+\n
+            main table.loan-grid-lines {\n
+                border-collapse: collapse;\n
+                border: 1px solid #cbd5e1;\n
+            }\n
+            main table.loan-grid-lines th,\n
+            main table.loan-grid-lines td {\n
+                border: 1px solid #cbd5e1;\n
+            }\n
+        </style>\n
+    </head>\n
+    <body\n
+        class="font-sans antialiased h-screen overflow-hidden text-slate-900 dark:text-slate-100 selection:bg-indigo-500/30"\n
+        x-data="{\n
+            sidebarOpen: false,\n
+            sidebarDesktopOpen: true,\n
+            init() {\n
+                const saved = window.localStorage.getItem('loan.sidebar.desktop.open');\n
+                if (saved !== null) {\n
+                    this.sidebarDesktopOpen = saved === '1';\n
+                }\n
+            },\n
+            toggleDesktopSidebar() {\n
+                this.sidebarDesktopOpen = !this.sidebarDesktopOpen;\n
+                window.localStorage.setItem('loan.sidebar.desktop.open', this.sidebarDesktopOpen ? '1' : '0');\n
+            }\n
+        }"\n
+    >\n
+                <div id="loan-app-shell" class="h-full flex bg-slate-50 dark:bg-slate-900">\n
+            \n
+            <!-- Loan Module Dedicated Sidebar -->\n
+            <!-- Mobile Sidebar Backdrop -->\n
+<div x-show="sidebarOpen" x-transition.opacity class="fixed inset-0 z-40 bg-gray-900/80 backdrop-blur-sm md:hidden" @click="sidebarOpen = false" x-cloak></div>\n
+\n
+\n
+<!-- Sidebar Elements -->\n
+<aside\n
+    :class="[\n
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full max-md:pointer-events-none',\n
+        sidebarDesktopOpen\n
+            ? 'md:w-[18rem] md:max-w-[18rem] md:min-w-[18rem] md:opacity-100 md:border-r md:border-[#264040]'\n
+            : 'md:w-[5.5rem] md:max-w-[5.5rem] md:min-w-[5.5rem] md:opacity-100 md:border-r md:border-[#264040]'\n
+    ]"\n
+    :style="window.matchMedia('(min-width: 768px)').matches\n
+        ? (sidebarDesktopOpen\n
+            ? 'width: 18rem; min-width: 18rem; max-width: 18rem;'\n
+            : 'width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem;')\n
+        : ''"\n
+    class="fixed inset-y-0 left-0 z-50 w-[280px] sm:w-[288px] bg-[#17363a] border-r border-[#1f4a4d] flex flex-col min-h-0 transition-all duration-300 md:relative md:translate-x-0 overflow-y-auto md:overflow-hidden flex-shrink-0 text-[#d4e4e3] shadow-2xl md:shadow-none"\n
+>\n
+    <!-- Header -->\n
+    <div class="h-16 flex items-center justify-between px-4 border-b border-[#1f4a4d] bg-[#102b2f]/70 backdrop-blur-md">\n
+        <a href="http://localhost/dashboard" class="text-xl font-bold text-white flex items-center gap-3 min-w-0" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:w-full md:gap-0'">\n
+                            <div class="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">\n
+                    <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />\n
+                    </svg>\n
+                </div>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="truncate">Loan Manager</span>\n
+        </a>\n
+        <button @click="sidebarOpen = false" class="md:hidden p-2 rounded-md text-[#8db1af] hover:text-white hover:bg-[#406866] transition-colors">\n
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />\n
+            </svg>\n
+        </button>\n
+        <button\n
+            type="button"\n
+            @click="toggleDesktopSidebar()"\n
+            class="hidden md:inline-flex p-2 rounded-md text-[#8db1af] hover:text-white hover:bg-[#406866] transition-colors ml-1"\n
+            :aria-label="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"\n
+            :title="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"\n
+        >\n
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">\n
+                <path x-show="sidebarDesktopOpen" stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />\n
+                <path x-show="!sidebarDesktopOpen" stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />\n
+            </svg>\n
+        </button>\n
+    </div>\n
+\n
+    <!-- Navigation List -->\n
+    <nav class="flex-1 min-h-0 overflow-y-auto py-5 px-2 md:px-3 space-y-3 custom-scrollbar" @click="if (window.innerWidth < 768 && $event.target.closest('a')) sidebarOpen = false">\n
+\n
+        <!-- Dashboard Link -->\n
+        <div>\n
+            <a href="http://localhost/dashboard" class="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-medium group text-[#d4e4e3] hover:bg-white/10 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Dashboard'">\n
+                <svg class="w-5 h-5 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>\n
+                </svg>\n
+                <span x-show="sidebarDesktopOpen" x-cloak>Dashboard</span>\n
+            </a>\n
+        </div>\n
+\n
+        \n
+        \n
+        <div class="space-y-3">\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Employees'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">Employees</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees/create"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Add Employee"\n
+                            >\n
+                                Add Employee\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees/leaves"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Staff Leaves"\n
+                            >\n
+                                Staff Leaves\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees/groups"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Staff Groups"\n
+                            >\n
+                                Staff Groups\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees/portfolios"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Staff Portfolios"\n
+                            >\n
+                                Staff Portfolios\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees/loan-applications"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Loan Applications"\n
+                            >\n
+                                Loan Applications\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees/staff-loans"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Staff Loans"\n
+                            >\n
+                                Staff Loans\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees/workplan"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Daily Workplan"\n
+                            >\n
+                                Daily Workplan\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="View Employees"\n
+                            >\n
+                                View Employees\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Accounting'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">Accounting</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/accounting/payroll"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Employee Payroll"\n
+                            >\n
+                                Employee Payroll\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/accounting/requisitions"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Requisitions"\n
+                            >\n
+                                Requisitions\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/accounting/utility-payments"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Utility Payments"\n
+                            >\n
+                                Utility Payments\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/accounting/petty-cash"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Petty Cashbook"\n
+                            >\n
+                                Petty Cashbook\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/accounting/books"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Books of Account"\n
+                            >\n
+                                Books of Account\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/accounting/salary-advances"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Salary Advances"\n
+                            >\n
+                                Salary Advances\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/accounting/expense-summary"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Expense Summary"\n
+                            >\n
+                                Expense Summary\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/accounting/cashflow"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Cashflow"\n
+                            >\n
+                                Cashflow\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Branches \u0026 Regions'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">Branches &amp; Regions</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/regions/create"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Create region"\n
+                            >\n
+                                Create region\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/regions"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="View regions"\n
+                            >\n
+                                View regions\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/branches/create"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Add branch"\n
+                            >\n
+                                Add branch\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/branches"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="View branches"\n
+                            >\n
+                                View branches\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/branches/loan-summary"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Loan summary"\n
+                            >\n
+                                Loan summary\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Business Analytics'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">Business Analytics</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/analytics/loan-sizes"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Loan Sizes"\n
+                            >\n
+                                Loan Sizes\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/analytics/targets"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Targets &amp; Accruals"\n
+                            >\n
+                                Targets &amp; Accruals\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/analytics/performance"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Business Performance"\n
+                            >\n
+                                Business Performance\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: true }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group bg-white/15 text-white shadow-sm" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Clients'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">Clients</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/clients/create"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Add Client"\n
+                            >\n
+                                Add Client\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/clients/leads/create"\n
+                                 aria-current="page"                                 class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate bg-white/15 text-white font-semibold"\n
+                                title="Create a Lead"\n
+                            >\n
+                                Create a Lead\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/clients/transfer"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Transfer Clients"\n
+                            >\n
+                                Transfer Clients\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/clients/default-groups"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Default Groups"\n
+                            >\n
+                                Default Groups\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/clients/interactions"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Interactions"\n
+                            >\n
+                                Interactions\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/clients/leads"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Client Leads"\n
+                            >\n
+                                Client Leads\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/clients"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="View Clients"\n
+                            >\n
+                                View Clients\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'LoanBook'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">LoanBook</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/applications/create"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Create Application"\n
+                            >\n
+                                Create Application\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/applications"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Loan Applications"\n
+                            >\n
+                                Loan Applications\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/loans"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="View Loans"\n
+                            >\n
+                                View Loans\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/disbursements"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Disbursements"\n
+                            >\n
+                                Disbursements\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/collection-sheet"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Collection sheet"\n
+                            >\n
+                                Collection sheet\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/collection-mtd"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Collection MTD"\n
+                            >\n
+                                Collection MTD\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/loan-arrears"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Loan Arrears"\n
+                            >\n
+                                Loan Arrears\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/checkoff-loans"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Checkoff Loans"\n
+                            >\n
+                                Checkoff Loans\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/collection-agents"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Collection Agents"\n
+                            >\n
+                                Collection Agents\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/collection-rates"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Collection Rates"\n
+                            >\n
+                                Collection Rates\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/collection-reports"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Collection Reports"\n
+                            >\n
+                                Collection Reports\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/collections-reports"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Collections reports"\n
+                            >\n
+                                Collections reports\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/loan-arrears"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Risk &amp; arrears"\n
+                            >\n
+                                Risk &amp; arrears\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/book/app-loans-report"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="App Loans Report"\n
+                            >\n
+                                App Loans Report\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Payments'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">Payments</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/unposted"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Unposted Payments"\n
+                            >\n
+                                Unposted Payments\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/processed"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Processed Payments"\n
+                            >\n
+                                Processed Payments\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/prepayments"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Prepayments"\n
+                            >\n
+                                Prepayments\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/overpayments"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Overpayments"\n
+                            >\n
+                                Overpayments\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/merged"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Merged Payments"\n
+                            >\n
+                                Merged Payments\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/c2b-reversals"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="C2B Reversals"\n
+                            >\n
+                                C2B Reversals\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/receipts"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Receipts"\n
+                            >\n
+                                Receipts\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/payin-summary"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Payin Summary"\n
+                            >\n
+                                Payin Summary\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/report"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Payments Report"\n
+                            >\n
+                                Payments Report\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/payments/validate"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Validate Payment"\n
+                            >\n
+                                Validate Payment\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Bulk SMS'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">Bulk SMS</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/bulk-sms/compose"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Send / schedule SMS"\n
+                            >\n
+                                Send / schedule SMS\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/bulk-sms/templates/create"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Create SMS template"\n
+                            >\n
+                                Create SMS template\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/bulk-sms/templates"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="SMS templates"\n
+                            >\n
+                                SMS templates\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/bulk-sms/logs"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="SMS logs"\n
+                            >\n
+                                SMS logs\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/bulk-sms/wallet"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Top up wallet"\n
+                            >\n
+                                Top up wallet\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/bulk-sms/schedules"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="SMS schedules"\n
+                            >\n
+                                SMS schedules\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Financial'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">Financial</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/financial/mpesa-platform"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="M-Pesa platform"\n
+                            >\n
+                                M-Pesa platform\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/financial/mpesa-payouts"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="M-Pesa payouts"\n
+                            >\n
+                                M-Pesa payouts\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/financial/account-balances"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Client wallets"\n
+                            >\n
+                                Client wallets\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/financial/control-accounts"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Control accounts"\n
+                            >\n
+                                Control accounts\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/financial/teller-operations"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Teller operations"\n
+                            >\n
+                                Teller operations\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/financial/investment-packages"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Investment packages"\n
+                            >\n
+                                Investment packages\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/financial/investors"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Investors list"\n
+                            >\n
+                                Investors list\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/financial/investors-reports"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Investors reports"\n
+                            >\n
+                                Investors reports\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Asset Financing'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">Asset Financing</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/asset-financing/measurement-units"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Measurement Units"\n
+                            >\n
+                                Measurement Units\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/asset-financing/categories"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Asset Categories"\n
+                            >\n
+                                Asset Categories\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/asset-financing/stock/create"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Add Asset/Stock"\n
+                            >\n
+                                Add Asset/Stock\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/asset-financing/stock"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Asset List/Stock"\n
+                            >\n
+                                Asset List/Stock\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'My Account'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">My Account</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/account"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="View Details"\n
+                            >\n
+                                View Details\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees/workplan"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="My Workplan"\n
+                            >\n
+                                My Workplan\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/account/salary-advance"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Salary Advance"\n
+                            >\n
+                                Salary Advance\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/employees/staff-loans"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="My Staff Loans"\n
+                            >\n
+                                My Staff Loans\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/account/approval-requests"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Approval Requests"\n
+                            >\n
+                                Approval Requests\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/profile#update-profile"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Update Details"\n
+                            >\n
+                                Update Details\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        <div x-data="{ open: false }">\n
+                                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'System \u0026 Help'">\n
+                    <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                        <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>\n
+                        </svg>\n
+                        <span x-show="sidebarDesktopOpen" x-cloak class="font-semibold tracking-wide truncate text-left">System &amp; Help</span>\n
+                    </div>\n
+                    <div x-show="sidebarDesktopOpen" x-cloak class="flex items-center gap-1.5">\n
+                                                <svg :class="{'rotate-180 text-white': open}" class="w-4 h-4 text-[#8db1af] transition-transform duration-300 group-hover:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />\n
+                        </svg>\n
+                    </div>\n
+                </button>\n
+                <div x-show="sidebarDesktopOpen && open" \n
+                     x-transition:enter="transition ease-out duration-200"\n
+                     x-transition:enter-start="opacity-0 -translate-y-2"\n
+                     x-transition:enter-end="opacity-100 translate-y-0"\n
+                     x-transition:leave="transition ease-in duration-150"\n
+                     x-transition:leave-start="opacity-100 translate-y-0"\n
+                     x-transition:leave-end="opacity-0 -translate-y-2"\n
+                     x-cloak \n
+                     class="mt-1 space-y-1">\n
+                    <div class="pl-11 pr-3 py-1 border-l border-[#406866]/60 ml-5 flex flex-col gap-1">\n
+                                                                                <a\n
+                                href="http://localhost/loan/system-help/tickets/create"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Create a Ticket"\n
+                            >\n
+                                Create a Ticket\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/system-help/tickets"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Raised Tickets"\n
+                            >\n
+                                Raised Tickets\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/system-help/setup"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="System Setup"\n
+                            >\n
+                                System Setup\n
+                            </a>\n
+                                                                                <a\n
+                                href="http://localhost/loan/system-help/access-logs"\n
+                                                                class="block rounded-md px-2 py-1.5 text-sm hover:translate-x-1 transition-transform duration-200 truncate text-[#8db1af] hover:text-white hover:bg-white/5"\n
+                                title="Access Logs"\n
+                            >\n
+                                Access Logs\n
+                            </a>\n
+                                            </div>\n
+                </div>\n
+            </div>\n
+                        \n
+            <!-- Direct Logout Link per reference -->\n
+            <div class="pt-4 mt-4 border-t border-[#406866]/40">\n
+                <form method="POST" action="http://localhost/logout">\n
+                    <input type="hidden" name="_token" value="YR1v9jqlYRtSmNRskWdDalefQEYahWSvMQ59uZy7" autocomplete="off">                    <button type="submit" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-all group" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : 'Logout'">\n
+                        <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">\n
+                            <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-red-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">\n
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />\n
+                            </svg>\n
+                            <span x-show="sidebarDesktopOpen" x-cloak class="font-medium truncate text-left">Logout</span>\n
+                        </div>\n
+                    </button>\n
+                </form>\n
+            </div>\n
+        </div>\n
+    </nav>\n
+\n
+    <!-- User Profile Snippet -->\n
+    <div class="p-3 border-t border-slate-800 bg-slate-950/30 flex-shrink-0">\n
+        <a href="http://localhost/profile" class="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-800 transition-colors" :class="sidebarDesktopOpen ? '' : 'md:justify-center'" :title="sidebarDesktopOpen ? '' : 'Profile'">\n
+            <div class="w-10 h-10 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold overflow-hidden flex-shrink-0">\n
+                                    K\n
+                            </div>\n
+            <div x-show="sidebarDesktopOpen" x-cloak class="flex flex-col overflow-hidden min-w-0">\n
+                <span class="text-sm font-medium text-white truncate">Karianne Bosco Sr.</span>\n
+            </div>\n
+        </a>\n
+    </div>\n
+</aside>\n
+\n
+            <!-- Main view container (Header, Content, Footer) -->\n
+            <div class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-[#f4f7fa]">\n
+                \n
+                <!-- Dedicated Clean Topbar -->\n
+                <header class="relative md:sticky md:top-0 z-30 md:z-50 flex-shrink-0 border-b border-slate-200/90 bg-gradient-to-b from-white via-slate-50 to-white shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/90 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-[2px] before:bg-gradient-to-r before:from-cyan-500 before:via-sky-500 before:to-indigo-500">\n
+    <div class="px-4 sm:px-6 lg:px-8">\n
+        \n
+        <div class="flex items-center justify-between gap-2.5 py-2 sm:py-2.5 min-h-[3.5rem]">\n
+            <div class="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">\n
+                <button type="button" @click="sidebarOpen = true" class="md:hidden shrink-0 p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-[#2f4f4f]/30" aria-label="Open menu">\n
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">\n
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />\n
+                    </svg>\n
+                </button>\n
+                <button\n
+                    type="button"\n
+                    @click="toggleDesktopSidebar()"\n
+                    x-show="!sidebarDesktopOpen"\n
+                    x-cloak\n
+                    class="hidden md:inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"\n
+                    aria-label="Show sidebar"\n
+                    title="Show sidebar"\n
+                >\n
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">\n
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />\n
+                    </svg>\n
+                    Menu\n
+                </button>\n
+                <div class="min-w-0 hidden sm:block">\n
+                    <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">\n
+                        <h1 class="text-base sm:text-lg font-semibold text-slate-900 tracking-tight truncate">\n
+                            Good evening, <span class="text-[#2f4f4f]">Karianne</span>\n
+                        </h1>\n
+                        <span class="inline-flex items-center rounded-md bg-[#2f4f4f]/10 text-[#264040] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider shrink-0">Loan</span>\n
+                    </div>\n
+                </div>\n
+\n
+                \n
+                <div class="sm:hidden min-w-0 flex-1">\n
+                    <p class="text-sm font-semibold text-slate-900 truncate">Loan workspace</p>\n
+                    <p class="text-[11px] text-slate-500 tabular-nums">May 3, 2026</p>\n
+                </div>\n
+            </div>\n
+\n
+            <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0 justify-end">\n
+                \n
+                <nav class="hidden lg:flex items-center gap-0.5 rounded-xl bg-white/90 border border-slate-200 p-1 shadow-sm" aria-label="Quick navigation">\n
+                                                                        <a\n
+                                href="http://localhost/loan/dashboard"\n
+                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap text-slate-600 hover:bg-slate-100 hover:text-slate-900"\n
+                            >\n
+                                Dashboard\n
+                            </a>\n
+                                                                                                <a\n
+                                href="http://localhost/loan/book/applications"\n
+                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap text-slate-600 hover:bg-slate-100 hover:text-slate-900"\n
+                            >\n
+                                Applications\n
+                            </a>\n
+                                                                                                <a\n
+                                href="http://localhost/loan/payments/unposted"\n
+                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap text-slate-600 hover:bg-slate-100 hover:text-slate-900"\n
+                            >\n
+                                Pay-ins\n
+                            </a>\n
+                                                                                                <a\n
+                                href="http://localhost/loan/accounting/books"\n
+                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap text-slate-600 hover:bg-slate-100 hover:text-slate-900"\n
+                            >\n
+                                Books\n
+                            </a>\n
+                                                                                                <a\n
+                                href="http://localhost/loan/clients"\n
+                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap bg-[#2f4f4f] text-white shadow-sm ring-1 ring-[#2f4f4f]/20"\n
+                            >\n
+                                Clients\n
+                            </a>\n
+                                                            </nav>\n
+\n
+                <div class="flex items-center gap-2 sm:gap-2">\n
+                                            <a href="http://localhost/loan/system-help/setup" class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100 transition-colors" title="System setup">\n
+                            <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>\n
+                            Setup\n
+                        </a>\n
+                    \n
+                    <a href="http://localhost/loan/system-help/tickets/create" class="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors" title="Support">\n
+                        <svg class="w-4 h-4 shrink-0 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/></svg>\n
+                        Help\n
+                    </a>\n
+\n
+                    <div class="hidden sm:block w-px h-7 bg-slate-200" aria-hidden="true"></div>\n
+\n
+                    <div class="relative z-[60]" x-data="{ bellOpen: false }" @click.outside="bellOpen = false">\n
+                        <button\n
+                            type="button"\n
+                            @click="bellOpen = !bellOpen"\n
+                            class="relative inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm"\n
+                            title="Notifications"\n
+                        >\n
+                            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">\n
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />\n
+                            </svg>\n
+                                                    </button>\n
+\n
+                        <div\n
+                            x-show="bellOpen"\n
+                            x-transition.opacity\n
+                            class="absolute right-0 mt-2 w-96 max-w-[92vw] rounded-xl bg-white shadow-xl border border-slate-200 py-1.5 z-[100] overflow-hidden"\n
+                            x-cloak\n
+                        >\n
+                            <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between">\n
+                                <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Previous Notifications</p>\n
+                                <a href="http://localhost/loan/notifications" class="text-xs font-semibold text-indigo-600 hover:text-indigo-500">View all</a>\n
+                            </div>\n
+                            <div class="max-h-96 overflow-y-auto">\n
+                                                                    <p class="px-4 py-6 text-sm text-slate-500 text-center">No notifications yet.</p>\n
+                                                            </div>\n
+                        </div>\n
+                    </div>\n
+\n
+                    <div class="relative z-[60]" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">\n
+                        <button type="button" @click="userMenuOpen = !userMenuOpen" class="flex items-center gap-2 p-1 pr-2 sm:pr-3 rounded-full bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shadow-sm">\n
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-inner border border-white/20 overflow-hidden">\n
+                                                                    K\n
+                                                            </div>\n
+                            <span class="hidden sm:block text-sm font-semibold text-slate-800 max-w-[9rem] truncate text-left leading-tight">\n
+                                Karianne Bosco Sr.\n
+                            </span>\n
+                            <svg class="w-4 h-4 text-slate-500 hidden sm:block shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">\n
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />\n
+                            </svg>\n
+                        </button>\n
+\n
+                        <div\n
+                            x-show="userMenuOpen"\n
+                            x-transition.opacity\n
+                            class="absolute right-0 mt-2 w-56 rounded-xl bg-white shadow-xl border border-slate-200 py-1.5 z-[100] overflow-hidden"\n
+                            x-cloak\n
+                        >\n
+                            <div class="px-4 py-2 border-b border-slate-100">\n
+                                <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Signed in</p>\n
+                                <p class="text-sm font-medium text-slate-900 truncate">lead-verify-69f7b732e332a5.93838177@example.test</p>\n
+                            </div>\n
+                            <a href="http://localhost/profile" class="block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">Profile settings</a>\n
+                            <a href="http://localhost/loan/dashboard" class="lg:hidden block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">Dashboard</a>\n
+                            <div class="border-t border-slate-100 my-1"></div>\n
+                            <form method="POST" action="http://localhost/logout">\n
+                                <input type="hidden" name="_token" value="YR1v9jqlYRtSmNRskWdDalefQEYahWSvMQ59uZy7" autocomplete="off">                                <button type="submit" class="block w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors font-medium">\n
+                                    Log out\n
+                                </button>\n
+                            </form>\n
+                        </div>\n
+                    </div>\n
+                </div>\n
+            </div>\n
+        </div>\n
+\n
+        \n
+        <div class="lg:hidden flex flex-nowrap items-center gap-2 overflow-x-auto pb-2 -mt-0.5 border-t border-slate-100/80 pt-1.5">\n
+                                                <a\n
+                        href="http://localhost/loan/dashboard"\n
+                        class="inline-flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide border transition-colors whitespace-nowrap bg-white text-slate-600 border-slate-200 hover:bg-slate-50"\n
+                    >\n
+                        Dashboard\n
+                    </a>\n
+                                                                <a\n
+                        href="http://localhost/loan/book/applications"\n
+                        class="inline-flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide border transition-colors whitespace-nowrap bg-white text-slate-600 border-slate-200 hover:bg-slate-50"\n
+                    >\n
+                        Applications\n
+                    </a>\n
+                                                                <a\n
+                        href="http://localhost/loan/payments/unposted"\n
+                        class="inline-flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide border transition-colors whitespace-nowrap bg-white text-slate-600 border-slate-200 hover:bg-slate-50"\n
+                    >\n
+                        Pay-ins\n
+                    </a>\n
+                                                                <a\n
+                        href="http://localhost/loan/accounting/books"\n
+                        class="inline-flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide border transition-colors whitespace-nowrap bg-white text-slate-600 border-slate-200 hover:bg-slate-50"\n
+                    >\n
+                        Books\n
+                    </a>\n
+                                    </div>\n
+    </div>\n
+</header>\n
+\n
+                <!-- Scrollable Content Area (Topbar/Footer remain constant) -->\n
+                <main class="flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar overscroll-contain">\n
+                    <div class="px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-8 lg:pb-8 lg:pt-4">\n
+                        <div class="max-w-[1600px] mx-auto w-full space-y-6">\n
+    <header class="space-y-4">\n
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">\n
+            <div class="min-w-0 flex-1">\n
+                <h1 class="text-2xl sm:text-[1.65rem] font-semibold text-slate-900 tracking-tight leading-tight">Quick lead capture</h1>\n
+                                    <p class="text-sm text-slate-600 mt-2 leading-relaxed max-w-3xl">Log a prospect in seconds. Full KYC happens when you convert to a client.</p>\n
+                            </div>\n
+                                                <div class="flex flex-wrap items-center gap-2 shrink-0 lg:pt-1">\n
+                        <a href="http://localhost/loan/clients/leads" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">\n
+                Back to leads\n
+            </a>\n
+                    </div>\n
+                                    </div>\n
+                    <div class="flex w-full min-w-0 items-center gap-1 rounded-xl border border-slate-200/90 bg-white px-2 py-2 shadow-sm">\n
+    <span class="mr-1 shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-400">Quick</span>\n
+                        <a\n
+                href="http://localhost/loan/dashboard"\n
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"\n
+                title="Dashboard"\n
+            >\n
+                Dashboard\n
+            </a>\n
+                                <a\n
+                href="http://localhost/loan/clients"\n
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"\n
+                title="Clients"\n
+            >\n
+                Clients\n
+            </a>\n
+                                <a\n
+                href="http://localhost/loan/book/applications"\n
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"\n
+                title="Applications"\n
+            >\n
+                Applications\n
+            </a>\n
+                                <a\n
+                href="http://localhost/loan/book/loans"\n
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"\n
+                title="Loans"\n
+            >\n
+                Loans\n
+            </a>\n
+                                <a\n
+                href="http://localhost/loan/book/disbursements"\n
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"\n
+                title="Disbursements"\n
+            >\n
+                Disbursements\n
+            </a>\n
+                                <a\n
+                href="http://localhost/loan/payments/processed"\n
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"\n
+                title="Payments"\n
+            >\n
+                Payments\n
+            </a>\n
+                                <a\n
+                href="http://localhost/loan/payments/report"\n
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"\n
+                title="Pay-in report"\n
+            >\n
+                Pay-in report\n
+            </a>\n
+                                <a\n
+                href="http://localhost/loan/payments/unposted"\n
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"\n
+                title="Unposted"\n
+            >\n
+                Unposted\n
+            </a>\n
+                                <a\n
+                href="http://localhost/loan/accounting/books"\n
+                class="inline-flex min-w-0 flex-1 items-center justify-center truncate rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100 hover:text-[#2f4f4f]"\n
+                title="Accounting"\n
+            >\n
+                Accounting\n
+            </a>\n
+            </div>\n
+                            <div class="w-full">\n
+                \n
+            </div>\n
+            </header>\n
+\n
+    <div class="max-w-6xl mx-auto grid grid-cols-1 gap-8 lg:grid-cols-3 lg:items-start">\n
+            \n
+            <div class="lg:col-span-2 space-y-6">\n
+                <form method="post" action="http://localhost/loan/clients/leads" class="space-y-6" id="lead-quick-capture-form">\n
+                    <input type="hidden" name="_token" value="YR1v9jqlYRtSmNRskWdDalefQEYahWSvMQ59uZy7" autocomplete="off">\n
+                    \n
+                    <section class="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">\n
+                        <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-4">Lead identity</h2>\n
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">\n
+                            <div class="sm:col-span-2 rounded-lg border border-slate-100 bg-slate-50/80 px-3 py-2 text-xs text-slate-600">\n
+                                <span class="font-medium text-slate-700">Lead reference</span>\n
+                                <span class="block font-mono text-slate-500 mt-0.5">Auto-assigned when you save</span>\n
+                            </div>\n
+                            <div>\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="first_name">\n
+    First name *\n
+</label>\n
+                                <input  class="border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 rounded-md shadow-sm mt-1 block w-full" id="first_name" name="first_name" type="text" required="required" autocomplete="given-name">\n
+                                                            </div>\n
+                            <div>\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="last_name">\n
+    Last name *\n
+</label>\n
+                                <input  class="border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 rounded-md shadow-sm mt-1 block w-full" id="last_name" name="last_name" type="text" required="required" autocomplete="family-name">\n
+                                                            </div>\n
+                            <div class="sm:col-span-2">\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="phone">\n
+    Phone number *\n
+</label>\n
+                                <input  class="border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 rounded-md shadow-sm mt-1 block w-full" id="phone" name="phone" type="text" required="required" autocomplete="tel" inputmode="tel" placeholder="e.g. 07ΓÇª or 254ΓÇª">\n
+                                <p class="mt-1.5 text-xs text-slate-500 leading-relaxed">\n
+                                    Phone is used for duplicate checks, follow-up, SMS campaigns, and future client matching.\n
+                                </p>\n
+                                                            </div>\n
+                            <div class="sm:col-span-2">\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="email">\n
+    Email (optional)\n
+</label>\n
+                                <input  class="border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 rounded-md shadow-sm mt-1 block w-full" id="email" name="email" type="email" autocomplete="email">\n
+                                                            </div>\n
+                        </div>\n
+                    </section>\n
+\n
+                    \n
+                    <section class="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">\n
+                        <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-4">Lead source &amp; ownership</h2>\n
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">\n
+                            <div class="sm:col-span-2">\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="assigned_employee_id">\n
+    Assigned loan officer / staff *\n
+</label>\n
+                                <select id="assigned_employee_id" name="assigned_employee_id" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">\n
+                                    <option value="">ΓÇö Select officer ΓÇö</option>\n
+                                                                            <option value="1" selected>Test 1</option>\n
+                                                                    </select>\n
+                                                            </div>\n
+                            <div class="sm:col-span-2">\n
+                                <div x-data="loanBranchPicker('branch', 'http://localhost/loan/clients/branches')">\n
+    <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="branch">\n
+    Branch\n
+</label>\n
+    <div class="mt-1 flex gap-2">\n
+        <select id="branch" name="branch" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">\n
+            <option value="">Select branch...</option>\n
+                    </select>\n
+        <button type="button" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-bold text-slate-700 hover:bg-slate-50" title="Create branch" @click="openBranchModal">+</button>\n
+    </div>\n
+    \n
+    <div\n
+        x-show="showBranchModal"\n
+        x-cloak\n
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4"\n
+        @keydown.escape.window="closeBranchModal"\n
+        @click.self="closeBranchModal"\n
+    >\n
+        <div class="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">\n
+            <h3 class="text-base font-semibold text-slate-800">Create branch</h3>\n
+            <p class="mt-1 text-xs text-slate-500">Add a branch and use it immediately in this form.</p>\n
+\n
+            <div class="mt-4">\n
+                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="branch_new">\n
+    Branch name\n
+</label>\n
+                <input  class="border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 rounded-md shadow-sm mt-1 block w-full" id="branch_new" x-model.trim="newBranchName" type="text" placeholder="e.g. Nairobi CBD">\n
+            </div>\n
+\n
+            <p x-show="branchModalError" x-text="branchModalError" class="mt-3 text-xs text-red-600"></p>\n
+\n
+            <div class="mt-4 flex items-center justify-end gap-2">\n
+                <button type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50" @click="closeBranchModal">Cancel</button>\n
+                <button type="button" class="rounded-lg bg-[#2f4f4f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#264040] disabled:cursor-not-allowed disabled:opacity-70" @click="saveBranch" :disabled="isSavingBranch">\n
+                    <span x-show="!isSavingBranch">Save branch</span>\n
+                    <span x-show="isSavingBranch">Saving...</span>\n
+                </button>\n
+            </div>\n
+        </div>\n
+    </div>\n
+</div>\n
+\n
+    <script>\n
+        function loanBranchPicker(selectId, branchStoreUrl) {\n
+            return {\n
+                selectId,\n
+                branchStoreUrl,\n
+                showBranchModal: false,\n
+                newBranchName: '',\n
+                branchModalError: '',\n
+                isSavingBranch: false,\n
+                openBranchModal() {\n
+                    this.branchModalError = '';\n
+                    this.showBranchModal = true;\n
+                },\n
+                closeBranchModal() {\n
+                    if (this.isSavingBranch) return;\n
+                    this.showBranchModal = false;\n
+                    this.newBranchName = '';\n
+                    this.branchModalError = '';\n
+                },\n
+                async saveBranch() {\n
+                    this.branchModalError = '';\n
+                    if (!this.newBranchName) {\n
+                        this.branchModalError = 'Branch name is required.';\n
+                        return;\n
+                    }\n
+\n
+                    this.isSavingBranch = true;\n
+                    try {\n
+                        const response = await fetch(this.branchStoreUrl, {\n
+                            method: 'POST',\n
+                            headers: {\n
+                                'Accept': 'application/json',\n
+                                'Content-Type': 'application/json',\n
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '',\n
+                            },\n
+                            body: JSON.stringify({ name: this.newBranchName }),\n
+                        });\n
+\n
+                        const data = await response.json();\n
+                        if (!response.ok || !data?.ok || !data?.branch?.name) {\n
+                            this.branchModalError = data?.message ?? 'Unable to save branch.';\n
+                            return;\n
+                        }\n
+\n
+                        const branchSelect = document.getElementById(this.selectId);\n
+                        if (!branchSelect) {\n
+                            this.branchModalError = 'Unable to locate branch field.';\n
+                            return;\n
+                        }\n
+\n
+                        const existingOption = Array.from(branchSelect.options).find((option) => option.value === data.branch.name);\n
+                        if (!existingOption) {\n
+                            const option = new Option(data.branch.name, data.branch.name, true, true);\n
+                            branchSelect.add(option);\n
+                        } else {\n
+                            existingOption.selected = true;\n
+                        }\n
+                        branchSelect.dispatchEvent(new Event('change'));\n
+                        this.closeBranchModal();\n
+                    } catch (error) {\n
+                        this.branchModalError = 'Unable to save branch. Please try again.';\n
+                    } finally {\n
+                        this.isSavingBranch = false;\n
+                    }\n
+                },\n
+            };\n
+        }\n
+    </script>\n
+                            </div>\n
+                            <div class="sm:col-span-2">\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="lead_source">\n
+    Lead source *\n
+</label>\n
+                                <select id="lead_source" name="lead_source" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">\n
+                                    <option value="">ΓÇö Select source ΓÇö</option>\n
+                                                                            <option value="walk_in" >Walk-in</option>\n
+                                                                            <option value="field_visit" >Field visit</option>\n
+                                                                            <option value="referral" >Referral</option>\n
+                                                                            <option value="existing_client_referral" >Existing client referral</option>\n
+                                                                            <option value="social_media" >Social media</option>\n
+                                                                            <option value="website_portal" >Website / portal</option>\n
+                                                                            <option value="bulk_sms_campaign" >Bulk SMS campaign</option>\n
+                                                                            <option value="agent_marketer" >Agent / marketer</option>\n
+                                                                            <option value="other" >Other</option>\n
+                                                                    </select>\n
+                                                            </div>\n
+                        </div>\n
+                    </section>\n
+\n
+                    \n
+                    <section class="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">\n
+                        <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-4">Client activity / occupation</h2>\n
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">\n
+                            <div class="sm:col-span-2">\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="occupation">\n
+    Occupation / business activity (optional)\n
+</label>\n
+                                <input  class="border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 rounded-md shadow-sm mt-1 block w-full" id="occupation" name="occupation" type="text" placeholder="e.g. Runs a kiosk, teacher, rideshareΓÇª">\n
+                                                            </div>\n
+                            <div class="sm:col-span-2">\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="sector">\n
+    Sector / industry *\n
+</label>\n
+                                <select id="sector" name="sector" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">\n
+                                    <option value="">ΓÇö Select sector ΓÇö</option>\n
+                                                                            <option value="boda_transport" >Boda Boda / Transport</option>\n
+                                                                            <option value="retail_shop" >Retail Shop</option>\n
+                                                                            <option value="market_trader" >Market Trader</option>\n
+                                                                            <option value="salaried_employee" >Salaried Employee</option>\n
+                                                                            <option value="farmer_agribusiness" >Farmer / Agribusiness</option>\n
+                                                                            <option value="hospitality_food" >Hospitality / Food</option>\n
+                                                                            <option value="services" >Services</option>\n
+                                                                            <option value="student" >Student</option>\n
+                                                                            <option value="landlord_property" >Landlord / Property</option>\n
+                                                                            <option value="casual_worker" >Casual Worker</option>\n
+                                                                            <option value="other" >Other</option>\n
+                                                                    </select>\n
+                                                            </div>\n
+                        </div>\n
+                    </section>\n
+\n
+                    \n
+                    <section class="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">\n
+                        <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-4">Lead status &amp; follow-up</h2>\n
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">\n
+                            <div>\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="lead_status">\n
+    Lead status\n
+</label>\n
+                                <select id="lead_status" name="lead_status" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">\n
+                                                                            <option value="new" selected>New</option>\n
+                                                                            <option value="contacted" >Contacted</option>\n
+                                                                            <option value="qualified" >Qualified</option>\n
+                                                                            <option value="not_qualified" >Not qualified</option>\n
+                                                                            <option value="lost" >Lost</option>\n
+                                                                    </select>\n
+                                                            </div>\n
+                            <div>\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="follow_up_date">\n
+    Follow-up date (optional)\n
+</label>\n
+                                <input type="date" id="follow_up_date" name="follow_up_date" value="" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" />\n
+                                                            </div>\n
+                            <div class="sm:col-span-2">\n
+                                <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="follow_up_notes">\n
+    Follow-up notes (optional)\n
+</label>\n
+                                <textarea id="follow_up_notes" name="follow_up_notes" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Next step, callback window, product interestΓÇª"></textarea>\n
+                                                            </div>\n
+                        </div>\n
+                    </section>\n
+\n
+                    \n
+                    <section class="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">\n
+                        <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-4">Notes</h2>\n
+                        <label class="block font-medium text-sm text-gray-700 dark:text-gray-300" for="notes">\n
+    General notes (optional)\n
+</label>\n
+                        <textarea id="notes" name="notes" rows="4" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="Add quick notes about the lead, client activity, loan interest, referral details, or follow-up plan."></textarea>\n
+                                            </section>\n
+\n
+                    <div class="flex flex-wrap items-center gap-3 pt-1">\n
+                        <button type="submit" class="inline-flex items-center px-4 py-2 bg-gray-800 dark:bg-gray-200 border border-transparent rounded-md font-semibold text-xs text-white dark:text-gray-800 uppercase tracking-widest hover:bg-gray-700 dark:hover:bg-white focus:bg-gray-700 dark:focus:bg-white active:bg-gray-900 dark:active:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150">\n
+    Save lead\n
+</button>\n
+                    </div>\n
+                </form>\n
+            </div>\n
+\n
+            \n
+            <aside class="space-y-4 lg:sticky lg:top-4">\n
+                <div class="rounded-xl border border-teal-200 bg-teal-50/60 p-5 shadow-sm">\n
+                    <h3 class="text-sm font-semibold text-teal-900">Lead capture tips</h3>\n
+                    <ul class="mt-3 list-disc pl-4 space-y-2 text-xs text-teal-900/90 leading-relaxed">\n
+                        <li>Use the prospectΓÇÖs <strong>main mobile number</strong> whenever possible.</li>\n
+                        <li>Pick the <strong>closest matching source</strong>ΓÇöyou can refine later.</li>\n
+                        <li>Set a <strong>follow-up date</strong> when you owe a callback or visit.</li>\n
+                    </ul>\n
+                </div>\n
+                <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">\n
+                    <h3 class="text-sm font-semibold text-slate-800">Why phone matters</h3>\n
+                    <p class="mt-2 text-xs text-slate-600 leading-relaxed">\n
+                        The phone field powers duplicate detection today and will support SMS/WhatsApp outreach, activation campaigns, and matching when this lead becomes a full client.\n
+                    </p>\n
+                </div>\n
+                <div class="rounded-xl border border-amber-200 bg-amber-50/80 p-5 shadow-sm">\n
+                    <h3 class="text-sm font-semibold text-amber-950">Analytics</h3>\n
+                    <p class="mt-2 text-xs text-amber-950/90 leading-relaxed">\n
+                        This lead will be used in staff performance, conversion, and campaign reports. Source, officer, branch, sector, and dates are stored for MTD rollups and funnel metrics.\n
+                    </p>\n
+                    <p class="mt-3 text-[11px] text-amber-900/80 leading-relaxed border-t border-amber-200/80 pt-3">\n
+                        Structured capture fields are stored on the lead record (JSON) for reporting. Dedicated database columns can be added later if you need heavy SQL indexing on individual attributes.\n
+                    </p>\n
+                </div>\n
+            </aside>\n
+        </div>\n
+</div>\n
+                    </div>\n
+                </main>\n
+\n
+                <!-- Dedicated Footer (constant) -->\n
+                <footer class="mt-auto border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex-shrink-0">\n
+    <div class="w-full px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">\n
+        <p class="text-sm text-slate-500 dark:text-slate-400 text-center sm:text-left">\n
+            <a href="https://mathiasodhiambo.netlify.app/" target="_blank" rel="noopener noreferrer" class="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline transition-colors">\n
+            &copy; 2026 Loan Management System. All rights reserved.\n
+            </a>\n
+        </p>\n
+        <div class="flex flex-wrap items-center justify-center sm:justify-end gap-x-6 gap-y-2">\n
+                            <a href="http://localhost/loan/system-help/tickets" class="text-sm text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Support tickets</a>\n
+                                        <a href="http://localhost/loan/system-help/setup" class="text-sm text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">System setup</a>\n
+                                        <a href="http://localhost/privacy-policy" class="text-sm text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Privacy</a>\n
+                    </div>\n
+    </div>\n
+</footer>\n
+\n
+            </div>\n
+        </div>\n
+        <div id="global-print-surface" aria-hidden="true"></div>\n
+        <script>\n
+        (function () {\n
+            const SEARCH_DEBOUNCE_MS = 1100;\n
+\n
+            function wireAutoFilterForms(scopeRoot) {\n
+                const root = scopeRoot || document;\n
+                const forms = Array.from(root.querySelectorAll('form[method="get"]:not([data-auto-submit="off"])'));\n
+\n
+                forms.forEach(function (form) {\n
+                    if (form.dataset.autoSubmitBound === '1') return;\n
+                    form.dataset.autoSubmitBound = '1';\n
+\n
+                    const searchInputs = Array.from(form.querySelectorAll('input[name="q"], input[type="search"], input[data-auto-search="true"]'))\n
+                        .filter(function (input) { return !input.matches('[data-auto-submit="off"]'); });\n
+                    searchInputs.forEach(function (input) {\n
+                        input.addEventListener('input', function () {\n
+                            window.clearTimeout(input._autoSearchTimer);\n
+                            input._autoSearchTimer = window.setTimeout(function () { form.requestSubmit(); }, SEARCH_DEBOUNCE_MS);\n
+                        });\n
+                    });\n
+\n
+                    const autoControls = Array.from(form.querySelectorAll('select, input[type="date"], input[type="month"], input[type="number"], input[type="checkbox"], input[type="radio"]'))\n
+                        .filter(function (el) { return !el.matches('[data-auto-submit="off"]'); });\n
+                    autoControls.forEach(function (control) {\n
+                        control.addEventListener('change', function () { form.requestSubmit(); });\n
+                    });\n
+                });\n
+            }\n
+\n
+            function buildPrintSurface() {\n
+                const printSurface = document.getElementById('global-print-surface');\n
+                if (!printSurface) return;\n
+\n
+                const heading = document.querySelector('main h1');\n
+                const subtitle = document.querySelector('main h1 + p');\n
+                const tables = Array.from(document.querySelectorAll('main table'))\n
+                    .filter(function (table) { return table.offsetParent !== null; });\n
+                const logoImg = document.querySelector('.sidebar img, .navbar img, header img, img[alt*="logo" i], img[src*="logo" i]');\n
+\n
+                const titleText = heading ? heading.textContent.trim() : document.title;\n
+                const subtitleText = subtitle ? subtitle.textContent.trim() : '';\n
+                const generatedAt = new Date().toLocaleString();\n
+                const logoSrc = logoImg && logoImg.getAttribute('src')\n
+                    ? new URL(logoImg.getAttribute('src'), window.location.origin).href\n
+                    : '';\n
+                const year = new Date().getFullYear();\n
+                const companyName = "Laravel";\n
+                const contactLines = [\n
+                    "",\n
+                    "",\n
+                    "Nakuru, Kenya",\n
+                    ""                ].filter(Boolean);\n
+\n
+                let html = ''\n
+                    + '<div class="print-head">'\n
+                    + '<div class="print-head-grid">'\n
+                    + '<div class="print-head-left">'\n
+                    + '<div class="print-brand-wrap">'\n
+                    + (logoSrc !== '' ? '<img class="print-logo" src="' + logoSrc + '" alt="Logo">' : '')\n
+                    + '<div class="print-brand">' + (companyName || 'Gaitho Loans') + '</div>'\n
+                    + '</div>'\n
+                    + '<div class="print-title">' + (titleText || 'Report') + '</div>'\n
+                    + '<div class="print-meta">' + (subtitleText ? subtitleText + ' ┬╖ ' : '') + 'Generated: ' + generatedAt + '</div>'\n
+                    + '</div>'\n
+                    + '<div class="print-head-right">' + (contactLines.join('<br>') || 'Nakuru, Kenya') + '</div>'\n
+                    + '</div>'\n
+                    + '</div>';\n
+\n
+                if (tables.length === 0) {\n
+                    html += '<p>No table found on this page.</p>';\n
+                } else {\n
+                    tables.forEach(function (table, idx) {\n
+                        if (idx > 0) html += '<div style="height:10px"></div>';\n
+                        html += table.outerHTML;\n
+                    });\n
+                }\n
+\n
+                html += '<div class="print-footer">'\n
+                    + '<span>Copyright ┬⌐ ' + year + ' ' + (companyName || 'Gaitho Loans') + '. All rights reserved.</span>'\n
+                    + '<span>Generated by system print engine</span>'\n
+                    + '</div>';\n
+\n
+                printSurface.innerHTML = html;\n
+            }\n
+\n
+            function ensureGlobalPrintButton() {\n
+                const isDedicatedPrintPage = window.location.pathname.includes('/print');\n
+                const existing = document.getElementById('global-table-print-btn');\n
+\n
+                if (isDedicatedPrintPage) {\n
+                    if (existing) existing.remove();\n
+                    return;\n
+                }\n
+\n
+                if (existing) return;\n
+\n
+                const btn = document.createElement('button');\n
+                btn.id = 'global-table-print-btn';\n
+                btn.type = 'button';\n
+                btn.textContent = 'Print';\n
+                btn.setAttribute('aria-label', 'Print current page');\n
+                btn.style.position = 'fixed';\n
+                btn.style.right = '16px';\n
+                btn.style.bottom = '16px';\n
+                btn.style.zIndex = '60';\n
+                btn.style.padding = '10px 16px';\n
+                btn.style.borderRadius = '10px';\n
+                btn.style.border = '1px solid #cbd5e1';\n
+                btn.style.background = '#0f766e';\n
+                btn.style.color = '#ffffff';\n
+                btn.style.fontSize = '13px';\n
+                btn.style.fontWeight = '600';\n
+                btn.style.boxShadow = '0 6px 16px rgba(15, 23, 42, 0.18)';\n
+                btn.style.cursor = 'pointer';\n
+                btn.addEventListener('click', function () {\n
+                    buildPrintSurface();\n
+                    window.focus();\n
+                    setTimeout(function () { window.print(); }, 50);\n
+                });\n
+\n
+                document.body.appendChild(btn);\n
+            }\n
+\n
+            function ensureMobileTableScroll() {\n
+                const tables = Array.from(document.querySelectorAll('main table'));\n
+                tables.forEach(function (table) {\n
+                    const hasScrollableParent = table.closest('.overflow-x-auto, .mobile-table-scroll');\n
+                    if (!hasScrollableParent) {\n
+                        const wrapper = document.createElement('div');\n
+                        wrapper.className = 'mobile-table-scroll';\n
+                        table.parentNode.insertBefore(wrapper, table);\n
+                        wrapper.appendChild(table);\n
+                        return;\n
+                    }\n
+\n
+                    const scrollParent = table.closest('.overflow-x-auto');\n
+                    if (scrollParent && !scrollParent.classList.contains('mobile-table-scroll')) {\n
+                        scrollParent.classList.add('mobile-table-scroll');\n
+                    }\n
+                });\n
+            }\n
+\n
+            function ensureTableGridLines() {\n
+                const tables = Array.from(document.querySelectorAll('main table'));\n
+                tables.forEach(function (table) {\n
+                    table.classList.add('loan-grid-lines');\n
+                });\n
+            }\n
+\n
+            document.addEventListener('DOMContentLoaded', ensureGlobalPrintButton);\n
+            document.addEventListener('DOMContentLoaded', ensureMobileTableScroll);\n
+            document.addEventListener('DOMContentLoaded', ensureTableGridLines);\n
+            document.addEventListener('DOMContentLoaded', function () { wireAutoFilterForms(document); });\n
+            document.addEventListener('turbo:load', ensureGlobalPrintButton);\n
+            document.addEventListener('turbo:load', ensureMobileTableScroll);\n
+            document.addEventListener('turbo:load', ensureTableGridLines);\n
+            document.addEventListener('turbo:load', function () { wireAutoFilterForms(document); });\n
+            document.addEventListener('turbo:frame-load', function (event) { wireAutoFilterForms(event.target); });\n
+            document.addEventListener('livewire:navigated', ensureGlobalPrintButton);\n
+            document.addEventListener('livewire:navigated', ensureMobileTableScroll);\n
+            document.addEventListener('livewire:navigated', ensureTableGridLines);\n
+            document.addEventListener('livewire:navigated', function () { wireAutoFilterForms(document); });\n
+            document.addEventListener('alpine:navigated', ensureGlobalPrintButton);\n
+            document.addEventListener('alpine:navigated', ensureMobileTableScroll);\n
+            document.addEventListener('alpine:navigated', ensureTableGridLines);\n
+            document.addEventListener('alpine:navigated', function () { wireAutoFilterForms(document); });\n
+            window.addEventListener('popstate', ensureGlobalPrintButton);\n
+            window.addEventListener('popstate', ensureMobileTableScroll);\n
+            window.addEventListener('popstate', ensureTableGridLines);\n
+            window.addEventListener('popstate', function () { wireAutoFilterForms(document); });\n
+            window.addEventListener('beforeprint', buildPrintSurface);\n
+        })();\n
+        </script>\n
+    </body>\n
+</html>\n
+
+
+  To contain: Lead source & ownership
+
+  at tests\Feature\Loan\LeadCaptureVerificationTest.php:26
+     22Γûò 
+     23Γûò         $page = $this->get(route('loan.clients.leads.create'));
+     24Γûò         $page->assertOk();
+     25Γûò         $page->assertSee('Lead identity', false);
+  Γ₧£  26Γûò         $page->assertSee('Lead source & ownership', false);
+     27Γûò         $page->assertSee('Client activity / occupation', false);
+     28Γûò         $page->assertSee('Lead status & follow-up', false);
+     29Γûò         $page->assertSee('Notes', false);
+     30Γûò         $page->assertSee('Lead capture tips', false);
+
+
+  Tests:    1 failed (3 assertions)
+  Duration: 107.19s
+

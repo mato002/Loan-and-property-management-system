@@ -80,15 +80,16 @@ class LoanPortfolioAccessTest extends TestCase
         $response->assertDontSee($otherPayment->reference);
     }
 
-    public function test_manager_can_see_all_clients(): void
+    public function test_admin_can_see_all_clients(): void
     {
-        [$managerUser, $managerEmployee] = $this->createLoanUserWithEmployee('manager@example.test', 'manager');
+        // Cross-portfolio visibility is granted to loan admin (and super-admin), not to the manager role alone.
+        [$adminUser, $adminEmployee] = $this->createLoanUserWithEmployee('loan-admin-portfolio@example.test', 'admin');
         [, $otherEmployee] = $this->createLoanUserWithEmployee('officer3@example.test', 'officer');
 
-        $ownClient = LoanClient::query()->create($this->clientPayload($managerEmployee, 'CL-MGR-001', 'Manager'));
+        $ownClient = LoanClient::query()->create($this->clientPayload($adminEmployee, 'CL-MGR-001', 'Manager'));
         $otherClient = LoanClient::query()->create($this->clientPayload($otherEmployee, 'CL-OTH-003', 'Other'));
 
-        $response = $this->actingAs($managerUser)->get(route('loan.clients.index'));
+        $response = $this->actingAs($adminUser)->get(route('loan.clients.index'));
 
         $response->assertOk();
         $response->assertSee($ownClient->full_name);
@@ -126,12 +127,14 @@ class LoanPortfolioAccessTest extends TestCase
      */
     private function clientPayload(Employee $employee, string $clientNumber, string $firstName): array
     {
+        $uniqueTail = str_pad((string) $employee->id, 6, '0', STR_PAD_LEFT).substr(str_pad((string) crc32($clientNumber), 10, '0', STR_PAD_LEFT), 0, 3);
+
         return [
             'client_number' => $clientNumber,
             'kind' => LoanClient::KIND_CLIENT,
             'first_name' => $firstName,
             'last_name' => 'Client',
-            'phone' => '0700000000',
+            'phone' => '2547'.$uniqueTail,
             'email' => strtolower($clientNumber).'@example.test',
             'assigned_employee_id' => $employee->id,
             'client_status' => 'active',

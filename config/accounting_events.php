@@ -82,6 +82,16 @@ return [
             'requires_approval' => true,
             'active' => true,
         ],
+        'WalletAdjustment' => [
+            'event_key' => 'WalletAdjustment',
+            'event_name' => 'Wallet Adjustment',
+            'description' => 'Manual debit or credit to a client wallet, offset to an expense or clearing (asset) account',
+            'debit_slot' => 'client_wallet_liability_account',
+            'credit_slot' => 'adjustment_account',
+            'risk_level' => 'high',
+            'requires_approval' => true,
+            'active' => true,
+        ],
         'ExpensePaid' => [
             'event_key' => 'ExpensePaid',
             'event_name' => 'Expense Paid',

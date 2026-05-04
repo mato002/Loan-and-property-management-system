@@ -12,24 +12,46 @@ use App\Models\LoanClient;
 use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanProduct;
 use App\Models\PmInvoice;
+use App\Models\User;
 use App\Services\LoanBook\BorrowerClassificationService;
+use App\Services\LoanClientIdentifierNormalizer;
+use App\Services\LoanClientPortalMatchService;
+use App\Services\LoanSettingsApplicationFormConfigService;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class LoanBookApplicationsController extends Controller
 {
     use ScopesLoanPortfolioAccess;
 
-    public function __construct(private readonly BorrowerClassificationService $borrowerClassifier)
-    {
-    }
+    /**
+     * Text-based dynamic application fields (phase 1 — no file types).
+     *
+     * @var list<string>
+     */
+    private const DYNAMIC_TEXT_FORM_DATA_TYPES = [
+        LoanFormFieldDefinition::TYPE_ALPHANUMERIC,
+        LoanFormFieldDefinition::TYPE_NUMBER,
+        LoanFormFieldDefinition::TYPE_MONEY,
+        LoanFormFieldDefinition::TYPE_SELECT,
+        LoanFormFieldDefinition::TYPE_LONG_TEXT,
+    ];
+
+    public function __construct(
+        private readonly BorrowerClassificationService $borrowerClassifier,
+        private readonly LoanClientPortalMatchService $portalClientMatch,
+        private readonly LoanClientIdentifierNormalizer $clientIdentifierNormalizer,
+        private readonly LoanSettingsApplicationFormConfigService $loanApplicationFormConfig,
+    ) {}
 
     public function index(Request $request)
     {
@@ -378,6 +400,8 @@ class LoanBookApplicationsController extends Controller
             'productMetaByName' => $this->productMetaByName(),
             'branchOptions' => $this->branchOptions(),
             'loanFormMappedFields' => $this->clientLoanMappedFields(),
+            'productFieldConfig' => $this->productFieldConfigForCreate($defaultProductName),
+            'dynamicLoanApplicationFields' => $this->dynamicLoanApplicationTextFields(),
             'draftApplication' => $draftApplication,
             'pendingDrafts' => $pendingDrafts,
         ]);
@@ -393,23 +417,7 @@ class LoanBookApplicationsController extends Controller
                 ]);
         }
 
-        $validated = $request->validate([
-            'draft_id' => ['nullable', 'integer', 'exists:loan_book_applications,id'],
-            'save_as_draft' => ['nullable', 'boolean'],
-            'loan_client_id' => ['required', 'exists:loan_clients,id'],
-            'product_name' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('product_name')), 'nullable', 'string', 'max:160'],
-            'amount_requested' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('amount_requested')), 'nullable', 'numeric', 'min:0'],
-            'term_value' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('term_value')), 'nullable', 'integer', 'min:1', 'max:3660'],
-            'term_unit' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('term_unit')), 'nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
-            'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
-            'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
-            'interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
-            'purpose' => ['nullable', 'string', 'max:2000'],
-            'stage' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('stage')), 'nullable', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
-            'branch' => ['nullable', 'string', 'max:120'],
-            'notes' => ['nullable', 'string', 'max:5000'],
-            'suspense_payment_id' => ['nullable', 'integer', 'exists:loan_book_payments,id'],
-        ]);
+        $validated = $request->validate($this->applicationCreateValidationRules($request));
         $validated['submission_source'] = 'manual_internal';
         $validated['product_name'] = trim((string) ($validated['product_name'] ?? ''));
         $validated['amount_requested'] = (float) ($validated['amount_requested'] ?? 0);
@@ -424,10 +432,16 @@ class LoanBookApplicationsController extends Controller
         $validated['term_unit'] = $termUnit;
         $validated['term_months'] = $this->scheduleToMonths($termValue, $termUnit);
         $validated['interest_rate_period'] = $validated['interest_rate_period'] ?? 'annual';
-        $validated['form_meta'] = [];
         $saveAsDraft = $request->boolean('save_as_draft');
         $draftId = (int) ($validated['draft_id'] ?? 0);
         $suspensePaymentId = (int) ($validated['suspense_payment_id'] ?? 0);
+
+        $dynamicFormMetaPersist = $this->mergeDynamicFormMetaForStore(
+            (array) ($validated['form_meta'] ?? []),
+            $draftId,
+            $request->user()
+        );
+        unset($validated['form_meta']);
 
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
         $classification = $this->borrowerClassifier->classify($client, (float) $validated['amount_requested']);
@@ -488,7 +502,14 @@ class LoanBookApplicationsController extends Controller
 
         $validated['submitted_at'] = now();
         $validated['submission_source'] = 'manual_internal';
-        $validated['form_meta'] = array_merge((array) ($validated['form_meta'] ?? []), [
+        $preservedOriginatorUserId = null;
+        if ($draftId > 0) {
+            $preservedOriginatorUserId = data_get(
+                LoanBookApplication::query()->find($draftId)?->form_meta,
+                'application_originator_user_id'
+            );
+        }
+        $validated['form_meta'] = array_merge($dynamicFormMetaPersist, [
             'fee_fulfillment_status' => $feeCovered ? 'fulfilled' : 'pending',
             'fee_required_total' => round($requiredFeeAmount, 2),
             'fee_required_breakdown' => $feeSnapshot['charges'] ?? [],
@@ -499,6 +520,7 @@ class LoanBookApplicationsController extends Controller
             'borrower_classification' => $validated['classification_reason_json'],
             'borrower_category' => $validated['borrower_category'],
             'classification_override_required' => in_array('requested_amount_above_suggested_limit', (array) ($decision['warnings'] ?? []), true),
+            'application_originator_user_id' => $preservedOriginatorUserId ?? $request->user()?->id,
         ]);
 
         DB::transaction(function () use (&$validated, $selectedPayment, $request): void {
@@ -514,8 +536,7 @@ class LoanBookApplicationsController extends Controller
                 }
             }
             if (! $application) {
-                $next = (LoanBookApplication::query()->max('id') ?? 0) + 1;
-                $validated['reference'] = 'APP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+                $validated['reference'] = LoanBookApplication::allocateUniqueReference();
                 $application = LoanBookApplication::query()->create($validated);
             }
 
@@ -693,15 +714,15 @@ class LoanBookApplicationsController extends Controller
 
         $validated = $request->validate([
             'loan_client_id' => ['required', 'exists:loan_clients,id'],
-            'product_name' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('product_name')), 'nullable', 'string', 'max:160'],
-            'amount_requested' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('amount_requested')), 'nullable', 'numeric', 'min:0'],
-            'term_value' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('term_value')), 'nullable', 'integer', 'min:1', 'max:3660'],
-            'term_unit' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('term_unit')), 'nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
+            'product_name' => [Rule::requiredIf($this->isMappedFieldEnabled('product_name')), 'nullable', 'string', 'max:160'],
+            'amount_requested' => [Rule::requiredIf($this->isMappedFieldEnabled('amount_requested')), 'nullable', 'numeric', 'min:0'],
+            'term_value' => [Rule::requiredIf($this->isMappedFieldEnabled('term_value')), 'nullable', 'integer', 'min:1', 'max:3660'],
+            'term_unit' => [Rule::requiredIf($this->isMappedFieldEnabled('term_unit')), 'nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
             'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
             'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
             'interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
             'purpose' => ['nullable', 'string', 'max:2000'],
-            'stage' => [\Illuminate\Validation\Rule::requiredIf($this->isMappedFieldEnabled('stage')), 'nullable', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
+            'stage' => [Rule::requiredIf($this->isMappedFieldEnabled('stage')), 'nullable', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
             'branch' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
@@ -757,6 +778,20 @@ class LoanBookApplicationsController extends Controller
                     'loan_client_id' => $this->borrowerBlockingMessage($decision),
                 ])
                 ->withInput();
+        }
+
+        if ((string) $validated['stage'] === LoanBookApplication::STAGE_APPROVED) {
+            $approvalErr = $this->assertUserMayApproveApplicationRequest(
+                $request,
+                $loan_book_application,
+                (string) ($decision['approval_level_required'] ?? 'standard')
+            );
+            if ($approvalErr !== null) {
+                return redirect()
+                    ->back()
+                    ->withErrors(['stage' => $approvalErr])
+                    ->withInput();
+            }
         }
 
         $validated['borrower_category'] = (string) ($decision['borrower_category'] ?? 'repeat_normal');
@@ -828,6 +863,16 @@ class LoanBookApplicationsController extends Controller
                     ->back()
                     ->withErrors(['stage' => $this->borrowerBlockingMessage($decision)]);
             }
+            $approvalErr = $this->assertUserMayApproveApplicationRequest(
+                $request,
+                $loan_book_application,
+                (string) ($decision['approval_level_required'] ?? 'standard')
+            );
+            if ($approvalErr !== null) {
+                return redirect()
+                    ->back()
+                    ->withErrors(['stage' => $approvalErr]);
+            }
         }
 
         $loan_book_application->update(['stage' => $validated['stage']]);
@@ -838,7 +883,7 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
-     * @return array<string, array{label:string,data_type:string,field_key:string,select_options:list<string>}>
+     * @return array<string, array{label:string,data_type:string,field_key:string,select_options:list<string>,is_core:bool}>
      */
     private function clientLoanMappedFields(): array
     {
@@ -870,6 +915,7 @@ class LoanBookApplicationsController extends Controller
                     'data_type' => (string) $field->data_type,
                     'field_key' => (string) $field->field_key,
                     'select_options' => $this->splitSelectOptions((string) ($field->select_options ?? '')),
+                    'is_core' => (bool) $field->is_core,
                 ];
             }
         }
@@ -878,7 +924,247 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, LoanFormFieldDefinition>
+     * @return array<string, list<array{field_key:string,label:string,data_type:string,is_included:bool,is_required:bool,is_core:bool}>>
+     */
+    private function productFieldConfigForCreate(?string $defaultProductName = null): array
+    {
+        $global = $this->loanApplicationFormConfig->simplifiedConsumerFieldRows(null);
+        $out = ['__global__' => $global];
+
+        if (! Schema::hasTable('loan_products')) {
+            return $out;
+        }
+
+        foreach ($this->productOptions($defaultProductName) as $name) {
+            $id = LoanProduct::query()->where('name', $name)->value('id');
+            $out[$name] = $this->loanApplicationFormConfig->simplifiedConsumerFieldRows($id ? (int) $id : null);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, string> field_key => request input name
+     */
+    private function mappedFieldKeyToRequestKey(): array
+    {
+        $map = [];
+        foreach ($this->clientLoanMappedFields() as $requestKey => $meta) {
+            $map[(string) $meta['field_key']] = (string) $requestKey;
+        }
+
+        return $map;
+    }
+
+    /**
+     * @return array<string, list<\Illuminate\Contracts\Validation\ValidationRule|string>>
+     */
+    private function applicationCreateValidationRules(Request $request): array
+    {
+        $rules = [
+            'draft_id' => ['nullable', 'integer', 'exists:loan_book_applications,id'],
+            'save_as_draft' => ['nullable', 'boolean'],
+            'loan_client_id' => ['required', 'exists:loan_clients,id'],
+            'term_months' => ['nullable', 'integer', 'min:1', 'max:600'],
+            'suspense_payment_id' => ['nullable', 'integer', 'exists:loan_book_payments,id'],
+        ];
+
+        $trimProduct = trim((string) $request->input('product_name', ''));
+        $productId = Schema::hasTable('loan_products') && $trimProduct !== ''
+            ? (int) (LoanProduct::query()->where('name', $trimProduct)->value('id') ?? 0)
+            : 0;
+        $effectiveRows = $this->loanApplicationFormConfig->effectiveApplicationFieldsForConsumer($productId > 0 ? $productId : null);
+        $byFieldKey = [];
+        foreach ($effectiveRows as $row) {
+            $byFieldKey[(string) $row['field_key']] = $row;
+        }
+
+        $fieldKeyToRequestKey = $this->mappedFieldKeyToRequestKey();
+
+        foreach ($fieldKeyToRequestKey as $fieldKey => $requestKey) {
+            $row = $byFieldKey[$fieldKey] ?? null;
+            if ($row === null) {
+                continue;
+            }
+            $included = (bool) ($row['included'] ?? false) || (bool) ($row['is_core'] ?? false);
+            $needsRequired = $included && (bool) ($row['is_required'] ?? false);
+            $presence = $needsRequired ? 'required' : 'nullable';
+
+            if (! $included) {
+                $rules[$requestKey] = match ($requestKey) {
+                    'product_name' => ['nullable', 'string', 'max:160'],
+                    'amount_requested' => ['nullable', 'numeric', 'min:0'],
+                    'term_value' => ['nullable', 'integer', 'min:1', 'max:3660'],
+                    'term_unit' => ['nullable', 'string', 'in:'.implode(',', $this->termUnitOptions())],
+                    'interest_rate' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+                    'interest_rate_period' => ['nullable', 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
+                    'purpose' => ['nullable', 'string', 'max:2000'],
+                    'notes' => ['nullable', 'string', 'max:5000'],
+                    'stage' => ['nullable', 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
+                    'branch' => ['nullable', 'string', 'max:120'],
+                    default => ['nullable', 'string', 'max:5000'],
+                };
+
+                continue;
+            }
+
+            $rules[$requestKey] = match ($requestKey) {
+                'product_name' => [$presence, 'string', 'max:160'],
+                'amount_requested' => [$presence, 'numeric', 'min:0'],
+                'term_value' => [$presence, 'integer', 'min:1', 'max:3660'],
+                'term_unit' => [$presence, 'string', 'in:'.implode(',', $this->termUnitOptions())],
+                'interest_rate' => [$presence, 'numeric', 'min:0', 'max:1000'],
+                'interest_rate_period' => [$presence, 'string', 'in:'.implode(',', $this->interestRatePeriodOptions())],
+                'purpose' => [$presence, 'string', 'max:2000'],
+                'notes' => [$presence, 'string', 'max:5000'],
+                'stage' => [$presence, 'string', 'in:'.implode(',', array_keys($this->stageOptions()))],
+                'branch' => [$presence, 'string', 'max:120'],
+                default => ['nullable', 'string', 'max:5000'],
+            };
+        }
+
+        return array_merge($rules, $this->applicationDynamicFormMetaRules($byFieldKey));
+    }
+
+    /**
+     * Validation rules for {@see LoanBookApplication::$form_meta} keys driven by text dynamic definitions.
+     *
+     * @param  array<string, array<string, mixed>>  $byFieldKey
+     * @return array<string, list<\Illuminate\Contracts\Validation\ValidationRule|string>>
+     */
+    private function applicationDynamicFormMetaRules(array $byFieldKey): array
+    {
+        $rules = [
+            'form_meta' => ['nullable', 'array'],
+        ];
+
+        foreach ($this->dynamicLoanApplicationTextFields() as $definition) {
+            $fieldKey = (string) $definition->field_key;
+            $row = $byFieldKey[$fieldKey] ?? null;
+            $included = $row ? ((bool) ($row['included'] ?? false) || (bool) ($row['is_core'] ?? false)) : true;
+            $needsRequired = $included && $row && (bool) ($row['is_required'] ?? false);
+            $presence = $needsRequired ? 'required' : 'nullable';
+
+            $path = 'form_meta.'.$fieldKey;
+
+            if (! $included) {
+                $rules[$path] = match ($definition->data_type) {
+                    LoanFormFieldDefinition::TYPE_NUMBER, LoanFormFieldDefinition::TYPE_MONEY => ['nullable', 'numeric'],
+                    LoanFormFieldDefinition::TYPE_LONG_TEXT => ['nullable', 'string', 'max:5000'],
+                    LoanFormFieldDefinition::TYPE_SELECT => ['nullable', 'string', 'max:255'],
+                    default => ['nullable', 'string', 'max:255'],
+                };
+
+                continue;
+            }
+
+            $rules[$path] = match ($definition->data_type) {
+                LoanFormFieldDefinition::TYPE_MONEY => [$presence, 'numeric', 'min:0'],
+                LoanFormFieldDefinition::TYPE_NUMBER => [$presence, 'numeric'],
+                LoanFormFieldDefinition::TYPE_LONG_TEXT => [$presence, 'string', 'max:5000'],
+                LoanFormFieldDefinition::TYPE_SELECT => $this->dynamicSelectFormMetaRules($presence, $definition),
+                default => [$presence, 'string', 'max:255'],
+            };
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return list<\Illuminate\Contracts\Validation\ValidationRule|string>
+     */
+    private function dynamicSelectFormMetaRules(string $presence, LoanFormFieldDefinition $definition): array
+    {
+        $opts = $this->splitSelectOptions((string) ($definition->select_options ?? ''));
+
+        if ($opts === []) {
+            return [$presence, 'string', 'max:255'];
+        }
+
+        return array_merge([$presence, 'string'], [Rule::in($opts)]);
+    }
+
+    /**
+     * @return Collection<int, LoanFormFieldDefinition>
+     */
+    private function dynamicLoanApplicationTextFields(): Collection
+    {
+        $reserved = array_flip($this->reservedLoanApplicationFieldKeys());
+
+        return $this->clientLoanFormDefinitions()
+            ->filter(function (LoanFormFieldDefinition $field) use ($reserved): bool {
+                if (isset($reserved[$field->field_key])) {
+                    return false;
+                }
+
+                return in_array((string) $field->data_type, self::DYNAMIC_TEXT_FORM_DATA_TYPES, true);
+            })
+            ->values();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function reservedLoanApplicationFieldKeys(): array
+    {
+        $keys = [];
+        foreach ($this->clientLoanMappedFields() as $meta) {
+            $keys[] = (string) $meta['field_key'];
+        }
+
+        return array_values(array_unique($keys));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function dynamicLoanApplicationTextFieldKeys(): array
+    {
+        return $this->dynamicLoanApplicationTextFields()
+            ->pluck('field_key')
+            ->map(fn ($k): string => (string) $k)
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mergeDynamicFormMetaForStore(array $validatedFormMeta, int $draftId, ?User $user): array
+    {
+        $keys = $this->dynamicLoanApplicationTextFieldKeys();
+        if ($keys === []) {
+            return [];
+        }
+
+        $flip = array_flip($keys);
+        $prior = [];
+        if ($draftId > 0) {
+            $draft = LoanBookApplication::query()->with('loanClient')->find($draftId);
+            if ($draft && $draft->loanClient) {
+                $this->ensureLoanClientOwner($draft->loanClient, $user);
+                $prior = (array) ($draft->form_meta ?? []);
+            }
+        }
+
+        $strippedPrior = array_diff_key($prior, $flip);
+        $fromValidated = array_intersect_key($validatedFormMeta, $flip);
+        $clean = [];
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $fromValidated)) {
+                continue;
+            }
+            $value = $fromValidated[$key];
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $clean[$key] = is_scalar($value) ? $value : (string) $value;
+        }
+
+        return array_merge($strippedPrior, $clean);
+    }
+
+    /**
+     * @return Collection<int, LoanFormFieldDefinition>
      */
     private function clientLoanFormDefinitions()
     {
@@ -995,11 +1281,11 @@ class LoanBookApplicationsController extends Controller
     /**
      * @return array<string, array{
      *     default_interest_rate: ?float,
- *     default_interest_rate_type: string,
+     *     default_interest_rate_type: string,
      *     default_term_months: ?int,
      *     default_term_unit: string,
- *     default_interest_rate_period: string,
- *     charges_summary: string
+     *     default_interest_rate_period: string,
+     *     charges_summary: string
      * }>
      */
     private function productMetaByName(): array
@@ -1104,7 +1390,7 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, LoanBookPayment>
+     * @return Collection<int, LoanBookPayment>
      */
     private function eligibleSuspensePaymentsForClient(LoanClient $client, int $draftId = 0)
     {
@@ -1243,18 +1529,21 @@ class LoanBookApplicationsController extends Controller
         }
 
         $email = trim((string) ($user->email ?? ''));
-        $phone = '';
+        $email = $email !== '' ? strtolower($email) : null;
+
+        $phone = null;
         if (Schema::hasColumn('users', 'phone')) {
-            $phone = trim((string) ($user->phone ?? ''));
+            $rawPhone = trim((string) ($user->phone ?? ''));
+            $phone = $rawPhone !== '' ? $this->clientIdentifierNormalizer->normalizePhone($rawPhone) : null;
         }
 
-        $existing = null;
-        if ($email !== '') {
-            $existing = LoanClient::query()->clients()->where('email', $email)->first();
+        $idNumber = null;
+        if ($role === 'tenant') {
+            $nid = trim((string) ($user->pmTenantProfile?->national_id ?? ''));
+            $idNumber = $nid !== '' ? $nid : null;
         }
-        if (! $existing && $phone !== '') {
-            $existing = LoanClient::query()->clients()->where('phone', $phone)->first();
-        }
+
+        $existing = $this->portalClientMatch->findExistingClientForPortal($idNumber, $phone, $email);
         if ($existing) {
             return (int) $existing->id;
         }
@@ -1264,7 +1553,7 @@ class LoanBookApplicationsController extends Controller
         $firstName = trim((string) ($parts[0] ?? 'Portal'));
         $lastName = trim((string) (count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : ucfirst($role)));
 
-        $seed = $email !== '' ? Str::lower($email) : ('u'.$user->id);
+        $seed = $email !== null ? Str::lower($email) : ('u'.$user->id);
         $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.$seed), 0, 8));
         while (LoanClient::query()->where('client_number', $clientNumber)->exists()) {
             $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.$seed.'|'.Str::random(6)), 0, 8));
@@ -1275,10 +1564,13 @@ class LoanBookApplicationsController extends Controller
             'kind' => LoanClient::KIND_CLIENT,
             'first_name' => $firstName !== '' ? $firstName : 'Portal',
             'last_name' => $lastName !== '' ? $lastName : ucfirst($role),
-            'phone' => $phone !== '' ? $phone : null,
-            'email' => $email !== '' ? $email : null,
+            'phone' => $phone,
+            'email' => $email,
+            'id_number' => $idNumber,
             'client_status' => 'active',
             'notes' => 'Auto-created from '.$role.' portal handoff.',
+            'created_by' => $user->id,
+            'source_channel' => LoanClient::SOURCE_PORTAL,
         ]);
 
         return (int) $client->id;
@@ -1303,6 +1595,62 @@ class LoanBookApplicationsController extends Controller
             ->value('arrears') ?? 0.0);
 
         return $arrears > 0;
+    }
+
+    /**
+     * Enforces loan approval rank and "no self-approval" when moving an application to {@see LoanBookApplication::STAGE_APPROVED}.
+     *
+     * @param  string  $approvalLevelRequired  Value from classifier: standard, manager, director, or blocked.
+     */
+    private function assertUserMayApproveApplicationRequest(Request $request, LoanBookApplication $application, string $approvalLevelRequired): ?string
+    {
+        $user = $request->user();
+        if (! $user instanceof User) {
+            return 'You must be signed in to approve an application.';
+        }
+
+        if (($user->is_super_admin ?? false) === true) {
+            return null;
+        }
+
+        $level = strtolower(trim($approvalLevelRequired));
+        if (! in_array($level, ['standard', 'manager', 'director', 'blocked'], true)) {
+            $level = 'standard';
+        }
+
+        if ($level === 'blocked') {
+            return 'This application is classified as blocked at the approval level and cannot be moved to approved.';
+        }
+
+        $originatorId = data_get($application->form_meta, 'application_originator_user_id');
+        if ($originatorId !== null && $originatorId !== '' && (int) $originatorId === (int) $user->id) {
+            return 'You cannot approve an application that you created or originated. A different authorised officer must approve this file.';
+        }
+
+        $role = strtolower(trim((string) $user->effectiveLoanRole()));
+        if (! $this->userSatisfiesLoanApprovalLevel($user, $role, $level)) {
+            return match ($level) {
+                'director' => 'This application requires director-level sign-off. Only an administrator-level loan role may approve it.',
+                'manager' => 'This application requires manager-level sign-off or higher. Your current loan role does not meet that threshold.',
+                default => 'You do not have sufficient loan authority to approve this application.',
+            };
+        }
+
+        return null;
+    }
+
+    private function userSatisfiesLoanApprovalLevel(User $user, string $effectiveRole, string $requiredLevel): bool
+    {
+        $r = strtolower(trim($effectiveRole));
+
+        return match ($requiredLevel) {
+            'director' => in_array($r, ['admin'], true),
+            'manager' => in_array($r, ['manager', 'admin'], true),
+            'standard' => $r === ''
+                ? $user->isModuleApproved('loan')
+                : ! in_array($r, ['applicant'], true),
+            default => true,
+        };
     }
 
     private function stageTransitionError(LoanBookApplication $application, string $nextStage): ?string
@@ -1351,5 +1699,4 @@ class LoanBookApplicationsController extends Controller
             $reasons
         ));
     }
-
 }

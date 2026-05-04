@@ -208,7 +208,8 @@
                     'links' => [
                         ['label' => 'M-Pesa platform', 'route' => 'loan.financial.mpesa_platform'],
                         ['label' => 'M-Pesa payouts', 'route' => 'loan.financial.mpesa_payouts'],
-                        ['label' => 'Account balances', 'route' => 'loan.financial.account_balances'],
+                        ['label' => 'Client wallets', 'route' => 'loan.financial.account_balances'],
+                        ['label' => 'Control accounts', 'route' => 'loan.financial.control_accounts'],
                         ['label' => 'Teller operations', 'route' => 'loan.financial.teller_operations'],
                         ['label' => 'Investment packages', 'route' => 'loan.financial.investment_packages'],
                         ['label' => 'Investors list', 'route' => 'loan.financial.investors_list'],

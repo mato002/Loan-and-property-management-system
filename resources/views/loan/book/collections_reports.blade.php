@@ -1,6 +1,7 @@
 @php
     $fmtKes = fn (float|int $n) => 'KES '.number_format((float) $n, 0);
     $fmtPct = fn (float|int $n) => number_format((float) $n, 1).'%';
+    $fmtPp = fn (float|int $n) => (number_format((float) $n, 1)).' pp';
 
     $today = now();
     $isAtRisk = ($liquidityFloorStatus ?? 'HEALTHY') === 'AT RISK';
@@ -18,7 +19,47 @@
     $mixGradient = empty($mixStops) ? '#e2e8f0 0% 100%' : implode(', ', $mixStops);
 
     $cashflowRoute = \Illuminate\Support\Facades\Route::has('loan.accounting.cashflow') ? route('loan.accounting.cashflow') : '#';
-    $lendingCapacityRoute = '#';
+    $cashflowDetailRoute = \Illuminate\Support\Facades\Route::has('loan.accounting.cashflow')
+        ? route('loan.accounting.cashflow', ['from' => $today->copy()->startOfMonth()->toDateString(), 'to' => $today->toDateString()])
+        : '#';
+    $lendingCapacityRoute = $lendingCapacityRoute ?? route('loan.book.disbursements.index');
+
+    $spark = $efficiencySparkline ?? [];
+    $effPoly = '';
+    $nSpark = count($spark);
+    foreach ($spark as $index => $value) {
+        $x = $nSpark > 1 ? ($index / ($nSpark - 1)) * 116 + 2 : 2;
+        $y = 26 - ((float) $value / 100) * 22;
+        $effPoly .= number_format($x, 2).','.number_format($y, 2).' ';
+    }
+    if (trim($effPoly) === '') {
+        $effPoly = '2,24 118,24';
+    }
+
+    $m = $metrics ?? [];
+    $dEff = $m['efficiency_change_pp'] ?? null;
+    $effBadgeText = $dEff === null ? 'No prior target compare' : (($dEff >= 0 ? '+' : '').$fmtPp($dEff).' vs yesterday');
+    $effBadgeClass = $dEff === null ? 'text-slate-500' : ($dEff >= 0 ? 'text-emerald-700' : 'text-rose-700');
+
+    $dCy = $m['current_yield_change_pp'] ?? null;
+    $cyBadgeText = $dCy === null ? 'No prior compare' : (($dCy >= 0 ? '+' : '').$fmtPp($dCy).' vs prior day');
+    $cyBadgeClass = $dCy === null ? 'text-slate-500' : ($dCy >= 0 ? 'text-emerald-700' : 'text-rose-700');
+
+    $arr = (float) ($m['arrears_recovery_yield'] ?? 0);
+    $pre = (float) ($m['prepayment_yield'] ?? 0);
+    $arrBadge = $arr > max(1.0, $pre * 1.25) ? 'Priority' : ($arr > 0 ? 'Active' : 'Quiet');
+    $arrBadgeClass = $arr > max(1.0, $pre * 1.25) ? 'text-orange-600' : ($arr > 0 ? 'text-orange-600' : 'text-slate-500');
+
+    $preBadge = $pre > 0 ? 'Active' : 'Quiet';
+    $preBadgeClass = $pre > 0 ? 'text-emerald-700' : 'text-slate-500';
+
+    $yg = (float) ($m['yield_gap'] ?? 0);
+    $hasTarget = (bool) ($hasCollectionTarget ?? false);
+    $gapBadge = ! $hasTarget ? 'No target' : ($yg < 1 ? 'On target' : 'Behind target');
+    $gapBadgeClass = ! $hasTarget ? 'text-slate-500' : ($yg < 1 ? 'text-emerald-700' : 'text-rose-600');
+
+    $exportQuery = array_merge(request()->query(), ['export' => 'csv']);
+    $exportHref = route('loan.book.collections_reports', $exportQuery);
 @endphp
 
 <x-loan-layout>
@@ -39,7 +80,7 @@
                         @endforeach
                     </select>
                 </form>
-                <a href="#" class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-semibold text-blue-700 hover:bg-blue-100 transition-colors">
+                <a href="{{ $exportHref }}" class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-semibold text-blue-700 hover:bg-blue-100 transition-colors">
                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 16V4m0 12l-4-4m4 4l4-4M4 20h16" />
                     </svg>
@@ -71,46 +112,52 @@
                 <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-start justify-between gap-2">
                         <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Collection Efficiency Ratio</p>
-                        <span class="text-xs font-semibold text-emerald-700">+2.1% vs yesterday</span>
+                        <span class="text-xs font-semibold {{ $effBadgeClass }}">{{ $effBadgeText }}</span>
                     </div>
-                    <p class="mt-2 text-2xl font-bold text-[#0f3d3e]">{{ $fmtPct($metrics['collection_efficiency'] ?? 0) }}</p>
-                    <p class="mt-1 text-xs text-slate-500">({{ $fmtKes($metrics['total_collected'] ?? 0) }} / {{ $fmtKes($metrics['total_expected'] ?? 0) }})</p>
+                    <p class="mt-2 text-2xl font-bold text-[#0f3d3e]">
+                        @if (($metrics['collection_efficiency'] ?? null) === null)
+                            <span class="text-slate-500">—</span>
+                        @else
+                            {{ $fmtPct($metrics['collection_efficiency']) }}
+                        @endif
+                    </p>
+                    <p class="mt-1 text-xs text-slate-500">({{ $fmtKes($metrics['total_collected'] ?? 0) }} / {{ $fmtKes($metrics['total_expected'] ?? 0) }}) prorated daily target</p>
                     <svg viewBox="0 0 120 30" class="mt-3 h-8 w-full text-[#0f766e]" fill="none">
-                        <polyline points="2,24 18,22 34,20 50,18 66,16 82,14 98,12 118,9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                        <polyline points="{{ trim($effPoly) }}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                 </article>
 
                 <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-start justify-between gap-2">
                         <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Current Yield (Yesterday)</p>
-                        <span class="text-xs font-semibold text-emerald-700">+3.4%</span>
+                        <span class="text-xs font-semibold {{ $cyBadgeClass }}">{{ $cyBadgeText }}</span>
                     </div>
                     <p class="mt-2 text-2xl font-bold text-slate-900">{{ $fmtKes($metrics['current_yield'] ?? 0) }}</p>
-                    <p class="mt-1 text-xs text-slate-500">Collected against yesterday due bucket</p>
+                    <p class="mt-1 text-xs text-slate-500">Collection sheet lines posted yesterday</p>
                 </article>
 
                 <article class="rounded-xl border border-orange-200 bg-white p-4 shadow-sm">
                     <div class="flex items-start justify-between gap-2">
                         <p class="text-xs font-semibold uppercase tracking-wide text-orange-600">Arrears Recovery Yield</p>
-                        <span class="text-xs font-semibold text-orange-600">Priority</span>
+                        <span class="text-xs font-semibold {{ $arrBadgeClass }}">{{ $arrBadge }}</span>
                     </div>
                     <p class="mt-2 text-2xl font-bold text-orange-700">{{ $fmtKes($metrics['arrears_recovery_yield'] ?? 0) }}</p>
-                    <p class="mt-1 text-xs text-slate-500">Recovered from already late loans</p>
+                    <p class="mt-1 text-xs text-slate-500">Today's sheet lines on loans with dpd >= 1</p>
                 </article>
 
                 <article class="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm">
                     <div class="flex items-start justify-between gap-2">
                         <p class="text-xs font-semibold uppercase tracking-wide text-emerald-700">Pre-payment Yield</p>
-                        <span class="text-xs font-semibold text-emerald-700">Healthy</span>
+                        <span class="text-xs font-semibold {{ $preBadgeClass }}">{{ $preBadge }}</span>
                     </div>
                     <p class="mt-2 text-2xl font-bold text-emerald-700">{{ $fmtKes($metrics['prepayment_yield'] ?? 0) }}</p>
-                    <p class="mt-1 text-xs text-slate-500">Collected ahead of due dates</p>
+                    <p class="mt-1 text-xs text-slate-500">Processed prepayment pay-ins today</p>
                 </article>
 
                 <article class="rounded-xl border border-rose-200 bg-white p-4 shadow-sm">
                     <div class="flex items-start justify-between gap-2">
                         <p class="text-xs font-semibold uppercase tracking-wide text-rose-600">Yield Gap</p>
-                        <span class="text-xs font-semibold text-rose-600">Behind target</span>
+                        <span class="text-xs font-semibold {{ $gapBadgeClass }}">{{ $gapBadge }}</span>
                     </div>
                     <p class="mt-2 text-2xl font-bold text-rose-700">{{ $fmtKes($metrics['yield_gap'] ?? 0) }}</p>
                     <p class="mt-1 text-xs text-slate-500">Expected - actual collected</p>
@@ -119,27 +166,28 @@
 
                 <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
                 <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Available Liquidity Today</p>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Cash Accounts (Chart)</p>
                     <p class="mt-2 text-2xl font-bold text-[#0f3d3e]">{{ $fmtKes($metrics['available_liquidity_today'] ?? 0) }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Sum of active cash chart balances</p>
                     <a href="{{ $cashflowRoute }}" class="mt-2 inline-block text-xs font-semibold text-blue-700 hover:underline">View Cashflow Report →</a>
                 </article>
 
                 <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">7 Day Expected Inflow</p>
                     <p class="mt-2 text-2xl font-bold text-slate-900">{{ $fmtKes($metrics['expected_inflow_7_days'] ?? 0) }}</p>
-                    <p class="mt-1 text-xs text-slate-500">{{ $dateWindowLabel ?? '' }}</p>
+                    <p class="mt-1 text-xs text-slate-500">{{ $dateWindowLabel ?? '' }} · daily prorated target × 7</p>
                 </article>
 
                 <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">14 Day Expected Inflow</p>
                     <p class="mt-2 text-2xl font-bold text-slate-900">{{ $fmtKes($metrics['expected_inflow_14_days'] ?? 0) }}</p>
-                    <p class="mt-1 text-xs text-slate-500">Forward inflow projection</p>
+                    <p class="mt-1 text-xs text-slate-500">Daily prorated target × 14</p>
                 </article>
 
                 <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">30 Day Expected Inflow</p>
                     <p class="mt-2 text-2xl font-bold text-slate-900">{{ $fmtKes($metrics['expected_inflow_30_days'] ?? 0) }}</p>
-                    <p class="mt-1 text-xs text-slate-500">Medium-term cash outlook</p>
+                    <p class="mt-1 text-xs text-slate-500">Daily prorated target × 30</p>
                 </article>
 
                 <article class="rounded-xl border p-4 shadow-sm {{ $isAtRisk ? 'border-orange-300 bg-orange-50/70' : 'border-emerald-200 bg-emerald-50/60' }}">
@@ -148,18 +196,24 @@
                         <span class="inline-flex items-center rounded-full px-2 py-1 text-[10px] font-bold {{ $isAtRisk ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700' }}">{{ $liquidityFloorStatus }}</span>
                     </div>
                     <p class="mt-2 text-2xl font-bold {{ $isAtRisk ? 'text-orange-700' : 'text-emerald-700' }}">{{ $fmtKes($metrics['liquidity_floor_amount'] ?? 0) }}</p>
-                    <p class="mt-1 text-xs text-slate-600">Projected breach in {{ (int) ($metrics['projected_liquidity_breach_days'] ?? 0) }} days</p>
+                    <p class="mt-1 text-xs text-slate-600">
+                        @if ($isAtRisk)
+                            Cash is below the sum of enabled floors today (as of {{ $today->format('d M Y') }}).
+                        @else
+                            Cash meets or exceeds configured floors (or no floors set).
+                        @endif
+                    </p>
                     @if ($isAtRisk)
                         <p class="mt-1 text-xs font-semibold text-rose-700">Recommend: Lending Brake</p>
                     @endif
-                    <a href="#" class="mt-2 inline-block text-xs font-semibold text-blue-700 hover:underline">View Details →</a>
+                    <a href="{{ $cashflowDetailRoute }}" class="mt-2 inline-block text-xs font-semibold text-blue-700 hover:underline">View Cashflow (MTD) →</a>
                 </article>
                 </section>
 
                 <section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div class="mb-3 flex items-center justify-between gap-2">
                     <h3 class="text-base font-semibold text-[#0f3d3e]">7 / 14 / 30 Day Inflow Waterfall</h3>
-                    <span class="text-xs text-slate-500">Expected vs collectible cash windows</span>
+                    <span class="text-xs text-slate-500">Prorated targets × trailing {{ $fmtPct($metrics['trailing_collection_rate'] ?? 0) }} collection rate</span>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                     @foreach (($forecastWindows ?? []) as $window)
@@ -342,7 +396,7 @@
                 <h3 class="text-lg font-semibold text-[#0f3d3e]">Agents Performance</h3>
                 <p class="mt-1 text-sm text-slate-600">Collections productivity and outcomes by field agent.</p>
                 <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p class="text-sm text-slate-700">Top agent today: <span class="font-semibold">{{ $agentPerformanceSummary['top_agent'] }}</span> with <span class="font-semibold">{{ $fmtKes($agentPerformanceSummary['top_agent_collected']) }}</span>.</p>
+                    <p class="text-sm text-slate-700">Top agent today: <span class="font-semibold">{{ $agentPerformanceSummary['top_agent'] }}</span> with <span class="font-semibold">{{ $fmtKes($agentPerformanceSummary['top_agent_collected']) }}</span>. Unposted pay-ins in scope: <span class="font-semibold">{{ (int) ($agentPerformanceSummary['pending_collections'] ?? 0) }}</span>.</p>
                     <a href="{{ route('loan.book.collection_agents.index') }}" class="mt-3 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Open Agents Performance →</a>
                 </div>
             </section>
@@ -364,7 +418,7 @@
                 <section class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="mb-3 flex items-center justify-between gap-2">
                         <h3 class="text-base font-semibold text-[#0f3d3e]">7 / 14 / 30 Day Inflow Waterfall</h3>
-                        <span class="text-xs text-slate-500">Expected vs collectible cash windows</span>
+                        <span class="text-xs text-slate-500">Prorated targets × trailing {{ $fmtPct($metrics['trailing_collection_rate'] ?? 0) }} collection rate</span>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                         @foreach (($forecastWindows ?? []) as $window)

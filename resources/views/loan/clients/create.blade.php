@@ -9,6 +9,10 @@
             </a>
         </x-slot>
 
+        <x-slot name="banner">
+            @include('loan.clients.partials.identity-flashes')
+        </x-slot>
+
         <div class="grid max-w-7xl grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]" x-data="clientFormPreview()">
             <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-6 sm:p-8">
             <form method="post" action="{{ route('loan.clients.store') }}" class="space-y-5" enctype="multipart/form-data">

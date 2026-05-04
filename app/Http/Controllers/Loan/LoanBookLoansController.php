@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
+use App\Models\Employee;
 use App\Models\LoanBookApplication;
 use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookLoan;
@@ -34,9 +35,7 @@ class LoanBookLoansController extends Controller
     public function __construct(
         private readonly LoanBookLoanUpdateService $loanMath,
         private readonly BorrowerClassificationService $borrowerClassifier
-    )
-    {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -329,20 +328,20 @@ class LoanBookLoansController extends Controller
                     'loanbook-arrears-'.now()->format('Ymd_His'),
                     ['Client', 'Contact', 'Branch', 'Loan Officer', 'Loan', 'Disbursement', 'Cycles', 'P.Arrears', 'Accumulated', 'Installment', 'Fall Date', 'Days', 'T.Bal'],
                     function () use ($rows) {
-                    $loanTotal = 0.0;
-                    $periodicArrearsTotal = 0.0;
-                    $paidTotal = 0.0;
-                    $balanceTotal = 0.0;
+                        $loanTotal = 0.0;
+                        $periodicArrearsTotal = 0.0;
+                        $paidTotal = 0.0;
+                        $balanceTotal = 0.0;
                         foreach ($rows as $loan) {
                             $termValue = max(1, (int) ($loan->term_value ?? 1));
                             $paid = (float) ($loan->processed_repayments_sum_amount ?? 0);
                             $totalBalance = (float) ($loan->balance ?? 0);
                             $periodicArrears = $termValue > 0 ? max(0, $totalBalance / $termValue) : $totalBalance;
                             $loanAmount = (float) ($loan->principal ?? 0);
-                        $loanTotal += $loanAmount;
-                        $periodicArrearsTotal += $periodicArrears;
-                        $paidTotal += $paid;
-                        $balanceTotal += $totalBalance;
+                            $loanTotal += $loanAmount;
+                            $periodicArrearsTotal += $periodicArrears;
+                            $paidTotal += $paid;
+                            $balanceTotal += $totalBalance;
                             $totalRepayable = max(0.01, $loanAmount + max(0, $totalBalance));
                             $installmentNo = min($termValue, max(1, (int) floor(($paid / $totalRepayable) * $termValue) + 1));
                             $fallDate = $loan->disbursed_at ? $loan->disbursed_at->copy()->addDays((int) ($loan->dpd ?? 0)) : null;
@@ -362,7 +361,7 @@ class LoanBookLoansController extends Controller
                                 number_format($totalBalance, 2, '.', ''),
                             ];
                         }
-                    yield ['TOTAL', '', '', '', number_format($loanTotal, 2, '.', ''), '', '', number_format($periodicArrearsTotal, 2, '.', ''), number_format($paidTotal, 2, '.', ''), '', '', '', number_format($balanceTotal, 2, '.', '')];
+                        yield ['TOTAL', '', '', '', number_format($loanTotal, 2, '.', ''), '', '', number_format($periodicArrearsTotal, 2, '.', ''), number_format($paidTotal, 2, '.', ''), '', '', '', number_format($balanceTotal, 2, '.', '')];
                     },
                     $export
                 );
@@ -370,12 +369,12 @@ class LoanBookLoansController extends Controller
 
             $loans = $query->orderByDesc('dpd')->paginate($perPage)->withQueryString();
             $branches = LoanBookLoan::query()->whereNotNull('branch')->where('branch', '!=', '')->distinct()->orderBy('branch')->pluck('branch');
-            $regions = \App\Models\LoanRegion::query()->orderBy('name')->pluck('name');
-            $officers = \App\Models\Employee::query()
+            $regions = LoanRegion::query()->orderBy('name')->pluck('name');
+            $officers = Employee::query()
                 ->orderBy('first_name')
                 ->orderBy('last_name')
                 ->get()
-                ->map(fn (\App\Models\Employee $employee): string => trim((string) $employee->full_name))
+                ->map(fn (Employee $employee): string => trim((string) $employee->full_name))
                 ->filter()
                 ->values();
             $products = LoanBookLoan::query()->whereNotNull('product_name')->where('product_name', '!=', '')->distinct()->orderBy('product_name')->pluck('product_name');
@@ -547,6 +546,7 @@ class LoanBookLoansController extends Controller
             $result = $bulkSms->sendNow($message, [$phones[0]], $userId, null);
             if (! ($result['ok'] ?? false)) {
                 $failed++;
+
                 continue;
             }
 
@@ -691,6 +691,11 @@ class LoanBookLoansController extends Controller
         if (empty($validated['loan_book_application_id'])) {
             $validated['loan_book_application_id'] = null;
         }
+        $this->assertLoanBookApplicationEligibleForLink(
+            $validated['loan_book_application_id'] !== null ? (int) $validated['loan_book_application_id'] : null,
+            (int) $validated['loan_client_id'],
+            null
+        );
         $client = LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
         $classification = $this->borrowerClassifier->classify($client, (float) ($validated['principal'] ?? 0));
         $decision = (array) ($classification['borrower_decision'] ?? []);
@@ -868,6 +873,7 @@ class LoanBookLoansController extends Controller
                     && $payment->transaction_at->copy()->startOfDay()->lt($loan->disbursed_at->copy()->startOfDay())
                 ) {
                     $skippedBeforeDisbursement++;
+
                     continue;
                 }
                 $delta = abs((float) $payment->amount);
@@ -877,6 +883,7 @@ class LoanBookLoansController extends Controller
 
                 if ($payment->payment_kind === LoanBookPayment::KIND_C2B_REVERSAL) {
                     $principalOutstanding = round($principalOutstanding + $delta, 2);
+
                     continue;
                 }
 
@@ -889,12 +896,14 @@ class LoanBookLoansController extends Controller
                         $apply = min($remaining, max(0.0, $feesOutstanding));
                         $feesOutstanding = round($feesOutstanding - $apply, 2);
                         $remaining -= $apply;
+
                         continue;
                     }
                     if ($bucket === 'interest') {
                         $apply = min($remaining, max(0.0, $interestOutstanding));
                         $interestOutstanding = round($interestOutstanding - $apply, 2);
                         $remaining -= $apply;
+
                         continue;
                     }
                     if ($bucket === 'principal') {
@@ -1000,7 +1009,18 @@ class LoanBookLoansController extends Controller
         if (empty($validated['loan_book_application_id'])) {
             $validated['loan_book_application_id'] = null;
         }
+        $this->assertLoanBookApplicationEligibleForLink(
+            $validated['loan_book_application_id'] !== null ? (int) $validated['loan_book_application_id'] : null,
+            (int) $validated['loan_client_id'],
+            (int) $loan_book_loan->id
+        );
         LoanClient::query()->clients()->findOrFail($validated['loan_client_id']);
+        if (($validated['status'] ?? null) === LoanBookLoan::STATUS_ACTIVE && ! $loan_book_loan->disbursements()->exists()) {
+            return redirect()
+                ->back()
+                ->withErrors(['status' => 'Cannot set the loan to Active before a disbursement has been recorded. Leave the status as Pending disbursement until a disbursement is posted.'])
+                ->withInput();
+        }
         if (($validated['status'] ?? null) === LoanBookLoan::STATUS_CLOSED && (float) ($validated['balance'] ?? 0) > 0.01) {
             return redirect()
                 ->back()
@@ -1088,9 +1108,51 @@ class LoanBookLoansController extends Controller
         if ($isCreate) {
             $validated['dpd'] = 0;
             $this->assertProductActiveForNewLoan((string) ($validated['product_name'] ?? ''));
+            $validated['status'] = LoanBookLoan::STATUS_PENDING_DISBURSEMENT;
         }
 
         return $validated;
+    }
+
+    /**
+     * Validates linking a loan to a loan book application (web or API). Skips when no application is selected.
+     */
+    private function assertLoanBookApplicationEligibleForLink(?int $applicationId, int $loanClientId, ?int $ignoreLoanId = null): void
+    {
+        if ($applicationId === null || $applicationId <= 0) {
+            return;
+        }
+
+        $application = LoanBookApplication::query()->find($applicationId);
+        if (! $application) {
+            throw ValidationException::withMessages([
+                'loan_book_application_id' => 'The selected application could not be found.',
+            ]);
+        }
+
+        if ((int) $application->loan_client_id !== $loanClientId) {
+            throw ValidationException::withMessages([
+                'loan_book_application_id' => 'This application belongs to a different client. Select the borrower that matches the application, or choose another application.',
+                'loan_client_id' => 'The selected client does not match the application\'s borrower.',
+            ]);
+        }
+
+        if ((string) $application->stage !== LoanBookApplication::STAGE_APPROVED) {
+            throw ValidationException::withMessages([
+                'loan_book_application_id' => 'Only an approved application can be used to book a loan. Current application stage: '.(string) ($application->stage ?? 'unknown').'.',
+            ]);
+        }
+
+        $duplicate = LoanBookLoan::query()
+            ->where('loan_book_application_id', $applicationId)
+            ->when($ignoreLoanId !== null, fn (Builder $q): Builder => $q->where('id', '!=', $ignoreLoanId))
+            ->exists();
+
+        if ($duplicate) {
+            throw ValidationException::withMessages([
+                'loan_book_application_id' => 'A loan has already been created from this application. Each application may only fund one loan.',
+            ]);
+        }
     }
 
     /**
@@ -1099,7 +1161,7 @@ class LoanBookLoansController extends Controller
     private function productOptions(?string $currentProduct = null): array
     {
         $saved = Schema::hasTable('loan_products')
-            ? \App\Models\LoanProduct::query()
+            ? LoanProduct::query()
                 ->when(
                     Schema::hasColumn('loan_products', 'status'),
                     fn (Builder $query) => $query->where('status', 'active'),
@@ -1359,5 +1421,4 @@ class LoanBookLoansController extends Controller
 
         return $order;
     }
-
 }

@@ -24,3 +24,4 @@ Schedule::command('water:generate-invoices')->dailyAt('00:25')->withoutOverlappi
 Schedule::command('loan:accrue-penalties')->dailyAt('00:35')->withoutOverlapping();
 Schedule::command('water:apply-penalties')->dailyAt('00:40')->withoutOverlapping();
 Schedule::command('loan:expire-temporary-access')->everyTenMinutes()->withoutOverlapping();
+Schedule::command('loan:lead-officer-digest')->dailyAt('07:30');

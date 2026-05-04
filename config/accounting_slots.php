@@ -38,6 +38,10 @@ return [
             'label' => 'Client Wallet Liability Account',
             'expected_account_types' => ['liability'],
         ],
+        'adjustment_account' => [
+            'label' => 'Wallet Adjustment Offset Account',
+            'expected_account_types' => ['expense', 'asset'],
+        ],
         'suspense_liability_account' => [
             'label' => 'Suspense Liability Account',
             'expected_account_types' => ['liability'],

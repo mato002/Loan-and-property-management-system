@@ -9,9 +9,10 @@ use App\Models\LoanBookLoan;
 use App\Models\LoanBookPayment;
 use App\Models\PropertyPortalSetting;
 use App\Notifications\Loan\LoanWorkflowNotification;
-use App\Support\TabularExport;
+use App\Services\ClientWalletService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
 use App\Services\LoanBookGlPostingService;
+use App\Support\TabularExport;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Dompdf\Dompdf;
@@ -19,6 +20,7 @@ use Dompdf\Options;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -36,7 +38,7 @@ class LoanPaymentsController extends Controller
         ]);
     }
 
-    public function unposted(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function unposted(Request $request): View|StreamedResponse
     {
         $query = LoanBookPayment::query()->with('loan.loanClient')->unpostedQueue();
         $this->scopeByAssignedLoanClient($query, $request->user(), 'loan.loanClient');
@@ -111,7 +113,7 @@ class LoanPaymentsController extends Controller
         ]);
     }
 
-    public function processed(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function processed(Request $request): View|StreamedResponse
     {
         $query = LoanBookPayment::query()
             ->with(['loan.loanClient', 'postedByUser', 'validatedByUser', 'allocations', 'accountingJournalEntry'])
@@ -336,7 +338,7 @@ class LoanPaymentsController extends Controller
         ]);
     }
 
-    public function prepayments(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function prepayments(Request $request): View|StreamedResponse
     {
         $query = LoanBookPayment::query()
             ->with('loan.loanClient')
@@ -352,7 +354,7 @@ class LoanPaymentsController extends Controller
         return view('loan.payments.prepayments', array_merge(compact('payments'), $filters));
     }
 
-    public function overpayments(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function overpayments(Request $request): View|StreamedResponse
     {
         $query = LoanBookPayment::query()
             ->with('loan.loanClient')
@@ -368,7 +370,7 @@ class LoanPaymentsController extends Controller
         return view('loan.payments.overpayments', array_merge(compact('payments'), $filters));
     }
 
-    public function merged(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function merged(Request $request): View|StreamedResponse
     {
         $query = LoanBookPayment::query()
             ->with(['loan.loanClient', 'mergedChildren'])
@@ -400,7 +402,7 @@ class LoanPaymentsController extends Controller
         ]);
     }
 
-    public function c2bReversals(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function c2bReversals(Request $request): View|StreamedResponse
     {
         $query = LoanBookPayment::query()
             ->with('loan.loanClient')
@@ -416,7 +418,7 @@ class LoanPaymentsController extends Controller
         return view('loan.payments.c2b-reversals', array_merge(compact('payments'), $filters));
     }
 
-    public function receipts(Request $request): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function receipts(Request $request): View|StreamedResponse
     {
         $query = LoanBookPayment::query()
             ->with('loan.loanClient')
@@ -1076,6 +1078,7 @@ class LoanPaymentsController extends Controller
                 $this->syncCollectionEntryFromProcessedPayment($payment);
 
                 app(LoanBookLoanUpdateService::class)->onPaymentProcessed($payment->fresh());
+                app(ClientWalletService::class)->syncPostedPaymentWalletEffects($payment->fresh(['allocations', 'loan']));
             });
         } catch (ValidationException $e) {
             $message = collect($e->errors())->flatten()->first() ?? $e->getMessage();
@@ -1188,6 +1191,7 @@ class LoanPaymentsController extends Controller
                     ]);
                     $this->syncCollectionEntryFromProcessedPayment($payment);
                     app(LoanBookLoanUpdateService::class)->onPaymentProcessed($payment->fresh());
+                    app(ClientWalletService::class)->syncPostedPaymentWalletEffects($payment->fresh(['allocations', 'loan']));
                 });
 
                 return redirect()
@@ -1260,6 +1264,7 @@ class LoanPaymentsController extends Controller
             $loanId = (int) ($suggested[(int) $payment->id] ?? 0);
             if ($loanId <= 0) {
                 $skipped++;
+
                 continue;
             }
 
@@ -1293,6 +1298,7 @@ class LoanPaymentsController extends Controller
 
                     $this->syncCollectionEntryFromProcessedPayment($fresh);
                     app(LoanBookLoanUpdateService::class)->onPaymentProcessed($fresh->fresh());
+                    app(ClientWalletService::class)->syncPostedPaymentWalletEffects($fresh->fresh(['allocations', 'loan']));
                     $posted++;
                 });
             } catch (\Throwable $e) {
@@ -1474,7 +1480,7 @@ class LoanPaymentsController extends Controller
     }
 
     /**
-     * @param \Illuminate\Support\Collection<int, LoanBookPayment> $rows
+     * @param  Collection<int, LoanBookPayment>  $rows
      */
     private function streamUnpostedPdfReport($rows, string $basename): StreamedResponse
     {
@@ -1541,7 +1547,7 @@ class LoanPaymentsController extends Controller
         ])->render();
 
         try {
-            $options = new Options();
+            $options = new Options;
             $options->set('isRemoteEnabled', true);
             $options->set('defaultFont', 'DejaVu Sans');
 
@@ -1594,8 +1600,8 @@ class LoanPaymentsController extends Controller
     }
 
     /**
-     * @param \Illuminate\Support\Collection<int, LoanBookPayment> $payments
-     * @param \Illuminate\Support\Collection<int, LoanBookLoan> $loans
+     * @param  Collection<int, LoanBookPayment>  $payments
+     * @param  Collection<int, LoanBookLoan>  $loans
      * @return array<int,int>
      */
     private function buildSuggestedLoanMap($payments, $loans): array

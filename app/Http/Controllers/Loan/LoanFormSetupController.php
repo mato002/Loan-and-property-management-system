@@ -7,6 +7,9 @@ use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanProduct;
 use App\Models\LoanSystemSetting;
 use App\Models\User;
+use App\Services\LoanSettingsApplicationFormConfigService;
+use App\Services\LoanSettingsOverviewService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -20,13 +23,38 @@ class LoanFormSetupController extends Controller
 {
     public const FORM_SETUP_PAGE_PATTERN = 'access|loan-products|leave-settings|client-biodata|group-lending|accounting-forms|staff-leaves|staff-structure|staff-performance|loan-settings';
 
+    /**
+     * JSON payload for the loan application form editor (global or per-product),
+     * used by Loan settings → Product rules (preview / clone from another product).
+     */
+    public function loanFormEditorPayload(Request $request): JsonResponse
+    {
+        $pid = (int) $request->query('form_product', 0);
+        $editorProductId = $pid > 0 && LoanProduct::query()->whereKey($pid)->exists()
+            ? $pid
+            : null;
+
+        $rows = app(LoanSettingsApplicationFormConfigService::class)
+            ->buildEditorPayload($editorProductId);
+
+        return response()->json([
+            'ok' => true,
+            'form_product' => $editorProductId,
+            'product_name' => $editorProductId !== null
+                ? (string) LoanProduct::query()->whereKey($editorProductId)->value('name')
+                : null,
+            'rows' => $rows,
+        ]);
+    }
+
     public function setupPage(Request $request, string $page): View|Response
     {
         if ($page === 'loan-settings') {
             if ($request->boolean('export')) {
                 return $this->exportLoanSettingsPage();
             }
-            return $this->renderLoanSettingsPage();
+
+            return $this->renderLoanSettingsPage($request);
         }
 
         $cfg = $this->setupPageConfig($page);
@@ -455,29 +483,20 @@ class LoanFormSetupController extends Controller
         );
     }
 
-    private function renderLoanSettingsPage(): View
+    private function renderLoanSettingsPage(Request $request): View
     {
-        LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION);
+        $loanFormEditorProductId = null;
+        if ($request->filled('form_product')) {
+            $candidate = (int) $request->query('form_product');
+            if (LoanProduct::query()->whereKey($candidate)->exists()) {
+                $loanFormEditorProductId = $candidate;
+            }
+        }
 
-        $fields = LoanFormFieldDefinition::query()
-            ->where('form_kind', LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION)
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get();
+        $loanFormEditorScope = $loanFormEditorProductId ? 'product' : 'global';
 
-        $fieldsPayload = $fields->map(fn (LoanFormFieldDefinition $f) => [
-            'id' => $f->id,
-            'label' => $f->label,
-            'field_key' => $f->field_key,
-            'data_type' => $f->data_type,
-            'is_required' => (bool) ($f->is_required ?? false),
-            'select_options' => (string) ($f->select_options ?? ''),
-            'prefill_from_previous' => (bool) $f->prefill_from_previous,
-            'visible_to' => (string) ($f->visible_to ?? ''),
-            'field_status' => (string) ($f->field_status ?? ($f->is_core ? 'active' : 'draft')),
-            'product_id' => $f->product_id !== null ? (string) $f->product_id : '',
-            'is_core' => (bool) $f->is_core,
-        ])->values()->all();
+        $fieldsPayload = app(LoanSettingsApplicationFormConfigService::class)
+            ->buildEditorPayload($loanFormEditorProductId);
 
         $productsPendingLoanFormSetup = Schema::hasColumn('loan_products', 'loan_form_setup_completed_at')
             ? LoanProduct::query()
@@ -491,6 +510,14 @@ class LoanFormSetupController extends Controller
             ->values()
             ->all();
 
+        $pendingProductIds = $productsPendingLoanFormSetup->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $shouldOfferPendingComplete = $request->boolean('pending_complete')
+            && $loanFormEditorProductId !== null
+            && in_array($loanFormEditorProductId, $pendingProductIds, true);
+
+        $requiredApprovals = $this->normalizeApprovalRules($this->jsonSetting('loan_settings_required_approvals', []));
+        $loanSettingsOverview = app(LoanSettingsOverviewService::class)->build($requiredApprovals);
+
         return view('loan.system.form_setup.loan_settings', [
             'title' => 'Loan settings',
             'subtitle' => 'Configure product rules, approval controls, affordability checks, disbursement safety, and lending risk limits.',
@@ -498,13 +525,20 @@ class LoanFormSetupController extends Controller
             'products' => LoanProduct::query()->orderBy('name')->get(['id', 'name']),
             'productsPendingLoanFormSetup' => $productsPendingLoanFormSetup,
             'productsPendingForJs' => $productsPendingForJs,
+            'loanFormEditorProductId' => $loanFormEditorProductId,
+            'loanFormEditorScope' => $loanFormEditorScope,
+            'shouldOfferPendingComplete' => $shouldOfferPendingComplete,
             'activeProductsCount' => LoanProduct::query()->where('is_active', true)->count(),
             'fieldsPayload' => $fieldsPayload,
             'dataTypeLabels' => LoanFormFieldDefinition::dataTypeLabels(),
             'eligibilityRules' => $this->normalizeEligibilityRules($this->jsonSetting('loan_settings_eligibility_rules', [])),
             'graduationRules' => $this->normalizeGraduationRules($this->jsonSetting('loan_settings_graduation_rules', [])),
-            'requiredApprovals' => $this->normalizeApprovalRules($this->jsonSetting('loan_settings_required_approvals', [])),
+            'requiredApprovals' => $requiredApprovals,
             'additionalProductSettings' => $this->normalizeAdditionalProductSettings($this->jsonSetting('loan_settings_additional_product_settings', [])),
+            'loanSettingsOverview' => $loanSettingsOverview,
+            'approvalGovernance' => $this->normalizeApprovalGovernance($this->jsonSetting('loan_settings_approval_governance', [])),
+            'riskApprovalMatrix' => $this->normalizeRiskApprovalMatrix($this->jsonSetting('loan_settings_risk_approval_matrix', [])),
+            'disbursementControls' => $this->normalizeDisbursementControls($this->jsonSetting('loan_settings_disbursement_controls', [])),
         ]);
     }
 
@@ -514,6 +548,7 @@ class LoanFormSetupController extends Controller
 
         $fields = LoanFormFieldDefinition::query()
             ->where('form_kind', LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION)
+            ->whereNull('product_id')
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get()
@@ -553,13 +588,7 @@ class LoanFormSetupController extends Controller
         $section = (string) $request->input('section', 'loan_form_setup');
 
         if ($section === 'loan_form_setup') {
-            return $this->saveForm(
-                $request,
-                LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION,
-                'loan.system.form_setup.page',
-                'Loan form setup saved.',
-                ['page' => 'loan-settings', 'tab' => 'product-rules']
-            );
+            return app(LoanSettingsApplicationFormConfigService::class)->saveLoanFormSetup($request);
         }
 
         if ($section === 'eligibility_rules') {
@@ -601,12 +630,70 @@ class LoanFormSetupController extends Controller
             );
 
             return redirect()
-                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'eligibility-rules'])
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'eligibility-affordability'])
                 ->with('status', 'Eligibility rules saved.');
+        }
+
+        if ($section === 'affordability_engine') {
+            $request->merge([
+                'max_total_indebtedness_to_income_ratio' => $request->input('max_total_indebtedness_to_income_ratio') === '' ? null : $request->input('max_total_indebtedness_to_income_ratio'),
+                'max_combined_guarantor_exposure_ratio' => $request->input('max_combined_guarantor_exposure_ratio') === '' ? null : $request->input('max_combined_guarantor_exposure_ratio'),
+            ]);
+            $validated = $request->validate([
+                'affordability_engine_enabled' => ['nullable', 'in:0,1'],
+                'max_installment_to_income_ratio' => ['required', 'numeric', 'min:0', 'max:10'],
+                'min_repayment_success_rate' => ['required', 'numeric', 'min:0', 'max:1'],
+                'max_allowed_dpd_for_repeat' => ['required', 'integer', 'min:0', 'max:365'],
+                'max_total_indebtedness_to_income_ratio' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+                'max_combined_guarantor_exposure_ratio' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+            ]);
+            LoanSystemSetting::setValue(
+                'affordability_engine_enabled',
+                $request->boolean('affordability_engine_enabled') ? '1' : '0',
+                'Affordability runtime engine enabled',
+                'loan_settings'
+            );
+            LoanSystemSetting::setValue(
+                'max_installment_to_income_ratio',
+                (string) ((float) $validated['max_installment_to_income_ratio']),
+                'Max installment to verified income ratio',
+                'loan_settings'
+            );
+            LoanSystemSetting::setValue(
+                'min_repayment_success_rate',
+                (string) ((float) $validated['min_repayment_success_rate']),
+                'Minimum repayment success rate for repeat borrowers',
+                'loan_settings'
+            );
+            LoanSystemSetting::setValue(
+                'max_allowed_dpd_for_repeat',
+                (string) ((int) $validated['max_allowed_dpd_for_repeat']),
+                'Max historical DPD allowed for repeat classification',
+                'loan_settings'
+            );
+            $indebtedness = $validated['max_total_indebtedness_to_income_ratio'] ?? null;
+            LoanSystemSetting::setValue(
+                'max_total_indebtedness_to_income_ratio',
+                ($indebtedness === null || $indebtedness === '') ? '0' : (string) ((float) $indebtedness),
+                'Max (balances + requested) to monthly income',
+                'loan_settings'
+            );
+            $guarantorCap = $validated['max_combined_guarantor_exposure_ratio'] ?? null;
+            LoanSystemSetting::setValue(
+                'max_combined_guarantor_exposure_ratio',
+                ($guarantorCap === null || $guarantorCap === '') ? '0' : (string) ((float) $guarantorCap),
+                'Stricter indebtedness cap when guarantor on file',
+                'loan_settings'
+            );
+
+            return redirect()
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'eligibility-affordability'])
+                ->with('status', 'Affordability settings saved.');
         }
 
         if ($section === 'graduation_logic') {
             $validated = $request->validate([
+                'redirect_tab' => ['nullable', 'string', Rule::in(['eligibility-affordability', 'portfolio-limits'])],
                 'first_loan_max_limit' => ['nullable', 'numeric', 'min:0'],
                 'second_loan_max_limit' => ['nullable', 'numeric', 'min:0'],
                 'subsequent_increase_pct' => ['nullable', 'numeric', 'min:0', 'max:1000'],
@@ -633,8 +720,10 @@ class LoanFormSetupController extends Controller
                 'loan_settings'
             );
 
+            $gradTab = (string) ($validated['redirect_tab'] ?? 'eligibility-affordability');
+
             return redirect()
-                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'graduation-logic'])
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => $gradTab])
                 ->with('status', 'Graduation logic saved.');
         }
 
@@ -646,6 +735,17 @@ class LoanFormSetupController extends Controller
                 'approval_rows.*.approver' => ['nullable', 'string', 'max:120'],
                 'approval_rows.*.risk_level' => ['nullable', 'string', 'max:80'],
                 'approval_rows.*.disbursement_approval' => ['nullable', 'in:0,1'],
+                'approval_rows.*.maker_checker_required' => ['nullable', 'in:0,1'],
+                'approval_rows.*.override_allowed' => ['nullable', 'string', 'max:32'],
+                'approval_rows.*.band_status' => ['nullable', 'string', 'max:32'],
+                'approval_rows.*.approval_tier' => ['nullable', 'string', 'max:32'],
+                'risk_policy_rows' => ['nullable', 'array'],
+                'risk_policy_rows.*.rule_key' => ['nullable', 'string', 'max:80'],
+                'risk_policy_rows.*.rule_label' => ['nullable', 'string', 'max:160'],
+                'risk_policy_rows.*.required_approval' => ['nullable', 'string', 'max:80'],
+                'risk_policy_rows.*.can_override' => ['nullable', 'string', 'max:80'],
+                'risk_policy_rows.*.otp_required' => ['nullable', 'string', 'max:80'],
+                'risk_policy_rows.*.status' => ['nullable', 'string', 'max:40'],
                 'arrears_tolerance_days' => ['nullable', 'integer', 'min:0', 'max:365'],
                 'penalty_on_arrears' => ['nullable', 'in:0,1'],
                 'interest_recalculation' => ['nullable', 'in:0,1'],
@@ -655,12 +755,29 @@ class LoanFormSetupController extends Controller
             ]);
             $approvalRows = collect($validated['approval_rows'] ?? [])
                 ->map(function (array $row): array {
+                    $override = strtolower(trim((string) ($row['override_allowed'] ?? 'committee')));
+                    if (! in_array($override, ['no', 'committee', 'allowed', 'optional'], true)) {
+                        $override = 'committee';
+                    }
+                    $bandStatus = strtolower(trim((string) ($row['band_status'] ?? 'active')));
+                    if (! in_array($bandStatus, ['active', 'draft', 'review', 'warning', 'blocked'], true)) {
+                        $bandStatus = 'active';
+                    }
+                    $tier = strtolower(trim((string) ($row['approval_tier'] ?? '')));
+                    if (! in_array($tier, ['', 'standard', 'manager', 'director'], true)) {
+                        $tier = '';
+                    }
+
                     return [
                         'amount_from' => isset($row['amount_from']) ? (float) $row['amount_from'] : null,
                         'amount_to' => isset($row['amount_to']) && $row['amount_to'] !== '' ? (float) $row['amount_to'] : null,
                         'approver' => trim((string) ($row['approver'] ?? '')),
                         'risk_level' => trim((string) ($row['risk_level'] ?? '')),
                         'disbursement_approval' => isset($row['disbursement_approval']) && (string) $row['disbursement_approval'] === '1',
+                        'maker_checker_required' => isset($row['maker_checker_required']) && (string) $row['maker_checker_required'] === '1',
+                        'override_allowed' => $override,
+                        'band_status' => $bandStatus,
+                        'approval_tier' => $tier,
                     ];
                 })
                 ->values()
@@ -685,9 +802,146 @@ class LoanFormSetupController extends Controller
                 'loan_settings'
             );
 
+            if ($request->boolean('risk_matrix_submit')) {
+                $riskRows = collect($validated['risk_policy_rows'] ?? [])
+                    ->map(function (array $row): array {
+                        $key = trim((string) ($row['rule_key'] ?? ''));
+                        if ($key === '') {
+                            $key = 'custom_'.substr(sha1(json_encode($row)), 0, 10);
+                        }
+
+                        return [
+                            'rule_key' => $key,
+                            'rule_label' => trim((string) ($row['rule_label'] ?? '')),
+                            'required_approval' => trim((string) ($row['required_approval'] ?? '')),
+                            'can_override' => trim((string) ($row['can_override'] ?? '')),
+                            'otp_required' => trim((string) ($row['otp_required'] ?? '')),
+                            'status' => trim((string) ($row['status'] ?? 'Active')),
+                        ];
+                    })
+                    ->filter(fn (array $row): bool => ($row['rule_label'] ?? '') !== '')
+                    ->values()
+                    ->all();
+                LoanSystemSetting::setValue(
+                    'loan_settings_risk_approval_matrix',
+                    json_encode($riskRows),
+                    'Loan settings risk approval matrix',
+                    'loan_settings'
+                );
+            }
+
             return redirect()
-                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'required-approvals'])
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'approval-matrix'])
                 ->with('status', 'Required approvals saved.');
+        }
+
+        if ($section === 'approval_governance') {
+            $payload = [
+                'maker_cannot_approve_own' => $request->boolean('maker_cannot_approve_own'),
+                'creator_cannot_disburse_own' => $request->boolean('creator_cannot_disburse_own'),
+                'record_approver_audit' => $request->boolean('record_approver_audit'),
+            ];
+            LoanSystemSetting::setValue(
+                'loan_settings_approval_governance',
+                json_encode($payload),
+                'Loan settings approval governance flags',
+                'loan_settings'
+            );
+
+            return redirect()
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'approval-matrix'])
+                ->with('status', 'Governance rules saved.');
+        }
+
+        if ($section === 'disbursement_controls') {
+            $validated = $request->validate([
+                'policy_liquidity_floor' => ['nullable', 'numeric', 'min:0'],
+                'liquidity_warning_pct_of_floor' => ['nullable', 'numeric', 'min:0', 'max:1000'],
+                'override_approver_role' => ['nullable', 'string', 'max:120'],
+            ]);
+            $policyFloorRaw = $validated['policy_liquidity_floor'] ?? null;
+            $policyFloor = ($policyFloorRaw === null || $policyFloorRaw === '')
+                ? null
+                : (float) $policyFloorRaw;
+
+            $payload = [
+                'rule_application_approved' => $request->boolean('rule_application_approved'),
+                'rule_loan_pending_disbursement' => $request->boolean('rule_loan_pending_disbursement'),
+                'rule_no_duplicate_disbursement' => $request->boolean('rule_no_duplicate_disbursement'),
+                'rule_block_missing_mapping' => $request->boolean('rule_block_missing_mapping'),
+                'rule_block_liquidity_floor' => $request->boolean('rule_block_liquidity_floor'),
+                'rule_override_controlled' => $request->boolean('rule_override_controlled'),
+                'policy_liquidity_floor' => $policyFloor,
+                'block_below_floor' => $request->boolean('block_below_floor'),
+                'liquidity_warning_pct_of_floor' => isset($validated['liquidity_warning_pct_of_floor']) ? (float) $validated['liquidity_warning_pct_of_floor'] : 110.0,
+                'override_approver_role' => trim((string) ($validated['override_approver_role'] ?? 'Treasury Manager')) ?: 'Treasury Manager',
+            ];
+            LoanSystemSetting::setValue(
+                'loan_settings_disbursement_controls',
+                json_encode($payload),
+                'Loan settings disbursement control toggles',
+                'loan_settings'
+            );
+            LoanSystemSetting::setValue(
+                'allow_top_up_if_active_loan',
+                $request->boolean('allow_top_up_if_active_loan') ? '1' : '0',
+                'Allow new facilities while client has an active/open loan (borrower classifier)',
+                'loan_settings'
+            );
+
+            return redirect()
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'disbursement-controls'])
+                ->with('status', 'Disbursement controls saved.');
+        }
+
+        if ($section === 'add_approval_band') {
+            $rows = $this->normalizeApprovalRules($this->jsonSetting('loan_settings_required_approvals', []));
+            $rows[] = [
+                'amount_from' => null,
+                'amount_to' => null,
+                'approver' => '',
+                'risk_level' => '',
+                'disbursement_approval' => false,
+                'maker_checker_required' => true,
+                'override_allowed' => 'committee',
+                'band_status' => 'active',
+                'approval_tier' => 'standard',
+            ];
+            LoanSystemSetting::setValue(
+                'loan_settings_required_approvals',
+                json_encode(array_values($rows)),
+                'Loan settings required approvals',
+                'loan_settings'
+            );
+
+            return redirect()
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'approval-matrix'])
+                ->with('status', 'Added a new approval band row.');
+        }
+
+        if ($section === 'remove_approval_band') {
+            $validated = $request->validate([
+                'band_index' => ['required', 'integer', 'min:0'],
+            ]);
+            $rows = $this->normalizeApprovalRules($this->jsonSetting('loan_settings_required_approvals', []));
+            $idx = (int) $validated['band_index'];
+            if (isset($rows[$idx]) && count($rows) > 1) {
+                array_splice($rows, $idx, 1);
+                LoanSystemSetting::setValue(
+                    'loan_settings_required_approvals',
+                    json_encode(array_values($rows)),
+                    'Loan settings required approvals',
+                    'loan_settings'
+                );
+
+                return redirect()
+                    ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'approval-matrix'])
+                    ->with('status', 'Removed approval band row.');
+            }
+
+            return redirect()
+                ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'approval-matrix'])
+                ->with('status', 'Keep at least one approval band.');
         }
 
         return redirect()
@@ -707,7 +961,6 @@ class LoanFormSetupController extends Controller
     }
 
     /**
-     * @param  mixed  $raw
      * @return array<string, mixed>
      */
     private function normalizeEligibilityRules(mixed $raw): array
@@ -732,7 +985,6 @@ class LoanFormSetupController extends Controller
     }
 
     /**
-     * @param  mixed  $raw
      * @return array<string, mixed>
      */
     private function normalizeGraduationRules(mixed $raw): array
@@ -752,7 +1004,6 @@ class LoanFormSetupController extends Controller
     }
 
     /**
-     * @param  mixed  $raw
      * @return array<int, array<string, mixed>>
      */
     private function normalizeApprovalRules(mixed $raw): array
@@ -760,15 +1011,27 @@ class LoanFormSetupController extends Controller
         $arr = is_array($raw) ? $raw : [];
         if ($arr === []) {
             return [
-                ['amount_from' => 0, 'amount_to' => 50000, 'approver' => 'Branch Manager', 'risk_level' => 'Low risk', 'disbursement_approval' => true],
-                ['amount_from' => 50001, 'amount_to' => 200000, 'approver' => 'Regional Manager', 'risk_level' => 'Medium risk', 'disbursement_approval' => true],
-                ['amount_from' => 200001, 'amount_to' => 500000, 'approver' => 'Credit Manager', 'risk_level' => 'High risk', 'disbursement_approval' => true],
-                ['amount_from' => 500001, 'amount_to' => null, 'approver' => 'Director', 'risk_level' => 'High risk', 'disbursement_approval' => true],
+                ['amount_from' => 0, 'amount_to' => 50000, 'approver' => 'Branch Manager', 'risk_level' => 'Low risk', 'disbursement_approval' => true, 'maker_checker_required' => true, 'override_allowed' => 'committee', 'band_status' => 'active', 'approval_tier' => 'standard'],
+                ['amount_from' => 50001, 'amount_to' => 200000, 'approver' => 'Regional Manager', 'risk_level' => 'Medium risk', 'disbursement_approval' => true, 'maker_checker_required' => true, 'override_allowed' => 'committee', 'band_status' => 'active', 'approval_tier' => 'manager'],
+                ['amount_from' => 200001, 'amount_to' => 500000, 'approver' => 'Credit Manager', 'risk_level' => 'High risk', 'disbursement_approval' => true, 'maker_checker_required' => true, 'override_allowed' => 'allowed', 'band_status' => 'active', 'approval_tier' => 'manager'],
+                ['amount_from' => 500001, 'amount_to' => null, 'approver' => 'Director', 'risk_level' => 'High risk', 'disbursement_approval' => true, 'maker_checker_required' => true, 'override_allowed' => 'committee', 'band_status' => 'active', 'approval_tier' => 'director'],
             ];
         }
 
         return collect($arr)->map(function ($row): array {
             $r = is_array($row) ? $row : [];
+            $override = strtolower((string) data_get($r, 'override_allowed', 'committee'));
+            if (! in_array($override, ['no', 'committee', 'allowed', 'optional'], true)) {
+                $override = 'committee';
+            }
+            $bandStatus = strtolower((string) data_get($r, 'band_status', 'active'));
+            if (! in_array($bandStatus, ['active', 'draft', 'review', 'warning', 'blocked'], true)) {
+                $bandStatus = 'active';
+            }
+            $tier = strtolower((string) data_get($r, 'approval_tier', ''));
+            if (! in_array($tier, ['', 'standard', 'manager', 'director'], true)) {
+                $tier = '';
+            }
 
             return [
                 'amount_from' => data_get($r, 'amount_from'),
@@ -776,12 +1039,85 @@ class LoanFormSetupController extends Controller
                 'approver' => (string) data_get($r, 'approver', ''),
                 'risk_level' => (string) data_get($r, 'risk_level', ''),
                 'disbursement_approval' => (bool) data_get($r, 'disbursement_approval', false),
+                'maker_checker_required' => (bool) data_get($r, 'maker_checker_required', true),
+                'override_allowed' => $override,
+                'band_status' => $bandStatus,
+                'approval_tier' => $tier,
             ];
         })->values()->all();
     }
 
     /**
-     * @param  mixed  $raw
+     * @return array<string, bool>
+     */
+    private function normalizeApprovalGovernance(mixed $raw): array
+    {
+        $arr = is_array($raw) ? $raw : [];
+
+        return [
+            'maker_cannot_approve_own' => (bool) data_get($arr, 'maker_cannot_approve_own', true),
+            'creator_cannot_disburse_own' => (bool) data_get($arr, 'creator_cannot_disburse_own', true),
+            'record_approver_audit' => (bool) data_get($arr, 'record_approver_audit', true),
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function normalizeRiskApprovalMatrix(mixed $raw): array
+    {
+        $arr = is_array($raw) ? $raw : [];
+        if ($arr !== []) {
+            return collect($arr)
+                ->map(function ($row): array {
+                    $r = is_array($row) ? $row : [];
+
+                    return [
+                        'rule_key' => (string) data_get($r, 'rule_key', ''),
+                        'rule_label' => (string) data_get($r, 'rule_label', ''),
+                        'required_approval' => (string) data_get($r, 'required_approval', ''),
+                        'can_override' => (string) data_get($r, 'can_override', ''),
+                        'otp_required' => (string) data_get($r, 'otp_required', ''),
+                        'status' => (string) data_get($r, 'status', 'Active'),
+                    ];
+                })
+                ->filter(fn (array $row): bool => ($row['rule_label'] ?? '') !== '')
+                ->values()
+                ->all();
+        }
+
+        return [
+            ['rule_key' => 'watchlist_client', 'rule_label' => 'Watchlist client', 'required_approval' => 'Director', 'can_override' => 'No', 'otp_required' => 'Yes', 'status' => 'Review'],
+            ['rule_key' => 'dormant_reactivated', 'rule_label' => 'Dormant / reactivated client', 'required_approval' => 'Manager', 'can_override' => 'Yes', 'otp_required' => 'No', 'status' => 'Warning'],
+            ['rule_key' => 'written_off_history', 'rule_label' => 'Written-off history', 'required_approval' => 'Director', 'can_override' => 'Committee', 'otp_required' => 'Yes', 'status' => 'High risk'],
+            ['rule_key' => 'existing_arrears', 'rule_label' => 'Existing arrears', 'required_approval' => 'Manager', 'can_override' => 'Yes', 'otp_required' => 'No', 'status' => 'Warning'],
+            ['rule_key' => 'limit_bypass', 'rule_label' => 'Limit bypass', 'required_approval' => 'Director', 'can_override' => 'Committee', 'otp_required' => 'Yes', 'status' => 'Blocked'],
+            ['rule_key' => 'repeat_loan_exception', 'rule_label' => 'Repeat loan exception', 'required_approval' => 'Manager', 'can_override' => 'Yes', 'otp_required' => 'Optional', 'status' => 'Active'],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeDisbursementControls(mixed $raw): array
+    {
+        $arr = is_array($raw) ? $raw : [];
+
+        return [
+            'rule_application_approved' => (bool) data_get($arr, 'rule_application_approved', true),
+            'rule_loan_pending_disbursement' => (bool) data_get($arr, 'rule_loan_pending_disbursement', true),
+            'rule_no_duplicate_disbursement' => (bool) data_get($arr, 'rule_no_duplicate_disbursement', true),
+            'rule_block_missing_mapping' => (bool) data_get($arr, 'rule_block_missing_mapping', true),
+            'rule_block_liquidity_floor' => (bool) data_get($arr, 'rule_block_liquidity_floor', false),
+            'rule_override_controlled' => (bool) data_get($arr, 'rule_override_controlled', false),
+            'policy_liquidity_floor' => data_get($arr, 'policy_liquidity_floor'),
+            'block_below_floor' => (bool) data_get($arr, 'block_below_floor', false),
+            'liquidity_warning_pct_of_floor' => (float) data_get($arr, 'liquidity_warning_pct_of_floor', 110),
+            'override_approver_role' => (string) data_get($arr, 'override_approver_role', 'Treasury Manager'),
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function normalizeAdditionalProductSettings(mixed $raw): array
@@ -886,34 +1222,12 @@ class LoanFormSetupController extends Controller
             'complete_loan_form_setup_product_id' => ['nullable', 'integer', 'exists:loan_products,id'],
         ]);
 
-        if ($kind === LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION) {
-            $this->assertPendingLoanFormProduct($request);
-        }
-
         foreach ($validated['fields'] as $i => $row) {
             if ($row['data_type'] === LoanFormFieldDefinition::TYPE_SELECT
                 && trim((string) ($row['select_options'] ?? '')) === '') {
                 throw ValidationException::withMessages([
                     "fields.$i.select_options" => 'Add comma-separated options for a dropdown field.',
                 ]);
-            }
-        }
-
-        $loanSettingsSaveReport = null;
-        if ($kind === LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION) {
-            $loanSettingsSaveReport = $this->buildLoanSettingsSaveReport($validated['fields'], $kind);
-            if ($loanSettingsSaveReport['no_changes']) {
-                if ($request->filled('complete_loan_form_setup_product_id')) {
-                    $this->finalizeLoanFormSetupForProduct($request);
-
-                    return redirect()
-                        ->route($redirectRoute, $redirectRouteParams)
-                        ->with('swal_flash', $this->loanFormSetupMarkedCompleteSwalPayload());
-                }
-
-                return redirect()
-                    ->route($redirectRoute, $redirectRouteParams)
-                    ->with('swal_flash', $this->loanSettingsSaveSwalPayload($loanSettingsSaveReport));
             }
         }
 
@@ -978,199 +1292,8 @@ class LoanFormSetupController extends Controller
             }
         });
 
-        if ($kind === LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION && $request->filled('complete_loan_form_setup_product_id')) {
-            $this->finalizeLoanFormSetupForProduct($request);
-        }
-
-        if ($loanSettingsSaveReport !== null) {
-            return redirect()
-                ->route($redirectRoute, $redirectRouteParams)
-                ->with('swal_flash', $this->loanSettingsSaveSwalPayload($loanSettingsSaveReport));
-        }
-
         return redirect()
             ->route($redirectRoute, $redirectRouteParams)
             ->with('status', $successMessage);
-    }
-
-    /**
-     * @param  array{active_fields:int,deleted_fields:int,created_fields:int,updated_fields:int,no_changes:bool}  $report
-     * @return array{icon:string,title:string,html:string,confirmButtonColor?:string}
-     */
-    private function loanSettingsSaveSwalPayload(array $report): array
-    {
-        if ($report['no_changes']) {
-            return [
-                'icon' => 'info',
-                'title' => 'No changes',
-                'html' => '<p class="text-sm text-slate-600 text-left">Nothing was updated. Your loan form setup is unchanged.</p>',
-                'confirmButtonColor' => '#64748b',
-            ];
-        }
-
-        $lines = [];
-        $lines[] = '<li><span class="font-semibold">Fields included (active):</span> '.e((string) $report['active_fields']).'</li>';
-        $lines[] = '<li><span class="font-semibold">Custom fields removed:</span> '.e((string) $report['deleted_fields']).'</li>';
-        if ((int) $report['created_fields'] > 0) {
-            $lines[] = '<li><span class="font-semibold">New custom fields added:</span> '.e((string) $report['created_fields']).'</li>';
-        }
-        if ((int) $report['updated_fields'] > 0) {
-            $lines[] = '<li><span class="font-semibold">Existing rows updated:</span> '.e((string) $report['updated_fields']).'</li>';
-        }
-
-        $html = '<p class="text-sm text-slate-600 text-left">Loan form setup has been saved.</p>'
-            .'<ul class="mt-2 list-disc pl-5 text-left text-sm text-slate-700 space-y-1">'
-            .implode('', $lines)
-            .'</ul>';
-
-        return [
-            'icon' => 'success',
-            'title' => 'Saved successfully',
-            'html' => $html,
-            'confirmButtonColor' => '#2563eb',
-        ];
-    }
-
-    /**
-     * @param  list<array<string, mixed>>  $validatedRows
-     * @return array{active_fields:int,deleted_fields:int,created_fields:int,updated_fields:int,no_changes:bool}
-     */
-    private function buildLoanSettingsSaveReport(array $validatedRows, string $kind): array
-    {
-        $existing = LoanFormFieldDefinition::query()
-            ->where('form_kind', $kind)
-            ->get()
-            ->keyBy('id');
-
-        $submittedIds = collect($validatedRows)
-            ->pluck('id')
-            ->filter()
-            ->map(fn ($v) => (int) $v)
-            ->all();
-
-        $deletedCount = $existing
-            ->filter(fn (LoanFormFieldDefinition $f) => ! $f->is_core && ! in_array($f->id, $submittedIds, true))
-            ->count();
-
-        $createdCount = 0;
-        $updatedCount = 0;
-
-        foreach ($validatedRows as $index => $row) {
-            $id = isset($row['id']) ? (int) $row['id'] : null;
-            if (! $id) {
-                $createdCount++;
-
-                continue;
-            }
-
-            $field = $existing->get($id);
-            if (! $field instanceof LoanFormFieldDefinition) {
-                continue;
-            }
-
-            if ($this->loanSettingsFieldUpdateWouldChange($field, $row, $index)) {
-                $updatedCount++;
-            }
-        }
-
-        $activeSelectedCount = collect($validatedRows)
-            ->filter(function (array $row): bool {
-                return trim((string) ($row['field_status'] ?? 'active')) === 'active';
-            })
-            ->count();
-
-        $noChanges = $deletedCount === 0 && $createdCount === 0 && $updatedCount === 0;
-
-        return [
-            'active_fields' => $activeSelectedCount,
-            'deleted_fields' => $deletedCount,
-            'created_fields' => $createdCount,
-            'updated_fields' => $updatedCount,
-            'no_changes' => $noChanges,
-        ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $row
-     */
-    private function loanSettingsFieldUpdateWouldChange(LoanFormFieldDefinition $field, array $row, int $index): bool
-    {
-        $selectOptions = $row['data_type'] === LoanFormFieldDefinition::TYPE_SELECT
-            ? ($row['select_options'] ?? null)
-            : null;
-
-        $prefill = isset($row['prefill_from_previous']) && (string) $row['prefill_from_previous'] === '1';
-        $required = isset($row['is_required']) && (string) $row['is_required'] === '1';
-        $fieldStatus = trim((string) ($row['field_status'] ?? 'active'));
-        if ($field->is_core) {
-            $fieldStatus = 'active';
-            $prefill = false;
-        }
-
-        $newProductId = isset($row['product_id']) && $row['product_id'] !== '' ? (int) $row['product_id'] : null;
-
-        $norm = fn (?string $s): string => trim((string) ($s ?? ''));
-
-        return (int) ($field->product_id ?? 0) !== (int) ($newProductId ?? 0)
-            || (string) $field->label !== (string) $row['label']
-            || (string) $field->data_type !== (string) $row['data_type']
-            || (bool) ($field->is_required ?? false) !== $required
-            || $norm($field->select_options) !== $norm($selectOptions)
-            || (bool) $field->prefill_from_previous !== $prefill
-            || $norm($field->visible_to) !== $norm((string) ($row['visible_to'] ?? ''))
-            || $norm($field->field_status) !== $fieldStatus
-            || (int) $field->sort_order !== $index;
-    }
-
-    private function assertPendingLoanFormProduct(Request $request): void
-    {
-        if (! $request->filled('complete_loan_form_setup_product_id')) {
-            return;
-        }
-        if (! Schema::hasColumn('loan_products', 'loan_form_setup_completed_at')) {
-            return;
-        }
-
-        $id = (int) $request->input('complete_loan_form_setup_product_id');
-        $product = LoanProduct::query()->find($id);
-        if (! $product) {
-            throw ValidationException::withMessages([
-                'complete_loan_form_setup_product_id' => 'Invalid loan product.',
-            ]);
-        }
-        if ($product->loan_form_setup_completed_at !== null) {
-            throw ValidationException::withMessages([
-                'complete_loan_form_setup_product_id' => 'This product is already set up. Use the product selector to adjust fields.',
-            ]);
-        }
-    }
-
-    private function finalizeLoanFormSetupForProduct(Request $request): void
-    {
-        if (! $request->filled('complete_loan_form_setup_product_id')) {
-            return;
-        }
-        if (! Schema::hasColumn('loan_products', 'loan_form_setup_completed_at')) {
-            return;
-        }
-
-        $id = (int) $request->input('complete_loan_form_setup_product_id');
-        LoanProduct::query()
-            ->whereKey($id)
-            ->whereNull('loan_form_setup_completed_at')
-            ->update(['loan_form_setup_completed_at' => now()]);
-    }
-
-    /**
-     * @return array{icon:string,title:string,html:string,confirmButtonColor?:string}
-     */
-    private function loanFormSetupMarkedCompleteSwalPayload(): array
-    {
-        return [
-            'icon' => 'success',
-            'title' => 'Product form setup complete',
-            'html' => '<p class="text-sm text-slate-600 text-left">This loan product is now available in the product selector. You can add or change product-specific fields there anytime.</p>',
-            'confirmButtonColor' => '#2563eb',
-        ];
     }
 }

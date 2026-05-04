@@ -4,9 +4,18 @@
         subtitle="Update profile and assignment."
     >
         <x-slot name="actions">
+            @if ($loan_client->kind === 'lead')
+                <a href="{{ $loan_client->loanPortalProfileUrl() }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+                    Lead workspace
+                </a>
+            @endif
             <a href="{{ $loan_client->kind === 'lead' ? route('loan.clients.leads') : route('loan.clients.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                 Back to list
             </a>
+        </x-slot>
+
+        <x-slot name="banner">
+            @include('loan.clients.partials.identity-flashes', ['contextClient' => $loan_client])
         </x-slot>
 
         <div class="grid max-w-7xl grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]" x-data="clientFormPreview()">

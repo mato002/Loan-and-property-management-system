@@ -251,8 +251,9 @@ class AccountingEventRegistryService
             return;
         }
         if (! in_array($actualType, $expected, true)) {
+            $label = is_array($slot) ? (string) ($slot['label'] ?? $slotKey) : $slotKey;
             throw ValidationException::withMessages([
-                $field => 'Selected account type does not match slot requirements.',
+                $field => $label.' ('.$slotKey.') requires account type: '.implode(', ', $expected).'. Selected: '.$actualType.'.',
             ]);
         }
     }

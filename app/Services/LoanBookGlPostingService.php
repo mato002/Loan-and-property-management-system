@@ -7,16 +7,14 @@ use App\Models\AccountingJournalEntry;
 use App\Models\AccountingJournalLine;
 use App\Models\AccountingPostingRule;
 use App\Models\AccountingWalletSlotSetting;
+use App\Models\ClientWalletTransaction;
 use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookDisbursement;
-use App\Models\LoanBookPayment;
 use App\Models\LoanBookLoan;
+use App\Models\LoanBookPayment;
 use App\Models\LoanSystemSetting;
 use App\Models\User;
 use App\Services\LoanBook\LoanRepaymentAllocationService;
-use App\Services\AccountingChartBalanceService;
-use App\Services\AccountingEventRegistryService;
-use App\Services\AccountingOverdraftGuardService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -115,6 +113,39 @@ class LoanBookGlPostingService
             throw new \RuntimeException('Unable to allocate payment to accounting components.');
         }
 
+        if ((bool) ($payment->funded_from_wallet ?? false)) {
+            $debitLines = [];
+            $creditLines = [];
+            foreach ($allocation as $component => $componentAmount) {
+                if ($componentAmount <= 0.0 || $component === 'overpayment') {
+                    continue;
+                }
+                $componentMap = $eventRegistry->resolveEventAccountIdsOrFail($this->eventKeyForPaymentComponent((string) $component));
+                $componentDebit = (int) $componentMap['debit_account_id'];
+                $componentCredit = (int) $componentMap['credit_account_id'];
+                $debitLines[$componentDebit] = ($debitLines[$componentDebit] ?? 0.0) + $componentAmount;
+                $creditLines[$componentCredit] = ($creditLines[$componentCredit] ?? 0.0) + $componentAmount;
+            }
+            if ($debitLines === [] || $creditLines === []) {
+                throw new \RuntimeException('Wallet-funded payment has no allocatable components to post.');
+            }
+
+            $loan = $payment->loan;
+            $loanLabel = $loan ? $loan->loan_number : 'Unallocated';
+            $ref = $payment->reference ?? 'PAY-'.$payment->id;
+            $description = 'Wallet-funded loan pay-in '.$ref.' — '.$loanLabel
+                .' ('.$payment->payment_kind.', '.$payment->channel.')';
+
+            return $this->persistMultiLineEntry(
+                $payment->transaction_at,
+                $ref,
+                $description,
+                $user?->id,
+                $debitLines,
+                $creditLines
+            );
+        }
+
         $receiveMap = $eventRegistry->resolveEventAccountIdsOrFail('ClientPaymentReceived');
         $cashAccountId = (int) $receiveMap['debit_account_id'];
         $walletAccountId = (int) $receiveMap['credit_account_id'];
@@ -187,6 +218,95 @@ class LoanBookGlPostingService
             $crId,
             $amount
         );
+    }
+
+    /**
+     * Post an approved client refund: debit client wallet liability, credit collection cash.
+     *
+     * @throws \RuntimeException
+     */
+    public function postRefundIssued(
+        float $amount,
+        string $reference,
+        string $description,
+        ?User $user = null,
+        mixed $entryDate = null
+    ): AccountingJournalEntry {
+        $this->assertAccountingSchema();
+        $value = round(abs($amount), 2);
+        if ($value <= 0.0) {
+            throw new \RuntimeException('Refund amount must be non-zero to post to the general ledger.');
+        }
+
+        $mapped = app(AccountingEventRegistryService::class)->resolveEventAccountIdsOrFail('RefundIssued');
+        $walletDr = (int) $mapped['debit_account_id'];
+        $cashCr = (int) $mapped['credit_account_id'];
+        $date = $entryDate ? now()->parse((string) $entryDate) : now();
+
+        return $this->persistEntry(
+            $date,
+            $reference,
+            $description,
+            $user?->id,
+            $walletDr,
+            $cashCr,
+            $value
+        );
+    }
+
+    /**
+     * Post a manual client-wallet adjustment to the GL (WalletAdjustment event).
+     * Wallet debit (reducing client balance): DR client wallet liability, CR adjustment offset.
+     * Wallet credit (increasing client balance): DR adjustment offset, CR client wallet liability.
+     *
+     * @param  string  $walletTransactionType  {@see ClientWalletTransaction::TYPE_DEBIT} or {@see ClientWalletTransaction::TYPE_CREDIT}
+     *
+     * @throws \RuntimeException
+     */
+    public function postWalletAdjustment(
+        float $amount,
+        string $walletTransactionType,
+        string $reference,
+        string $description,
+        ?int $actorUserId = null,
+        mixed $entryDate = null
+    ): AccountingJournalEntry {
+        $this->assertAccountingSchema();
+        $value = round(abs($amount), 2);
+        if ($value <= 0.0) {
+            throw new \RuntimeException('Wallet adjustment amount must be non-zero to post to the general ledger.');
+        }
+
+        $mapped = app(AccountingEventRegistryService::class)->resolveEventAccountIdsOrFail('WalletAdjustment');
+        $walletLiabilityId = (int) $mapped['debit_account_id'];
+        $adjustmentId = (int) $mapped['credit_account_id'];
+        $date = $entryDate ? now()->parse((string) $entryDate) : now();
+
+        if ($walletTransactionType === ClientWalletTransaction::TYPE_DEBIT) {
+            return $this->persistEntry(
+                $date,
+                $reference,
+                $description,
+                $actorUserId,
+                $walletLiabilityId,
+                $adjustmentId,
+                $value
+            );
+        }
+
+        if ($walletTransactionType === ClientWalletTransaction::TYPE_CREDIT) {
+            return $this->persistEntry(
+                $date,
+                $reference,
+                $description,
+                $actorUserId,
+                $adjustmentId,
+                $walletLiabilityId,
+                $value
+            );
+        }
+
+        throw new \RuntimeException('Unsupported wallet transaction type for GL adjustment: '.$walletTransactionType);
     }
 
     /**

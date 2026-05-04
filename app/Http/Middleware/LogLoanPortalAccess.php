@@ -5,13 +5,14 @@ namespace App\Http\Middleware;
 use App\Models\LoanAccessLog;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class LogLoanPortalAccess
 {
     private static ?bool $hasActivityColumn = null;
+
     private static ?bool $hasForensicsColumns = null;
 
     public function handle(Request $request, Closure $next): Response
@@ -136,6 +137,7 @@ class LogLoanPortalAccess
             'loan.dashboard' => 'Viewed operations dashboard',
             'loan.clients.index' => 'Viewed clients list',
             'loan.clients.leads' => 'Viewed client leads',
+            'loan.clients.leads.show' => 'Viewed lead workspace',
             'loan.book.loans.index' => 'Viewed loans register',
             'loan.book.applications.index' => 'Viewed loan applications',
             'loan.book.disbursements.index' => 'Viewed disbursements',

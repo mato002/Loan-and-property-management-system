@@ -6,6 +6,7 @@
         <div class="bg-white border border-slate-200 rounded-xl max-w-lg p-6 space-y-4">
             <form method="post" action="{{ route('loan.accounting.company_expenses.store') }}">
                 @csrf
+                @error('accounting')<p class="text-sm text-red-600">{{ $message }}</p>@enderror
                 <div><label class="text-xs font-semibold text-slate-600">Title</label><input name="title" value="{{ old('title') }}" required class="mt-1 w-full rounded-lg border-slate-200 text-sm"/></div>
                 <div><label class="text-xs font-semibold text-slate-600">Category</label><input name="category" value="{{ old('category') }}" class="mt-1 w-full rounded-lg border-slate-200 text-sm"/></div>
                 <div><label class="text-xs font-semibold text-slate-600">Amount</label><input name="amount" type="number" step="0.01" min="0.01" value="{{ old('amount') }}" required class="mt-1 w-full rounded-lg border-slate-200 text-sm tabular-nums"/></div>

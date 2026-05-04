@@ -9,6 +9,10 @@
             </a>
         </x-slot>
 
+        <x-slot name="banner">
+            @include('loan.clients.partials.identity-flashes')
+        </x-slot>
+
         <div
             x-data="{
                 columnMenuOpen: false,

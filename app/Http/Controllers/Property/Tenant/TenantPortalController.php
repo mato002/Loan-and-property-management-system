@@ -15,20 +15,22 @@ use App\Models\PmMessageRead;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenantPortalRequest;
-use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Services\Integrations\MpesaDarajaService;
-use App\Services\Property\PropertyPaymentSettlementService;
+use App\Services\LoanClientIdentifierNormalizer;
+use App\Services\LoanClientPortalMatchService;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyPaymentSettlementService;
+use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\Rule;
-use Illuminate\Http\JsonResponse;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -167,6 +169,7 @@ class TenantPortalController extends Controller
                 ->pluck('c', 'channel_key');
             $channelCounts = collect($channelRows)->mapWithKeys(function ($count, $channel) {
                 $label = $channel !== '' ? strtoupper((string) $channel) : 'UNKNOWN';
+
                 return [$label => (int) $count];
             })->sortDesc()->all();
 
@@ -183,7 +186,7 @@ class TenantPortalController extends Controller
                 ->pluck('total', 'ym');
             $monthlyPaidTrend = collect($months)->map(function (string $ym) use ($paidRows) {
                 return [
-                    'label' => \Carbon\Carbon::createFromFormat('Y-m', $ym)->format('M'),
+                    'label' => Carbon::createFromFormat('Y-m', $ym)->format('M'),
                     'amount' => (float) ($paidRows[$ym] ?? 0),
                 ];
             })->all();
@@ -268,8 +271,9 @@ class TenantPortalController extends Controller
             $total = $allocs->count();
             if ($total > 0) {
                 $onTime = $allocs->filter(function ($a) {
-                    $paid = $a->paid_at ? \Carbon\Carbon::parse((string) $a->paid_at) : null;
-                    $due = $a->due_date ? \Carbon\Carbon::parse((string) $a->due_date)->endOfDay() : null;
+                    $paid = $a->paid_at ? Carbon::parse((string) $a->paid_at) : null;
+                    $due = $a->due_date ? Carbon::parse((string) $a->due_date)->endOfDay() : null;
+
                     return $paid && $due && $paid->lte($due);
                 })->count();
                 $onTimePct = (int) round(($onTime / max(1, $total)) * 100);
@@ -404,6 +408,7 @@ class TenantPortalController extends Controller
 
         if ($format === 'json') {
             $fileName = 'tenant-payments-'.now()->format('Ymd_His').'.json';
+
             return response()->streamDownload(function () use ($rows) {
                 echo json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
             }, $fileName, [
@@ -809,6 +814,7 @@ class TenantPortalController extends Controller
                 }
 
                 $missing = implode(', ', $daraja->missingConfigKeys());
+
                 return back()->withErrors([
                     'payer_phone' => 'Daraja is not configured (missing: '.$missing.'). Update .env then run: php artisan config:clear',
                 ])->withInput();
@@ -975,6 +981,7 @@ class TenantPortalController extends Controller
     private function invoiceTypeForScope(string $scope): ?string
     {
         $scope = strtolower(trim($scope));
+
         return match ($scope) {
             'rent' => PmInvoice::TYPE_RENT,
             'water' => PmInvoice::TYPE_WATER,
@@ -1208,10 +1215,9 @@ class TenantPortalController extends Controller
         };
         $client = $this->resolveOrCreatePortalClient($user, 'tenant');
 
-        $next = (LoanBookApplication::query()->max('id') ?? 0) + 1;
         LoanBookApplication::query()->create([
             'loan_client_id' => $client->id,
-            'reference' => 'APP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT),
+            'reference' => LoanBookApplication::allocateUniqueReference(),
             'product_name' => $validated['product_name'],
             'amount_requested' => $validated['amount_requested'],
             'term_months' => $termMonths,
@@ -1324,8 +1330,25 @@ class TenantPortalController extends Controller
 
     private function resolveOrCreatePortalClient($user, string $role): LoanClient
     {
+        $normalizer = app(LoanClientIdentifierNormalizer::class);
+        $matcher = app(LoanClientPortalMatchService::class);
+
         $email = trim((string) ($user->email ?? ''));
-        $existing = $email !== '' ? LoanClient::query()->clients()->where('email', $email)->first() : null;
+        $email = $email !== '' ? strtolower($email) : null;
+
+        $phone = null;
+        if (Schema::hasColumn('users', 'phone')) {
+            $rawPhone = trim((string) ($user->phone ?? ''));
+            $phone = $rawPhone !== '' ? $normalizer->normalizePhone($rawPhone) : null;
+        }
+
+        $idNumber = null;
+        if ($role === 'tenant') {
+            $nid = trim((string) ($user->pmTenantProfile?->national_id ?? ''));
+            $idNumber = $nid !== '' ? $nid : null;
+        }
+
+        $existing = $matcher->findExistingClientForPortal($idNumber, $phone, $email);
         if ($existing) {
             return $existing;
         }
@@ -1335,7 +1358,8 @@ class TenantPortalController extends Controller
         $firstName = trim((string) ($parts[0] ?? ucfirst($role)));
         $lastName = trim((string) (count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : 'Portal'));
 
-        $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.($email !== '' ? strtolower($email) : 'u'.$user->id)), 0, 8));
+        $seed = $email !== null ? strtolower($email) : 'u'.$user->id;
+        $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.$seed), 0, 8));
         while (LoanClient::query()->where('client_number', $clientNumber)->exists()) {
             $clientNumber = 'PORTAL-'.strtoupper(substr(md5($clientNumber.'|'.microtime(true)), 0, 8));
         }
@@ -1345,10 +1369,13 @@ class TenantPortalController extends Controller
             'kind' => LoanClient::KIND_CLIENT,
             'first_name' => $firstName,
             'last_name' => $lastName,
-            'phone' => null,
-            'email' => $email !== '' ? $email : null,
+            'phone' => $phone,
+            'email' => $email,
+            'id_number' => $idNumber,
             'client_status' => 'active',
             'notes' => 'Auto-created from '.$role.' portal loan request.',
+            'created_by' => $user->id,
+            'source_channel' => LoanClient::SOURCE_PORTAL,
         ]);
     }
 

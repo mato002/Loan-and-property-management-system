@@ -5,14 +5,20 @@ namespace App\Http\Controllers\Loan;
 use App\Http\Controllers\Controller;
 use App\Models\AccountingChartAccount;
 use App\Models\AccountingJournalLine;
+use App\Models\ClientWallet;
+use App\Models\ClientWalletRefundRequest;
+use App\Models\ClientWalletTransaction;
 use App\Models\FinancialAccount;
 use App\Models\InvestmentPackage;
 use App\Models\Investor;
+use App\Models\LoanClient;
 use App\Models\MpesaPayoutBatch;
 use App\Models\MpesaPlatformTransaction;
 use App\Models\PmPayment;
 use App\Models\TellerMovement;
 use App\Models\TellerSession;
+use App\Services\ClientWalletService;
+use App\Services\LoanBookGlPostingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -180,12 +186,81 @@ class LoanFinancialController extends Controller
             ->with('status', 'Batch removed.');
     }
 
-    public function accountBalances(): View
+    public function accountBalances(Request $request): View
     {
-        // Primary source: explicit financial accounts (manual control accounts)
+        $q = trim((string) $request->query('q', ''));
+        $status = trim((string) $request->query('status', ''));
+        $balanceFilter = trim((string) $request->query('balance', ''));
+        $from = trim((string) $request->query('from', ''));
+        $to = trim((string) $request->query('to', ''));
+
+        $walletsQuery = ClientWallet::query()
+            ->with(['loanClient'])
+            ->whereHas('loanClient', fn ($c) => $c->where('kind', LoanClient::KIND_CLIENT));
+
+        if ($q !== '') {
+            $walletsQuery->whereHas('loanClient', function ($c) use ($q): void {
+                $c->where('client_number', 'like', '%'.$q.'%')
+                    ->orWhere('first_name', 'like', '%'.$q.'%')
+                    ->orWhere('last_name', 'like', '%'.$q.'%')
+                    ->orWhere('phone', 'like', '%'.$q.'%');
+            });
+        }
+        if ($status !== '') {
+            $walletsQuery->where('status', $status);
+        }
+        if ($balanceFilter === 'positive') {
+            $walletsQuery->where('balance', '>', 0.01);
+        } elseif ($balanceFilter === 'zero') {
+            $walletsQuery->whereBetween('balance', [-0.01, 0.01]);
+        }
+        if ($from !== '') {
+            $walletsQuery->whereDate('updated_at', '>=', $from);
+        }
+        if ($to !== '') {
+            $walletsQuery->whereDate('updated_at', '<=', $to);
+        }
+
+        $wallets = $walletsQuery->orderByDesc('balance')->paginate(25)->withQueryString();
+
+        $lastTxDates = [];
+        if ($wallets->isNotEmpty()) {
+            $ids = $wallets->pluck('loan_client_id')->all();
+            $rows = DB::table('client_wallet_transactions')
+                ->selectRaw('loan_client_id, MAX(created_at) as last_at')
+                ->whereIn('loan_client_id', $ids)
+                ->groupBy('loan_client_id')
+                ->get();
+            foreach ($rows as $row) {
+                $lastTxDates[(int) $row->loan_client_id] = $row->last_at;
+            }
+        }
+
+        $totalWalletLiability = (float) ClientWallet::query()->sum('balance');
+        $activeWallets = (int) ClientWallet::query()->where('status', ClientWallet::STATUS_ACTIVE)->count();
+        $frozenWallets = (int) ClientWallet::query()->where('status', ClientWallet::STATUS_FROZEN)->count();
+        $pendingRefunds = (int) ClientWalletRefundRequest::query()->where('status', ClientWalletRefundRequest::STATUS_PENDING)->count();
+
+        $reconcile = app(ClientWalletService::class)->reconcileWalletTotalVsGlWalletLiability();
+
+        return view('loan.financial.client_wallet_balances', [
+            'title' => 'Client Wallet Balances',
+            'subtitle' => 'Overview of client funds held as wallet balances, overpayments, refunds, and wallet-to-loan movements.',
+            'wallets' => $wallets,
+            'lastTxDates' => $lastTxDates,
+            'totalWalletLiability' => $totalWalletLiability,
+            'activeWallets' => $activeWallets,
+            'frozenWallets' => $frozenWallets,
+            'pendingRefunds' => $pendingRefunds,
+            'reconcile' => $reconcile,
+            'filters' => compact('q', 'status', 'balanceFilter', 'from', 'to'),
+        ]);
+    }
+
+    public function controlAccounts(): View
+    {
         $accounts = FinancialAccount::query()->orderBy('name')->paginate(15);
 
-        // If none exist, show live balances from the accounting journal instead of an empty page.
         $journalBalances = collect();
         $mode = 'financial_accounts';
         if ($accounts->total() === 0) {
@@ -203,7 +278,6 @@ class LoanFinancialController extends Controller
                 ->orderBy('a.code')
                 ->get();
 
-            // include accounts with zero activity (so chart is complete)
             $all = AccountingChartAccount::query()
                 ->orderBy('code')
                 ->get(['id', 'code', 'name']);
@@ -211,6 +285,7 @@ class LoanFinancialController extends Controller
             $byId = $balances->keyBy('account_id');
             $journalBalances = $all->map(function ($a) use ($byId) {
                 $b = (float) (($byId[$a->id]->balance ?? 0));
+
                 return [
                     'id' => $a->id,
                     'name' => $a->code.' · '.$a->name,
@@ -221,8 +296,8 @@ class LoanFinancialController extends Controller
             });
         }
 
-        return view('loan.financial.account_balances', [
-            'title' => 'Account balances',
+        return view('loan.financial.control_accounts', [
+            'title' => 'Control accounts',
             'subtitle' => $mode === 'journal'
                 ? 'Live balances from accounting journal (debit − credit).'
                 : 'Bank, float, and control accounts used in reporting.',
@@ -230,6 +305,90 @@ class LoanFinancialController extends Controller
             'mode' => $mode,
             'journalBalances' => $journalBalances,
         ]);
+    }
+
+    public function walletRefundsIndex(): View
+    {
+        $pending = ClientWalletRefundRequest::query()
+            ->with(['loanClient', 'wallet'])
+            ->where('status', ClientWalletRefundRequest::STATUS_PENDING)
+            ->orderByDesc('id')
+            ->paginate(30);
+
+        return view('loan.financial.wallet_refunds', [
+            'title' => 'Wallet refund approvals',
+            'subtitle' => 'Pending refund requests require approval before GL posting.',
+            'pending' => $pending,
+        ]);
+    }
+
+    public function walletRefundApprove(Request $request, ClientWalletRefundRequest $client_wallet_refund_request): RedirectResponse
+    {
+        if ($client_wallet_refund_request->status !== ClientWalletRefundRequest::STATUS_PENDING) {
+            return back()->withErrors(['refund' => 'Only pending requests can be approved.']);
+        }
+
+        $client = $client_wallet_refund_request->loanClient;
+        if (! $client) {
+            return back()->withErrors(['refund' => 'Client missing.']);
+        }
+
+        try {
+            DB::transaction(function () use ($request, $client_wallet_refund_request, $client): void {
+                $wallet = ClientWallet::query()->where('loan_client_id', $client->id)->lockForUpdate()->first();
+                if (! $wallet || (float) $wallet->balance + 0.0001 < (float) $client_wallet_refund_request->amount) {
+                    throw new \RuntimeException('Insufficient wallet balance for this refund.');
+                }
+
+                $ref = 'WREF-'.str_pad((string) $client_wallet_refund_request->id, 6, '0', STR_PAD_LEFT);
+                $entry = app(LoanBookGlPostingService::class)->postRefundIssued(
+                    (float) $client_wallet_refund_request->amount,
+                    $ref,
+                    'Client wallet refund — '.$client->client_number,
+                    $request->user()
+                );
+
+                app(ClientWalletService::class)->debitWallet($client, (float) $client_wallet_refund_request->amount, ClientWalletTransaction::SOURCE_REFUND, [
+                    'reference' => $ref,
+                    'description' => 'Refund to client (approved)',
+                    'accounting_journal_entry_id' => $entry->id,
+                    'created_by' => $request->user()->id,
+                    'approved_by' => $request->user()->id,
+                    'approved_at' => now(),
+                ]);
+
+                $client_wallet_refund_request->update([
+                    'status' => ClientWalletRefundRequest::STATUS_POSTED,
+                    'approved_by' => $request->user()->id,
+                    'approved_at' => now(),
+                    'accounting_journal_entry_id' => $entry->id,
+                ]);
+            });
+        } catch (\Throwable $e) {
+            return back()->withErrors(['refund' => $e->getMessage()]);
+        }
+
+        return back()->with('status', 'Refund posted and wallet debited.');
+    }
+
+    public function walletRefundReject(Request $request, ClientWalletRefundRequest $client_wallet_refund_request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'rejection_reason' => ['required', 'string', 'max:2000'],
+        ]);
+
+        if ($client_wallet_refund_request->status !== ClientWalletRefundRequest::STATUS_PENDING) {
+            return back()->withErrors(['refund' => 'Only pending requests can be rejected.']);
+        }
+
+        $client_wallet_refund_request->update([
+            'status' => ClientWalletRefundRequest::STATUS_REJECTED,
+            'rejection_reason' => $validated['rejection_reason'],
+            'approved_by' => $request->user()->id,
+            'approved_at' => now(),
+        ]);
+
+        return back()->with('status', 'Refund request rejected.');
     }
 
     public function financialAccountsCreate(): View
@@ -255,7 +414,7 @@ class LoanFinancialController extends Controller
         FinancialAccount::create($data);
 
         return redirect()
-            ->route('loan.financial.account_balances')
+            ->route('loan.financial.control_accounts')
             ->with('status', 'Account added.');
     }
 
@@ -282,7 +441,7 @@ class LoanFinancialController extends Controller
         $financial_account->update($data);
 
         return redirect()
-            ->route('loan.financial.account_balances')
+            ->route('loan.financial.control_accounts')
             ->with('status', 'Account updated.');
     }
 
@@ -291,7 +450,7 @@ class LoanFinancialController extends Controller
         $financial_account->delete();
 
         return redirect()
-            ->route('loan.financial.account_balances')
+            ->route('loan.financial.control_accounts')
             ->with('status', 'Account deleted.');
     }
 

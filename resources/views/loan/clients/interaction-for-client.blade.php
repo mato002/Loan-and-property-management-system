@@ -1,7 +1,7 @@
 <x-loan-layout>
     <x-loan.page
         title="{{ $loan_client->full_name }} Interactions"
-        subtitle="Interaction conversation history for this client."
+        subtitle="{{ $loan_client->kind === 'lead' ? 'Interaction history for this lead (full client profile unlocks after conversion).' : 'Interaction conversation history for this client.' }}"
     >
         <x-slot name="actions">
             <button
@@ -11,8 +11,8 @@
             >
                 + Create
             </button>
-            <a href="{{ route('loan.clients.show', $loan_client) }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
-                Back to profile
+            <a href="{{ $loan_client->loanPortalProfileUrl() }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+                {{ $loan_client->kind === 'lead' ? 'Back to lead' : 'Back to profile' }}
             </a>
         </x-slot>
 

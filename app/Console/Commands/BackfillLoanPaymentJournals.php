@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\LoanBookPayment;
 use App\Models\User;
+use App\Services\ClientWalletService;
 use App\Services\LoanBookGlPostingService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -70,6 +71,7 @@ class BackfillLoanPaymentJournals extends Command
                     $locked->load('loan');
                     $entry = $gl->postLoanPayment($locked, $user);
                     $locked->update(['accounting_journal_entry_id' => $entry->id]);
+                    app(ClientWalletService::class)->syncPostedPaymentWalletEffects($locked->fresh(['allocations', 'loan']));
                     $didPost = true;
                 });
                 if ($didPost) {

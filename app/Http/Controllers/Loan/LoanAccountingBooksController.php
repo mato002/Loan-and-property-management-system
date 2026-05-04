@@ -8,25 +8,24 @@ use App\Models\AccountingBudgetLine;
 use App\Models\AccountingChartAccount;
 use App\Models\AccountingCompanyAsset;
 use App\Models\AccountingCompanyExpense;
-use App\Models\AccountingJournalLine;
 use App\Models\AccountingJournalApprovalQueue;
 use App\Models\AccountingJournalEntry;
-use App\Models\AccountingPostingRule;
+use App\Models\AccountingJournalLine;
 use App\Models\AccountingPayrollLine;
 use App\Models\AccountingPayrollPeriod;
+use App\Models\AccountingPostingRule;
 use App\Models\Employee;
 use App\Models\LoanBookCollectionEntry;
 use App\Models\LoanBookCollectionRate;
 use App\Models\LoanClient;
 use App\Models\LoanSystemSetting;
 use App\Models\User;
-use App\Services\AccountingEventRegistryService;
 use App\Services\AccountingChartCodeGeneratorService;
+use App\Services\AccountingCompanyExpenseJournalService;
 use App\Services\AccountingControlledApprovalService;
-use App\Support\CsvExport;
+use App\Services\AccountingEventRegistryService;
 use App\Support\TabularExport;
 use Carbon\Carbon;
-use Illuminate\Http\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -216,12 +215,14 @@ class LoanAccountingBooksController extends Controller
             'account_type',
             'account_class',
             'parent_code',
+            'income_statement_category',
         ];
 
         $example = [
             'Loan Disbursement Account',
             'asset',
             'Detail',
+            '',
             '',
         ];
 
@@ -326,6 +327,9 @@ class LoanAccountingBooksController extends Controller
                 'control_reason_note' => trim((string) ($row['control_reason_note'] ?? '')) ?: null,
                 'floor_enabled' => $this->toBool($row['floor_enabled'] ?? '0'),
                 'floor_action' => in_array(strtolower(trim((string) ($row['floor_action'] ?? 'block'))), ['block', 'require_approval'], true) ? strtolower(trim((string) ($row['floor_action'] ?? 'block'))) : 'block',
+                'income_statement_category' => in_array('income_statement_category', $normalizedHeader, true)
+                    ? trim((string) ($row['income_statement_category'] ?? ''))
+                    : '',
             ];
         }
         fclose($handle);
@@ -361,10 +365,14 @@ class LoanAccountingBooksController extends Controller
                     $parentId
                 );
 
+                $effectiveType = $parentId
+                    ? (string) (AccountingChartAccount::query()->find($parentId)?->account_type ?? $row['account_type'])
+                    : $row['account_type'];
+
                 $payload = [
                     'code' => $generatedCode,
                     'name' => $row['name'],
-                    'account_type' => $parentId ? (string) AccountingChartAccount::query()->find($parentId)?->account_type : $row['account_type'],
+                    'account_type' => $effectiveType,
                     'account_class' => $row['account_class'],
                     'parent_id' => $parentId,
                     'current_balance' => $row['current_balance'],
@@ -386,6 +394,14 @@ class LoanAccountingBooksController extends Controller
                     'floor_action' => $row['floor_enabled'] ? $row['floor_action'] : 'block',
                     'created_by' => $request->user()->id,
                 ];
+
+                if (Schema::hasColumn('accounting_chart_accounts', 'income_statement_category')) {
+                    $payload['income_statement_category'] = $this->incomeStatementCategoryForImportedAccountType(
+                        $effectiveType,
+                        (string) ($row['income_statement_category'] ?? ''),
+                        (int) $row['line']
+                    );
+                }
 
                 if ($this->coaApprovalEnabled()) {
                     $payload['is_active'] = false;
@@ -412,6 +428,41 @@ class LoanAccountingBooksController extends Controller
         return redirect()
             ->route('loan.accounting.books.chart_rules')
             ->with('status', "Bulk import completed successfully. {$createdCount} account(s) imported.");
+    }
+
+    /**
+     * Resolve income_statement_category for CSV import (defaults when blank).
+     *
+     * @throws ValidationException
+     */
+    private function incomeStatementCategoryForImportedAccountType(string $effectiveAccountType, string $rawCategory, int $lineNumber): ?string
+    {
+        if (! in_array($effectiveAccountType, [AccountingChartAccount::TYPE_INCOME, AccountingChartAccount::TYPE_EXPENSE], true)) {
+            return null;
+        }
+
+        $raw = strtolower(trim($rawCategory));
+        if ($raw === '') {
+            return $effectiveAccountType === AccountingChartAccount::TYPE_INCOME
+                ? AccountingChartAccount::INCOME_STATEMENT_CATEGORY_REVENUE
+                : AccountingChartAccount::INCOME_STATEMENT_CATEGORY_OPERATING_EXPENSE;
+        }
+
+        if ($effectiveAccountType === AccountingChartAccount::TYPE_INCOME
+            && ! in_array($raw, AccountingChartAccount::INCOME_STATEMENT_CATEGORIES_FOR_INCOME_ACCOUNT, true)) {
+            throw ValidationException::withMessages([
+                'import_file' => "Invalid income_statement_category at line {$lineNumber} for an income account. Allowed: revenue, other_income.",
+            ]);
+        }
+
+        if ($effectiveAccountType === AccountingChartAccount::TYPE_EXPENSE
+            && ! in_array($raw, AccountingChartAccount::INCOME_STATEMENT_CATEGORIES_FOR_EXPENSE_ACCOUNT, true)) {
+            throw ValidationException::withMessages([
+                'import_file' => "Invalid income_statement_category at line {$lineNumber} for an expense account. Allowed: direct_cost, operating_expense, tax_expense, other_expense.",
+            ]);
+        }
+
+        return $raw;
     }
 
     private function toBool(mixed $value): bool
@@ -968,6 +1019,18 @@ class LoanAccountingBooksController extends Controller
             'amount' => (float) $sections['unclassified']['total'],
         ];
 
+        $companyExpensesNotInGl = false;
+        if (Schema::hasColumn('accounting_company_expenses', 'accounting_journal_entry_id')) {
+            $companyExpensesNotInGl = AccountingCompanyExpense::query()
+                ->whereNull('accounting_journal_entry_id')
+                ->whereBetween('expense_date', [$from->toDateString(), $to->toDateString()])
+                ->exists();
+        }
+
+        $hasUnclassifiedAccounts = ((int) ($unclassifiedWarning['account_count'] ?? 0) > 0)
+            || abs((float) ($unclassifiedWarning['amount'] ?? 0)) > 0.00001;
+        $profitIntegrityWarning = $hasUnclassifiedAccounts || $companyExpensesNotInGl;
+
         $netIncome = $incomeTotal - $expenseTotal;
 
         return view('loan.accounting.books.income-statement', compact(
@@ -978,7 +1041,10 @@ class LoanAccountingBooksController extends Controller
             'incomeTotal',
             'expenseTotal',
             'netIncome',
-            'unclassifiedWarning'
+            'unclassifiedWarning',
+            'companyExpensesNotInGl',
+            'profitIntegrityWarning',
+            'hasUnclassifiedAccounts'
         ));
     }
 
@@ -1055,7 +1121,7 @@ class LoanAccountingBooksController extends Controller
 
     /* ---------- Company expenses ---------- */
 
-    public function companyExpensesIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function companyExpensesIndex(): View|StreamedResponse
     {
         $from = request()->string('from')->toString();
         $to = request()->string('to')->toString();
@@ -1136,13 +1202,30 @@ class LoanAccountingBooksController extends Controller
             'reference' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
-        AccountingCompanyExpense::create([
-            ...$validated,
-            'currency' => $validated['currency'] ?? 'KES',
-            'recorded_by' => $request->user()->id,
-        ]);
 
-        return redirect()->route('loan.accounting.company_expenses.index')->with('status', 'Expense recorded.');
+        try {
+            DB::transaction(function () use ($request, $validated): void {
+                $expense = AccountingCompanyExpense::query()->create([
+                    ...$validated,
+                    'currency' => $validated['currency'] ?? 'KES',
+                    'recorded_by' => $request->user()->id,
+                ]);
+
+                if (Schema::hasColumn('accounting_company_expenses', 'accounting_journal_entry_id')) {
+                    $entry = app(AccountingCompanyExpenseJournalService::class)->postJournalForExpense($expense, $request->user());
+                    $expense->update(['accounting_journal_entry_id' => $entry->id]);
+                }
+            });
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->withErrors(['accounting' => 'Could not post company expense to the ledger: '.$e->getMessage()]);
+        }
+
+        return redirect()->route('loan.accounting.company_expenses.index')->with('status', 'Expense recorded and posted to the general ledger.');
     }
 
     public function companyExpensesEdit(AccountingCompanyExpense $accounting_company_expense): View
@@ -1162,21 +1245,56 @@ class LoanAccountingBooksController extends Controller
             'reference' => ['nullable', 'string', 'max:120'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
-        $accounting_company_expense->update($validated);
 
-        return redirect()->route('loan.accounting.company_expenses.index')->with('status', 'Expense updated.');
+        try {
+            DB::transaction(function () use ($request, $accounting_company_expense, $validated): void {
+                $accounting_company_expense->update($validated);
+
+                if (! Schema::hasColumn('accounting_company_expenses', 'accounting_journal_entry_id')) {
+                    return;
+                }
+
+                $fresh = $accounting_company_expense->fresh();
+                if (! $fresh) {
+                    return;
+                }
+
+                $journalService = app(AccountingCompanyExpenseJournalService::class);
+                if ((int) ($fresh->accounting_journal_entry_id ?? 0) > 0) {
+                    $journalService->replaceJournalForExpense($fresh, $request->user());
+                } else {
+                    $entry = $journalService->postJournalForExpense($fresh, $request->user());
+                    $fresh->update(['accounting_journal_entry_id' => $entry->id]);
+                }
+            });
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->withErrors(['accounting' => 'Could not update ledger for this expense: '.$e->getMessage()]);
+        }
+
+        return redirect()->route('loan.accounting.company_expenses.index')->with('status', 'Expense updated and ledger entry refreshed.');
     }
 
     public function companyExpensesDestroy(AccountingCompanyExpense $accounting_company_expense): RedirectResponse
     {
-        $accounting_company_expense->delete();
+        DB::transaction(function () use ($accounting_company_expense): void {
+            if (Schema::hasColumn('accounting_company_expenses', 'accounting_journal_entry_id')
+                && (int) ($accounting_company_expense->accounting_journal_entry_id ?? 0) > 0) {
+                app(AccountingCompanyExpenseJournalService::class)->deleteJournalForExpense($accounting_company_expense);
+            }
+            $accounting_company_expense->delete();
+        });
 
         return redirect()->route('loan.accounting.company_expenses.index')->with('status', 'Removed.');
     }
 
     /* ---------- Company assets ---------- */
 
-    public function assetsIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function assetsIndex(): View|StreamedResponse
     {
         $status = request()->string('status')->toString();
         $branch = request()->string('branch')->toString();
@@ -1329,7 +1447,7 @@ class LoanAccountingBooksController extends Controller
         ]);
     }
 
-    public function payrollPayslipsIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function payrollPayslipsIndex(): View|StreamedResponse
     {
         $employeeId = request()->integer('employee_id') ?: null;
         $periodId = request()->integer('accounting_payroll_period_id') ?: null;
@@ -1412,7 +1530,7 @@ class LoanAccountingBooksController extends Controller
         ]);
     }
 
-    public function payrollIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function payrollIndex(): View|StreamedResponse
     {
         $status = request()->string('status')->toString();
         $from = request()->string('from')->toString();
@@ -1581,7 +1699,7 @@ class LoanAccountingBooksController extends Controller
 
     /* ---------- Budget ---------- */
 
-    public function budgetIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function budgetIndex(): View|StreamedResponse
     {
         $year = request()->integer('fiscal_year') ?: null;
         $month = request()->integer('month') ?: null;
@@ -1753,7 +1871,7 @@ class LoanAccountingBooksController extends Controller
 
     /* ---------- Bank reconciliation ---------- */
 
-    public function reconciliationIndex(): View|\Symfony\Component\HttpFoundation\StreamedResponse
+    public function reconciliationIndex(): View|StreamedResponse
     {
         $status = request()->string('status')->toString();
         $accountId = request()->integer('accounting_chart_account_id') ?: null;

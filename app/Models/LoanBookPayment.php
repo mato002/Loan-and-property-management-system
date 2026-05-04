@@ -52,6 +52,7 @@ class LoanBookPayment extends Model
         'message',
         'created_by',
         'accounting_journal_entry_id',
+        'funded_from_wallet',
     ];
 
     protected function casts(): array
@@ -61,6 +62,7 @@ class LoanBookPayment extends Model
             'transaction_at' => 'datetime',
             'posted_at' => 'datetime',
             'validated_at' => 'datetime',
+            'funded_from_wallet' => 'boolean',
         ];
     }
 
@@ -107,6 +109,11 @@ class LoanBookPayment extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(LoanPaymentAllocation::class, 'loan_book_payment_id');
+    }
+
+    public function walletTransactions(): HasMany
+    {
+        return $this->hasMany(ClientWalletTransaction::class, 'loan_book_payment_id');
     }
 
     public function scopeNotMergedChild(Builder $q): Builder

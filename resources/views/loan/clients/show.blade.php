@@ -18,6 +18,7 @@
         $ltv = (float) ($metrics['lifetime_value'] ?? $totalRepaid);
         $creditScore = (int) ($metrics['credit_score'] ?? 780);
         $walletBalance = (float) ($metrics['wallet_balance'] ?? 0);
+        $walletStatusLabel = (string) ($metrics['wallet_status'] ?? 'active');
         $riskLabel = $creditScore >= 740 ? 'Low Risk' : ($creditScore >= 660 ? 'Medium Risk' : 'High Risk');
         $riskClass = $creditScore >= 740
             ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -63,7 +64,11 @@
         ])->filter(fn ($item) => filled($item['name']))->values();
     @endphp
 
-    <section class="mx-auto w-full max-w-[1600px] space-y-5 text-slate-800" x-data="{ activeTab: 'loan-history' }">
+    <div class="mx-auto w-full max-w-[1600px] mb-4 space-y-3">
+        @include('loan.clients.partials.identity-flashes', ['contextClient' => $loan_client])
+    </div>
+
+    <section class="mx-auto w-full max-w-[1600px] space-y-5 text-slate-800" x-data="{ activeTab: @js($initialWalletTab ?? 'loan-history'), payLoanModalOpen: @js($openPayLoanModal ?? false), refundRequestModalOpen: @js($openRefundRequestModal ?? false) }" x-init="if (typeof window !== 'undefined' && window.location.hash === '#wallet') { activeTab = 'wallet' }; if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('pay_loan') === '1') { activeTab = 'wallet'; payLoanModalOpen = true; refundRequestModalOpen = false }; if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('refund_request') === '1') { activeTab = 'wallet'; refundRequestModalOpen = true; payLoanModalOpen = false }" @keydown.escape.window="payLoanModalOpen = false; refundRequestModalOpen = false">
             <header class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div class="min-w-0">
@@ -82,7 +87,7 @@
                         <a href="{{ route('loan.clients.edit', $loan_client) }}" class="inline-flex items-center rounded-lg border border-teal-700 bg-teal-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-800">
                             Edit Info
                         </a>
-                        <a href="{{ $loan_client->kind === 'lead' ? route('loan.clients.leads') : route('loan.clients.index') }}" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                        <a href="{{ route('loan.clients.index') }}" class="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                             Back
                         </a>
                     </div>
@@ -128,7 +133,19 @@
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Client Wallet</p>
                             <p class="mt-2 text-2xl font-semibold text-slate-900">KSh {{ number_format($walletBalance, 2) }}</p>
-                            <a href="{{ route('loan.payments.processed', ['q' => $loan_client->client_number, 'channel' => 'wallet']) }}" class="mt-2 inline-flex text-xs font-semibold text-teal-700 hover:text-teal-800">View Wallet</a>
+                            <p class="mt-1 text-xs font-medium text-slate-600">Status: <span class="uppercase">{{ $walletStatusLabel }}</span></p>
+                            @if(!empty($lastWalletTransaction))
+                                <p class="mt-1 text-xs text-slate-500">Last activity: {{ optional($lastWalletTransaction->created_at)->format('M j, Y g:i A') ?? '—' }}</p>
+                            @endif
+                            <a href="{{ route('loan.clients.show', $loan_client) }}#wallet" class="mt-2 inline-flex text-xs font-semibold text-teal-700 hover:text-teal-800">Wallet statement</a>
+                            <div class="mt-2 flex flex-wrap gap-2">
+                                @if(auth()->user()?->hasLoanPermission('wallets.pay_loan') && $walletBalance > 0.01 && ($loan_client->wallet?->status ?? 'active') === 'active')
+                                    <button type="button" @click="activeTab = 'wallet'; payLoanModalOpen = true; refundRequestModalOpen = false" class="inline-flex rounded-lg border border-teal-700 bg-teal-700 px-2 py-1 text-xs font-semibold text-white hover:bg-teal-800">Use wallet to pay loan</button>
+                                @endif
+                                @if(auth()->user()?->hasLoanPermission('wallets.refund_request') && $walletBalance > 0.01)
+                                    <button type="button" @click="activeTab = 'wallet'; refundRequestModalOpen = true; payLoanModalOpen = false" class="inline-flex rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 hover:bg-slate-50">Request refund</button>
+                                @endif
+                            </div>
                         </div>
                         <svg class="h-10 w-10 text-teal-700" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <rect x="2" y="5" width="20" height="14" rx="3" stroke="currentColor" stroke-width="1.5"></rect>
@@ -231,6 +248,7 @@
                                     <button type="button" @click="activeTab='documents'" :class="activeTab==='documents' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'" class="rounded-lg px-3 py-2 text-sm font-medium">Documents</button>
                                     <button type="button" @click="activeTab='guarantors'" :class="activeTab==='guarantors' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'" class="rounded-lg px-3 py-2 text-sm font-medium">Guarantors</button>
                                     <button type="button" @click="activeTab='payments'" :class="activeTab==='payments' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'" class="rounded-lg px-3 py-2 text-sm font-medium">Payments</button>
+                                    <button type="button" @click="activeTab='wallet'" :class="activeTab==='wallet' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600'" class="rounded-lg px-3 py-2 text-sm font-medium">Wallet</button>
                                 </div>
                             </div>
                         </div>
@@ -437,9 +455,105 @@
                                     </table>
                                 </div>
                             </section>
+
+                            <section id="wallet" x-show="activeTab==='wallet'" x-cloak class="scroll-mt-24">
+                                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <h3 class="text-sm font-semibold text-slate-900">Wallet</h3>
+                                    <div class="flex flex-wrap gap-2">
+                                        @if(auth()->user()?->hasLoanPermission('wallets.view'))
+                                            <a href="{{ route('loan.clients.wallet.statement', $loan_client) }}" class="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Export statement</a>
+                                        @endif
+                                        @if(auth()->user()?->hasLoanPermission('wallets.pay_loan') && $walletBalance > 0.01 && ($loan_client->wallet?->status ?? '') === \App\Models\ClientWallet::STATUS_ACTIVE)
+                                            <button type="button" @click="activeTab = 'wallet'; payLoanModalOpen = true; refundRequestModalOpen = false" class="inline-flex rounded-lg border border-teal-700 bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800">Use wallet to pay loan</button>
+                                        @endif
+                                        @if(auth()->user()?->hasLoanPermission('wallets.refund_request') && $walletBalance > 0.01)
+                                            <button type="button" @click="activeTab = 'wallet'; refundRequestModalOpen = true; payLoanModalOpen = false" class="inline-flex rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100">Request refund</button>
+                                        @endif
+                                    </div>
+                                </div>
+                                <div class="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                                    <div><span class="text-slate-500">Current balance</span><p class="text-lg font-semibold text-slate-900">KSh {{ number_format($walletBalance, 2) }}</p></div>
+                                    <div><span class="text-slate-500">Total credits</span><p class="text-lg font-semibold text-emerald-800">KSh {{ number_format((float) ($walletTotals['credits'] ?? 0), 2) }}</p></div>
+                                    <div><span class="text-slate-500">Total debits</span><p class="text-lg font-semibold text-rose-800">KSh {{ number_format((float) ($walletTotals['debits'] ?? 0), 2) }}</p></div>
+                                    <div><span class="text-slate-500">Status</span><p class="text-lg font-semibold text-slate-900">{{ $walletStatusLabel }}</p></div>
+                                </div>
+                                @if(auth()->user()?->hasLoanPermission('wallets.adjust'))
+                                    <form method="post" action="{{ route('loan.clients.wallet.adjust', $loan_client) }}" class="mb-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm">
+                                        @csrf
+                                        <p class="mb-2 font-semibold text-slate-800">Manual adjustment</p>
+                                        <div class="flex flex-wrap items-end gap-2">
+                                            <select name="direction" class="rounded-lg border-slate-200 text-sm">
+                                                <option value="credit">Credit</option>
+                                                <option value="debit">Debit</option>
+                                            </select>
+                                            <input type="number" name="amount" step="0.01" min="0.01" class="rounded-lg border-slate-200 text-sm w-32" placeholder="Amount" required />
+                                            <input type="text" name="description" class="min-w-[12rem] flex-1 rounded-lg border-slate-200 text-sm" placeholder="Reason (required)" required />
+                                            <button type="submit" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">Post adjustment</button>
+                                        </div>
+                                    </form>
+                                @endif
+                                <div class="overflow-x-auto rounded-xl border border-slate-300">
+                                    <table class="min-w-[900px] w-full text-sm">
+                                        <thead class="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+                                            <tr>
+                                                <th class="px-3 py-2 text-left">Date</th>
+                                                <th class="px-3 py-2 text-left">Type</th>
+                                                <th class="px-3 py-2 text-left">Source</th>
+                                                <th class="px-3 py-2 text-left">Description</th>
+                                                <th class="px-3 py-2 text-right">Credit</th>
+                                                <th class="px-3 py-2 text-right">Debit</th>
+                                                <th class="px-3 py-2 text-right">Running balance</th>
+                                                <th class="px-3 py-2 text-left">Reference</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white text-slate-700">
+                                            @forelse(($walletStatement ?? collect()) as $tx)
+                                                <tr class="border-b border-slate-100">
+                                                    <td class="px-3 py-2 whitespace-nowrap">{{ optional($tx->created_at)->format('Y-m-d H:i') }}</td>
+                                                    <td class="px-3 py-2">{{ $tx->transaction_type }}</td>
+                                                    <td class="px-3 py-2">{{ str_replace('_', ' ', $tx->source_type) }}</td>
+                                                    <td class="px-3 py-2 max-w-xs truncate" title="{{ $tx->description }}">{{ $tx->description ?? '—' }}</td>
+                                                    <td class="px-3 py-2 text-right tabular-nums">{{ $tx->transaction_type === 'credit' ? number_format((float) $tx->amount, 2) : '—' }}</td>
+                                                    <td class="px-3 py-2 text-right tabular-nums">{{ $tx->transaction_type === 'debit' ? number_format((float) $tx->amount, 2) : '—' }}</td>
+                                                    <td class="px-3 py-2 text-right font-medium tabular-nums">{{ number_format((float) $tx->running_balance, 2) }}</td>
+                                                    <td class="px-3 py-2 font-mono text-xs">{{ $tx->reference ?? '—' }}</td>
+                                                </tr>
+                                            @empty
+                                                <tr><td colspan="8" class="px-4 py-10 text-center text-slate-500">No wallet transactions yet.</td></tr>
+                                            @endforelse
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
                         </div>
                     </article>
                 </section>
             </section>
+
+        @if(auth()->user()?->hasLoanPermission('wallets.pay_loan'))
+            <div x-show="payLoanModalOpen" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="pay-loan-modal-title">
+                <div class="absolute inset-0 bg-slate-900/55" @click="payLoanModalOpen = false; refundRequestModalOpen = false"></div>
+                <div class="relative w-full max-w-xl rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+                    <div class="mb-4 flex items-start justify-between gap-3">
+                        <h2 id="pay-loan-modal-title" class="text-lg font-semibold text-slate-900">Use wallet to pay loan</h2>
+                        <button type="button" class="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" @click="payLoanModalOpen = false" aria-label="Close">✕</button>
+                    </div>
+                    @include('loan.clients.wallet._pay_loan_form', ['loan_client' => $loan_client, 'payLoanLoans' => $payLoanLoans ?? collect()])
+                </div>
+            </div>
+        @endif
+
+        @if(auth()->user()?->hasLoanPermission('wallets.refund_request'))
+            <div x-show="refundRequestModalOpen" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="refund-request-modal-title">
+                <div class="absolute inset-0 bg-slate-900/55" @click="payLoanModalOpen = false; refundRequestModalOpen = false"></div>
+                <div class="relative w-full max-w-xl rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+                    <div class="mb-4 flex items-start justify-between gap-3">
+                        <h2 id="refund-request-modal-title" class="text-lg font-semibold text-slate-900">Request wallet refund</h2>
+                        <button type="button" class="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" @click="refundRequestModalOpen = false" aria-label="Close">✕</button>
+                    </div>
+                    @include('loan.clients.wallet._refund_request_form', ['loan_client' => $loan_client])
+                </div>
+            </div>
+        @endif
     </section>
 </x-loan-layout>

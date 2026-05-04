@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Loan\Concerns\ScopesLoanPortfolioAccess;
+use App\Models\AccountingChartAccount;
 use App\Models\Employee;
 use App\Models\LoanBookAgent;
 use App\Models\LoanBookCollectionEntry;
@@ -14,26 +15,28 @@ use App\Models\LoanBookPayment;
 use App\Models\LoanBranch;
 use App\Models\LoanRegion;
 use App\Notifications\Loan\LoanWorkflowNotification;
-use App\Support\TabularExport;
+use App\Services\AccountingEventRegistryService;
 use App\Services\Integrations\MpesaDarajaService;
 use App\Services\LoanBook\BorrowerClassificationService;
-use App\Services\LoanBook\LoanDisbursementPayoutService;
+use App\Services\LoanBook\CollectionsCommandCenterService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
+use App\Services\LoanBook\LoanDisbursementPayoutService;
 use App\Services\LoanBookGlPostingService;
+use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LoanBookOperationsController extends Controller
 {
     use ScopesLoanPortfolioAccess;
 
-    public function __construct(private readonly BorrowerClassificationService $borrowerClassifier)
-    {
-    }
+    public function __construct(private readonly BorrowerClassificationService $borrowerClassifier) {}
 
     public function disbursementsIndex(Request $request)
     {
@@ -250,7 +253,11 @@ class LoanBookOperationsController extends Controller
 
         $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
         $this->ensureLoanClientOwner($loan->loanClient, $request->user());
-        $classification = $this->borrowerClassifier->classify($loan->loanClient, (float) ($loan->principal ?? 0));
+        $classification = $this->borrowerClassifier->classify(
+            $loan->loanClient,
+            (float) ($loan->principal ?? 0),
+            (int) $loan->id
+        );
         $decision = (array) ($classification['borrower_decision'] ?? []);
         if ((string) ($decision['borrower_category'] ?? '') === 'blocked') {
             return redirect()
@@ -269,6 +276,36 @@ class LoanBookOperationsController extends Controller
             // All methods (including M-Pesa) are recorded as manual payouts: GL posts immediately.
             // Daraja B2C is only used from "Retry M-Pesa payout" when B2C env is fully configured.
             DB::transaction(function () use ($validated, $request) {
+                $disburseAmount = round(abs((float) ($validated['amount'] ?? 0)), 2);
+                $mapped = app(AccountingEventRegistryService::class)->resolveEventAccountIdsOrFail('LoanDisbursed');
+                $cashAccountId = (int) ($mapped['credit_account_id'] ?? 0);
+                $cashAccount = AccountingChartAccount::query()->lockForUpdate()->find($cashAccountId);
+                if (! $cashAccount) {
+                    throw new \RuntimeException('Disbursement cash account (credit side of LoanDisbursed) could not be loaded.');
+                }
+                if (Schema::hasColumn('accounting_chart_accounts', 'current_balance')) {
+                    $balance = (float) ($cashAccount->current_balance ?? 0);
+                    $canCover = $balance + 1e-6 >= $disburseAmount;
+                    if (
+                        ! $canCover
+                        && Schema::hasColumn('accounting_chart_accounts', 'allow_overdraft')
+                        && (bool) ($cashAccount->allow_overdraft ?? false)
+                        && Schema::hasColumn('accounting_chart_accounts', 'overdraft_limit')
+                    ) {
+                        $limit = max(0.0, (float) ($cashAccount->overdraft_limit ?? 0));
+                        $canCover = ($balance + $limit + 1e-6) >= $disburseAmount;
+                    }
+                    if (! $canCover) {
+                        throw new \RuntimeException(sprintf(
+                            'Insufficient balance in disbursement cash account "%s" (code %s). Ledger balance: %s; disbursement amount: %s.',
+                            (string) ($cashAccount->name ?? ''),
+                            (string) ($cashAccount->code ?? ''),
+                            number_format($balance, 2, '.', ''),
+                            number_format($disburseAmount, 2, '.', '')
+                        ));
+                    }
+                }
+
                 $txnRef = trim((string) ($validated['payout_transaction_id'] ?? ''));
                 $needsTxnRef = in_array($validated['method'], ['mpesa', 'bank', 'cheque'], true);
 
@@ -851,7 +888,7 @@ class LoanBookOperationsController extends Controller
         ]);
     }
 
-    public function collectionsReportsCommandCenter(Request $request): View
+    public function collectionsReportsCommandCenter(Request $request): View|StreamedResponse
     {
         $selectedBranchId = max(0, (int) $request->query('branch_id', 0));
 
@@ -864,149 +901,77 @@ class LoanBookOperationsController extends Controller
             ? $branchOptions->firstWhere('id', $selectedBranchId)
             : null;
 
-        $todayDate = now();
-        $dateWindowLabel = $todayDate->format('d M Y').' - '.$todayDate->copy()->addDays(6)->format('d M Y');
+        $payload = app(CollectionsCommandCenterService::class)->buildForUser(
+            $request->user(),
+            $selectedBranchId,
+            now()
+        );
 
-        $metrics = [
-            'total_expected' => 2_388_700,
-            'total_collected' => 1_872_450,
-            'current_yield' => 1_872_450,
-            'arrears_recovery_yield' => 642_300,
-            'prepayment_yield' => 210_750,
-            'expected_inflow_7_days' => 5_642_100,
-            'expected_inflow_14_days' => 9_785_900,
-            'expected_inflow_30_days' => 18_964_300,
-            'available_liquidity_today' => 2_145_780,
-            'liquidity_floor_amount' => 1_800_000,
-            'projected_liquidity_breach_days' => 8,
-        ];
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            $branchLabel = $selectedBranch ? (string) $selectedBranch->name : 'All branches';
 
-        $metrics['collection_efficiency'] = $metrics['total_expected'] > 0
-            ? ($metrics['total_collected'] / $metrics['total_expected']) * 100
-            : 0.0;
-        $metrics['yield_gap'] = max(0, $metrics['total_expected'] - $metrics['total_collected']);
+            return TabularExport::stream(
+                'collections-command-center-'.now()->format('Ymd_His'),
+                ['Section', 'Key', 'Value'],
+                function () use ($payload, $branchLabel, $selectedBranchId) {
+                    yield ['Context', 'branch_filter', $branchLabel];
+                    yield ['Context', 'branch_id', (string) $selectedBranchId];
+                    foreach ($payload['metrics'] as $key => $value) {
+                        yield ['Metrics', (string) $key, is_scalar($value) || $value === null ? (string) $value : json_encode($value)];
+                    }
+                    foreach ($payload['forecastWindows'] as $idx => $window) {
+                        foreach ($window as $k => $v) {
+                            yield ['Forecast '.((int) $idx + 1), (string) $k, is_scalar($v) ? (string) $v : json_encode($v)];
+                        }
+                    }
+                    foreach ($payload['collectionMix'] as $idx => $segment) {
+                        foreach ($segment as $k => $v) {
+                            yield ['Mix '.((int) $idx + 1), (string) $k, is_scalar($v) ? (string) $v : json_encode($v)];
+                        }
+                    }
+                    foreach ($payload['dailyCollectionRates'] as $idx => $row) {
+                        foreach ($row as $k => $v) {
+                            if ($k === 'trend') {
+                                yield ['Daily '.((int) $idx + 1), (string) $k, json_encode($v)];
 
-        $forecastWindows = [
-            [
-                'window' => '7 Days',
-                'expected_inflow' => $metrics['expected_inflow_7_days'],
-                'expected_collected' => 4_980_300,
-            ],
-            [
-                'window' => '14 Days',
-                'expected_inflow' => $metrics['expected_inflow_14_days'],
-                'expected_collected' => 8_412_000,
-            ],
-            [
-                'window' => '30 Days',
-                'expected_inflow' => $metrics['expected_inflow_30_days'],
-                'expected_collected' => 15_105_200,
-            ],
-        ];
-
-        $forecastWindows = collect($forecastWindows)->map(function (array $row) {
-            $expectedInflow = (float) $row['expected_inflow'];
-            $expectedCollected = (float) $row['expected_collected'];
-            $gap = max(0.0, $expectedInflow - $expectedCollected);
-            $rate = $expectedInflow > 0 ? ($expectedCollected / $expectedInflow) * 100 : 0.0;
-
-            $row['gap'] = $gap;
-            $row['collection_rate'] = $rate;
-
-            return $row;
-        })->values();
-
-        $collectionMix = collect([
-            ['label' => 'Current / Due Today', 'amount' => 1_120_000, 'color' => '#0f766e'],
-            ['label' => 'Due Yesterday', 'amount' => 752_450, 'color' => '#2563eb'],
-            ['label' => 'Arrears 1-7 Days', 'amount' => 642_300, 'color' => '#f59e0b'],
-            ['label' => 'Deep Arrears 8+ Days', 'amount' => 290_180, 'color' => '#ef4444'],
-        ]);
-        $collectionMixTotal = (float) $collectionMix->sum('amount');
-        $collectionMixWithPct = $collectionMix->map(function (array $segment) use ($collectionMixTotal) {
-            $segment['percentage'] = $collectionMixTotal > 0
-                ? (((float) $segment['amount']) / $collectionMixTotal) * 100
-                : 0.0;
-
-            return $segment;
-        })->values();
-
-        $dailyCollectionRates = collect([
-            ['date' => 'Today', 'expected' => 2_388_700, 'collected' => 1_872_450, 'trend' => [58, 61, 63, 66, 70, 72, 78]],
-            ['date' => 'Yesterday', 'expected' => 2_210_500, 'collected' => 1_821_040, 'trend' => [54, 56, 59, 61, 64, 68, 74]],
-            ['date' => $todayDate->copy()->subDays(2)->format('D, d M'), 'expected' => 2_145_200, 'collected' => 1_690_100, 'trend' => [49, 51, 55, 57, 60, 63, 69]],
-            ['date' => $todayDate->copy()->subDays(3)->format('D, d M'), 'expected' => 2_008_450, 'collected' => 1_755_300, 'trend' => [52, 55, 57, 60, 64, 69, 74]],
-            ['date' => $todayDate->copy()->subDays(4)->format('D, d M'), 'expected' => 1_985_600, 'collected' => 1_472_400, 'trend' => [44, 47, 50, 54, 58, 61, 66]],
-            ['date' => $todayDate->copy()->subDays(5)->format('D, d M'), 'expected' => 2_112_300, 'collected' => 1_980_150, 'trend' => [62, 64, 67, 70, 73, 77, 81]],
-        ])->map(function (array $row) {
-            $expected = (float) $row['expected'];
-            $collected = (float) $row['collected'];
-            $rate = $expected > 0 ? ($collected / $expected) * 100 : 0.0;
-            $gap = max(0.0, $expected - $collected);
-            $row['collection_rate'] = $rate;
-            $row['yield_gap'] = $gap;
-
-            return $row;
-        })->values();
-
-        $agentPerformanceSummary = [
-            'top_agent' => 'Faith N.',
-            'top_agent_collected' => 468_900,
-            'pending_collections' => 39,
-        ];
-
-        $alerts = [
-            [
-                'severity' => 'critical',
-                'title' => 'Liquidity at risk in 8 days',
-                'description' => 'Projected cash balance crosses below liquidity floor.',
-                'time_ago' => '12m ago',
-            ],
-            [
-                'severity' => 'positive',
-                'title' => 'High arrears recovery',
-                'description' => 'Recovered KES 642,300 from late loans today.',
-                'time_ago' => '35m ago',
-            ],
-            [
-                'severity' => 'warning',
-                'title' => 'Pending collections building up',
-                'description' => '39 accounts still pending field follow-up.',
-                'time_ago' => '1h ago',
-            ],
-            [
-                'severity' => 'info',
-                'title' => 'Top performing agent',
-                'description' => 'Faith N. leads today with KES 468,900 collected.',
-                'time_ago' => '2h ago',
-            ],
-            [
-                'severity' => 'critical',
-                'title' => 'Yield gap alert',
-                'description' => 'Current gap remains at KES 516,250 versus expected.',
-                'time_ago' => '3h ago',
-            ],
-        ];
-
-        $projectedLiquidityAfter30 = 1_540_200;
-        $liquidityFloorStatus = $projectedLiquidityAfter30 < $metrics['liquidity_floor_amount'] ? 'AT RISK' : 'HEALTHY';
+                                continue;
+                            }
+                            yield ['Daily '.((int) $idx + 1), (string) $k, is_scalar($v) ? (string) $v : json_encode($v)];
+                        }
+                    }
+                    foreach ($payload['agentPerformanceSummary'] as $k => $v) {
+                        yield ['Agents', (string) $k, is_scalar($v) ? (string) $v : json_encode($v)];
+                    }
+                    foreach ($payload['alerts'] as $idx => $alert) {
+                        foreach ($alert as $k => $v) {
+                            yield ['Alert '.((int) $idx + 1), (string) $k, (string) $v];
+                        }
+                    }
+                },
+                $export
+            );
+        }
 
         return view('loan.book.collections_reports', [
             'title' => 'Collections & Reports',
-            'subtitle' => 'Real-time collection intelligence and cashflow visibility',
+            'subtitle' => 'Collection sheet lines, prorated monthly targets, and chart cash balances (where configured).',
             'selectedBranchId' => $selectedBranchId,
             'selectedBranch' => $selectedBranch,
             'branchOptions' => $branchOptions,
-            'metrics' => $metrics,
-            'forecastWindows' => $forecastWindows,
-            'collectionMix' => $collectionMixWithPct,
-            'collectionMixTotal' => $collectionMixTotal,
-            'dailyCollectionRates' => $dailyCollectionRates,
-            'agentPerformanceSummary' => $agentPerformanceSummary,
-            'alerts' => $alerts,
-            'liquidityFloorStatus' => $liquidityFloorStatus,
-            'projectedLiquidityBreachDate' => now()->addDays((int) $metrics['projected_liquidity_breach_days'])->toDateString(),
-            'dateWindowLabel' => $dateWindowLabel,
+            'metrics' => $payload['metrics'],
+            'forecastWindows' => $payload['forecastWindows'],
+            'collectionMix' => $payload['collectionMix'],
+            'collectionMixTotal' => $payload['collectionMixTotal'],
+            'dailyCollectionRates' => $payload['dailyCollectionRates'],
+            'agentPerformanceSummary' => $payload['agentPerformanceSummary'],
+            'alerts' => $payload['alerts'],
+            'liquidityFloorStatus' => $payload['liquidityFloorStatus'],
+            'projectedLiquidityBreachDate' => $payload['projectedLiquidityBreachDate'],
+            'dateWindowLabel' => $payload['dateWindowLabel'],
+            'efficiencySparkline' => $payload['efficiencySparkline'],
+            'hasCollectionTarget' => $payload['has_collection_target'],
+            'lendingCapacityRoute' => $payload['lending_capacity_route'],
         ]);
     }
 

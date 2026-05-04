@@ -11,19 +11,23 @@ use App\Models\PmInvoice;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
+use App\Models\PmPayment;
 use App\Models\PmPortalAction;
 use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
+use App\Services\LoanClientIdentifierNormalizer;
+use App\Services\LoanClientPortalMatchService;
 use App\Services\Property\LandlordLedger;
 use App\Services\Property\LandlordPortalNotifications;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
-use Illuminate\Support\Collection;
-use Illuminate\Support\HtmlString;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -58,7 +62,7 @@ class LandlordPortalController extends Controller
             ? (float) DB::table('pm_payment_allocations as a')
                 ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
                 ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
-                ->where('p.status', \App\Models\PmPayment::STATUS_COMPLETED)
+                ->where('p.status', PmPayment::STATUS_COMPLETED)
                 ->whereIn('i.property_unit_id', $unitIds)
                 ->whereRaw('YEAR(COALESCE(p.paid_at, p.created_at)) = ?', [now()->year])
                 ->whereRaw('MONTH(COALESCE(p.paid_at, p.created_at)) = ?', [now()->month])
@@ -151,7 +155,7 @@ class LandlordPortalController extends Controller
                 $collected = (float) DB::table('pm_payment_allocations as a')
                     ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
                     ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
-                    ->where('p.status', \App\Models\PmPayment::STATUS_COMPLETED)
+                    ->where('p.status', PmPayment::STATUS_COMPLETED)
                     ->whereIn('i.property_unit_id', $unitIds)
                     ->whereRaw('YEAR(COALESCE(p.paid_at, p.created_at)) = ?', [$ref->year])
                     ->whereRaw('MONTH(COALESCE(p.paid_at, p.created_at)) = ?', [$ref->month])
@@ -169,6 +173,7 @@ class LandlordPortalController extends Controller
             $total = $p->units->count();
             $occ = $p->units->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
             $rate = $total > 0 ? round(($occ / $total) * 100) : 0;
+
             return ['name' => $p->name, 'rate' => $rate];
         })->sortByDesc('rate')->take(8)->values();
 
@@ -472,6 +477,7 @@ class LandlordPortalController extends Controller
                     '<a href="'.route('property.landlord.reports.income', ['property_id' => $u->property_id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Income</a>'.
                     '</div>'
                 );
+
                 return [
                     'Unit '.$u->label,
                     $summary,
@@ -735,7 +741,7 @@ class LandlordPortalController extends Controller
             ? (float) DB::table('pm_payment_allocations as a')
                 ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
                 ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
-                ->where('p.status', \App\Models\PmPayment::STATUS_COMPLETED)
+                ->where('p.status', PmPayment::STATUS_COMPLETED)
                 ->whereIn('i.property_unit_id', $unitIds)
                 ->whereRaw('YEAR(COALESCE(p.paid_at, p.created_at)) = ?', [$year])
                 ->whereRaw('MONTH(COALESCE(p.paid_at, p.created_at)) = ?', [$monthNum])
@@ -923,7 +929,7 @@ class LandlordPortalController extends Controller
             ? (float) DB::table('pm_payment_allocations as a')
                 ->join('pm_payments as p', 'p.id', '=', 'a.pm_payment_id')
                 ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
-                ->where('p.status', \App\Models\PmPayment::STATUS_COMPLETED)
+                ->where('p.status', PmPayment::STATUS_COMPLETED)
                 ->whereIn('i.property_unit_id', $unitIds)
                 ->whereRaw('YEAR(COALESCE(p.paid_at, p.created_at)) = ?', [$year])
                 ->whereRaw('MONTH(COALESCE(p.paid_at, p.created_at)) = ?', [$monthNum])
@@ -1166,10 +1172,9 @@ class LandlordPortalController extends Controller
         $user = $request->user();
         $client = $this->resolveOrCreatePortalClient($user, 'landlord');
 
-        $next = (LoanBookApplication::query()->max('id') ?? 0) + 1;
         LoanBookApplication::query()->create([
             'loan_client_id' => $client->id,
-            'reference' => 'APP-'.str_pad((string) $next, 6, '0', STR_PAD_LEFT),
+            'reference' => LoanBookApplication::allocateUniqueReference(),
             'product_name' => $validated['product_name'],
             'amount_requested' => $validated['amount_requested'],
             'term_months' => $termMonths,
@@ -1225,8 +1230,25 @@ class LandlordPortalController extends Controller
 
     private function resolveOrCreatePortalClient(User $user, string $role): LoanClient
     {
+        $normalizer = app(LoanClientIdentifierNormalizer::class);
+        $matcher = app(LoanClientPortalMatchService::class);
+
         $email = trim((string) ($user->email ?? ''));
-        $existing = $email !== '' ? LoanClient::query()->clients()->where('email', $email)->first() : null;
+        $email = $email !== '' ? strtolower($email) : null;
+
+        $phone = null;
+        if (Schema::hasColumn('users', 'phone')) {
+            $rawPhone = trim((string) ($user->phone ?? ''));
+            $phone = $rawPhone !== '' ? $normalizer->normalizePhone($rawPhone) : null;
+        }
+
+        $idNumber = null;
+        if ($role === 'tenant') {
+            $nid = trim((string) ($user->pmTenantProfile?->national_id ?? ''));
+            $idNumber = $nid !== '' ? $nid : null;
+        }
+
+        $existing = $matcher->findExistingClientForPortal($idNumber, $phone, $email);
         if ($existing) {
             return $existing;
         }
@@ -1236,7 +1258,8 @@ class LandlordPortalController extends Controller
         $firstName = trim((string) ($parts[0] ?? ucfirst($role)));
         $lastName = trim((string) (count($parts) > 1 ? implode(' ', array_slice($parts, 1)) : 'Portal'));
 
-        $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.($email !== '' ? strtolower($email) : 'u'.$user->id)), 0, 8));
+        $seed = $email !== null ? strtolower($email) : 'u'.$user->id;
+        $clientNumber = 'PORTAL-'.strtoupper(substr(md5($role.'|'.$seed), 0, 8));
         while (LoanClient::query()->where('client_number', $clientNumber)->exists()) {
             $clientNumber = 'PORTAL-'.strtoupper(substr(md5($clientNumber.'|'.microtime(true)), 0, 8));
         }
@@ -1246,10 +1269,13 @@ class LandlordPortalController extends Controller
             'kind' => LoanClient::KIND_CLIENT,
             'first_name' => $firstName,
             'last_name' => $lastName,
-            'phone' => null,
-            'email' => $email !== '' ? $email : null,
+            'phone' => $phone,
+            'email' => $email,
+            'id_number' => $idNumber,
             'client_status' => 'active',
             'notes' => 'Auto-created from '.$role.' portal loan request.',
+            'created_by' => $user->id,
+            'source_channel' => LoanClient::SOURCE_PORTAL,
         ]);
     }
 

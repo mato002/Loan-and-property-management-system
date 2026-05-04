@@ -72,6 +72,27 @@ class BorrowerClassificationServiceTest extends TestCase
         $this->assertContains('active_open_loan_exists', $result['borrower_decision']['blocking_reasons']);
     }
 
+    public function test_excluded_loan_skipped_for_active_open_loan_block(): void
+    {
+        $client = $this->makeClient();
+        $pending = $this->makeLoan($client, ['status' => LoanBookLoan::STATUS_PENDING_DISBURSEMENT, 'balance' => 10000]);
+        LoanSystemSetting::setValue('allow_top_up_if_active_loan', '0');
+
+        $result = app(BorrowerClassificationService::class)->classify($client, 10000, (int) $pending->id);
+        $this->assertNotContains('active_open_loan_exists', $result['borrower_decision']['blocking_reasons']);
+    }
+
+    public function test_excluded_loan_second_open_still_blocks(): void
+    {
+        $client = $this->makeClient();
+        $this->makeLoan($client, ['status' => LoanBookLoan::STATUS_ACTIVE, 'balance' => 5000]);
+        $pending = $this->makeLoan($client, ['status' => LoanBookLoan::STATUS_PENDING_DISBURSEMENT, 'balance' => 10000]);
+        LoanSystemSetting::setValue('allow_top_up_if_active_loan', '0');
+
+        $result = app(BorrowerClassificationService::class)->classify($client, 10000, (int) $pending->id);
+        $this->assertContains('active_open_loan_exists', $result['borrower_decision']['blocking_reasons']);
+    }
+
     public function test_written_off_blocker(): void
     {
         $client = $this->makeClient();
@@ -94,6 +115,54 @@ class BorrowerClassificationServiceTest extends TestCase
         $this->assertContains('installment_to_income_ratio_exceeded', $result['borrower_decision']['blocking_reasons']);
     }
 
+    public function test_total_indebtedness_to_income_blocker(): void
+    {
+        $client = $this->makeClient(10000);
+        LoanSystemSetting::setValue('max_total_indebtedness_to_income_ratio', '2');
+        LoanSystemSetting::setValue('allow_top_up_if_active_loan', '1');
+        $this->makeLoan($client, ['status' => LoanBookLoan::STATUS_ACTIVE, 'balance' => 12000, 'dpd' => 0]);
+
+        $result = app(BorrowerClassificationService::class)->classify($client, 10000);
+        $this->assertContains('total_indebtedness_to_income_exceeded', $result['borrower_decision']['blocking_reasons']);
+    }
+
+    public function test_guarantor_exposure_cap_tightens_indebtedness_rule(): void
+    {
+        LoanSystemSetting::setValue('max_total_indebtedness_to_income_ratio', '10');
+        LoanSystemSetting::setValue('max_combined_guarantor_exposure_ratio', '1.5');
+        LoanSystemSetting::setValue('allow_top_up_if_active_loan', '1');
+        $client = $this->makeClient(10000, ['guarantor_1_full_name' => 'Jane Doe']);
+        $this->makeLoan($client, ['status' => LoanBookLoan::STATUS_ACTIVE, 'balance' => 5000, 'dpd' => 0]);
+
+        $result = app(BorrowerClassificationService::class)->classify($client, 12000);
+        $this->assertContains('total_indebtedness_to_income_exceeded', $result['borrower_decision']['blocking_reasons']);
+    }
+
+    public function test_affordability_engine_disabled_skips_installment_block_and_history_flags(): void
+    {
+        LoanSystemSetting::setValue('affordability_engine_enabled', '0');
+        $client = $this->makeClient(10000);
+        $this->makeLoan($client, ['status' => LoanBookLoan::STATUS_ACTIVE, 'balance' => 50000, 'term_value' => 1, 'term_unit' => 'monthly']);
+        LoanSystemSetting::setValue('allow_top_up_if_active_loan', '1');
+        LoanSystemSetting::setValue('max_installment_to_income_ratio', '0.2');
+
+        $result = app(BorrowerClassificationService::class)->classify($client, 30000);
+        $this->assertNotContains('installment_to_income_ratio_exceeded', $result['borrower_decision']['blocking_reasons']);
+        $this->assertFalse($result['borrower_decision']['affordability_engine_enabled']);
+    }
+
+    public function test_affordability_engine_disabled_neutralizes_repeat_risky_from_closed_loan_history(): void
+    {
+        LoanSystemSetting::setValue('affordability_engine_enabled', '0');
+        $client = $this->makeClient();
+        $this->makeLoan($client, ['status' => LoanBookLoan::STATUS_CLOSED, 'balance' => 0, 'dpd' => 20, 'principal' => 30000]);
+
+        $result = app(BorrowerClassificationService::class)->classify($client, 35000);
+        $this->assertSame('repeat_normal', $result['borrower_category']);
+        $this->assertNotContains('historical_dpd_above_threshold', $result['borrower_decision']['risk_flags']);
+        $this->assertNotContains('repayment_success_rate_low', $result['borrower_decision']['risk_flags']);
+    }
+
     public function test_graduation_allowed(): void
     {
         $client = $this->makeClient();
@@ -114,16 +183,19 @@ class BorrowerClassificationServiceTest extends TestCase
         $this->assertFalse((bool) $result['borrower_decision']['graduation_allowed']);
     }
 
-    private function makeClient(float $monthlyIncome = 80000): LoanClient
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function makeClient(float $monthlyIncome = 80000, array $overrides = []): LoanClient
     {
-        return LoanClient::query()->create([
+        return LoanClient::query()->create(array_merge([
             'client_number' => 'CL-'.uniqid(),
             'kind' => LoanClient::KIND_CLIENT,
             'first_name' => 'Test',
             'last_name' => 'Borrower',
             'client_status' => 'active',
             'biodata_meta' => ['monthly_income' => $monthlyIncome],
-        ]);
+        ], $overrides));
     }
 
     /**

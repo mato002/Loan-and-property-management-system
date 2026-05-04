@@ -66,14 +66,22 @@
                 </div>
             </form>
 
-            @if(($unclassifiedWarning['account_count'] ?? 0) > 0)
+            @if(!empty($profitIntegrityWarning))
                 <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800 shadow-sm">
-                    <p class="text-sm font-semibold">Unclassified Warning</p>
-                    <p class="mt-1 text-sm">
-                        {{ number_format((int) ($unclassifiedWarning['account_count'] ?? 0)) }} account(s),
-                        {{ number_format((int) ($unclassifiedWarning['transaction_count'] ?? 0)) }} transaction line(s),
-                        amount {{ $currency((float) ($unclassifiedWarning['amount'] ?? 0)) }} are not mapped to an income statement category.
-                    </p>
+                    <p class="text-sm font-semibold">Profit may be incomplete or misclassified</p>
+                    <ul class="mt-2 list-disc space-y-1 pl-5 text-sm">
+                        @if(!empty($hasUnclassifiedAccounts))
+                            <li>
+                                Unclassified chart activity:
+                                {{ number_format((int) ($unclassifiedWarning['account_count'] ?? 0)) }} account(s),
+                                {{ number_format((int) ($unclassifiedWarning['transaction_count'] ?? 0)) }} line(s),
+                                amount {{ $currency((float) ($unclassifiedWarning['amount'] ?? 0)) }}.
+                            </li>
+                        @endif
+                        @if(!empty($companyExpensesNotInGl))
+                            <li>Some company expenses in this period are not linked to the general ledger (older entries or a failed posting).</li>
+                        @endif
+                    </ul>
                 </div>
             @endif
 

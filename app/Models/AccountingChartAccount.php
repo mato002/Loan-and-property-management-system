@@ -6,11 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\User;
 
 class AccountingChartAccount extends Model
 {
     public const CLASS_HEADER = 'Header';
+
     public const CLASS_PARENT = 'Parent';
 
     public const CLASS_DETAIL = 'Detail';
@@ -26,11 +26,30 @@ class AccountingChartAccount extends Model
     public const TYPE_EXPENSE = 'expense';
 
     public const INCOME_STATEMENT_CATEGORY_REVENUE = 'revenue';
+
     public const INCOME_STATEMENT_CATEGORY_DIRECT_COST = 'direct_cost';
+
     public const INCOME_STATEMENT_CATEGORY_OPERATING_EXPENSE = 'operating_expense';
+
     public const INCOME_STATEMENT_CATEGORY_TAX_EXPENSE = 'tax_expense';
+
     public const INCOME_STATEMENT_CATEGORY_OTHER_INCOME = 'other_income';
+
     public const INCOME_STATEMENT_CATEGORY_OTHER_EXPENSE = 'other_expense';
+
+    /** @var list<string> */
+    public const INCOME_STATEMENT_CATEGORIES_FOR_INCOME_ACCOUNT = [
+        self::INCOME_STATEMENT_CATEGORY_REVENUE,
+        self::INCOME_STATEMENT_CATEGORY_OTHER_INCOME,
+    ];
+
+    /** @var list<string> */
+    public const INCOME_STATEMENT_CATEGORIES_FOR_EXPENSE_ACCOUNT = [
+        self::INCOME_STATEMENT_CATEGORY_DIRECT_COST,
+        self::INCOME_STATEMENT_CATEGORY_OPERATING_EXPENSE,
+        self::INCOME_STATEMENT_CATEGORY_TAX_EXPENSE,
+        self::INCOME_STATEMENT_CATEGORY_OTHER_EXPENSE,
+    ];
 
     public const INCOME_STATEMENT_CATEGORIES = [
         self::INCOME_STATEMENT_CATEGORY_REVENUE,

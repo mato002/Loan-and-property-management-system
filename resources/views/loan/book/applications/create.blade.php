@@ -13,7 +13,8 @@
                 @js($productMetaByName ?? []),
                 @js((string) old('term_unit', $draftApplication?->term_unit ?? '')),
                 @js((string) old('suspense_payment_id', data_get($draftApplication?->form_meta, 'fee_selected_payment_id', ''))),
-                @js((int) (($pendingDrafts ?? collect())->count()))
+                @js((int) (($pendingDrafts ?? collect())->count())),
+                @js($productFieldConfig ?? [])
             )"
             data-products-store-url="{{ route('loan.book.applications.products.store') }}"
             data-suspense-options-url="{{ route('loan.book.applications.suspense_options') }}"
@@ -78,11 +79,12 @@
                     </select>
                     @error('loan_client_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                <p x-show="productSwitchHideWarning !== ''" x-cloak class="text-xs text-amber-700" x-text="productSwitchHideWarning"></p>
                 @if (isset($mapped['product_name']))
-                <div>
+                <div data-field-key="{{ $mapped['product_name']['field_key'] }}" data-is-core="{{ ($mapped['product_name']['is_core'] ?? false) ? '1' : '0' }}">
                     <label for="product_name" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['product_name']['label'] ?? 'Product' }}</label>
                     <div class="flex gap-2">
-                        <select id="product_name" name="product_name" required class="w-full rounded-lg border-slate-200 text-sm">
+                        <select id="product_name" name="product_name" class="w-full rounded-lg border-slate-200 text-sm">
                             <option value="">Select product...</option>
                             @foreach (($productOptions ?? []) as $productName)
                                 <option value="{{ $productName }}" @selected(old('product_name', $draftApplication?->product_name ?? $defaultProductName ?? '') === $productName)>{{ $productName }}</option>
@@ -101,16 +103,16 @@
                 @endif
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     @if (isset($mapped['amount_requested']))
-                    <div>
+                    <div data-field-key="{{ $mapped['amount_requested']['field_key'] }}" data-is-core="{{ ($mapped['amount_requested']['is_core'] ?? false) ? '1' : '0' }}">
                         <label for="amount_requested" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['amount_requested']['label'] ?? 'Amount requested' }}</label>
-                        <input id="amount_requested" name="amount_requested" type="number" step="0.01" min="0" value="{{ old('amount_requested', $draftApplication?->amount_requested) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                        <input id="amount_requested" name="amount_requested" type="number" step="0.01" min="0" value="{{ old('amount_requested', $draftApplication?->amount_requested) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     @endif
                     @if (isset($mapped['term_unit']))
-                    <div>
+                    <div data-field-key="{{ $mapped['term_unit']['field_key'] }}" data-is-core="{{ ($mapped['term_unit']['is_core'] ?? false) ? '1' : '0' }}">
                         <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['term_unit']['label'] ?? 'Term unit' }}</label>
-                        <select id="term_unit" name="term_unit" required class="w-full rounded-lg border-slate-200 text-sm" x-model="termUnit" @change="onTermUnitChange()">
+                        <select id="term_unit" name="term_unit" class="w-full rounded-lg border-slate-200 text-sm" x-model="termUnit" @change="onTermUnitChange()">
                             <option value="" @selected(old('term_unit', $draftApplication?->term_unit ?? '') === '')>Select term unit…</option>
                             @foreach (['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'] as $v => $lab)
                                 <option value="{{ $v }}" @selected(old('term_unit', $draftApplication?->term_unit ?? '') === $v)>{{ $lab }}</option>
@@ -121,21 +123,21 @@
                     </div>
                     @endif
                     @if (isset($mapped['term_value']))
-                    <div>
+                    <div data-field-key="{{ $mapped['term_value']['field_key'] }}" data-is-core="{{ ($mapped['term_value']['is_core'] ?? false) ? '1' : '0' }}">
                         <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['term_value']['label'] ?? 'Term length' }}</label>
                         <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', $draftApplication?->term_value) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="e.g. 6" />
                         @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     @endif
                     @if (isset($mapped['interest_rate']))
-                    <div>
+                    <div data-field-key="{{ $mapped['interest_rate']['field_key'] }}" data-is-core="{{ ($mapped['interest_rate']['is_core'] ?? false) ? '1' : '0' }}">
                         <label for="interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['interest_rate']['label'] ?? 'Interest rate (%)' }}</label>
                         <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="1000" value="{{ old('interest_rate', $draftApplication?->interest_rate) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                     @endif
                     @if (isset($mapped['interest_rate_period']))
-                    <div class="sm:col-span-2">
+                    <div class="sm:col-span-2" data-field-key="{{ $mapped['interest_rate_period']['field_key'] }}" data-is-core="{{ ($mapped['interest_rate_period']['is_core'] ?? false) ? '1' : '0' }}">
                         <label for="interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['interest_rate_period']['label'] ?? 'Interest period' }}</label>
                         <select id="interest_rate_period" name="interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
                             @foreach (['daily' => 'Per day', 'weekly' => 'Per week', 'monthly' => 'Per month', 'annual' => 'Per year'] as $v => $lab)
@@ -147,9 +149,9 @@
                     @endif
                 </div>
                 @if (isset($mapped['stage']))
-                <div>
+                <div data-field-key="{{ $mapped['stage']['field_key'] }}" data-is-core="{{ ($mapped['stage']['is_core'] ?? false) ? '1' : '0' }}">
                     <label for="stage" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['stage']['label'] ?? 'Stage' }}</label>
-                    <select id="stage" name="stage" required class="w-full rounded-lg border-slate-200 text-sm">
+                    <select id="stage" name="stage" class="w-full rounded-lg border-slate-200 text-sm">
                         @foreach ($stages as $value => $label)
                             @continue($value === \App\Models\LoanBookApplication::STAGE_DISBURSED)
                             <option value="{{ $value }}" @selected(old('stage', $draftApplication?->stage ?? \App\Models\LoanBookApplication::STAGE_SUBMITTED) === $value)>{{ $label }}</option>
@@ -160,7 +162,7 @@
                 </div>
                 @endif
                 @if (isset($mapped['branch']))
-                <div>
+                <div data-field-key="{{ $mapped['branch']['field_key'] }}" data-is-core="{{ ($mapped['branch']['is_core'] ?? false) ? '1' : '0' }}">
                     <label for="branch" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['branch']['label'] ?? 'Branch (optional)' }}</label>
                     <div class="flex gap-2">
                         <select id="branch" name="branch" class="w-full rounded-lg border-slate-200 text-sm">
@@ -180,7 +182,7 @@
                 </div>
                 @endif
                 @if (isset($mapped['purpose']))
-                <div>
+                <div data-field-key="{{ $mapped['purpose']['field_key'] }}" data-is-core="{{ ($mapped['purpose']['is_core'] ?? false) ? '1' : '0' }}">
                     <label for="purpose" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['purpose']['label'] ?? 'Purpose' }}</label>
                     <textarea id="purpose" name="purpose" rows="3" class="w-full rounded-lg border-slate-200 text-sm">{{ old('purpose', $draftApplication?->purpose ?? $defaultPurpose ?? '') }}</textarea>
                     @error('purpose')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -188,12 +190,18 @@
                 @endif
 
                 @if (isset($mapped['notes']))
-                <div>
+                <div data-field-key="{{ $mapped['notes']['field_key'] }}" data-is-core="{{ ($mapped['notes']['is_core'] ?? false) ? '1' : '0' }}">
                     <label for="notes" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['notes']['label'] ?? 'Internal notes' }}</label>
                     <textarea id="notes" name="notes" rows="2" class="w-full rounded-lg border-slate-200 text-sm">{{ old('notes', $draftApplication?->notes) }}</textarea>
                     @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 @endif
+
+                @include('loan.book.applications.partials.create-dynamic-text-fields', [
+                    'dynamicLoanApplicationFields' => $dynamicLoanApplicationFields ?? collect(),
+                    'draftApplication' => $draftApplication ?? null,
+                ])
+
                 <div class="rounded-lg border border-indigo-200 bg-indigo-50/50 p-4 space-y-3">
                     <div class="flex items-center justify-between gap-2">
                         <h4 class="text-sm font-semibold text-indigo-900">Required pre-booking fees</h4>
@@ -382,11 +390,14 @@
 </x-loan-layout>
 
 <script>
-    function loanProductPicker(productMetaByName = {}, initialTermUnit = '', initialSuspensePaymentId = '', pendingDraftCount = 0) {
+    function loanProductPicker(productMetaByName = {}, initialTermUnit = '', initialSuspensePaymentId = '', pendingDraftCount = 0, productFieldConfig = {}) {
         const productStoreUrl = @json(route('loan.book.applications.products.store'));
         const suspenseOptionsUrl = @json(route('loan.book.applications.suspense_options'));
         return {
             productMetaByName,
+            productFieldConfig,
+            lastProductNameForVisibility: '',
+            productSwitchHideWarning: '',
             termUnit: initialTermUnit ? String(initialTermUnit) : '',
             pendingDraftCount: Number(pendingDraftCount || 0),
             saveAsDraft: '0',
@@ -434,6 +445,7 @@
                     this.setupApplicationPreview();
                     this.$watch('selectedClientId', () => this.autofillFromSelectedClient());
                     this.autofillFromSelectedClient();
+                    this.applyProductFieldVisibility();
                     this.applyProductDefaults();
                     this.refreshFeeAndSuspenseOptions();
                     const termUnitSelect = this.$el.querySelector('#term_unit');
@@ -441,7 +453,10 @@
                         this.termUnit = termUnitSelect.value || '';
                     }
                     const productSelect = this.$el.querySelector('#product_name');
+                    this.lastProductNameForVisibility = (productSelect?.value ?? '').trim();
                     productSelect?.addEventListener('change', () => {
+                        this.checkProductSwitchHideWarning();
+                        this.applyProductFieldVisibility();
                         this.applyProductDefaults();
                         this.refreshFeeAndSuspenseOptions();
                     });
@@ -671,6 +686,85 @@
                     termInput.value = '';
                 }
             },
+            resolveFieldRowsForProduct(productName) {
+                const key = String(productName ?? '').trim();
+                const rows = this.productFieldConfig[key] ?? this.productFieldConfig['__global__'] ?? [];
+                return Array.isArray(rows) ? rows : [];
+            },
+            fieldWrapperHasValue(el) {
+                const controls = el.querySelectorAll('input:not([type="hidden"]):not([type="file"]), select, textarea');
+                for (const c of controls) {
+                    const name = (c.name ?? '').trim();
+                    if (!name || name === '_token') continue;
+                    const type = (c.type ?? '').toLowerCase();
+                    if (type === 'checkbox' || type === 'radio') {
+                        if (c.checked) return true;
+                        continue;
+                    }
+                    if (String(c.value ?? '').trim() !== '') return true;
+                }
+                return false;
+            },
+            checkProductSwitchHideWarning() {
+                const select = this.$el.querySelector('#product_name');
+                const prev = String(this.lastProductNameForVisibility ?? '').trim();
+                const next = String(select?.value ?? '').trim();
+                if (prev === '' || prev === next) {
+                    this.lastProductNameForVisibility = next;
+                    this.productSwitchHideWarning = '';
+                    return;
+                }
+                const nextRows = this.resolveFieldRowsForProduct(next);
+                const nextByKey = new Map(nextRows.map((r) => [r.field_key, r]));
+                const form = this.$el.querySelector('form');
+                if (!form) {
+                    this.lastProductNameForVisibility = next;
+                    this.productSwitchHideWarning = '';
+                    return;
+                }
+                let conflict = false;
+                form.querySelectorAll('[data-field-key]').forEach((el) => {
+                    const fk = (el.dataset.fieldKey ?? '').trim();
+                    if (!fk) return;
+                    const row = nextByKey.get(fk);
+                    const isCore = el.dataset.isCore === '1' || !!(row && row.is_core);
+                    const willShow = isCore || !!(row && (row.is_included || row.is_core));
+                    if (willShow) return;
+                    if (this.fieldWrapperHasValue(el)) conflict = true;
+                });
+                this.productSwitchHideWarning = conflict
+                    ? 'Changing product will hide some filled fields'
+                    : '';
+                this.lastProductNameForVisibility = next;
+            },
+            applyProductFieldVisibility() {
+                const form = this.$el.querySelector('form');
+                if (!form) return;
+                const name = String(this.$el.querySelector('#product_name')?.value ?? '').trim();
+                const rows = this.resolveFieldRowsForProduct(name);
+                const byKey = new Map(rows.map((r) => [r.field_key, r]));
+                form.querySelectorAll('[data-field-key]').forEach((el) => {
+                    const fk = (el.dataset.fieldKey ?? '').trim();
+                    if (!fk) return;
+                    const row = byKey.get(fk);
+                    const isCore = el.dataset.isCore === '1' || !!(row && row.is_core);
+                    const included = row ? !!(row.is_included || row.is_core) : true;
+                    const show = isCore || included;
+                    el.classList.toggle('hidden', !show);
+                    const needReq = !!(show && row && row.is_required);
+                    el.querySelectorAll('input, select, textarea').forEach((input) => {
+                        const t = (input.type ?? '').toLowerCase();
+                        if (t === 'hidden' || t === 'file') return;
+                        const nm = (input.name ?? '').trim();
+                        if (nm === '_token') return;
+                        if (!show || !needReq) {
+                            input.removeAttribute('required');
+                        } else {
+                            input.setAttribute('required', 'required');
+                        }
+                    });
+                });
+            },
             openProductModal() {
                 this.productModalError = '';
                 this.showProductModal = true;
@@ -868,6 +962,10 @@
                         default_term_unit: data.product.default_term_unit ?? 'monthly',
                         default_interest_rate_period: data.product.default_interest_rate_period ?? 'annual',
                     };
+                    const globalRows = this.productFieldConfig['__global__'] ?? [];
+                    this.productFieldConfig[data.product.name] = Array.isArray(globalRows)
+                        ? globalRows.map((row) => ({ ...row }))
+                        : [];
                     productSelect.dispatchEvent(new Event('change'));
                     this.closeProductModal();
                 } catch (error) {
