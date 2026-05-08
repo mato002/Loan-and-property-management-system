@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Models\PmMaintenanceJob;
+use App\Models\PmLease;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmMessageLog;
 use App\Models\PmVendor;
@@ -153,8 +154,11 @@ class PmMaintenanceWebController extends Controller
             'urgency' => ['required', 'in:normal,urgent,emergency'],
         ]);
 
+        $pmTenantId = $this->resolveTenantIdForMaintenanceUnit((int) $data['property_unit_id']);
+
         PmMaintenanceRequest::query()->create([
             'property_unit_id' => (int) $data['property_unit_id'],
+            'pm_tenant_id' => $pmTenantId,
             'reported_by_user_id' => $request->user()->id,
             // Auto-assign behavior is represented by moving new tickets into triage immediately.
             'status' => $workflowAutoAssignTickets ? 'in_progress' : 'open',
@@ -701,5 +705,16 @@ class PmMaintenanceWebController extends Controller
             'columns' => ['Month', 'Tickets', 'Categories touched', 'Emergency', 'Repeat units', 'Notes'],
             'tableRows' => $rows,
         ]);
+    }
+
+    private function resolveTenantIdForMaintenanceUnit(int $propertyUnitId): ?int
+    {
+        $lease = PmLease::query()
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->whereHas('units', fn ($q) => $q->where('property_units.id', $propertyUnitId))
+            ->orderByDesc('start_date')
+            ->first();
+
+        return $lease ? (int) $lease->pm_tenant_id : null;
     }
 }

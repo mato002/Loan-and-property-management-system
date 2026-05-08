@@ -15,6 +15,7 @@ class PmMaintenanceRequest extends Model
 
     protected $fillable = [
         'property_unit_id',
+        'pm_tenant_id',
         'reported_by_user_id',
         'category',
         'description',
@@ -45,6 +46,11 @@ class PmMaintenanceRequest extends Model
     public function unit(): BelongsTo
     {
         return $this->belongsTo(PropertyUnit::class, 'property_unit_id');
+    }
+
+    public function pmTenant(): BelongsTo
+    {
+        return $this->belongsTo(PmTenant::class, 'pm_tenant_id');
     }
 
     public function reportedBy(): BelongsTo

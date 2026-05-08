@@ -11,14 +11,40 @@ use Illuminate\Support\Facades\Log;
 class EquityBankService
 {
     private const TOKEN_CACHE_KEY = 'equity_api_access_token';
+    private const NOT_CONFIGURED_LOG_THROTTLE_KEY = 'equity_api_unconfigured_warned_at';
 
     public function __construct(private readonly PaymentAuditLogRepository $auditLogs) {}
+
+    /**
+     * Returns true only when the Equity API is meaningfully configured.
+     * Without a real base URL Guzzle would treat the auth path as the host
+     * (e.g. cURL "Could not resolve host: oauth"), which floods the log
+     * every 5 minutes from the scheduled sync.
+     */
+    public function isConfigured(): bool
+    {
+        $baseUrl = trim((string) config('equity.base_url'));
+        if ($baseUrl === '' || ! preg_match('#^https?://#i', $baseUrl)) {
+            return false;
+        }
+
+        return trim((string) config('equity.username')) !== ''
+            && trim((string) config('equity.password')) !== ''
+            && trim((string) config('equity.api_key')) !== ''
+            && trim((string) config('equity.api_secret')) !== '';
+    }
 
     public function authenticate(): ?string
     {
         $cachedToken = Cache::get(self::TOKEN_CACHE_KEY);
         if (is_string($cachedToken) && $cachedToken !== '') {
             return $cachedToken;
+        }
+
+        if (! $this->isConfigured()) {
+            $this->logNotConfiguredOnce();
+
+            return null;
         }
 
         $payload = [
@@ -207,6 +233,20 @@ class EquityBankService
             'transaction_date' => $raw['transaction_date'] ?? $raw['date'] ?? now()->toDateTimeString(),
             'raw_payload' => $raw,
         ];
+    }
+
+    private function logNotConfiguredOnce(): void
+    {
+        try {
+            if (Cache::has(self::NOT_CONFIGURED_LOG_THROTTLE_KEY)) {
+                return;
+            }
+            Cache::put(self::NOT_CONFIGURED_LOG_THROTTLE_KEY, now()->toIso8601String(), now()->addHour());
+        } catch (\Throwable) {
+            // If cache is unavailable we still want to log at least once per process.
+        }
+
+        Log::warning('Equity API integration is disabled — base URL or credentials are missing. Set EQUITY_API_BASE_URL, EQUITY_API_USERNAME, EQUITY_API_PASSWORD, EQUITY_API_KEY and EQUITY_API_SECRET in .env to enable, or remove the `fetch:equity-transactions` schedule entry.');
     }
 }
 

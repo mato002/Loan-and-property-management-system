@@ -104,8 +104,18 @@ class PropertyPaymentSettlementService
         }
 
         $payment->load('allocations.invoice.unit');
+        if ($payment->allocations->isEmpty()) {
+            PropertyAccountingPostingService::postUnmatchedPaymentToSuspense($payment, null);
+
+            return $payment->fresh();
+        }
+
         PropertyAccountingPostingService::postPaymentReceived($payment, null);
         $this->postLandlordLedgerCredits($payment);
+
+        if ($remaining > 0) {
+            PropertyAccountingPostingService::postUnmatchedPaymentToSuspense($payment, null);
+        }
 
         return $payment->fresh();
     }

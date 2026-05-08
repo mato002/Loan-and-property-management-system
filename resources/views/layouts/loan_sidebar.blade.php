@@ -252,20 +252,7 @@
 
         <div class="space-y-3">
             @foreach($menu as $groupName => $data)
-            <div x-data="{ open: {{ (
-                ($groupName === 'Employees' && request()->routeIs('loan.employees.*')) ||
-                ($groupName === 'Accounting' && request()->routeIs('loan.accounting.*')) ||
-                ($groupName === 'Branches & Regions' && (request()->routeIs('loan.regions.*') || request()->routeIs('loan.branches.*'))) ||
-                ($groupName === 'Business Analytics' && request()->routeIs('loan.analytics.*')) ||
-                ($groupName === 'Clients' && request()->routeIs('loan.clients.*')) ||
-                ($groupName === 'LoanBook' && request()->routeIs('loan.book.*')) ||
-                ($groupName === 'Payments' && request()->routeIs('loan.payments.*')) ||
-                ($groupName === 'Bulk SMS' && request()->routeIs('loan.bulksms.*')) ||
-                ($groupName === 'Financial' && request()->routeIs('loan.financial.*')) ||
-                ($groupName === 'Asset Financing' && request()->routeIs('loan.assets.*')) ||
-                ($groupName === 'My Account' && (request()->routeIs('loan.account.*') || request()->routeIs('profile.*'))) ||
-                ($groupName === 'System & Help' && request()->routeIs('loan.system.*'))
-            ) ? 'true' : 'false' }} }">
+            <div x-data="loanSidebarGroup(@js($groupName), false)">
                 @php
                     $isGroupActive = (
                         ($groupName === 'Employees' && request()->routeIs('loan.employees.*')) ||
@@ -282,7 +269,7 @@
                         ($groupName === 'System & Help' && request()->routeIs('loan.system.*'))
                     );
                 @endphp
-                <button @click="open = !open" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group {{ $isGroupActive ? 'bg-white/15 text-white shadow-sm' : 'text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white' }}" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : @js($groupName)">
+                <button type="button" @click="toggleGroup()" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group {{ $isGroupActive ? 'bg-white/15 text-white shadow-sm' : 'text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white' }}" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : @js($groupName)">
                     <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">
                         <svg class="w-5 h-5 flex-shrink-0 text-[#8db1af] group-hover:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             {!! $data['icon'] !!}
@@ -313,8 +300,11 @@
                         @forelse($data['items'] ?? $data['links'] ?? [] as $link)
                             @php
                                 if (is_array($link)) {
-                                    $href = isset($link['route']) ? route($link['route'], $link['route_params'] ?? []) : '#';
-                                    if (! empty($link['fragment'])) {
+                                    $routeName = $link['route'] ?? null;
+                                    $href = ($routeName && \Illuminate\Support\Facades\Route::has($routeName))
+                                        ? route($routeName, $link['route_params'] ?? [])
+                                        : '#';
+                                    if (! empty($link['fragment']) && $href !== '#') {
                                         $href .= '#'.$link['fragment'];
                                     }
                                     $label = $link['label'] ?? '';

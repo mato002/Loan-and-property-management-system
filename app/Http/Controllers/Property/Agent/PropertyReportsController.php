@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\Concerns\AgentWorkspaceScope;
 use App\Modules\Reporting\Services\CsvExporter;
 use App\Modules\Reporting\Landlord\LandlordReportService;
 use App\Modules\Reporting\Support\ReportFilters;
@@ -342,6 +343,9 @@ class PropertyReportsController extends Controller
             ->orderBy('u.name')
             ->orderBy('p.name');
 
+        if (AgentWorkspaceScope::shouldApply()) {
+            $links->where('p.agent_user_id', (int) $request->user()?->id);
+        }
         if ($landlordId > 0) {
             $links->where('pl.user_id', $landlordId);
         }

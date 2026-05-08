@@ -44,9 +44,15 @@ class ProfileController extends Controller
                 });
         }
 
+        $activeSystem = (string) $request->session()->get('active_system', 'loan');
+        if (! in_array($activeSystem, ['loan', 'property'], true)) {
+            $activeSystem = 'loan';
+        }
+
         return view('profile.edit', [
             'user' => $user,
-            'roleLabel' => $this->resolveRoleLabel($user),
+            'activeSystem' => $activeSystem,
+            'roleLabel' => $this->resolveRoleLabel($user, $activeSystem),
             'activeDevices' => $activeDevices,
         ]);
     }
@@ -145,12 +151,19 @@ class ProfileController extends Controller
         return Redirect::route('profile.edit')->with('status', 'devices-cleared');
     }
 
-    private function resolveRoleLabel(Model $user): string
+    private function resolveRoleLabel(Model $user, string $activeSystem): string
     {
         if ((bool) ($user->is_super_admin ?? false)) {
             return 'Super Administrator';
         }
 
+        return $activeSystem === 'property'
+            ? $this->resolvePropertyRoleLabel($user)
+            : $this->resolveLoanRoleLabel($user);
+    }
+
+    private function resolveLoanRoleLabel(Model $user): string
+    {
         if (method_exists($user, 'activeLoanAccessRole')) {
             $assignedLoanRole = $user->activeLoanAccessRole();
             if ($assignedLoanRole && filled($assignedLoanRole->name)) {
@@ -163,11 +176,37 @@ class ProfileController extends Controller
             return 'Loan '.Str::title(str_replace('_', ' ', $loanRole));
         }
 
-        $propertyRole = trim((string) ($user->property_portal_role ?? ''));
-        if ($propertyRole !== '') {
-            return 'Property '.Str::title(str_replace('_', ' ', $propertyRole));
+        return 'User';
+    }
+
+    private function resolvePropertyRoleLabel(Model $user): string
+    {
+        $role = trim((string) ($user->property_portal_role ?? ''));
+        if (! in_array($role, ['agent', 'landlord', 'tenant'], true)) {
+            try {
+                if (method_exists($user, 'pmTenantProfile') && $user->pmTenantProfile()->exists()) {
+                    $role = 'tenant';
+                } elseif (method_exists($user, 'landlordProperties') && $user->landlordProperties()->exists()) {
+                    $role = 'landlord';
+                } else {
+                    $role = 'agent';
+                }
+            } catch (\Throwable) {
+                $role = 'agent';
+            }
         }
 
-        return 'User';
+        if ($role === 'agent' && Schema::hasTable('pm_roles') && method_exists($user, 'pmRoles')) {
+            $named = $user->pmRoles()->orderBy('pm_roles.id')->value('name');
+            if (filled($named)) {
+                return (string) $named;
+            }
+        }
+
+        if ($role === '') {
+            return 'User';
+        }
+
+        return 'Property '.Str::title(str_replace('_', ' ', $role));
     }
 }

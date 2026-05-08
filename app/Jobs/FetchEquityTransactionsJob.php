@@ -30,6 +30,15 @@ class FetchEquityTransactionsJob implements ShouldQueue
             return;
         }
 
+        if (! $equityBankService->isConfigured()) {
+            // Avoid creating a noisy "failed" sync run row every 5 minutes when the
+            // tenant has not configured Equity API credentials. The service itself
+            // emits a throttled log message once an hour explaining how to enable it.
+            optional($lock)->release();
+
+            return;
+        }
+
         $run = $payments->startSyncRun($this->manual ? 'manual' : 'scheduler');
         $stats = ['fetched' => 0, 'matched' => 0, 'unmatched' => 0, 'duplicates' => 0, 'errors' => 0];
 

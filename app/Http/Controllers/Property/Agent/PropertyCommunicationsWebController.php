@@ -7,20 +7,23 @@ use App\Models\Employee;
 use App\Models\PmMessageLog;
 use App\Models\PmMessageRead;
 use App\Models\PmMessageTemplate;
+use App\Models\PmCommunicationExport;
+use App\Models\PmConversation;
+use App\Models\PmConversationMessage;
 use App\Models\PmTenant;
 use App\Models\Property;
 use App\Models\User;
+use App\Services\BulkSmsService;
+use App\Services\Property\PropertyCommunicationService;
 use App\Support\CsvExport;
 use App\Support\TabularExport;
-use App\Services\BulkSmsService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
@@ -66,6 +69,9 @@ class PropertyCommunicationsWebController extends Controller
 
     public function notificationsExport(Request $request)
     {
+        if (! ($request->user()->hasPmPermission('communications.export') || $request->user()->hasPmPermission('communications.manage'))) {
+            abort(403, 'You do not have permission to export communications.');
+        }
         $filters = $request->only(['q', 'channel', 'status', 'read', 'from', 'to', 'sort', 'dir']);
         $format = strtolower((string) $request->query('format', 'csv'));
         if (! in_array($format, ['csv', 'xls', 'pdf'], true)) {
@@ -81,11 +87,13 @@ class PropertyCommunicationsWebController extends Controller
                 ->pluck('pm_message_log_id');
         }
         $readLookup = $readIds->flip();
+        $canViewBody = $this->canViewMessageBody($request);
+        $this->logExportAudit($request, 'notifications', $format, (int) $rows->count(), $filters);
 
         return TabularExport::stream(
             'property-notifications',
             ['ID', 'When', 'Channel', 'Status', 'Read', 'To', 'Subject', 'Message', 'By'],
-            function () use ($rows, $readLookup) {
+            function () use ($rows, $readLookup, $canViewBody) {
                 foreach ($rows as $l) {
                     yield [
                         $l->id,
@@ -93,9 +101,9 @@ class PropertyCommunicationsWebController extends Controller
                         strtoupper((string) $l->channel),
                         strtoupper((string) ($l->delivery_status ?? 'unknown')),
                         $readLookup->has((int) $l->id) ? 'READ' : 'UNREAD',
-                        (string) ($l->to_address ?? ''),
+                        $this->maskAddress((string) ($l->to_address ?? '')),
                         (string) ($l->subject ?? ''),
-                        strip_tags((string) ($l->body ?? '')),
+                        $canViewBody ? strip_tags((string) ($l->body ?? '')) : '[MASKED]',
                         (string) ($l->user?->name ?? 'System'),
                     ];
                 }
@@ -187,7 +195,8 @@ class PropertyCommunicationsWebController extends Controller
             ['label' => 'System', 'value' => (string) $logs->where('channel', 'system')->count(), 'hint' => ''],
         ];
 
-        $mapped = $logs->map(function (PmMessageLog $l) {
+        $canViewBody = $this->canViewMessageBody($request);
+        $mapped = $logs->map(function (PmMessageLog $l) use ($canViewBody) {
             $viewHref = route('property.communications.messages.show', $l, absolute: false);
             $actions = new HtmlString(
                 '<a href="'.$viewHref.'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">View</a>'
@@ -199,9 +208,9 @@ class PropertyCommunicationsWebController extends Controller
                     $l->created_at->format('Y-m-d H:i'),
                     strtoupper($l->channel),
                     strtoupper((string) ($l->delivery_status ?? 'unknown')),
-                    $l->to_address,
+                    $this->maskAddress((string) $l->to_address),
                     $l->subject ?? '—',
-                    ($l->delivery_error ? Str::limit($l->delivery_error, 48) : Str::limit(strip_tags($l->body), 48)),
+                    ($l->delivery_error ? Str::limit($l->delivery_error, 48) : ($canViewBody ? Str::limit(strip_tags($l->body), 48) : '[MASKED]')),
                     $l->user->name ?? '—',
                     $actions,
                 ],
@@ -220,22 +229,27 @@ class PropertyCommunicationsWebController extends Controller
 
     public function messagesExport(Request $request)
     {
+        if (! ($request->user()->hasPmPermission('communications.export') || $request->user()->hasPmPermission('communications.manage'))) {
+            abort(403, 'You do not have permission to export communications.');
+        }
         $filters = $request->only(['q', 'channel', 'status', 'from', 'to', 'sort', 'dir']);
         $rows = $this->messageLogsQuery($filters)->get();
+        $canViewBody = $this->canViewMessageBody($request);
+        $this->logExportAudit($request, 'messages', 'csv', (int) $rows->count(), $filters);
 
         return CsvExport::stream(
             'communications_messages_'.now()->format('Ymd_His').'.csv',
             ['ID', 'When', 'Channel', 'Status', 'To', 'Subject', 'Body', 'Delivery Error', 'By'],
-            function () use ($rows) {
+            function () use ($rows, $canViewBody) {
                 foreach ($rows as $l) {
                     yield [
                         $l->id,
                         optional($l->created_at)->format('Y-m-d H:i:s'),
                         $l->channel,
                         $l->delivery_status,
-                        $l->to_address,
+                        $this->maskAddress((string) $l->to_address),
                         $l->subject,
-                        strip_tags((string) $l->body),
+                        $canViewBody ? strip_tags((string) $l->body) : '[MASKED]',
                         $l->delivery_error,
                         $l->user?->name,
                     ];
@@ -386,6 +400,8 @@ class PropertyCommunicationsWebController extends Controller
             'selected_recipients.*' => ['string', 'max:255'],
             'subject' => ['nullable', 'string', 'max:255'],
             'body' => ['required', 'string', 'max:10000'],
+            'attachments' => ['nullable', 'array'],
+            'attachments.*' => ['file', 'max:10240'],
         ]);
 
         $manualRecipients = (string) ($data['to_address'] ?? '');
@@ -406,87 +422,28 @@ class PropertyCommunicationsWebController extends Controller
             ]);
         }
 
-        if ($data['channel'] === 'sms') {
-            /** @var BulkSmsService $bulkSms */
-            $bulkSms = app(BulkSmsService::class);
-            $phones = $bulkSms->normalizeRecipientList($rawRecipients->implode(','));
-            if ($phones === []) {
-                PmMessageLog::query()->create([
-                    'user_id' => $request->user()->id,
-                    'channel' => 'sms',
-                    'to_address' => $this->formatLoggedRecipientLabel($rawRecipients),
-                    'subject' => $data['subject'] ?? null,
-                    'body' => $data['body'],
-                    'delivery_status' => 'failed',
-                    'delivery_error' => 'Invalid recipient phone format.',
-                    'sent_at' => null,
-                ]);
-                return back()->withInput()->withErrors([
-                    'to_address' => 'Enter a valid phone number in international format (e.g. 2547XXXXXXXX) or local (e.g. 0712...).',
-                ]);
-            }
-
-            $result = $bulkSms->sendNow($data['body'], $phones, $request->user()->id, null);
-            if (! ($result['ok'] ?? false)) {
-                PmMessageLog::query()->create([
-                    'user_id' => $request->user()->id,
-                    'channel' => 'sms',
-                    'to_address' => $this->formatLoggedRecipientLabel($rawRecipients),
-                    'subject' => $data['subject'] ?? null,
-                    'body' => $data['body'],
-                    'delivery_status' => 'failed',
-                    'delivery_error' => (string) ($result['error'] ?? 'Could not send SMS.'),
-                    'sent_at' => null,
-                ]);
-                return back()->withInput()->withErrors([
-                    'body' => $result['error'] ?? 'Could not send SMS.',
-                ]);
-            }
-        } else {
-            $emails = $rawRecipients
-                ->filter(static fn ($v) => filter_var($v, FILTER_VALIDATE_EMAIL))
-                ->values();
-            if ($emails->isEmpty()) {
-                return back()->withInput()->withErrors([
-                    'to_address' => 'No valid email addresses found. Enter valid emails or pick contacts with email.',
-                ]);
-            }
-            try {
-                $subject = (string) ($data['subject'] ?? '(No subject)');
-                Mail::raw((string) $data['body'], function ($m) use ($emails, $subject) {
-                    $m->to($emails->first());
-                    if ($emails->count() > 1) {
-                        $m->bcc($emails->slice(1)->all());
-                    }
-                    $m->subject($subject);
-                });
-            } catch (\Throwable $e) {
-                PmMessageLog::query()->create([
-                    'user_id' => $request->user()->id,
-                    'channel' => 'email',
-                    'to_address' => $this->formatLoggedRecipientLabel($emails),
-                    'subject' => $data['subject'] ?? null,
-                    'body' => $data['body'],
-                    'delivery_status' => 'failed',
-                    'delivery_error' => 'Email failed: '.$e->getMessage(),
-                    'sent_at' => null,
-                ]);
-                return back()->withInput()->withErrors([
-                    'body' => 'Email failed to send (check MAIL_* in .env): '.$e->getMessage(),
-                ]);
-            }
+        $recipients = $data['channel'] === 'sms'
+            ? app(BulkSmsService::class)->normalizeRecipientList($rawRecipients->implode(','))
+            : $rawRecipients->filter(static fn ($v) => filter_var($v, FILTER_VALIDATE_EMAIL))->values()->all();
+        if ($recipients === []) {
+            return back()->withInput()->withErrors([
+                'to_address' => $data['channel'] === 'sms'
+                    ? 'Enter a valid phone number in international format (e.g. 2547XXXXXXXX) or local (e.g. 0712...).'
+                    : 'No valid email addresses found. Enter valid emails or pick contacts with email.',
+            ]);
         }
 
-        PmMessageLog::query()->create([
-            'user_id' => $request->user()->id,
+        app(PropertyCommunicationService::class)->sendNow([
+            'created_by_user_id' => (int) $request->user()->id,
             'channel' => $data['channel'],
-            'to_address' => $this->formatLoggedRecipientLabel($rawRecipients),
+            'category' => 'general_notice',
+            'purpose' => 'manual_message',
             'subject' => $data['subject'] ?? null,
-            'body' => $data['body'],
-            'delivery_status' => 'sent',
-            'delivery_error' => null,
-            'sent_at' => now(),
-        ]);
+            'body' => (string) $data['body'],
+            'priority' => 'normal',
+            'severity' => 'info',
+            'attachments' => $request->file('attachments', []),
+        ], $recipients);
 
         return back()->with('success', $data['channel'] === 'sms'
             ? __('SMS sent and logged.')
@@ -567,7 +524,7 @@ class PropertyCommunicationsWebController extends Controller
             return $joined;
         }
 
-        return (string) $items->first().' (+' . max(0, $items->count() - 1) . ' more)';
+        return (string) $items->first().' (+'.max(0, $items->count() - 1).' more)';
     }
 
     public function templates(): View
@@ -628,7 +585,8 @@ class PropertyCommunicationsWebController extends Controller
             ['label' => 'Bulk Email', 'value' => (string) $logs->where('channel', 'email')->count(), 'hint' => ''],
         ];
 
-        $mapped = $logs->map(function (PmMessageLog $l) {
+        $canViewBody = $this->canViewMessageBody($request);
+        $mapped = $logs->map(function (PmMessageLog $l) use ($canViewBody) {
             $viewHref = route('property.communications.messages.show', $l, absolute: false);
             $actions = new HtmlString(
                 '<a href="'.$viewHref.'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">View</a>'
@@ -640,8 +598,8 @@ class PropertyCommunicationsWebController extends Controller
                     $l->created_at->format('Y-m-d H:i'),
                     strtoupper((string) $l->channel),
                     strtoupper((string) ($l->delivery_status ?? 'unknown')),
-                    $l->to_address,
-                    Str::limit($l->body, 80),
+                    $this->maskAddress((string) $l->to_address),
+                    $canViewBody ? Str::limit($l->body, 80) : '[MASKED]',
                     $actions,
                 ],
             ];
@@ -662,22 +620,27 @@ class PropertyCommunicationsWebController extends Controller
 
     public function bulkExport(Request $request)
     {
+        if (! ($request->user()->hasPmPermission('communications.export') || $request->user()->hasPmPermission('communications.manage'))) {
+            abort(403, 'You do not have permission to export communications.');
+        }
         $filters = $request->only(['q', 'channel', 'status', 'from', 'to', 'sort', 'dir']);
         $rows = $this->bulkLogsQuery($filters)->get();
+        $canViewBody = $this->canViewMessageBody($request);
+        $this->logExportAudit($request, 'bulk', 'csv', (int) $rows->count(), $filters);
 
         return CsvExport::stream(
             'communications_bulk_'.now()->format('Ymd_His').'.csv',
             ['ID', 'When', 'Channel', 'Status', 'Segment Label', 'Subject', 'Notes', 'By'],
-            function () use ($rows) {
+            function () use ($rows, $canViewBody) {
                 foreach ($rows as $l) {
                     yield [
                         $l->id,
                         optional($l->created_at)->format('Y-m-d H:i:s'),
                         $l->channel,
                         $l->delivery_status,
-                        $l->to_address,
+                        $this->maskAddress((string) $l->to_address),
                         $l->subject,
-                        strip_tags((string) $l->body),
+                        $canViewBody ? strip_tags((string) $l->body) : '[MASKED]',
                         $l->user?->name,
                     ];
                 }
@@ -694,61 +657,13 @@ class PropertyCommunicationsWebController extends Controller
             'message' => ['required', 'string', 'max:1000'],
             'subject' => ['nullable', 'string', 'max:255'],
             'schedule_at' => ['nullable', 'date', 'after:now'],
+            'attachments' => ['nullable', 'array'],
+            'attachments.*' => ['file', 'max:10240'],
         ]);
 
-        if ($data['channel'] === 'sms') {
-            $bulkSms = app(BulkSmsService::class);
-            $phones = $bulkSms->normalizeRecipientList($data['recipients']);
-            if ($phones === []) {
-                return back()
-                    ->withInput()
-                    ->withErrors(['recipients' => 'No valid phone numbers found. Use digits only, separated by comma, semicolon, or new lines.']);
-            }
-
-            if (! empty($data['schedule_at'])) {
-                $when = Carbon::parse($data['schedule_at']);
-                $bulkSms->createSchedule($data['message'], $phones, $when, null, $request->user()->id);
-
-                PmMessageLog::query()->create([
-                    'user_id' => $request->user()->id,
-                    'channel' => 'sms',
-                    'to_address' => $data['segment_label'],
-                    'subject' => '[BULK][SMS] '.$data['segment_label'],
-                    'body' => 'Scheduled '.$when->format('Y-m-d H:i').' · Recipients: '.count($phones),
-                    'delivery_status' => 'queued',
-                    'delivery_error' => null,
-                    'sent_at' => null,
-                ]);
-
-                return back()->with('success', __('Bulk SMS scheduled for '.$when->format('Y-m-d H:i').'.'));
-            }
-
-            $result = $bulkSms->sendNow($data['message'], $phones, $request->user()->id, null);
-            if (! ($result['ok'] ?? false)) {
-                return back()->withInput()->withErrors(['message' => $result['error'] ?? 'Could not send messages.']);
-            }
-
-            PmMessageLog::query()->create([
-                'user_id' => $request->user()->id,
-                'channel' => 'sms',
-                'to_address' => $data['segment_label'],
-                'subject' => '[BULK][SMS] '.$data['segment_label'],
-                'body' => 'Sent '.count($phones).' SMS(s).',
-                'delivery_status' => 'sent',
-                'delivery_error' => null,
-                'sent_at' => now(),
-            ]);
-
-            return back()->with('success', __('Bulk SMS sent and logged.'));
-        }
-
-        if (! empty($data['schedule_at'])) {
-            return back()
-                ->withInput()
-                ->withErrors(['schedule_at' => 'Scheduling is currently supported for SMS only. For email, send immediately.']);
-        }
-
-        $emails = collect(preg_split('/[\s,;]+/', (string) $data['recipients']) ?: [])
+        $recipients = $data['channel'] === 'sms'
+            ? app(BulkSmsService::class)->normalizeRecipientList($data['recipients'])
+            : collect(preg_split('/[\s,;]+/', (string) $data['recipients']) ?: [])
             ->map(static fn (string $value): string => trim($value))
             ->filter()
             ->filter(static fn (string $value): bool => filter_var($value, FILTER_VALIDATE_EMAIL) !== false)
@@ -756,52 +671,172 @@ class PropertyCommunicationsWebController extends Controller
             ->values()
             ->all();
 
-        if ($emails === []) {
+        if ($recipients === []) {
             return back()
                 ->withInput()
-                ->withErrors(['recipients' => 'No valid email addresses found. Use comma, semicolon, space, or new lines.']);
+                ->withErrors(['recipients' => $data['channel'] === 'sms'
+                    ? 'No valid phone numbers found. Use digits only, separated by comma, semicolon, or new lines.'
+                    : 'No valid email addresses found. Use comma, semicolon, space, or new lines.',
+                ]);
         }
 
-        $subject = trim((string) ($data['subject'] ?? ''));
-        $mailSubject = $subject !== '' ? $subject : '[Bulk] '.$data['segment_label'];
+        $payload = [
+            'created_by_user_id' => (int) $request->user()->id,
+            'channel' => $data['channel'],
+            'category' => 'general_notice',
+            'purpose' => 'bulk_message',
+            'subject' => $data['channel'] === 'email'
+                ? (trim((string) ($data['subject'] ?? '')) ?: '[Bulk] '.$data['segment_label'])
+                : '[BULK][SMS] '.$data['segment_label'],
+            'body' => (string) $data['message'],
+            'priority' => 'normal',
+            'severity' => 'info',
+            'is_bulk' => true,
+            'batch_name' => $data['segment_label'],
+            'attachments' => $request->file('attachments', []),
+        ];
 
-        $sent = 0;
-        try {
-            foreach ($emails as $email) {
-                Mail::raw((string) $data['message'], function ($m) use ($email, $mailSubject) {
-                    $m->to($email)->subject($mailSubject);
-                });
-                $sent++;
-            }
-        } catch (\Throwable $e) {
-            PmMessageLog::query()->create([
-                'user_id' => $request->user()->id,
-                'channel' => 'email',
-                'to_address' => $data['segment_label'],
-                'subject' => '[BULK][EMAIL] '.$data['segment_label'],
-                'body' => 'Failed after sending '.$sent.'/'.count($emails).' email(s).',
-                'delivery_status' => 'failed',
-                'delivery_error' => 'Email failed: '.$e->getMessage(),
-                'sent_at' => null,
-            ]);
+        if (! empty($data['schedule_at'])) {
+            $when = Carbon::parse($data['schedule_at']);
+            $payload['scheduled_at'] = $when;
+            app(PropertyCommunicationService::class)->schedule($payload, $recipients);
 
-            return back()->withInput()->withErrors([
-                'message' => 'Bulk email failed: '.$e->getMessage(),
-            ]);
+            return back()->with('success', __('Bulk message scheduled for '.$when->format('Y-m-d H:i').'.'));
         }
 
-        PmMessageLog::query()->create([
-            'user_id' => $request->user()->id,
-            'channel' => 'email',
-            'to_address' => $data['segment_label'],
-            'subject' => '[BULK][EMAIL] '.$data['segment_label'],
-            'body' => 'Sent '.$sent.' email(s).',
-            'delivery_status' => 'sent',
-            'delivery_error' => null,
-            'sent_at' => now(),
+        app(PropertyCommunicationService::class)->sendNow($payload, $recipients);
+
+        return back()->with('success', __('Bulk message queued for delivery.'));
+    }
+
+    public function conversationsPage(Request $request): View
+    {
+        if (! $request->user()->hasPmPermission('communications.manage')) {
+            abort(403, 'You do not have permission to access conversations.');
+        }
+
+        $rows = PmConversation::query()
+            ->with([
+                'tenant:id,name',
+                'messages' => fn ($q) => $q->orderByDesc('id')->limit(20),
+            ])
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->limit(200)
+            ->get()
+            ->values();
+
+        return view('property.agent.communications.conversations', [
+            'rows' => $rows,
+        ]);
+    }
+
+    public function conversations(Request $request): Response
+    {
+        if (! $request->user()->hasPmPermission('communications.manage')) {
+            abort(403, 'You do not have permission to access conversations.');
+        }
+
+        $rows = PmConversation::query()
+            ->with(['tenant:id,name'])
+            ->orderByDesc('last_message_at')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get()
+            ->map(function (PmConversation $conversation) {
+                return [
+                    'id' => $conversation->id,
+                    'topic' => $conversation->topic,
+                    'category' => $conversation->category,
+                    'status' => $conversation->status,
+                    'priority' => $conversation->priority,
+                    'tenant' => $conversation->tenant?->name,
+                    'last_message_at' => optional($conversation->last_message_at)->toDateTimeString(),
+                ];
+            })
+            ->values();
+
+        return response(['ok' => true, 'conversations' => $rows]);
+    }
+
+    public function showConversation(Request $request, PmConversation $conversation): Response
+    {
+        if (! $request->user()->hasPmPermission('communications.manage')) {
+            abort(403, 'You do not have permission to access conversations.');
+        }
+
+        $messages = PmConversationMessage::query()
+            ->where('conversation_id', $conversation->id)
+            ->orderBy('id')
+            ->limit(500)
+            ->get()
+            ->map(fn (PmConversationMessage $message) => [
+                'id' => $message->id,
+                'direction' => $message->direction,
+                'channel' => $message->channel,
+                'to_address' => $this->maskAddress((string) ($message->to_address ?? '')),
+                'body' => $message->body,
+                'sent_at' => optional($message->sent_at)->toDateTimeString(),
+            ])
+            ->values();
+
+        return response([
+            'ok' => true,
+            'conversation' => [
+                'id' => $conversation->id,
+                'topic' => $conversation->topic,
+                'category' => $conversation->category,
+                'status' => $conversation->status,
+            ],
+            'messages' => $messages,
+        ]);
+    }
+
+    public function replyConversation(Request $request, PmConversation $conversation): Response
+    {
+        if (! $request->user()->hasPmPermission('communications.manage')) {
+            abort(403, 'You do not have permission to reply to conversations.');
+        }
+
+        $data = $request->validate([
+            'channel' => ['required', 'in:sms,email'],
+            'to_address' => ['nullable', 'string', 'max:255'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'body' => ['required', 'string', 'max:10000'],
+            'attachments' => ['nullable', 'array'],
+            'attachments.*' => ['file', 'max:10240'],
         ]);
 
-        return back()->with('success', __('Bulk email sent and logged.'));
+        $toAddress = trim((string) ($data['to_address'] ?? ''));
+        if ($toAddress === '') {
+            $lastInbound = PmConversationMessage::query()
+                ->where('conversation_id', $conversation->id)
+                ->where('direction', 'inbound')
+                ->latest('id')
+                ->first();
+            $toAddress = trim((string) ($lastInbound?->to_address ?? ''));
+        }
+        if ($toAddress === '') {
+            return response(['ok' => false, 'error' => 'No conversation recipient address found.'], 422);
+        }
+
+        app(PropertyCommunicationService::class)->sendNow([
+            'created_by_user_id' => (int) $request->user()->id,
+            'channel' => $data['channel'],
+            'category' => $conversation->category ?: 'general_notice',
+            'purpose' => 'conversation_reply',
+            'subject' => $data['subject'] ?? $conversation->topic,
+            'body' => (string) $data['body'],
+            'priority' => $conversation->priority ?: 'normal',
+            'severity' => 'info',
+            'recipient_type' => 'tenant',
+            'recipient_id' => (int) ($conversation->pm_tenant_id ?? 0),
+            'attachments' => $request->file('attachments', []),
+        ], [$toAddress]);
+
+        $conversation->update(['last_message_at' => now()]);
+
+        return response(['ok' => true]);
     }
 
     private function messageLogsQuery(array $filters): Builder
@@ -856,7 +891,6 @@ class PropertyCommunicationsWebController extends Controller
         if ($channel !== '' && in_array($channel, ['sms', 'email'], true)) {
             $q->where('channel', $channel);
         }
-
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {
@@ -951,5 +985,48 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return $q->orderBy($sort, $dir)->orderByDesc('id');
+    }
+
+    private function canViewMessageBody(Request $request): bool
+    {
+        $user = $request->user();
+        return $user->hasPmPermission('communications.view_message_body')
+            || $user->hasPmPermission('communications.manage');
+    }
+
+    private function maskAddress(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        if (str_contains($value, '@')) {
+            [$local, $domain] = array_pad(explode('@', $value, 2), 2, '');
+            if ($local === '') {
+                return $value;
+            }
+            $prefix = substr($local, 0, min(2, strlen($local)));
+            return $prefix.str_repeat('*', max(0, strlen($local) - strlen($prefix))).'@'.$domain;
+        }
+
+        $digits = preg_replace('/\D+/', '', $value);
+        if ($digits === '' || strlen($digits) < 4) {
+            return '****';
+        }
+
+        return substr($digits, 0, 4).str_repeat('*', max(0, strlen($digits) - 6)).substr($digits, -2);
+    }
+
+    private function logExportAudit(Request $request, string $reportType, string $format, int $rowCount, array $filters): void
+    {
+        PmCommunicationExport::query()->create([
+            'exported_by_user_id' => $request->user()->id,
+            'report_type' => $reportType,
+            'format' => $format,
+            'export_reason' => trim((string) $request->query('reason', '')),
+            'row_count' => $rowCount,
+            'filters' => $filters,
+            'exported_at' => now(),
+        ]);
     }
 }

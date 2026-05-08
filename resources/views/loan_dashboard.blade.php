@@ -26,6 +26,21 @@
             justify-content: space-between;
             align-self: start;
             justify-self: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .fit-card-metric-icon {
+            position: absolute;
+            top: 0.35rem;
+            right: 0.35rem;
+            width: 1.65rem;
+            height: 1.65rem;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.92;
+            pointer-events: none;
         }
     </style>
     <div class="max-w-[1600px] mx-auto w-full space-y-4">
@@ -83,14 +98,15 @@
                 }
             }"
         >
-            <div class="lg:col-span-4 w-full max-w-sm lg:max-w-none bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                <div class="px-4 py-3 border-b border-slate-100 bg-slate-50/60">
-                    <h2 class="text-2xl font-semibold text-slate-800">Welcome {{ $profileCard['name'] ?? 'User' }}</h2>
+            <div class="lg:col-span-4 w-full max-w-sm lg:max-w-none bg-white border border-slate-200/90 rounded-2xl shadow-lg shadow-slate-300/25 ring-1 ring-slate-200/60 overflow-hidden">
+                <div class="px-4 py-3.5 border-b border-slate-100/90 bg-gradient-to-r from-[#2f4f4f]/[0.07] via-white to-indigo-50/50">
+                    <h2 class="text-2xl font-semibold text-slate-800 tracking-tight">Welcome {{ $profileCard['name'] ?? 'User' }}</h2>
+                    <p class="text-xs text-slate-500 mt-0.5">Your workspace snapshot</p>
                 </div>
-                <div class="p-3 space-y-3">
+                <div class="p-3.5 space-y-3 bg-gradient-to-b from-slate-50/40 to-white">
                     <div class="grid grid-cols-3 gap-3 items-start">
                         <div class="col-span-1">
-                            <div class="aspect-square w-full max-w-[110px] overflow-hidden rounded-md border border-slate-200 bg-slate-100 flex items-center justify-center">
+                            <div class="aspect-square w-full max-w-[110px] overflow-hidden rounded-xl border-2 border-white bg-gradient-to-br from-slate-100 to-slate-200/80 shadow-md ring-1 ring-slate-200/80 flex items-center justify-center">
                                 @if (filled(auth()->user()?->profile_photo_url))
                                     <img src="{{ auth()->user()->profile_photo_url }}" alt="Profile photo" class="h-full w-full object-cover">
                                 @else
@@ -130,11 +146,11 @@
                             </div>
                         </div>
                     </div>
-                    <div class="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
-                        <p class="text-xs text-slate-600">Bulk SMS Balance</p>
+                    <div class="flex items-center justify-between rounded-xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/40 px-3 py-2.5 shadow-sm">
+                        <p class="text-xs font-semibold text-slate-600">Bulk SMS Balance</p>
                         <div class="flex items-center gap-3">
-                            <p class="text-xl font-bold text-emerald-700 tabular-nums">{{ $currencyCode }} {{ number_format((float) ($profileCard['sms_balance'] ?? 0), 1) }}</p>
-                            <button type="button" @click="openSmsTopup('topup_button_click')" class="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">Topup</button>
+                            <p class="text-xl font-bold text-emerald-700 tabular-nums drop-shadow-sm">{{ $currencyCode }} {{ number_format((float) ($profileCard['sms_balance'] ?? 0), 1) }}</p>
+                            <button type="button" @click="openSmsTopup('topup_button_click')" class="rounded-lg border border-emerald-300/80 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 transition-colors">Topup</button>
                         </div>
                     </div>
                     @if ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('reference'))
@@ -185,35 +201,56 @@
                 </div>
             </div>
 
-            <div class="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5 items-start justify-items-center">
-                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
-                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">Total Clients</p>
-                    <p class="mt-0.5 text-base font-bold text-slate-800 tabular-nums leading-none">{{ number_format((int) ($summaryStrip['total_clients'] ?? 0)) }}</p>
+            <div class="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 items-start justify-items-center">
+                <div class="fit-card group rounded-xl border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/80 to-indigo-50/60 p-2.5 shadow-md shadow-slate-200/40 ring-1 ring-slate-200/50 transition-all duration-200 hover:shadow-lg hover:shadow-indigo-200/30 hover:-translate-y-0.5 hover:ring-indigo-200/60">
+                    <span class="fit-card-metric-icon bg-indigo-500/15 text-indigo-700" aria-hidden="true">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    </span>
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-slate-500 leading-tight pr-7 relative z-10">Total Clients</p>
+                    <p class="mt-0.5 text-lg font-extrabold text-slate-900 tabular-nums leading-none tracking-tight relative z-10">{{ number_format((int) ($summaryStrip['total_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
-                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">Active Clients</p>
-                    <p class="mt-0.5 text-base font-bold text-emerald-700 tabular-nums leading-none">{{ number_format((int) ($summaryStrip['active_clients'] ?? 0)) }}</p>
+                <div class="fit-card group rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/90 via-white to-teal-50/50 p-2.5 shadow-md shadow-emerald-200/25 ring-1 ring-emerald-100/80 transition-all duration-200 hover:shadow-lg hover:shadow-emerald-200/40 hover:-translate-y-0.5">
+                    <span class="fit-card-metric-icon bg-emerald-500/20 text-emerald-800" aria-hidden="true">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </span>
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-emerald-800/80 leading-tight pr-7 relative z-10">Active Clients</p>
+                    <p class="mt-0.5 text-lg font-extrabold text-emerald-700 tabular-nums leading-none relative z-10">{{ number_format((int) ($summaryStrip['active_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
-                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">Dormant Clients</p>
-                    <p class="mt-0.5 text-base font-bold text-rose-600 tabular-nums leading-none">{{ number_format((int) ($summaryStrip['dormant_clients'] ?? 0)) }}</p>
+                <div class="fit-card group rounded-xl border border-rose-200/60 bg-gradient-to-br from-rose-50/70 via-white to-slate-50/80 p-2.5 shadow-md shadow-rose-100/40 ring-1 ring-rose-100/70 transition-all duration-200 hover:shadow-lg hover:shadow-rose-200/30 hover:-translate-y-0.5">
+                    <span class="fit-card-metric-icon bg-rose-500/15 text-rose-700" aria-hidden="true">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                    </span>
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-rose-800/75 leading-tight pr-7 relative z-10">Dormant Clients</p>
+                    <p class="mt-0.5 text-lg font-extrabold text-rose-600 tabular-nums leading-none relative z-10">{{ number_format((int) ($summaryStrip['dormant_clients'] ?? 0)) }}</p>
                 </div>
-                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
-                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">Performing Loans</p>
-                    <p class="mt-0.5 text-base font-bold text-emerald-700 tabular-nums leading-none">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
+                <div class="fit-card group rounded-xl border border-teal-200/70 bg-gradient-to-br from-teal-50/80 via-white to-emerald-50/60 p-2.5 shadow-md shadow-teal-100/50 ring-1 ring-teal-100/80 transition-all duration-200 hover:shadow-lg hover:shadow-teal-200/35 hover:-translate-y-0.5">
+                    <span class="fit-card-metric-icon bg-teal-500/20 text-teal-800" aria-hidden="true">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    </span>
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-teal-900/70 leading-tight pr-7 relative z-10">Performing Loans</p>
+                    <p class="mt-0.5 text-lg font-extrabold text-emerald-700 tabular-nums leading-none relative z-10">{{ number_format((int) ($summaryStrip['performing_loans'] ?? 0)) }}</p>
                 </div>
-                <div class="fit-card rounded-lg border border-rose-200 bg-rose-400 text-white p-2">
-                    <p class="text-[10px] font-semibold uppercase leading-tight">Loan Arrears ({{ $currencyCode }})</p>
-                    <p class="mt-0.5 text-base font-bold tabular-nums leading-none">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
+                <div class="fit-card group rounded-xl border border-rose-300/50 bg-gradient-to-br from-rose-500 via-rose-600 to-orange-600 p-2.5 text-white shadow-lg shadow-rose-300/40 ring-1 ring-white/20 transition-all duration-200 hover:shadow-xl hover:shadow-rose-400/45 hover:-translate-y-0.5">
+                    <span class="fit-card-metric-icon bg-white/20 text-white ring-1 ring-white/30" aria-hidden="true">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    </span>
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-rose-50 leading-tight pr-7 relative z-10 drop-shadow-sm">Loan Arrears ({{ $currencyCode }})</p>
+                    <p class="mt-0.5 text-lg font-extrabold tabular-nums leading-none relative z-10 drop-shadow-sm">{{ number_format((float) ($summaryStrip['loan_arrears'] ?? 0), 0) }}</p>
                 </div>
-                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
-                    <p class="text-[10px] font-semibold uppercase text-slate-500 leading-tight">PAR %</p>
-                    <p class="mt-0.5 text-base font-bold text-slate-800 tabular-nums leading-none">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
+                <div class="fit-card group rounded-xl border border-violet-200/70 bg-gradient-to-br from-violet-50/90 via-white to-indigo-50/50 p-2.5 shadow-md shadow-violet-100/50 ring-1 ring-violet-100/80 transition-all duration-200 hover:shadow-lg hover:shadow-violet-200/35 hover:-translate-y-0.5">
+                    <span class="fit-card-metric-icon bg-violet-500/15 text-violet-800" aria-hidden="true">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </span>
+                    <p class="text-[10px] font-bold uppercase tracking-wide text-violet-900/70 leading-tight pr-7 relative z-10">PAR %</p>
+                    <p class="mt-0.5 text-lg font-extrabold text-violet-900 tabular-nums leading-none relative z-10">{{ number_format((float) ($summaryStrip['par_percent'] ?? 0), 2) }}%</p>
                 </div>
-                <div class="fit-card rounded-lg border border-slate-200 bg-white p-2">
-                    <p class="text-[10px] leading-tight font-semibold uppercase text-slate-500">Daily Collection Sheet (The Battle Plan)</p>
-                    <p class="mt-0.5 text-base font-bold text-emerald-700 tabular-nums leading-none">78</p>
-                    <p class="text-[10px] text-slate-500 mt-0.5 leading-tight">Active Tasks (MTD)</p>
+                <div class="fit-card group rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/90 via-white to-sky-50/50 p-2.5 shadow-md shadow-amber-100/40 ring-1 ring-amber-100/70 transition-all duration-200 hover:shadow-lg hover:shadow-amber-200/30 hover:-translate-y-0.5">
+                    <span class="fit-card-metric-icon bg-amber-500/20 text-amber-900" aria-hidden="true">
+                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>
+                    </span>
+                    <p class="text-[10px] leading-tight font-bold uppercase tracking-wide text-amber-900/75 pr-7 relative z-10">Daily Collection Sheet (The Battle Plan)</p>
+                    <p class="mt-0.5 text-lg font-extrabold text-sky-700 tabular-nums leading-none relative z-10">78</p>
+                    <p class="text-[9px] font-semibold uppercase tracking-wide text-amber-800/60 mt-0.5 leading-tight relative z-10">Active Tasks (MTD)</p>
                 </div>
             </div>
         </div>

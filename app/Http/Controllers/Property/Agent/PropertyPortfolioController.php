@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Mail\LandlordPortalCredentialsMail;
+use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\DepositDefinition;
 use App\Models\ExpenseDefinition;
 use App\Models\PmLease;
@@ -1048,12 +1049,13 @@ class PropertyPortfolioController extends Controller
             'share_level' => (string) $request->query('share_level', 'all'),
         ];
 
-        $landlords = $this->landlordUsersQueryForActor($request->user())
+        $actor = $request->user();
+        $landlords = $this->landlordUsersQueryForActor($actor)
             ->with(['landlordProperties' => fn ($q) => $q->orderBy('name')])
             ->orderBy('name')
             ->get();
 
-        $links = DB::table('property_landlord as pl')
+        $linksQuery = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->join('properties as p', 'p.id', '=', 'pl.property_id')
             ->select([
@@ -1063,8 +1065,11 @@ class PropertyPortfolioController extends Controller
                 'u.name as owner_name',
                 'u.email as owner_email',
                 'p.name as property_name',
-            ])
-            ->get();
+            ]);
+        if ($actor && $this->isAgentActor($actor)) {
+            $linksQuery->where('p.agent_user_id', (int) $actor->id);
+        }
+        $links = $linksQuery->get();
 
         $collectedByProperty = DB::table('pm_payment_allocations as a')
             ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
@@ -1261,7 +1266,7 @@ class PropertyPortfolioController extends Controller
 
         $landlord->load(['landlordProperties' => fn ($q) => $q->orderBy('name')]);
 
-        $propertyLinks = DB::table('property_landlord as pl')
+        $propertyLinksQuery = DB::table('property_landlord as pl')
             ->join('properties as p', 'p.id', '=', 'pl.property_id')
             ->where('pl.user_id', $landlord->id)
             ->select([
@@ -1269,8 +1274,11 @@ class PropertyPortfolioController extends Controller
                 'pl.ownership_percent',
                 'p.name as property_name',
             ])
-            ->orderBy('p.name')
-            ->get();
+            ->orderBy('p.name');
+        if (AgentWorkspaceScope::shouldApply()) {
+            $propertyLinksQuery->where('p.agent_user_id', (int) Auth::id());
+        }
+        $propertyLinks = $propertyLinksQuery->get();
 
         $propertyIds = $propertyLinks->pluck('property_id')->map(fn ($id) => (int) $id)->all();
 
@@ -2627,7 +2635,7 @@ class PropertyPortfolioController extends Controller
         }
 
         return redirect()
-            ->route('property.properties.units', ['property_id' => $unit->property_id], absolute: false)
+            ->route('property.properties.units', ['property_id' => $unit->property_id])
             ->with('success', 'Unit updated.');
     }
 

@@ -20,6 +20,7 @@
             </div>
         </div>
 
+        @if (($activeSystem ?? 'loan') === 'loan')
         @php
             $assignedLoanRoleName = method_exists($user, 'activeLoanAccessRole')
                 ? optional($user->activeLoanAccessRole())->name
@@ -59,6 +60,7 @@
                 @endif
             </div>
         </div>
+        @endif
 
         <div class="p-5 sm:p-8 bg-white shadow-[0_12px_28px_rgba(47,79,79,0.10)] ring-1 ring-[#dbe8e4] rounded-2xl">
             <div class="max-w-2xl">

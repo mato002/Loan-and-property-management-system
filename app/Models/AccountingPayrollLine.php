@@ -8,16 +8,31 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class AccountingPayrollLine extends Model
 {
     protected $fillable = [
-        'accounting_payroll_period_id', 'employee_id', 'gross_pay',
-        'deductions', 'net_pay', 'payslip_number', 'notes',
+        'accounting_payroll_period_id',
+        'employee_id',
+        'basic_pay',
+        'allowances',
+        'gross_pay',
+        'deductions',
+        'net_pay',
+        'payslip_number',
+        'notes',
+        'email_sent_at',
+        'payment_status',
+        'payment_date',
+        'payment_reference',
     ];
 
     protected function casts(): array
     {
         return [
             'gross_pay' => 'decimal:2',
+            'basic_pay' => 'decimal:2',
+            'allowances' => 'decimal:2',
             'deductions' => 'decimal:2',
             'net_pay' => 'decimal:2',
+            'email_sent_at' => 'datetime',
+            'payment_date' => 'date',
         ];
     }
 

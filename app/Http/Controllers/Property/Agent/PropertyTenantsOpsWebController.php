@@ -6,23 +6,75 @@ use App\Http\Controllers\Controller;
 use App\Models\PmLease;
 use App\Models\PmTenant;
 use App\Models\PmTenantNotice;
+use App\Models\PmTenantNoticeEvent;
 use App\Models\PmUnitMovement;
-use App\Models\PropertyPortalSetting;
 use App\Models\Property;
+use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
+use App\Services\Property\PropertyCommunicationService;
 use App\Support\CsvExport;
 use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\HtmlString;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
 
 class PropertyTenantsOpsWebController extends Controller
 {
+    private function isLegalNoticeType(string $noticeType): bool
+    {
+        $normalized = strtolower(trim($noticeType));
+        return str_contains($normalized, 'legal')
+            || str_contains($normalized, 'arrears')
+            || str_contains($normalized, 'evict')
+            || str_contains($normalized, 'vacate')
+            || str_contains($normalized, 'termination');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function legalNoticeStatuses(): array
+    {
+        return [
+            'draft',
+            'pending_approval',
+            'approved',
+            'sent',
+            'delivered',
+            'acknowledged',
+            'disputed',
+            'expired',
+            'cancelled',
+            'escalated',
+            'closed',
+        ];
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    private function legalNoticeTransitions(): array
+    {
+        return [
+            'draft' => ['pending_approval', 'approved', 'cancelled'],
+            'pending_approval' => ['approved', 'cancelled'],
+            'approved' => ['sent', 'cancelled'],
+            'sent' => ['delivered', 'acknowledged', 'disputed', 'expired', 'escalated'],
+            'delivered' => ['acknowledged', 'disputed', 'expired', 'escalated'],
+            'acknowledged' => ['closed', 'escalated'],
+            'disputed' => ['sent', 'escalated', 'closed'],
+            'expired' => ['escalated', 'closed'],
+            'escalated' => ['sent', 'closed'],
+            'cancelled' => [],
+            'closed' => [],
+        ];
+    }
+
     private function backfillMovementsFromLeases(): void
     {
         // Populate movement rows for existing leases so the page isn't empty.
@@ -281,9 +333,9 @@ class PropertyTenantsOpsWebController extends Controller
     public function notices(Request $request): View
     {
         $noticeTemplate = PropertyPortalSetting::getValue('template_notice_text', '');
-        $workflowAutoReminders = PropertyPortalSetting::getValue('workflow_auto_reminders', '0') === '1';
+        $workflowAutoReminders = PropertyPortalSetting::isRentReminderAutomationEnabled();
         $reminderLeadDays = max(0, (int) PropertyPortalSetting::getValue('workflow_reminder_lead_days', '3'));
-        $filters = $request->only(['q', 'notice_type', 'status', 'tenant_id', 'unit_id', 'from', 'to', 'sort', 'dir']);
+        $filters = $request->only(['q', 'notice_type', 'status', 'tenant_id', 'unit_id', 'from', 'to', 'sort', 'dir', 'event_type', 'risk']);
         $notices = $this->noticesQuery($filters)->limit(400)->get();
 
         $stats = [
@@ -292,26 +344,58 @@ class PropertyTenantsOpsWebController extends Controller
             ['label' => 'Sent', 'value' => (string) $notices->where('status', 'sent')->count(), 'hint' => ''],
         ];
 
-        $rows = $notices->map(function (PmTenantNotice $n) {
+        $user = $request->user();
+        $rows = $notices->map(function (PmTenantNotice $n) use ($user) {
             $actions = '—';
             if (! in_array($n->status, ['closed'], true)) {
+                $actionForms = [];
+                if ($n->status === 'draft') {
+                    $actionForms[] = '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
+                        '<input type="hidden" name="status" value="pending_approval" />'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Submit for approval</button>'.
+                        '</form>';
+                }
+                if (in_array($n->status, ['draft', 'pending_approval'], true) && $user->hasPmPermission('communications.approve_notice')) {
+                    $actionForms[] = '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
+                        '<input type="hidden" name="status" value="approved" />'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-indigo-700 hover:bg-indigo-50">Approve</button>'.
+                        '</form>';
+                }
+                if (in_array($n->status, ['approved', 'escalated', 'disputed'], true) && $user->hasPmPermission('communications.send_legal_notice')) {
+                    $actionForms[] = '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
+                        '<input type="hidden" name="status" value="sent" />'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-amber-700 hover:bg-amber-50">Mark sent</button>'.
+                        '</form>';
+                }
+                if (in_array($n->status, ['sent', 'approved'], true) && $user->hasPmPermission('communications.send_legal_notice')) {
+                    $actionForms[] = '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
+                        '<input type="hidden" name="status" value="delivered" />'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Mark delivered</button>'.
+                        '</form>';
+                }
+                if (in_array($n->status, ['sent', 'delivered'], true)) {
+                    $actionForms[] = '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
+                        '<input type="hidden" name="status" value="acknowledged" />'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Acknowledge</button>'.
+                        '</form>';
+                }
+                if (in_array($n->status, ['sent', 'delivered', 'disputed', 'expired', 'acknowledged'], true)) {
+                    $actionForms[] = '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
+                        '<input type="hidden" name="status" value="escalated" />'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Escalate</button>'.
+                        '</form>';
+                }
+                $actionForms[] = '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
+                    '<input type="hidden" name="status" value="closed" />'.
+                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-indigo-700 hover:bg-indigo-50">Close</button>'.
+                    '</form>';
+
                 $actions = new HtmlString(
                     '<div class="relative inline-block text-left">'.
                     '<details>'.
                     '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
                     '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
-                    '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
-                    '<input type="hidden" name="status" value="sent" />'.
-                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Mark sent</button>'.
-                    '</form>'.
-                    '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
-                    '<input type="hidden" name="status" value="acknowledged" />'.
-                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-emerald-700 hover:bg-emerald-50">Acknowledge</button>'.
-                    '</form>'.
-                    '<form method="POST" action="'.route('property.tenants.notices.status', $n).'">'.csrf_field().
-                    '<input type="hidden" name="status" value="closed" />'.
-                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-indigo-700 hover:bg-indigo-50">Close</button>'.
-                    '</form>'.
+                    implode('', $actionForms).
                     '</div>'.
                     '</details>'.
                     '</div>'
@@ -333,12 +417,16 @@ class PropertyTenantsOpsWebController extends Controller
         $units = PropertyUnit::query()->with('property')->orderBy('property_id')->get();
 
         // Auto-pick the most recent invoiced unit per tenant when creating a notice.
-        $tenantUnitMap = DB::table('pm_invoices as i')
+        $tenantUnitMapQuery = DB::table('pm_invoices as i')
             ->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
             ->whereNotNull('i.property_unit_id')
             ->selectRaw('i.pm_tenant_id as tenant_id, i.property_unit_id as unit_id, MAX(COALESCE(i.issue_date, i.due_date, DATE(i.created_at))) as latest_date')
             ->groupBy('i.pm_tenant_id', 'i.property_unit_id')
-            ->orderByDesc('latest_date')
+            ->orderByDesc('latest_date');
+        if (\App\Models\Concerns\AgentWorkspaceScope::shouldApply()) {
+            $tenantUnitMapQuery->where('t.agent_user_id', (int) auth()->id());
+        }
+        $tenantUnitMap = $tenantUnitMapQuery
             ->get()
             ->groupBy('tenant_id')
             ->map(static function (Collection $rows): ?int {
@@ -365,19 +453,22 @@ class PropertyTenantsOpsWebController extends Controller
             'workflowAutoReminders' => $workflowAutoReminders,
             'reminderLeadDays' => $reminderLeadDays,
             'filters' => $filters,
+            'notices' => $notices,
+            'legalStatuses' => $this->legalNoticeStatuses(),
         ]);
     }
 
     public function noticesExport(Request $request)
     {
-        $filters = $request->only(['q', 'notice_type', 'status', 'tenant_id', 'unit_id', 'from', 'to', 'sort', 'dir']);
+        $filters = $request->only(['q', 'notice_type', 'status', 'tenant_id', 'unit_id', 'from', 'to', 'sort', 'dir', 'event_type', 'risk']);
         $rows = $this->noticesQuery($filters)->get();
 
         return CsvExport::stream(
             'tenant_notices_'.now()->format('Ymd_His').'.csv',
-            ['ID', 'Tenant', 'Unit', 'Notice Type', 'Status', 'Due On', 'Created By', 'Notes'],
+            ['ID', 'Tenant', 'Unit', 'Notice Type', 'Status', 'Due On', 'Created By', 'Last Event', 'Last Event By', 'Last Event At', 'Notes'],
             function () use ($rows) {
                 foreach ($rows as $n) {
+                    $lastEvent = $n->events->first();
                     yield [
                         $n->id,
                         $n->tenant?->name,
@@ -386,6 +477,15 @@ class PropertyTenantsOpsWebController extends Controller
                         $n->status,
                         optional($n->due_on)->format('Y-m-d'),
                         $n->createdBy?->name,
+                        $lastEvent
+                            ? trim(
+                                ucfirst(str_replace('_', ' ', (string) $lastEvent->event_type))
+                                .' '
+                                .($lastEvent->from_status ? '['.$lastEvent->from_status.' -> '.($lastEvent->to_status ?? '—').']' : '')
+                            )
+                            : null,
+                        $lastEvent?->actor?->name,
+                        optional($lastEvent?->created_at)->format('Y-m-d H:i:s'),
                         $n->notes,
                     ];
                 }
@@ -395,25 +495,58 @@ class PropertyTenantsOpsWebController extends Controller
 
     public function storeNotice(Request $request): RedirectResponse
     {
-        $workflowAutoReminders = PropertyPortalSetting::getValue('workflow_auto_reminders', '0') === '1';
+        $workflowAutoReminders = PropertyPortalSetting::isRentReminderAutomationEnabled();
         $reminderLeadDays = max(0, (int) PropertyPortalSetting::getValue('workflow_reminder_lead_days', '3'));
+        $allowedStatuses = $this->legalNoticeStatuses();
         $data = $request->validate([
             'pm_tenant_id' => ['required', 'exists:pm_tenants,id'],
             'property_unit_id' => ['nullable', 'exists:property_units,id'],
             'notice_type' => ['required', 'string', 'max:64'],
-            'status' => ['required', 'in:draft,sent,acknowledged,closed'],
+            'status' => ['required', 'in:'.implode(',', $allowedStatuses)],
             'due_on' => ['nullable', 'date'],
+            'notice_period_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
+            'effective_date' => ['nullable', 'date'],
+            'expiry_date' => ['nullable', 'date', 'after_or_equal:effective_date'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        PmTenantNotice::query()->create([
+        if ($this->isLegalNoticeType((string) ($data['notice_type'] ?? ''))) {
+            if (
+                in_array((string) ($data['status'] ?? ''), ['approved', 'sent', 'delivered', 'acknowledged', 'escalated'], true)
+                && ! $request->user()->hasPmPermission('communications.send_legal_notice')
+            ) {
+                return back()->withErrors(['status' => 'You do not have permission to send legal notices.']);
+            }
+            if ((string) ($data['status'] ?? '') === 'approved' && ! $request->user()->hasPmPermission('communications.approve_notice')) {
+                return back()->withErrors(['status' => 'You do not have permission to approve legal notices.']);
+            }
+        }
+
+        $notice = PmTenantNotice::query()->create([
             ...$data,
             'due_on' => ($data['due_on'] ?? null) ?: ($workflowAutoReminders ? now()->addDays($reminderLeadDays)->toDateString() : null),
+            'effective_date' => $data['effective_date'] ?? now()->toDateString(),
+            'expiry_date' => $data['expiry_date'] ?? null,
             'notes' => ($data['notes'] ?? '') !== ''
                 ? $data['notes']
                 : PropertyPortalSetting::getValue('template_notice_text', ''),
             'created_by_user_id' => $request->user()->id,
         ]);
+        $this->logNoticeEvent(
+            $notice,
+            'created',
+            null,
+            (string) $notice->status,
+            (int) $request->user()->id,
+            'Notice created.',
+            [
+                'notice_type' => $notice->notice_type,
+                'due_on' => optional($notice->due_on)->format('Y-m-d'),
+                'effective_date' => optional($notice->effective_date)->format('Y-m-d'),
+                'expiry_date' => optional($notice->expiry_date)->format('Y-m-d'),
+            ]
+        );
+        $this->dispatchNoticeIfRequired($notice, $request);
 
         return back()->with('success', __('Notice saved.'));
     }
@@ -435,14 +568,168 @@ class PropertyTenantsOpsWebController extends Controller
 
     public function updateNoticeStatus(Request $request, PmTenantNotice $notice): RedirectResponse
     {
+        $allowedStatuses = $this->legalNoticeStatuses();
         $data = $request->validate([
-            'status' => ['required', 'in:draft,sent,acknowledged,closed'],
+            'status' => ['required', 'in:'.implode(',', $allowedStatuses)],
+            'proof_attachment' => ['nullable', 'file', 'max:10240'],
         ]);
+        $from = (string) ($notice->status ?? 'draft');
+        $to = (string) $data['status'];
+        $transitions = $this->legalNoticeTransitions();
+        if ($from !== $to && ! in_array($to, $transitions[$from] ?? [], true)) {
+            $this->logNoticeEvent(
+                $notice,
+                'transition_denied',
+                $from,
+                $to,
+                (int) $request->user()->id,
+                'Denied invalid status transition.',
+                ['reason' => 'invalid_transition']
+            );
+            return back()->withErrors(['status' => 'Invalid notice status transition from '.$from.' to '.$to.'.']);
+        }
+        if ($this->isLegalNoticeType((string) $notice->notice_type)) {
+            if ($to === 'approved' && ! $request->user()->hasPmPermission('communications.approve_notice')) {
+                $this->logNoticeEvent(
+                    $notice,
+                    'permission_denied',
+                    $from,
+                    $to,
+                    (int) $request->user()->id,
+                    'Denied status change due to missing communications.approve_notice permission.',
+                    ['required_permission' => 'communications.approve_notice']
+                );
+                return back()->withErrors(['status' => 'You do not have permission to approve legal notices.']);
+            }
+            if (in_array($to, ['sent', 'delivered', 'acknowledged', 'escalated'], true) && ! $request->user()->hasPmPermission('communications.send_legal_notice')) {
+                $this->logNoticeEvent(
+                    $notice,
+                    'permission_denied',
+                    $from,
+                    $to,
+                    (int) $request->user()->id,
+                    'Denied status change due to missing communications.send_legal_notice permission.',
+                    ['required_permission' => 'communications.send_legal_notice']
+                );
+                return back()->withErrors(['status' => 'You do not have permission to send legal notices.']);
+            }
+        }
+
+        $proofPath = $notice->proof_attachment;
+        $uploaded = $request->file('proof_attachment');
+        if ($uploaded) {
+            $proofPath = $uploaded->store('property/notices/proof', 'public');
+        }
+
         $notice->update([
-            'status' => $data['status'],
+            'status' => $to,
+            'served_by_user_id' => in_array($to, ['sent', 'delivered', 'acknowledged'], true) ? $request->user()->id : $notice->served_by_user_id,
+            'served_at' => in_array($to, ['sent', 'delivered', 'acknowledged'], true) ? now() : $notice->served_at,
+            'proof_attachment' => $proofPath,
         ]);
+        $this->logNoticeEvent(
+            $notice,
+            'status_changed',
+            $from,
+            $to,
+            (int) $request->user()->id,
+            $from === $to ? 'Notice status updated.' : 'Notice status changed from '.$from.' to '.$to.'.',
+            [
+                'proof_attachment' => $proofPath,
+                'message_id' => $notice->message_id,
+                'delivery_proof_id' => $notice->delivery_proof_id,
+            ]
+        );
+        $this->dispatchNoticeIfRequired($notice, $request);
 
         return back()->with('success', __('Notice status updated.'));
+    }
+
+    private function dispatchNoticeIfRequired(PmTenantNotice $notice, Request $request): void
+    {
+        if ($notice->status !== 'sent' || $notice->message_id) {
+            return;
+        }
+
+        $tenant = $notice->tenant;
+        if (! $tenant) {
+            return;
+        }
+
+        $subject = '[NOTICE] '.strtoupper((string) $notice->notice_type).' #'.$notice->id;
+        $body = trim((string) ($notice->notes ?? ''));
+        if ($body === '') {
+            $body = 'A tenant notice has been issued. Please check your portal or contact management.';
+        }
+
+        $channel = null;
+        $recipients = [];
+        if (! empty($tenant->email)) {
+            $channel = 'email';
+            $recipients = [(string) $tenant->email];
+        } elseif (! empty($tenant->phone)) {
+            $normalized = app(\App\Services\BulkSmsService::class)->normalizeRecipientList((string) $tenant->phone);
+            if ($normalized !== []) {
+                $channel = 'sms';
+                $recipients = $normalized;
+            }
+        }
+        if ($channel === null || $recipients === []) {
+            return;
+        }
+
+        $message = app(PropertyCommunicationService::class)->sendNow([
+            'created_by_user_id' => (int) $request->user()->id,
+            'channel' => $channel,
+            'category' => 'legal_notice',
+            'purpose' => 'tenant_notice',
+            'subject' => $subject,
+            'body' => $body,
+            'priority' => 'high',
+            'severity' => 'warning',
+            'recipient_type' => 'tenant',
+            'recipient_id' => (int) $tenant->id,
+            'idempotency_key' => 'tenant_notice:'.$notice->id,
+        ], $recipients);
+
+        $notice->update([
+            'message_id' => $message->id,
+            'served_by_user_id' => $request->user()->id,
+            'served_at' => now(),
+        ]);
+        $this->logNoticeEvent(
+            $notice->fresh(),
+            'dispatched',
+            null,
+            (string) $notice->status,
+            (int) $request->user()->id,
+            'Notice dispatched via '.$channel.'.',
+            [
+                'channel' => $channel,
+                'recipient' => $recipients[0] ?? null,
+                'message_id' => $message->id,
+            ]
+        );
+    }
+
+    private function logNoticeEvent(
+        PmTenantNotice $notice,
+        string $eventType,
+        ?string $fromStatus,
+        ?string $toStatus,
+        ?int $actorUserId,
+        ?string $notes = null,
+        array $meta = []
+    ): void {
+        PmTenantNoticeEvent::query()->create([
+            'notice_id' => (int) $notice->id,
+            'event_type' => $eventType,
+            'from_status' => $fromStatus,
+            'to_status' => $toStatus,
+            'actor_user_id' => $actorUserId,
+            'notes' => $notes,
+            'meta' => $meta === [] ? null : $meta,
+        ]);
     }
 
     private function movementsQuery(array $filters): Builder
@@ -521,7 +808,15 @@ class PropertyTenantsOpsWebController extends Controller
 
     private function noticesQuery(array $filters): Builder
     {
-        $q = PmTenantNotice::query()->with(['tenant', 'unit.property', 'createdBy']);
+        $q = PmTenantNotice::query()->with([
+            'tenant',
+            'unit.property',
+            'createdBy',
+            'servedBy',
+            'message',
+            'deliveryProof',
+            'events' => fn ($events) => $events->with('actor:id,name')->orderByDesc('id'),
+        ]);
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {
@@ -538,6 +833,23 @@ class PropertyTenantsOpsWebController extends Controller
             if ($v !== '') {
                 $q->where($f, $v);
             }
+        }
+
+        $eventType = trim((string) ($filters['event_type'] ?? ''));
+        if ($eventType !== '') {
+            $q->whereHas('events', fn (Builder $events) => $events->where('event_type', $eventType));
+        }
+
+        $risk = trim((string) ($filters['risk'] ?? ''));
+        if ($risk === 'denied') {
+            $q->whereHas('events', fn (Builder $events) => $events->whereIn('event_type', ['permission_denied', 'transition_denied']));
+        } elseif ($risk === 'escalated') {
+            $q->where(function (Builder $b) {
+                $b->where('status', 'escalated')
+                    ->orWhereHas('events', fn (Builder $events) => $events->where(function (Builder $ev) {
+                        $ev->where('event_type', 'status_changed')->where('to_status', 'escalated');
+                    }));
+            });
         }
 
         $tenantId = (int) ($filters['tenant_id'] ?? 0);

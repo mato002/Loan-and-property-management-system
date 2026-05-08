@@ -10,10 +10,12 @@ use App\Models\PmTenant;
 use App\Support\TabularExport;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyPaymentReversalApprovalService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\HtmlString;
+use RuntimeException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -24,6 +26,7 @@ class PmPaymentController extends Controller
         $filters = [
             'q' => trim((string) $request->query('q', '')),
             'status' => strtolower(trim((string) $request->query('status', ''))),
+            'reversal_status' => strtolower(trim((string) $request->query('reversal_status', ''))),
             'channel' => strtolower(trim((string) $request->query('channel', ''))),
             'from' => (string) $request->query('from', ''),
             'to' => (string) $request->query('to', ''),
@@ -39,6 +42,14 @@ class PmPaymentController extends Controller
             PmPayment::STATUS_FAILED,
         ], true)) {
             $baseQuery->where('status', $filters['status']);
+        }
+        if ($filters['reversal_status'] !== '' && in_array($filters['reversal_status'], [
+            PmPayment::REVERSAL_STATUS_PENDING,
+            PmPayment::REVERSAL_STATUS_APPROVED,
+            PmPayment::REVERSAL_STATUS_REJECTED,
+            PmPayment::REVERSAL_STATUS_REVERSED,
+        ], true)) {
+            $baseQuery->where('reversal_status', $filters['reversal_status']);
         }
         if ($filters['channel'] !== '') {
             $baseQuery->where('channel', $filters['channel']);
@@ -126,6 +137,7 @@ class PmPaymentController extends Controller
 
         $rows = $pageCollection->map(function (PmPayment $p) {
             $allocatedTo = $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
+            $canSettle = (bool) (auth()->user()?->hasPmPermission('payments.settle'));
 
             // If we have no explicit invoice numbers but the payment is linked to a tenant,
             // fall back to the tenant name so the "Allocated to" column is not blank.
@@ -145,7 +157,7 @@ class PmPaymentController extends Controller
                 '</details>'.
                 '</div>'
             );
-            if ($p->status === PmPayment::STATUS_PENDING) {
+            if ($p->status === PmPayment::STATUS_PENDING && $canSettle) {
                 $completeUrl = route('property.payments.settle', $p);
                 $failUrl = route('property.payments.settle', $p);
                 $actions = new HtmlString(
@@ -171,6 +183,48 @@ class PmPaymentController extends Controller
                     '</div>'
                 );
             }
+            if ($p->status === PmPayment::STATUS_COMPLETED && $canSettle) {
+                $requestUrl = route('property.payments.reversal.request', $p);
+                $approveUrl = route('property.payments.reversal.approve', $p);
+                $reversalStatus = (string) ($p->reversal_status ?? '');
+                $requestForm = '';
+                $approveForm = '';
+
+                if ($reversalStatus === '' || $reversalStatus === PmPayment::REVERSAL_STATUS_REJECTED) {
+                    $requestForm =
+                        '<form method="post" action="'.$requestUrl.'" class="block js-reversal-request-form" data-payment-ref="PAY-'.$p->id.'">'.
+                        csrf_field().
+                        '<input type="hidden" name="reason" value="">'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-amber-700 hover:bg-amber-50">Request reversal</button>'.
+                        '</form>';
+                }
+                if ($reversalStatus === PmPayment::REVERSAL_STATUS_PENDING) {
+                    $approveForm =
+                        '<form method="post" action="'.$approveUrl.'" class="block js-reversal-approve-form" data-payment-ref="PAY-'.$p->id.'" data-swal-confirm="Approve this reversal now?">'.
+                        csrf_field().
+                        '<input type="hidden" name="reason" value="">'.
+                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50">Approve reversal</button>'.
+                        '</form>';
+                }
+
+                $actions = new HtmlString(
+                    '<div class="relative inline-block text-left">'.
+                    '<details>'.
+                    '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                    '<div class="absolute right-0 z-30 mt-1 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                    $requestForm.
+                    $approveForm.
+                    '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">View</a>'.
+                    '</div>'.
+                    '</details>'.
+                    '</div>'
+                );
+            }
+
+            $statusLabel = ucfirst((string) $p->status);
+            if (! blank($p->reversal_status)) {
+                $statusLabel .= ' / Reversal '.ucfirst((string) $p->reversal_status);
+            }
 
             return [
                 new HtmlString('<label class="inline-flex items-center"><input type="checkbox" name="ids[]" value="'.$p->id.'" form="property-payments-bulk-form" class="rounded border-slate-300"><span class="sr-only">Select</span></label>'),
@@ -181,7 +235,7 @@ class PmPaymentController extends Controller
                 $p->paid_at?->format('Y-m-d H:i') ?? '—',
                 $p->external_ref ?? '—',
                 $allocatedTo !== '' ? $allocatedTo : '—',
-                ucfirst($p->status),
+                $statusLabel,
                 $actions,
             ];
         })->all();
@@ -357,6 +411,38 @@ class PmPaymentController extends Controller
         });
 
         return back()->with('success', 'Payment settlement updated.');
+    }
+
+    public function requestReversal(Request $request, PmPayment $payment): RedirectResponse
+    {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        try {
+            app(PropertyPaymentReversalApprovalService::class)
+                ->request($payment, (int) $request->user()->id, (string) $data['reason']);
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['payment' => $e->getMessage()]);
+        }
+
+        return back()->with('success', 'Reversal request submitted for checker approval.');
+    }
+
+    public function approveReversal(Request $request, PmPayment $payment): RedirectResponse
+    {
+        $data = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        try {
+            app(PropertyPaymentReversalApprovalService::class)
+                ->approve($payment, (int) $request->user()->id, (string) ($data['reason'] ?? ''));
+        } catch (RuntimeException $e) {
+            return back()->withErrors(['payment' => $e->getMessage()]);
+        }
+
+        return back()->with('success', 'Payment reversal approved and posted.');
     }
 
     public function showReceipt(Request $request, PmPayment $payment): View

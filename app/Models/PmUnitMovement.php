@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AgentWorkspaceScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -25,6 +27,13 @@ class PmUnitMovement extends Model
             'scheduled_on' => 'date',
             'completed_on' => 'date',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('agent_workspace', function (Builder $query) {
+            AgentWorkspaceScope::applyByPropertyUnit($query, 'pm_unit_movements');
+        });
     }
 
     public function unit(): BelongsTo

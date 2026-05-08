@@ -5,6 +5,7 @@ namespace App\Services\Property;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\Property;
 use App\Models\User;
+use RuntimeException;
 
 final class LandlordLedger
 {
@@ -18,6 +19,10 @@ final class LandlordLedger
         ?int $referenceId = null,
         ?\DateTimeInterface $occurredAt = null,
     ): PmLandlordLedgerEntry {
+        if ($amount <= 0) {
+            throw new RuntimeException('Ledger amount must be greater than zero.');
+        }
+
         $last = PmLandlordLedgerEntry::query()
             ->where('user_id', $user->id)
             ->orderByDesc('id')
@@ -30,7 +35,7 @@ final class LandlordLedger
             $balance -= $amount;
         }
 
-        return PmLandlordLedgerEntry::query()->create([
+        $entry = PmLandlordLedgerEntry::query()->create([
             'user_id' => $user->id,
             'property_id' => $property?->id,
             'direction' => $direction,
@@ -41,6 +46,8 @@ final class LandlordLedger
             'reference_id' => $referenceId,
             'occurred_at' => $occurredAt ?? now(),
         ]);
+
+        return $entry;
     }
 
     public static function balance(User $user): float

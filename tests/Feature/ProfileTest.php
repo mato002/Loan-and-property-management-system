@@ -21,6 +21,40 @@ class ProfileTest extends TestCase
         $response->assertOk();
     }
 
+    public function test_profile_role_label_reflects_property_module_when_active_system_is_property(): void
+    {
+        $user = User::factory()->create([
+            'loan_role' => 'admin',
+            'property_portal_role' => 'agent',
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->withSession(['active_system' => 'property'])
+            ->get('/profile');
+
+        $response->assertOk();
+        $response->assertSee('Property Agent', false);
+        $response->assertDontSee('Loan Admin', false);
+    }
+
+    public function test_profile_role_label_reflects_loan_module_when_active_system_is_loan(): void
+    {
+        $user = User::factory()->create([
+            'loan_role' => 'admin',
+            'property_portal_role' => 'agent',
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->withSession(['active_system' => 'loan'])
+            ->get('/profile');
+
+        $response->assertOk();
+        $response->assertSee('Loan Admin', false);
+        $response->assertDontSee('Property Agent', false);
+    }
+
     public function test_profile_information_can_be_updated(): void
     {
         $user = User::factory()->create();

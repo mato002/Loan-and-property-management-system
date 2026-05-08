@@ -12,6 +12,10 @@
         <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm">
             <p class="text-lg font-semibold text-slate-900">Rent flow (Step 3 of 3): Collect payment</p>
             <p class="mt-1 text-sm text-slate-600">Record the tenant payment and select the invoice with an open balance. The invoice updates automatically (Partial / Paid).</p>
+            <div class="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <span class="font-semibold">Trust accounting controls:</span>
+                Completed payments can be submitted for reversal with a reason, then approved by a different checker (maker/checker rule).
+            </div>
             <div class="mt-3 flex flex-wrap gap-2">
                 <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                     <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
@@ -124,6 +128,27 @@
             </form>
         </details>
 
+        <div id="payment-reversal-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+            <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <h3 id="payment-reversal-modal-title" class="text-base font-semibold text-slate-900">Payment reversal action</h3>
+                        <p id="payment-reversal-modal-subtitle" class="mt-1 text-xs text-slate-600">Provide a reason to continue.</p>
+                    </div>
+                    <button type="button" id="payment-reversal-modal-close" class="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">Close</button>
+                </div>
+                <div class="mt-4">
+                    <label for="payment-reversal-modal-reason" class="block text-xs font-medium text-slate-700">Reason</label>
+                    <textarea id="payment-reversal-modal-reason" rows="4" maxlength="500" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Enter reason..."></textarea>
+                    <p id="payment-reversal-modal-hint" class="mt-1 text-xs text-slate-500"></p>
+                </div>
+                <div class="mt-4 flex items-center justify-end gap-2">
+                    <button type="button" id="payment-reversal-modal-cancel" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="button" id="payment-reversal-modal-submit" class="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Continue</button>
+                </div>
+            </div>
+        </div>
+
         <script>
             (function () {
                 const tenantSelect = document.getElementById('payment-tenant-select');
@@ -159,6 +184,88 @@
                 tenantSelect.addEventListener('change', filterInvoices);
                 filterInvoices(); // initial load (old input)
             })();
+
+            (function () {
+                const requestForms = document.querySelectorAll('.js-reversal-request-form');
+                const approveForms = document.querySelectorAll('.js-reversal-approve-form');
+                const modal = document.getElementById('payment-reversal-modal');
+                const modalTitle = document.getElementById('payment-reversal-modal-title');
+                const modalSubtitle = document.getElementById('payment-reversal-modal-subtitle');
+                const modalReason = document.getElementById('payment-reversal-modal-reason');
+                const modalHint = document.getElementById('payment-reversal-modal-hint');
+                const modalClose = document.getElementById('payment-reversal-modal-close');
+                const modalCancel = document.getElementById('payment-reversal-modal-cancel');
+                const modalSubmit = document.getElementById('payment-reversal-modal-submit');
+                let activeForm = null;
+                let activeMode = null;
+
+                if (!modal || !modalTitle || !modalSubtitle || !modalReason || !modalHint || !modalClose || !modalCancel || !modalSubmit) {
+                    return;
+                }
+
+                function showModal(form, mode) {
+                    activeForm = form;
+                    activeMode = mode;
+                    const ref = form.getAttribute('data-payment-ref') || 'payment';
+                    modalReason.value = '';
+                    if (mode === 'request') {
+                        modalTitle.textContent = `Request reversal for ${ref}`;
+                        modalSubtitle.textContent = 'A clear reason is required for maker submission.';
+                        modalHint.textContent = 'Minimum 5 characters.';
+                    } else {
+                        modalTitle.textContent = `Approve reversal for ${ref}`;
+                        modalSubtitle.textContent = 'Checker note is optional but recommended.';
+                        modalHint.textContent = 'Up to 500 characters.';
+                    }
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                    setTimeout(() => modalReason.focus(), 0);
+                }
+
+                function closeModal() {
+                    modal.classList.add('hidden');
+                    modal.classList.remove('flex');
+                    activeForm = null;
+                    activeMode = null;
+                }
+
+                requestForms.forEach((form) => {
+                    form.addEventListener('submit', function (e) {
+                        e.preventDefault();
+                        showModal(this, 'request');
+                    });
+                });
+
+                approveForms.forEach((form) => {
+                    form.addEventListener('submit', function (e) {
+                        e.preventDefault();
+                        showModal(this, 'approve');
+                    });
+                });
+
+                modalSubmit.addEventListener('click', function () {
+                    if (!activeForm) return;
+                    const reason = modalReason.value.trim();
+                    if (activeMode === 'request' && reason.length < 5) {
+                        window.alert('Please enter a clearer reason (at least 5 characters).');
+                        modalReason.focus();
+                        return;
+                    }
+                    const input = activeForm.querySelector('input[name="reason"]');
+                    if (input) {
+                        input.value = reason;
+                    }
+                    const formToSubmit = activeForm;
+                    closeModal();
+                    formToSubmit.submit();
+                });
+
+                modalClose.addEventListener('click', closeModal);
+                modalCancel.addEventListener('click', closeModal);
+                modal.addEventListener('click', function (e) {
+                    if (e.target === modal) closeModal();
+                });
+            })();
         </script>
     </x-slot>
 
@@ -171,6 +278,13 @@
                     <option value="completed" @selected(($filters['status'] ?? '') === 'completed')>Completed</option>
                     <option value="pending" @selected(($filters['status'] ?? '') === 'pending')>Pending</option>
                     <option value="failed" @selected(($filters['status'] ?? '') === 'failed')>Failed</option>
+                </select>
+                <select name="reversal_status" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
+                    <option value="">Reversal: All</option>
+                    <option value="pending" @selected(($filters['reversal_status'] ?? '') === 'pending')>Pending approval</option>
+                    <option value="reversed" @selected(($filters['reversal_status'] ?? '') === 'reversed')>Reversed</option>
+                    <option value="approved" @selected(($filters['reversal_status'] ?? '') === 'approved')>Approved</option>
+                    <option value="rejected" @selected(($filters['reversal_status'] ?? '') === 'rejected')>Rejected</option>
                 </select>
                 <select name="channel" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
                     <option value="">Channel: All</option>

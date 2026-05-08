@@ -35,8 +35,9 @@ class EquityPaymentRepository
             $channel = (string) ($options['channel'] ?? 'equity_paybill');
             $source = (string) ($options['source'] ?? 'equity_api');
             $provider = (string) ($options['provider'] ?? 'equity');
+            $agentUserId = $this->resolveAgentUserId($options, $tenantId);
 
-            $payment = Payment::query()->create([
+            $paymentAttrs = [
                 'tenant_id' => $tenantId,
                 'amount' => (float) $tx['amount'],
                 'transaction_id' => (string) $tx['transaction_id'],
@@ -47,7 +48,11 @@ class EquityPaymentRepository
                 'status' => 'matched',
                 'transaction_date' => $tx['transaction_date'] ?? now(),
                 'raw_payload' => $tx['raw_payload'] ?? null,
-            ]);
+            ];
+            if ($agentUserId !== null && Schema::hasColumn('payments', 'agent_user_id')) {
+                $paymentAttrs['agent_user_id'] = $agentUserId;
+            }
+            $payment = Payment::query()->create($paymentAttrs);
 
             $pmPayment = PmPayment::query()->create([
                 'pm_tenant_id' => $tenantId,
@@ -86,9 +91,20 @@ class EquityPaymentRepository
     public function storeUnmatched(array $tx, string $reason, array $options = []): Payment
     {
         $hasUnassignedPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
+        $hasUnassignedAgent = Schema::hasColumn('unassigned_payments', 'agent_user_id');
+        $hasPaymentsAgent = Schema::hasColumn('payments', 'agent_user_id');
+        $agentUserId = $this->resolveAgentUserId($options, null);
 
-        return DB::transaction(function () use ($tx, $reason, $options, $hasUnassignedPaymentMethod) {
-            $payment = Payment::query()->create([
+        return DB::transaction(function () use (
+            $tx,
+            $reason,
+            $options,
+            $hasUnassignedPaymentMethod,
+            $hasUnassignedAgent,
+            $hasPaymentsAgent,
+            $agentUserId
+        ) {
+            $paymentAttrs = [
                 'tenant_id' => null,
                 'amount' => (float) $tx['amount'],
                 'transaction_id' => (string) $tx['transaction_id'],
@@ -99,7 +115,11 @@ class EquityPaymentRepository
                 'status' => 'unmatched',
                 'transaction_date' => $tx['transaction_date'] ?? now(),
                 'raw_payload' => $tx['raw_payload'] ?? null,
-            ]);
+            ];
+            if ($hasPaymentsAgent && $agentUserId !== null) {
+                $paymentAttrs['agent_user_id'] = $agentUserId;
+            }
+            $payment = Payment::query()->create($paymentAttrs);
 
             $unassignedValues = [
                 'amount' => (float) $tx['amount'],
@@ -111,6 +131,9 @@ class EquityPaymentRepository
             if ($hasUnassignedPaymentMethod) {
                 $unassignedValues['payment_method'] = (string) ($options['payment_method'] ?? 'equity');
             }
+            if ($hasUnassignedAgent && $agentUserId !== null) {
+                $unassignedValues['agent_user_id'] = $agentUserId;
+            }
 
             UnassignedPayment::query()->updateOrCreate(
                 ['transaction_id' => (string) $tx['transaction_id']],
@@ -119,6 +142,35 @@ class EquityPaymentRepository
 
             return $payment;
         });
+    }
+
+    /**
+     * Returns the best agent attribution for a payment.
+     *
+     * Priority:
+     *   1) Explicit agent_user_id passed in by the caller (forwarder token,
+     *      manual assignment, etc.).
+     *   2) Inferred from `pm_tenants.agent_user_id` when we know the tenant.
+     *
+     * Returns null when neither applies — that row will then only be visible
+     * to super admins.
+     */
+    private function resolveAgentUserId(array $options, ?int $tenantId): ?int
+    {
+        $explicit = isset($options['agent_user_id']) ? (int) $options['agent_user_id'] : 0;
+        if ($explicit > 0) {
+            return $explicit;
+        }
+        if ($tenantId === null || $tenantId <= 0) {
+            return null;
+        }
+        if (! Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+            return null;
+        }
+
+        $value = DB::table('pm_tenants')->where('id', $tenantId)->value('agent_user_id');
+
+        return $value ? (int) $value : null;
     }
 
     public function startSyncRun(string $trigger): EquitySyncRun

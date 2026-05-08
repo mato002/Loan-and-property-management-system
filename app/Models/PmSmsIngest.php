@@ -12,6 +12,7 @@ class PmSmsIngest extends Model
     protected $fillable = [
         'provider',
         'source_device',
+        'agent_user_id',
         'provider_txn_code',
         'payer_phone',
         'amount',

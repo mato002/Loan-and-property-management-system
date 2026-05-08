@@ -1,7 +1,7 @@
 <x-loan-layout>
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
-            <a href="{{ route('loan.financial.control_accounts') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+            <a href="{{ \Illuminate\Support\Facades\Route::has('loan.financial.control_accounts') ? route('loan.financial.control_accounts') : '#' }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                 Back to balances
             </a>
         </x-slot>
@@ -38,7 +38,7 @@
                     <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">
                         {{ $method === 'patch' ? 'Update account' : 'Save account' }}
                     </button>
-                    <a href="{{ route('loan.financial.control_accounts') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">Cancel</a>
+                    <a href="{{ \Illuminate\Support\Facades\Route::has('loan.financial.control_accounts') ? route('loan.financial.control_accounts') : '#' }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">Cancel</a>
                 </div>
             </form>
         </div>

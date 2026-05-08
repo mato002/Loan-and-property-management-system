@@ -12,14 +12,45 @@
         return false;
     };
 
-    $sectionAnyActive = function (array $items) use ($navActive): bool {
-        foreach ($items as $it) {
-            if ($navActive($it['active'])) {
+    $itemAnyActive = null;
+    $itemAnyActive = function (array $item) use (&$itemAnyActive, $navActive): bool {
+        if (! empty($item['active']) && $navActive($item['active'])) {
+            return true;
+        }
+        foreach (($item['children'] ?? []) as $child) {
+            if ($itemAnyActive($child)) {
                 return true;
             }
         }
 
         return false;
+    };
+
+    $sectionAnyActive = function (array $items) use ($itemAnyActive): bool {
+        foreach ($items as $it) {
+            if ($itemAnyActive($it)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    $collectActivePatterns = null;
+    $collectActivePatterns = function (array $items) use (&$collectActivePatterns): array {
+        $patterns = [];
+        foreach ($items as $item) {
+            foreach ((array) ($item['active'] ?? []) as $p) {
+                if (is_string($p) && trim($p) !== '') {
+                    $patterns[] = $p;
+                }
+            }
+            if (! empty($item['children']) && is_array($item['children'])) {
+                $patterns = array_merge($patterns, $collectActivePatterns($item['children']));
+            }
+        }
+
+        return array_values(array_unique($patterns));
     };
 
     $sections = [
@@ -409,57 +440,240 @@
         [
             'heading' => 'Accounting',
             'icon' => 'fa-book',
-            'kicker' => 'Books of accounts',
+            'kicker' => 'Trust accounting and GL',
             'items' => [
                 [
-                    'label' => 'Journal entries',
-                    'sublabel' => 'Post & reverse',
-                    'route' => 'property.accounting.entries',
-                    'active' => ['property.accounting.index', 'property.accounting.entries', 'property.accounting.entries.store', 'property.accounting.entries.reverse', 'property.accounting.entries.export'],
+                    'label' => 'Dashboard',
+                    'sublabel' => 'Accounting overview',
+                    'route' => 'property.accounting.index',
+                    'active' => ['property.accounting.index'],
                     'badge' => null,
                 ],
                 [
-                    'label' => 'Run payroll',
-                    'sublabel' => 'Payslips & settings',
-                    'route' => 'property.accounting.payroll',
+                    'label' => 'Receivables',
+                    'sublabel' => null,
                     'active' => [
-                        'property.accounting.payroll',
-                        'property.accounting.payroll.store',
-                        'property.accounting.payroll.employee.store',
-                        'property.accounting.payroll.payslips',
-                        'property.accounting.payroll.payslips.show',
-                        'property.accounting.payroll.settings',
-                        'property.accounting.payroll.settings.save',
+                        'property.revenue.arrears',
+                        'property.reports.tenant.statements',
                     ],
                     'badge' => null,
+                    'children' => [
+                        [
+                            'label' => 'Accounts Receivable',
+                            'route' => 'property.accounting.receivables.accounts',
+                            'active' => ['property.accounting.receivables.accounts'],
+                        ],
+                        [
+                            'label' => 'Tenant Statements',
+                            'route' => 'property.accounting.receivables.tenant_statements',
+                            'active' => ['property.accounting.receivables.tenant_statements'],
+                        ],
+                    ],
                 ],
                 [
-                    'label' => 'Accounting audit trail',
-                    'sublabel' => 'Logs & exports',
-                    'route' => 'property.accounting.audit_trail',
-                    'active' => ['property.accounting.audit_trail', 'property.accounting.audit_trail.export'],
-                    'badge' => null,
-                ],
-                [
-                    'label' => 'Trial balance',
+                    'label' => 'Payables',
                     'sublabel' => null,
-                    'route' => 'property.accounting.reports.trial_balance',
-                    'active' => ['property.accounting.reports.trial_balance'],
+                    'route' => 'property.accounting.entries',
+                    'active' => [
+                        'property.financials.owner_balances',
+                        'property.reports.landlord.balance_summary',
+                        'property.vendors.work_records',
+                    ],
                     'badge' => null,
+                    'children' => [
+                        [
+                            'label' => 'Landlord Payables',
+                            'route' => 'property.accounting.payables.landlord_payables',
+                            'active' => ['property.accounting.payables.landlord_payables'],
+                        ],
+                        [
+                            'label' => 'Landlord Payouts',
+                            'route' => 'property.accounting.payables.landlord_payouts',
+                            'active' => ['property.accounting.payables.landlord_payouts'],
+                        ],
+                        [
+                            'label' => 'Accounts Payable',
+                            'route' => 'property.accounting.payables.accounts_payable',
+                            'active' => ['property.accounting.payables.accounts_payable'],
+                        ],
+                    ],
                 ],
                 [
-                    'label' => 'Income statement',
+                    'label' => 'Cash & Bank',
                     'sublabel' => null,
-                    'route' => 'property.accounting.reports.income_statement',
-                    'active' => ['property.accounting.reports.income_statement'],
+                    'active' => [
+                        'property.accounting.reports.cash_book',
+                        'property.accounting.index',
+                    ],
                     'badge' => null,
+                    'children' => [
+                        [
+                            'label' => 'Cash Book',
+                            'route' => 'property.accounting.reports.cash_book',
+                            'active' => ['property.accounting.reports.cash_book', 'property.accounting.reports.cash_book.export'],
+                        ],
+                        [
+                            'label' => 'Bank Reconciliation',
+                            'route' => 'property.accounting.cash_bank.reconciliation',
+                            'active' => ['property.accounting.cash_bank.reconciliation'],
+                        ],
+                    ],
                 ],
                 [
-                    'label' => 'Cash book',
+                    'label' => 'Reports',
                     'sublabel' => null,
-                    'route' => 'property.accounting.reports.cash_book',
-                    'active' => ['property.accounting.reports.cash_book'],
+                    'active' => [
+                        'property.accounting.reports.trial_balance',
+                        'property.accounting.reports.income_statement',
+                        'property.reports.financial.balance_sheet_standard',
+                        'property.reports.financial.balance_sheet_itemised',
+                        'property.reports.tenant.aging_balance',
+                        'property.reports.landlord.balance_summary',
+                        'property.reports.tenant.deposits',
+                    ],
                     'badge' => null,
+                    'children' => [
+                        [
+                            'label' => 'Trial Balance',
+                            'route' => 'property.accounting.reports.trial_balance',
+                            'active' => ['property.accounting.reports.trial_balance', 'property.accounting.reports.trial_balance.export'],
+                        ],
+                        [
+                            'label' => 'Income Statement',
+                            'route' => 'property.accounting.reports.income_statement',
+                            'active' => ['property.accounting.reports.income_statement', 'property.accounting.reports.income_statement.export'],
+                        ],
+                        [
+                            'label' => 'Balance Sheet',
+                            'route' => 'property.accounting.reports.balance_sheet',
+                            'active' => ['property.accounting.reports.balance_sheet'],
+                        ],
+                        [
+                            'label' => 'Aged Receivables',
+                            'route' => 'property.accounting.reports.aged_receivables',
+                            'active' => ['property.accounting.reports.aged_receivables'],
+                        ],
+                        [
+                            'label' => 'Aged Payables',
+                            'route' => 'property.accounting.reports.aged_payables',
+                            'active' => ['property.accounting.reports.aged_payables'],
+                        ],
+                        [
+                            'label' => 'Deposit Liability Report',
+                            'route' => 'property.accounting.reports.deposit_liability',
+                            'active' => ['property.accounting.reports.deposit_liability'],
+                        ],
+                    ],
+                ],
+                [
+                    'label' => 'General Ledger',
+                    'sublabel' => null,
+                    'active' => [],
+                    'badge' => null,
+                    'children' => [
+                        [
+                            'label' => 'Chart of Accounts',
+                            'route' => 'property.accounting.gl.chart_accounts',
+                            'active' => [
+                                'property.accounting.gl.chart_accounts',
+                            ],
+                        ],
+                        [
+                            'label' => 'Journal Entries',
+                            'route' => 'property.accounting.entries',
+                            'active' => [
+                                'property.accounting.entries',
+                                'property.accounting.entries.store',
+                                'property.accounting.entries.reverse',
+                                'property.accounting.entries.export',
+                                'property.accounting.entries.bulk',
+                            ],
+                        ],
+                        [
+                            'label' => 'Journal Batches',
+                            'route' => 'property.accounting.gl.journal_batches',
+                            'active' => [
+                                'property.accounting.gl.journal_batches',
+                            ],
+                        ],
+                    ],
+                ],
+                [
+                    'label' => 'Payroll',
+                    'sublabel' => null,
+                    'active' => [],
+                    'badge' => null,
+                    'children' => [
+                        [
+                            'label' => 'Run Payroll',
+                            'route' => 'property.accounting.payroll',
+                            'active' => [
+                                'property.accounting.payroll',
+                                'property.accounting.payroll.store',
+                                'property.accounting.payroll.employee.store',
+                                'property.accounting.payroll.settings',
+                                'property.accounting.payroll.settings.save',
+                            ],
+                        ],
+                        [
+                            'label' => 'Payroll Ledger',
+                            'route' => 'property.accounting.payroll.payslips',
+                            'active' => [
+                                'property.accounting.payroll.payslips',
+                                'property.accounting.payroll.payslips.show',
+                                'property.accounting.payroll.payslips.export',
+                            ],
+                        ],
+                    ],
+                ],
+                [
+                    'label' => 'Controls',
+                    'sublabel' => null,
+                    'active' => [],
+                    'badge' => null,
+                    'children' => [
+                        [
+                            'label' => 'Accounting Audit Trail',
+                            'route' => 'property.accounting.audit_trail',
+                            'active' => ['property.accounting.audit_trail', 'property.accounting.audit_trail.export'],
+                        ],
+                        [
+                            'label' => 'Reversals',
+                            'route' => 'property.accounting.controls.reversals',
+                            'active' => ['property.accounting.controls.reversals'],
+                        ],
+                        [
+                            'label' => 'Accounting Periods',
+                            'route' => 'property.accounting.controls.periods',
+                            'active' => ['property.accounting.controls.periods'],
+                        ],
+                    ],
+                ],
+                [
+                    'label' => 'Settings',
+                    'sublabel' => null,
+                    'active' => ['property.accounting.index', 'property.settings.system_setup'],
+                    'badge' => null,
+                    'children' => [
+                        [
+                            'label' => 'Chart of Accounts',
+                            'route' => 'property.accounting.gl.chart_accounts',
+                            'active' => [
+                                'property.accounting.gl.chart_accounts',
+                            ],
+                        ],
+                        [
+                            'label' => 'Account Mapping',
+                            'route' => 'property.accounting.settings.account_mapping',
+                            'active' => ['property.accounting.settings.account_mapping'],
+                        ],
+                        [
+                            'label' => 'Financial Settings',
+                            'route' => 'property.accounting.settings.financial',
+                            'active' => ['property.accounting.settings.financial'],
+                            'requires_superadmin' => true,
+                        ],
+                    ],
                 ],
             ],
         ],
@@ -490,6 +704,18 @@
                         'property.communications.templates',
                         'property.communications.templates.store',
                         'property.communications.templates.destroy',
+                    ],
+                    'badge' => null,
+                ],
+                [
+                    'label' => 'Conversations',
+                    'sublabel' => 'Inbound and replies',
+                    'route' => 'property.communications.conversations',
+                    'active' => [
+                        'property.communications.conversations',
+                        'property.communications.conversations.data',
+                        'property.communications.conversations.show',
+                        'property.communications.conversations.reply',
                     ],
                     'badge' => null,
                 ],
@@ -572,6 +798,26 @@
     ];
 
     $propertyAgentIsSuperAdmin = auth()->check() && (auth()->user()->is_super_admin ?? false);
+    $filterItemsByAccess = null;
+    $filterItemsByAccess = static function (array $items) use (&$filterItemsByAccess, $propertyAgentIsSuperAdmin): array {
+        $out = [];
+        foreach ($items as $item) {
+            if (! $propertyAgentIsSuperAdmin && ! empty($item['requires_superadmin'])) {
+                continue;
+            }
+            $children = $item['children'] ?? null;
+            if (is_array($children) && $children !== []) {
+                $children = $filterItemsByAccess($children);
+                if ($children === []) {
+                    continue;
+                }
+                $item['children'] = $children;
+            }
+            $out[] = $item;
+        }
+
+        return $out;
+    };
     if (! $propertyAgentIsSuperAdmin) {
         $sections = array_values(array_map(static function (array $section): array {
             $section['items'] = array_values(array_filter(
@@ -583,6 +829,12 @@
         }, $sections));
         $sections = array_values(array_filter($sections, static fn (array $section): bool => count($section['items']) > 0));
     }
+    $sections = array_values(array_map(function (array $section) use ($filterItemsByAccess): array {
+        $section['items'] = $filterItemsByAccess($section['items']);
+
+        return $section;
+    }, $sections));
+    $sections = array_values(array_filter($sections, static fn (array $section): bool => count($section['items']) > 0));
 
     // Keep related modules adjacent for faster navigation.
     $preferredSectionOrder = [
@@ -591,8 +843,8 @@
         'Listings',
         'Tenants',
         'Revenue',
-        'Financials',
         'Accounting',
+        'Financials',
         'Maintenance',
         'Vendors',
         'Communications',
@@ -682,6 +934,12 @@
                 <span class="text-base font-bold tracking-tight text-white truncate">{{ $companyName }}</span>
             </span>
         </a>
+        @if (app()->environment('local'))
+            <div class="property-collapse-text mt-2 rounded-lg border px-2.5 py-2 text-[11px] leading-4 {{ !empty($allowDestructiveDbCommands) ? 'border-rose-300/40 bg-rose-500/15 text-rose-100' : 'border-emerald-300/40 bg-emerald-500/15 text-emerald-100' }}">
+                <span class="font-semibold uppercase tracking-wide">DB safety</span>
+                <span class="ml-1">{{ !empty($allowDestructiveDbCommands) ? 'ON: destructive commands allowed' : 'ON: destructive commands blocked' }}</span>
+            </div>
+        @endif
     </div>
 
     <nav class="flex-1 min-h-0 overflow-y-auto py-2 px-2 custom-scrollbar">
@@ -701,7 +959,7 @@
             @php
                 $secActive = $sectionAnyActive($section['items']);
                 $itemCount = count($section['items']);
-                $sectionPatterns = collect($section['items'])->pluck('active')->flatten()->unique()->values()->implode('|');
+                $sectionPatterns = implode('|', $collectActivePatterns($section['items']));
             @endphp
 
             @if ($itemCount === 1)
@@ -732,17 +990,23 @@
                     </a>
                 </div>
             @else
+                @php
+                    $propertySidebarGroupKey = trim((string) ($section['heading'] ?? ''));
+                    if ($propertySidebarGroupKey === '') {
+                        $propertySidebarGroupKey = 'property-nav-' . $si;
+                    }
+                @endphp
                 <div
                     class="{{ $si > 0 ? 'mt-2 pt-2 border-t border-[#406866]/40' : '' }} group"
                     data-property-nav-section
                     data-property-nav-aggregate="{{ $sectionPatterns }}"
                     @if ($secActive) data-section-active @endif
-                    x-data="{ open: {{ $secActive ? 'true' : 'false' }} }"
+                    x-data="propertySidebarGroup(@js($propertySidebarGroupKey), false)"
                 >
                     <button
                         type="button"
                         class="w-full flex items-start gap-2 rounded-xl px-2 py-2.5 text-left text-[#d4e4e3] hover:bg-[#406866]/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 property-collapse-center"
-                        @click="open = ! open"
+                        @click="toggleGroup()"
                         :aria-expanded="open"
                         aria-controls="nav-section-{{ $si }}"
                     >
@@ -761,7 +1025,7 @@
 
                     <div
                         id="nav-section-{{ $si }}"
-                        @unless ($secActive) x-cloak @endunless
+                        x-cloak
                         x-show="open"
                         x-transition:enter="transition ease-out duration-150"
                         x-transition:enter-start="opacity-0 -translate-y-0.5"
@@ -772,22 +1036,83 @@
                         class="space-y-0.5 pb-1 pl-1"
                     >
                         @foreach ($section['items'] as $item)
-                            @php $active = $navActive($item['active']); @endphp
-                            <a
-                                href="{{ route($item['route'], $item['route_params'] ?? []) }}"
-                                data-turbo-frame="property-main"
-                                data-property-nav="{{ implode('|', $item['active']) }}"
-                                @if ($active) aria-current="page" @endif
-                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
-                                class="group flex flex-col gap-0.5 rounded-xl border-l-[3px] px-3 py-2.5 ml-6 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white"
-                            >
-                                <span class="flex items-start justify-between gap-2 w-full">
-                                    <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">{{ $item['label'] }}</span>
-                                    @if (! empty($item['badge']))
-                                        <span class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
-                                    @endif
-                                </span>
-                            </a>
+                            @php
+                                $active = ! empty($item['active']) ? $navActive($item['active']) : false;
+                                $hasChildren = ! empty($item['children']) && is_array($item['children']);
+                                $itemPatterns = implode('|', $collectActivePatterns([$item]));
+                            @endphp
+                            @if ($hasChildren)
+                                @php
+                                    $groupKey = 'property-nav-sub-'.$si.'-'.\Illuminate\Support\Str::slug((string) $item['label']);
+                                    $childActive = $sectionAnyActive($item['children']);
+                                @endphp
+                                <div
+                                    class="ml-6"
+                                    data-property-nav-section
+                                    data-property-nav-aggregate="{{ $itemPatterns }}"
+                                    @if ($childActive) data-section-active @endif
+                                    x-data="propertySidebarGroup(@js($groupKey), false)"
+                                >
+                                    <button
+                                        type="button"
+                                        class="w-full group flex items-center gap-2 rounded-xl border-l-[3px] px-3 py-2.5 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white"
+                                        @click="toggleGroup()"
+                                        :aria-expanded="open"
+                                    >
+                                        <span class="text-base font-medium leading-snug">{{ $item['label'] }}</span>
+                                        <span class="ml-auto flex items-center gap-2">
+                                            @if (! empty($item['badge']))
+                                                <span class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
+                                            @endif
+                                            <i class="fa-solid fa-chevron-down text-xs text-[#8db1af] transition-transform duration-200" :class="{ 'rotate-180': open }" aria-hidden="true"></i>
+                                        </span>
+                                    </button>
+                                    <div
+                                        x-cloak
+                                        x-show="open"
+                                        x-transition:enter="transition ease-out duration-150"
+                                        x-transition:enter-start="opacity-0 -translate-y-0.5"
+                                        x-transition:enter-end="opacity-100 translate-y-0"
+                                        x-transition:leave="transition ease-in duration-100"
+                                        x-transition:leave-start="opacity-100"
+                                        x-transition:leave-end="opacity-0"
+                                        class="space-y-0.5 pb-1 pl-1"
+                                    >
+                                        @foreach ($item['children'] as $child)
+                                            @php $childActiveState = $navActive($child['active'] ?? []); @endphp
+                                            <a
+                                                href="{{ route($child['route'], $child['route_params'] ?? []) }}"
+                                                data-turbo-frame="property-main"
+                                                data-property-nav="{{ implode('|', (array) ($child['active'] ?? [])) }}"
+                                                @if ($childActiveState) aria-current="page" @endif
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                                                class="group flex items-center justify-between gap-2 rounded-xl border-l-[3px] px-3 py-2.5 ml-5 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white"
+                                            >
+                                                <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">{{ $child['label'] }}</span>
+                                                @if (! empty($child['badge']))
+                                                    <span class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $child['badge'] }}</span>
+                                                @endif
+                                            </a>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @else
+                                <a
+                                    href="{{ route($item['route'], $item['route_params'] ?? []) }}"
+                                    data-turbo-frame="property-main"
+                                    data-property-nav="{{ implode('|', (array) ($item['active'] ?? [])) }}"
+                                    @if ($active) aria-current="page" @endif
+                                    @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                                    class="group flex flex-col gap-0.5 rounded-xl border-l-[3px] px-3 py-2.5 ml-6 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white"
+                                >
+                                    <span class="flex items-start justify-between gap-2 w-full">
+                                        <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">{{ $item['label'] }}</span>
+                                        @if (! empty($item['badge']))
+                                            <span class="shrink-0 mt-0.5 rounded px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide bg-emerald-500/25 text-emerald-100 ring-1 ring-emerald-400/30">{{ $item['badge'] }}</span>
+                                        @endif
+                                    </span>
+                                </a>
+                            @endif
                         @endforeach
                     </div>
                 </div>

@@ -17,6 +17,8 @@
 
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
+            <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['view' => 'active'])) }}" class="inline-flex items-center justify-center rounded-lg border {{ ($viewMode ?? 'active') === 'active' ? 'border-[#2f4f4f] bg-[#2f4f4f] text-white' : 'border-slate-200 bg-white text-slate-700' }} px-4 py-2 text-sm font-semibold shadow-sm hover:bg-slate-50 transition-colors">Active loans</a>
+            <a href="{{ route('loan.book.loans.index', array_merge(request()->query(), ['view' => 'completed'])) }}" class="inline-flex items-center justify-center rounded-lg border {{ ($viewMode ?? 'active') === 'completed' ? 'border-[#2f4f4f] bg-[#2f4f4f] text-white' : 'border-slate-200 bg-white text-slate-700' }} px-4 py-2 text-sm font-semibold shadow-sm hover:bg-slate-50 transition-colors">Completed loans</a>
             <a href="{{ route('loan.book.loan_arrears') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Arrears</a>
             <a href="{{ route('loan.book.checkoff_loans') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Checkoff</a>
             <a href="{{ route('loan.book.loans.create') }}" class="inline-flex items-center justify-center rounded-lg bg-[#2f4f4f] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Create loan</a>
@@ -351,9 +353,16 @@
                                     \App\Models\LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
                                     \App\Models\LoanBookLoan::STATUS_CLOSED,
                                 ], true);
+                                $isOverdueLoan = in_array($displayStatus, [
+                                    \App\Models\LoanBookLoan::STATUS_ACTIVE,
+                                    \App\Models\LoanBookLoan::STATUS_RESTRUCTURED,
+                                ], true)
+                                    && $remaining > 0.01
+                                    && $loan->maturity_date
+                                    && $loan->maturity_date->isPast();
                             @endphp
                             <tr
-                                class="cursor-pointer hover:bg-slate-50/80"
+                                class="cursor-pointer hover:bg-slate-50/80 {{ $isOverdueLoan ? 'bg-red-50/70' : '' }}"
                                 role="link"
                                 tabindex="0"
                                 @click="openRow('{{ $rowRedirectUrl }}', $event)"
@@ -387,7 +396,12 @@
                                         {{ str_replace('_', ' ', $displayStatus) }}
                                     </span>
                                 </td>
-                                <td x-show="cols.maturity" class="px-5 py-3 text-slate-600 whitespace-nowrap">{{ $loan->maturity_date?->format('d-m-Y') ?? '—' }}</td>
+                                <td x-show="cols.maturity" class="px-5 py-3 whitespace-nowrap {{ $isOverdueLoan ? 'text-red-700 font-semibold' : 'text-slate-600' }}">
+                                    {{ $loan->maturity_date?->format('d-m-Y') ?? '—' }}
+                                    @if ($isOverdueLoan)
+                                        <span class="ml-2 inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">Overdue</span>
+                                    @endif
+                                </td>
                                 <td x-show="cols.actions" class="px-5 py-3 text-right whitespace-nowrap">
                                     <details class="relative inline-block text-left">
                                         <summary class="inline-flex cursor-pointer list-none items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">

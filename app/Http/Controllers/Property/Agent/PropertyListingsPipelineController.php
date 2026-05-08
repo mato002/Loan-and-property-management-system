@@ -9,9 +9,9 @@ use App\Models\PmMessageLog;
 use App\Models\PmMessageTemplate;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
+use App\Services\BulkSmsService;
 use App\Support\CsvExport;
 use Illuminate\Database\Eloquent\Builder;
-use App\Services\BulkSmsService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -368,7 +368,7 @@ class PropertyListingsPipelineController extends Controller
                 ]);
             }
 
-            $result = $bulkSms->sendNow($data['body'], $phones, $request->user()->id, null);
+            $result = $bulkSms->sendNow($data['body'], $phones, $request->user()->id, null, 'property');
             if (! ($result['ok'] ?? false)) {
                 PmMessageLog::query()->create([
                     'user_id' => $request->user()->id,
@@ -380,6 +380,7 @@ class PropertyListingsPipelineController extends Controller
                     'delivery_error' => (string) ($result['error'] ?? 'Could not send SMS.'),
                     'sent_at' => null,
                 ]);
+
                 return back()->withInput()->withErrors([
                     'body' => $result['error'] ?? 'Could not send SMS.',
                 ]);
@@ -409,6 +410,7 @@ class PropertyListingsPipelineController extends Controller
                     'delivery_error' => 'Email failed: '.$e->getMessage(),
                     'sent_at' => null,
                 ]);
+
                 return back()->withInput()->withErrors([
                     'body' => 'Email failed to send (check MAIL_* in .env): '.$e->getMessage(),
                 ]);

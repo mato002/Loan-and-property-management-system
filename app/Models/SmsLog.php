@@ -10,6 +10,7 @@ class SmsLog extends Model
     protected $fillable = [
         'user_id',
         'sms_schedule_id',
+        'module',
         'phone',
         'message',
         'status',

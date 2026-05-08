@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AgentWorkspaceScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -32,6 +34,13 @@ class PmUnitUtilityCharge extends Model
             'amount' => 'decimal:2',
             'is_invoiced' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('agent_workspace', function (Builder $query) {
+            AgentWorkspaceScope::applyByPropertyUnit($query, 'pm_unit_utility_charges');
+        });
     }
 
     public function unit(): BelongsTo

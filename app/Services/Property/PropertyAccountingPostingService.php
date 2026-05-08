@@ -2,6 +2,7 @@
 
 namespace App\Services\Property;
 
+use App\Models\AccountingJournalBatch;
 use App\Models\PmAccountingEntry;
 use App\Models\PmInvoice;
 use App\Models\PmMaintenanceJob;
@@ -11,15 +12,64 @@ use App\Models\User;
 
 class PropertyAccountingPostingService
 {
+    private const ACC_CASH_BANK = '1100';
+    private const ACC_AR = '1200';
+    private const ACC_SUSPENSE = '1250';
+    private const ACC_LANDLORD_CLEARING = '1300';
+    private const ACC_LANDLORD_PAYABLE = '2100';
+    private const ACC_ACCOUNTS_PAYABLE = '2300';
+    private const ACC_RENTAL_INCOME = '4100';
+    private const ACC_MANAGEMENT_FEE_INCOME = '4200';
+    private const ACC_MAINTENANCE_EXPENSE = '5101';
+
     public static function postInvoiceIssued(PmInvoice $invoice, ?User $actor = null): void
     {
         if ((float) $invoice->amount <= 0) {
             return;
         }
 
+        $invoice->loadMissing('unit');
+        $propertyId = optional($invoice->unit)->property_id;
+        $agentUserId = optional(optional($invoice->unit)->property)->agent_user_id;
+        $date = $invoice->issue_date?->toDateString() ?? now()->toDateString();
+
+        $journal = app(PropertyJournalService::class);
+        $journal->postBatch([
+            'date' => $date,
+            'description' => 'Invoice issued',
+            'source_type' => 'pm_invoice',
+            'source_id' => (int) $invoice->id,
+            'event_type' => 'invoice_issued',
+            'source_key' => 'pm_invoice:'.$invoice->id.':issued',
+            'agent_user_id' => $agentUserId,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], [
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_AR),
+                'debit' => (float) $invoice->amount,
+                'credit' => 0,
+                'reference' => $invoice->invoice_no,
+                'property_id' => $propertyId,
+                'tenant_id' => $invoice->pm_tenant_id,
+                'unit_id' => $invoice->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_RENTAL_INCOME),
+                'debit' => 0,
+                'credit' => (float) $invoice->amount,
+                'reference' => $invoice->invoice_no,
+                'property_id' => $propertyId,
+                'tenant_id' => $invoice->pm_tenant_id,
+                'unit_id' => $invoice->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+        ]);
+
         self::firstOrCreateEntry([
-            'entry_date' => $invoice->issue_date?->toDateString() ?? now()->toDateString(),
-            'property_id' => $invoice->property_unit_id ? optional($invoice->unit)->property_id : null,
+            'entry_date' => $date,
+            'property_id' => $propertyId,
             'recorded_by_user_id' => $actor?->id,
             'account_name' => self::accountName('accounts_receivable', 'Accounts Receivable'),
             'category' => PmAccountingEntry::CATEGORY_ASSET,
@@ -31,8 +81,8 @@ class PropertyAccountingPostingService
         ]);
 
         self::firstOrCreateEntry([
-            'entry_date' => $invoice->issue_date?->toDateString() ?? now()->toDateString(),
-            'property_id' => $invoice->property_unit_id ? optional($invoice->unit)->property_id : null,
+            'entry_date' => $date,
+            'property_id' => $propertyId,
             'recorded_by_user_id' => $actor?->id,
             'account_name' => self::accountName('rental_income', 'Rental Income'),
             'category' => PmAccountingEntry::CATEGORY_INCOME,
@@ -50,9 +100,76 @@ class PropertyAccountingPostingService
             return;
         }
 
-        $propertyId = optional(optional($payment->allocations->first())->invoice?->unit)->property_id;
+        $payment->loadMissing('allocations.invoice.unit.property');
+        $firstInvoice = optional($payment->allocations->first())->invoice;
+        $propertyId = optional($firstInvoice?->unit)->property_id;
+        $agentUserId = optional(optional($firstInvoice?->unit)->property)->agent_user_id;
         $reference = $payment->external_ref ?: ('PAY-'.$payment->id);
         $entryDate = $payment->paid_at?->toDateString() ?? now()->toDateString();
+
+        $commissionPct = self::defaultCommissionPercentForProperty($propertyId);
+        $gross = (float) $payment->amount;
+        $commission = round($gross * ($commissionPct / 100), 2);
+        $landlordNet = max(0.0, round($gross - $commission, 2));
+
+        $journal = app(PropertyJournalService::class);
+        $journal->postBatch([
+            'date' => $entryDate,
+            'description' => 'Tenant payment received and settled',
+            'source_type' => 'pm_payment',
+            'source_id' => (int) $payment->id,
+            'event_type' => 'payment_received',
+            'source_key' => 'pm_payment:'.$payment->id.':received',
+            'agent_user_id' => $agentUserId,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], [
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_CASH_BANK),
+                'debit' => $gross,
+                'credit' => 0,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'tenant_id' => $payment->pm_tenant_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_AR),
+                'debit' => 0,
+                'credit' => $gross,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'tenant_id' => $payment->pm_tenant_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_LANDLORD_CLEARING),
+                'debit' => $gross,
+                'credit' => 0,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'tenant_id' => $payment->pm_tenant_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_LANDLORD_PAYABLE),
+                'debit' => 0,
+                'credit' => $landlordNet,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'tenant_id' => $payment->pm_tenant_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_MANAGEMENT_FEE_INCOME),
+                'debit' => 0,
+                'credit' => $commission,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'tenant_id' => $payment->pm_tenant_id,
+                'agent_user_id' => $agentUserId,
+            ],
+        ]);
 
         self::firstOrCreateEntry([
             'entry_date' => $entryDate,
@@ -93,8 +210,41 @@ class PropertyAccountingPostingService
 
         $job->loadMissing('request.unit');
         $propertyId = optional($job->request?->unit)->property_id;
+        $agentUserId = optional(optional($job->request?->unit)->property)->agent_user_id;
         $reference = 'MNT-'.$job->id;
         $entryDate = $job->completed_at?->toDateString() ?? now()->toDateString();
+
+        $journal = app(PropertyJournalService::class);
+        $journal->postBatch([
+            'date' => $entryDate,
+            'description' => 'Maintenance expense',
+            'source_type' => 'pm_maintenance_job',
+            'source_id' => (int) $job->id,
+            'event_type' => 'maintenance_expense',
+            'source_key' => 'pm_maintenance_job:'.$job->id.':expense',
+            'agent_user_id' => $agentUserId,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], [
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_MAINTENANCE_EXPENSE),
+                'debit' => $amount,
+                'credit' => 0,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'unit_id' => optional($job->request)->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_ACCOUNTS_PAYABLE),
+                'debit' => 0,
+                'credit' => $amount,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'unit_id' => optional($job->request)->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+        ]);
 
         self::firstOrCreateEntry([
             'entry_date' => $entryDate,
@@ -120,6 +270,42 @@ class PropertyAccountingPostingService
             'reference' => $reference,
             'description' => 'Maintenance liability',
             'source_key' => 'maintenance_expense',
+        ]);
+    }
+
+    public static function postUnmatchedPaymentToSuspense(PmPayment $payment, ?User $actor = null): ?AccountingJournalBatch
+    {
+        if ($payment->status !== PmPayment::STATUS_COMPLETED || (float) $payment->amount <= 0) {
+            return null;
+        }
+
+        $entryDate = $payment->paid_at?->toDateString() ?? now()->toDateString();
+        $reference = $payment->external_ref ?: ('PAY-'.$payment->id);
+        $journal = app(PropertyJournalService::class);
+
+        return $journal->postBatch([
+            'date' => $entryDate,
+            'description' => 'Unidentified tenant payment routed to suspense',
+            'source_type' => 'pm_payment',
+            'source_id' => (int) $payment->id,
+            'event_type' => 'payment_unmatched_suspense',
+            'source_key' => 'pm_payment:'.$payment->id.':suspense',
+            'agent_user_id' => null,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], [
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_CASH_BANK),
+                'debit' => (float) $payment->amount,
+                'credit' => 0,
+                'reference' => $reference,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_SUSPENSE),
+                'debit' => 0,
+                'credit' => (float) $payment->amount,
+                'reference' => $reference,
+            ],
         ]);
     }
 
@@ -165,6 +351,22 @@ class PropertyAccountingPostingService
         $map = self::accountMap();
 
         return (string) ($map[$key] ?? $fallback);
+    }
+
+    private static function defaultCommissionPercentForProperty(?int $propertyId): float
+    {
+        $defaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
+        $defaultPct = is_numeric($defaultRaw) ? (float) $defaultRaw : 10.0;
+        $defaultPct = max(0.0, $defaultPct);
+        $overrideRaw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
+        $overrides = json_decode($overrideRaw, true);
+        $overrides = is_array($overrides) ? $overrides : [];
+
+        if ($propertyId && is_numeric($overrides[(string) $propertyId] ?? null)) {
+            return max(0.0, (float) $overrides[(string) $propertyId]);
+        }
+
+        return $defaultPct;
     }
 }
 

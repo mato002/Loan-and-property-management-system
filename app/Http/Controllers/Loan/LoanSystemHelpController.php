@@ -3,40 +3,40 @@
 namespace App\Http\Controllers\Loan;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
 use App\Models\LoanAccessLog;
 use App\Models\LoanAuditConcern;
 use App\Models\LoanAuditConcernMessage;
+use App\Models\LoanBookApplication;
 use App\Models\LoanBookLoan;
 use App\Models\LoanDepartment;
 use App\Models\LoanJobTitle;
 use App\Models\LoanProduct;
 use App\Models\LoanRole;
-use App\Models\LoanTemporaryAccessRequest;
 use App\Models\LoanSupportTicket;
 use App\Models\LoanSupportTicketReply;
 use App\Models\LoanSystemSetting;
-use App\Support\TabularExport;
+use App\Models\LoanTemporaryAccessRequest;
 use App\Models\User;
-use App\Services\LoanSecurityPolicyService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
+use App\Services\LoanSecurityPolicyService;
+use App\Support\TabularExport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Str;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class LoanSystemHelpController extends Controller
 {
-    public function __construct(private readonly LoanBookLoanUpdateService $loanMath)
-    {
-    }
+    public function __construct(private readonly LoanBookLoanUpdateService $loanMath) {}
 
     /** @var list<string> */
     private const COMPANY_SETTING_KEYS = [
@@ -319,15 +319,6 @@ class LoanSystemHelpController extends Controller
                         'icon' => 'banknote',
                         'status' => 'needs_review',
                         'priority' => 'recommended',
-                    ],
-                    [
-                        'title' => 'Loan Form Setup',
-                        'desc' => 'Design the fields captured on client and staff loan forms.',
-                        'href' => route('loan.system.form_setup.client'),
-                        'icon' => 'document',
-                        'status' => 'not_configured',
-                        'priority' => 'required',
-                        'badge' => 'Recommended first',
                     ],
                     [
                         'title' => 'Client Settings',
@@ -872,7 +863,7 @@ class LoanSystemHelpController extends Controller
                     }
                 });
 
-            \App\Models\LoanBookApplication::query()
+            LoanBookApplication::query()
                 ->where('product_name', $oldName)
                 ->update(['product_name' => $newName]);
         }
@@ -930,7 +921,7 @@ class LoanSystemHelpController extends Controller
 
     public function setupLoanProductsDestroy(LoanProduct $loan_product): RedirectResponse
     {
-        $inUseOnLoans = \App\Models\LoanBookLoan::query()->where('product_name', $loan_product->name)->exists();
+        $inUseOnLoans = LoanBookLoan::query()->where('product_name', $loan_product->name)->exists();
         $payload = ['is_active' => false];
         if (Schema::hasColumn('loan_products', 'status')) {
             $payload['status'] = 'inactive';
@@ -997,7 +988,7 @@ class LoanSystemHelpController extends Controller
 
     public function setupDepartmentsDestroy(LoanDepartment $loan_department): RedirectResponse
     {
-        $inUse = \App\Models\Employee::query()->where('department', $loan_department->name)->exists();
+        $inUse = Employee::query()->where('department', $loan_department->name)->exists();
         if ($inUse) {
             $loan_department->update(['is_active' => false]);
 
@@ -1014,7 +1005,7 @@ class LoanSystemHelpController extends Controller
     {
         abort_unless(Schema::hasTable('loan_departments'), 404, 'Loan departments table not found. Run migrations.');
 
-        $names = \App\Models\Employee::query()
+        $names = Employee::query()
             ->whereNotNull('department')
             ->where('department', '!=', '')
             ->distinct()
@@ -1038,6 +1029,7 @@ class LoanSystemHelpController extends Controller
 
             if ($model->wasRecentlyCreated) {
                 $added++;
+
                 continue;
             }
 
@@ -1144,7 +1136,7 @@ class LoanSystemHelpController extends Controller
 
     public function setupJobTitlesDestroy(LoanJobTitle $loan_job_title): RedirectResponse
     {
-        $inUse = \App\Models\Employee::query()->where('job_title', $loan_job_title->name)->exists();
+        $inUse = Employee::query()->where('job_title', $loan_job_title->name)->exists();
         if ($inUse) {
             $loan_job_title->update(['is_active' => false]);
 
@@ -1161,7 +1153,7 @@ class LoanSystemHelpController extends Controller
     {
         abort_unless(Schema::hasTable('loan_job_titles'), 404, 'Loan job titles table not found. Run migrations.');
 
-        $titles = \App\Models\Employee::query()
+        $titles = Employee::query()
             ->whereNotNull('job_title')
             ->where('job_title', '!=', '')
             ->distinct()
@@ -1201,7 +1193,7 @@ class LoanSystemHelpController extends Controller
             'title' => 'Loan roles & permissions',
             'subtitle' => 'Create custom access roles, choose permissions, and assign to users.',
             'rbacReady' => $rbacReady,
-            'roles' => $rbacReady ? LoanRole::query()->orderByDesc('is_active')->orderBy('name')->get() : collect(),
+            'roles' => $rbacReady ? LoanRole::query()->withCount('users')->orderByDesc('is_active')->orderBy('name')->get() : collect(),
             'users' => $rbacReady ? User::query()->orderBy('name')->get(['id', 'name', 'email']) : collect(),
             'permissionCatalog' => $this->loanPermissionCatalog(),
             'defaultPermissionsByBaseRole' => $this->defaultPermissionsByBaseRole(),
@@ -1530,17 +1522,17 @@ class LoanSystemHelpController extends Controller
 
         $ids = array_values(array_unique(array_map('intval', $validated['user_ids'] ?? [])));
 
-        \Illuminate\Support\Facades\DB::table('loan_user_role')
+        DB::table('loan_user_role')
             ->where('loan_role_id', $loan_role->id)
             ->whereNotIn('user_id', $ids)
             ->delete();
 
         foreach ($ids as $userId) {
-            \Illuminate\Support\Facades\DB::table('loan_user_role')
+            DB::table('loan_user_role')
                 ->where('user_id', $userId)
                 ->delete();
 
-            \Illuminate\Support\Facades\DB::table('loan_user_role')->insert([
+            DB::table('loan_user_role')->insert([
                 'loan_role_id' => $loan_role->id,
                 'user_id' => $userId,
                 'created_at' => now(),
@@ -1601,6 +1593,17 @@ class LoanSystemHelpController extends Controller
 
             if ($role->wasRecentlyCreated) {
                 $created++;
+            } else {
+                $existing = is_array($role->permissions)
+                    ? $role->permissions
+                    : (is_string($role->permissions) ? (json_decode($role->permissions, true) ?: []) : []);
+                $merged = array_values(array_unique(array_merge(
+                    array_filter(array_map(fn ($v) => trim((string) $v), is_array($existing) ? $existing : [])),
+                    $this->defaultPermissionsByBaseRole()[$baseRole] ?? []
+                )));
+                if ($merged !== $existing) {
+                    $role->update(['permissions' => $merged]);
+                }
             }
 
             $userIds = User::query()
@@ -1609,8 +1612,8 @@ class LoanSystemHelpController extends Controller
                 ->all();
 
             foreach ($userIds as $userId) {
-                \Illuminate\Support\Facades\DB::table('loan_user_role')->where('user_id', $userId)->delete();
-                \Illuminate\Support\Facades\DB::table('loan_user_role')->insert([
+                DB::table('loan_user_role')->where('user_id', $userId)->delete();
+                DB::table('loan_user_role')->insert([
                     'loan_role_id' => $role->id,
                     'user_id' => $userId,
                     'created_at' => now(),
@@ -1632,11 +1635,39 @@ class LoanSystemHelpController extends Controller
         return [
             'dashboard.view' => 'Dashboard · View',
             'employees.view' => 'Employees · View',
+            'employees.create' => 'Employees · Create',
+            'employees.update' => 'Employees · Update',
+            'employees.delete' => 'Employees · Delete',
+            'employees.export' => 'Employees · Export',
+            'employees.configure' => 'Employees · Configure',
             'branches.view' => 'Branches & Regions · View',
+            'branches.create' => 'Branches & Regions · Create',
+            'branches.update' => 'Branches & Regions · Update',
+            'branches.delete' => 'Branches & Regions · Delete',
+            'branches.approve' => 'Branches & Regions · Approve',
+            'branches.export' => 'Branches & Regions · Export',
+            'branches.configure' => 'Branches & Regions · Configure',
             'analytics.view' => 'Business Analytics · View',
+            'analytics.create' => 'Business Analytics · Create',
+            'analytics.update' => 'Business Analytics · Update',
+            'analytics.delete' => 'Business Analytics · Delete',
+            'analytics.export' => 'Business Analytics · Export',
+            'analytics.configure' => 'Business Analytics · Configure',
             'bulksms.view' => 'Bulk SMS · View',
+            'bulksms.create' => 'Bulk SMS · Create',
+            'bulksms.update' => 'Bulk SMS · Update',
+            'bulksms.delete' => 'Bulk SMS · Delete',
+            'bulksms.approve' => 'Bulk SMS · Approve',
+            'bulksms.export' => 'Bulk SMS · Export',
+            'bulksms.configure' => 'Bulk SMS · Configure',
             'my_account.view' => 'My Account · View',
             'system.help.view' => 'System & Help · View',
+            'system.help.create' => 'System & Help · Create',
+            'system.help.update' => 'System & Help · Update',
+            'system.help.delete' => 'System & Help · Delete',
+            'system.help.approve' => 'System & Help · Approve',
+            'system.help.export' => 'System & Help · Export',
+            'system.help.configure' => 'System & Help · Configure',
 
             'clients.view' => 'Clients · View',
             'clients.create' => 'Clients · Create',
@@ -1652,6 +1683,7 @@ class LoanSystemHelpController extends Controller
             'loan_applications.update' => 'Loan Applications · Update',
             'loan_applications.delete' => 'Loan Applications · Delete',
             'loan_applications.approve' => 'Loan Applications · Approve',
+            'loan_applications.approve_own' => 'Loan Applications · Approve Own-Originated',
             'loan_applications.export' => 'Loan Applications · Export',
             'loan_applications.reverse' => 'Loan Applications · Reverse',
             'loan_applications.configure' => 'Loan Applications · Configure',
@@ -1673,6 +1705,7 @@ class LoanSystemHelpController extends Controller
             'disbursements.export' => 'Disbursements · Export',
             'disbursements.reverse' => 'Disbursements · Reverse',
             'disbursements.configure' => 'Disbursements · Configure',
+            'disbursements.override_balance_guard' => 'Disbursements · Override Cash Balance Guard',
 
             'collections.view' => 'Collections · View',
             'collections.create' => 'Collections · Create',
@@ -1827,8 +1860,8 @@ class LoanSystemHelpController extends Controller
             $rules['settings.'.$key] = ['nullable', 'string', 'max:20000'];
         }
         if ($keys === self::COMPANY_SETTING_KEYS) {
-            $rules['logo_file'] = ['nullable', 'image', 'max:3072'];
-            $rules['favicon_file'] = ['nullable', 'file', 'mimetypes:image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml', 'max:2048'];
+            $rules['logo_file'] = ['nullable', 'image', 'max:102400'];
+            $rules['favicon_file'] = ['nullable', 'file', 'mimetypes:image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml', 'max:102400'];
             $rules['remove_logo'] = ['nullable', 'in:0,1'];
             $rules['remove_favicon'] = ['nullable', 'in:0,1'];
         }
@@ -1912,6 +1945,7 @@ class LoanSystemHelpController extends Controller
             $logsQuery->where(function ($w) use ($activityType) {
                 if ($activityType === 'failed') {
                     $w->where('activity', 'like', '%failed%');
+
                     return;
                 }
 

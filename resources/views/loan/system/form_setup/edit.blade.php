@@ -52,8 +52,9 @@
                         if (row.is_core) {
                             return;
                         }
-                        if (typeof Swal !== 'undefined') {
-                            const r = await Swal.fire({
+                        let confirmed = false;
+                        if (typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function') {
+                            const r = await window.Swal.fire({
                                 icon: 'warning',
                                 title: 'Remove field?',
                                 text: 'This line will be removed when you save.',
@@ -63,9 +64,12 @@
                                 confirmButtonText: 'Yes, remove',
                                 cancelButtonText: 'Cancel',
                             });
-                            if (!r.isConfirmed) {
-                                return;
-                            }
+                            confirmed = !!r.isConfirmed;
+                        } else {
+                            confirmed = window.confirm('Remove this field? It will be removed when you save.');
+                        }
+                        if (!confirmed) {
+                            return;
                         }
                         this.rows.splice(index, 1);
                     },

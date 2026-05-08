@@ -46,7 +46,7 @@
     <div>
         <label for="logo_file" class="block text-xs font-semibold text-slate-600 mb-1">Upload logo</label>
         <input id="logo_file" type="file" name="logo_file" accept="image/*" class="w-full rounded-lg border-slate-200 text-sm" />
-        <p class="text-[11px] text-slate-500 mt-1">PNG/JPG/SVG supported, max 3MB.</p>
+        <p class="text-[11px] text-slate-500 mt-1">PNG/JPG/SVG supported, max 100MB.</p>
         @error('logo_file')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         @if ($logo)
             <div class="mt-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
@@ -62,7 +62,7 @@
     <div>
         <label for="favicon_file" class="block text-xs font-semibold text-slate-600 mb-1">Upload favicon</label>
         <input id="favicon_file" type="file" name="favicon_file" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml" class="w-full rounded-lg border-slate-200 text-sm" />
-        <p class="text-[11px] text-slate-500 mt-1">PNG/ICO/SVG supported, max 2MB.</p>
+        <p class="text-[11px] text-slate-500 mt-1">PNG/ICO/SVG supported, max 100MB.</p>
         @error('favicon_file')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         @if ($favicon)
             <div class="mt-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2">

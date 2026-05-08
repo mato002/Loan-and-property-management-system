@@ -626,6 +626,26 @@ class PmLeaseWebController extends Controller
     }
 
     /**
+     * @return array<int, float>
+     */
+    private function splitMoneyAcrossParts(float $total, int $parts): array
+    {
+        if ($parts <= 0) {
+            return [];
+        }
+
+        $cents = (int) round($total * 100);
+        $base = intdiv($cents, $parts);
+        $rem = $cents - ($base * $parts);
+        $out = [];
+        for ($i = 0; $i < $parts; $i++) {
+            $out[] = ($base + ($i < $rem ? 1 : 0)) / 100.0;
+        }
+
+        return $out;
+    }
+
+    /**
      * Mirror lease optional arrears/deposits into revenue modules.
      *
      * Utilities are usage-based recurring charges and should be posted from
@@ -634,14 +654,14 @@ class PmLeaseWebController extends Controller
     private function syncLeaseRevenuePostings(PmLease $lease): void
     {
         $lease->loadMissing(['units:id,property_id,label']);
-        $unit = $lease->units->first();
-        if (! $unit) {
+        $units = $lease->units;
+        if ($units->isEmpty()) {
             return;
         }
 
-        $unitId = (int) $unit->id;
         $tenantId = (int) $lease->pm_tenant_id;
         $billingMonth = ($lease->start_date?->format('Y-m')) ?: now()->format('Y-m');
+        $unitCount = $units->count();
 
         // Reset previous auto-generated rows for idempotent updates.
         PmInvoice::query()
@@ -649,10 +669,12 @@ class PmLeaseWebController extends Controller
             ->where('description', 'like', self::AUTO_ARREARS_PREFIX.'%')
             ->delete();
 
-        PmUnitUtilityCharge::query()
-            ->where('property_unit_id', $unitId)
-            ->where('notes', 'like', self::AUTO_UTILITY_PREFIX.'%')
-            ->delete();
+        foreach ($units as $u) {
+            PmUnitUtilityCharge::query()
+                ->where('property_unit_id', (int) $u->id)
+                ->where('notes', 'like', self::AUTO_UTILITY_PREFIX.'%')
+                ->delete();
+        }
 
         PmInvoice::query()
             ->where('pm_lease_id', $lease->id)
@@ -695,20 +717,27 @@ class PmLeaseWebController extends Controller
                 $lease->opening_arrears_note ? 'Note: '.$lease->opening_arrears_note : null,
             ]);
 
-            PmInvoice::query()->create([
-                'pm_lease_id' => $lease->id,
-                'property_unit_id' => $unitId,
-                'pm_tenant_id' => $tenantId,
-                'invoice_no' => PmInvoice::nextInvoiceNumber(),
-                'issue_date' => $issueDate,
-                'due_date' => $dueDate,
-                'amount' => $amount,
-                'amount_paid' => 0,
-                'status' => PmInvoice::STATUS_OVERDUE,
-                'invoice_type' => $chargeType === PmInvoice::TYPE_WATER ? PmInvoice::TYPE_WATER : PmInvoice::TYPE_MIXED,
-                'billing_period' => $period !== '' ? $period : $billingMonth,
-                'description' => implode(' | ', $descParts),
-            ]);
+            $amountParts = $this->splitMoneyAcrossParts($amount, $unitCount);
+            foreach ($units->values() as $idx => $unit) {
+                $partAmount = (float) ($amountParts[$idx] ?? 0.0);
+                if ($partAmount <= 0) {
+                    continue;
+                }
+                PmInvoice::query()->create([
+                    'pm_lease_id' => $lease->id,
+                    'property_unit_id' => (int) $unit->id,
+                    'pm_tenant_id' => $tenantId,
+                    'invoice_no' => PmInvoice::nextInvoiceNumber(),
+                    'issue_date' => $issueDate,
+                    'due_date' => $dueDate,
+                    'amount' => $partAmount,
+                    'amount_paid' => 0,
+                    'status' => PmInvoice::STATUS_OVERDUE,
+                    'invoice_type' => $chargeType === PmInvoice::TYPE_WATER ? PmInvoice::TYPE_WATER : PmInvoice::TYPE_MIXED,
+                    'billing_period' => $period !== '' ? $period : $billingMonth,
+                    'description' => implode(' | ', $descParts),
+                ]);
+            }
         }
 
         // Intentionally no auto-utility posting from lease save.
@@ -722,20 +751,34 @@ class PmLeaseWebController extends Controller
                 if ($expected <= 0) {
                     continue;
                 }
-                PmInvoice::query()->create([
-                    'pm_lease_id' => $lease->id,
-                    'property_unit_id' => $unitId,
-                    'pm_tenant_id' => $tenantId,
-                    'invoice_no' => PmInvoice::nextInvoiceNumber(),
-                    'issue_date' => $lease->start_date?->toDateString() ?? now()->toDateString(),
-                    'due_date' => $lease->start_date?->toDateString() ?? now()->toDateString(),
-                    'amount' => $expected,
-                    'amount_paid' => (float) $line->paid_amount,
-                    'status' => ((float) $line->balance_amount) <= 0 ? PmInvoice::STATUS_PAID : PmInvoice::STATUS_SENT,
-                    'invoice_type' => PmInvoice::TYPE_MIXED,
-                    'billing_period' => $billingMonth,
-                    'description' => self::AUTO_DEPOSIT_PREFIX.' '.$line->label,
-                ]);
+                $paidTotal = (float) $line->paid_amount;
+                $expectedParts = $this->splitMoneyAcrossParts($expected, $unitCount);
+                $paidParts = $this->splitMoneyAcrossParts($paidTotal, $unitCount);
+                foreach ($units->values() as $idx => $unit) {
+                    $partExpected = (float) ($expectedParts[$idx] ?? 0.0);
+                    if ($partExpected <= 0) {
+                        continue;
+                    }
+                    $partPaid = (float) ($paidParts[$idx] ?? 0.0);
+                    $partBalance = $partExpected - $partPaid;
+                    $status = $partBalance <= 0.00001
+                        ? PmInvoice::STATUS_PAID
+                        : ($partPaid > 0 ? PmInvoice::STATUS_PARTIAL : PmInvoice::STATUS_SENT);
+                    PmInvoice::query()->create([
+                        'pm_lease_id' => $lease->id,
+                        'property_unit_id' => (int) $unit->id,
+                        'pm_tenant_id' => $tenantId,
+                        'invoice_no' => PmInvoice::nextInvoiceNumber(),
+                        'issue_date' => $lease->start_date?->toDateString() ?? now()->toDateString(),
+                        'due_date' => $lease->start_date?->toDateString() ?? now()->toDateString(),
+                        'amount' => $partExpected,
+                        'amount_paid' => $partPaid,
+                        'status' => $status,
+                        'invoice_type' => PmInvoice::TYPE_MIXED,
+                        'billing_period' => $billingMonth,
+                        'description' => self::AUTO_DEPOSIT_PREFIX.' '.$line->label,
+                    ]);
+                }
             }
         }
     }

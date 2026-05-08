@@ -16,15 +16,17 @@ class GenerateMonthlyRentInvoices extends Command
 
     public function handle(): int
     {
-        $enabled = PropertyPortalSetting::getValue('workflow_auto_reminders', '0') === '1';
+        $enabled = PropertyPortalSetting::isRentInvoiceAutomationEnabled();
         if (! $enabled) {
-            $this->info('Auto workflows disabled (workflow_auto_reminders=0). Skipping invoice generation.');
+            $this->info('Rent invoice automation is off (workflow toggles or PROPERTY_WORKFLOW_AUTOMATION_ENABLED). Skipping invoice generation.');
+
             return self::SUCCESS;
         }
 
         $ym = (string) ($this->option('month') ?: now()->format('Y-m'));
         if (! preg_match('/^\d{4}-\d{2}$/', $ym)) {
             $this->error('Invalid --month. Use YYYY-MM.');
+
             return self::FAILURE;
         }
 
@@ -34,6 +36,15 @@ class GenerateMonthlyRentInvoices extends Command
 
         $leases = PmLease::query()
             ->where('status', PmLease::STATUS_ACTIVE)
+            // Don't bill rent for periods before the lease started or after it ended.
+            // Without these guards a backfill (--month=...) would create invoices for
+            // leases that hadn't started yet, or for leases already terminated.
+            ->where(function ($q) use ($periodEnd) {
+                $q->whereNull('start_date')->orWhere('start_date', '<=', $periodEnd->toDateString());
+            })
+            ->where(function ($q) use ($periodStart) {
+                $q->whereNull('end_date')->orWhere('end_date', '>=', $periodStart->toDateString());
+            })
             ->with(['units:id,property_id,label', 'pmTenant:id,name'])
             ->orderBy('id')
             ->get();
@@ -68,6 +79,7 @@ class GenerateMonthlyRentInvoices extends Command
                     ->exists();
                 if ($exists) {
                     $skipped++;
+
                     continue;
                 }
 
@@ -93,7 +105,7 @@ class GenerateMonthlyRentInvoices extends Command
         }
 
         $this->info("Rent invoices generated for {$ym}. Created={$created}, Skipped(existing)={$skipped}.");
+
         return self::SUCCESS;
     }
 }
-

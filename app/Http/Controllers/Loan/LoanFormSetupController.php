@@ -408,28 +408,24 @@ class LoanFormSetupController extends Controller
         return $map[$page];
     }
 
-    public function clientForm(): View
+    public function clientForm(): RedirectResponse
     {
-        return $this->renderForm(
-            LoanFormFieldDefinition::KIND_CLIENT_LOAN,
-            'Client loan form setup',
-            'Design fields captured on the client loan application.',
-            'loan.system.form_setup.client.save',
-            [
-                'alternateSetupUrl' => route('loan.system.form_setup.staff'),
-                'alternateSetupLabel' => 'Setup staff loan form',
-            ]
-        );
+        return redirect()
+            ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'product-rules'])
+            ->with(
+                'info',
+                'Loan application fields are configured on this page under A. Loan Form Setup. Per-product rules apply when a product is selected on Create application.'
+            );
     }
 
     public function clientFormSave(Request $request): RedirectResponse
     {
-        return $this->saveForm(
-            $request,
-            LoanFormFieldDefinition::KIND_CLIENT_LOAN,
-            'loan.system.form_setup.client',
-            'Loan form fields saved.'
-        );
+        return redirect()
+            ->route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'product-rules'])
+            ->with(
+                'warning',
+                'This save URL is no longer used. Your changes were not saved. Use Loan Settings → Product rules → A. Loan Form Setup, then save there.'
+            );
     }
 
     public function staffForm(): View
@@ -440,8 +436,8 @@ class LoanFormSetupController extends Controller
             'Design fields captured on internal staff loan requests.',
             'loan.system.form_setup.staff.save',
             [
-                'alternateSetupUrl' => route('loan.system.form_setup.client'),
-                'alternateSetupLabel' => 'Setup client loan form',
+                'alternateSetupUrl' => route('loan.system.form_setup.page', ['page' => 'loan-settings', 'tab' => 'product-rules']),
+                'alternateSetupLabel' => 'Loan application form (Loan Settings)',
             ]
         );
     }

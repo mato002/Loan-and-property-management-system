@@ -5,7 +5,7 @@
 <x-loan-layout>
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
-            <a href="{{ route('loan.financial.control_accounts') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
+            <a href="{{ \Illuminate\Support\Facades\Route::has('loan.financial.control_accounts') ? route('loan.financial.control_accounts') : '#' }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                 Control accounts
             </a>
             @if(auth()->user()?->hasLoanPermission('wallets.refund_approve'))

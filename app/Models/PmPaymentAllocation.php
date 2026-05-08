@@ -14,12 +14,18 @@ class PmPaymentAllocation extends Model
         'pm_invoice_id',
         'lease_deposit_line_id',
         'amount',
+        'is_reversed',
+        'reversed_by',
+        'reversed_at',
+        'reversal_reason',
     ];
 
     protected function casts(): array
     {
         return [
             'amount' => 'decimal:2',
+            'is_reversed' => 'boolean',
+            'reversed_at' => 'datetime',
         ];
     }
 

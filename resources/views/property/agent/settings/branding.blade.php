@@ -35,7 +35,7 @@
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Upload logo</label>
                     <input type="file" name="company_logo" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" class="mt-1 block w-full text-sm text-slate-600 dark:text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 dark:file:bg-slate-800" />
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Recommended: square or wide PNG/JPG, max 4MB.</p>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Recommended: square or wide PNG/JPG, max 100MB.</p>
                     @error('company_logo')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
 
@@ -54,7 +54,7 @@
                 <div class="pt-2 border-t border-slate-200 dark:border-slate-700">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Upload favicon</label>
                     <input type="file" name="site_favicon" accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml" class="mt-1 block w-full text-sm text-slate-600 dark:text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 dark:file:bg-slate-800" />
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Best size: 32x32 or 48x48 icon.</p>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Best size: 32x32 or 48x48 icon. Max 100MB.</p>
                     @error('site_favicon')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
 

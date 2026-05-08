@@ -1092,6 +1092,7 @@ class TenantPortalController extends Controller
 
         PmMaintenanceRequest::query()->create([
             'property_unit_id' => (int) $data['property_unit_id'],
+            'pm_tenant_id' => (int) $lease->pm_tenant_id,
             'reported_by_user_id' => $request->user()->id,
             'category' => $data['category'],
             'description' => $description,

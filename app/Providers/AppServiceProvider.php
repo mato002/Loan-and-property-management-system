@@ -2,6 +2,13 @@
 
 namespace App\Providers;
 
+use App\Http\Middleware\EnsureLoanAccessPolicy;
+use App\Http\Middleware\EnsureLoanPermission;
+use App\Http\Middleware\EnsureLoanRole;
+use App\Http\Middleware\EnsureModuleAccess;
+use App\Http\Middleware\EnsurePropertyPermission;
+use App\Http\Middleware\EnsurePropertyPortalRole;
+use App\Http\Middleware\EnsureSuperAdmin;
 use App\Models\AccountingChartAccount;
 use App\Models\LoanBookApplication;
 use App\Models\LoanBookLoan;
@@ -12,6 +19,7 @@ use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
+use RuntimeException;
 use Illuminate\View\DynamicComponent;
 
 class AppServiceProvider extends ServiceProvider
@@ -21,6 +29,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Fallback container aliases for middleware strings. This prevents
+        // "Target class [loan.permission] does not exist" when production
+        // caches are stale and route middleware strings resolve via container.
+        $this->app->bind('module.access', EnsureModuleAccess::class);
+        $this->app->bind('loan.role', EnsureLoanRole::class);
+        $this->app->bind('loan.permission', EnsureLoanPermission::class);
+        $this->app->bind('loan.access_policy', EnsureLoanAccessPolicy::class);
+        $this->app->bind('property.portal', EnsurePropertyPortalRole::class);
+        $this->app->bind('property.permission', EnsurePropertyPermission::class);
+        $this->app->bind('superadmin', EnsureSuperAdmin::class);
+
         $this->app->extend('blade.compiler', function ($_compiler, $app) {
             $blade = new AppBladeCompiler(
                 $app['files'],
@@ -42,6 +61,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->guardAgainstDestructiveLocalCommands();
+
         LoanBookApplication::observe(LoanBookApplicationClientLeadObserver::class);
         LoanBookLoan::observe(LoanBookLoanClientLeadObserver::class);
 
@@ -58,7 +79,48 @@ class AppServiceProvider extends ServiceProvider
                     ->where('current_balance', '<', 0)
                     ->count();
             }
+            $allowDestructiveDbCommands = filter_var((string) env('ALLOW_DESTRUCTIVE_DB_COMMANDS', false), FILTER_VALIDATE_BOOLEAN);
             $view->with('overdrawnCount', $overdrawnCount);
+            $view->with('allowDestructiveDbCommands', $allowDestructiveDbCommands);
         });
+    }
+
+    private function guardAgainstDestructiveLocalCommands(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        if (! $this->app->environment('local')) {
+            return;
+        }
+
+        $allow = filter_var((string) env('ALLOW_DESTRUCTIVE_DB_COMMANDS', false), FILTER_VALIDATE_BOOLEAN);
+        if ($allow) {
+            return;
+        }
+
+        $argv = $_SERVER['argv'] ?? [];
+        $command = (string) ($argv[1] ?? '');
+        if ($command === '') {
+            return;
+        }
+
+        $blocked = [
+            'migrate:fresh',
+            'migrate:refresh',
+            'db:wipe',
+            'db:reset',
+            'schema:drop',
+        ];
+
+        if (! in_array($command, $blocked, true)) {
+            return;
+        }
+
+        throw new RuntimeException(
+            'Blocked destructive database command "'.$command.'" in local environment. '
+            .'Set ALLOW_DESTRUCTIVE_DB_COMMANDS=true only when you intentionally want to wipe/reset data.'
+        );
     }
 }

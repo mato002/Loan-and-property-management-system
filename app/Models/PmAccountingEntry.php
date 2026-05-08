@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AgentWorkspaceScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -38,6 +40,32 @@ class PmAccountingEntry extends Model
             'entry_date' => 'date',
             'amount' => 'decimal:2',
         ];
+    }
+
+    /**
+     * Agent isolation: an entry belongs to an agent if its `property_id`
+     * resolves to a property in their workspace, or — for property-less
+     * entries (e.g. payroll runs, agency-wide bank moves) — if the agent
+     * recorded it. Super admins see everything.
+     */
+    protected static function booted(): void
+    {
+        static::addGlobalScope('agent_workspace', function (Builder $query) {
+            if (! AgentWorkspaceScope::shouldApply()) {
+                return;
+            }
+
+            $userId = (int) \Illuminate\Support\Facades\Auth::id();
+
+            $query->where(function (Builder $scope) use ($userId) {
+                $scope->whereIn('pm_accounting_entries.property_id', function ($sub) use ($userId) {
+                    $sub->select('id')->from('properties')->where('agent_user_id', $userId);
+                })->orWhere(function (Builder $owned) use ($userId) {
+                    $owned->whereNull('pm_accounting_entries.property_id')
+                        ->where('pm_accounting_entries.recorded_by_user_id', $userId);
+                });
+            });
+        });
     }
 
     /**

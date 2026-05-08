@@ -3,162 +3,113 @@
         @include('loan.accounting.partials.flash')
 
         @php
-            $roleCards = [
-                ['id' => 'director', 'name' => 'Director', 'level' => 'Level 10', 'description' => 'Full system access. Can view, create, edit, delete, approve and configure all modules.'],
-                ['id' => 'finance_manager', 'name' => 'Finance Manager', 'level' => 'Level 9', 'description' => 'Finance control with accounting and treasury approvals.'],
-                ['id' => 'branch_manager', 'name' => 'Branch Manager', 'level' => 'Level 8', 'description' => 'Branch-level supervision, approvals, and performance oversight.'],
-                ['id' => 'senior_loan_officer', 'name' => 'Senior Loan Officer', 'level' => 'Level 6', 'description' => 'Loan supervision and senior underwriting support.'],
-                ['id' => 'loan_officer', 'name' => 'Loan Officer', 'level' => 'Level 5', 'description' => 'Client onboarding, application prep and portfolio servicing.'],
-                ['id' => 'collection_officer', 'name' => 'Collection Officer', 'level' => 'Level 4', 'description' => 'Collections execution and arrears follow-up.'],
-                ['id' => 'cashier', 'name' => 'Cashier', 'level' => 'Level 3', 'description' => 'Cash movement recording and teller controls.'],
-                ['id' => 'auditor', 'name' => 'Auditor', 'level' => 'Level 2', 'description' => 'Read-only audit evidence and compliance checks.'],
-                ['id' => 'system_admin', 'name' => 'System Admin', 'level' => 'Level 10', 'description' => 'Platform configuration and system administration.'],
-            ];
+            $matrixActions = ['view', 'create', 'update', 'delete', 'approve', 'export', 'reverse', 'configure'];
+            $matrixModules = [];
+            foreach (($permissionCatalog ?? []) as $permKey => $permLabel) {
+                if (!str_contains((string) $permLabel, '·') || !str_contains((string) $permKey, '.')) {
+                    continue;
+                }
+                [$moduleLabel, $actionLabel] = array_map('trim', explode('·', (string) $permLabel, 2));
+                $actionKey = strtolower((string) $actionLabel);
+                if (!in_array($actionKey, $matrixActions, true)) {
+                    continue;
+                }
+                if (!isset($matrixModules[$moduleLabel])) {
+                    $matrixModules[$moduleLabel] = ['module' => $moduleLabel, 'permissions' => []];
+                }
+                $matrixModules[$moduleLabel]['permissions'][$actionKey] = (string) $permKey;
+            }
+            $matrixTemplateRows = array_values($matrixModules);
+            $extraPermissionCatalog = [];
+            foreach (($permissionCatalog ?? []) as $permKey => $permLabel) {
+                if (!str_contains((string) $permLabel, '·') || !str_contains((string) $permKey, '.')) {
+                    continue;
+                }
+                [$moduleLabel, $actionLabel] = array_map('trim', explode('·', (string) $permLabel, 2));
+                $actionKey = strtolower((string) $actionLabel);
+                if (in_array($actionKey, $matrixActions, true)) {
+                    continue;
+                }
+                $extraPermissionCatalog[(string) $permKey] = [
+                    'label' => (string) $permLabel,
+                    'module' => (string) $moduleLabel,
+                    'action' => (string) $actionLabel,
+                ];
+            }
 
-            $permissionRows = [
-                ['module' => 'Clients', 'icon' => 'users', 'states' => ['allow', 'allow', 'allow', 'allow', 'allow', 'allow', 'deny', 'not_set']],
-                ['module' => 'Loan Applications', 'icon' => 'file', 'states' => ['allow', 'allow', 'allow', 'allow', 'deny', 'allow', 'deny', 'not_set']],
-                ['module' => 'Loans', 'icon' => 'briefcase', 'states' => ['allow', 'allow', 'allow', 'deny', 'allow', 'allow', 'deny', 'not_set']],
-                ['module' => 'Disbursements', 'icon' => 'send', 'states' => ['allow', 'allow', 'allow', 'deny', 'allow', 'allow', 'deny', 'not_set']],
-                ['module' => 'Collections', 'icon' => 'collection', 'states' => ['allow', 'allow', 'allow', 'deny', 'allow', 'allow', 'deny', 'not_set']],
-                ['module' => 'Payments', 'icon' => 'wallet', 'states' => ['allow', 'allow', 'allow', 'deny', 'allow', 'allow', 'deny', 'not_set']],
-                ['module' => 'Wallets', 'icon' => 'wallet', 'states' => ['allow', 'allow', 'allow', 'deny', 'allow', 'allow', 'deny', 'not_set']],
-                ['module' => 'Accounting', 'icon' => 'calculator', 'states' => ['allow', 'not_set', 'not_set', 'not_set', 'allow', 'allow', 'deny', 'allow']],
-                ['module' => 'Journals', 'icon' => 'journal', 'states' => ['allow', 'not_set', 'not_set', 'not_set', 'allow', 'allow', 'deny', 'allow']],
-                ['module' => 'Chart of Accounts', 'icon' => 'chart', 'states' => ['allow', 'deny', 'deny', 'deny', 'deny', 'deny', 'deny', 'allow']],
-                ['module' => 'Automated Cash Mappings', 'icon' => 'mapping', 'states' => ['allow', 'deny', 'deny', 'deny', 'deny', 'deny', 'deny', 'allow']],
-                ['module' => 'Reports', 'icon' => 'report', 'states' => ['allow', 'allow', 'allow', 'allow', 'allow', 'allow', 'allow', 'not_set']],
-                ['module' => 'System Setup', 'icon' => 'settings', 'states' => ['allow', 'deny', 'deny', 'deny', 'deny', 'deny', 'deny', 'allow']],
-                ['module' => 'Audit Logs', 'icon' => 'shield', 'states' => ['allow', 'not_set', 'not_set', 'not_set', 'allow', 'allow', 'not_set', 'not_set']],
-            ];
+            $rolesSnapshot = [];
+            foreach (($roles ?? collect()) as $role) {
+                $rawPerms = $role->permissions;
+                $permissions = is_array($rawPerms)
+                    ? $rawPerms
+                    : (is_string($rawPerms) ? (json_decode($rawPerms, true) ?: []) : []);
+                $rolesSnapshot[(string) $role->id] = [
+                    'id' => (string) $role->id,
+                    'name' => (string) $role->name,
+                    'base_role' => (string) $role->base_role,
+                    'description' => (string) ($role->description ?? ''),
+                    'is_active' => (bool) $role->is_active,
+                    'permissions' => array_values(array_unique(array_filter(array_map(fn ($p) => trim((string) $p), is_array($permissions) ? $permissions : [])))),
+                ];
+            }
+            $initialRoleId = (string) (array_key_first($rolesSnapshot) ?? '');
+            $totalRoleCount = (int) (($roles ?? collect())->count());
+            $activeRoleCount = (int) (($roles ?? collect())->where('is_active', true)->count());
+            $assignedUserCount = (int) (($roles ?? collect())->sum('users_count'));
         @endphp
 
         <div
             class="rounded-xl border border-slate-200 bg-[#f7f9fb] p-4 sm:p-5 lg:p-6"
             x-data="{
                 activeTab: 'roles',
-                selectedRole: 'director',
+                selectedRoleId: @js($initialRoleId),
                 createRoleOpen: @js(old('form_context') === 'create_role'),
-                matrixRows: @js($permissionRows),
+                roles: @js($rolesSnapshot),
+                matrixTemplateRows: @js($matrixTemplateRows),
+                matrixActionOrder: @js($matrixActions),
+                extraPermissionCatalog: @js($extraPermissionCatalog),
+                selectedExtraPermissions: [],
+                matrixRows: [],
                 activeStates: ['allow', 'deny', 'not_set'],
                 bulkAction: '',
-                roleDetails: {
-                    director: {
-                        name: 'Director',
-                        level: 'Level 10',
-                        description: 'Full system access with board-level governance accountability.',
-                        dataScope: 'All Branches (Global)',
-                        approvalLimit: 'Unlimited',
-                        canApprove: 'All Transactions',
-                        maker: 'Yes',
-                        checker: 'Yes',
-                        ipRestriction: 'No Restriction',
-                        active: true
-                    },
-                    finance_manager: {
-                        name: 'Finance Manager',
-                        level: 'Level 9',
-                        description: 'Accounting and treasury manager with high-risk approval coverage.',
-                        dataScope: 'Finance Departments + Branch Finance',
-                        approvalLimit: 'KES 10,000,000',
-                        canApprove: 'Accounting & Treasury',
-                        maker: 'Yes',
-                        checker: 'Yes',
-                        ipRestriction: 'Restricted',
-                        active: true
-                    },
-                    branch_manager: {
-                        name: 'Branch Manager',
-                        level: 'Level 8',
-                        description: 'Controls branch operations, collections, and supervised approvals.',
-                        dataScope: 'Assigned Branch',
-                        approvalLimit: 'KES 2,000,000',
-                        canApprove: 'Branch Transactions',
-                        maker: 'Yes',
-                        checker: 'Yes',
-                        ipRestriction: 'Restricted',
-                        active: true
-                    },
-                    senior_loan_officer: {
-                        name: 'Senior Loan Officer',
-                        level: 'Level 6',
-                        description: 'Senior loan processing and quality assurance.',
-                        dataScope: 'Assigned Portfolio + Branch',
-                        approvalLimit: 'KES 500,000',
-                        canApprove: 'Escalated Credit Actions',
-                        maker: 'Yes',
-                        checker: 'No',
-                        ipRestriction: 'Restricted',
-                        active: true
-                    },
-                    loan_officer: {
-                        name: 'Loan Officer',
-                        level: 'Level 5',
-                        description: 'Creates and services loans; cannot approve own applications.',
-                        dataScope: 'Assigned Clients',
-                        approvalLimit: 'KES 0 (Maker Only)',
-                        canApprove: 'None (Checker Required)',
-                        maker: 'Yes',
-                        checker: 'No',
-                        ipRestriction: 'Restricted',
-                        active: true
-                    },
-                    collection_officer: {
-                        name: 'Collection Officer',
-                        level: 'Level 4',
-                        description: 'Collections follow-up with limited posting rights.',
-                        dataScope: 'Assigned Delinquency Queues',
-                        approvalLimit: 'KES 0',
-                        canApprove: 'None',
-                        maker: 'Yes',
-                        checker: 'No',
-                        ipRestriction: 'Restricted',
-                        active: true
-                    },
-                    cashier: {
-                        name: 'Cashier',
-                        level: 'Level 3',
-                        description: 'Records payments; cannot reverse own payments.',
-                        dataScope: 'Teller Station + Assigned Branch',
-                        approvalLimit: 'KES 0',
-                        canApprove: 'None',
-                        maker: 'Yes',
-                        checker: 'No',
-                        ipRestriction: 'Restricted',
-                        active: true
-                    },
-                    auditor: {
-                        name: 'Auditor',
-                        level: 'Level 2',
-                        description: 'Read-only governance visibility for audit and compliance.',
-                        dataScope: 'All Branches (Read-only)',
-                        approvalLimit: 'N/A',
-                        canApprove: 'No',
-                        maker: 'No',
-                        checker: 'No',
-                        ipRestriction: 'Restricted',
-                        active: true
-                    },
-                    system_admin: {
-                        name: 'System Admin',
-                        level: 'Level 10',
-                        description: 'Platform setup and policy configuration without financial approvals by default.',
-                        dataScope: 'Global',
-                        approvalLimit: 'No Financial Approval by Default',
-                        canApprove: 'System Configuration Changes',
-                        maker: 'Yes',
-                        checker: 'Yes',
-                        ipRestriction: 'Restricted',
-                        active: true
-                    }
+                selectedRole() {
+                    return this.roles[this.selectedRoleId] || null;
+                },
+                loadRoleMatrix(roleId) {
+                    const role = this.roles[roleId] || null;
+                    const granted = new Set(role ? role.permissions : []);
+                    const extraKeys = new Set(Object.keys(this.extraPermissionCatalog || {}));
+                    this.matrixRows = this.matrixTemplateRows.map((row) => {
+                        const states = ['view', 'create', 'update', 'delete', 'approve', 'export', 'reverse', 'configure']
+                            .map((action) => {
+                                const key = row.permissions[action] || '';
+                                if (!key) return 'na';
+                                return granted.has(key) ? 'allow' : 'not_set';
+                            });
+                        return { ...row, states };
+                    });
+                    this.selectedExtraPermissions = (role ? role.permissions : [])
+                        .filter((key) => extraKeys.has(String(key)));
+                },
+                selectRole(roleId) {
+                    this.selectedRoleId = roleId;
+                    this.bulkAction = '';
+                    this.loadRoleMatrix(roleId);
+                },
+                resetMatrix() {
+                    if (!this.selectedRoleId) return;
+                    this.bulkAction = '';
+                    this.loadRoleMatrix(this.selectedRoleId);
                 },
                 roleStateClass(state) {
                     if (state === 'allow') return 'text-emerald-600';
                     if (state === 'deny') return 'text-rose-600';
+                    if (state === 'na') return 'text-slate-300';
                     return 'text-slate-400';
                 },
                 cycleState(rowIndex, colIndex) {
                     const current = this.matrixRows[rowIndex].states[colIndex];
+                    if (current === 'na') return;
                     const nextIndex = (this.activeStates.indexOf(current) + 1) % this.activeStates.length;
                     this.matrixRows[rowIndex].states[colIndex] = this.activeStates[nextIndex];
                 },
@@ -168,8 +119,32 @@
                     if (!allowed.includes(this.bulkAction)) return;
                     this.matrixRows = this.matrixRows.map((row) => ({
                         ...row,
-                        states: row.states.map(() => this.bulkAction),
+                        states: row.states.map((state) => (state === 'na' ? 'na' : this.bulkAction)),
                     }));
+                },
+                grantedPermissions() {
+                    const granted = [];
+                    this.matrixRows.forEach((row) => {
+                        this.matrixActionOrder.forEach((action, colIndex) => {
+                            const state = row.states[colIndex] || 'not_set';
+                            const permissionKey = (row.permissions || {})[action] || '';
+                            if (state === 'allow' && permissionKey !== '') {
+                                granted.push(permissionKey);
+                            }
+                        });
+                    });
+                    return [...new Set([...granted, ...(this.selectedExtraPermissions || [])])];
+                },
+                normalizedPermissions(list) {
+                    return [...new Set((list || []).map((item) => String(item).trim()).filter((item) => item !== ''))]
+                        .sort();
+                },
+                hasUnsavedChanges() {
+                    const role = this.selectedRole();
+                    if (!role) return false;
+                    const current = this.normalizedPermissions(this.grantedPermissions()).join('|');
+                    const baseline = this.normalizedPermissions(role.permissions || []).join('|');
+                    return current !== baseline;
                 },
                 showComingSoon(message = 'Coming soon') {
                     this.toastMessage = message;
@@ -183,11 +158,15 @@
                     if (state === 'deny') {
                         return '<svg class=\'h-4 w-4\' viewBox=\'0 0 20 20\' fill=\'none\'><circle cx=\'10\' cy=\'10\' r=\'8\' fill=\'currentColor\' fill-opacity=\'.12\'/><path d=\'M6.5 6.5l7 7m0-7l-7 7\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\'/></svg>';
                     }
+                    if (state === 'na') {
+                        return '<svg class=\'h-4 w-4\' viewBox=\'0 0 20 20\' fill=\'none\'><circle cx=\'10\' cy=\'10\' r=\'1.8\' fill=\'currentColor\'/></svg>';
+                    }
                     return '<svg class=\'h-4 w-4\' viewBox=\'0 0 20 20\' fill=\'none\'><path d=\'M6 10h8\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\'/></svg>';
                 },
                 toastOpen: false,
                 toastMessage: ''
             }"
+            x-init="loadRoleMatrix(selectedRoleId)"
         >
             @if (!($rbacReady ?? false))
                 <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -202,17 +181,9 @@
                         <p class="mt-1 text-sm text-slate-600">Manage roles, permissions, data scope and approval authority</p>
                     </div>
                     <div class="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
-                        <select class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-700">
-                            <option>Fortress Lenders Ltd</option>
-                            <option>Branch Operations Unit</option>
-                        </select>
-                        <button class="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-600 hover:bg-slate-50" type="button" aria-label="Notifications" @click="showComingSoon('Notifications center coming soon')">
-                            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none">
-                                <path d="M10 3a4 4 0 00-4 4v1.8c0 .7-.2 1.4-.6 1.9L4 13h12l-1.4-2.3a3.7 3.7 0 01-.6-1.9V7a4 4 0 00-4-4z" stroke="currentColor" stroke-width="1.5"/>
-                                <path d="M8.2 14.5a1.8 1.8 0 003.6 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                            </svg>
-                            <span class="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white">5</span>
-                        </button>
+                        <span class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">Roles: {{ number_format($totalRoleCount) }}</span>
+                        <span class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">Active: {{ number_format($activeRoleCount) }}</span>
+                        <span class="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-indigo-700">Assignments: {{ number_format($assignedUserCount) }}</span>
                         <span class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">{{ now()->format('D, M d, Y h:i A') }}</span>
                     </div>
                 </div>
@@ -229,7 +200,7 @@
                 </div>
             </div>
 
-            <div class="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start" x-show="activeTab === 'roles'">
+            <div class="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start" x-show="activeTab === 'roles' || activeTab === 'permission_matrix'">
                 <div class="min-w-0 flex-1 space-y-4">
                     <div class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -265,15 +236,15 @@
                         </div>
 
                         <div class="flex gap-3 overflow-x-auto pb-2">
-                            @foreach ($roleCards as $card)
+                            @foreach (($roles ?? collect()) as $roleCard)
                                 <button
                                     type="button"
-                                    @click="selectedRole = '{{ $card['id'] }}'"
-                                    :class="selectedRole === '{{ $card['id'] }}' ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-white text-slate-700'"
+                                    @click="selectRole('{{ (string) $roleCard->id }}')"
+                                    :class="selectedRoleId === '{{ (string) $roleCard->id }}' ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : 'border-slate-200 bg-white text-slate-700'"
                                     class="min-w-[155px] shrink-0 rounded-xl border px-3 py-3 text-left transition"
                                 >
-                                    <div class="text-xs font-semibold">{{ $card['name'] }}</div>
-                                    <div class="mt-1 text-[11px] text-slate-500">{{ $card['level'] }}</div>
+                                    <div class="text-xs font-semibold">{{ $roleCard->name }}</div>
+                                    <div class="mt-1 text-[11px] text-slate-500">{{ ucfirst((string) $roleCard->base_role) }}</div>
                                 </button>
                             @endforeach
                         </div>
@@ -294,6 +265,9 @@
                                 </span>
                                 <span class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-slate-500">
                                     <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none"><path d="M6 10h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg> Not Set
+                                </span>
+                                <span class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-400">
+                                    <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="1.8" fill="currentColor"/></svg> N/A
                                 </span>
                                 <select x-model="bulkAction" class="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700">
                                     <option value="">Bulk Actions</option>
@@ -326,7 +300,15 @@
                                             <td class="sticky left-0 bg-white px-3 py-2 text-slate-700" x-text="row.module"></td>
                                             <template x-for="(state, colIndex) in row.states" :key="colIndex">
                                                 <td class="px-3 py-2 text-center">
-                                                    <button type="button" @click="cycleState(rowIndex, colIndex)" :class="roleStateClass(state)" class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent hover:border-slate-200" x-html="iconMarkup(state)"></button>
+                                                    <button
+                                                        type="button"
+                                                        @click="cycleState(rowIndex, colIndex)"
+                                                        :class="roleStateClass(state)"
+                                                        class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent hover:border-slate-200 disabled:cursor-not-allowed disabled:hover:border-transparent"
+                                                        x-html="iconMarkup(state)"
+                                                        :disabled="state === 'na'"
+                                                        :title="state === 'na' ? 'Not applicable for this module' : 'Click to change permission state'"
+                                                    ></button>
                                                 </td>
                                             </template>
                                         </tr>
@@ -338,6 +320,53 @@
                         <div class="mt-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-900">
                             Rule controls: System Admin can configure system setup but should not auto-approve financial transactions. Loan Officer cannot approve own applications. Cashier cannot reverse own payments. Director/CPA may approve sensitive accounting actions. Maker cannot be checker for the same transaction.
                         </div>
+                        <div class="mt-3 rounded-lg border border-slate-200 bg-white p-3" x-show="Object.keys(extraPermissionCatalog).length > 0">
+                            <p class="text-xs font-semibold text-slate-700">Additional Permissions</p>
+                            <p class="mt-1 text-[11px] text-slate-500">Special permissions that do not fit standard matrix actions.</p>
+                            <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <template x-for="(item, key) in extraPermissionCatalog" :key="key">
+                                    <label class="inline-flex items-center gap-2 rounded border border-slate-200 px-2 py-1.5 text-xs text-slate-700">
+                                        <input type="checkbox" :value="key" x-model="selectedExtraPermissions" class="rounded border-slate-300">
+                                        <span x-text="item.label"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
+                        <form
+                            method="post"
+                            :action="'{{ url('/loan/system-help/setup/access-roles') }}/' + selectedRoleId"
+                            class="mt-3 flex flex-wrap items-center justify-end gap-2"
+                        >
+                            @csrf
+                            @method('PATCH')
+                            <input type="hidden" name="base_role" :value="selectedRole() ? selectedRole().base_role : 'user'">
+                            <input type="hidden" name="is_active" :value="selectedRole() && selectedRole().is_active ? '1' : '0'">
+                            <template x-for="permissionKey in grantedPermissions()" :key="permissionKey">
+                                <input type="hidden" name="permissions[]" :value="permissionKey">
+                            </template>
+                            <span
+                                x-show="hasUnsavedChanges()"
+                                x-cloak
+                                class="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700"
+                            >
+                                Unsaved changes
+                            </span>
+                            <button
+                                type="button"
+                                @click="resetMatrix()"
+                                class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                                :disabled="!selectedRoleId || !hasUnsavedChanges()"
+                            >
+                                Reset changes
+                            </button>
+                            <button
+                                type="submit"
+                                class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                                :disabled="!selectedRoleId || !hasUnsavedChanges()"
+                            >
+                                Save selected role permissions
+                            </button>
+                        </form>
                     </div>
 
                     <div class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
@@ -412,49 +441,36 @@
                 <div class="w-full space-y-4 xl:w-[360px] 2xl:w-[390px] xl:shrink-0">
                     <div class="rounded-xl border border-slate-200 bg-white p-4">
                         <div class="mb-3 flex items-center justify-between">
-                            <h3 class="text-sm font-semibold text-slate-800">Reporting Hierarchy</h3>
-                            <div class="inline-flex rounded-md border border-slate-200 bg-slate-50 p-1 text-[11px]">
-                                <button type="button" class="rounded px-2 py-1 bg-white text-slate-700 shadow-sm">Tree View</button>
-                                <button type="button" class="rounded px-2 py-1 text-slate-500" @click="showComingSoon('Hierarchy list view coming soon')">List View</button>
-                            </div>
+                            <h3 class="text-sm font-semibold text-slate-800">Role Assignment Summary</h3>
+                            <span class="text-[11px] text-slate-500">Live role data</span>
                         </div>
-                        <div class="space-y-2 text-xs text-slate-700">
-                            <div class="font-semibold text-slate-800">Board of Directors</div>
-                            <div class="ml-3 border-l border-slate-200 pl-3">
-                                <div class="font-medium">Director</div>
-                                <div class="ml-3 mt-1 border-l border-slate-200 pl-3">
-                                    <div>Finance Manager / CPA</div>
-                                    <div>Branch Manager</div>
-                                    <div class="ml-3 mt-1 border-l border-slate-200 pl-3 space-y-1">
-                                        <div>Senior Loan Officer</div>
-                                        <div>Loan Officer</div>
-                                        <div>Collection Officer</div>
-                                        <div>Cashier</div>
+                        <div class="space-y-2 text-xs text-slate-700 max-h-56 overflow-y-auto">
+                            @forelse(($roles ?? collect()) as $summaryRole)
+                                <div class="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                                    <div>
+                                        <p class="font-semibold text-slate-800">{{ $summaryRole->name }}</p>
+                                        <p class="text-[11px] text-slate-500">{{ ucfirst((string) $summaryRole->base_role) }}</p>
+                                    </div>
+                                    <div class="text-right">
+                                        <p class="font-semibold text-slate-800">{{ (int) ($summaryRole->users_count ?? 0) }}</p>
+                                        <p class="text-[11px] text-slate-500">assigned</p>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="mt-2 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-purple-800">Auditor (Read Only)</div>
+                            @empty
+                                <div class="rounded-lg border border-dashed border-slate-300 p-3 text-slate-500">No roles available.</div>
+                            @endforelse
                         </div>
                     </div>
 
                     <div class="rounded-xl border border-slate-200 bg-white p-4">
                         <h3 class="text-sm font-semibold text-slate-800">Role Details</h3>
                         <dl class="mt-3 space-y-2 text-xs">
-                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Role Name</dt><dd class="font-semibold text-slate-800" x-text="roleDetails[selectedRole].name"></dd></div>
-                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Access Level</dt><dd class="font-semibold text-amber-700" x-text="roleDetails[selectedRole].level"></dd></div>
-                            <div class="space-y-1"><dt class="text-slate-500">Description</dt><dd class="text-slate-700" x-text="roleDetails[selectedRole].description"></dd></div>
-                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Data Scope</dt><dd class="text-slate-700" x-text="roleDetails[selectedRole].dataScope"></dd></div>
-                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Approval Limit</dt><dd class="text-slate-700" x-text="roleDetails[selectedRole].approvalLimit"></dd></div>
-                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Can Approve</dt><dd class="text-emerald-700" x-text="roleDetails[selectedRole].canApprove"></dd></div>
-                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Maker Permissions</dt><dd class="text-slate-700" x-text="roleDetails[selectedRole].maker"></dd></div>
-                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Checker Permissions</dt><dd class="text-slate-700" x-text="roleDetails[selectedRole].checker"></dd></div>
-                            <div class="flex justify-between gap-3"><dt class="text-slate-500">IP Restriction</dt><dd class="text-slate-700" x-text="roleDetails[selectedRole].ipRestriction"></dd></div>
-                            <div class="flex items-center justify-between gap-3 pt-1">
-                                <dt class="text-slate-500">Active</dt>
-                                <button type="button" class="relative h-6 w-11 rounded-full bg-emerald-500" @click="showComingSoon('Role active toggle integration coming soon')">
-                                    <span class="absolute right-0.5 top-0.5 h-5 w-5 rounded-full bg-white"></span>
-                                </button>
-                            </div>
+                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Role Name</dt><dd class="font-semibold text-slate-800" x-text="selectedRole() ? selectedRole().name : '—'"></dd></div>
+                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Base Role</dt><dd class="font-semibold text-amber-700" x-text="selectedRole() ? selectedRole().base_role : '—'"></dd></div>
+                            <div class="space-y-1"><dt class="text-slate-500">Description</dt><dd class="text-slate-700" x-text="selectedRole() ? (selectedRole().description || 'No description') : '—'"></dd></div>
+                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Permissions Assigned</dt><dd class="text-slate-700" x-text="selectedRole() ? selectedRole().permissions.length : 0"></dd></div>
+                            <div class="flex justify-between gap-3"><dt class="text-slate-500">Status</dt><dd class="text-slate-700" x-text="selectedRole() && selectedRole().is_active ? 'Active' : 'Inactive'"></dd></div>
+                            <div class="flex justify-between gap-3"><dt class="text-slate-500">State</dt><dd class="text-slate-700" x-text="selectedRole() && selectedRole().is_active ? 'Active role' : 'Inactive role'"></dd></div>
                         </dl>
                     </div>
 
@@ -518,7 +534,7 @@
                 </div>
             </div>
 
-            <div class="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600" x-show="activeTab !== 'roles'">
+            <div class="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600" x-show="activeTab !== 'roles' && activeTab !== 'permission_matrix'">
                 <p class="font-semibold text-slate-800" x-text="activeTab.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())"></p>
                 <p class="mt-2">Coming soon. This section is queued for backend integration and will be functional in the next increment.</p>
                 <button type="button" class="mt-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100" @click="activeTab = 'roles'">Back to Roles</button>

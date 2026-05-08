@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Property;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Loan\LoanPaymentWebhookController;
+use App\Models\PmForwarderToken;
 use App\Models\PmPayment;
 use App\Models\PmSmsIngest;
 use App\Models\PmTenant;
@@ -30,15 +31,42 @@ class PropertyPaymentWebhookController extends Controller
         PaymentAuditLogRepository $auditLogs
     ): JsonResponse
     {
-        $secret = (string) config('services.property_sms_ingest.secret', '');
-        // Accept secret from header primarily; fall back to query/body for devices that cannot set headers.
-        $providedSecret = (string) $request->header('X-Property-Sms-Secret', '');
-        if ($providedSecret === '') {
-            $providedSecret = (string) ($request->query('secret', $request->input('secret', '')));
-        }
-
-        if ($secret === '' || ! hash_equals($secret, $providedSecret)) {
-            return response()->json(['ok' => false, 'message' => 'Unauthorized webhook'], 401);
+        // Two authentication paths are supported, in order of preference:
+        //   1) Per-agent token: header `X-Agent-Forwarder-Token: pm-agent-...`
+        //      Each agent generates this in their settings and configures
+        //      it on their SMS forwarder app. Resolves to a specific agent
+        //      user id which is then persisted on every payment row.
+        //   2) Legacy global secret: header `X-Property-Sms-Secret`
+        //      (or `secret=` query/body fallback). System / super-admin
+        //      level only; rows ingested via this path have agent_user_id
+        //      = null so they are visible to super admin only.
+        $resolvedAgentUserId = null;
+        $forwarderToken = trim((string) $request->header('X-Agent-Forwarder-Token', ''));
+        if ($forwarderToken !== '' && Schema::hasTable('pm_forwarder_tokens')) {
+            $token = PmForwarderToken::query()
+                ->active()
+                ->where('token', $forwarderToken)
+                ->first();
+            if (! $token) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Forwarder token is invalid or has been revoked.',
+                ], 401);
+            }
+            $resolvedAgentUserId = (int) $token->user_id;
+            $token->forceFill([
+                'last_used_at' => now(),
+                'last_used_ip' => (string) ($request->ip() ?? ''),
+            ])->saveQuietly();
+        } else {
+            $secret = (string) config('services.property_sms_ingest.secret', '');
+            $providedSecret = (string) $request->header('X-Property-Sms-Secret', '');
+            if ($providedSecret === '') {
+                $providedSecret = (string) ($request->query('secret', $request->input('secret', '')));
+            }
+            if ($secret === '' || ! hash_equals($secret, $providedSecret)) {
+                return response()->json(['ok' => false, 'message' => 'Unauthorized webhook'], 401);
+            }
         }
 
         $this->mirrorToLoanIngest($request);
@@ -52,6 +80,7 @@ class PropertyPaymentWebhookController extends Controller
             'paid_at' => ['nullable', 'string', 'max:64'],
             'raw_message' => ['nullable', 'string'],
             'payload' => ['nullable'],
+            'agent_user_id' => ['nullable', 'integer', 'exists:users,id'],
         ]);
 
         $payload = MpesaSmsForwarderParser::normalizePayload($data['payload'] ?? null);
@@ -100,20 +129,36 @@ class PropertyPaymentWebhookController extends Controller
             ? $daraja->normalizeMsisdn($phoneCandidate)
             : null;
 
+        // The forwarder token is the most authoritative source of attribution.
+        // We still honour an explicit `agent_user_id` field as a back-compat
+        // path for older forwarder builds, but the token wins.
+        $payloadAgentUserId = isset($data['agent_user_id']) ? max(0, (int) $data['agent_user_id']) : null;
+        $payloadAgentUserId = $payloadAgentUserId > 0 ? $payloadAgentUserId : null;
+        $effectiveAgentUserId = $resolvedAgentUserId ?? $payloadAgentUserId;
+
+        $ingestPersistsAgent = Schema::hasColumn('pm_sms_ingests', 'agent_user_id');
+
         try {
+            $ingestDefaults = [
+                'provider' => $provider !== '' ? $provider : 'mpesa',
+                'source_device' => $data['source_device'] ?? null,
+                'payer_phone' => $normalizedPhone,
+                'amount' => $amount,
+                'paid_at' => $paidAt ?? now(),
+                'raw_message' => $data['raw_message'] ?? null,
+                'payload' => $payload,
+                'match_status' => 'unmatched',
+            ];
+            if ($ingestPersistsAgent && $effectiveAgentUserId !== null) {
+                $ingestDefaults['agent_user_id'] = $effectiveAgentUserId;
+            }
             $ingest = PmSmsIngest::query()->firstOrCreate(
                 ['provider_txn_code' => $providerTxnCode],
-                [
-                    'provider' => $provider !== '' ? $provider : 'mpesa',
-                    'source_device' => $data['source_device'] ?? null,
-                    'payer_phone' => $normalizedPhone,
-                    'amount' => $amount,
-                    'paid_at' => $paidAt ?? now(),
-                    'raw_message' => $data['raw_message'] ?? null,
-                    'payload' => $payload,
-                    'match_status' => 'unmatched',
-                ]
+                $ingestDefaults
             );
+            if ($ingestPersistsAgent && $effectiveAgentUserId !== null && $ingest->agent_user_id === null) {
+                $ingest->update(['agent_user_id' => $effectiveAgentUserId]);
+            }
         } catch (QueryException $e) {
             if (! $this->isDuplicateKey($e)) {
                 throw $e;
@@ -155,14 +200,30 @@ class PropertyPaymentWebhookController extends Controller
             ],
         ];
 
+        $agentUserId = $effectiveAgentUserId;
+
         // Keep compatibility if new reconciliation tables are not yet migrated.
         if (! Schema::hasTable('payments') || ! Schema::hasTable('unassigned_payments')) {
-            $tenant = $normalizedPhone ? $this->findTenantByPhone($normalizedPhone) : null;
+            $match = $matcher->match($tx, $agentUserId);
 
+            if (($match['tenant_id'] ?? null) === null) {
+                $ingest->update([
+                    'match_status' => 'unmatched',
+                    'match_note' => (string) ($match['reason'] ?? 'No tenant match.'),
+                ]);
+
+                return response()->json([
+                    'ok' => true,
+                    'ingest_id' => $ingest->id,
+                    'status' => 'unmatched',
+                ]);
+            }
+
+            $tenant = PmTenant::query()->find((int) $match['tenant_id']);
             if (! $tenant) {
                 $ingest->update([
                     'match_status' => 'unmatched',
-                    'match_note' => 'No tenant found by payer phone.',
+                    'match_note' => 'Matched tenant id not found.',
                 ]);
 
                 return response()->json([
@@ -253,43 +314,12 @@ class PropertyPaymentWebhookController extends Controller
             ]);
         }
 
-        $phoneMatchedTenant = $normalizedPhone ? $this->findTenantByPhone($normalizedPhone) : null;
-        if (! $phoneMatchedTenant) {
-            $reason = 'No tenant found by payer phone.';
-            try {
-                $payments->storeUnmatched($tx, $reason, [
-                    'payment_method' => 'sms_forwarder',
-                ]);
-            } catch (QueryException $e) {
-                if (! $this->isDuplicateKey($e)) {
-                    throw $e;
-                }
-            }
-
-            $ingest->update([
-                'match_status' => 'unmatched',
-                'match_note' => $reason,
-            ]);
-
-            $auditLogs->decision('success', [
-                'stage' => 'sms_ingest',
-                'decision' => 'unmatched',
-                'transaction_id' => (string) $tx['transaction_id'],
-                'reason' => $reason,
-            ], 'sms_forwarder_decision');
-
-            return response()->json([
-                'ok' => true,
-                'ingest_id' => $ingest->id,
-                'status' => 'unmatched',
-            ]);
-        }
-
-        $match = $matcher->match($tx);
+        $match = $matcher->match($tx, $agentUserId);
         if (($match['tenant_id'] ?? null) === null) {
             try {
                 $payments->storeUnmatched($tx, (string) ($match['reason'] ?? 'No tenant match'), [
                     'payment_method' => 'sms_forwarder',
+                    'agent_user_id' => $agentUserId,
                 ]);
             } catch (QueryException $e) {
                 if (! $this->isDuplicateKey($e)) {
@@ -322,6 +352,7 @@ class PropertyPaymentWebhookController extends Controller
             'source' => 'sms_ingest',
             'provider' => $provider !== '' ? $provider : 'mpesa',
             'message' => 'Payment ingested via SMS Forwarder.',
+            'agent_user_id' => $agentUserId,
         ]);
 
         $ingest->update([
@@ -354,16 +385,6 @@ class PropertyPaymentWebhookController extends Controller
         $driverCode = (int) ($e->errorInfo[1] ?? 0);
 
         return $sqlState === '23000' || $driverCode === 1062;
-    }
-
-    private function findTenantByPhone(string $normalizedPhone): ?PmTenant
-    {
-        $local = str_starts_with($normalizedPhone, '254') ? '0'.substr($normalizedPhone, 3) : $normalizedPhone;
-        $compact = ltrim($normalizedPhone, '+');
-
-        return PmTenant::query()
-            ->whereIn('phone', [$normalizedPhone, $compact, $local])
-            ->first();
     }
 
     private function mirrorToLoanIngest(Request $request): void

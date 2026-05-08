@@ -236,9 +236,18 @@ class PropertySettingsStoreWebController extends Controller
 
     public function systemSetupWorkflows(): View
     {
+        $envOverride = config('property.workflow_automation_enabled');
+        $workflowAutomationEnvIsSet = $envOverride !== null && $envOverride !== '';
+
         return view('property.agent.settings.system_setup.workflows', [
             'autoAssignTickets' => PropertyPortalSetting::getValue('workflow_auto_assign_tickets', '0') === '1',
             'autoReminders' => PropertyPortalSetting::getValue('workflow_auto_reminders', '0') === '1',
+            'workflowAutomationEffective' => PropertyPortalSetting::isAnyScheduledPropertyAutomationOn(),
+            'workflowAutomationEnvIsSet' => $workflowAutomationEnvIsSet,
+            'rentInvoicesAuto' => PropertyPortalSetting::isRentInvoiceAutomationEnabled(),
+            'waterInvoicesAuto' => PropertyPortalSetting::isWaterInvoiceAutomationEnabled(),
+            'rentRemindersAuto' => PropertyPortalSetting::isRentReminderAutomationEnabled(),
+            'waterPenaltiesAuto' => PropertyPortalSetting::isWaterPenaltyAutomationEnabled(),
             'reminderLeadDays' => PropertyPortalSetting::getValue('workflow_reminder_lead_days', '3'),
             'notes' => PropertyPortalSetting::getValue('workflow_notes', ''),
         ]);
@@ -249,15 +258,23 @@ class PropertySettingsStoreWebController extends Controller
         $data = $request->validate([
             'workflow_auto_assign_tickets' => ['nullable', 'in:0,1'],
             'workflow_auto_reminders' => ['nullable', 'in:0,1'],
+            'workflow_auto_rent_invoices' => ['nullable', 'in:0,1'],
+            'workflow_auto_water_invoices' => ['nullable', 'in:0,1'],
+            'workflow_auto_rent_reminders' => ['nullable', 'in:0,1'],
+            'workflow_auto_water_penalties' => ['nullable', 'in:0,1'],
             'workflow_reminder_lead_days' => ['nullable', 'integer', 'min:0', 'max:60'],
             'workflow_notes' => ['nullable', 'string', 'max:3000'],
         ]);
 
         PropertyPortalSetting::setValue('workflow_auto_assign_tickets', (string) ($data['workflow_auto_assign_tickets'] ?? '0'));
         PropertyPortalSetting::setValue('workflow_auto_reminders', (string) ($data['workflow_auto_reminders'] ?? '0'));
+        PropertyPortalSetting::setValue('workflow_auto_rent_invoices', (string) ($data['workflow_auto_rent_invoices'] ?? '0'));
+        PropertyPortalSetting::setValue('workflow_auto_water_invoices', (string) ($data['workflow_auto_water_invoices'] ?? '0'));
+        PropertyPortalSetting::setValue('workflow_auto_rent_reminders', (string) ($data['workflow_auto_rent_reminders'] ?? '0'));
+        PropertyPortalSetting::setValue('workflow_auto_water_penalties', (string) ($data['workflow_auto_water_penalties'] ?? '0'));
         PropertyPortalSetting::setValue('workflow_reminder_lead_days', (string) ($data['workflow_reminder_lead_days'] ?? 3));
         PropertyPortalSetting::setValue('workflow_notes', $data['workflow_notes'] ?? '');
-        PropertyPortalSetting::setValue('system_setup_workflows_count', '3');
+        PropertyPortalSetting::setValue('system_setup_workflows_count', '7');
 
         return back()->with('success', __('Workflow setup saved.'));
     }
@@ -835,6 +852,10 @@ class PropertySettingsStoreWebController extends Controller
             ['name' => 'Manage accounting entries', 'key' => 'accounting.entries.manage', 'group' => 'accounting'],
             ['name' => 'Manage payroll', 'key' => 'accounting.payroll.manage', 'group' => 'accounting'],
             ['name' => 'Manage communications', 'key' => 'communications.manage', 'group' => 'communications'],
+            ['name' => 'Export communications', 'key' => 'communications.export', 'group' => 'communications'],
+            ['name' => 'View full message body', 'key' => 'communications.view_message_body', 'group' => 'communications'],
+            ['name' => 'Send legal notices', 'key' => 'communications.send_legal_notice', 'group' => 'communications'],
+            ['name' => 'Approve legal notices', 'key' => 'communications.approve_notice', 'group' => 'communications'],
             ['name' => 'Manage listings', 'key' => 'listings.manage', 'group' => 'listings'],
             ['name' => 'Manage settings', 'key' => 'settings.manage', 'group' => 'settings'],
             ['name' => 'Manage access control', 'key' => 'settings.access.manage', 'group' => 'settings'],
@@ -859,7 +880,8 @@ class PropertySettingsStoreWebController extends Controller
                 'permissions' => [
                     'properties.manage', 'tenants.manage', 'leases.manage', 'maintenance.manage', 'vendors.manage',
                     'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
-                    'accounting.entries.manage', 'accounting.payroll.manage', 'communications.manage',
+                    'accounting.entries.manage', 'accounting.payroll.manage', 'communications.manage', 'communications.export', 'communications.view_message_body',
+                    'communications.send_legal_notice', 'communications.approve_notice',
                     'listings.manage', 'settings.manage', 'settings.access.manage',
                 ],
             ],
@@ -877,7 +899,8 @@ class PropertySettingsStoreWebController extends Controller
                 'portal_scope' => 'agent',
                 'description' => 'Tenant onboarding, leases, and listings.',
                 'permissions' => [
-                    'tenants.manage', 'leases.manage', 'listings.manage', 'communications.manage',
+                    'tenants.manage', 'leases.manage', 'listings.manage', 'communications.manage', 'communications.export',
+                    'communications.send_legal_notice',
                 ],
             ],
             'maintenance_officer' => [
@@ -885,7 +908,7 @@ class PropertySettingsStoreWebController extends Controller
                 'portal_scope' => 'agent',
                 'description' => 'Maintenance requests, jobs, and vendors.',
                 'permissions' => [
-                    'maintenance.manage', 'vendors.manage', 'communications.manage',
+                    'maintenance.manage', 'vendors.manage', 'communications.manage', 'communications.export',
                 ],
             ],
             'finance_clerk' => [
@@ -1306,9 +1329,9 @@ class PropertySettingsStoreWebController extends Controller
         $data = $request->validate([
             'company_name' => ['nullable', 'string', 'max:255'],
             'company_logo_url' => ['nullable', 'string', 'max:2048'],
-            'company_logo' => ['nullable', 'image', 'max:4096'],
+            'company_logo' => ['nullable', 'image', 'max:102400'],
             'site_favicon_url' => ['nullable', 'string', 'max:2048'],
-            'site_favicon' => ['nullable', 'image', 'max:2048'],
+            'site_favicon' => ['nullable', 'image', 'max:102400'],
             'contact_email_primary' => ['nullable', 'email', 'max:255'],
             'contact_email_support' => ['nullable', 'email', 'max:255'],
             'contact_phone' => ['nullable', 'string', 'max:64'],

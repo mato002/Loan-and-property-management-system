@@ -2,6 +2,7 @@
 
 namespace App\Services\Property;
 
+use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmMaintenanceJob;
@@ -12,8 +13,10 @@ use App\Models\PmMessageLog;
 use App\Models\PmVendor;
 use App\Models\Property;
 use App\Models\PropertyUnit;
+use App\Models\UnassignedPayment;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -64,12 +67,34 @@ final class PropertyDashboardOverview
         $maintInProgress = PmMaintenanceRequest::query()->where('status', 'in_progress')->count();
         $jobsActive = PmMaintenanceJob::query()->whereIn('status', ['quoted', 'approved', 'in_progress'])->count();
         $vendorsActive = PmVendor::query()->where('status', 'active')->count();
-        $landlords = User::query()->where('property_portal_role', 'landlord')->count();
-        $linkedLandlords = (int) DB::table('property_landlord')->distinct('user_id')->count('user_id');
+        $applyAgentFilter = AgentWorkspaceScope::shouldApply();
+        $agentUserId = $applyAgentFilter ? (int) Auth::id() : null;
+
+        $landlordsQuery = User::query()->where('property_portal_role', 'landlord');
+        if ($applyAgentFilter) {
+            $landlordsQuery->whereExists(function ($q) use ($agentUserId) {
+                $q->selectRaw('1')
+                    ->from('property_landlord as pl_landlords')
+                    ->join('properties as p_landlords', 'p_landlords.id', '=', 'pl_landlords.property_id')
+                    ->whereColumn('pl_landlords.user_id', 'users.id')
+                    ->where('p_landlords.agent_user_id', $agentUserId);
+            });
+        }
+        $landlords = $landlordsQuery->count();
+
+        $linkedLandlordsQuery = DB::table('property_landlord as pl')
+            ->distinct();
+        if ($applyAgentFilter) {
+            $linkedLandlordsQuery
+                ->join('properties as p_link', 'p_link.id', '=', 'pl.property_id')
+                ->where('p_link.agent_user_id', $agentUserId);
+        }
+        $linkedLandlords = (int) $linkedLandlordsQuery->count('pl.user_id');
+
         $linkedProperties = (int) Property::query()->has('landlords')->count();
         $propertiesWithoutLandlord = max(0, $properties - $linkedProperties);
         $unmatchedBankPayments = Schema::hasTable('unassigned_payments')
-            ? (int) DB::table('unassigned_payments')->count()
+            ? (int) UnassignedPayment::query()->count()
             : 0;
 
         $occ = PropertyDashboardStats::occupancyRate();
@@ -336,11 +361,15 @@ final class PropertyDashboardOverview
         $smsWalletBalance = $bulk->walletBalance();
         $provider = $bulk->providerBalance();
 
-        $recentLandlordLinks = DB::table('property_landlord as pl')
+        $recentLandlordLinksQuery = DB::table('property_landlord as pl')
             ->join('properties as p', 'p.id', '=', 'pl.property_id')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->orderByDesc('pl.id')
-            ->limit(6)
+            ->limit(6);
+        if ($applyAgentFilter) {
+            $recentLandlordLinksQuery->where('p.agent_user_id', $agentUserId);
+        }
+        $recentLandlordLinks = $recentLandlordLinksQuery
             ->get([
                 'p.name as property_name',
                 'u.name as landlord_name',

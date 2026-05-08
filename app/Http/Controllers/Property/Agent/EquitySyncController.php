@@ -10,6 +10,7 @@ use App\Models\PmTenant;
 use App\Models\UnassignedPayment;
 use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
+use App\Services\EquityBankService;
 use App\Services\PaymentMatchingService;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
@@ -147,10 +148,16 @@ class EquitySyncController extends Controller
         ]);
     }
 
-    public function triggerSync(): RedirectResponse
+    public function triggerSync(EquityBankService $equityBankService): RedirectResponse
     {
         if (! Schema::hasTable('payments') || ! Schema::hasTable('equity_sync_runs')) {
             return back()->withErrors(['equity' => 'Equity module is not ready. Run migrations and retry.']);
+        }
+
+        if (! $equityBankService->isConfigured()) {
+            return back()->withErrors([
+                'equity' => 'Equity API is not configured. Set EQUITY_API_BASE_URL, EQUITY_API_USERNAME, EQUITY_API_PASSWORD, EQUITY_API_KEY and EQUITY_API_SECRET in your .env, then run `php artisan config:clear`.',
+            ]);
         }
 
         Artisan::call('fetch:equity-transactions', ['--manual' => true]);
@@ -309,11 +316,13 @@ class EquitySyncController extends Controller
         ]);
     }
 
-    public function showUnmatchedPayment(UnassignedPayment $unassignedPayment): View
+    public function showUnmatchedPayment(Request $request, UnassignedPayment $unassignedPayment): View
     {
         if (! Schema::hasTable('unassigned_payments') || ! Schema::hasTable('payments')) {
             return $this->notReadyView('Payments module is not ready. Run migrations first.');
         }
+
+        $this->authorizeUnassignedPaymentAccess($request, $unassignedPayment);
 
         return view('property.agent.equity.unmatched_assign', [
             'item' => $unassignedPayment,
@@ -331,10 +340,15 @@ class EquitySyncController extends Controller
             return back()->withErrors(['payments' => 'Payments module is not ready. Run migrations first.']);
         }
 
+        $this->authorizeUnassignedPaymentAccess($request, $unassignedPayment);
+
         $data = $request->validate([
             'tenant_id' => ['required', 'integer', 'exists:pm_tenants,id'],
             'note' => ['nullable', 'string', 'max:255'],
         ]);
+
+        // The selected tenant must belong to the agent's workspace.
+        $this->authorizeTenantAccess($request, (int) $data['tenant_id']);
 
         $method = (string) ($unassignedPayment->payment_method ?: 'equity');
         $isSms = $method === 'sms_forwarder';
@@ -402,6 +416,7 @@ class EquitySyncController extends Controller
     }
 
     public function rematchUnmatchedPayment(
+        Request $request,
         UnassignedPayment $unassignedPayment,
         EquityPaymentRepository $payments,
         PaymentMatchingService $matcher,
@@ -410,6 +425,8 @@ class EquitySyncController extends Controller
         if (! Schema::hasTable('unassigned_payments') || ! Schema::hasTable('payments')) {
             return back()->withErrors(['payments' => 'Payments module is not ready. Run migrations first.']);
         }
+
+        $this->authorizeUnassignedPaymentAccess($request, $unassignedPayment);
 
         $tx = [
             'transaction_id' => (string) $unassignedPayment->transaction_id,
@@ -425,7 +442,7 @@ class EquitySyncController extends Controller
             ],
         ];
 
-        $match = $matcher->match($tx);
+        $match = $matcher->match($tx, $this->paymentMatchAgentUserId());
         $tenantId = (int) ($match['tenant_id'] ?? 0);
         if ($tenantId <= 0) {
             return back()->withErrors([
@@ -521,7 +538,7 @@ class EquitySyncController extends Controller
                     ],
                 ];
 
-                $match = $matcher->match($tx);
+                $match = $matcher->match($tx, $this->paymentMatchAgentUserId());
                 $tenantId = (int) ($match['tenant_id'] ?? 0);
                 if ($tenantId <= 0) {
                     $skipped++;
@@ -623,30 +640,14 @@ class EquitySyncController extends Controller
 
         $percent = static fn (float $amount) => $allAmount > 0 ? round(($amount / $allAmount) * 100, 1) : 0.0;
 
+        // Agent scoping is enforced by the global scope on the Payment model
+        // (App\Models\Payment::booted), which combines:
+        //   * payments.agent_user_id = me  (new column, written by the
+        //     forwarder token + EquityPaymentRepository), AND/OR
+        //   * payments whose tenant belongs to me (legacy fallback for rows
+        //     created before the agent_user_id column existed).
+        // Super admins skip the global scope and see everything.
         $query = Payment::query()->with(['tenant', 'pmPayment.tenant']);
-
-        $user = $request->user();
-        if ($user && ! ($user->is_super_admin ?? false) && (string) ($user->property_portal_role ?? '') === 'agent') {
-            $query->where(function (Builder $scope) use ($user) {
-                // Keep non-matched rows visible for reconciliation workflows.
-                $scope->where('status', '!=', 'matched');
-
-                if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
-                    $scope->orWhereExists(function ($sub) use ($user) {
-                        $sub->selectRaw('1')
-                            ->from('pm_tenants as t')
-                            ->whereColumn('t.id', 'payments.tenant_id')
-                            ->where('t.agent_user_id', $user->id);
-                    })->orWhereExists(function ($sub) use ($user) {
-                        $sub->selectRaw('1')
-                            ->from('pm_payments as pp')
-                            ->join('pm_tenants as t', 't.id', '=', 'pp.pm_tenant_id')
-                            ->whereColumn('pp.id', 'payments.pm_payment_id')
-                            ->where('t.agent_user_id', $user->id);
-                    });
-                }
-            });
-        }
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->query('status'));
@@ -755,9 +756,16 @@ class EquitySyncController extends Controller
                         $resolvedTenant = $item->tenant ?? $item->pmPayment?->tenant;
                         $resolvedTenantRow = null;
 
+                        $tenantWorkspaceFilter = static function ($q) {
+                            if (\App\Models\Concerns\AgentWorkspaceScope::shouldApply()) {
+                                $q->where('agent_user_id', (int) auth()->id());
+                            }
+                        };
+
                         if (! $resolvedTenant && (int) ($item->tenant_id ?? 0) > 0) {
                             $resolvedTenantRow = DB::table('pm_tenants')
                                 ->where('id', (int) $item->tenant_id)
+                                ->tap($tenantWorkspaceFilter)
                                 ->select(['id', 'name', 'account_number'])
                                 ->first();
                         }
@@ -776,6 +784,7 @@ class EquitySyncController extends Controller
                                     }
                                 })
                                 ->when($account !== '', fn ($q) => $q->orWhereRaw('UPPER(REPLACE(account_number, " ", "")) = ?', [str_replace(' ', '', $account)]))
+                                ->tap($tenantWorkspaceFilter)
                                 ->orderBy('id')
                                 ->select(['id', 'name', 'account_number'])
                                 ->first();
@@ -846,6 +855,9 @@ class EquitySyncController extends Controller
 
     private function buildUnmatchedQuery(Request $request, bool $hasPaymentMethod): Builder
     {
+        // Agent scoping is enforced by App\Models\UnassignedPayment::booted
+        // (preferring agent_user_id; falling back to phone/account match for
+        // legacy rows). Super admins see everything.
         $query = UnassignedPayment::query()->latest('created_at');
 
         if ($request->filled('from')) {
@@ -908,6 +920,82 @@ class EquitySyncController extends Controller
         }
 
         return 'Equity';
+    }
+
+    private function paymentMatchAgentUserId(): ?int
+    {
+        $u = auth()->user();
+        if (! $u) {
+            return null;
+        }
+        if (($u->property_portal_role ?? null) === 'agent') {
+            return (int) $u->id;
+        }
+
+        return null;
+    }
+
+    /**
+     * Aborts with 404 when the active agent user does not own (cannot claim)
+     * this unassigned payment. Super admins are unaffected. Used as a defence
+     * against URL tampering on row-bound endpoints.
+     */
+    private function authorizeUnassignedPaymentAccess(Request $request, UnassignedPayment $unassignedPayment): void
+    {
+        $user = $request->user();
+        if (! $user || ($user->is_super_admin ?? false) === true) {
+            return;
+        }
+        if ((string) ($user->property_portal_role ?? '') !== 'agent') {
+            return;
+        }
+        if (! Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+            abort(404);
+        }
+
+        $owns = PmTenant::query()
+            ->where('agent_user_id', $user->id)
+            ->where(function ($q) use ($unassignedPayment) {
+                $phone = (string) ($unassignedPayment->phone ?? '');
+                $account = (string) ($unassignedPayment->account_number ?? '');
+                if ($phone !== '') {
+                    $q->where('phone', $phone);
+                }
+                if ($account !== '') {
+                    $q->orWhere('account_number', $account);
+                }
+                if ($phone === '' && $account === '') {
+                    $q->whereRaw('1 = 0');
+                }
+            })
+            ->exists();
+
+        if (! $owns) {
+            abort(404);
+        }
+    }
+
+    /**
+     * Ensures a tenant id submitted via form input belongs to the active
+     * agent's workspace. Super admins are unaffected.
+     */
+    private function authorizeTenantAccess(Request $request, int $tenantId): void
+    {
+        $user = $request->user();
+        if (! $user || ($user->is_super_admin ?? false) === true) {
+            return;
+        }
+        if ((string) ($user->property_portal_role ?? '') !== 'agent') {
+            return;
+        }
+        if ($tenantId <= 0) {
+            abort(422, 'Invalid tenant.');
+        }
+
+        $exists = PmTenant::query()->where('id', $tenantId)->where('agent_user_id', $user->id)->exists();
+        if (! $exists) {
+            abort(403, 'Tenant does not belong to your workspace.');
+        }
     }
 }
 

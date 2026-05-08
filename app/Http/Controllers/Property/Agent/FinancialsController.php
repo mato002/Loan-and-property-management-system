@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\PmInvoice;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmPayment;
@@ -169,7 +170,7 @@ class FinancialsController extends Controller
         [$monthValue, $fyValue, $start, $end, $periodLabel] = $this->resolvePeriod($request);
         $search = trim((string) $request->query('q', ''));
 
-        $links = DB::table('property_landlord as pl')
+        $linksQuery = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->join('properties as p', 'p.id', '=', 'pl.property_id')
             ->select([
@@ -180,8 +181,11 @@ class FinancialsController extends Controller
                 'p.name as property_name',
             ])
             ->orderBy('u.name')
-            ->orderBy('p.name')
-            ->get();
+            ->orderBy('p.name');
+        if (AgentWorkspaceScope::shouldApply()) {
+            $linksQuery->where('p.agent_user_id', (int) $request->user()?->id);
+        }
+        $links = $linksQuery->get();
 
         $collectedByProperty = DB::table('pm_payment_allocations as a')
             ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
@@ -296,7 +300,7 @@ class FinancialsController extends Controller
             }
         }
 
-        $links = DB::table('property_landlord as pl')
+        $linksQuery = DB::table('property_landlord as pl')
             ->join('users as u', 'u.id', '=', 'pl.user_id')
             ->join('properties as p', 'p.id', '=', 'pl.property_id')
             ->select([
@@ -307,8 +311,11 @@ class FinancialsController extends Controller
                 'p.name as property_name',
             ])
             ->orderBy('u.name')
-            ->orderBy('p.name')
-            ->get();
+            ->orderBy('p.name');
+        if (AgentWorkspaceScope::shouldApply()) {
+            $linksQuery->where('p.agent_user_id', (int) $request->user()?->id);
+        }
+        $links = $linksQuery->get();
 
         $collectedMtdByProperty = DB::table('pm_payment_allocations as a')
             ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')

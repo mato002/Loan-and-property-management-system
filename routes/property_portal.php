@@ -5,6 +5,7 @@ use App\Http\Controllers\Property\Agent\AgentWorkspaceFormController;
 use App\Http\Controllers\Property\Agent\DashboardController;
 use App\Http\Controllers\Property\Agent\FinancialsController;
 use App\Http\Controllers\Property\Agent\PerformanceWorkspaceController;
+use App\Http\Controllers\Property\Agent\PmForwarderTokenController;
 use App\Http\Controllers\Property\Agent\PmInvoiceController;
 use App\Http\Controllers\Property\Agent\PmLeaseWebController;
 use App\Http\Controllers\Property\Agent\PmMaintenanceWebController;
@@ -55,6 +56,9 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
 
         Route::get('/revenue/rent-roll', [RevenueController::class, 'rentRoll'])->name('revenue.rent_roll');
         Route::get('/revenue/arrears', [RevenueController::class, 'arrears'])->name('revenue.arrears');
+        Route::get('/revenue/arrears/tenant/{tenant}', [RevenueController::class, 'arrearsTenant'])
+            ->whereNumber('tenant')
+            ->name('revenue.arrears.tenant');
         Route::post('/revenue/arrears/reminders', [RevenueController::class, 'sendArrearsReminders'])
             ->middleware('property.permission:communications.manage')
             ->name('revenue.arrears.reminders');
@@ -77,11 +81,14 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/revenue/payments', [PmPaymentController::class, 'payments'])->name('revenue.payments');
         Route::post('/revenue/payments', [PmPaymentController::class, 'store'])->middleware('property.permission:payments.record')->name('payments.store');
         Route::patch('/revenue/payments/{payment}/settle', [PmPaymentController::class, 'settle'])->middleware('property.permission:payments.settle')->name('payments.settle');
+        Route::post('/revenue/payments/{payment}/reversal/request', [PmPaymentController::class, 'requestReversal'])->middleware('property.permission:payments.settle')->name('payments.reversal.request');
+        Route::post('/revenue/payments/{payment}/reversal/approve', [PmPaymentController::class, 'approveReversal'])->middleware('property.permission:payments.settle')->name('payments.reversal.approve');
         Route::get('/revenue/payments/{payment}/receipt', [PmPaymentController::class, 'showReceipt'])->name('payments.receipt.show');
         Route::get('/revenue/payments/{payment}/receipt/download', [PmPaymentController::class, 'downloadReceipt'])->name('payments.receipt.download');
         Route::get('/revenue/receipts', [RevenueController::class, 'receipts'])->name('revenue.receipts');
         Route::get('/revenue/utilities-charges', [PropertyUtilityChargeController::class, 'index'])->name('revenue.utilities');
         Route::post('/revenue/utilities-charges', [PropertyUtilityChargeController::class, 'store'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.store');
+        Route::get('/revenue/utilities-charges/water-readings/default-previous', [PropertyUtilityChargeController::class, 'waterDefaultPreviousReadings'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_readings.default_previous');
         Route::post('/revenue/utilities-charges/water-readings', [PropertyUtilityChargeController::class, 'storeWaterReading'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_readings.store');
         Route::post('/revenue/utilities-charges/water-readings/bulk', [PropertyUtilityChargeController::class, 'storeBulkWaterReadings'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_readings.bulk');
         Route::post('/revenue/utilities-charges/water-readings/bulk-action', [PropertyUtilityChargeController::class, 'waterReadingsBulkAction'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_readings.bulk_action');
@@ -288,12 +295,28 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
 
         Route::get('/accounting', [PropertyAccountingController::class, 'index'])->name('accounting.index');
         Route::get('/accounting/entries', [PropertyAccountingController::class, 'entries'])->name('accounting.entries');
+        Route::get('/accounting/chart-of-accounts', [PropertyAccountingController::class, 'chartOfAccounts'])->name('accounting.gl.chart_accounts');
+        Route::post('/accounting/chart-of-accounts', [PropertyAccountingController::class, 'storeChartAccount'])->name('accounting.gl.chart_accounts.store');
+        Route::post('/accounting/chart-of-accounts/{account}/disable', [PropertyAccountingController::class, 'disableChartAccount'])->name('accounting.gl.chart_accounts.disable');
+        Route::post('/accounting/chart-of-accounts/{account}/clone', [PropertyAccountingController::class, 'cloneChartAccount'])->name('accounting.gl.chart_accounts.clone');
+        Route::post('/accounting/chart-of-accounts/{account}/usage-default', [PropertyAccountingController::class, 'setDefaultUsage'])->name('accounting.gl.chart_accounts.usage_default');
+        Route::get('/accounting/chart-of-accounts/export', [PropertyAccountingController::class, 'exportChartOfAccounts'])->name('accounting.gl.chart_accounts.export');
+        Route::get('/accounting/journal-batches', [PropertyAccountingController::class, 'journalBatches'])->name('accounting.gl.journal_batches');
+        Route::get('/accounting/journal-batches/{batch}/export', [PropertyAccountingController::class, 'exportJournalBatch'])->name('accounting.gl.journal_batches.export');
+        Route::get('/accounting/receivables/accounts', [PropertyAccountingController::class, 'accountsReceivable'])->name('accounting.receivables.accounts');
+        Route::get('/accounting/receivables/tenant-statements', [PropertyAccountingController::class, 'tenantStatements'])->name('accounting.receivables.tenant_statements');
+        Route::get('/accounting/payables/landlord-payables', [PropertyAccountingController::class, 'landlordPayables'])->name('accounting.payables.landlord_payables');
+        Route::get('/accounting/payables/landlord-payouts', [PropertyAccountingController::class, 'landlordPayouts'])->name('accounting.payables.landlord_payouts');
+        Route::get('/accounting/payables/accounts-payable', [PropertyAccountingController::class, 'accountsPayable'])->name('accounting.payables.accounts_payable');
+        Route::get('/accounting/cash-bank/reconciliation', [PropertyAccountingController::class, 'bankReconciliation'])->name('accounting.cash_bank.reconciliation');
         Route::get('/accounting/entries/export', [PropertyAccountingController::class, 'exportEntriesCsv'])->name('accounting.entries.export');
+        Route::get('/accounting/entries/{batch}', [PropertyAccountingController::class, 'showEntry'])->name('accounting.entries.show');
         Route::post('/accounting/entries', [PropertyAccountingController::class, 'storeEntry'])->middleware('property.permission:accounting.entries.manage')->name('accounting.entries.store');
         Route::post('/accounting/entries/{entry}/reverse', [PropertyAccountingController::class, 'reverseEntry'])->middleware('property.permission:accounting.entries.manage')->name('accounting.entries.reverse');
         Route::post('/accounting/entries/bulk', [PropertyAccountingController::class, 'bulkEntries'])->middleware('property.permission:accounting.entries.manage')->name('accounting.entries.bulk');
         Route::post('/accounting/settings/account-map', [PropertyAccountingController::class, 'saveAccountMap'])->name('accounting.settings.account_map.save');
         Route::get('/accounting/audit-trail', [PropertyAccountingController::class, 'auditTrail'])->name('accounting.audit_trail');
+        Route::get('/accounting/audit-trail/{batch}', [PropertyAccountingController::class, 'auditTrailShow'])->name('accounting.audit_trail.show');
         Route::get('/accounting/audit-trail/export', [PropertyAccountingController::class, 'exportAuditTrailCsv'])->name('accounting.audit_trail.export');
         Route::get('/accounting/payroll', [PropertyAccountingController::class, 'payroll'])->name('accounting.payroll');
         Route::post('/accounting/payroll', [PropertyAccountingController::class, 'payrollStore'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.store');
@@ -303,12 +326,31 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/accounting/payroll/payslips/{reference}', [PropertyAccountingController::class, 'payrollPayslipShow'])->name('accounting.payroll.payslips.show');
         Route::get('/accounting/payroll/settings', [PropertyAccountingController::class, 'payrollSettings'])->name('accounting.payroll.settings');
         Route::post('/accounting/payroll/settings', [PropertyAccountingController::class, 'payrollSettingsSave'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.settings.save');
+        Route::get('/accounting/payroll/{period}', [PropertyAccountingController::class, 'payrollShow'])->name('accounting.payroll.show');
+        Route::post('/accounting/payroll/{period}/approve', [PropertyAccountingController::class, 'payrollApprove'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.approve');
+        Route::post('/accounting/payroll/{period}/post', [PropertyAccountingController::class, 'payrollPost'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.post');
+        Route::post('/accounting/payroll/{period}/reverse', [PropertyAccountingController::class, 'payrollReverse'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.reverse');
+        Route::post('/accounting/payroll/{period}/payslips/email-all', [PropertyAccountingController::class, 'payrollPayslipsEmailAll'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.payslips.email_all');
+        Route::get('/accounting/payroll/{period}/export', [PropertyAccountingController::class, 'payrollExport'])->name('accounting.payroll.export');
+        Route::get('/accounting/payroll/{period}/lines/{line}/payslip', [PropertyAccountingController::class, 'payrollLinePayslipShow'])->name('accounting.payroll.lines.payslip.show');
+        Route::get('/accounting/payroll/{period}/lines/{line}/payslip/download', [PropertyAccountingController::class, 'payrollLinePayslipDownload'])->name('accounting.payroll.lines.payslip.download');
+        Route::post('/accounting/payroll/{period}/lines/{line}/payslip/email', [PropertyAccountingController::class, 'payrollLinePayslipEmail'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.lines.payslip.email');
+        Route::post('/accounting/payroll/{period}/lines/{line}/payment', [PropertyAccountingController::class, 'payrollLinePaymentUpdate'])->middleware('property.permission:accounting.payroll.manage')->name('accounting.payroll.lines.payment.update');
         Route::get('/accounting/reports/trial-balance', [PropertyAccountingController::class, 'trialBalance'])->name('accounting.reports.trial_balance');
         Route::get('/accounting/reports/trial-balance/export', [PropertyAccountingController::class, 'exportTrialBalanceCsv'])->name('accounting.reports.trial_balance.export');
         Route::get('/accounting/reports/income-statement', [PropertyAccountingController::class, 'incomeStatement'])->name('accounting.reports.income_statement');
         Route::get('/accounting/reports/income-statement/export', [PropertyAccountingController::class, 'exportIncomeStatementCsv'])->name('accounting.reports.income_statement.export');
+        Route::get('/accounting/reports/balance-sheet', [PropertyAccountingController::class, 'balanceSheet'])->name('accounting.reports.balance_sheet');
+        Route::get('/accounting/reports/aged-receivables', [PropertyAccountingController::class, 'agedReceivables'])->name('accounting.reports.aged_receivables');
+        Route::get('/accounting/reports/aged-payables', [PropertyAccountingController::class, 'agedPayables'])->name('accounting.reports.aged_payables');
+        Route::get('/accounting/reports/deposit-liability', [PropertyAccountingController::class, 'depositLiabilityReport'])->name('accounting.reports.deposit_liability');
         Route::get('/accounting/reports/cash-book', [PropertyAccountingController::class, 'cashBook'])->name('accounting.reports.cash_book');
         Route::get('/accounting/reports/cash-book/export', [PropertyAccountingController::class, 'exportCashBookCsv'])->name('accounting.reports.cash_book.export');
+        Route::get('/accounting/controls/reversals', [PropertyAccountingController::class, 'reversals'])->name('accounting.controls.reversals');
+        Route::get('/accounting/controls/periods', [PropertyAccountingController::class, 'periods'])->name('accounting.controls.periods');
+        Route::post('/accounting/controls/periods/{period}/status', [PropertyAccountingController::class, 'updatePeriodStatus'])->name('accounting.controls.periods.status');
+        Route::get('/accounting/settings/account-mapping', [PropertyAccountingController::class, 'accountMapping'])->name('accounting.settings.account_mapping');
+        Route::get('/accounting/settings/financial', [PropertyAccountingController::class, 'financialSettings'])->name('accounting.settings.financial');
 
         Route::get('/performance/collection-rate', [PerformanceWorkspaceController::class, 'collectionRate'])->name('performance.collection_rate');
         Route::get('/performance/vacancy', [PerformanceWorkspaceController::class, 'vacancy'])->name('performance.vacancy');
@@ -331,6 +373,10 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/communications/templates', [PropertyCommunicationsWebController::class, 'templates'])->name('communications.templates');
         Route::post('/communications/templates', [PropertyCommunicationsWebController::class, 'storeTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.store');
         Route::delete('/communications/templates/{template}', [PropertyCommunicationsWebController::class, 'destroyTemplate'])->middleware('property.permission:communications.manage')->name('communications.templates.destroy');
+        Route::get('/communications/conversations', [PropertyCommunicationsWebController::class, 'conversationsPage'])->middleware('property.permission:communications.manage')->name('communications.conversations');
+        Route::get('/communications/conversations-data', [PropertyCommunicationsWebController::class, 'conversations'])->middleware('property.permission:communications.manage')->name('communications.conversations.data');
+        Route::get('/communications/conversations/{conversation}', [PropertyCommunicationsWebController::class, 'showConversation'])->middleware('property.permission:communications.manage')->name('communications.conversations.show');
+        Route::post('/communications/conversations/{conversation}/reply', [PropertyCommunicationsWebController::class, 'replyConversation'])->middleware('property.permission:communications.manage')->name('communications.conversations.reply');
         Route::view('/communications', 'property.agent.communications.index')->name('communications.index');
 
         Route::get('/listings/create', [AgentPublicListingController::class, 'create'])->name('listings.create');
@@ -370,6 +416,14 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/settings/payments', [PropertySettingsStoreWebController::class, 'storePayments'])->middleware('property.permission:settings.manage')->name('settings.payments.store');
         Route::get('/settings/branding', [PropertySettingsStoreWebController::class, 'branding'])->name('settings.branding');
         Route::post('/settings/branding', [PropertySettingsStoreWebController::class, 'storeBranding'])->middleware('property.permission:settings.manage')->name('settings.branding.store');
+
+        // Per-agent SMS forwarder token. Self-service: each agent sees and
+        // manages only their own tokens. No permission gate beyond being a
+        // property portal "agent" because the controller already scopes by
+        // auth()->id().
+        Route::get('/settings/my-forwarder', [PmForwarderTokenController::class, 'index'])->name('settings.forwarder');
+        Route::post('/settings/my-forwarder', [PmForwarderTokenController::class, 'store'])->name('settings.forwarder.store');
+        Route::post('/settings/my-forwarder/{pmForwarderToken}/revoke', [PmForwarderTokenController::class, 'revoke'])->name('settings.forwarder.revoke');
         Route::get('/settings/rules', [PropertySettingsStoreWebController::class, 'rules'])->name('settings.rules');
         Route::post('/settings/rules', [PropertySettingsStoreWebController::class, 'storeRules'])->middleware('property.permission:settings.manage')->name('settings.rules.store');
         Route::get('/settings/deposits', [PropertySettingsStoreWebController::class, 'deposits'])->name('settings.deposits');

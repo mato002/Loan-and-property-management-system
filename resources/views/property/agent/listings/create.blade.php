@@ -109,6 +109,7 @@
                     >
                         @csrf
                         <input type="file" name="photos[]" accept="image/jpeg,image/png,image/webp" multiple required class="block w-full text-sm text-slate-600 dark:text-slate-300" />
+                        <p class="text-xs text-slate-500 dark:text-slate-400">JPEG/PNG/WEBP. Max 100MB per image, up to 12 images per upload.</p>
                         @if ($errors->has('photos') || $errors->has('photos.*'))
                             <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
                                 @foreach ($errors->get('photos') as $msg)

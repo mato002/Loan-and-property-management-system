@@ -13,6 +13,7 @@ use App\Models\PmWaterReading;
 use App\Models\PropertyUnit;
 use App\Support\TabularExport;
 use App\Services\Property\PropertyMoney;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -128,10 +129,16 @@ class PropertyUtilityChargeController extends Controller
             ['label' => 'Distinct units', 'value' => (string) $charges->getCollection()->unique('property_unit_id')->count(), 'hint' => 'Current page'],
             ['label' => 'Water readings', 'value' => (string) $waterReadings->count(), 'hint' => 'Recent'],
         ];
-        $waterChargePropertyIds = DB::table('pm_unit_utility_charges as charges')
+        $waterChargePropertyIdsQuery = DB::table('pm_unit_utility_charges as charges')
             ->join('property_units as units', 'units.id', '=', 'charges.property_unit_id')
             ->where('charges.charge_type', 'water')
-            ->distinct()
+            ->distinct();
+        if (\App\Models\Concerns\AgentWorkspaceScope::shouldApply()) {
+            $waterChargePropertyIdsQuery
+                ->join('properties as wp', 'wp.id', '=', 'units.property_id')
+                ->where('wp.agent_user_id', (int) auth()->id());
+        }
+        $waterChargePropertyIds = $waterChargePropertyIdsQuery
             ->pluck('units.property_id')
             ->map(fn ($id) => (int) $id)
             ->values();
@@ -415,6 +422,7 @@ class PropertyUtilityChargeController extends Controller
         $data = $request->validate([
             'property_unit_id' => ['required', 'exists:property_units,id'],
             'billing_month' => ['required', 'date_format:Y-m'],
+            'previous_reading' => ['nullable', 'numeric', 'min:0'],
             'current_reading' => ['required', 'numeric', 'min:0'],
             'rate_per_unit' => ['required', 'numeric', 'min:0'],
             'fixed_charge' => ['nullable', 'numeric', 'min:0'],
@@ -427,11 +435,9 @@ class PropertyUtilityChargeController extends Controller
         $rate = (float) $data['rate_per_unit'];
         $fixed = (float) ($data['fixed_charge'] ?? 0);
 
-        $prev = (float) (PmWaterReading::query()
-            ->where('property_unit_id', $unitId)
-            ->where('billing_month', '<', $month)
-            ->orderByDesc('billing_month')
-            ->value('current_reading') ?? 0);
+        $prev = $request->filled('previous_reading')
+            ? (float) $data['previous_reading']
+            : $this->defaultWaterPreviousReading($unitId, $month);
         $alreadyExists = PmWaterReading::query()
             ->where('property_unit_id', $unitId)
             ->where('billing_month', $month)
@@ -443,7 +449,9 @@ class PropertyUtilityChargeController extends Controller
         }
 
         if ($current < $prev) {
-            return back()->withErrors(['current_reading' => 'Current reading cannot be less than previous reading ('.$prev.').'])->withInput();
+            return back()->withErrors([
+                'current_reading' => 'Current reading cannot be less than previous reading ('.$prev.'). Adjust previous or current.',
+            ])->withInput();
         }
 
         $unitsUsed = $current - $prev;
@@ -466,6 +474,32 @@ class PropertyUtilityChargeController extends Controller
         return back()->with('success', 'Water meter reading saved.');
     }
 
+    /**
+     * Default previous reading per unit (last current reading before billing_month), for meter forms.
+     */
+    public function waterDefaultPreviousReadings(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'property_id' => ['required', 'integer', 'exists:properties,id'],
+            'billing_month' => ['required', 'date_format:Y-m'],
+        ]);
+
+        $propertyId = (int) $data['property_id'];
+        $month = (string) $data['billing_month'];
+
+        $previousByUnit = [];
+        foreach (PropertyUnit::query()->where('property_id', $propertyId)->orderBy('label')->pluck('id') as $unitId) {
+            $unitId = (int) $unitId;
+            $previousByUnit[(string) $unitId] = round(
+                $this->defaultWaterPreviousReading($unitId, $month),
+                3,
+                PHP_ROUND_HALF_UP
+            );
+        }
+
+        return response()->json(['previous_by_unit' => $previousByUnit]);
+    }
+
     public function storeBulkWaterReadings(Request $request): RedirectResponse
     {
         $data = $request->validate([
@@ -476,6 +510,8 @@ class PropertyUtilityChargeController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
             'current_readings' => ['required', 'array'],
             'current_readings.*' => ['nullable', 'numeric', 'min:0'],
+            'previous_readings' => ['nullable', 'array'],
+            'previous_readings.*' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $propertyId = (int) $data['property_id'];
@@ -512,16 +548,18 @@ class PropertyUtilityChargeController extends Controller
         $errors = [];
         $saved = 0;
 
-        DB::transaction(function () use ($submittedReadings, $month, $rate, $fixed, $notes, $unitMap, &$errors, &$saved) {
+        $previousReadings = $data['previous_readings'] ?? [];
+
+        DB::transaction(function () use ($submittedReadings, $previousReadings, $month, $rate, $fixed, $notes, $unitMap, &$errors, &$saved) {
             foreach ($submittedReadings as $unitId => $current) {
-                $prev = (float) (PmWaterReading::query()
-                    ->where('property_unit_id', (int) $unitId)
-                    ->where('billing_month', '<', $month)
-                    ->orderByDesc('billing_month')
-                    ->value('current_reading') ?? 0);
+                $unitId = (int) $unitId;
+                $rawPrev = $previousReadings[$unitId] ?? $previousReadings[(string) $unitId] ?? null;
+                $prev = ($rawPrev !== null && $rawPrev !== '')
+                    ? (float) $rawPrev
+                    : $this->defaultWaterPreviousReading($unitId, $month);
 
                 if ($current < $prev) {
-                    $errors['current_readings.'.$unitId] = ($unitMap[(int) $unitId] ?? ('Unit '.$unitId)).': current reading cannot be less than previous reading ('.$prev.').';
+                    $errors['current_readings.'.$unitId] = ($unitMap[$unitId] ?? ('Unit '.$unitId)).': current reading cannot be less than previous reading ('.$prev.'). Adjust previous or current.';
                     continue;
                 }
 
@@ -529,16 +567,16 @@ class PropertyUtilityChargeController extends Controller
                 $amount = ($unitsUsed * $rate) + $fixed;
 
                 $alreadyExists = PmWaterReading::query()
-                    ->where('property_unit_id', (int) $unitId)
+                    ->where('property_unit_id', $unitId)
                     ->where('billing_month', $month)
                     ->exists();
                 if ($alreadyExists) {
-                    $errors['current_readings.'.$unitId] = ($unitMap[(int) $unitId] ?? ('Unit '.$unitId)).': reading already exists for '.$month.'.';
+                    $errors['current_readings.'.$unitId] = ($unitMap[$unitId] ?? ('Unit '.$unitId)).': reading already exists for '.$month.'.';
                     continue;
                 }
 
                 PmWaterReading::query()->create([
-                    'property_unit_id' => (int) $unitId,
+                    'property_unit_id' => $unitId,
                     'billing_month' => $month,
                     'previous_reading' => $prev,
                     'current_reading' => $current,
@@ -730,6 +768,16 @@ class PropertyUtilityChargeController extends Controller
         }
 
         return back();
+    }
+
+    /** Latest prior-month current reading for this unit, or 0 if none (e.g. new meter). */
+    private function defaultWaterPreviousReading(int $unitId, string $billingMonth): float
+    {
+        return (float) (PmWaterReading::query()
+            ->where('property_unit_id', $unitId)
+            ->where('billing_month', '<', $billingMonth)
+            ->orderByDesc('billing_month')
+            ->value('current_reading') ?? 0);
     }
 
     /**

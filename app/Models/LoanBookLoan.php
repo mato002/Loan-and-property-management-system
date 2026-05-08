@@ -87,7 +87,10 @@ class LoanBookLoan extends Model
             $loan->where('status', self::STATUS_PENDING_DISBURSEMENT)
                 ->orWhere(function (Builder $open): void {
                     $open->where('status', '!=', self::STATUS_CLOSED)
-                        ->where('balance', '>', 0.01);
+                        ->orWhere('balance', '>', 0.01)
+                        ->orWhere('principal_outstanding', '>', 0.01)
+                        ->orWhere('interest_outstanding', '>', 0.01)
+                        ->orWhere('fees_outstanding', '>', 0.01);
                 });
         });
     }

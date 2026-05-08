@@ -14,7 +14,10 @@
                 <a href="{{ route('property.tenants.notices', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All notices</a>
                 <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'draft']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Draft</a>
                 <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'sent']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Sent</a>
-                <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'closed']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Closed</a>
+                <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'delivered']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Delivered</a>
+                <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'closed']), absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Closed</a>
+                <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['risk' => 'denied']), absolute: false) }}" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Denied actions</a>
+                <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['risk' => 'escalated']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Escalations</a>
                 <a href="{{ route('property.tenants.notices.export', (array) ($filters ?? []), absolute: false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
             </div>
         </div>
@@ -110,8 +113,8 @@
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
                     <select name="status" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        @foreach (['draft', 'sent', 'acknowledged', 'closed'] as $st)
-                            <option value="{{ $st }}" @selected(old('status', 'draft') === $st)>{{ ucfirst($st) }}</option>
+                        @foreach (['draft', 'pending_approval', 'approved', 'sent', 'delivered', 'acknowledged', 'disputed', 'expired', 'cancelled', 'escalated', 'closed'] as $st)
+                            <option value="{{ $st }}" @selected(old('status', 'draft') === $st)>{{ ucfirst(str_replace('_', ' ', $st)) }}</option>
                         @endforeach
                     </select>
                     @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -130,6 +133,74 @@
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save notice</button>
             </form>
             </details>
+        @endif
+
+        @if(isset($notices) && $notices->count() > 0)
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm max-w-5xl">
+                <h3 class="text-sm font-semibold text-slate-900">Notice audit timeline and proof of service</h3>
+                <p class="mt-1 text-xs text-slate-500">Update status with proof attachment and review service evidence per notice.</p>
+                <div class="mt-4 space-y-3">
+                    @foreach($notices->take(20) as $notice)
+                        <details class="rounded-xl border border-slate-200 p-3">
+                            <summary class="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2">
+                                <span class="text-sm font-medium text-slate-800">
+                                    #{{ $notice->id }} · {{ $notice->tenant?->name ?? 'Unknown tenant' }} · {{ ucfirst(str_replace('_',' ', (string) $notice->status)) }}
+                                </span>
+                                <span class="text-xs text-slate-500">{{ optional($notice->created_at)->format('Y-m-d H:i') }}</span>
+                            </summary>
+                            <div class="mt-3 grid gap-3 lg:grid-cols-2">
+                                <div class="rounded-lg bg-slate-50 p-3 text-xs text-slate-700 space-y-1">
+                                    <p><span class="font-semibold">Type:</span> {{ str_replace('_',' ', (string) $notice->notice_type) }}</p>
+                                    <p><span class="font-semibold">Created by:</span> {{ $notice->createdBy?->name ?? 'System' }}</p>
+                                    <p><span class="font-semibold">Served by:</span> {{ $notice->servedBy?->name ?? '—' }}</p>
+                                    <p><span class="font-semibold">Served at:</span> {{ optional($notice->served_at)->format('Y-m-d H:i') ?? '—' }}</p>
+                                    <p><span class="font-semibold">Message ID:</span> {{ $notice->message_id ?? '—' }}</p>
+                                    <p><span class="font-semibold">Delivery proof ID:</span> {{ $notice->delivery_proof_id ?? '—' }}</p>
+                                    <p><span class="font-semibold">Proof file:</span>
+                                        @if(!empty($notice->proof_attachment))
+                                            <a href="{{ \Illuminate\Support\Facades\Storage::disk('public')->url($notice->proof_attachment) }}" target="_blank" rel="noopener" class="text-indigo-700 hover:underline">Open proof</a>
+                                        @else
+                                            —
+                                        @endif
+                                    </p>
+                                    <div class="mt-3">
+                                        <p class="font-semibold text-slate-800">Audit events</p>
+                                        <div class="mt-1 space-y-1">
+                                            @forelse(($notice->events ?? collect())->take(8) as $event)
+                                                <div class="rounded border border-slate-200 bg-white px-2 py-1">
+                                                    <p class="text-[11px] font-semibold text-slate-700">
+                                                        {{ ucfirst(str_replace('_',' ', (string) $event->event_type)) }}
+                                                        @if(!empty($event->from_status) || !empty($event->to_status))
+                                                            · {{ ucfirst(str_replace('_',' ', (string) ($event->from_status ?? '—'))) }} → {{ ucfirst(str_replace('_',' ', (string) ($event->to_status ?? '—'))) }}
+                                                        @endif
+                                                    </p>
+                                                    <p class="text-[11px] text-slate-500">
+                                                        {{ optional($event->created_at)->format('Y-m-d H:i') }} by {{ $event->actor?->name ?? 'System' }}
+                                                    </p>
+                                                </div>
+                                            @empty
+                                                <p class="text-[11px] text-slate-500">No audit events yet.</p>
+                                            @endforelse
+                                        </div>
+                                    </div>
+                                </div>
+                                <form method="POST" enctype="multipart/form-data" action="{{ route('property.tenants.notices.status', ['notice' => $notice->id], absolute: false) }}" class="space-y-2 rounded-lg border border-slate-200 p-3">
+                                    @csrf
+                                    <label class="block text-xs font-medium text-slate-600">Update status</label>
+                                    <select name="status" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                                        @foreach(($legalStatuses ?? []) as $st)
+                                            <option value="{{ $st }}" @selected((string) $notice->status === (string) $st)>{{ ucfirst(str_replace('_',' ', $st)) }}</option>
+                                        @endforeach
+                                    </select>
+                                    <label class="block text-xs font-medium text-slate-600">Proof attachment (optional)</label>
+                                    <input type="file" name="proof_attachment" class="w-full text-xs" />
+                                    <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700">Save status/proof</button>
+                                </form>
+                            </div>
+                        </details>
+                    @endforeach
+                </div>
+            </div>
         @endif
 
         <script>
@@ -158,7 +229,7 @@
 
     <x-slot name="toolbar">
         <form method="get" action="{{ route('property.tenants.notices') }}" class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-8">
                 <div class="lg:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
                     <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Tenant, type, notes..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
@@ -167,8 +238,8 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
                     <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="">All</option>
-                        @foreach (['draft', 'sent', 'acknowledged', 'closed'] as $st)
-                            <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ ucfirst($st) }}</option>
+                        @foreach (['draft', 'pending_approval', 'approved', 'sent', 'delivered', 'acknowledged', 'disputed', 'expired', 'cancelled', 'escalated', 'closed'] as $st)
+                            <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ ucfirst(str_replace('_', ' ', $st)) }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -188,6 +259,23 @@
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">To</label>
                     <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Event type</label>
+                    <select name="event_type" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">Any</option>
+                        @foreach (['created', 'status_changed', 'dispatched', 'permission_denied', 'transition_denied'] as $evt)
+                            <option value="{{ $evt }}" @selected(($filters['event_type'] ?? '') === $evt)>{{ ucfirst(str_replace('_', ' ', $evt)) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Risk focus</label>
+                    <select name="risk" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">Any</option>
+                        <option value="denied" @selected(($filters['risk'] ?? '') === 'denied')>Denied actions</option>
+                        <option value="escalated" @selected(($filters['risk'] ?? '') === 'escalated')>Escalated</option>
+                    </select>
                 </div>
             </div>
             <div class="flex flex-wrap gap-2">

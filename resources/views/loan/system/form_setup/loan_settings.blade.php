@@ -176,7 +176,7 @@
                                     <button type="button" class="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50" @click="closePreviewModal()">Close</button>
                                 </div>
                                 <div class="max-h-[calc(85vh-8rem)] overflow-auto p-4">
-                                    <p class="mb-3 text-xs text-slate-600">Image and document types are stored in policy but are not shown on the current internal booking screen for dynamic text fields.</p>
+                                    <p class="mb-3 text-xs text-slate-600">Create application shows the same custom fields (including image and document uploads) in the main form when they are included for the selected product.</p>
                                     <table class="min-w-full text-xs">
                                         <thead class="bg-slate-50 text-slate-600">
                                             <tr>
@@ -518,7 +518,15 @@
                                                     </td>
                                                     <td class="px-3 py-3 align-top text-right">
                                                         @if (count($requiredApprovals) > 1)
-                                                            <button type="submit" form="remove-approval-band-{{ $i }}" class="text-xs font-semibold text-rose-600 hover:underline" onclick="return confirm('Remove this band?');">Remove</button>
+                                                            <button
+                                                                type="submit"
+                                                                form="remove-approval-band-{{ $i }}"
+                                                                class="text-xs font-semibold text-rose-600 hover:underline"
+                                                                data-swal-title="Remove approval band"
+                                                                data-swal-confirm="Remove this band? This cannot be undone from the screen."
+                                                                data-swal-confirm-text="Yes, remove"
+                                                                data-swal-cancel-text="Cancel"
+                                                            >Remove</button>
                                                         @endif
                                                     </td>
                                                 </tr>
@@ -1338,8 +1346,27 @@
                     sort_order: this.rows.length,
                 });
             },
-            remove(i) {
+            async remove(i) {
                 if (this.rows[i].is_core || this.editorScope === 'product') {
+                    return;
+                }
+                let confirmed = false;
+                if (typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function') {
+                    const r = await window.Swal.fire({
+                        icon: 'warning',
+                        title: 'Remove field?',
+                        text: 'This line will be removed when you save the loan form setup.',
+                        showCancelButton: true,
+                        confirmButtonColor: '#2f4f4f',
+                        cancelButtonColor: '#64748b',
+                        confirmButtonText: 'Yes, remove',
+                        cancelButtonText: 'Cancel',
+                    });
+                    confirmed = !!r.isConfirmed;
+                } else {
+                    confirmed = window.confirm('Remove this field? It will be removed when you save.');
+                }
+                if (!confirmed) {
                     return;
                 }
                 this.rows.splice(i, 1);

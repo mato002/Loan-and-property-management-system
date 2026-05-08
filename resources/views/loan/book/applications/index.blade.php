@@ -245,7 +245,6 @@
             <div class="px-5 py-4 border-b border-slate-100 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <h2 class="text-sm font-semibold text-slate-700">Pipeline</h2>
-                    <p class="mt-1 text-xs text-slate-500 max-w-xl">Change an application’s <strong>stage</strong> here (dropdown + Update) or use <strong>Edit</strong> for the full form. <strong>View</strong> is read-only summary and next-step hints — you do not need it to move the pipeline.</p>
                 </div>
                 <div class="flex items-center gap-2 shrink-0">
                     <div class="relative" @click.outside="columnMenuOpen = false">

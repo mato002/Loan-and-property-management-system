@@ -15,15 +15,17 @@ class ApplyOverdueWaterPenalties extends Command
 
     public function handle(): int
     {
-        $enabled = PropertyPortalSetting::getValue('workflow_auto_reminders', '0') === '1';
+        $enabled = PropertyPortalSetting::isWaterPenaltyAutomationEnabled();
         if (! $enabled) {
-            $this->info('Auto workflows disabled (workflow_auto_reminders=0). Skipping water penalties.');
+            $this->info('Water penalty automation is off (workflow toggles or PROPERTY_WORKFLOW_AUTOMATION_ENABLED). Skipping water penalties.');
+
             return self::SUCCESS;
         }
 
         $today = (string) ($this->option('date') ?: now()->toDateString());
         if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $today)) {
             $this->error('Invalid --date. Use YYYY-MM-DD.');
+
             return self::FAILURE;
         }
 
@@ -35,6 +37,7 @@ class ApplyOverdueWaterPenalties extends Command
 
         if ($rules->isEmpty()) {
             $this->info('No active penalty rules with scope=water. Nothing to apply.');
+
             return self::SUCCESS;
         }
 
@@ -85,7 +88,7 @@ class ApplyOverdueWaterPenalties extends Command
         }
 
         $this->info("Water penalties applied to {$applied} invoice(s).");
+
         return self::SUCCESS;
     }
 }
-

@@ -19,6 +19,10 @@ class PmPayment extends Model
     public const STATUS_COMPLETED = 'completed';
 
     public const STATUS_FAILED = 'failed';
+    public const REVERSAL_STATUS_PENDING = 'pending';
+    public const REVERSAL_STATUS_APPROVED = 'approved';
+    public const REVERSAL_STATUS_REJECTED = 'rejected';
+    public const REVERSAL_STATUS_REVERSED = 'reversed';
 
     protected $fillable = [
         'pm_tenant_id',
@@ -27,6 +31,12 @@ class PmPayment extends Model
         'external_ref',
         'paid_at',
         'status',
+        'reversal_status',
+        'reversal_reason',
+        'reversal_requested_by',
+        'reversal_requested_at',
+        'reversal_approved_by',
+        'reversal_approved_at',
         'meta',
     ];
 
@@ -35,6 +45,8 @@ class PmPayment extends Model
         return [
             'amount' => 'decimal:2',
             'paid_at' => 'datetime',
+            'reversal_requested_at' => 'datetime',
+            'reversal_approved_at' => 'datetime',
             'meta' => 'array',
         ];
     }

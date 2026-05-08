@@ -73,7 +73,7 @@ class PmInvoiceController extends Controller
         ]);
 
         return redirect()
-            ->route('property.revenue.invoices', absolute: false)
+            ->route('property.revenue.invoices')
             ->with('success', 'Invoice '.$invoice->invoice_no.' updated.');
     }
 

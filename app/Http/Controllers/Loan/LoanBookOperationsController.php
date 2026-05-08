@@ -283,6 +283,7 @@ class LoanBookOperationsController extends Controller
                 if (! $cashAccount) {
                     throw new \RuntimeException('Disbursement cash account (credit side of LoanDisbursed) could not be loaded.');
                 }
+                $canBypassBalanceGuard = (bool) ($request->user()?->hasLoanPermission('disbursements.override_balance_guard') ?? false);
                 if (Schema::hasColumn('accounting_chart_accounts', 'current_balance')) {
                     $balance = (float) ($cashAccount->current_balance ?? 0);
                     $canCover = $balance + 1e-6 >= $disburseAmount;
@@ -295,7 +296,7 @@ class LoanBookOperationsController extends Controller
                         $limit = max(0.0, (float) ($cashAccount->overdraft_limit ?? 0));
                         $canCover = ($balance + $limit + 1e-6) >= $disburseAmount;
                     }
-                    if (! $canCover) {
+                    if (! $canCover && ! $canBypassBalanceGuard) {
                         throw new \RuntimeException(sprintf(
                             'Insufficient balance in disbursement cash account "%s" (code %s). Ledger balance: %s; disbursement amount: %s.',
                             (string) ($cashAccount->name ?? ''),

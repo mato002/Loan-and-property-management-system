@@ -17,21 +17,24 @@ class GenerateMonthlyWaterInvoices extends Command
 
     public function handle(): int
     {
-        $enabled = PropertyPortalSetting::getValue('workflow_auto_reminders', '0') === '1';
+        $enabled = PropertyPortalSetting::isWaterInvoiceAutomationEnabled();
         if (! $enabled) {
-            $this->info('Auto workflows disabled (workflow_auto_reminders=0). Skipping water invoice generation.');
+            $this->info('Water invoice automation is off (workflow toggles or PROPERTY_WORKFLOW_AUTOMATION_ENABLED). Skipping water invoice generation.');
+
             return self::SUCCESS;
         }
 
         $ym = (string) ($this->option('month') ?: now()->format('Y-m'));
         if (! preg_match('/^\d{4}-\d{2}$/', $ym)) {
             $this->error('Invalid --month. Use YYYY-MM.');
+
             return self::FAILURE;
         }
 
         $due = (string) ($this->option('due-date') ?: ($ym.'-05'));
         if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $due)) {
             $this->error('Invalid --due-date. Use YYYY-MM-DD.');
+
             return self::FAILURE;
         }
 
@@ -43,6 +46,7 @@ class GenerateMonthlyWaterInvoices extends Command
 
         if ($readings->isEmpty()) {
             $this->info("No uninvoiced water readings for {$ym}.");
+
             return self::SUCCESS;
         }
 
@@ -57,6 +61,7 @@ class GenerateMonthlyWaterInvoices extends Command
 
             if (! $lease) {
                 $skipped++;
+
                 continue;
             }
 
@@ -70,6 +75,7 @@ class GenerateMonthlyWaterInvoices extends Command
             if ($exists) {
                 $reading->update(['pm_invoice_id' => null, 'status' => 'recorded']);
                 $skipped++;
+
                 continue;
             }
 
@@ -102,7 +108,7 @@ class GenerateMonthlyWaterInvoices extends Command
         }
 
         $this->info("Water invoices generated for {$ym}. Created={$created}, Skipped={$skipped}.");
+
         return self::SUCCESS;
     }
 }
-

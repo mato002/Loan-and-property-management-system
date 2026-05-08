@@ -40,19 +40,6 @@ function syncPropertyPortalNav(frame) {
             el.removeAttribute('data-section-active');
         }
     });
-
-    document.querySelectorAll('[data-property-nav-section]').forEach((section) => {
-        if (!section.querySelector('a[aria-current="page"]')) {
-            return;
-        }
-        if (window.Alpine && typeof window.Alpine.$data === 'function') {
-            try {
-                window.Alpine.$data(section).open = true;
-            } catch {
-                // ignore
-            }
-        }
-    });
 }
 
 function scrollPropertyMainToTop(frame) {
@@ -76,7 +63,11 @@ document.addEventListener('turbo:frame-load', (event) => {
         window.Alpine.initTree(frame);
     }
     if (typeof window.__runSwalFlash === 'function') {
-        window.__runSwalFlash();
+        queueMicrotask(() => {
+            window.setTimeout(() => {
+                window.__runSwalFlash();
+            }, 0);
+        });
     }
 });
 
@@ -111,6 +102,10 @@ document.addEventListener('turbo:load', () => {
         window.Alpine.initTree(frame);
     }
     if (typeof window.__runSwalFlash === 'function') {
-        window.__runSwalFlash();
+        queueMicrotask(() => {
+            window.setTimeout(() => {
+                window.__runSwalFlash();
+            }, 0);
+        });
     }
 });

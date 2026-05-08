@@ -29,7 +29,7 @@
                 </div>
                 <div class="flex-1">
                     <input id="profile_photo" name="profile_photo" type="file" accept="image/png,image/jpeg,image/webp" class="block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200" />
-                    <p class="mt-1 text-xs text-slate-500">Accepted: JPG, PNG, WEBP. Max size 2MB.</p>
+                    <p class="mt-1 text-xs text-slate-500">Accepted: JPG, PNG, WEBP. Max size 100MB.</p>
                 </div>
             </div>
             <label class="mt-3 inline-flex items-center gap-2 text-sm text-slate-600">

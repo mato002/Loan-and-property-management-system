@@ -11,6 +11,7 @@ class SmsSchedule extends Model
     protected $fillable = [
         'user_id',
         'sms_template_id',
+        'module',
         'body',
         'recipients',
         'scheduled_at',

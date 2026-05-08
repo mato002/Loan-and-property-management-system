@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 #[Fillable(['name', 'email', 'password', 'profile_photo_path', 'property_portal_role', 'loan_role', 'is_super_admin'])]
@@ -558,15 +559,23 @@ class User extends Authenticatable
             return null;
         }
 
-        if (Str::startsWith($raw, ['http://', 'https://', '/'])) {
+        if (Str::startsWith($raw, ['http://', 'https://'])) {
             return $raw;
         }
 
-        // Use a relative URL so the image works regardless of APP_URL host/port.
-        if (Str::startsWith($raw, 'storage/')) {
-            return '/'.ltrim($raw, '/');
+        $normalized = ltrim($raw, '/');
+        if (Str::startsWith($normalized, 'storage/')) {
+            $normalized = Str::after($normalized, 'storage/');
         }
 
-        return '/storage/'.ltrim($raw, '/');
+        $url = Storage::disk('public')->url($normalized);
+        if (! is_string($url) || trim($url) === '') {
+            return null;
+        }
+
+        // Bust browser cache after profile update so latest image shows immediately.
+        $version = (string) ($this->updated_at?->timestamp ?? time());
+
+        return $url.(str_contains($url, '?') ? '&' : '?').'v='.$version;
     }
 }

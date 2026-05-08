@@ -5,11 +5,12 @@ namespace App\Services;
 use App\Models\SmsLog;
 use App\Models\SmsSchedule;
 use App\Models\SmsWallet;
-use App\Models\SmsWalletTransaction;
 use App\Models\SmsWalletTopup;
+use App\Models\SmsWalletTransaction;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class BulkSmsService
@@ -26,7 +27,7 @@ class BulkSmsService
 
     private function localWalletBalanceValue(): float
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('sms_wallets')) {
+        if (! Schema::hasTable('sms_wallets')) {
             return 0.0;
         }
 
@@ -36,11 +37,13 @@ class BulkSmsService
     private function billingMode(): string
     {
         $mode = strtolower((string) config('bulksms.billing_mode', 'local_wallet'));
+
         return in_array($mode, ['local_wallet', 'provider', 'both'], true) ? $mode : 'local_wallet';
     }
 
     /**
      * Provider balance in currency units (e.g. KES), when supported.
+     *
      * @return array{ok:bool,balance?:float,error?:string}
      */
     public function providerBalance(): array
@@ -115,11 +118,13 @@ class BulkSmsService
                     if ($raw === null || $raw === '') {
                         return ['ok' => false, 'error' => 'Provider balance response did not include a balance field.'];
                     }
+
                     return ['ok' => true, 'balance' => (float) $raw];
                 } catch (Throwable $e2) {
                     return ['ok' => false, 'error' => 'Provider balance connection failed: '.$e2->getMessage()];
                 }
             }
+
             return ['ok' => false, 'error' => 'Provider balance connection failed: '.$e->getMessage()];
         }
     }
@@ -171,6 +176,7 @@ class BulkSmsService
 
         if ($source === 'provider') {
             $provider = $this->providerBalance();
+
             return (float) ($provider['ok'] ?? false ? ($provider['balance'] ?? 0) : 0);
         }
 
@@ -189,7 +195,7 @@ class BulkSmsService
      * @param  list<string>  $phones
      * @return array{ok: bool, error?: string, sent?: int, charged?: float}
      */
-    public function sendNow(string $message, array $phones, ?int $userId = null, ?int $scheduleId = null): array
+    public function sendNow(string $message, array $phones, ?int $userId = null, ?int $scheduleId = null, ?string $module = null): array
     {
         if ($phones === []) {
             return ['ok' => false, 'error' => 'Add at least one valid phone number.'];
@@ -198,8 +204,13 @@ class BulkSmsService
         $cost = $this->costPerSms();
         $total = round(count($phones) * $cost, 4);
 
-        return DB::transaction(function () use ($message, $phones, $userId, $scheduleId, $cost, $total) {
+        return DB::transaction(function () use ($message, $phones, $userId, $scheduleId, $cost, $total, $module) {
             $mode = $this->billingMode();
+            $resolvedModule = $module ? strtolower(trim($module)) : null;
+            if ($resolvedModule === null && $scheduleId !== null) {
+                $resolvedModule = SmsSchedule::query()->whereKey($scheduleId)->value('module');
+                $resolvedModule = $resolvedModule ? strtolower(trim((string) $resolvedModule)) : null;
+            }
 
             /** @var SmsWallet|null $wallet */
             $wallet = null;
@@ -261,6 +272,7 @@ class BulkSmsService
                 SmsLog::create([
                     'user_id' => $userId,
                     'sms_schedule_id' => $scheduleId,
+                    'module' => $resolvedModule,
                     'phone' => $phone,
                     'message' => $message,
                     'status' => $status === 'failed' ? 'failed' : 'sent',
@@ -314,7 +326,7 @@ class BulkSmsService
     }
 
     /**
-     * @param list<string> $phones
+     * @param  list<string>  $phones
      * @return array{ok:bool,error?:string,sent?:int,per_phone?:array<string,array<string,mixed>>}
      */
     private function sendViaProvider(string $message, array $phones): array
@@ -387,6 +399,7 @@ class BulkSmsService
                         'error' => null,
                     ],
                 ];
+
                 return [
                     'ok' => true,
                     'sent' => 1,
@@ -536,7 +549,7 @@ class BulkSmsService
      */
     public function walletIntegritySnapshot(): array
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('sms_wallets') || ! \Illuminate\Support\Facades\Schema::hasTable('sms_wallet_transactions')) {
+        if (! Schema::hasTable('sms_wallets') || ! Schema::hasTable('sms_wallet_transactions')) {
             return [
                 'status' => 'unavailable',
                 'wallet_balance' => null,
@@ -581,11 +594,13 @@ class BulkSmsService
         array $phones,
         \DateTimeInterface $when,
         ?int $templateId,
-        ?int $userId
+        ?int $userId,
+        ?string $module = null
     ): SmsSchedule {
         return SmsSchedule::create([
             'user_id' => $userId,
             'sms_template_id' => $templateId,
+            'module' => $module ? strtolower(trim($module)) : null,
             'body' => $message,
             'recipients' => $phones,
             'scheduled_at' => $when,
@@ -607,7 +622,8 @@ class BulkSmsService
                 $schedule->body,
                 $phones,
                 $schedule->user_id,
-                $schedule->id
+                $schedule->id,
+                $schedule->module
             );
 
             if ($result['ok']) {
@@ -625,7 +641,7 @@ class BulkSmsService
                 'processed_at' => now(),
                 'failure_reason' => $result['error'] ?? 'Send failed.',
             ]);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $schedule->update([
                 'status' => 'failed',
                 'processed_at' => now(),

@@ -2169,7 +2169,7 @@ class LoanAccountingController extends Controller
 
             $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
             if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
-                $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:4096'];
+                $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:10240'];
 
                 continue;
             }
@@ -2377,7 +2377,7 @@ class LoanAccountingController extends Controller
             }
             $type = (string) ($field['data_type'] ?? LoanFormFieldDefinition::TYPE_ALPHANUMERIC);
             if ($type === LoanFormFieldDefinition::TYPE_IMAGE) {
-                $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:4096'];
+                $rules["form_files.$key"] = ['nullable', 'file', 'image', 'max:10240'];
 
                 continue;
             }

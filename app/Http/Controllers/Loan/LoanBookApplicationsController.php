@@ -38,12 +38,54 @@ class LoanBookApplicationsController extends Controller
      *
      * @var list<string>
      */
-    private const DYNAMIC_TEXT_FORM_DATA_TYPES = [
+    /**
+     * Form meta fields stored as scalar request values (aligned with Loan Settings data types).
+     *
+     * @var list<string>
+     */
+    private const BOOKING_FORM_META_SCALAR_TYPES = [
         LoanFormFieldDefinition::TYPE_ALPHANUMERIC,
         LoanFormFieldDefinition::TYPE_NUMBER,
         LoanFormFieldDefinition::TYPE_MONEY,
         LoanFormFieldDefinition::TYPE_SELECT,
         LoanFormFieldDefinition::TYPE_LONG_TEXT,
+        LoanFormFieldDefinition::TYPE_DATE,
+        LoanFormFieldDefinition::TYPE_BOOLEAN,
+    ];
+
+    /**
+     * @var list<string>
+     */
+    private const BOOKING_FORM_META_FILE_TYPES = [
+        LoanFormFieldDefinition::TYPE_IMAGE,
+        LoanFormFieldDefinition::TYPE_DOCUMENT,
+    ];
+
+    /**
+     * Stable link from Loan Settings master {@see LoanFormFieldDefinition::$field_key}
+     * (slug of label at creation time) to Create application request keys / blade slots.
+     * Label-only matching fails when admins rename labels (e.g. "Client ID No" vs "Client Idno").
+     *
+     * @var array<string, string>
+     */
+    private const LOAN_SETTINGS_FIELD_KEY_TO_REQUEST_KEY = [
+        'loan_product' => 'product_name',
+        'client_id_no' => 'client_id_number',
+        'client_id_number' => 'client_id_number',
+        'loan_officer' => 'loan_officer',
+        'amount' => 'amount_requested',
+        'duration' => 'term_value',
+        'term' => 'term_value',
+        'term_length' => 'term_value',
+        'term_unit' => 'term_unit',
+        'interest_rate' => 'interest_rate',
+        'interest_rate_period' => 'interest_rate_period',
+        'purpose' => 'purpose',
+        'loan_purpose' => 'purpose',
+        'notes' => 'notes',
+        'internal_notes' => 'notes',
+        'stage' => 'stage',
+        'branch' => 'branch',
     ];
 
     public function __construct(
@@ -400,8 +442,9 @@ class LoanBookApplicationsController extends Controller
             'productMetaByName' => $this->productMetaByName(),
             'branchOptions' => $this->branchOptions(),
             'loanFormMappedFields' => $this->clientLoanMappedFields(),
+            'mappedBookingFieldDisplaySegments' => $this->mappedBookingFieldDisplaySegments(),
             'productFieldConfig' => $this->productFieldConfigForCreate($defaultProductName),
-            'dynamicLoanApplicationFields' => $this->dynamicLoanApplicationTextFields(),
+            'dynamicLoanApplicationFields' => $this->dynamicBookingFormMetaDefinitions(),
             'draftApplication' => $draftApplication,
             'pendingDrafts' => $pendingDrafts,
         ]);
@@ -436,10 +479,14 @@ class LoanBookApplicationsController extends Controller
         $draftId = (int) ($validated['draft_id'] ?? 0);
         $suspensePaymentId = (int) ($validated['suspense_payment_id'] ?? 0);
 
-        $dynamicFormMetaPersist = $this->mergeDynamicFormMetaForStore(
-            (array) ($validated['form_meta'] ?? []),
-            $draftId,
-            $request->user()
+        $byFieldKey = $this->effectiveFieldRowsByKey($this->productIdFromRequestProductName($request));
+        $dynamicFormMetaPersist = array_merge(
+            $this->mergeDynamicFormMetaForStore(
+                (array) ($validated['form_meta'] ?? []),
+                $draftId,
+                $request->user()
+            ),
+            $this->mergeUploadedFormMetaFiles($request, $byFieldKey, $draftId, $request->user())
         );
         unset($validated['form_meta']);
 
@@ -895,7 +942,7 @@ class LoanBookApplicationsController extends Controller
             'amount_requested' => ['amount', 'requested amount'],
             'term_value' => ['duration', 'term', 'term length'],
             'term_unit' => ['term unit', 'duration unit'],
-            'client_id_number' => ['client idno', 'idno', 'client id'],
+            'client_id_number' => ['client idno', 'idno', 'client id', 'client id no', 'client id number'],
             'loan_officer' => ['loan officer', 'officer'],
             'purpose' => ['purpose', 'loan purpose', 'business name'],
             'notes' => ['notes', 'internal notes', 'asset list'],
@@ -904,10 +951,29 @@ class LoanBookApplicationsController extends Controller
         ];
 
         $mapped = [];
+
+        foreach ($definitions as $field) {
+            $fk = strtolower(trim((string) $field->field_key));
+            $requestKey = self::LOAN_SETTINGS_FIELD_KEY_TO_REQUEST_KEY[$fk] ?? null;
+            if ($requestKey === null || isset($mapped[$requestKey])) {
+                continue;
+            }
+            $mapped[$requestKey] = [
+                'label' => (string) $field->label,
+                'data_type' => (string) $field->data_type,
+                'field_key' => (string) $field->field_key,
+                'select_options' => $this->splitSelectOptions((string) ($field->select_options ?? '')),
+                'is_core' => (bool) $field->is_core,
+            ];
+        }
+
         foreach ($definitions as $field) {
             $label = strtolower(trim((string) $field->label));
             foreach ($aliases as $key => $patterns) {
-                if (! in_array($label, $patterns, true) || isset($mapped[$key])) {
+                if (isset($mapped[$key])) {
+                    continue;
+                }
+                if (! in_array($label, $patterns, true)) {
                     continue;
                 }
                 $mapped[$key] = [
@@ -957,6 +1023,129 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
+     * Mapped request keys rendered on Create application (main form), in Loan Settings master order.
+     *
+     * @var list<string>
+     */
+    private const CREATE_MAPPED_BOOKING_FIELD_KEYS = [
+        'product_name',
+        'amount_requested',
+        'term_unit',
+        'term_value',
+        'interest_rate',
+        'interest_rate_period',
+        'stage',
+        'branch',
+        'purpose',
+        'notes',
+    ];
+
+    /**
+     * Keys laid out in the two-column grid on Create application (consecutive in sort order share one grid).
+     *
+     * @var list<string>
+     */
+    private const CREATE_MAPPED_GRID_FIELD_KEYS = [
+        'amount_requested',
+        'term_unit',
+        'term_value',
+        'interest_rate',
+        'interest_rate_period',
+    ];
+
+    /**
+     * @return list<string>
+     */
+    private function orderedMappedBookingRequestKeys(): array
+    {
+        $mapped = $this->clientLoanMappedFields();
+        $allowed = array_flip(self::CREATE_MAPPED_BOOKING_FIELD_KEYS);
+
+        $ordered = [];
+        foreach ($this->clientLoanFormDefinitions() as $definition) {
+            foreach ($mapped as $requestKey => $meta) {
+                if ((string) $meta['field_key'] !== (string) $definition->field_key) {
+                    continue;
+                }
+                if (! isset($allowed[$requestKey])) {
+                    continue;
+                }
+                if (in_array($requestKey, $ordered, true)) {
+                    continue;
+                }
+                $ordered[] = $requestKey;
+                break;
+            }
+        }
+
+        foreach (self::CREATE_MAPPED_BOOKING_FIELD_KEYS as $requestKey) {
+            if (isset($mapped[$requestKey]) && ! in_array($requestKey, $ordered, true)) {
+                $ordered[] = $requestKey;
+            }
+        }
+
+        return $ordered;
+    }
+
+    /**
+     * @return list<array{type: 'grid', keys: list<string>}|array{type: 'single', key: string}>
+     */
+    private function mappedBookingFieldDisplaySegments(): array
+    {
+        $mapped = $this->clientLoanMappedFields();
+        $gridFlip = array_flip(self::CREATE_MAPPED_GRID_FIELD_KEYS);
+
+        $segments = [];
+        $currentGrid = [];
+        foreach ($this->orderedMappedBookingRequestKeys() as $requestKey) {
+            if (! isset($mapped[$requestKey])) {
+                continue;
+            }
+            if (isset($gridFlip[$requestKey])) {
+                $currentGrid[] = $requestKey;
+
+                continue;
+            }
+            if ($currentGrid !== []) {
+                $segments[] = ['type' => 'grid', 'keys' => $currentGrid];
+                $currentGrid = [];
+            }
+            $segments[] = ['type' => 'single', 'key' => $requestKey];
+        }
+        if ($currentGrid !== []) {
+            $segments[] = ['type' => 'grid', 'keys' => $currentGrid];
+        }
+
+        return $segments;
+    }
+
+    /**
+     * Effective field rows keyed by {@see LoanFormFieldDefinition::$field_key} for the selected product.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function effectiveFieldRowsByKey(?int $productId): array
+    {
+        $byFieldKey = [];
+        foreach ($this->loanApplicationFormConfig->effectiveApplicationFieldsForConsumer($productId) as $row) {
+            $byFieldKey[(string) $row['field_key']] = $row;
+        }
+
+        return $byFieldKey;
+    }
+
+    private function productIdFromRequestProductName(Request $request): ?int
+    {
+        $trim = trim((string) $request->input('product_name', ''));
+        if ($trim === '' || ! Schema::hasTable('loan_products')) {
+            return null;
+        }
+        $id = (int) (LoanProduct::query()->where('name', $trim)->value('id') ?? 0);
+
+        return $id > 0 ? $id : null;
+    }
+
+    /**
      * @return array<string, list<\Illuminate\Contracts\Validation\ValidationRule|string>>
      */
     private function applicationCreateValidationRules(Request $request): array
@@ -969,15 +1158,7 @@ class LoanBookApplicationsController extends Controller
             'suspense_payment_id' => ['nullable', 'integer', 'exists:loan_book_payments,id'],
         ];
 
-        $trimProduct = trim((string) $request->input('product_name', ''));
-        $productId = Schema::hasTable('loan_products') && $trimProduct !== ''
-            ? (int) (LoanProduct::query()->where('name', $trimProduct)->value('id') ?? 0)
-            : 0;
-        $effectiveRows = $this->loanApplicationFormConfig->effectiveApplicationFieldsForConsumer($productId > 0 ? $productId : null);
-        $byFieldKey = [];
-        foreach ($effectiveRows as $row) {
-            $byFieldKey[(string) $row['field_key']] = $row;
-        }
+        $byFieldKey = $this->effectiveFieldRowsByKey($this->productIdFromRequestProductName($request));
 
         $fieldKeyToRequestKey = $this->mappedFieldKeyToRequestKey();
 
@@ -1027,7 +1208,7 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
-     * Validation rules for {@see LoanBookApplication::$form_meta} keys driven by text dynamic definitions.
+     * Validation rules for {@see LoanBookApplication::$form_meta} keys driven by Loan Settings field definitions.
      *
      * @param  array<string, array<string, mixed>>  $byFieldKey
      * @return array<string, list<\Illuminate\Contracts\Validation\ValidationRule|string>>
@@ -1038,7 +1219,7 @@ class LoanBookApplicationsController extends Controller
             'form_meta' => ['nullable', 'array'],
         ];
 
-        foreach ($this->dynamicLoanApplicationTextFields() as $definition) {
+        foreach ($this->dynamicBookingFormMetaDefinitions() as $definition) {
             $fieldKey = (string) $definition->field_key;
             $row = $byFieldKey[$fieldKey] ?? null;
             $included = $row ? ((bool) ($row['included'] ?? false) || (bool) ($row['is_core'] ?? false)) : true;
@@ -1052,6 +1233,10 @@ class LoanBookApplicationsController extends Controller
                     LoanFormFieldDefinition::TYPE_NUMBER, LoanFormFieldDefinition::TYPE_MONEY => ['nullable', 'numeric'],
                     LoanFormFieldDefinition::TYPE_LONG_TEXT => ['nullable', 'string', 'max:5000'],
                     LoanFormFieldDefinition::TYPE_SELECT => ['nullable', 'string', 'max:255'],
+                    LoanFormFieldDefinition::TYPE_DATE => ['nullable', 'date'],
+                    LoanFormFieldDefinition::TYPE_BOOLEAN => ['nullable', 'in:0,1'],
+                    LoanFormFieldDefinition::TYPE_IMAGE => ['nullable', 'file', 'image', 'max:10240'],
+                    LoanFormFieldDefinition::TYPE_DOCUMENT => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,gif,webp,doc,docx,xls,xlsx,txt', 'max:20480'],
                     default => ['nullable', 'string', 'max:255'],
                 };
 
@@ -1063,6 +1248,10 @@ class LoanBookApplicationsController extends Controller
                 LoanFormFieldDefinition::TYPE_NUMBER => [$presence, 'numeric'],
                 LoanFormFieldDefinition::TYPE_LONG_TEXT => [$presence, 'string', 'max:5000'],
                 LoanFormFieldDefinition::TYPE_SELECT => $this->dynamicSelectFormMetaRules($presence, $definition),
+                LoanFormFieldDefinition::TYPE_DATE => [$presence, 'date'],
+                LoanFormFieldDefinition::TYPE_BOOLEAN => [$presence, 'in:0,1'],
+                LoanFormFieldDefinition::TYPE_IMAGE => [$presence, 'file', 'image', 'max:10240'],
+                LoanFormFieldDefinition::TYPE_DOCUMENT => [$presence, 'file', 'mimes:pdf,jpg,jpeg,png,gif,webp,doc,docx,xls,xlsx,txt', 'max:20480'],
                 default => [$presence, 'string', 'max:255'],
             };
         }
@@ -1085,19 +1274,22 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
+     * Custom Loan Settings fields rendered on Create application (same library as the setup table).
+     *
      * @return Collection<int, LoanFormFieldDefinition>
      */
-    private function dynamicLoanApplicationTextFields(): Collection
+    private function dynamicBookingFormMetaDefinitions(): Collection
     {
         $reserved = array_flip($this->reservedLoanApplicationFieldKeys());
+        $allowed = array_merge(self::BOOKING_FORM_META_SCALAR_TYPES, self::BOOKING_FORM_META_FILE_TYPES);
 
         return $this->clientLoanFormDefinitions()
-            ->filter(function (LoanFormFieldDefinition $field) use ($reserved): bool {
+            ->filter(function (LoanFormFieldDefinition $field) use ($reserved, $allowed): bool {
                 if (isset($reserved[$field->field_key])) {
                     return false;
                 }
 
-                return in_array((string) $field->data_type, self::DYNAMIC_TEXT_FORM_DATA_TYPES, true);
+                return in_array((string) $field->data_type, $allowed, true);
             })
             ->values();
     }
@@ -1116,11 +1308,14 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
+     * Form meta keys merged from validated request (scalar fields only; files handled separately).
+     *
      * @return list<string>
      */
-    private function dynamicLoanApplicationTextFieldKeys(): array
+    private function dynamicScalarFormMetaFieldKeys(): array
     {
-        return $this->dynamicLoanApplicationTextFields()
+        return $this->dynamicBookingFormMetaDefinitions()
+            ->filter(fn (LoanFormFieldDefinition $f): bool => in_array((string) $f->data_type, self::BOOKING_FORM_META_SCALAR_TYPES, true))
             ->pluck('field_key')
             ->map(fn ($k): string => (string) $k)
             ->all();
@@ -1131,7 +1326,7 @@ class LoanBookApplicationsController extends Controller
      */
     private function mergeDynamicFormMetaForStore(array $validatedFormMeta, int $draftId, ?User $user): array
     {
-        $keys = $this->dynamicLoanApplicationTextFieldKeys();
+        $keys = $this->dynamicScalarFormMetaFieldKeys();
         if ($keys === []) {
             return [];
         }
@@ -1164,18 +1359,49 @@ class LoanBookApplicationsController extends Controller
     }
 
     /**
+     * Persist uploaded image/document fields into {@see LoanBookApplication::$form_meta} paths (public disk).
+     *
+     * @param  array<string, array<string, mixed>>  $byFieldKey
+     * @return array<string, string>
+     */
+    private function mergeUploadedFormMetaFiles(Request $request, array $byFieldKey, int $draftId, ?User $user): array
+    {
+        $out = [];
+        foreach ($this->dynamicBookingFormMetaDefinitions() as $definition) {
+            if (! in_array((string) $definition->data_type, self::BOOKING_FORM_META_FILE_TYPES, true)) {
+                continue;
+            }
+            $fk = (string) $definition->field_key;
+            $row = $byFieldKey[$fk] ?? null;
+            $included = $row ? ((bool) ($row['included'] ?? false) || (bool) ($row['is_core'] ?? false)) : false;
+            if (! $included) {
+                continue;
+            }
+            if (! $request->hasFile('form_meta.'.$fk)) {
+                continue;
+            }
+            $file = $request->file('form_meta.'.$fk);
+            if (! $file || ! $file->isValid()) {
+                continue;
+            }
+            $out[$fk] = $file->store('loan_book_application_meta', 'public');
+        }
+
+        return $out;
+    }
+
+    /**
      * @return Collection<int, LoanFormFieldDefinition>
      */
     private function clientLoanFormDefinitions()
     {
         LoanFormFieldDefinition::ensureDefaults(LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION);
 
+        // Include draft / requires_approval masters so per-product overrides can turn fields on for
+        // Create application; visibility still follows LoanSettingsApplicationFormConfigService rows.
         return LoanFormFieldDefinition::query()
             ->where('form_kind', LoanFormFieldDefinition::KIND_LOAN_SETTINGS_APPLICATION)
-            ->where(function (Builder $query): void {
-                $query->whereNull('field_status')
-                    ->orWhere('field_status', 'active');
-            })
+            ->whereNull('product_id')
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -1622,12 +1848,19 @@ class LoanBookApplicationsController extends Controller
             return 'This application is classified as blocked at the approval level and cannot be moved to approved.';
         }
 
-        $originatorId = data_get($application->form_meta, 'application_originator_user_id');
-        if ($originatorId !== null && $originatorId !== '' && (int) $originatorId === (int) $user->id) {
-            return 'You cannot approve an application that you created or originated. A different authorised officer must approve this file.';
+        if (! $user->hasLoanPermission('loan_applications.approve')) {
+            return 'You are not permitted to approve loan applications. Please contact an administrator to grant Loan Applications approval rights.';
         }
 
         $role = strtolower(trim((string) $user->effectiveLoanRole()));
+
+        $originatorId = data_get($application->form_meta, 'application_originator_user_id');
+        if ($originatorId !== null && $originatorId !== '' && (int) $originatorId === (int) $user->id) {
+            $legacyRoleBypass = in_array($role, ['admin', 'manager'], true);
+            if (! $legacyRoleBypass && ! $user->hasLoanPermission('loan_applications.approve_own')) {
+                return 'You cannot approve an application that you created or originated. A different authorised officer must approve this file.';
+            }
+        }
         if (! $this->userSatisfiesLoanApprovalLevel($user, $role, $level)) {
             return match ($level) {
                 'director' => 'This application requires director-level sign-off. Only an administrator-level loan role may approve it.',

@@ -56,6 +56,8 @@
                 || $errors->has('notes')
                 || $errors->has('current_reading')
                 || $errors->has('current_readings')
+                || $errors->has('previous_reading')
+                || $errors->has('previous_readings')
                 || $errors->has('rate_per_unit')
                 || $errors->has('fixed_charge')
                 || $errors->has('due_date');
@@ -93,6 +95,20 @@
             $oldChargePropertyId = (int) ($unitOptions->firstWhere('id', $oldChargeUnitId)['property_id'] ?? 0);
             $oldWaterUnitId = (int) old('property_unit_id', 0);
             $oldWaterPropertyId = (int) old('property_id', ($waterUnitOptions->firstWhere('id', $oldWaterUnitId)['property_id'] ?? 0));
+            $skipWaterPrevAutofill = false;
+            foreach ($errors->keys() as $_wrErrKey) {
+                if (! is_string($_wrErrKey)) {
+                    continue;
+                }
+                if (in_array($_wrErrKey, ['current_reading', 'previous_reading', 'billing_month', 'current_readings'], true)) {
+                    $skipWaterPrevAutofill = true;
+                    break;
+                }
+                if (str_starts_with($_wrErrKey, 'current_readings.') || str_starts_with($_wrErrKey, 'previous_readings.')) {
+                    $skipWaterPrevAutofill = true;
+                    break;
+                }
+            }
         @endphp
         <div
             x-data="{
@@ -111,6 +127,10 @@
                 selectedReadingUnitId: @js($oldWaterUnitId),
                 selectedWaterMonth: @js(old('billing_month', now()->format('Y-m'))),
                 showBulkWaterReadings: false,
+                defaultPreviousUrl: @js(route('property.revenue.utilities.water_readings.default_previous', [], true)),
+                waterPrevAutofillOnMount: @json(! $skipWaterPrevAutofill),
+                _prevFetchTimer: null,
+                _prevFetchToken: 0,
                 filteredUnits(propertyId) {
                     const pid = Number(propertyId || 0);
                     if (!pid) return [];
@@ -136,6 +156,7 @@
                     const exists = waterUnits.some((unit) => Number(unit.id) === Number(this.selectedReadingUnitId));
                     if (!exists) this.selectedReadingUnitId = Number(waterUnits[0]?.id || 0);
                     this.autofillWaterRates();
+                    this.scheduleFetchWaterPrevious();
                 },
                 syncChargeDefaults() {
                     const unitId = String(this.selectedChargeUnitId || '');
@@ -228,6 +249,51 @@
                     if (mode === 'fixed_only') return 'This unit water rule includes only fixed charge.';
                     return 'Rate/fixed auto-fill from property water template when available.';
                 },
+                formatWaterPreviousReading(n) {
+                    const x = Number(n);
+                    if (!Number.isFinite(x)) return '';
+                    return String(Number(x.toFixed(3)));
+                },
+                scheduleFetchWaterPrevious() {
+                    clearTimeout(this._prevFetchTimer);
+                    this._prevFetchTimer = setTimeout(() => this.fetchWaterPreviousDefaults(), 220);
+                },
+                async fetchWaterPreviousDefaults() {
+                    const pid = Number(this.selectedWaterPropertyId || 0);
+                    const month = String(this.selectedWaterMonth || '');
+                    if (!pid || !month || !this.defaultPreviousUrl) return;
+                    const token = ++this._prevFetchToken;
+                    const url = new URL(this.defaultPreviousUrl, window.location.origin);
+                    url.searchParams.set('property_id', String(pid));
+                    url.searchParams.set('billing_month', month);
+                    try {
+                        const res = await fetch(url.toString(), {
+                            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            credentials: 'same-origin',
+                        });
+                        if (!res.ok) return;
+                        const data = await res.json();
+                        if (token !== this._prevFetchToken) return;
+                        const map = data.previous_by_unit || {};
+                        const singleEl = this.$refs.singlePreviousReadingInput;
+                        if (singleEl instanceof HTMLInputElement) {
+                            const uid = String(this.selectedReadingUnitId || '');
+                            if (uid && Object.prototype.hasOwnProperty.call(map, uid)) {
+                                singleEl.value = this.formatWaterPreviousReading(map[uid]);
+                            }
+                        }
+                        if (this.$el && typeof this.$el.querySelectorAll === 'function') {
+                            this.$el.querySelectorAll('[data-water-bulk-prev]').forEach((el) => {
+                                if (!(el instanceof HTMLInputElement)) return;
+                                const uid = el.getAttribute('data-water-bulk-prev');
+                                if (!uid || !Object.prototype.hasOwnProperty.call(map, uid)) return;
+                                el.value = this.formatWaterPreviousReading(map[uid]);
+                            });
+                        }
+                    } catch (e) {
+                        if (window?.console?.debug) console.debug('Water previous reading autofill failed', e);
+                    }
+                },
                 isReadingRecorded(unitId) {
                     const month = String(this.selectedWaterMonth || '');
                     if (!month) return false;
@@ -235,7 +301,7 @@
                     return ids.includes(Number(unitId));
                 },
             }"
-            x-init="if (!$store.utilityUi) { Alpine.store('utilityUi', { showBillingActions: false, showWaterReadingsTable: false, showReadiness: true }); } $watch('selectedReadingUnitId', () => autofillWaterRates()); $watch('selectedChargeUnitId', () => syncChargeDefaults())"
+            x-init="if (!$store.utilityUi) { Alpine.store('utilityUi', { showBillingActions: false, showWaterReadingsTable: false, showReadiness: true }); } $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
             class="space-y-4"
         >
         <div class="flex flex-wrap gap-3">
@@ -394,10 +460,16 @@
                         </template>
                     </select>
                 </div>
-                <div class="grid gap-3 sm:grid-cols-3">
+                <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Month</label><input type="month" x-model="selectedWaterMonth" name="billing_month" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
-                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Current reading</label><input type="number" step="0.001" min="0" name="current_reading" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
-                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label><input x-ref="singleRatePerUnit" type="number" step="0.01" min="0" name="rate_per_unit" required :readonly="hasSelectedWaterTemplate()" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white read-only:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Previous reading <span class="font-normal text-slate-400">(optional)</span></label>
+                        <input type="number" step="0.001" min="0" name="previous_reading" x-ref="singlePreviousReadingInput" value="{{ old('previous_reading') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Loads from last reading when you pick unit & month" />
+                        @error('previous_reading')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                        <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Auto-fills from the last saved <span class="font-medium">current</span> reading for this unit (before the billing month). Edit if you need a different baseline (new meter, correction).</p>
+                    </div>
+                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Current reading</label><input type="number" step="0.001" min="0" name="current_reading" value="{{ old('current_reading') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" /></div>
+                    <div><label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label><input x-ref="singleRatePerUnit" type="number" step="0.01" min="0" name="rate_per_unit" value="{{ old('rate_per_unit') }}" required :readonly="hasSelectedWaterTemplate()" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white read-only:bg-slate-100 dark:bg-gray-900 text-sm px-3 py-2" /></div>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Fixed charge</label>
@@ -418,7 +490,7 @@
                 <div class="grid gap-3 sm:grid-cols-3">
                     <div>
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Month</label>
-                        <input type="month" name="billing_month" value="{{ old('billing_month') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        <input type="month" name="billing_month" x-model="selectedWaterMonth" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rate / unit</label>
@@ -439,6 +511,7 @@
                         <thead class="bg-slate-50 dark:bg-slate-900/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                             <tr>
                                 <th class="px-3 py-2">Unit</th>
+                                <th class="px-3 py-2">Previous <span class="font-normal normal-case text-slate-400">(opt.)</span></th>
                                 <th class="px-3 py-2">Current reading</th>
                             </tr>
                         </thead>
@@ -446,6 +519,19 @@
                             @foreach ($waterUnitOptions as $unit)
                                 <tr x-show="Number(selectedWaterPropertyId) === {{ (int) $unit['property_id'] }}" x-cloak>
                                     <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ $unit['label'] }}</td>
+                                    <td class="px-3 py-2">
+                                        <input
+                                            type="number"
+                                            step="0.001"
+                                            min="0"
+                                            name="previous_readings[{{ (int) $unit['id'] }}]"
+                                            data-water-bulk-prev="{{ (int) $unit['id'] }}"
+                                            value="{{ old('previous_readings.'.(int) $unit['id']) }}"
+                                            class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
+                                            placeholder="Loads when month/property set"
+                                        />
+                                        @error('previous_readings.'.(int) $unit['id'])<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                                    </td>
                                     <td class="px-3 py-2">
                                         <input
                                             type="number"
@@ -599,19 +685,21 @@
             </div>
             <div class="overflow-x-auto w-full min-w-0 -mx-4 px-4 sm:mx-0 sm:px-0">
                 <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-                    <thead><tr><th class="px-3 py-2"></th><th class="px-3 py-2">Month</th><th class="px-3 py-2">Unit</th><th class="px-3 py-2">Used</th><th class="px-3 py-2">Amount</th><th class="px-3 py-2">Status</th></tr></thead>
+                    <thead><tr><th class="px-3 py-2"></th><th class="px-3 py-2">Month</th><th class="px-3 py-2">Unit</th><th class="px-3 py-2">Prev</th><th class="px-3 py-2">Curr</th><th class="px-3 py-2">Used</th><th class="px-3 py-2">Amount</th><th class="px-3 py-2">Status</th></tr></thead>
                     <tbody>
                         @forelse (($waterReadings ?? collect()) as $r)
                             <tr class="border-t border-slate-100 dark:border-slate-700/80">
                                 <td class="px-3 py-2"><input type="checkbox" name="reading_ids[]" value="{{ (int) $r->id }}" @disabled($r->pm_invoice_id !== null) /></td>
                                 <td class="px-3 py-2">{{ $r->billing_month }}</td>
                                 <td class="px-3 py-2">{{ $r->unit->property->name ?? '—' }} / {{ $r->unit->label ?? '—' }}</td>
+                                <td class="px-3 py-2 tabular-nums">{{ number_format((float) $r->previous_reading, 3) }}</td>
+                                <td class="px-3 py-2 tabular-nums">{{ number_format((float) $r->current_reading, 3) }}</td>
                                 <td class="px-3 py-2">{{ number_format((float) $r->units_used, 3) }}</td>
                                 <td class="px-3 py-2">{{ \App\Services\Property\PropertyMoney::kes((float) $r->amount) }}</td>
                                 <td class="px-3 py-2">{{ ucfirst((string) $r->status) }}</td>
                             </tr>
                         @empty
-                            <tr><td colspan="6" class="px-3 py-6 text-slate-500">No readings yet.</td></tr>
+                            <tr><td colspan="8" class="px-3 py-6 text-slate-500">No readings yet.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

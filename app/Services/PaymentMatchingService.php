@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\PmInvoice;
 use App\Models\PmTenant;
+use Illuminate\Support\Facades\Schema;
 
 class PaymentMatchingService
 {
@@ -11,36 +12,80 @@ class PaymentMatchingService
      * @param  array<string,mixed>  $transaction
      * @return array{tenant_id:int|null, matched_by:string|null, reason:string|null}
      */
-    public function match(array $transaction): array
+    public function match(array $transaction, ?int $agentUserId = null): array
     {
+        $hasAgentColumn = Schema::hasColumn('pm_tenants', 'agent_user_id');
+
+        $scopeTenants = function ($query) use ($agentUserId, $hasAgentColumn) {
+            if ($agentUserId !== null && $agentUserId > 0 && $hasAgentColumn) {
+                $query->where('pm_tenants.agent_user_id', $agentUserId);
+            }
+        };
+
         $account = $this->normalizeReference((string) ($transaction['account_number'] ?? ''));
         if ($account !== '') {
-            $tenant = PmTenant::query()->whereRaw('UPPER(REPLACE(account_number, " ", "")) = ?', [$account])->first();
-            if ($tenant) {
-                return ['tenant_id' => (int) $tenant->id, 'matched_by' => 'account_number', 'reason' => null];
+            $q = PmTenant::query()->whereRaw('UPPER(REPLACE(account_number, " ", "")) = ?', [$account]);
+            $scopeTenants($q);
+            $tenants = $q->get();
+            if ($tenants->count() === 1) {
+                return ['tenant_id' => (int) $tenants->first()->id, 'matched_by' => 'account_number', 'reason' => null];
+            }
+            if ($tenants->count() > 1) {
+                return [
+                    'tenant_id' => null,
+                    'matched_by' => null,
+                    'reason' => 'Multiple tenants share this account number; narrow with agent_user_id or fix data.',
+                ];
             }
         }
 
         $phone = $this->normalizePhone((string) ($transaction['phone'] ?? ''));
         if ($phone !== '') {
             $phoneCandidates = $this->phoneCandidates($phone);
-            $tenant = PmTenant::query()
-                ->where(function ($q) use ($phoneCandidates) {
+            $q = PmTenant::query()
+                ->where(function ($outer) use ($phoneCandidates) {
                     foreach ($phoneCandidates as $candidate) {
-                        $q->orWhereRaw('REPLACE(REPLACE(REPLACE(phone, " ", ""), "-", ""), "+", "") = ?', [$candidate]);
+                        $outer->orWhereRaw('REPLACE(REPLACE(REPLACE(phone, " ", ""), "-", ""), "+", "") = ?', [$candidate]);
                     }
-                })
-                ->first();
-            if ($tenant) {
-                return ['tenant_id' => (int) $tenant->id, 'matched_by' => 'phone', 'reason' => null];
+                });
+            $scopeTenants($q);
+            $tenants = $q->get();
+            if ($tenants->count() === 1) {
+                return ['tenant_id' => (int) $tenants->first()->id, 'matched_by' => 'phone', 'reason' => null];
+            }
+            if ($tenants->count() > 1) {
+                return [
+                    'tenant_id' => null,
+                    'matched_by' => null,
+                    'reason' => 'Multiple tenants share this phone; pass agent_user_id on ingest or fix data.',
+                ];
             }
         }
 
         $reference = $this->normalizeReference((string) ($transaction['reference'] ?? ''));
         if ($reference !== '') {
-            $invoice = PmInvoice::query()->whereRaw('UPPER(REPLACE(invoice_no, " ", "")) = ?', [$reference])->first();
-            if ($invoice && $invoice->pm_tenant_id) {
-                return ['tenant_id' => (int) $invoice->pm_tenant_id, 'matched_by' => 'reference', 'reason' => null];
+            $q = PmInvoice::query()
+                ->withoutGlobalScopes()
+                ->whereRaw('UPPER(REPLACE(invoice_no, " ", "")) = ?', [$reference])
+                ->whereNotNull('pm_tenant_id')
+                ->with('tenant');
+
+            if ($agentUserId !== null && $agentUserId > 0 && $hasAgentColumn) {
+                $q->whereHas('tenant', fn ($tq) => $tq->where('agent_user_id', $agentUserId));
+            }
+
+            $invoices = $q->get();
+            if ($invoices->count() === 1) {
+                $tid = (int) $invoices->first()->pm_tenant_id;
+
+                return ['tenant_id' => $tid > 0 ? $tid : null, 'matched_by' => 'reference', 'reason' => null];
+            }
+            if ($invoices->count() > 1) {
+                return [
+                    'tenant_id' => null,
+                    'matched_by' => null,
+                    'reason' => 'Multiple invoices share this reference; fix invoice numbers.',
+                ];
             }
         }
 
@@ -90,4 +135,3 @@ class PaymentMatchingService
         return str_replace([' ', '-', '_'], '', $clean);
     }
 }
-

@@ -80,11 +80,12 @@
             <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
             <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
             <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="due_date" @selected(($filters['sort'] ?? 'due_date') === 'due_date')>Sort: Due date</option>
+                <option value="oldest_due" @selected(($filters['sort'] ?? 'oldest_due') === 'oldest_due')>Sort: Oldest due</option>
+                <option value="days_late" @selected(($filters['sort'] ?? '') === 'days_late')>Sort: Days late</option>
                 <option value="balance" @selected(($filters['sort'] ?? '') === 'balance')>Sort: Balance</option>
-                <option value="updated_at" @selected(($filters['sort'] ?? '') === 'updated_at')>Sort: Last contact</option>
-                <option value="invoice_no" @selected(($filters['sort'] ?? '') === 'invoice_no')>Sort: Invoice</option>
-                <option value="id" @selected(($filters['sort'] ?? '') === 'id')>Sort: ID</option>
+                <option value="last_contact" @selected(($filters['sort'] ?? '') === 'last_contact')>Sort: Last contact</option>
+                <option value="invoice_count" @selected(($filters['sort'] ?? '') === 'invoice_count')>Sort: # invoices</option>
+                <option value="tenant" @selected(($filters['sort'] ?? '') === 'tenant')>Sort: Tenant</option>
             </select>
             <select name="dir" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="asc" @selected(($filters['dir'] ?? 'asc') === 'asc')>Asc</option>
@@ -108,13 +109,13 @@
         @isset($paginator)
             <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <p class="text-sm text-slate-600">
-                    Showing {{ $paginator->firstItem() ?? 0 }}-{{ $paginator->lastItem() ?? 0 }} of {{ $paginator->total() }} arrears line(s)
+                    Showing {{ $paginator->firstItem() ?? 0 }}-{{ $paginator->lastItem() ?? 0 }} of {{ $paginator->total() }} tenant(s) in arrears
                 </p>
                 {{ $paginator->links() }}
             </div>
         @endisset
-        <p class="font-medium text-slate-700 dark:text-slate-300">Workflow ideas</p>
-        <p class="mt-1">Map states: Current → Reminder → Call → Plan → Notice → Legal. Each transition should log user, channel, and template used.</p>
+        <p class="font-medium text-slate-700 dark:text-slate-300">Tip</p>
+        <p class="mt-1">Each row rolls up all overdue invoices for that tenant. Click <span class="font-medium">View invoices</span> to see line-level detail and pick specific invoices for targeted reminders.</p>
     </x-slot>
     <script>
         (function () {

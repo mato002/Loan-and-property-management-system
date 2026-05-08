@@ -16,6 +16,9 @@ class PmMaintenanceJob extends Model
         'pm_maintenance_request_id',
         'pm_vendor_id',
         'quote_amount',
+        'expense_borne_by',
+        'recoverable',
+        'deduct_from_landlord',
         'status',
         'notes',
         'completed_at',
@@ -25,6 +28,8 @@ class PmMaintenanceJob extends Model
     {
         return [
             'quote_amount' => 'decimal:2',
+            'recoverable' => 'boolean',
+            'deduct_from_landlord' => 'boolean',
             'completed_at' => 'datetime',
         ];
     }

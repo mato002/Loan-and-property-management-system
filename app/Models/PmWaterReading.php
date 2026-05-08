@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AgentWorkspaceScope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -33,6 +35,13 @@ class PmWaterReading extends Model
             'fixed_charge' => 'decimal:2',
             'amount' => 'decimal:2',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::addGlobalScope('agent_workspace', function (Builder $query) {
+            AgentWorkspaceScope::applyByPropertyUnit($query, 'pm_water_readings');
+        });
     }
 
     public function unit(): BelongsTo

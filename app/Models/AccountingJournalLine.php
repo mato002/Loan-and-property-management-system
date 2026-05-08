@@ -10,9 +10,17 @@ class AccountingJournalLine extends Model
     protected $fillable = [
         'accounting_journal_entry_id',
         'accounting_chart_account_id',
+        'batch_id',
+        'account_id',
         'debit',
         'credit',
         'memo',
+        'reference',
+        'property_id',
+        'tenant_id',
+        'landlord_id',
+        'unit_id',
+        'agent_user_id',
     ];
 
     protected function casts(): array
@@ -28,8 +36,18 @@ class AccountingJournalLine extends Model
         return $this->belongsTo(AccountingJournalEntry::class, 'accounting_journal_entry_id');
     }
 
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(AccountingJournalBatch::class, 'batch_id');
+    }
+
     public function account(): BelongsTo
     {
         return $this->belongsTo(AccountingChartAccount::class, 'accounting_chart_account_id');
+    }
+
+    public function structuredAccount(): BelongsTo
+    {
+        return $this->belongsTo(AccountingChartAccount::class, 'account_id');
     }
 }

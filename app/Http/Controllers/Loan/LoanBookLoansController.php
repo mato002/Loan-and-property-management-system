@@ -60,7 +60,12 @@ class LoanBookLoansController extends Controller
             ->with(['loanClient.assignedEmployee', 'application']);
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $q = trim((string) $request->query('q', ''));
-        $status = trim((string) $request->query('status', ''));
+        $viewMode = strtolower(trim((string) $request->query('view', 'active')));
+        if (! in_array($viewMode, ['active', 'completed'], true)) {
+            $viewMode = 'active';
+        }
+        $statusDefault = $viewMode === 'completed' ? LoanBookLoan::STATUS_CLOSED : LoanBookLoan::STATUS_ACTIVE;
+        $status = trim((string) $request->query('status', $statusDefault));
         $branch = trim((string) $request->query('branch', ''));
         $repayment = trim((string) $request->query('repayment', ''));
         $nextStep = trim((string) $request->query('next_step', ''));
@@ -71,6 +76,14 @@ class LoanBookLoansController extends Controller
         $perPage = min(200, max(10, (int) $request->query('per_page', 15)));
 
         $query
+            ->when(
+                $viewMode === 'completed',
+                fn (Builder $builder) => $builder->where(function (Builder $closed): void {
+                    $closed->where('status', LoanBookLoan::STATUS_CLOSED)
+                        ->orWhere('balance', '<=', 0.01);
+                }),
+                fn (Builder $builder) => $builder->where('status', LoanBookLoan::STATUS_ACTIVE)->where('balance', '>', 0.01)
+            )
             ->when($q !== '', function (Builder $builder) use ($q): void {
                 $builder->where(function (Builder $inner) use ($q): void {
                     $inner->where('loan_number', 'like', '%'.$q.'%')
@@ -248,8 +261,11 @@ class LoanBookLoansController extends Controller
 
         return view('loan.book.loans.index', [
             'title' => 'View loans',
-            'subtitle' => 'Active and closed facilities in LoanBook.',
+            'subtitle' => $viewMode === 'completed'
+                ? 'Completed and settled facilities in LoanBook.'
+                : 'Active facilities in LoanBook.',
             'loans' => $loans,
+            'viewMode' => $viewMode,
             'q' => $q,
             'status' => $status,
             'branch' => $branch,
@@ -260,7 +276,15 @@ class LoanBookLoansController extends Controller
             'maturityFrom' => $maturityFrom,
             'maturityTo' => $maturityTo,
             'perPage' => $perPage,
-            'statuses' => $this->statusOptions(),
+            'statuses' => $viewMode === 'completed'
+                ? [
+                    LoanBookLoan::STATUS_CLOSED => $this->statusOptions()[LoanBookLoan::STATUS_CLOSED] ?? 'Closed',
+                  ]
+                : array_filter(
+                    $this->statusOptions(),
+                    fn ($_, $key) => (string) $key !== LoanBookLoan::STATUS_CLOSED,
+                    ARRAY_FILTER_USE_BOTH
+                ),
             'branches' => $branches,
             'portfolioIndicators' => [
                 'netLoanPortfolio' => $netLoanPortfolio,
@@ -543,7 +567,7 @@ class LoanBookLoansController extends Controller
                 $template
             );
 
-            $result = $bulkSms->sendNow($message, [$phones[0]], $userId, null);
+            $result = $bulkSms->sendNow($message, [$phones[0]], $userId, null, 'loan');
             if (! ($result['ok'] ?? false)) {
                 $failed++;
 

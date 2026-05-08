@@ -183,7 +183,8 @@ class LoanBulkSmsController extends Controller
                 $phones,
                 $when,
                 $validated['sms_template_id'] ?? null,
-                $userId
+                $userId,
+                'loan'
             );
 
             return redirect()
@@ -191,7 +192,7 @@ class LoanBulkSmsController extends Controller
                 ->with('status', 'SMS queued for '.$when->format('Y-m-d H:i').'.');
         }
 
-        $result = $bulkSms->sendNow($validated['message'], $phones, $userId, null);
+        $result = $bulkSms->sendNow($validated['message'], $phones, $userId, null, 'loan');
 
         if (! $result['ok']) {
             return back()->withInput()->withErrors(['message' => $result['error'] ?? 'Could not send messages.']);
@@ -264,6 +265,7 @@ class LoanBulkSmsController extends Controller
     public function logs(): View
     {
         $logs = SmsLog::query()
+            ->where('module', 'loan')
             ->with(['user', 'schedule'])
             ->orderByDesc('created_at')
             ->paginate(30);
@@ -304,6 +306,7 @@ class LoanBulkSmsController extends Controller
     public function schedules(): View
     {
         $schedules = SmsSchedule::query()
+            ->where('module', 'loan')
             ->with(['user', 'template'])
             ->orderByDesc('scheduled_at')
             ->paginate(20);

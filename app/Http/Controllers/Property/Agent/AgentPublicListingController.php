@@ -7,9 +7,9 @@ use App\Models\PropertyUnit;
 use App\Models\PropertyUnitPublicImage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 use Throwable;
 
@@ -169,7 +169,8 @@ class AgentPublicListingController extends Controller
 
         $validator = Validator::make($request->all(), [
             'photos' => ['required', 'array', 'max:12'],
-            'photos.*' => ['required', 'file', 'image', 'mimes:jpeg,jpg,png,webp'],
+            // Laravel max uses KB; 102400 = 100 MB per image.
+            'photos.*' => ['required', 'file', 'image', 'mimes:jpeg,jpg,png,webp', 'max:102400'],
         ], [
             'photos.required' => 'Select at least one image to upload.',
             'photos.array' => 'Upload failed: photos input was not sent correctly.',
@@ -178,6 +179,7 @@ class AgentPublicListingController extends Controller
             'photos.*.file' => 'One of the selected items is not a valid file.',
             'photos.*.image' => 'Only image files are allowed.',
             'photos.*.mimes' => 'Allowed image types: JPEG, JPG, PNG, WEBP.',
+            'photos.*.max' => 'Each image must not exceed 100 MB.',
         ]);
 
         if ($validator->fails()) {

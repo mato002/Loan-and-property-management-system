@@ -304,11 +304,23 @@ class LoanSettingsApplicationFormConfigService
                 $displayStatus = $rawStatus === 'requires_approval' ? 'requires_approval' : 'active';
 
                 if ($master->is_core) {
-                    LoanProductFormFieldOverride::query()
-                        ->where('product_id', $productId)
-                        ->where('form_kind', self::FORM_KIND)
-                        ->where('field_key', $master->field_key)
-                        ->delete();
+                    // Core fields are always included; still persist per-product required / visibility / order.
+                    // (Previously we deleted overrides here, so Required / Use previous data never saved for system rows.)
+                    LoanProductFormFieldOverride::query()->updateOrCreate(
+                        [
+                            'product_id' => $productId,
+                            'form_kind' => self::FORM_KIND,
+                            'field_key' => $master->field_key,
+                        ],
+                        [
+                            'is_included' => true,
+                            'is_required' => $required,
+                            'prefill_from_previous' => false,
+                            'visible_to' => $visibleTo !== '' ? $visibleTo : null,
+                            'display_status' => $displayStatus,
+                            'sort_order' => $index,
+                        ]
+                    );
 
                     continue;
                 }

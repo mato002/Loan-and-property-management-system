@@ -3,38 +3,59 @@
 namespace App\Console\Commands;
 
 use App\Models\PmInvoice;
-use App\Models\PmMessageLog;
 use App\Models\PmTenantNotice;
 use App\Models\PropertyPortalSetting;
 use App\Services\BulkSmsService;
+use App\Services\Property\PropertyCommunicationService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Carbon;
 
 class SendRentReminders extends Command
 {
-    protected $signature = 'rent:send-reminders {--date= : Run as-of date (YYYY-MM-DD)}';
+    protected $signature = 'rent:send-reminders {--date= : Run as-of date (YYYY-MM-DD)} {--force : Send even when not the 1st of the month}';
 
-    protected $description = 'Send rent reminders and escalation (email + SMS) for open invoices, with grace period up to day 5 then escalation.';
+    protected $description = 'On the 1st of each month (unless --force), email + SMS tenants about open rent invoices for the current month and any arrears.';
 
-    public function handle(BulkSmsService $sms): int
+    public function handle(PropertyCommunicationService $communication): int
     {
-        $enabled = PropertyPortalSetting::getValue('workflow_auto_reminders', '0') === '1';
+        $enabled = PropertyPortalSetting::isRentReminderAutomationEnabled();
         if (! $enabled) {
-            $this->info('Auto workflows disabled (workflow_auto_reminders=0). Skipping reminders.');
+            $this->info('Rent reminder automation is off (workflow toggles or PROPERTY_WORKFLOW_AUTOMATION_ENABLED). Skipping reminders.');
+
             return self::SUCCESS;
         }
 
         $today = (string) ($this->option('date') ?: now()->toDateString());
         if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $today)) {
             $this->error('Invalid --date. Use YYYY-MM-DD.');
+
             return self::FAILURE;
         }
+
+        $todayCarbon = Carbon::parse($today, (string) config('app.timezone'))->startOfDay();
+
+        if (! $this->option('force') && (int) $todayCarbon->format('j') !== 1) {
+            $this->info('Rent reminders are sent on the 1st of each month only. Pass --force to run on other days.');
+
+            return self::SUCCESS;
+        }
+
+        $monthStart = $todayCarbon->copy()->startOfMonth()->toDateString();
+        $monthEnd = $todayCarbon->copy()->endOfMonth()->toDateString();
 
         $invoices = PmInvoice::query()
             ->with(['tenant:id,name,email,phone', 'unit:id,label,property_id', 'unit.property:id,name'])
             ->where('status', '!=', PmInvoice::STATUS_DRAFT)
             ->whereColumn('amount_paid', '<', 'amount')
-            ->where('due_date', '<=', $today)
+            ->where(function ($q) use ($monthStart, $monthEnd) {
+                $q->where('due_date', '<', $monthStart)
+                    ->orWhereBetween('issue_date', [$monthStart, $monthEnd])
+                    ->orWhereBetween('due_date', [$monthStart, $monthEnd]);
+            })
+            ->where(function ($q) {
+                $q->whereNull('invoice_type')
+                    ->orWhereIn('invoice_type', [PmInvoice::TYPE_RENT, PmInvoice::TYPE_MIXED]);
+            })
             ->orderBy('due_date')
             ->orderBy('id')
             ->limit(500)
@@ -47,20 +68,22 @@ class SendRentReminders extends Command
                 continue;
             }
 
-            $due = $inv->due_date?->toDateString();
-            if (!$due) {
+            $dueC = $inv->due_date?->copy()->startOfDay();
+            if (! $dueC) {
                 continue;
             }
 
-            $daysPastDue = now()->parse($today)->diffInDays($inv->due_date, false) * -1;
-            $daysPastDue = max(0, (int) $daysPastDue);
-
-            // Grace: due date (D+0) through D+4; escalation from D+5.
-            $stage = $daysPastDue <= 4 ? "REMINDER D+{$daysPastDue}" : "ESCALATION D+{$daysPastDue}";
+            if ($dueC->isAfter($todayCarbon)) {
+                $stage = 'MONTHLY '.$todayCarbon->format('Y-m');
+            } else {
+                $daysPastDue = (int) $dueC->diffInDays($todayCarbon);
+                $stage = $daysPastDue <= 4 ? "REMINDER D+{$daysPastDue}" : "ESCALATION D+{$daysPastDue}";
+            }
 
             $tenant = $inv->tenant;
             $place = $inv->unit?->property?->name.'/'.$inv->unit?->label;
             $balance = number_format(max(0, (float) $inv->amount - (float) $inv->amount_paid), 2);
+            $due = $dueC->toDateString();
 
             $subject = "[RENT] {$inv->invoice_no} {$stage}";
             $body = "Rent payment reminder\n\n".
@@ -68,83 +91,86 @@ class SendRentReminders extends Command
                 "Unit: {$place}\n".
                 "Due date: {$due}\n".
                 "Balance due: {$balance}\n\n".
-                "If you have already paid, please ignore this message.";
+                'If you have already paid, please ignore this message.';
             $noticeCreated = false;
 
-            // Dedupe per invoice per day per channel.
-            $alreadyEmailed = PmMessageLog::query()
-                ->where('channel', 'email')
-                ->where('subject', $subject)
-                ->whereDate('created_at', $today)
-                ->exists();
-            $alreadySms = PmMessageLog::query()
-                ->where('channel', 'sms')
-                ->where('subject', $subject)
-                ->whereDate('created_at', $today)
-                ->exists();
+            if ($tenant && ! empty($tenant->email)) {
+                $message = $communication->sendNow([
+                    'created_by_user_id' => null,
+                    'channel' => 'email',
+                    'category' => 'rent_reminder',
+                    'purpose' => 'arrears_reminder',
+                    'subject' => $subject,
+                    'body' => $body,
+                    'idempotency_key' => 'rent:email:'.$inv->id.':'.$stage.':'.$todayCarbon->format('Y-m'),
+                    'recipient_type' => 'tenant',
+                    'recipient_id' => (int) $tenant->id,
+                ], [(string) $tenant->email]);
 
-            // Email
-            if (!$alreadyEmailed && $tenant && !empty($tenant->email)) {
-                try {
-                    Mail::raw($body, function ($m) use ($tenant, $subject) {
-                        $m->to($tenant->email)->subject($subject);
-                    });
-                    PmMessageLog::query()->create([
-                        'user_id' => null,
-                        'channel' => 'email',
-                        'to_address' => $tenant->email,
-                        'subject' => $subject,
-                        'body' => $body,
-                    ]);
+                if ($message->wasRecentlyCreated) {
                     $sent++;
                     if (! $noticeCreated) {
-                        $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $body);
+                        $noticeCreated = $this->createArrearsNoticeIfMissing(
+                            $inv,
+                            $body,
+                            $todayCarbon->year,
+                            $todayCarbon->month,
+                            $today
+                        );
                     }
-                } catch (\Throwable $e) {
-                    // still continue to SMS
                 }
             }
 
-            // SMS (logs + wallet debit via BulkSmsService)
-            if (!$alreadySms && $tenant && !empty($tenant->phone)) {
-                $phones = $sms->normalizeRecipientList((string) $tenant->phone);
+            if ($tenant && ! empty($tenant->phone)) {
+                $smsMsg = "{$subject}\nUnit: {$place}\nDue: {$due}\nBal: {$balance}";
+                $phones = app(BulkSmsService::class)->normalizeRecipientList((string) $tenant->phone);
                 if ($phones !== []) {
-                    $smsMsg = "{$subject}\nUnit: {$place}\nDue: {$due}\nBal: {$balance}";
-                    $result = $sms->sendNow($smsMsg, $phones, null, null);
-                    if (($result['ok'] ?? false) === true) {
-                        PmMessageLog::query()->create([
-                            'user_id' => null,
-                            'channel' => 'sms',
-                            'to_address' => implode(',', $phones),
-                            'subject' => $subject,
-                            'body' => $smsMsg,
-                        ]);
+                    $message = $communication->sendNow([
+                        'created_by_user_id' => null,
+                        'channel' => 'sms',
+                        'category' => 'rent_reminder',
+                        'purpose' => 'arrears_reminder',
+                        'subject' => $subject,
+                        'body' => $smsMsg,
+                        'idempotency_key' => 'rent:sms:'.$inv->id.':'.$stage.':'.$todayCarbon->format('Y-m'),
+                        'recipient_type' => 'tenant',
+                        'recipient_id' => (int) $tenant->id,
+                    ], $phones);
+
+                    if ($message->wasRecentlyCreated) {
                         $sent++;
                         if (! $noticeCreated) {
-                            $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $smsMsg);
+                            $noticeCreated = $this->createArrearsNoticeIfMissing(
+                                $inv,
+                                $smsMsg,
+                                $todayCarbon->year,
+                                $todayCarbon->month,
+                                $today
+                            );
                         }
                     }
                 }
             }
         }
 
-        $this->info("Rent reminders processed. Sent={$sent}.");
+        $this->info("Rent reminders processed (monthly batch). Sent={$sent}.");
+
         return self::SUCCESS;
     }
 
-    private function createArrearsNoticeIfMissing(PmInvoice $invoice, string $message): bool
+    private function createArrearsNoticeIfMissing(PmInvoice $invoice, string $message, int $year, int $month, string $dueOn): bool
     {
         $invoiceNo = (string) ($invoice->invoice_no ?? '');
         if ($invoiceNo === '') {
             return false;
         }
-        $today = now()->toDateString();
         $needle = 'Invoice: '.$invoiceNo;
         $exists = PmTenantNotice::query()
             ->where('pm_tenant_id', (int) $invoice->pm_tenant_id)
             ->where('property_unit_id', (int) $invoice->property_unit_id)
             ->where('notice_type', 'arrears_reminder')
-            ->whereDate('due_on', $today)
+            ->whereYear('due_on', $year)
+            ->whereMonth('due_on', $month)
             ->where('notes', 'like', '%'.$needle.'%')
             ->exists();
         if ($exists) {
@@ -156,7 +182,7 @@ class SendRentReminders extends Command
             'property_unit_id' => (int) $invoice->property_unit_id,
             'notice_type' => 'arrears_reminder',
             'status' => 'sent',
-            'due_on' => $today,
+            'due_on' => $dueOn,
             'notes' => "Auto arrears reminder\nInvoice: {$invoiceNo}\n\n{$message}",
             'created_by_user_id' => null,
         ]);
@@ -164,4 +190,3 @@ class SendRentReminders extends Command
         return true;
     }
 }
-

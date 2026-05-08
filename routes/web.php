@@ -24,6 +24,7 @@ use App\Http\Controllers\Loan\LoanPaymentsController;
 use App\Http\Controllers\Loan\LoanPaymentWebhookController;
 use App\Http\Controllers\Loan\LoanSystemHelpController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\Property\PropertyCommunicationWebhookController;
 use App\Http\Controllers\Property\PropertyPaymentWebhookController;
 use App\Http\Controllers\PublicController;
 use App\Http\Controllers\SuperAdmin\SuperAdminConsoleController;
@@ -132,6 +133,12 @@ Route::post('/webhooks/property/payments/stk-callback', [PropertyPaymentWebhookC
 Route::post('/webhooks/property/payments/sms-ingest', [PropertyPaymentWebhookController::class, 'smsIngest'])
     ->withoutMiddleware([PreventRequestForgery::class])
     ->name('webhooks.property.payments.sms_ingest');
+Route::post('/webhooks/property/communications/sms-delivery', [PropertyCommunicationWebhookController::class, 'smsDelivery'])
+    ->withoutMiddleware([PreventRequestForgery::class])
+    ->name('webhooks.property.communications.sms_delivery');
+Route::post('/webhooks/property/communications/sms-inbound', [PropertyCommunicationWebhookController::class, 'smsInbound'])
+    ->withoutMiddleware([PreventRequestForgery::class])
+    ->name('webhooks.property.communications.sms_inbound');
 Route::post('/webhooks/loan/payments/sms-ingest', [LoanPaymentWebhookController::class, 'smsIngest'])
     ->withoutMiddleware([PreventRequestForgery::class])
     ->name('webhooks.loan.payments.sms_ingest');
@@ -364,61 +371,61 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::delete('/{loan_client}', [LoanClientsController::class, 'destroy'])->name('destroy');
         });
 
-        Route::prefix('loan/employees')->name('loan.employees.')->group(function () {
+        Route::prefix('loan/employees')->middleware('loan.permission:employees.view')->name('loan.employees.')->group(function () {
             Route::get('/', [LoanEmployeesController::class, 'index'])->name('index');
-            Route::get('/create', [LoanEmployeesController::class, 'create'])->name('create');
-            Route::post('/', [LoanEmployeesController::class, 'store'])->name('store');
-            Route::post('/departments', [LoanEmployeesController::class, 'departmentsStore'])->name('departments.store');
-            Route::post('/branches', [LoanEmployeesController::class, 'branchesStore'])->name('branches.store');
-            Route::post('/bulk-delete', [LoanEmployeesController::class, 'employeesBulkDelete'])->name('bulk_delete');
+            Route::get('/create', [LoanEmployeesController::class, 'create'])->middleware('loan.permission:employees.create')->name('create');
+            Route::post('/', [LoanEmployeesController::class, 'store'])->middleware('loan.permission:employees.create')->name('store');
+            Route::post('/departments', [LoanEmployeesController::class, 'departmentsStore'])->middleware('loan.permission:employees.configure')->name('departments.store');
+            Route::post('/branches', [LoanEmployeesController::class, 'branchesStore'])->middleware('loan.permission:employees.configure')->name('branches.store');
+            Route::post('/bulk-delete', [LoanEmployeesController::class, 'employeesBulkDelete'])->middleware('loan.permission:employees.delete')->name('bulk_delete');
 
-            Route::get('/leaves/create', [LoanEmployeesController::class, 'leavesCreate'])->name('leaves.create');
-            Route::post('/leaves', [LoanEmployeesController::class, 'leavesStore'])->name('leaves.store');
-            Route::patch('/leaves/{staff_leave}/status', [LoanEmployeesController::class, 'leavesUpdateStatus'])->name('leaves.status');
-            Route::post('/leaves/bulk-status', [LoanEmployeesController::class, 'leavesBulkStatus'])->name('leaves.bulk_status');
+            Route::get('/leaves/create', [LoanEmployeesController::class, 'leavesCreate'])->middleware('loan.permission:employees.create')->name('leaves.create');
+            Route::post('/leaves', [LoanEmployeesController::class, 'leavesStore'])->middleware('loan.permission:employees.create')->name('leaves.store');
+            Route::patch('/leaves/{staff_leave}/status', [LoanEmployeesController::class, 'leavesUpdateStatus'])->middleware('loan.permission:employees.update')->name('leaves.status');
+            Route::post('/leaves/bulk-status', [LoanEmployeesController::class, 'leavesBulkStatus'])->middleware('loan.permission:employees.update')->name('leaves.bulk_status');
             Route::get('/leaves', [LoanEmployeesController::class, 'leaves'])->name('leaves');
 
-            Route::get('/groups/create', [LoanEmployeesController::class, 'groupsCreate'])->name('groups.create');
-            Route::post('/groups', [LoanEmployeesController::class, 'groupsStore'])->name('groups.store');
+            Route::get('/groups/create', [LoanEmployeesController::class, 'groupsCreate'])->middleware('loan.permission:employees.create')->name('groups.create');
+            Route::post('/groups', [LoanEmployeesController::class, 'groupsStore'])->middleware('loan.permission:employees.create')->name('groups.store');
             Route::get('/groups', [LoanEmployeesController::class, 'groups'])->name('groups');
             Route::get('/groups/{staff_group}', [LoanEmployeesController::class, 'groupsShow'])->name('groups.show');
-            Route::patch('/groups/{staff_group}', [LoanEmployeesController::class, 'groupsUpdate'])->name('groups.update');
-            Route::post('/groups/{staff_group}/members', [LoanEmployeesController::class, 'groupsMemberStore'])->name('groups.members.store');
-            Route::delete('/groups/{staff_group}/members/{employee}', [LoanEmployeesController::class, 'groupsMemberDestroy'])->name('groups.members.destroy');
-            Route::delete('/groups/{staff_group}', [LoanEmployeesController::class, 'groupsDestroy'])->name('groups.destroy');
+            Route::patch('/groups/{staff_group}', [LoanEmployeesController::class, 'groupsUpdate'])->middleware('loan.permission:employees.update')->name('groups.update');
+            Route::post('/groups/{staff_group}/members', [LoanEmployeesController::class, 'groupsMemberStore'])->middleware('loan.permission:employees.update')->name('groups.members.store');
+            Route::delete('/groups/{staff_group}/members/{employee}', [LoanEmployeesController::class, 'groupsMemberDestroy'])->middleware('loan.permission:employees.delete')->name('groups.members.destroy');
+            Route::delete('/groups/{staff_group}', [LoanEmployeesController::class, 'groupsDestroy'])->middleware('loan.permission:employees.delete')->name('groups.destroy');
 
-            Route::get('/portfolios/create', [LoanEmployeesController::class, 'portfoliosCreate'])->name('portfolios.create');
-            Route::post('/portfolios', [LoanEmployeesController::class, 'portfoliosStore'])->name('portfolios.store');
-            Route::post('/portfolios/bulk-delete', [LoanEmployeesController::class, 'portfoliosBulkDelete'])->name('portfolios.bulk_delete');
+            Route::get('/portfolios/create', [LoanEmployeesController::class, 'portfoliosCreate'])->middleware('loan.permission:employees.create')->name('portfolios.create');
+            Route::post('/portfolios', [LoanEmployeesController::class, 'portfoliosStore'])->middleware('loan.permission:employees.create')->name('portfolios.store');
+            Route::post('/portfolios/bulk-delete', [LoanEmployeesController::class, 'portfoliosBulkDelete'])->middleware('loan.permission:employees.delete')->name('portfolios.bulk_delete');
             Route::get('/portfolios', [LoanEmployeesController::class, 'portfolios'])->name('portfolios');
-            Route::get('/portfolios/{staff_portfolio}/edit', [LoanEmployeesController::class, 'portfoliosEdit'])->name('portfolios.edit');
-            Route::patch('/portfolios/{staff_portfolio}', [LoanEmployeesController::class, 'portfoliosUpdate'])->name('portfolios.update');
-            Route::delete('/portfolios/{staff_portfolio}', [LoanEmployeesController::class, 'portfoliosDestroy'])->name('portfolios.destroy');
+            Route::get('/portfolios/{staff_portfolio}/edit', [LoanEmployeesController::class, 'portfoliosEdit'])->middleware('loan.permission:employees.update')->name('portfolios.edit');
+            Route::patch('/portfolios/{staff_portfolio}', [LoanEmployeesController::class, 'portfoliosUpdate'])->middleware('loan.permission:employees.update')->name('portfolios.update');
+            Route::delete('/portfolios/{staff_portfolio}', [LoanEmployeesController::class, 'portfoliosDestroy'])->middleware('loan.permission:employees.delete')->name('portfolios.destroy');
 
-            Route::get('/loan-applications/create', [LoanEmployeesController::class, 'loanApplicationsCreate'])->name('loan_applications.create');
-            Route::post('/loan-applications', [LoanEmployeesController::class, 'loanApplicationsStore'])->name('loan_applications.store');
-            Route::post('/loan-applications/bulk-status', [LoanEmployeesController::class, 'loanApplicationsBulkStatus'])->name('loan_applications.bulk_status');
+            Route::get('/loan-applications/create', [LoanEmployeesController::class, 'loanApplicationsCreate'])->middleware('loan.permission:employees.create')->name('loan_applications.create');
+            Route::post('/loan-applications', [LoanEmployeesController::class, 'loanApplicationsStore'])->middleware('loan.permission:employees.create')->name('loan_applications.store');
+            Route::post('/loan-applications/bulk-status', [LoanEmployeesController::class, 'loanApplicationsBulkStatus'])->middleware('loan.permission:employees.update')->name('loan_applications.bulk_status');
             Route::get('/loan-applications', [LoanEmployeesController::class, 'loanApplications'])->name('loan_applications');
-            Route::patch('/loan-applications/{staff_loan_application}', [LoanEmployeesController::class, 'loanApplicationsUpdate'])->name('loan_applications.update');
+            Route::patch('/loan-applications/{staff_loan_application}', [LoanEmployeesController::class, 'loanApplicationsUpdate'])->middleware('loan.permission:employees.update')->name('loan_applications.update');
 
-            Route::get('/staff-loans/create', [LoanEmployeesController::class, 'staffLoansCreate'])->name('staff_loans.create');
-            Route::post('/staff-loans', [LoanEmployeesController::class, 'staffLoansStore'])->name('staff_loans.store');
-            Route::post('/staff-loans/bulk', [LoanEmployeesController::class, 'staffLoansBulk'])->name('staff_loans.bulk');
+            Route::get('/staff-loans/create', [LoanEmployeesController::class, 'staffLoansCreate'])->middleware('loan.permission:employees.create')->name('staff_loans.create');
+            Route::post('/staff-loans', [LoanEmployeesController::class, 'staffLoansStore'])->middleware('loan.permission:employees.create')->name('staff_loans.store');
+            Route::post('/staff-loans/bulk', [LoanEmployeesController::class, 'staffLoansBulk'])->middleware('loan.permission:employees.update')->name('staff_loans.bulk');
             Route::get('/staff-loans', [LoanEmployeesController::class, 'staffLoans'])->name('staff_loans');
-            Route::get('/staff-loans/{staff_loan}/edit', [LoanEmployeesController::class, 'staffLoansEdit'])->name('staff_loans.edit');
-            Route::patch('/staff-loans/{staff_loan}', [LoanEmployeesController::class, 'staffLoansUpdate'])->name('staff_loans.update');
-            Route::delete('/staff-loans/{staff_loan}', [LoanEmployeesController::class, 'staffLoansDestroy'])->name('staff_loans.destroy');
+            Route::get('/staff-loans/{staff_loan}/edit', [LoanEmployeesController::class, 'staffLoansEdit'])->middleware('loan.permission:employees.update')->name('staff_loans.edit');
+            Route::patch('/staff-loans/{staff_loan}', [LoanEmployeesController::class, 'staffLoansUpdate'])->middleware('loan.permission:employees.update')->name('staff_loans.update');
+            Route::delete('/staff-loans/{staff_loan}', [LoanEmployeesController::class, 'staffLoansDestroy'])->middleware('loan.permission:employees.delete')->name('staff_loans.destroy');
 
-            Route::post('/workplan/items', [LoanEmployeesController::class, 'workplanItemStore'])->name('workplan.items.store');
-            Route::post('/workplan/items/{workplan_item}/toggle', [LoanEmployeesController::class, 'workplanItemToggle'])->name('workplan.items.toggle');
-            Route::delete('/workplan/items/{workplan_item}', [LoanEmployeesController::class, 'workplanItemDestroy'])->name('workplan.items.destroy');
+            Route::post('/workplan/items', [LoanEmployeesController::class, 'workplanItemStore'])->middleware('loan.permission:employees.create')->name('workplan.items.store');
+            Route::post('/workplan/items/{workplan_item}/toggle', [LoanEmployeesController::class, 'workplanItemToggle'])->middleware('loan.permission:employees.update')->name('workplan.items.toggle');
+            Route::delete('/workplan/items/{workplan_item}', [LoanEmployeesController::class, 'workplanItemDestroy'])->middleware('loan.permission:employees.delete')->name('workplan.items.destroy');
             Route::get('/workplan', [LoanEmployeesController::class, 'workplan'])->name('workplan');
 
             Route::get('/{employee}', [LoanEmployeesController::class, 'show'])->name('show');
-            Route::post('/{employee}/resend-login', [LoanEmployeesController::class, 'resendLoginCredentials'])->name('resend_login');
-            Route::get('/{employee}/edit', [LoanEmployeesController::class, 'edit'])->name('edit');
-            Route::patch('/{employee}', [LoanEmployeesController::class, 'update'])->name('update');
-            Route::delete('/{employee}', [LoanEmployeesController::class, 'destroy'])->name('destroy');
+            Route::post('/{employee}/resend-login', [LoanEmployeesController::class, 'resendLoginCredentials'])->middleware('loan.permission:employees.update')->name('resend_login');
+            Route::get('/{employee}/edit', [LoanEmployeesController::class, 'edit'])->middleware('loan.permission:employees.update')->name('edit');
+            Route::patch('/{employee}', [LoanEmployeesController::class, 'update'])->middleware('loan.permission:employees.update')->name('update');
+            Route::delete('/{employee}', [LoanEmployeesController::class, 'destroy'])->middleware('loan.permission:employees.delete')->name('destroy');
         });
 
         Route::prefix('loan/regions')->name('loan.regions.')->group(function () {
@@ -430,40 +437,40 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::delete('/{loan_region}', [LoanOrganizationController::class, 'regionsDestroy'])->name('destroy');
         });
 
-        Route::prefix('loan/branches')->name('loan.branches.')->group(function () {
+        Route::prefix('loan/branches')->middleware('loan.permission:branches.view')->name('loan.branches.')->group(function () {
             Route::get('/loan-summary', [LoanOrganizationController::class, 'branchLoanSummary'])->name('loan_summary');
             Route::get('/changes', [LoanOrganizationController::class, 'branchChangesIndex'])->name('changes.index');
-            Route::post('/changes/{change}/approve', [LoanOrganizationController::class, 'branchChangesApprove'])->name('changes.approve');
-            Route::post('/changes/{change}/reject', [LoanOrganizationController::class, 'branchChangesReject'])->name('changes.reject');
-            Route::get('/create', [LoanOrganizationController::class, 'branchesCreate'])->name('create');
-            Route::post('/', [LoanOrganizationController::class, 'branchesStore'])->name('store');
+            Route::post('/changes/{change}/approve', [LoanOrganizationController::class, 'branchChangesApprove'])->middleware('loan.permission:branches.approve')->name('changes.approve');
+            Route::post('/changes/{change}/reject', [LoanOrganizationController::class, 'branchChangesReject'])->middleware('loan.permission:branches.approve')->name('changes.reject');
+            Route::get('/create', [LoanOrganizationController::class, 'branchesCreate'])->middleware('loan.permission:branches.create')->name('create');
+            Route::post('/', [LoanOrganizationController::class, 'branchesStore'])->middleware('loan.permission:branches.create')->name('store');
             Route::get('/', [LoanOrganizationController::class, 'branchesIndex'])->name('index');
-            Route::get('/{loan_branch}/edit', [LoanOrganizationController::class, 'branchesEdit'])->name('edit');
-            Route::patch('/{loan_branch}', [LoanOrganizationController::class, 'branchesUpdate'])->name('update');
-            Route::delete('/{loan_branch}', [LoanOrganizationController::class, 'branchesDestroy'])->name('destroy');
+            Route::get('/{loan_branch}/edit', [LoanOrganizationController::class, 'branchesEdit'])->middleware('loan.permission:branches.update')->name('edit');
+            Route::patch('/{loan_branch}', [LoanOrganizationController::class, 'branchesUpdate'])->middleware('loan.permission:branches.update')->name('update');
+            Route::delete('/{loan_branch}', [LoanOrganizationController::class, 'branchesDestroy'])->middleware('loan.permission:branches.delete')->name('destroy');
         });
 
-        Route::prefix('loan/analytics')->name('loan.analytics.')->group(function () {
-            Route::get('/loan-sizes/create', [LoanBusinessAnalyticsController::class, 'loanSizesCreate'])->name('loan_sizes.create');
-            Route::post('/loan-sizes', [LoanBusinessAnalyticsController::class, 'loanSizesStore'])->name('loan_sizes.store');
+        Route::prefix('loan/analytics')->middleware('loan.permission:analytics.view')->name('loan.analytics.')->group(function () {
+            Route::get('/loan-sizes/create', [LoanBusinessAnalyticsController::class, 'loanSizesCreate'])->middleware('loan.permission:analytics.create')->name('loan_sizes.create');
+            Route::post('/loan-sizes', [LoanBusinessAnalyticsController::class, 'loanSizesStore'])->middleware('loan.permission:analytics.create')->name('loan_sizes.store');
             Route::get('/loan-sizes', [LoanBusinessAnalyticsController::class, 'loanSizesIndex'])->name('loan_sizes');
-            Route::get('/loan-sizes/{analytics_loan_size}/edit', [LoanBusinessAnalyticsController::class, 'loanSizesEdit'])->name('loan_sizes.edit');
-            Route::patch('/loan-sizes/{analytics_loan_size}', [LoanBusinessAnalyticsController::class, 'loanSizesUpdate'])->name('loan_sizes.update');
-            Route::delete('/loan-sizes/{analytics_loan_size}', [LoanBusinessAnalyticsController::class, 'loanSizesDestroy'])->name('loan_sizes.destroy');
+            Route::get('/loan-sizes/{analytics_loan_size}/edit', [LoanBusinessAnalyticsController::class, 'loanSizesEdit'])->middleware('loan.permission:analytics.update')->name('loan_sizes.edit');
+            Route::patch('/loan-sizes/{analytics_loan_size}', [LoanBusinessAnalyticsController::class, 'loanSizesUpdate'])->middleware('loan.permission:analytics.update')->name('loan_sizes.update');
+            Route::delete('/loan-sizes/{analytics_loan_size}', [LoanBusinessAnalyticsController::class, 'loanSizesDestroy'])->middleware('loan.permission:analytics.delete')->name('loan_sizes.destroy');
 
-            Route::get('/targets/create', [LoanBusinessAnalyticsController::class, 'targetsCreate'])->name('targets.create');
-            Route::post('/targets', [LoanBusinessAnalyticsController::class, 'targetsStore'])->name('targets.store');
+            Route::get('/targets/create', [LoanBusinessAnalyticsController::class, 'targetsCreate'])->middleware('loan.permission:analytics.create')->name('targets.create');
+            Route::post('/targets', [LoanBusinessAnalyticsController::class, 'targetsStore'])->middleware('loan.permission:analytics.create')->name('targets.store');
             Route::get('/targets', [LoanBusinessAnalyticsController::class, 'targetsIndex'])->name('targets');
-            Route::get('/targets/{analytics_period_target}/edit', [LoanBusinessAnalyticsController::class, 'targetsEdit'])->name('targets.edit');
-            Route::patch('/targets/{analytics_period_target}', [LoanBusinessAnalyticsController::class, 'targetsUpdate'])->name('targets.update');
-            Route::delete('/targets/{analytics_period_target}', [LoanBusinessAnalyticsController::class, 'targetsDestroy'])->name('targets.destroy');
+            Route::get('/targets/{analytics_period_target}/edit', [LoanBusinessAnalyticsController::class, 'targetsEdit'])->middleware('loan.permission:analytics.update')->name('targets.edit');
+            Route::patch('/targets/{analytics_period_target}', [LoanBusinessAnalyticsController::class, 'targetsUpdate'])->middleware('loan.permission:analytics.update')->name('targets.update');
+            Route::delete('/targets/{analytics_period_target}', [LoanBusinessAnalyticsController::class, 'targetsDestroy'])->middleware('loan.permission:analytics.delete')->name('targets.destroy');
 
-            Route::get('/performance/create', [LoanBusinessAnalyticsController::class, 'performanceCreate'])->name('performance.create');
-            Route::post('/performance', [LoanBusinessAnalyticsController::class, 'performanceStore'])->name('performance.store');
+            Route::get('/performance/create', [LoanBusinessAnalyticsController::class, 'performanceCreate'])->middleware('loan.permission:analytics.create')->name('performance.create');
+            Route::post('/performance', [LoanBusinessAnalyticsController::class, 'performanceStore'])->middleware('loan.permission:analytics.create')->name('performance.store');
             Route::get('/performance', [LoanBusinessAnalyticsController::class, 'performanceIndex'])->name('performance');
-            Route::get('/performance/{analytics_performance_record}/edit', [LoanBusinessAnalyticsController::class, 'performanceEdit'])->name('performance.edit');
-            Route::patch('/performance/{analytics_performance_record}', [LoanBusinessAnalyticsController::class, 'performanceUpdate'])->name('performance.update');
-            Route::delete('/performance/{analytics_performance_record}', [LoanBusinessAnalyticsController::class, 'performanceDestroy'])->name('performance.destroy');
+            Route::get('/performance/{analytics_performance_record}/edit', [LoanBusinessAnalyticsController::class, 'performanceEdit'])->middleware('loan.permission:analytics.update')->name('performance.edit');
+            Route::patch('/performance/{analytics_performance_record}', [LoanBusinessAnalyticsController::class, 'performanceUpdate'])->middleware('loan.permission:analytics.update')->name('performance.update');
+            Route::delete('/performance/{analytics_performance_record}', [LoanBusinessAnalyticsController::class, 'performanceDestroy'])->middleware('loan.permission:analytics.delete')->name('performance.destroy');
         });
 
         Route::prefix('loan/accounting')->middleware('loan.role:accountant,admin,manager')->name('loan.accounting.')->group(function () {
@@ -719,57 +726,57 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::delete('/{loan_book_payment}', [LoanPaymentsController::class, 'destroy'])->name('destroy');
         });
 
-        Route::prefix('loan/bulk-sms')->name('loan.bulksms.')->group(function () {
+        Route::prefix('loan/bulk-sms')->middleware('loan.permission:bulksms.view')->name('loan.bulksms.')->group(function () {
             Route::get('/compose', [LoanBulkSmsController::class, 'compose'])->name('compose');
-            Route::post('/compose', [LoanBulkSmsController::class, 'composeStore'])->name('compose.store');
+            Route::post('/compose', [LoanBulkSmsController::class, 'composeStore'])->middleware('loan.permission:bulksms.create')->name('compose.store');
 
-            Route::get('/templates/create', [LoanBulkSmsController::class, 'templatesCreate'])->name('templates.create');
-            Route::post('/templates', [LoanBulkSmsController::class, 'templatesStore'])->name('templates.store');
+            Route::get('/templates/create', [LoanBulkSmsController::class, 'templatesCreate'])->middleware('loan.permission:bulksms.create')->name('templates.create');
+            Route::post('/templates', [LoanBulkSmsController::class, 'templatesStore'])->middleware('loan.permission:bulksms.create')->name('templates.store');
             Route::get('/templates', [LoanBulkSmsController::class, 'templatesIndex'])->name('templates.index');
-            Route::get('/templates/{sms_template}/edit', [LoanBulkSmsController::class, 'templatesEdit'])->name('templates.edit');
-            Route::patch('/templates/{sms_template}', [LoanBulkSmsController::class, 'templatesUpdate'])->name('templates.update');
-            Route::delete('/templates/{sms_template}', [LoanBulkSmsController::class, 'templatesDestroy'])->name('templates.destroy');
+            Route::get('/templates/{sms_template}/edit', [LoanBulkSmsController::class, 'templatesEdit'])->middleware('loan.permission:bulksms.update')->name('templates.edit');
+            Route::patch('/templates/{sms_template}', [LoanBulkSmsController::class, 'templatesUpdate'])->middleware('loan.permission:bulksms.update')->name('templates.update');
+            Route::delete('/templates/{sms_template}', [LoanBulkSmsController::class, 'templatesDestroy'])->middleware('loan.permission:bulksms.delete')->name('templates.destroy');
 
             Route::get('/logs', [LoanBulkSmsController::class, 'logs'])->name('logs');
             Route::get('/wallet', [LoanBulkSmsController::class, 'wallet'])->name('wallet');
-            Route::post('/wallet/topup', [LoanBulkSmsController::class, 'walletTopup'])->name('wallet.topup');
+            Route::post('/wallet/topup', [LoanBulkSmsController::class, 'walletTopup'])->middleware('loan.permission:bulksms.approve')->name('wallet.topup');
             Route::get('/schedules', [LoanBulkSmsController::class, 'schedules'])->name('schedules');
-            Route::post('/schedules/{sms_schedule}/cancel', [LoanBulkSmsController::class, 'schedulesCancel'])->name('schedules.cancel');
+            Route::post('/schedules/{sms_schedule}/cancel', [LoanBulkSmsController::class, 'schedulesCancel'])->middleware('loan.permission:bulksms.delete')->name('schedules.cancel');
         });
 
-        Route::prefix('loan/system-help')->name('loan.system.')->group(function () {
-            Route::get('/tickets/create', [LoanSystemHelpController::class, 'ticketsCreate'])->name('tickets.create');
-            Route::post('/tickets', [LoanSystemHelpController::class, 'ticketsStore'])->name('tickets.store');
+        Route::prefix('loan/system-help')->middleware('loan.permission:system.help.view')->name('loan.system.')->group(function () {
+            Route::get('/tickets/create', [LoanSystemHelpController::class, 'ticketsCreate'])->middleware('loan.permission:system.help.create')->name('tickets.create');
+            Route::post('/tickets', [LoanSystemHelpController::class, 'ticketsStore'])->middleware('loan.permission:system.help.create')->name('tickets.store');
             Route::get('/tickets', [LoanSystemHelpController::class, 'ticketsIndex'])->name('tickets.index');
             Route::get('/tickets/{loan_support_ticket}', [LoanSystemHelpController::class, 'ticketsShow'])->name('tickets.show');
-            Route::get('/tickets/{loan_support_ticket}/edit', [LoanSystemHelpController::class, 'ticketsEdit'])->name('tickets.edit');
-            Route::patch('/tickets/{loan_support_ticket}', [LoanSystemHelpController::class, 'ticketsUpdate'])->name('tickets.update');
-            Route::delete('/tickets/{loan_support_ticket}', [LoanSystemHelpController::class, 'ticketsDestroy'])->name('tickets.destroy');
-            Route::post('/tickets/{loan_support_ticket}/replies', [LoanSystemHelpController::class, 'ticketsReplyStore'])->name('tickets.replies.store');
-            Route::patch('/tickets/{loan_support_ticket}/status', [LoanSystemHelpController::class, 'ticketsStatusUpdate'])->name('tickets.status');
+            Route::get('/tickets/{loan_support_ticket}/edit', [LoanSystemHelpController::class, 'ticketsEdit'])->middleware('loan.permission:system.help.update')->name('tickets.edit');
+            Route::patch('/tickets/{loan_support_ticket}', [LoanSystemHelpController::class, 'ticketsUpdate'])->middleware('loan.permission:system.help.update')->name('tickets.update');
+            Route::delete('/tickets/{loan_support_ticket}', [LoanSystemHelpController::class, 'ticketsDestroy'])->middleware('loan.permission:system.help.delete')->name('tickets.destroy');
+            Route::post('/tickets/{loan_support_ticket}/replies', [LoanSystemHelpController::class, 'ticketsReplyStore'])->middleware('loan.permission:system.help.update')->name('tickets.replies.store');
+            Route::patch('/tickets/{loan_support_ticket}/status', [LoanSystemHelpController::class, 'ticketsStatusUpdate'])->middleware('loan.permission:system.help.update')->name('tickets.status');
 
             Route::get('/setup', [LoanSystemHelpController::class, 'setupHub'])->name('setup');
             Route::get('/setup/company', [LoanSystemHelpController::class, 'setupCompany'])->name('setup.company');
-            Route::post('/setup/company', [LoanSystemHelpController::class, 'setupCompanyUpdate'])->name('setup.company.update');
+            Route::post('/setup/company', [LoanSystemHelpController::class, 'setupCompanyUpdate'])->middleware('loan.permission:system.help.configure')->name('setup.company.update');
             Route::get('/setup/preferences', [LoanSystemHelpController::class, 'setupPreferences'])->name('setup.preferences');
-            Route::post('/setup/preferences', [LoanSystemHelpController::class, 'setupPreferencesUpdate'])->name('setup.preferences.update');
+            Route::post('/setup/preferences', [LoanSystemHelpController::class, 'setupPreferencesUpdate'])->middleware('loan.permission:system.help.configure')->name('setup.preferences.update');
             Route::get('/setup/client-settings', [LoanSystemHelpController::class, 'setupClientSettings'])->name('setup.client_settings');
-            Route::post('/setup/client-settings', [LoanSystemHelpController::class, 'setupClientSettingsUpdate'])->name('setup.client_settings.update');
+            Route::post('/setup/client-settings', [LoanSystemHelpController::class, 'setupClientSettingsUpdate'])->middleware('loan.permission:system.help.configure')->name('setup.client_settings.update');
             Route::get('/setup/loan-products', [LoanSystemHelpController::class, 'setupLoanProducts'])->name('setup.loan_products');
-            Route::get('/setup/loan-products/create', [LoanSystemHelpController::class, 'setupLoanProductsCreate'])->name('setup.loan_products.create');
-            Route::post('/setup/loan-products', [LoanSystemHelpController::class, 'setupLoanProductsStore'])->name('setup.loan_products.store');
-            Route::patch('/setup/loan-products/{loan_product}', [LoanSystemHelpController::class, 'setupLoanProductsUpdate'])->name('setup.loan_products.update');
-            Route::delete('/setup/loan-products/{loan_product}', [LoanSystemHelpController::class, 'setupLoanProductsDestroy'])->name('setup.loan_products.destroy');
+            Route::get('/setup/loan-products/create', [LoanSystemHelpController::class, 'setupLoanProductsCreate'])->middleware('loan.permission:system.help.create')->name('setup.loan_products.create');
+            Route::post('/setup/loan-products', [LoanSystemHelpController::class, 'setupLoanProductsStore'])->middleware('loan.permission:system.help.create')->name('setup.loan_products.store');
+            Route::patch('/setup/loan-products/{loan_product}', [LoanSystemHelpController::class, 'setupLoanProductsUpdate'])->middleware('loan.permission:system.help.update')->name('setup.loan_products.update');
+            Route::delete('/setup/loan-products/{loan_product}', [LoanSystemHelpController::class, 'setupLoanProductsDestroy'])->middleware('loan.permission:system.help.delete')->name('setup.loan_products.destroy');
             Route::get('/setup/departments', [LoanSystemHelpController::class, 'setupDepartments'])->name('setup.departments');
-            Route::post('/setup/departments', [LoanSystemHelpController::class, 'setupDepartmentsStore'])->name('setup.departments.store');
-            Route::post('/setup/departments/sync', [LoanSystemHelpController::class, 'setupDepartmentsSync'])->name('setup.departments.sync');
-            Route::patch('/setup/departments/{loan_department}', [LoanSystemHelpController::class, 'setupDepartmentsUpdate'])->name('setup.departments.update');
-            Route::delete('/setup/departments/{loan_department}', [LoanSystemHelpController::class, 'setupDepartmentsDestroy'])->name('setup.departments.destroy');
+            Route::post('/setup/departments', [LoanSystemHelpController::class, 'setupDepartmentsStore'])->middleware('loan.permission:system.help.create')->name('setup.departments.store');
+            Route::post('/setup/departments/sync', [LoanSystemHelpController::class, 'setupDepartmentsSync'])->middleware('loan.permission:system.help.configure')->name('setup.departments.sync');
+            Route::patch('/setup/departments/{loan_department}', [LoanSystemHelpController::class, 'setupDepartmentsUpdate'])->middleware('loan.permission:system.help.update')->name('setup.departments.update');
+            Route::delete('/setup/departments/{loan_department}', [LoanSystemHelpController::class, 'setupDepartmentsDestroy'])->middleware('loan.permission:system.help.delete')->name('setup.departments.destroy');
             Route::get('/setup/job-titles', [LoanSystemHelpController::class, 'setupJobTitles'])->name('setup.job_titles');
-            Route::post('/setup/job-titles', [LoanSystemHelpController::class, 'setupJobTitlesStore'])->name('setup.job_titles.store');
-            Route::post('/setup/job-titles/sync', [LoanSystemHelpController::class, 'setupJobTitlesSync'])->name('setup.job_titles.sync');
-            Route::patch('/setup/job-titles/{loan_job_title}', [LoanSystemHelpController::class, 'setupJobTitlesUpdate'])->name('setup.job_titles.update');
-            Route::delete('/setup/job-titles/{loan_job_title}', [LoanSystemHelpController::class, 'setupJobTitlesDestroy'])->name('setup.job_titles.destroy');
+            Route::post('/setup/job-titles', [LoanSystemHelpController::class, 'setupJobTitlesStore'])->middleware('loan.permission:system.help.create')->name('setup.job_titles.store');
+            Route::post('/setup/job-titles/sync', [LoanSystemHelpController::class, 'setupJobTitlesSync'])->middleware('loan.permission:system.help.configure')->name('setup.job_titles.sync');
+            Route::patch('/setup/job-titles/{loan_job_title}', [LoanSystemHelpController::class, 'setupJobTitlesUpdate'])->middleware('loan.permission:system.help.update')->name('setup.job_titles.update');
+            Route::delete('/setup/job-titles/{loan_job_title}', [LoanSystemHelpController::class, 'setupJobTitlesDestroy'])->middleware('loan.permission:system.help.delete')->name('setup.job_titles.destroy');
             Route::get('/setup/access-roles', [LoanSystemHelpController::class, 'setupAccessRoles'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.view'])->name('setup.access_roles');
             Route::post('/setup/access-roles/sync', [LoanSystemHelpController::class, 'setupAccessRolesSync'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.configure'])->name('setup.access_roles.sync');
             Route::post('/setup/access-roles', [LoanSystemHelpController::class, 'setupAccessRolesStore'])->middleware(['loan.role:admin,manager', 'loan.permission:access_roles.configure'])->name('setup.access_roles.store');
@@ -783,12 +790,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/setup/access-roles/devices/{user}/unbind', [LoanSystemHelpController::class, 'setupDeviceUnbind'])->middleware(['loan.role:admin,manager', 'loan.permission:device_governance.unbind'])->name('setup.access_roles.devices.unbind');
 
             Route::get('/setup/loan-form/client', [LoanFormSetupController::class, 'clientForm'])->name('form_setup.client');
-            Route::post('/setup/loan-form/client', [LoanFormSetupController::class, 'clientFormSave'])->name('form_setup.client.save');
+            Route::post('/setup/loan-form/client', [LoanFormSetupController::class, 'clientFormSave'])->middleware('loan.permission:system.help.configure')->name('form_setup.client.save');
             Route::get('/setup/loan-form/staff', [LoanFormSetupController::class, 'staffForm'])->name('form_setup.staff');
-            Route::post('/setup/loan-form/staff', [LoanFormSetupController::class, 'staffFormSave'])->name('form_setup.staff.save');
+            Route::post('/setup/loan-form/staff', [LoanFormSetupController::class, 'staffFormSave'])->middleware('loan.permission:system.help.configure')->name('form_setup.staff.save');
 
             Route::get('/setup/salary-advance-form', [LoanFormSetupController::class, 'salaryAdvanceForm'])->name('form_setup.salary_advance');
-            Route::post('/setup/salary-advance-form', [LoanFormSetupController::class, 'salaryAdvanceFormSave'])->name('form_setup.salary_advance.save');
+            Route::post('/setup/salary-advance-form', [LoanFormSetupController::class, 'salaryAdvanceFormSave'])->middleware('loan.permission:system.help.configure')->name('form_setup.salary_advance.save');
 
             Route::get('/setup/forms/loan-settings/loan-form-editor-payload', [LoanFormSetupController::class, 'loanFormEditorPayload'])
                 ->name('form_setup.loan_form_editor_payload');
@@ -797,6 +804,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 ->where('page', LoanFormSetupController::FORM_SETUP_PAGE_PATTERN)
                 ->name('form_setup.page');
             Route::post('/setup/forms/{page}', [LoanFormSetupController::class, 'setupPageSave'])
+                ->middleware('loan.permission:system.help.configure')
                 ->where('page', LoanFormSetupController::FORM_SETUP_PAGE_PATTERN)
                 ->name('form_setup.page.save');
 

@@ -111,6 +111,19 @@ function runFlash() {
 
 window.__runSwalFlash = runFlash;
 
+/**
+ * Turbo applies the new document before inline scripts in the body run. If we call runFlash()
+ * synchronously on turbo:render / turbo:load, __laravelSwalFlash from <x-swal-flash /> may not
+ * exist yet — defer to the next task so queued session flashes reliably show (e.g. Save Loan Form Setup).
+ */
+function scheduleRunFlashAfterTurboDom() {
+    queueMicrotask(() => {
+        window.setTimeout(() => {
+            runFlash();
+        }, 0);
+    });
+}
+
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         cleanupRecoverableOverlays('dom_ready');
@@ -125,15 +138,15 @@ if (document.readyState === 'loading') {
 // flashes on Turbo events across the whole app (loan + public + auth pages too).
 document.addEventListener('turbo:load', () => {
     cleanupRecoverableOverlays('turbo:load');
-    runFlash();
+    scheduleRunFlashAfterTurboDom();
 });
 document.addEventListener('turbo:render', () => {
     cleanupRecoverableOverlays('turbo:render');
-    runFlash();
+    scheduleRunFlashAfterTurboDom();
 });
 document.addEventListener('turbo:frame-load', () => {
     cleanupRecoverableOverlays('turbo:frame-load');
-    runFlash();
+    scheduleRunFlashAfterTurboDom();
 });
 
 document.addEventListener(
