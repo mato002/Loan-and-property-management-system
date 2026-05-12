@@ -59,6 +59,19 @@ class LoanBookGlPostingService
             throw new \RuntimeException('Amount must be non-zero to post to the general ledger.');
         }
 
+        if ($payment->loan_book_loan_id) {
+            $payment->loadMissing('loan');
+            $loan = $payment->loan;
+            if (! $loan instanceof LoanBookLoan) {
+                throw new \RuntimeException('Payment is linked to a loan that no longer exists.');
+            }
+            if (! $loan->acceptsPostedLoanCollections()) {
+                throw new \RuntimeException(
+                    'This facility is not disbursed yet. Complete disbursement before posting this collection to the loan.'
+                );
+            }
+        }
+
         $eventRegistry = app(AccountingEventRegistryService::class);
 
         if ($payment->payment_kind === LoanBookPayment::KIND_C2B_REVERSAL) {

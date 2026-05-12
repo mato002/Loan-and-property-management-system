@@ -3,8 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\PmInvoice;
+use App\Models\PmInvoiceEvent;
 use App\Models\PmLease;
 use App\Models\PropertyPortalSetting;
+use App\Services\Property\PropertyAccountingPostingService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -83,22 +85,43 @@ class GenerateMonthlyRentInvoices extends Command
                     continue;
                 }
 
-                DB::transaction(function () use ($lease, $unit, $issueDate, $dueDate, $perUnitAmount, &$created) {
+                DB::transaction(function () use ($lease, $unit, $issueDate, $dueDate, $perUnitAmount, $periodStart, $ym, &$created) {
                     $invoiceNo = PmInvoice::nextInvoiceNumber();
+                    $agentUserId = optional($unit->property)->agent_user_id;
 
                     $inv = PmInvoice::query()->create([
                         'pm_lease_id' => $lease->id,
                         'property_unit_id' => $unit->id,
                         'pm_tenant_id' => $lease->pm_tenant_id,
+                        'agent_user_id' => $agentUserId,
                         'invoice_no' => $invoiceNo,
                         'issue_date' => $issueDate,
                         'due_date' => $dueDate,
                         'amount' => $perUnitAmount,
                         'amount_paid' => 0,
+                        'subtotal_amount' => $perUnitAmount,
+                        'total_amount' => $perUnitAmount,
                         'status' => PmInvoice::STATUS_SENT,
+                        'sent_at' => now(),
+                        'invoice_type' => PmInvoice::TYPE_RENT,
+                        'billing_period' => $ym,
                         'description' => 'Rent '.$lease->pmTenant?->name.' · '.$issueDate.' → '.$dueDate,
                     ]);
                     $inv->refreshComputedStatus();
+
+                    // A1: post to the trust/GL ledger so every auto-generated
+                    // rent invoice shows up in receivables, income, and the
+                    // journal batch audit trail just like agent-manual ones.
+                    PropertyAccountingPostingService::postInvoiceIssued($inv);
+
+                    PmInvoiceEvent::record(
+                        (int) $inv->id,
+                        PmInvoiceEvent::EVENT_ISSUED,
+                        null,
+                        'Auto-generated rent invoice for '.$inv->billing_period,
+                        ['source' => 'rent:generate-invoices', 'amount' => (float) $inv->amount]
+                    );
+
                     $created++;
                 });
             }

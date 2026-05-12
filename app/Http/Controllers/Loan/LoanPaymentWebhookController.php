@@ -182,7 +182,12 @@ class LoanPaymentWebhookController extends Controller
             $txnAt = $txnAt->copy()->timezone(config('app.timezone', 'UTC'));
         }
 
-        $loan = $this->findLoanForPayerIdentity($normalizedPhone, $senderName !== '' ? $senderName : null, $txnAt);
+        $loan = $this->findLoanForPayerIdentity(
+            $normalizedPhone,
+            $senderName !== '' ? $senderName : null,
+            $txnAt,
+            $smsDirection
+        );
         if (! $loan) {
             $reason = $normalizedPhone
                 ? 'No eligible active loan found for payer phone (matched loan client phone and payment date).'
@@ -660,11 +665,17 @@ class LoanPaymentWebhookController extends Controller
     /**
      * Prefer active loan by strict phone+name, fallback to phone-only.
      */
-    private function findLoanForPayerIdentity(?string $normalizedPhone, ?string $senderName, mixed $txnAt = null): ?LoanBookLoan
-    {
+    private function findLoanForPayerIdentity(
+        ?string $normalizedPhone,
+        ?string $senderName,
+        mixed $txnAt = null,
+        ?string $smsDirection = null
+    ): ?LoanBookLoan {
         if (! $normalizedPhone) {
             return null;
         }
+
+        $forDisbursementIngest = $smsDirection === 'outgoing';
 
         $variants = $this->phoneVariants($normalizedPhone);
         $baseClients = LoanClient::query()
@@ -690,7 +701,7 @@ class LoanPaymentWebhookController extends Controller
                     ->orderBy('id')
                     ->get();
 
-                $loan = $this->firstActiveLoanForClients($strict, $txnAt);
+                $loan = $this->firstActiveLoanForClients($strict, $txnAt, $forDisbursementIngest);
                 if ($loan) {
                     return $loan;
                 }
@@ -699,10 +710,10 @@ class LoanPaymentWebhookController extends Controller
 
         $clients = $baseClients->orderBy('id')->get();
 
-        return $this->firstActiveLoanForClients($clients, $txnAt);
+        return $this->firstActiveLoanForClients($clients, $txnAt, $forDisbursementIngest);
     }
 
-    private function firstActiveLoanForClients($clients, mixed $txnAt = null): ?LoanBookLoan
+    private function firstActiveLoanForClients($clients, mixed $txnAt = null, bool $forDisbursementIngest = false): ?LoanBookLoan
     {
         $txnDate = null;
         try {
@@ -718,14 +729,15 @@ class LoanPaymentWebhookController extends Controller
         foreach ($clients as $client) {
             $query = LoanBookLoan::query()
                 ->where('loan_client_id', $client->id)
-                ->whereIn('status', [
-                    LoanBookLoan::STATUS_ACTIVE,
-                    LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
-                ])
+                ->when(
+                    $forDisbursementIngest,
+                    fn ($q) => $q->assignableForDisbursementIngest(),
+                    fn ($q) => $q->assignableForRepayment()
+                )
                 ->orderByRaw("CASE WHEN status = 'active' THEN 0 ELSE 1 END")
                 ->orderByDesc('disbursed_at')
                 ->orderByDesc('id');
-            if ($txnDate) {
+            if ($forDisbursementIngest && $txnDate) {
                 $query->where(function ($q) use ($txnDate): void {
                     $q->whereNull('disbursed_at')
                         ->orWhereDate('disbursed_at', '<=', $txnDate->toDateString());

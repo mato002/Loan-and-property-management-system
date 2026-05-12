@@ -68,13 +68,21 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
             ->middleware('property.permission:communications.manage')
             ->name('revenue.arrears.reminders.test_email');
         Route::get('/revenue/invoices', [PmInvoiceController::class, 'invoices'])->name('revenue.invoices');
-        Route::post('/revenue/invoices', [PmInvoiceController::class, 'store'])->name('invoices.store');
+        Route::post('/revenue/invoices', [PmInvoiceController::class, 'store'])->middleware('property.permission:invoices.manage')->name('invoices.store');
         Route::get('/revenue/invoices/{invoice}/edit', [PmInvoiceController::class, 'edit'])->name('revenue.invoices.edit');
-        Route::put('/revenue/invoices/{invoice}', [PmInvoiceController::class, 'update'])->name('revenue.invoices.update');
-        Route::patch('/revenue/invoices/{invoice}/status', [PmInvoiceController::class, 'updateStatus'])->name('revenue.invoices.status');
+        Route::put('/revenue/invoices/{invoice}', [PmInvoiceController::class, 'update'])->middleware('property.permission:invoices.manage')->name('revenue.invoices.update');
+        Route::patch('/revenue/invoices/{invoice}/status', [PmInvoiceController::class, 'updateStatus'])->middleware('property.permission:invoices.manage')->name('revenue.invoices.status');
+        Route::post('/revenue/invoices/{invoice}/mark-sent', [PmInvoiceController::class, 'markSent'])->middleware('property.permission:invoices.manage')->name('revenue.invoices.mark_sent');
+        Route::post('/revenue/invoices/{invoice}/cancel', [PmInvoiceController::class, 'cancel'])->middleware('property.permission:invoices.manage')->name('revenue.invoices.cancel');
+        Route::post('/revenue/invoices/{invoice}/reopen', [PmInvoiceController::class, 'reopen'])->middleware('property.permission:invoices.manage')->name('revenue.invoices.reopen');
+        Route::post('/revenue/invoices/{invoice}/record-payment', [PmInvoiceController::class, 'recordPayment'])->middleware('property.permission:payments.record')->name('revenue.invoices.record_payment');
+        Route::get('/revenue/invoices/{invoice}/pdf', [PmInvoiceController::class, 'downloadPdf'])->name('revenue.invoices.pdf');
+        Route::get('/revenue/invoices/{invoice}/print', [PmInvoiceController::class, 'printable'])->name('revenue.invoices.print');
+        Route::post('/revenue/invoices/{invoice}/send', [PmInvoiceController::class, 'sendToTenant'])->middleware('property.permission:communications.manage')->name('revenue.invoices.send');
+        Route::post('/revenue/invoices/{invoice}/credit-note', [PmInvoiceController::class, 'createCreditNote'])->middleware('property.permission:invoices.manage')->name('revenue.invoices.credit_note');
         Route::get('/revenue/invoices/lease/{lease}/info', [PmInvoiceController::class, 'leaseInfo'])->name('invoices.lease_info');
         Route::get('/revenue/invoices/{invoice}', [PmInvoiceController::class, 'show'])->name('revenue.invoices.show');
-        Route::delete('/revenue/invoices/{invoice}', [PmInvoiceController::class, 'destroy'])->name('revenue.invoices.destroy');
+        Route::delete('/revenue/invoices/{invoice}', [PmInvoiceController::class, 'destroy'])->middleware('property.permission:invoices.manage')->name('revenue.invoices.destroy');
         Route::get('/revenue/penalties', [RevenueController::class, 'penalties'])->name('revenue.penalties');
         Route::post('/revenue/penalties', [RevenueController::class, 'storePenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.store');
         Route::delete('/revenue/penalties/{penalty_rule}', [RevenueController::class, 'destroyPenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.destroy');
@@ -546,6 +554,14 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/payments/receipts/{payment}', [TenantPortalController::class, 'showReceipt'])->name('payments.receipts.show');
         Route::get('/payments/receipts/{payment}/download', [TenantPortalController::class, 'downloadReceipt'])->name('payments.receipts.download');
         Route::get('/payments', [TenantPortalController::class, 'paymentsIndex'])->name('payments.index');
+
+        Route::get('/invoices', [TenantPortalController::class, 'invoices'])->name('invoices.index');
+        Route::get('/invoices/{invoice}', [TenantPortalController::class, 'invoiceShow'])
+            ->whereNumber('invoice')
+            ->name('invoices.show');
+        Route::get('/invoices/{invoice}/pdf', [TenantPortalController::class, 'invoicePdf'])
+            ->whereNumber('invoice')
+            ->name('invoices.pdf');
 
         Route::get('/workspace/forms/{form}', [TenantWorkspaceFormController::class, 'show'])
             ->where('form', '[a-z0-9\-]+')

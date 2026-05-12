@@ -847,6 +847,7 @@ class PropertySettingsStoreWebController extends Controller
             ['name' => 'Manage vendors', 'key' => 'vendors.manage', 'group' => 'vendors'],
             ['name' => 'Record payments', 'key' => 'payments.record', 'group' => 'payments'],
             ['name' => 'Settle payments', 'key' => 'payments.settle', 'group' => 'payments'],
+            ['name' => 'Manage invoices', 'key' => 'invoices.manage', 'group' => 'revenue'],
             ['name' => 'Manage penalties', 'key' => 'revenue.penalties.manage', 'group' => 'revenue'],
             ['name' => 'Manage utilities', 'key' => 'revenue.utilities.manage', 'group' => 'revenue'],
             ['name' => 'Manage accounting entries', 'key' => 'accounting.entries.manage', 'group' => 'accounting'],
@@ -879,7 +880,7 @@ class PropertySettingsStoreWebController extends Controller
                 'description' => 'Full operational access across property modules.',
                 'permissions' => [
                     'properties.manage', 'tenants.manage', 'leases.manage', 'maintenance.manage', 'vendors.manage',
-                    'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
+                    'invoices.manage', 'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
                     'accounting.entries.manage', 'accounting.payroll.manage', 'communications.manage', 'communications.export', 'communications.view_message_body',
                     'communications.send_legal_notice', 'communications.approve_notice',
                     'listings.manage', 'settings.manage', 'settings.access.manage',
@@ -890,7 +891,7 @@ class PropertySettingsStoreWebController extends Controller
                 'portal_scope' => 'agent',
                 'description' => 'Finance and accounting operations.',
                 'permissions' => [
-                    'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
+                    'invoices.manage', 'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
                     'accounting.entries.manage', 'accounting.payroll.manage',
                 ],
             ],

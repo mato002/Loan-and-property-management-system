@@ -3,9 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\PmInvoice;
+use App\Models\PmInvoiceEvent;
 use App\Models\PmLease;
 use App\Models\PmWaterReading;
 use App\Models\PropertyPortalSetting;
+use App\Services\Property\PropertyAccountingPostingService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -81,17 +83,27 @@ class GenerateMonthlyWaterInvoices extends Command
 
             DB::transaction(function () use ($lease, $reading, $ym, $due, &$created) {
                 $invoiceNo = PmInvoice::nextInvoiceNumber();
+                $unit = $reading->propertyUnit ?? null;
+                $agentUserId = $unit?->property?->agent_user_id
+                    ?? \App\Models\PropertyUnit::query()
+                        ->where('id', $reading->property_unit_id)
+                        ->join('properties', 'properties.id', '=', 'property_units.property_id')
+                        ->value('properties.agent_user_id');
 
                 $inv = PmInvoice::query()->create([
                     'pm_lease_id' => $lease->id,
                     'property_unit_id' => $reading->property_unit_id,
                     'pm_tenant_id' => $lease->pm_tenant_id,
+                    'agent_user_id' => $agentUserId,
                     'invoice_no' => $invoiceNo,
                     'issue_date' => now()->toDateString(),
                     'due_date' => $due,
                     'amount' => (float) $reading->amount,
                     'amount_paid' => 0,
+                    'subtotal_amount' => (float) $reading->amount,
+                    'total_amount' => (float) $reading->amount,
                     'status' => PmInvoice::STATUS_SENT,
+                    'sent_at' => now(),
                     'invoice_type' => PmInvoice::TYPE_WATER,
                     'billing_period' => $ym,
                     'description' => 'Water bill '.$ym.' ('.number_format((float) $reading->units_used, 3).' units)',
@@ -102,6 +114,23 @@ class GenerateMonthlyWaterInvoices extends Command
                     'pm_invoice_id' => $inv->id,
                     'status' => 'invoiced',
                 ]);
+
+                // A2: post to the trust/GL ledger so water cron also
+                // creates the receivable + income lines.
+                PropertyAccountingPostingService::postInvoiceIssued($inv);
+
+                PmInvoiceEvent::record(
+                    (int) $inv->id,
+                    PmInvoiceEvent::EVENT_ISSUED,
+                    null,
+                    'Auto-generated water invoice for '.$ym,
+                    [
+                        'source' => 'water:generate-invoices',
+                        'amount' => (float) $inv->amount,
+                        'units_used' => (float) $reading->units_used,
+                        'water_reading_id' => (int) $reading->id,
+                    ]
+                );
 
                 $created++;
             });

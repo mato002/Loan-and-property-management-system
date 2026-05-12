@@ -66,12 +66,8 @@ class LoanBookLoanUpdateService
         DB::transaction(function () use ($payment) {
             /** @var LoanBookLoan $loan */
             $loan = LoanBookLoan::query()->lockForUpdate()->findOrFail($payment->loan_book_loan_id);
-            if (
-                $loan->disbursed_at
-                && $payment->transaction_at
-                && $payment->transaction_at->copy()->startOfDay()->lt($loan->disbursed_at->copy()->startOfDay())
-            ) {
-                // Guard against applying historic payments to a newer loan cycle.
+            if (! $loan->acceptsPostedLoanCollections()) {
+                // Facility not ready for collections — buckets are not live; onDisbursed replays processed pay-ins.
                 return;
             }
 

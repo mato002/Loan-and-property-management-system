@@ -58,6 +58,16 @@
                         <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="100" value="{{ old('interest_rate') }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="Filled from linked application when set" />
                         @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                    <div>
+                        <label for="interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">Interest applies</label>
+                        <select id="interest_rate_period" name="interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
+                            @foreach (['term' => 'Whole loan term', 'daily' => 'Per day', 'weekly' => 'Per week', 'monthly' => 'Per month', 'annual' => 'Per year'] as $v => $lab)
+                                <option value="{{ $v }}" @selected(old('interest_rate_period', 'annual') === $v)>{{ $lab }}</option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-[11px] text-slate-500">How the percentage above is interpreted (same as on the application).</p>
+                        @error('interest_rate_period')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -246,6 +256,7 @@
         const branchInput = form.querySelector('#branch');
         const notesInput = form.querySelector('#notes');
         const interestRateInput = form.querySelector('#interest_rate');
+        const interestRatePeriodSelect = form.querySelector('#interest_rate_period');
         const termValueInput = form.querySelector('#term_value');
         const termUnitSelect = form.querySelector('#term_unit');
         const disbursedInput = form.querySelector('#disbursed_at');
@@ -408,6 +419,12 @@
             }
             if (termUnitSelect && selected.term_unit) {
                 termUnitSelect.value = selected.term_unit;
+            }
+            if (interestRatePeriodSelect && selected.interest_rate_period) {
+                const p = String(selected.interest_rate_period).toLowerCase();
+                if ([...interestRatePeriodSelect.options].some((o) => o.value === p)) {
+                    interestRatePeriodSelect.value = p;
+                }
             }
             if (maturityInput && !maturityInput.value) maturityInput.value = calculateMaturityDate(selected.term_months);
             if (notesInput && !notesInput.value) notesInput.value = 'Booked from application ' + (selected.reference || '') + '.';

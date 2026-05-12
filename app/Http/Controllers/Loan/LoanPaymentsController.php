@@ -49,7 +49,7 @@ class LoanPaymentsController extends Controller
         $payments = $query->orderByDesc('transaction_at')->paginate($filters['perPage'])->withQueryString();
         $assignableLoans = LoanBookLoan::query()
             ->with('loanClient')
-            ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_PENDING_DISBURSEMENT])
+            ->assignableForRepayment()
             ->orderBy('loan_number');
         $this->scopeByAssignedLoanClient($assignableLoans, $request->user());
         $assignableLoans = $assignableLoans
@@ -816,7 +816,7 @@ class LoanPaymentsController extends Controller
     {
         $query = LoanBookLoan::query()
             ->with('loanClient')
-            ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_PENDING_DISBURSEMENT])
+            ->assignableForRepayment()
             ->orderBy('loan_number');
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $loans = $query->get();
@@ -869,6 +869,11 @@ class LoanPaymentsController extends Controller
 
         $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
         $this->ensureLoanClientOwner($loan->loanClient, $request->user());
+        if (! $loan->acceptsPostedLoanCollections()) {
+            return back()
+                ->withErrors(['loan_book_loan_id' => 'This facility is not disbursed yet. Complete disbursement before recording a repayment against this loan.'])
+                ->withInput();
+        }
 
         $payment = LoanBookPayment::create([
             'reference' => null,
@@ -934,6 +939,11 @@ class LoanPaymentsController extends Controller
 
         $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
         $this->ensureLoanClientOwner($loan->loanClient, $request->user());
+        if (! $loan->acceptsPostedLoanCollections()) {
+            return back()
+                ->withErrors(['loan_book_loan_id' => 'This facility is not disbursed yet. Complete disbursement before recording a reversal against this loan.'])
+                ->withInput();
+        }
 
         $payment = LoanBookPayment::create([
             'reference' => null,
@@ -970,7 +980,7 @@ class LoanPaymentsController extends Controller
 
         $query = LoanBookLoan::query()
             ->with('loanClient')
-            ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_PENDING_DISBURSEMENT])
+            ->assignableForRepayment()
             ->orderBy('loan_number');
         $this->scopeByAssignedLoanClient($query, auth()->user());
         $loans = $query->get();
@@ -1022,7 +1032,7 @@ class LoanPaymentsController extends Controller
         if (! $this->isLoanEligibleForPaymentDate($targetLoan, $loan_book_payment)) {
             return redirect()
                 ->route('loan.payments.unposted')
-                ->withErrors(['loan_book_loan_id' => 'Cannot assign: payment date is older than the target loan disbursement date.']);
+                ->withErrors(['loan_book_loan_id' => 'Cannot assign: the target facility must be disbursed before collections can be linked to this loan.']);
         }
 
         $loan_book_payment->update($validated);
@@ -1153,6 +1163,11 @@ class LoanPaymentsController extends Controller
 
         $targetLoan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
         $this->ensureLoanClientOwner($targetLoan->loanClient, $request->user());
+        if (! $targetLoan->acceptsPostedLoanCollections()) {
+            return redirect()
+                ->route('loan.payments.unposted')
+                ->withErrors(['loan_book_loan_id' => 'Cannot assign: the target facility must be disbursed before collections can be linked to this loan.']);
+        }
 
         $existingNotes = trim((string) ($loan_book_payment->notes ?? ''));
         $assignmentNote = 'Assigned from unposted SMS unmatched queue on '.now()->format('Y-m-d H:i');
@@ -1249,7 +1264,7 @@ class LoanPaymentsController extends Controller
 
         $assignableLoans = LoanBookLoan::query()
             ->with('loanClient')
-            ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_PENDING_DISBURSEMENT])
+            ->assignableForRepayment()
             ->orderBy('loan_number');
         $this->scopeByAssignedLoanClient($assignableLoans, $request->user());
         $assignableLoans = $assignableLoans->limit(5000)->get();
@@ -1275,7 +1290,7 @@ class LoanPaymentsController extends Controller
                         return;
                     }
                     $loan = LoanBookLoan::query()->find($loanId);
-                    if (! $loan || ! $this->isLoanEligibleForPaymentDate($loan, $fresh)) {
+                    if (! $loan || $loan->isSettled() || ! $this->isLoanEligibleForPaymentDate($loan, $fresh)) {
                         return;
                     }
 
@@ -1629,6 +1644,9 @@ class LoanPaymentsController extends Controller
                     continue;
                 }
                 foreach ($loanByPhone[$variant] as $candidateLoan) {
+                    if ($candidateLoan->isSettled()) {
+                        continue;
+                    }
                     if (! $this->isLoanEligibleForPaymentDate($candidateLoan, $payment)) {
                         continue;
                     }
@@ -1665,14 +1683,8 @@ class LoanPaymentsController extends Controller
         return array_values(array_unique(array_filter($variants)));
     }
 
-    private function isLoanEligibleForPaymentDate(LoanBookLoan $loan, LoanBookPayment $payment): bool
+    private function isLoanEligibleForPaymentDate(LoanBookLoan $loan, LoanBookPayment $_payment): bool
     {
-        $loanDisbursedAt = $loan->disbursed_at;
-        $paymentAt = $payment->transaction_at;
-        if (! $loanDisbursedAt || ! $paymentAt) {
-            return true;
-        }
-
-        return $paymentAt->copy()->startOfDay()->gte($loanDisbursedAt->copy()->startOfDay());
+        return $loan->acceptsPostedLoanCollections();
     }
 }

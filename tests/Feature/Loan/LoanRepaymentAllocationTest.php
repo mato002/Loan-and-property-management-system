@@ -57,7 +57,7 @@ class LoanRepaymentAllocationTest extends TestCase
         $this->assertSame(200.0, $result['allocations']['overpayment']);
     }
 
-    public function test_changed_setting_order_is_applied_and_penalty_remains_included(): void
+    public function test_legacy_interest_first_setting_is_normalized_to_principal_first(): void
     {
         LoanSystemSetting::setValue(
             'loan_repayment_allocation_order',
@@ -92,11 +92,11 @@ class LoanRepaymentAllocationTest extends TestCase
         $result = app(LoanRepaymentAllocationService::class)->allocate($payment, $loan, 150.0);
 
         $this->assertSame(
-            ['interest', 'principal', 'fees', 'penalty', 'overpayment'],
+            ['principal', 'interest', 'fees', 'penalty', 'overpayment'],
             $result['order']
         );
-        $this->assertSame(150.0, $result['allocations']['interest']);
-        $this->assertSame(0.0, $result['allocations']['principal']);
+        $this->assertSame(150.0, $result['allocations']['principal']);
+        $this->assertSame(0.0, $result['allocations']['interest']);
     }
 
     public function test_gl_lines_allocation_records_and_loan_balances_stay_consistent(): void
@@ -112,6 +112,7 @@ class LoanRepaymentAllocationTest extends TestCase
             'interest_rate' => 10,
             'status' => LoanBookLoan::STATUS_ACTIVE,
             'dpd' => 0,
+            'disbursed_at' => now()->subDay(),
         ]);
 
         $payment = LoanBookPayment::query()->create([

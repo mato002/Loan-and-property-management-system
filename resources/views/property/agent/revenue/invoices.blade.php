@@ -102,10 +102,29 @@
                     @error('issue_date')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Due date</label>
-                    <input type="date" name="due_date" value="{{ old('due_date') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Due date <span class="text-slate-400">(auto-fills +14 days)</span></label>
+                    <input id="invoice-due-date" type="date" name="due_date" value="{{ old('due_date', now()->addDays(14)->toDateString()) }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('due_date')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                <script>
+                    (function () {
+                        const issue = document.getElementById('invoice-issue-date');
+                        const due = document.getElementById('invoice-due-date');
+                        if (!issue || !due) return;
+                        let userTouchedDue = false;
+                        due.addEventListener('change', () => { userTouchedDue = true; });
+                        issue.addEventListener('change', () => {
+                            if (userTouchedDue) return;
+                            const d = new Date(issue.value);
+                            if (Number.isNaN(d.getTime())) return;
+                            d.setDate(d.getDate() + 14);
+                            const yyyy = d.getFullYear();
+                            const mm = String(d.getMonth() + 1).padStart(2, '0');
+                            const dd = String(d.getDate()).padStart(2, '0');
+                            due.value = `${yyyy}-${mm}-${dd}`;
+                        });
+                    })();
+                </script>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
                     <input id="invoice-amount" type="number" name="amount" value="{{ old('amount') }}" step="0.01" min="0.01" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
@@ -119,12 +138,29 @@
                     </select>
                     @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Invoice type</label>
+                    <select name="invoice_type" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="rent" @selected(old('invoice_type', 'rent') === 'rent')>Rent</option>
+                        <option value="water" @selected(old('invoice_type') === 'water')>Water</option>
+                        <option value="mixed" @selected(old('invoice_type') === 'mixed')>Mixed</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Billing period (YYYY-MM, optional)</label>
+                    <input type="month" name="billing_period" value="{{ old('billing_period') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Description</label>
                 <input id="invoice-description" type="text" name="description" value="{{ old('description') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('description')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes (internal, optional)</label>
+                <textarea name="notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('notes') }}</textarea>
+            </div>
+            <input type="hidden" name="idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create invoice</button>
         </form>
         </div>
@@ -142,13 +178,34 @@
                 <option value="overdue" @selected(($filters['status'] ?? '') === 'overdue')>Overdue</option>
                 <option value="cancelled" @selected(($filters['status'] ?? '') === 'cancelled')>Cancelled</option>
             </select>
+            <select name="type" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
+                <option value="">Type: All</option>
+                <option value="rent" @selected(($filters['type'] ?? '') === 'rent')>Rent</option>
+                <option value="water" @selected(($filters['type'] ?? '') === 'water')>Water</option>
+                <option value="mixed" @selected(($filters['type'] ?? '') === 'mixed')>Mixed</option>
+            </select>
+            <select name="tenant_id" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 max-w-[200px]">
+                <option value="0">Tenant: All</option>
+                @foreach ($tenants as $t)
+                    <option value="{{ $t->id }}" @selected((int)($filters['tenant_id'] ?? 0) === (int) $t->id)>{{ $t->name }}</option>
+                @endforeach
+            </select>
+            <select name="unit_id" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 max-w-[200px]">
+                <option value="0">Unit: All</option>
+                @foreach ($units as $u)
+                    <option value="{{ $u->id }}" @selected((int)($filters['unit_id'] ?? 0) === (int) $u->id)>{{ ($u->property?->name ?? 'Unknown')."/".$u->label }}</option>
+                @endforeach
+            </select>
             <input type="month" name="period" value="{{ $filters['period'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto" />
-            <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-            <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+            <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" placeholder="Issued from" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+            <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" placeholder="Issued to" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+            <input type="date" name="due_from" value="{{ $filters['due_from'] ?? '' }}" placeholder="Due from" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
+            <input type="date" name="due_to" value="{{ $filters['due_to'] ?? '' }}" placeholder="Due to" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
             <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="issue_date" @selected(($filters['sort'] ?? 'issue_date') === 'issue_date')>Sort: Issued</option>
                 <option value="due_date" @selected(($filters['sort'] ?? '') === 'due_date')>Sort: Due</option>
                 <option value="amount" @selected(($filters['sort'] ?? '') === 'amount')>Sort: Amount</option>
+                <option value="balance" @selected(($filters['sort'] ?? '') === 'balance')>Sort: Balance</option>
                 <option value="status" @selected(($filters['sort'] ?? '') === 'status')>Sort: Status</option>
                 <option value="invoice_no" @selected(($filters['sort'] ?? '') === 'invoice_no')>Sort: Invoice #</option>
                 <option value="id" @selected(($filters['sort'] ?? '') === 'id')>Sort: ID</option>
@@ -187,6 +244,7 @@
                 @csrf
                 <select name="action" class="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700">
                     <option value="">Bulk action</option>
+                    <option value="mark_sent">Mark draft as sent</option>
                     <option value="cancel">Cancel (skip paid)</option>
                 </select>
                 <button type="submit" class="rounded-lg bg-amber-600 text-white px-3 py-1.5 text-xs font-semibold">Apply</button>

@@ -153,6 +153,7 @@ class LogLoanPortalAccess
             'loan.system.tickets.create' => 'Opened create ticket form',
             'loan.system.setup' => 'Viewed system setup',
             'loan.system.setup.loan_products' => 'Viewed loan products setup',
+            'loan.system.setup.loan_products.show' => 'Viewed loan product details',
             'loan.notifications.index' => 'Viewed notifications',
         ];
 

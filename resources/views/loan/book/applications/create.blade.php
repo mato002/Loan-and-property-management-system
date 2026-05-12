@@ -165,6 +165,31 @@
                 </div>
                 <div class="mt-4 border-t border-slate-200 pt-3" x-show="mobileClientPreviewOpen || window.innerWidth >= 1280" x-cloak>
                     <h5 class="text-xs font-semibold uppercase tracking-wide text-slate-600">Application draft</h5>
+                    <div class="mt-2 rounded-md border border-indigo-100 bg-indigo-50/40 p-2.5 text-xs text-slate-700">
+                        <h6 class="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Selected product details</h6>
+                        <template x-if="selectedProductPreviewFields.length === 0 && selectedProductChargePreview.length === 0">
+                            <p class="mt-1 text-slate-500">Select a loan product to preview configured settings.</p>
+                        </template>
+                        <div class="mt-1 space-y-1">
+                            <template x-for="item in selectedProductPreviewFields" :key="item.key">
+                                <p>
+                                    <span class="font-semibold text-slate-600" x-text="item.label + ':'"></span>
+                                    <span x-text="item.value"></span>
+                                </p>
+                            </template>
+                        </div>
+                        <div class="mt-2 space-y-1" x-show="selectedProductChargePreview.length > 0">
+                            <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Configured charges</p>
+                            <template x-for="charge in selectedProductChargePreview" :key="charge.key">
+                                <p class="text-[11px] text-slate-700">
+                                    <span class="font-semibold" x-text="charge.name"></span>
+                                    · <span x-text="charge.amountLabel"></span>
+                                    · <span x-text="charge.stageLabel"></span>
+                                    <span x-show="charge.scopeLabel">· <span x-text="charge.scopeLabel"></span></span>
+                                </p>
+                            </template>
+                        </div>
+                    </div>
                     <div class="mt-2 space-y-1 text-xs text-slate-700">
                         <template x-if="applicationPreviewFields.length === 0 && applicationPreviewImages.length === 0">
                             <p class="text-slate-500">Fill the form to preview entered details here.</p>
@@ -339,6 +364,8 @@
             applicationPreviewFields: [],
             applicationPreviewImages: [],
             previewImageUrls: [],
+            selectedProductPreviewFields: [],
+            selectedProductChargePreview: [],
             init() {
                 this.$nextTick(() => {
                     this.setupClientSearch();
@@ -347,6 +374,7 @@
                     this.autofillFromSelectedClient();
                     this.applyProductFieldVisibility();
                     this.applyProductDefaults();
+                    this.refreshSelectedProductPreview();
                     this.refreshFeeAndSuspenseOptions();
                     const termUnitSelect = this.$el.querySelector('#term_unit');
                     if (termUnitSelect) {
@@ -358,11 +386,14 @@
                         this.checkProductSwitchHideWarning();
                         this.applyProductFieldVisibility();
                         this.applyProductDefaults();
+                        this.refreshSelectedProductPreview();
                         this.refreshFeeAndSuspenseOptions();
                     });
                     const amountInput = this.$el.querySelector('#amount_requested');
                     amountInput?.addEventListener('change', () => this.refreshFeeAndSuspenseOptions());
                     amountInput?.addEventListener('input', () => this.refreshFeeAndSuspenseOptions());
+                    amountInput?.addEventListener('change', () => this.refreshSelectedProductPreview());
+                    amountInput?.addEventListener('input', () => this.refreshSelectedProductPreview());
                 });
             },
             get requiredFeeBadge() {
@@ -726,9 +757,12 @@
                         interestInput.dispatchEvent(new Event('input', { bubbles: true }));
                         interestInput.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                    if (interestPeriodSelect && (interestPeriodSelect.value ?? '') === 'annual') {
-                        interestPeriodSelect.value = defaultInterestPeriod;
-                        interestPeriodSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (interestPeriodSelect) {
+                        const hasOption = Array.from(interestPeriodSelect.options ?? []).some((option) => option.value === defaultInterestPeriod);
+                        if (hasOption && (interestPeriodSelect.value ?? '') !== defaultInterestPeriod) {
+                            interestPeriodSelect.value = defaultInterestPeriod;
+                            interestPeriodSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
                     }
                 }
                 if (meta.default_term_months) {
@@ -753,6 +787,91 @@
                     this.termUnit = tu.value || '';
                 }
                 this.selectedProductHint = parts.join(' ');
+            },
+            formatMoney(value) {
+                return Number(value || 0).toFixed(2);
+            },
+            refreshSelectedProductPreview() {
+                const productName = String(this.$el.querySelector('#product_name')?.value ?? '').trim();
+                if (productName === '') {
+                    this.selectedProductPreviewFields = [];
+                    this.selectedProductChargePreview = [];
+                    return;
+                }
+
+                const meta = this.productMetaByName[productName] ?? null;
+                const amountRequested = Number(this.$el.querySelector('#amount_requested')?.value || 0);
+                const termUnitLabels = {
+                    daily: 'Daily',
+                    weekly: 'Weekly',
+                    monthly: 'Monthly',
+                    annual: 'Annual',
+                };
+                const periodLabels = {
+                    daily: 'Per day',
+                    weekly: 'Per week',
+                    monthly: 'Per month',
+                    annual: 'Per year',
+                };
+                const stageLabels = {
+                    application: 'Application',
+                    loan: 'Loan booking',
+                    disbursement: 'Disbursement',
+                };
+                const scopeLabels = {
+                    all: 'All clients',
+                    checkoff_only: 'Checkoff only',
+                    non_checkoff: 'Non-checkoff',
+                };
+
+                const fields = [
+                    { key: 'product_name', label: 'Loan Product', value: productName },
+                ];
+                if (meta) {
+                    const rate = meta.default_interest_rate;
+                    if (rate !== null && rate !== undefined && String(rate) !== '') {
+                        const isPercent = String(meta.default_interest_rate_type ?? 'percent').toLowerCase() === 'percent';
+                        const rateLabel = isPercent ? `${Number(rate).toFixed(4)}%` : this.formatMoney(rate);
+                        fields.push({
+                            key: 'default_interest',
+                            label: 'Default Interest',
+                            value: `${rateLabel} ${periodLabels[String(meta.default_interest_rate_period ?? 'annual').toLowerCase()] ?? 'Per period'}`,
+                        });
+                    }
+                    if (meta.default_term_months !== null && meta.default_term_months !== undefined && Number(meta.default_term_months) > 0) {
+                        fields.push({
+                            key: 'default_term',
+                            label: 'Default Term',
+                            value: `${meta.default_term_months} ${termUnitLabels[String(meta.default_term_unit ?? 'monthly').toLowerCase()] ?? String(meta.default_term_unit ?? 'monthly')}`,
+                        });
+                    }
+                    if (String(meta.charges_summary ?? '').trim() !== '') {
+                        fields.push({
+                            key: 'charges_summary',
+                            label: 'Charges Summary',
+                            value: String(meta.charges_summary).trim(),
+                        });
+                    }
+                }
+                this.selectedProductPreviewFields = fields;
+
+                const charges = Array.isArray(meta?.charges) ? meta.charges : [];
+                this.selectedProductChargePreview = charges.map((charge, index) => {
+                    const isPercent = String(charge.amount_type ?? '').toLowerCase() === 'percent';
+                    const configuredAmount = Number(charge.amount || 0);
+                    const computedAmount = isPercent
+                        ? Number(amountRequested || 0) * (configuredAmount / 100)
+                        : configuredAmount;
+                    return {
+                        key: `${String(charge.name ?? 'charge')}-${index}`,
+                        name: String(charge.name ?? 'Charge'),
+                        amountLabel: isPercent
+                            ? `${configuredAmount.toFixed(4)}% (est. ${this.formatMoney(computedAmount)})`
+                            : this.formatMoney(configuredAmount),
+                        stageLabel: stageLabels[String(charge.applies_to_stage ?? '').toLowerCase()] ?? String(charge.applies_to_stage ?? 'stage'),
+                        scopeLabel: scopeLabels[String(charge.applies_to_client_scope ?? '').toLowerCase()] ?? '',
+                    };
+                });
             },
             openBranchModal() {
                 this.branchModalError = '';

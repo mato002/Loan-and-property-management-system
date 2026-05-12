@@ -5,6 +5,7 @@
         $tabLinks = [
             ['route' => 'property.settings.commission', 'label' => 'Commission'],
             ['route' => 'property.settings.payments', 'label' => 'Payment config'],
+            ['route' => 'property.settings.forwarder', 'label' => 'My SMS Forwarder'],
             ['route' => 'property.settings.branding', 'label' => 'Branding'],
             ['route' => 'property.settings.rules', 'label' => 'System rules'],
             ['route' => 'property.settings.deposits', 'label' => 'Deposit rules'],
@@ -13,6 +14,7 @@
         $hubItems = [
             ['route' => 'property.settings.commission', 'title' => 'Commission settings', 'description' => 'Plans and overrides.'],
             ['route' => 'property.settings.payments', 'title' => 'Payment config (M-Pesa)', 'description' => 'Paybill, STK, settlement.'],
+            ['route' => 'property.settings.forwarder', 'title' => 'My SMS Forwarder', 'description' => 'Generate the personal token your office phone uses to forward M-Pesa SMS so payments are tagged to you.'],
             ['route' => 'property.settings.branding', 'title' => 'Branding', 'description' => 'Company name and logo used in printable docs.'],
             ['route' => 'property.settings.rules', 'title' => 'System rules', 'description' => 'Penalties, reminders, guardrails.'],
             ['route' => 'property.settings.deposits', 'title' => 'Deposit rules', 'description' => 'Deposit types, required flags, formulas, ledger mapping.'],

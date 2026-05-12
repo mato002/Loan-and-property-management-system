@@ -81,6 +81,23 @@ class LoanBookLoan extends Model
         return $this->isSettled() ? self::STATUS_CLOSED : (string) $this->status;
     }
 
+    /**
+     * True when collections (repayments) may be posted or allocated to this facility in the ledger.
+     * Pending disbursement / undisbursed facilities keep pay-ins in the unposted queue or wallet until money is out.
+     */
+    public function acceptsPostedLoanCollections(): bool
+    {
+        if ($this->disbursed_at === null) {
+            return false;
+        }
+
+        if ($this->status === self::STATUS_PENDING_DISBURSEMENT) {
+            return false;
+        }
+
+        return in_array($this->status, [self::STATUS_ACTIVE, self::STATUS_RESTRUCTURED], true);
+    }
+
     public function scopeOpenForOrigination(Builder $query): Builder
     {
         return $query->where(function (Builder $loan): void {
@@ -91,6 +108,42 @@ class LoanBookLoan extends Model
                         ->orWhere('principal_outstanding', '>', 0.01)
                         ->orWhere('interest_outstanding', '>', 0.01)
                         ->orWhere('fees_outstanding', '>', 0.01);
+                });
+        });
+    }
+
+    /**
+     * Facilities that may receive posted repayments: disbursement is complete and something is still owed.
+     * Excludes pending disbursement and undisbursed rows so pay-ins stay unassigned until funds are out.
+     */
+    public function scopeAssignableForRepayment(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('disbursed_at')
+            ->whereIn('status', [self::STATUS_ACTIVE, self::STATUS_RESTRUCTURED])
+            ->where(function (Builder $owed): void {
+                $owed->where('balance', '>', 0.01)
+                    ->orWhere('principal_outstanding', '>', 0.01)
+                    ->orWhere('interest_outstanding', '>', 0.01)
+                    ->orWhere('fees_outstanding', '>', 0.01);
+            });
+    }
+
+    /**
+     * Broader match list for outgoing M-Pesa SMS used to capture a disbursement on a not-yet-marked facility.
+     */
+    public function scopeAssignableForDisbursementIngest(Builder $query): Builder
+    {
+        return $query->where(function (Builder $outer): void {
+            $outer->where('status', self::STATUS_PENDING_DISBURSEMENT)
+                ->orWhere(function (Builder $open): void {
+                    $open->whereIn('status', [self::STATUS_ACTIVE, self::STATUS_RESTRUCTURED])
+                        ->where(function (Builder $owed): void {
+                            $owed->where('balance', '>', 0.01)
+                                ->orWhere('principal_outstanding', '>', 0.01)
+                                ->orWhere('interest_outstanding', '>', 0.01)
+                                ->orWhere('fees_outstanding', '>', 0.01);
+                        });
                 });
         });
     }

@@ -21,15 +21,38 @@
         @php
             $paid = (float) $loan->payments->sum('amount');
             $remaining = max(0, (float) $loan->balance);
-            $totalRepayable = $paid + $remaining;
-            $progress = $totalRepayable > 0 ? min(100, max(0, ($paid / $totalRepayable) * 100)) : 0;
+            // Ledger sum (paid + balance) can exceed principal+interest when old postings applied cash to interest first
+            // while principal_outstanding was unchanged — do not use this as "contract total due" on the UI.
+            $ledgerLifeTotal = round($paid + $remaining, 2);
+            $contractRepayable = round((float) ($contractRepayable ?? 0), 2);
+            if ($contractRepayable <= 0.0) {
+                $contractRepayable = max(0.01, $ledgerLifeTotal);
+            }
+            $progressDenominator = max($contractRepayable, $ledgerLifeTotal, 0.01);
+            $progress = $progressDenominator > 0 ? min(100, max(0, ($paid / $progressDenominator) * 100)) : 0;
             $displayStatus = $loan->effectiveStatus();
             $isFullyPaid = $remaining <= 0.01 || $displayStatus === \App\Models\LoanBookLoan::STATUS_CLOSED;
             $principalDisbursed = (float) $loan->disbursements->sum('amount');
             $realizedProfit = $paid - $principalDisbursed;
-            $estimatedTotalProfit = $totalRepayable - $principalDisbursed;
+            $estimatedTotalProfit = $ledgerLifeTotal - $principalDisbursed;
             $termValue = max(1, (int) ($loan->term_value ?: $loan->term_months ?: 1));
-            $rawTermUnit = strtolower((string) ($loan->term_unit ?: 'monthly'));
+            $rawTermUnit = strtolower(trim((string) ($loan->term_unit ?: 'monthly')));
+            $loanTermLabel = match ($rawTermUnit) {
+                'daily', 'day' => $termValue === 1 ? '1 day' : $termValue.' days',
+                'weekly', 'week', 'weeks' => $termValue === 1 ? '1 week' : $termValue.' weeks',
+                'monthly', 'month', 'months' => $termValue === 1 ? '1 month' : $termValue.' months',
+                'annual', 'year', 'yearly', 'years' => $termValue === 1 ? '1 year' : $termValue.' years',
+                default => 'Term '.$termValue.' ('.($loan->term_unit ?: 'unspecified unit').')',
+            };
+            $interestRatePeriod = strtolower(trim((string) ($loan->interest_rate_period ?: ($loan->application?->interest_rate_period ?? 'term'))));
+            $interestRatePeriodLabel = match ($interestRatePeriod) {
+                'daily' => 'Per day',
+                'weekly' => 'Per week',
+                'monthly' => 'Per month',
+                'annual' => 'Per year',
+                'term' => 'Whole loan term',
+                default => strtoupper($interestRatePeriod),
+            };
             $scheduleUnit = str_contains($rawTermUnit, 'day')
                 ? 'daily'
                 : (str_contains($rawTermUnit, 'week')
@@ -44,8 +67,12 @@
                 };
             };
             $scheduleFrequencyLabel = ucfirst($scheduleUnit);
-            $expectedInstallmentAmount = $termValue > 0 ? ($totalRepayable / $termValue) : $totalRepayable;
-            $installmentsCovered = (int) floor($expectedInstallmentAmount > 0 ? ($paid / $expectedInstallmentAmount) : 0);
+            // Scheduled amount per period from the contract formula (not paid+balance, which can double-count mis-allocated interest).
+            $baseInstallmentAmount = $termValue > 0 ? ($contractRepayable / $termValue) : $contractRepayable;
+            $baseInstallmentAmount = max(0.01, (float) $baseInstallmentAmount);
+            // Next payment to show: never more than what is left; for single-period loans this fixes "full contract / 1" after partial pay.
+            $expectedInstallmentAmount = $remaining > 0.01 ? min($remaining, $baseInstallmentAmount) : 0.0;
+            $installmentsCovered = (int) min($termValue, floor($paid / $baseInstallmentAmount));
             $nextInstallmentNumber = min($termValue, max(1, $installmentsCovered + 1));
             $nextDueDate = $loan->disbursed_at ? $addScheduleStep($loan->disbursed_at, $nextInstallmentNumber) : null;
             $daysToNextPayment = $nextDueDate ? now()->startOfDay()->diffInDays($nextDueDate->copy()->startOfDay(), false) : null;
@@ -128,17 +155,24 @@
             </div>
             <div class="mt-4">
                 <div class="mb-1 flex items-center justify-between text-xs">
-                    <span class="font-semibold uppercase tracking-wide text-slate-500">Paid vs Total due</span>
+                    <span class="font-semibold uppercase tracking-wide text-slate-500">Paid vs contract repayable</span>
                     <span class="font-semibold text-slate-700">{{ number_format($progress, 1) }}%</span>
                 </div>
+                <p class="mb-2 text-[11px] text-slate-500">Progress uses principal + interest + loan-stage fees from the current term and rate (not “paid + balance”, which can look inflated until snapshots are rebuilt).</p>
                 <div class="h-2.5 w-full rounded-full bg-slate-200">
                     <div class="h-2.5 rounded-full bg-emerald-500 transition-all" style="width: {{ number_format($progress, 2, '.', '') }}%;"></div>
                 </div>
                 <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs text-slate-600">
-                    <p>Total due: <span class="font-semibold tabular-nums text-slate-800">{{ number_format($totalRepayable, 2) }}</span></p>
+                    <p>Contract repayable: <span class="font-semibold tabular-nums text-slate-800">{{ number_format($contractRepayable, 2) }}</span></p>
                     <p>Paid: <span class="font-semibold tabular-nums text-emerald-700">{{ number_format($paid, 2) }}</span></p>
-                    <p>Remaining: <span class="font-semibold tabular-nums text-slate-800">{{ number_format($remaining, 2) }}</span></p>
+                    <p>Outstanding balance: <span class="font-semibold tabular-nums text-slate-800">{{ number_format($remaining, 2) }}</span></p>
                 </div>
+                @if (abs($ledgerLifeTotal - $contractRepayable) > 0.51)
+                    <p class="mt-2 rounded-md border border-amber-200 bg-amber-50/90 px-2 py-1.5 text-[11px] text-amber-950">
+                        Posted cash (paid + current balance) is <strong>{{ number_format($ledgerLifeTotal, 2) }}</strong>, above the contract line <strong>{{ number_format($contractRepayable, 2) }}</strong>.
+                        After correcting repayment allocation, click <strong>Rebuild snapshot</strong> so principal outstanding and balance match posted payments.
+                    </p>
+                @endif
             </div>
         </div>
 
@@ -192,7 +226,8 @@
                         <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Terms</p>
                         <dl class="mt-2 space-y-2 text-sm">
                             <div><dt class="text-slate-500">Interest rate</dt><dd class="font-medium text-slate-900">{{ number_format((float) $loan->interest_rate, 2) }}%</dd></div>
-                            <div><dt class="text-slate-500">Rate period</dt><dd class="font-medium text-slate-900">{{ strtoupper((string) ($loan->interest_rate_period ?: ($loan->application?->interest_rate_period ?? 'annual'))) }}</dd></div>
+                            <div><dt class="text-slate-500">Loan term</dt><dd class="font-medium text-slate-900">{{ $loanTermLabel }}</dd></div>
+                            <div><dt class="text-slate-500">Interest applies</dt><dd class="font-medium text-slate-900">{{ $interestRatePeriodLabel }}</dd></div>
                             <div><dt class="text-slate-500">Disbursed at</dt><dd class="font-medium text-slate-900">{{ optional($loan->disbursed_at)->format('Y-m-d') ?: '—' }}</dd></div>
                             <div><dt class="text-slate-500">Maturity date</dt><dd class="font-medium text-slate-900">{{ optional($loan->maturity_date)->format('Y-m-d') ?: '—' }}</dd></div>
                         </dl>
@@ -202,7 +237,9 @@
                         <dl class="mt-2 space-y-2 text-sm">
                             <div><dt class="text-slate-500">Status</dt><dd class="font-medium text-slate-900">{{ str_replace('_', ' ', $displayStatus) }}</dd></div>
                             <div><dt class="text-slate-500">Days past due</dt><dd class="font-medium {{ $dpd > 0 ? 'text-red-600' : 'text-slate-900' }}">{{ $dpd }}</dd></div>
+                            <div><dt class="text-slate-500">Principal outstanding</dt><dd class="font-medium tabular-nums text-slate-900">{{ number_format((float) $loan->principal_outstanding, 2) }}</dd></div>
                             <div><dt class="text-slate-500">Interest outstanding</dt><dd class="font-medium tabular-nums text-slate-900">{{ number_format((float) $loan->interest_outstanding, 2) }}</dd></div>
+                            <div><dt class="text-slate-500">Fees &amp; penalties outstanding</dt><dd class="font-medium tabular-nums text-slate-900">{{ number_format((float) $loan->fees_outstanding, 2) }}</dd></div>
                             <div><dt class="text-slate-500">Checkoff</dt><dd class="font-medium text-slate-900">{{ $loan->is_checkoff ? 'Yes' : 'No' }}</dd></div>
                         </dl>
                     </div>
@@ -212,6 +249,21 @@
                     <div><p class="text-slate-500">Realized profit</p><p class="font-semibold tabular-nums {{ $realizedProfit >= 0 ? 'text-emerald-700' : 'text-red-600' }}">{{ number_format($realizedProfit, 2) }}</p></div>
                     <div><p class="text-slate-500">Estimated total profit</p><p class="font-semibold tabular-nums {{ $estimatedTotalProfit >= 0 ? 'text-emerald-700' : 'text-red-600' }}">{{ number_format($estimatedTotalProfit, 2) }}</p></div>
                 </div>
+                @if (isset($nonPrincipalDrift) && abs((float) $nonPrincipalDrift) > 0.51)
+                    <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50/90 p-3 text-sm text-amber-950">
+                        <p class="font-semibold text-amber-900">Possible mismatch vs current term / rate / fees</p>
+                        <p class="mt-1 text-amber-950/95">
+                            Paid plus remaining balance minus booked principal implies
+                            <strong>{{ number_format((float) ($impliedContractNonPrincipal ?? 0), 2) }}</strong>
+                            in interest and loan-stage fees so far.
+                            Using this loan’s current term, rate, and active product charges, the system would estimate about
+                            <strong>{{ number_format((float) ($bookingInterestEstimate ?? 0), 2) }}</strong> interest
+                            and <strong>{{ number_format((float) ($bookingFeesEstimate ?? 0), 2) }}</strong> in fees at draw.
+                            <strong>Difference: {{ number_format((float) $nonPrincipalDrift, 2) }}.</strong>
+                            If you are sure there are no fees, the gap is usually from an older interest/term snapshot or a past schedule sync; use <strong>Rebuild snapshot</strong> after fixing the loan, or check whether the stored term unit (for example days vs months) matches what you expect.
+                        </p>
+                    </div>
+                @endif
             </div>
         </div>
 
@@ -235,10 +287,10 @@
                         @for ($i = 1; $i <= $termValue; $i++)
                             @php
                                 $dueDate = $loan->disbursed_at ? $addScheduleStep($loan->disbursed_at, $i) : null;
-                                $coveredByPaid = $paid >= ($expectedInstallmentAmount * $i);
+                                $coveredByPaid = $paid >= ($baseInstallmentAmount * $i);
                                 $paidThisInstallment = $coveredByPaid
-                                    ? $expectedInstallmentAmount
-                                    : max(0, min($expectedInstallmentAmount, $paid - ($expectedInstallmentAmount * ($i - 1))));
+                                    ? $baseInstallmentAmount
+                                    : max(0, min($baseInstallmentAmount, $paid - ($baseInstallmentAmount * ($i - 1))));
                                 $isLateInstallment = ! $coveredByPaid && $dueDate && $dueDate->isPast();
                                 $scheduleStatus = $coveredByPaid ? 'Paid' : ($isLateInstallment ? 'Late' : 'Pending');
                                 $scheduleClass = $coveredByPaid ? 'bg-emerald-100 text-emerald-700' : ($isLateInstallment ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700');
@@ -246,7 +298,7 @@
                             <tr>
                                 <td class="px-4 py-2 tabular-nums text-slate-700">{{ $i }}</td>
                                 <td class="px-4 py-2 text-slate-700">{{ $dueDate ? $dueDate->format('Y-m-d') : '—' }}</td>
-                                <td class="px-4 py-2 text-right tabular-nums text-slate-700">{{ number_format($expectedInstallmentAmount, 2) }}</td>
+                                <td class="px-4 py-2 text-right tabular-nums text-slate-700">{{ number_format($baseInstallmentAmount, 2) }}</td>
                                 <td class="px-4 py-2 text-right tabular-nums text-slate-700">{{ number_format($paidThisInstallment, 2) }}</td>
                                 <td class="px-4 py-2">
                                     <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold {{ $scheduleClass }}">{{ $scheduleStatus }}</span>

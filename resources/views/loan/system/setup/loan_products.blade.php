@@ -58,116 +58,19 @@
                 <p class="text-xs text-slate-500">{{ $products->count() }} product(s)</p>
             </div>
 
-            <div class="overflow-x-auto">
-                <table class="min-w-[1280px] w-full text-sm">
-                    <thead class="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                        <tr>
-                            <th class="px-4 py-3">Product</th>
-                            <th class="px-4 py-3">Description</th>
-                            <th class="px-4 py-3 text-right">Default interest</th>
-                            <th class="px-4 py-3 text-right">Default term</th>
-                            <th class="px-4 py-3 text-right">Range</th>
-                            <th class="px-4 py-3">Penalty/checkoff</th>
-                            <th class="px-4 py-3">Charges</th>
-                            <th class="px-4 py-3">Status</th>
-                            <th class="px-4 py-3">Edit</th>
-                            <th class="px-4 py-3 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
-                        @forelse ($products as $product)
-                            <tr class="hover:bg-slate-50/70 align-top">
-                                <td class="px-4 py-3 font-semibold text-slate-800 whitespace-nowrap">{{ $product->name }}</td>
-                                <td class="px-4 py-3 text-slate-600">{{ $product->description ?: '—' }}</td>
-                                <td class="px-4 py-3 text-right tabular-nums text-slate-700 whitespace-nowrap">
-                                    @if ($product->default_interest_rate !== null)
-                                        @php($interestType = (string) ($product->default_interest_rate_type ?? 'percent'))
-                                        {{ $interestType === 'percent' ? number_format((float) $product->default_interest_rate, 4).'%' : number_format((float) $product->default_interest_rate, 2) }} / {{ $product->default_interest_rate_period ?? 'annual' }}
-                                    @else
-                                        —
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 text-right tabular-nums text-slate-700 whitespace-nowrap">
-                                    @if ($product->default_term_months !== null)
-                                        {{ $product->default_term_months }} {{ $product->default_term_unit ?? 'monthly' }}
-                                    @else
-                                        —
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 text-right tabular-nums text-xs text-slate-700 whitespace-nowrap">
-                                    @if ($product->min_loan_amount !== null || $product->max_loan_amount !== null)
-                                        {{ $product->min_loan_amount !== null ? number_format((float) $product->min_loan_amount, 2) : '0.00' }}
-                                        —
-                                        {{ $product->max_loan_amount !== null ? number_format((float) $product->max_loan_amount, 2) : 'No cap' }}
-                                    @else
-                                        —
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
-                                    @if ($product->penalty_amount !== null || $product->exempt_from_checkoffs)
-                                        @php($penaltyType = (string) ($product->penalty_amount_type ?? 'fixed'))
-                                        <div>{{ $product->arrears_penalty_scope ? str_replace('_', ' ', $product->arrears_penalty_scope) : 'Penalty' }}: {{ $product->penalty_amount !== null ? ($penaltyType === 'percent' ? number_format((float) $product->penalty_amount, 4).'%' : number_format((float) $product->penalty_amount, 2)) : '—' }}</div>
-                                        @if ($product->rollover_fees !== null)
-                                            @php($rolloverType = (string) ($product->rollover_fees_type ?? 'fixed'))
-                                            <div>Rollover: {{ $rolloverType === 'percent' ? number_format((float) $product->rollover_fees, 4).'%' : number_format((float) $product->rollover_fees, 2) }}</div>
-                                        @endif
-                                        @if ($product->loan_offset_fees !== null)
-                                            @php($offsetType = (string) ($product->loan_offset_fees_type ?? 'fixed'))
-                                            <div>Loan offset: {{ $offsetType === 'percent' ? number_format((float) $product->loan_offset_fees, 4).'%' : number_format((float) $product->loan_offset_fees, 2) }}</div>
-                                        @endif
-                                        <div class="text-slate-500">Checkoff exempt: {{ $product->exempt_from_checkoffs ? 'Yes' : 'No' }}</div>
-                                    @else
-                                        —
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 text-xs text-slate-600">
-                                    @if (($hasProductCharges ?? false) && $product->charges->isNotEmpty())
-                                        <div class="space-y-1">
-                                            @foreach ($product->charges as $charge)
-                                                <div>
-                                                    <span class="font-semibold text-slate-700">{{ $charge->charge_name }}</span>
-                                                    <span class="text-slate-500">
-                                                        —
-                                                        {{ $charge->amount_type === 'percent' ? number_format((float) $charge->amount, 4).'%' : number_format((float) $charge->amount, 2) }}
-                                                        · {{ str_replace('_', ' ', $charge->applies_to_stage) }}
-                                                        · {{ str_replace('_', ' ', $charge->applies_to_client_scope) }}
-                                                    </span>
-                                                </div>
-                                            @endforeach
-                                        </div>
-                                    @else
-                                        —
-                                    @endif
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <span class="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold {{ $product->is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-700' }}">
-                                        {{ $product->is_active ? 'Active' : 'Inactive' }}
-                                    </span>
-                                </td>
-                                <td class="px-4 py-3 whitespace-nowrap">
-                                    <button
-                                        type="button"
-                                        class="js-edit-product rounded border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-                                        data-product-id="{{ $product->id }}"
-                                    >
-                                        Edit
-                                    </button>
-                                </td>
-                                <td class="px-4 py-3 text-right whitespace-nowrap">
-                                    <form method="post" action="{{ route('loan.system.setup.loan_products.destroy', $product) }}" class="inline" data-swal-confirm="Remove this loan product?">
-                                        @csrf
-                                        @method('delete')
-                                        <button type="submit" class="text-red-600 font-medium text-xs hover:underline">Delete</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="10" class="px-5 py-12 text-center text-slate-500">No loan products defined yet.</td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
+            <div class="border-t border-slate-100 px-5 py-5">
+                @forelse ($products as $product)
+                    @include('loan.system.setup.partials.loan_product_list_card', [
+                        'product' => $product,
+                        'hasProductCharges' => $hasProductCharges ?? false,
+                        'activeLoanCounts' => $activeLoanCounts,
+                    ])
+                    @if (! $loop->last)
+                        <div class="h-4" aria-hidden="true"></div>
+                    @endif
+                @empty
+                    <p class="py-12 text-center text-slate-500">No loan products defined yet.</p>
+                @endforelse
             </div>
         </div>
 

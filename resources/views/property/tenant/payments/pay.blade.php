@@ -65,17 +65,28 @@
                         </div>
                     </div>
 
+                    @isset($focusInvoice)
+                        @if ($focusInvoice)
+                            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                <p class="font-semibold">Paying invoice {{ $focusInvoice->invoice_no }}</p>
+                                <p class="text-xs">{{ ucfirst((string) $focusInvoice->invoice_type) }} · {{ $focusInvoice->billing_period ?: optional($focusInvoice->issue_date)->format('Y-m') }} · Balance: KES {{ number_format((float) ($focusAmount ?? 0), 2) }}</p>
+                            </div>
+                        @endif
+                    @endisset
                     <form
                         method="post"
                         action="{{ route('property.tenant.payments.store') }}"
                         class="space-y-5"
-                        x-data="{ method: 'mpesa_stk', submitting: false, scope: '{{ old('bill_scope', 'all') }}' }"
+                        x-data="{ method: 'mpesa_stk', submitting: false, scope: '{{ old('bill_scope', $focusScope ?? 'all') }}' }"
                         @submit="submitting = true"
                         data-turbo="false"
                         data-swal-confirm="Send STK prompt to your phone and start payment?"
                     >
                         @csrf
                         <input type="hidden" name="payment_method" value="mpesa_stk" />
+                        @if (! empty($focusInvoice))
+                            <input type="hidden" name="invoice_id" value="{{ $focusInvoice->id }}" />
+                        @endif
 
                         <!-- What are you paying for? -->
                         <div class="rounded-xl border border-gray-200 bg-white p-4">
@@ -149,7 +160,7 @@
                                 <input 
                                     type="text" 
                                     name="custom_amount" 
-                                    value="{{ old('custom_amount') }}" 
+                                    value="{{ old('custom_amount', isset($focusAmount) && $focusAmount > 0 ? number_format($focusAmount, 2, '.', '') : '') }}" 
                                     inputmode="decimal" 
                                     class="w-full rounded-xl border border-gray-200 bg-white text-sm pl-12 pr-4 py-3 focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all" 
                                     placeholder="0.00"

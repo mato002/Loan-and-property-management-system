@@ -555,10 +555,33 @@ class LoanSystemHelpController extends Controller
 
         return view('loan.system.setup.loan_products', [
             'title' => 'Loan products',
-            'subtitle' => 'Set default interest rates and repayment periods per product.',
+            'subtitle' => 'Defaults for pricing, terms, penalties, and charges. Each product is a full card (no horizontal scroll); open View details for a dedicated summary page.',
             'products' => $productsQuery->get(),
             'activeLoanCounts' => $activeLoanCounts,
             'hasProductCharges' => $hasProductCharges,
+        ]);
+    }
+
+    public function setupLoanProductsShow(LoanProduct $loan_product): View
+    {
+        abort_unless(Schema::hasTable('loan_products'), 404, 'Loan products table not found. Run migrations.');
+
+        $hasProductCharges = Schema::hasTable('loan_product_charges');
+        if ($hasProductCharges) {
+            $loan_product->load(['charges' => fn ($q) => $q->where('is_active', true)->orderBy('id')]);
+        }
+
+        $activeLoansCount = LoanBookLoan::query()
+            ->where('product_name', $loan_product->name)
+            ->whereIn('status', [LoanBookLoan::STATUS_ACTIVE, LoanBookLoan::STATUS_RESTRUCTURED])
+            ->count();
+
+        return view('loan.system.setup.loan_products_show', [
+            'title' => (string) $loan_product->name,
+            'subtitle' => 'Loan product details and defaults.',
+            'product' => $loan_product,
+            'hasProductCharges' => $hasProductCharges,
+            'activeLoansCount' => $activeLoansCount,
         ]);
     }
 

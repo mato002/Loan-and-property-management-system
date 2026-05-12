@@ -229,6 +229,66 @@ class TenantPortalController extends Controller
         ]);
     }
 
+    /**
+     * Per-tenant invoice list — same look as agent invoices index but
+     * scoped to this tenant.
+     */
+    public function invoices(Request $request): View
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        abort_unless($tenant, 403);
+
+        $status = strtolower((string) $request->query('status', ''));
+        $base = PmInvoice::query()
+            ->where('pm_tenant_id', $tenant->id)
+            ->with(['unit.property']);
+        if (in_array($status, ['draft', 'sent', 'partial', 'paid', 'overdue', 'cancelled'], true)) {
+            $base->where('status', $status);
+        }
+        $invoices = $base->orderByDesc('issue_date')->orderByDesc('id')->paginate(30)->withQueryString();
+
+        return view('property.tenant.invoices.index', [
+            'invoices' => $invoices,
+            'status' => $status,
+            'tenant' => $tenant,
+        ]);
+    }
+
+    public function invoiceShow(Request $request, int $invoiceId): View
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        abort_unless($tenant, 403);
+        $invoice = PmInvoice::query()->with(['unit.property', 'items', 'allocations.payment'])->findOrFail($invoiceId);
+        abort_unless((int) $invoice->pm_tenant_id === (int) $tenant->id, 403);
+        $invoice->loadMissing('tenant');
+
+        // Reuse the public view template — it's already mobile-friendly.
+        return view('property.public.invoice_show', [
+            'invoice' => $invoice,
+            'tenantContext' => true,
+            'pdfUrl' => route('property.tenant.invoices.pdf', $invoice->id),
+            'payUrl' => route('property.tenant.payments.pay', ['invoice_id' => $invoice->id]),
+            'branding' => (function () {
+                $b = \App\Models\PropertyPortalSetting::query()->where('key', 'branding')->value('value');
+                $decoded = is_string($b) ? json_decode($b, true) : (is_array($b) ? $b : []);
+                $defaults = [
+                    'company_name' => 'Property Manager', 'address' => '', 'phone' => '', 'email' => '',
+                    'logo_url' => '', 'colour' => '#1e40af', 'footer_note' => 'Thank you for your business.',
+                ];
+                return array_merge($defaults, is_array($decoded) ? $decoded : []);
+            })(),
+        ]);
+    }
+
+    public function invoicePdf(Request $request, int $invoiceId): StreamedResponse|\Illuminate\Http\Response
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        abort_unless($tenant, 403);
+        $invoice = PmInvoice::query()->findOrFail($invoiceId);
+        abort_unless((int) $invoice->pm_tenant_id === (int) $tenant->id, 403);
+        return app(\App\Http\Controllers\Property\Agent\PmInvoiceController::class)->downloadPdf($invoice);
+    }
+
     public function paymentsIndex(Request $request): View
     {
         $tenant = $request->user()->pmTenantProfile;
@@ -498,6 +558,22 @@ class TenantPortalController extends Controller
         $balance = $tenant ? $this->openBalanceForTenant((int) $tenant->id) : 0.0;
         $methodConfig = $this->tenantPaymentMethods();
 
+        // Allow a single-invoice "pay this invoice" flow by passing ?invoice_id=
+        $focusInvoice = null;
+        $focusScope = null;
+        $focusAmount = null;
+        $invoiceId = (int) $request->query('invoice_id', 0);
+        if ($tenant && $invoiceId > 0) {
+            $focusInvoice = PmInvoice::query()
+                ->where('pm_tenant_id', $tenant->id)
+                ->find($invoiceId);
+            if ($focusInvoice) {
+                $focusScope = (string) $focusInvoice->invoice_type === PmInvoice::TYPE_WATER ? 'water'
+                    : ((string) $focusInvoice->invoice_type === PmInvoice::TYPE_RENT ? 'rent' : 'all');
+                $focusAmount = max(0.0, (float) ($focusInvoice->total_amount ?? $focusInvoice->amount) - (float) $focusInvoice->amount_paid);
+            }
+        }
+
         return view('property.tenant.payments.pay', [
             'amountDue' => PropertyMoney::kes($balance),
             'amountDueRaw' => $balance,
@@ -505,6 +581,9 @@ class TenantPortalController extends Controller
             'waterDue' => $this->openBalanceForTenant((int) $tenant?->id, PmInvoice::TYPE_WATER),
             'paymentMethods' => $methodConfig['select'],
             'paymentMethodDetails' => $methodConfig['details'],
+            'focusInvoice' => $focusInvoice,
+            'focusScope' => $focusScope,
+            'focusAmount' => $focusAmount,
         ]);
     }
 
@@ -714,11 +793,27 @@ class TenantPortalController extends Controller
             'external_ref' => ['nullable', 'string', 'max:128'],
             'custom_amount' => ['nullable', 'string', 'max:32'],
             'bill_scope' => ['nullable', 'string', Rule::in(['all', 'rent', 'water'])],
+            'invoice_id' => ['nullable', 'integer'],
         ]);
 
         $scope = (string) ($data['bill_scope'] ?? 'all');
         $invoiceType = $this->invoiceTypeForScope($scope);
-        $balance = $this->openBalanceForTenant((int) $tenant->id, $invoiceType);
+
+        // "Pay this invoice" mode — when invoice_id is provided, scope balance
+        // and allocation to that single invoice rather than the tenant's wider
+        // outstanding ledger.
+        $targetInvoice = null;
+        if (! empty($data['invoice_id'])) {
+            $targetInvoice = PmInvoice::query()
+                ->where('pm_tenant_id', $tenant->id)
+                ->find((int) $data['invoice_id']);
+            if (! $targetInvoice) {
+                return back()->withErrors(['invoice_id' => 'Invoice not found or not yours.'])->withInput();
+            }
+            $balance = max(0.0, (float) ($targetInvoice->total_amount ?? $targetInvoice->amount) - (float) $targetInvoice->amount_paid);
+        } else {
+            $balance = $this->openBalanceForTenant((int) $tenant->id, $invoiceType);
+        }
         if ($balance <= 0) {
             return back()->with('success', 'Nothing due right now — no payment was recorded.');
         }
@@ -741,7 +836,7 @@ class TenantPortalController extends Controller
 
         $isPending = $data['payment_method'] === 'mpesa_stk';
 
-        $payment = DB::transaction(function () use ($tenant, $data, $amount, $isPending, $scope, $invoiceType) {
+        $payment = DB::transaction(function () use ($tenant, $data, $amount, $isPending, $scope, $invoiceType, $targetInvoice) {
             $payment = PmPayment::query()->create([
                 'pm_tenant_id' => $tenant->id,
                 'channel' => $data['payment_method'],
@@ -753,11 +848,16 @@ class TenantPortalController extends Controller
                     'phone' => $data['payer_phone'] ?? null,
                     'submitted_at' => now()->toIso8601String(),
                     'bill_scope' => $scope,
+                    'invoice_id' => $targetInvoice?->id,
                 ],
             ]);
 
             if (! $isPending) {
-                $this->allocatePaymentToOpenInvoices($payment, $invoiceType);
+                if ($targetInvoice) {
+                    $this->allocatePaymentToSpecificInvoice($payment, $targetInvoice);
+                } else {
+                    $this->allocatePaymentToOpenInvoices($payment, $invoiceType);
+                }
             }
 
             return $payment;
@@ -974,6 +1074,65 @@ class TenantPortalController extends Controller
             $invoice->save();
             $invoice->refreshComputedStatus();
 
+            $remaining -= $allocation;
+        }
+    }
+
+    /**
+     * Allocate a payment to one specific invoice (used by "Pay this invoice").
+     * Any overpay spills onto the tenant's other open invoices, oldest first.
+     */
+    private function allocatePaymentToSpecificInvoice(PmPayment $payment, PmInvoice $invoice): void
+    {
+        $remaining = (float) $payment->amount;
+        if ($remaining <= 0) {
+            return;
+        }
+        $invoice->refresh();
+        $invoiceRemaining = max(0.0, (float) ($invoice->total_amount ?? $invoice->amount) - (float) $invoice->amount_paid);
+        if ($invoiceRemaining > 0) {
+            $allocation = min($remaining, $invoiceRemaining);
+            PmPaymentAllocation::query()->create([
+                'pm_payment_id' => $payment->id,
+                'pm_invoice_id' => $invoice->id,
+                'amount' => $allocation,
+            ]);
+            $invoice->amount_paid = (float) $invoice->amount_paid + $allocation;
+            $invoice->save();
+            $invoice->refreshComputedStatus();
+            $remaining -= $allocation;
+        }
+
+        if ($remaining <= 0) {
+            return;
+        }
+
+        // Overpay spills onto the tenant's wider open ledger (oldest-first).
+        $openInvoices = PmInvoice::query()
+            ->where('pm_tenant_id', $payment->pm_tenant_id)
+            ->where('id', '!=', $invoice->id)
+            ->whereColumn('amount_paid', '<', 'amount')
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        foreach ($openInvoices as $other) {
+            if ($remaining <= 0) {
+                break;
+            }
+            $otherRemaining = max(0.0, (float) $other->amount - (float) $other->amount_paid);
+            if ($otherRemaining <= 0) {
+                continue;
+            }
+            $allocation = min($remaining, $otherRemaining);
+            PmPaymentAllocation::query()->create([
+                'pm_payment_id' => $payment->id,
+                'pm_invoice_id' => $other->id,
+                'amount' => $allocation,
+            ]);
+            $other->amount_paid = (float) $other->amount_paid + $allocation;
+            $other->save();
+            $other->refreshComputedStatus();
             $remaining -= $allocation;
         }
     }

@@ -82,6 +82,7 @@ class ClientWalletTest extends TestCase
             'interest_rate' => 10,
             'status' => LoanBookLoan::STATUS_ACTIVE,
             'dpd' => 0,
+            'disbursed_at' => now()->subDay(),
         ]);
 
         $payment = LoanBookPayment::query()->create([

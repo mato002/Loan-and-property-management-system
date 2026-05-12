@@ -101,12 +101,46 @@ class RevenueController extends Controller
             return back()->withErrors(['bulk' => 'Select at least one invoice.']);
         }
         if ($action === 'cancel') {
-            PmInvoice::query()
+            $cancelled = 0;
+            $skipped = 0;
+            $invoices = PmInvoice::query()
                 ->whereIn('id', $ids)
-                ->where('status', '!=', PmInvoice::STATUS_PAID)
-                ->update(['status' => PmInvoice::STATUS_CANCELLED]);
+                ->whereNotIn('status', [PmInvoice::STATUS_PAID, PmInvoice::STATUS_CANCELLED])
+                ->where('amount_paid', 0)
+                ->get();
+            foreach ($invoices as $invoice) {
+                $invoice->update([
+                    'status' => PmInvoice::STATUS_CANCELLED,
+                    'cancelled_at' => now(),
+                    'cancelled_by_user_id' => $request->user()?->id,
+                    'cancelled_reason' => 'Bulk cancel',
+                ]);
+                \App\Services\Property\PropertyAccountingPostingService::reverseInvoiceIssued($invoice, $request->user(), 'Bulk cancel');
+                \App\Models\PmInvoiceEvent::record((int) $invoice->id, \App\Models\PmInvoiceEvent::EVENT_CANCELLED, $request->user()?->id, 'Bulk cancel');
+                $cancelled++;
+            }
+            $skipped = count($ids) - $cancelled;
 
-            return back()->with('status', 'Selected invoices were cancelled (paid invoices skipped).');
+            return back()->with('status', "Cancelled {$cancelled} invoice(s)" . ($skipped > 0 ? ", skipped {$skipped} (paid or already cancelled)." : '.'));
+        }
+
+        if ($action === 'mark_sent') {
+            $count = 0;
+            $invoices = PmInvoice::query()
+                ->whereIn('id', $ids)
+                ->where('status', PmInvoice::STATUS_DRAFT)
+                ->get();
+            foreach ($invoices as $invoice) {
+                $invoice->update([
+                    'status' => PmInvoice::STATUS_SENT,
+                    'sent_at' => now(),
+                    'sent_by_user_id' => $request->user()?->id,
+                ]);
+                \App\Services\Property\PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
+                \App\Models\PmInvoiceEvent::record((int) $invoice->id, \App\Models\PmInvoiceEvent::EVENT_SENT, $request->user()?->id);
+                $count++;
+            }
+            return back()->with('status', "Marked {$count} invoice(s) as sent.");
         }
 
         return back()->withErrors(['bulk' => 'Unsupported bulk action.']);
@@ -259,10 +293,36 @@ class RevenueController extends Controller
             ]
         );
 
+        // Aging buckets driven by the *currently filtered* data set, so the
+        // numbers always match what's on the page.
+        $buckets = [
+            '0_30' => 0.0,
+            '31_60' => 0.0,
+            '61_90' => 0.0,
+            'over_90' => 0.0,
+        ];
+        foreach ($invoices as $i) {
+            $balance = max(0.0, (float) $i->amount - (float) $i->amount_paid);
+            if ($balance <= 0) {
+                continue;
+            }
+            $days = $i->due_date ? (int) $i->due_date->copy()->startOfDay()->diffInDays(now()->startOfDay(), true) : 0;
+            if ($days < 31) {
+                $buckets['0_30'] += $balance;
+            } elseif ($days < 61) {
+                $buckets['31_60'] += $balance;
+            } elseif ($days < 91) {
+                $buckets['61_90'] += $balance;
+            } else {
+                $buckets['over_90'] += $balance;
+            }
+        }
+
         $stats = [
-            ['label' => '7 days', 'value' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(7, 14)), 'hint' => 'Early'],
-            ['label' => '14 days', 'value' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(14, 30)), 'hint' => ''],
-            ['label' => '30+ days', 'value' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(30)), 'hint' => ''],
+            ['label' => '0–30 days', 'value' => PropertyMoney::kes($buckets['0_30']), 'hint' => 'Early arrears'],
+            ['label' => '31–60 days', 'value' => PropertyMoney::kes($buckets['31_60']), 'hint' => ''],
+            ['label' => '61–90 days', 'value' => PropertyMoney::kes($buckets['61_90']), 'hint' => 'Escalate'],
+            ['label' => '90+ days', 'value' => PropertyMoney::kes($buckets['over_90']), 'hint' => 'Final notice'],
             ['label' => 'Tenants in arrears', 'value' => (string) $total, 'hint' => 'Filtered'],
         ];
 

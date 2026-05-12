@@ -226,12 +226,42 @@
                 <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
                 <a href="{{ route('loan.book.loans.index') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
                 <div class="ml-auto flex items-center gap-2">
+                    @if (($bulkSyncEligibleCount ?? 0) > 0)
+                        <button
+                            id="bulk-sync-schedules-btn"
+                            type="button"
+                            class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100"
+                            data-loan-count="{{ (int) ($bulkSyncEligibleCount ?? 0) }}"
+                        >
+                            Sync all schedules ({{ number_format((int) ($bulkSyncEligibleCount ?? 0)) }})
+                        </button>
+                    @endif
+                    @if (($bulkRebuildEligibleCount ?? 0) > 0)
+                        <button
+                            id="bulk-rebuild-snapshots-btn"
+                            type="button"
+                            class="rounded-lg border border-cyan-300 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-900 hover:bg-cyan-100"
+                            data-loan-count="{{ (int) ($bulkRebuildEligibleCount ?? 0) }}"
+                        >
+                            Rebuild snapshots ({{ number_format((int) ($bulkRebuildEligibleCount ?? 0)) }})
+                        </button>
+                    @endif
                     <a :href="exportUrl('csv')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
                     <a :href="exportUrl('xls')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
                     <a :href="exportUrl('pdf')" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
                 </div>
             </div>
         </form>
+        @if (($bulkSyncEligibleCount ?? 0) > 0)
+            <form id="bulk-sync-schedules-form" method="post" action="{{ route('loan.book.loans.sync_schedules_bulk') }}" class="hidden">
+                @csrf
+            </form>
+        @endif
+        @if (($bulkRebuildEligibleCount ?? 0) > 0)
+            <form id="bulk-rebuild-snapshots-form" method="post" action="{{ route('loan.book.loans.rebuild_snapshots_bulk') }}" class="hidden">
+                @csrf
+            </form>
+        @endif
 
         <div class="mb-4 flex flex-wrap items-center gap-2">
             <span class="text-xs font-semibold uppercase tracking-wide text-slate-500">Quick repayment filter:</span>
@@ -474,5 +504,66 @@
             @endif
         </div>
         </div>
+        <script>
+            (() => {
+                const bindBulkConfirm = (buttonId, formId, title, bodyTemplate, confirmText = 'Yes, continue') => {
+                    const button = document.getElementById(buttonId);
+                    const form = document.getElementById(formId);
+                    if (! button || ! form) {
+                        return;
+                    }
+                    button.addEventListener('click', async () => {
+                        const count = Number(button.getAttribute('data-loan-count') || '0');
+                        const message = bodyTemplate.replace(':count', String(count));
+
+                        if (window.Swal && typeof window.Swal.fire === 'function') {
+                            const result = await window.Swal.fire({
+                                title,
+                                text: message,
+                                icon: 'warning',
+                                showCancelButton: true,
+                                confirmButtonText: confirmText,
+                                cancelButtonText: 'Cancel',
+                                reverseButtons: true,
+                            });
+                            if (result.isConfirmed) {
+                                form.submit();
+                            }
+
+                            return;
+                        }
+
+                        if (window.confirm(message)) {
+                            form.submit();
+                        }
+                    });
+                };
+
+                bindBulkConfirm(
+                    'bulk-sync-schedules-btn',
+                    'bulk-sync-schedules-form',
+                    'Sync all schedules?',
+                    'Sync schedule from linked applications for :count eligible loans? This recalculates interest snapshots and may take a while.',
+                    'Yes, sync now'
+                );
+                bindBulkConfirm(
+                    'bulk-rebuild-snapshots-btn',
+                    'bulk-rebuild-snapshots-form',
+                    'Rebuild all snapshots?',
+                    'Replay posted collections on :count loans in your portfolio and fix balances only where they differ from disbursements + payments. Loans that already match are left unchanged.',
+                    'Yes, rebuild now'
+                );
+
+                const flashTitle = @json(session('loan_register_bulk_title'));
+                const flashStatus = @json(session('status'));
+                if (flashStatus && window.Swal && typeof window.Swal.fire === 'function') {
+                    window.Swal.fire({
+                        icon: 'success',
+                        title: flashTitle || 'Done',
+                        text: flashStatus,
+                    });
+                }
+            })();
+        </script>
     </x-loan.page>
 </x-loan-layout>

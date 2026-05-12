@@ -22,21 +22,50 @@ class PropertyAccountingPostingService
     private const ACC_MANAGEMENT_FEE_INCOME = '4200';
     private const ACC_MAINTENANCE_EXPENSE = '5101';
 
+    /**
+     * Post an invoice-issued journal batch. Idempotent: if a posted batch
+     * already exists for this invoice (event_type = 'invoice_issued') we do
+     * nothing. Cancellations/edits must call reverseInvoiceIssued() first.
+     *
+     * Cancelled invoices never post a journal.
+     */
     public static function postInvoiceIssued(PmInvoice $invoice, ?User $actor = null): void
     {
         if ((float) $invoice->amount <= 0) {
             return;
         }
+        if ((string) $invoice->status === PmInvoice::STATUS_CANCELLED) {
+            return;
+        }
+        // Skip credit notes here; they have their own posting path.
+        if ((string) ($invoice->invoice_kind ?? PmInvoice::KIND_INVOICE) === PmInvoice::KIND_CREDIT_NOTE) {
+            return;
+        }
 
-        $invoice->loadMissing('unit');
+        // Idempotency guard: if we already have a posted (or even reversed)
+        // batch for this invoice's "issued" event, don't try to post again
+        // through this method. Caller should call reverseInvoiceIssued()
+        // first if they want to re-post under a different revision.
+        $existing = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_invoice')
+            ->where('source_id', (int) $invoice->id)
+            ->where('event_type', 'invoice_issued')
+            ->first();
+        if ($existing && $existing->status === AccountingJournalBatch::STATUS_POSTED) {
+            return;
+        }
+
+        $invoice->loadMissing('unit.property');
         $propertyId = optional($invoice->unit)->property_id;
-        $agentUserId = optional(optional($invoice->unit)->property)->agent_user_id;
+        $agentUserId = (int) ($invoice->agent_user_id
+            ?? optional(optional($invoice->unit)->property)->agent_user_id
+            ?? 0) ?: null;
         $date = $invoice->issue_date?->toDateString() ?? now()->toDateString();
 
         $journal = app(PropertyJournalService::class);
         $journal->postBatch([
             'date' => $date,
-            'description' => 'Invoice issued',
+            'description' => 'Invoice '.$invoice->invoice_no.' issued',
             'source_type' => 'pm_invoice',
             'source_id' => (int) $invoice->id,
             'event_type' => 'invoice_issued',
@@ -91,6 +120,135 @@ class PropertyAccountingPostingService
             'reference' => $invoice->invoice_no,
             'description' => 'Invoice issued',
             'source_key' => 'invoice_issued',
+        ]);
+    }
+
+    /**
+     * Reverse the invoice-issued journal batch (e.g. on cancellation,
+     * deletion, or before re-posting after an amount change). Idempotent:
+     * if no posted batch exists, or it's already reversed, this is a no-op.
+     */
+    public static function reverseInvoiceIssued(PmInvoice $invoice, ?User $actor = null, ?string $reason = null): void
+    {
+        $batch = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_invoice')
+            ->where('source_id', (int) $invoice->id)
+            ->where('event_type', 'invoice_issued')
+            ->first();
+
+        if (! $batch) {
+            return;
+        }
+        if ($batch->status !== AccountingJournalBatch::STATUS_POSTED) {
+            return;
+        }
+
+        $journal = app(PropertyJournalService::class);
+        $journal->reverseBatch($batch, $actor?->id, $reason ?: 'Invoice '.$invoice->invoice_no.' reversed');
+
+        // Mirror reversal entries on the legacy informational ledger.
+        $invoice->loadMissing('unit.property');
+        $propertyId = optional($invoice->unit)->property_id;
+        $date = now()->toDateString();
+        $ref = $invoice->invoice_no.' (reversed)';
+
+        self::firstOrCreateEntry([
+            'entry_date' => $date,
+            'property_id' => $propertyId,
+            'recorded_by_user_id' => $actor?->id,
+            'account_name' => self::accountName('accounts_receivable', 'Accounts Receivable'),
+            'category' => PmAccountingEntry::CATEGORY_ASSET,
+            'entry_type' => PmAccountingEntry::TYPE_CREDIT,
+            'amount' => (float) $invoice->amount,
+            'reference' => $ref,
+            'description' => 'Invoice reversed',
+            'source_key' => 'invoice_reversed',
+        ]);
+        self::firstOrCreateEntry([
+            'entry_date' => $date,
+            'property_id' => $propertyId,
+            'recorded_by_user_id' => $actor?->id,
+            'account_name' => self::accountName('rental_income', 'Rental Income'),
+            'category' => PmAccountingEntry::CATEGORY_INCOME,
+            'entry_type' => PmAccountingEntry::TYPE_DEBIT,
+            'amount' => (float) $invoice->amount,
+            'reference' => $ref,
+            'description' => 'Invoice reversed',
+            'source_key' => 'invoice_reversed',
+        ]);
+    }
+
+    /**
+     * Re-post after a material change to an invoice (typically: amount).
+     * Reverses the existing batch and posts a new one with a fresh
+     * event_type that includes the latest amount, so the audit trail keeps
+     * the old + new versions visible side by side.
+     */
+    public static function repostInvoiceAfterEdit(PmInvoice $invoice, ?User $actor = null): void
+    {
+        self::reverseInvoiceIssued($invoice, $actor, 'Invoice '.$invoice->invoice_no.' edited');
+
+        // Issue under a revised event_type so the firstOrCreate on the
+        // journal batch table doesn't collide with the now-reversed
+        // original. The original "invoice_issued" row stays in the audit
+        // trail; reports should sum over all non-reversed batches anyway.
+        $invoice->loadMissing('unit.property');
+        $propertyId = optional($invoice->unit)->property_id;
+        $agentUserId = (int) ($invoice->agent_user_id
+            ?? optional(optional($invoice->unit)->property)->agent_user_id
+            ?? 0) ?: null;
+        $date = $invoice->issue_date?->toDateString() ?? now()->toDateString();
+        // Count *forward* postings only — exclude reversal batches so the
+        // version number tracks the number of times we've issued the invoice.
+        // NOTE: SQL LIKE treats `_` as a single-char wildcard, so we can't
+        // use `invoice_issued_rev_%` (that would also match
+        // `invoice_issued_reversal`). Filter in PHP instead.
+        $eventTypes = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_invoice')
+            ->where('source_id', (int) $invoice->id)
+            ->pluck('event_type')
+            ->all();
+        $forwardCount = 0;
+        foreach ($eventTypes as $type) {
+            if ($type === 'invoice_issued'
+                || (is_string($type) && str_starts_with($type, 'invoice_issued_rev_'))) {
+                $forwardCount++;
+            }
+        }
+        $eventVersion = $forwardCount + 1;
+
+        $journal = app(PropertyJournalService::class);
+        $journal->postBatch([
+            'date' => $date,
+            'description' => 'Invoice '.$invoice->invoice_no.' re-issued (rev '.$eventVersion.')',
+            'source_type' => 'pm_invoice',
+            'source_id' => (int) $invoice->id,
+            'event_type' => 'invoice_issued_rev_'.$eventVersion,
+            'source_key' => 'pm_invoice:'.$invoice->id.':issued_rev_'.$eventVersion,
+            'agent_user_id' => $agentUserId,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], [
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_AR),
+                'debit' => (float) $invoice->amount,
+                'credit' => 0,
+                'reference' => $invoice->invoice_no,
+                'property_id' => $propertyId,
+                'tenant_id' => $invoice->pm_tenant_id,
+                'unit_id' => $invoice->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_RENTAL_INCOME),
+                'debit' => 0,
+                'credit' => (float) $invoice->amount,
+                'reference' => $invoice->invoice_no,
+                'property_id' => $propertyId,
+                'tenant_id' => $invoice->pm_tenant_id,
+                'unit_id' => $invoice->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
         ]);
     }
 

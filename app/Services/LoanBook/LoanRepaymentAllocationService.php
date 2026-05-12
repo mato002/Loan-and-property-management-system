@@ -33,6 +33,14 @@ class LoanRepaymentAllocationService
             }
         }
 
+        // Partial repayments must reduce principal_outstanding first. Legacy settings that put
+        // interest before principal are normalized so booked principal drops when clients pay in.
+        if (($principalIdx = array_search('principal', $orderedBase, true)) !== false && $principalIdx > 0) {
+            unset($orderedBase[$principalIdx]);
+            $orderedBase = array_values($orderedBase);
+            array_unshift($orderedBase, 'principal');
+        }
+
         // Overpayment is always resolved as residual at the end.
         $orderedBase[] = 'overpayment';
 

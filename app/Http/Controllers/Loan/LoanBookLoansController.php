@@ -17,6 +17,7 @@ use App\Models\LoanSystemSetting;
 use App\Services\BulkSmsService;
 use App\Services\LoanBook\BorrowerClassificationService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
+use App\Services\LoanBook\LoanRepaymentAllocationService;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -258,6 +259,13 @@ class LoanBookLoansController extends Controller
             ->paginate($perPage)
             ->withQueryString();
         $branches = LoanBookLoan::query()->whereNotNull('branch')->where('branch', '!=', '')->distinct()->orderBy('branch')->pluck('branch');
+        $bulkSyncEligibleQuery = LoanBookLoan::query()->whereNotNull('loan_book_application_id');
+        $this->scopeByAssignedLoanClient($bulkSyncEligibleQuery, auth()->user());
+        $bulkSyncEligibleCount = (int) $bulkSyncEligibleQuery->count();
+
+        $bulkRebuildEligibleQuery = LoanBookLoan::query();
+        $this->scopeByAssignedLoanClient($bulkRebuildEligibleQuery, auth()->user());
+        $bulkRebuildEligibleCount = (int) $bulkRebuildEligibleQuery->count();
 
         return view('loan.book.loans.index', [
             'title' => 'View loans',
@@ -286,6 +294,8 @@ class LoanBookLoansController extends Controller
                     ARRAY_FILTER_USE_BOTH
                 ),
             'branches' => $branches,
+            'bulkSyncEligibleCount' => $bulkSyncEligibleCount,
+            'bulkRebuildEligibleCount' => $bulkRebuildEligibleCount,
             'portfolioIndicators' => [
                 'netLoanPortfolio' => $netLoanPortfolio,
                 'grossLoanPortfolio' => $grossLoanPortfolio,
@@ -841,19 +851,40 @@ class LoanBookLoansController extends Controller
         $this->ensureLoanClientOwner($loan_book_loan->loanClient);
 
         $recentCollections = LoanBookCollectionEntry::query()
-            ->whereHas('loan', function (Builder $query) use ($loan_book_loan): void {
-                $query->where('loan_client_id', $loan_book_loan->loan_client_id);
-            })
+            ->where('loan_book_loan_id', $loan_book_loan->id)
             ->orderByDesc('collected_on')
             ->orderByDesc('id')
             ->limit(20)
             ->get();
+
+        $bookingInterestEstimate = $this->loanMath->estimateInterestForLoan(
+            $loan_book_loan,
+            (float) $loan_book_loan->principal,
+            (float) $loan_book_loan->interest_rate
+        );
+        $bookingFeesEstimate = $this->initialProductChargesForLoan(
+            (string) ($loan_book_loan->product_name ?? ''),
+            (float) $loan_book_loan->principal,
+            (bool) ($loan_book_loan->is_checkoff ?? false)
+        );
+        $paidTotalDiag = (float) $loan_book_loan->payments->sum('amount');
+        $remainingDiag = max(0.0, (float) $loan_book_loan->balance);
+        $principalDiag = (float) $loan_book_loan->principal;
+        $impliedContractNonPrincipal = max(0.0, round($paidTotalDiag + $remainingDiag - $principalDiag, 2));
+        $expectedNonPrincipal = round($bookingInterestEstimate + $bookingFeesEstimate, 2);
+        $nonPrincipalDrift = round($impliedContractNonPrincipal - $expectedNonPrincipal, 2);
+        $contractRepayable = round((float) $loan_book_loan->principal + $bookingInterestEstimate + $bookingFeesEstimate, 2);
 
         return view('loan.book.loans.show', [
             'title' => 'Loan details',
             'subtitle' => $loan_book_loan->loan_number.' · '.($loan_book_loan->loanClient?->full_name ?? 'Unknown client'),
             'loan' => $loan_book_loan,
             'recentCollections' => $recentCollections,
+            'bookingInterestEstimate' => $bookingInterestEstimate,
+            'bookingFeesEstimate' => $bookingFeesEstimate,
+            'contractRepayable' => $contractRepayable,
+            'impliedContractNonPrincipal' => $impliedContractNonPrincipal,
+            'nonPrincipalDrift' => $nonPrincipalDrift,
         ]);
     }
 
@@ -862,108 +893,21 @@ class LoanBookLoansController extends Controller
         $loan_book_loan->load('loanClient');
         $this->ensureLoanClientOwner($loan_book_loan->loanClient, $request->user());
 
-        DB::transaction(function () use ($loan_book_loan, $request): void {
+        $actorName = trim((string) ($request->user()?->name ?? 'System'));
+        $changed = false;
+        DB::transaction(function () use ($loan_book_loan, $actorName, &$changed): void {
             /** @var LoanBookLoan $loan */
             $loan = LoanBookLoan::query()->lockForUpdate()->findOrFail($loan_book_loan->id);
-
-            $disbursedPrincipal = (float) $loan->disbursements()->sum('amount');
-            $storedPrincipal = max(0.0, (float) $loan->principal);
-            if ($disbursedPrincipal <= 0.0) {
-                $disbursedPrincipal = $storedPrincipal;
-            }
-            // Rebuild must not mutate booked principal. Use stored principal as the base.
-            $rebuildPrincipalBase = $storedPrincipal > 0.0 ? $storedPrincipal : $disbursedPrincipal;
-
-            $principalOutstanding = $rebuildPrincipalBase;
-            $interestOutstanding = $this->estimateInterestOutstanding(
-                $loan,
-                $rebuildPrincipalBase,
-                max(0.0, (float) $loan->interest_rate)
-            );
-            $feesOutstanding = max(0.0, (float) $loan->fees_outstanding);
-
-            $payments = LoanBookPayment::query()
-                ->where('loan_book_loan_id', $loan->id)
-                ->processedQueue()
-                ->orderBy('transaction_at')
-                ->orderBy('id')
-                ->get();
-            $skippedBeforeDisbursement = 0;
-
-            foreach ($payments as $payment) {
-                if (
-                    $loan->disbursed_at
-                    && $payment->transaction_at
-                    && $payment->transaction_at->copy()->startOfDay()->lt($loan->disbursed_at->copy()->startOfDay())
-                ) {
-                    $skippedBeforeDisbursement++;
-
-                    continue;
-                }
-                $delta = abs((float) $payment->amount);
-                if ($delta <= 0.0) {
-                    continue;
-                }
-
-                if ($payment->payment_kind === LoanBookPayment::KIND_C2B_REVERSAL) {
-                    $principalOutstanding = round($principalOutstanding + $delta, 2);
-
-                    continue;
-                }
-
-                $remaining = $delta;
-                foreach ($this->repaymentOrder() as $bucket) {
-                    if ($remaining <= 0.0) {
-                        break;
-                    }
-                    if ($bucket === 'fees' || $bucket === 'penalty') {
-                        $apply = min($remaining, max(0.0, $feesOutstanding));
-                        $feesOutstanding = round($feesOutstanding - $apply, 2);
-                        $remaining -= $apply;
-
-                        continue;
-                    }
-                    if ($bucket === 'interest') {
-                        $apply = min($remaining, max(0.0, $interestOutstanding));
-                        $interestOutstanding = round($interestOutstanding - $apply, 2);
-                        $remaining -= $apply;
-
-                        continue;
-                    }
-                    if ($bucket === 'principal') {
-                        $apply = min($remaining, max(0.0, $principalOutstanding));
-                        $principalOutstanding = round($principalOutstanding - $apply, 2);
-                        $remaining -= $apply;
-                    }
-                }
-            }
-
-            $balance = round(max(0.0, $principalOutstanding + $interestOutstanding + $feesOutstanding), 2);
-
-            $audit = '[Snapshot rebuild '.now()->format('Y-m-d H:i').'] Recomputed from disbursements + processed payments by '
-                .trim((string) ($request->user()?->name ?? 'System')).'.';
-            if ($skippedBeforeDisbursement > 0) {
-                $audit .= ' Skipped '.$skippedBeforeDisbursement.' payment(s) dated before loan disbursement.';
-            }
-            $existingNotes = trim((string) ($loan->notes ?? ''));
-
-            $loan->update([
-                'principal_outstanding' => $principalOutstanding,
-                'interest_outstanding' => $interestOutstanding,
-                'fees_outstanding' => $feesOutstanding,
-                'balance' => $balance,
-                'status' => $balance <= 0.0
-                    ? LoanBookLoan::STATUS_CLOSED
-                    : (in_array($loan->status, [LoanBookLoan::STATUS_PENDING_DISBURSEMENT, LoanBookLoan::STATUS_CLOSED], true)
-                        ? LoanBookLoan::STATUS_ACTIVE
-                        : $loan->status),
-                'notes' => $existingNotes !== '' ? $existingNotes."\n".$audit : $audit,
-            ]);
+            $changed = $this->applyRebuildSnapshotIfNeeded($loan, $actorName);
         });
+
+        $status = $changed
+            ? 'Repayment snapshot rebuilt from disbursements and processed payments.'
+            : 'Snapshot already matched posted collections. No changes were needed.';
 
         return redirect()
             ->route('loan.book.loans.show', $loan_book_loan)
-            ->with('status', 'Repayment snapshot rebuilt from disbursements and processed payments.');
+            ->with('status', $status);
     }
 
     public function syncScheduleFromApplication(Request $request, LoanBookLoan $loan_book_loan): RedirectResponse
@@ -983,45 +927,154 @@ class LoanBookLoansController extends Controller
                 ->with('application')
                 ->lockForUpdate()
                 ->findOrFail($loan_book_loan->id);
-            $app = $loan->application;
-            if (! $app) {
-                return;
+            $applied = $this->applyScheduleSyncFromApplication($loan, trim((string) ($request->user()?->name ?? 'System')));
+            if ($applied === false) {
+                throw ValidationException::withMessages([
+                    'loan' => 'This loan has no linked application to sync from.',
+                ]);
             }
-
-            $termValue = $app->term_value !== null ? (int) $app->term_value : (int) ($loan->term_value ?? 12);
-            $termUnit = strtolower(trim((string) ($app->term_unit ?? $loan->term_unit ?? 'monthly')));
-            $ratePeriod = strtolower(trim((string) ($app->interest_rate_period ?? $loan->interest_rate_period ?? 'term')));
-
-            $principalOutstanding = max(0.0, (float) $loan->principal_outstanding);
-            if ($principalOutstanding <= 0.0) {
-                $principalOutstanding = max(0.0, (float) $loan->principal);
-            }
-
-            $loan->term_value = $termValue;
-            $loan->term_unit = in_array($termUnit, ['daily', 'weekly', 'monthly'], true) ? $termUnit : 'monthly';
-            $loan->interest_rate_period = in_array($ratePeriod, ['term', 'daily', 'weekly', 'monthly', 'annual'], true) ? $ratePeriod : 'term';
-
-            $loan->interest_outstanding = $this->loanMath->estimateInterestForLoan(
-                $loan,
-                $principalOutstanding,
-                max(0.0, (float) $loan->interest_rate)
-            );
-            $loan->balance = round(max(0.0, $principalOutstanding + (float) $loan->interest_outstanding + (float) $loan->fees_outstanding), 2);
-            if ($loan->balance > 0.0 && $loan->status === LoanBookLoan::STATUS_CLOSED) {
-                $loan->status = LoanBookLoan::STATUS_ACTIVE;
-            }
-
-            $audit = '[Schedule sync '.now()->format('Y-m-d H:i').'] Synced term/rate period from application '
-                .$app->reference.' by '.trim((string) ($request->user()?->name ?? 'System')).'.';
-            $existingNotes = trim((string) ($loan->notes ?? ''));
-            $loan->notes = $existingNotes !== '' ? $existingNotes."\n".$audit : $audit;
-
-            $loan->save();
         });
+
+        $status = 'Loan schedule synced from linked application and repayment snapshot refreshed.';
+        if (($applied ?? true) === null) {
+            $status = 'Loan schedule already matched the linked application. No changes were made.';
+        }
 
         return redirect()
             ->route('loan.book.loans.show', $loan_book_loan)
-            ->with('status', 'Loan schedule synced from linked application and repayment snapshot refreshed.');
+            ->with('status', $status);
+    }
+
+    public function syncSchedulesFromApplicationsBulk(Request $request): RedirectResponse
+    {
+        $actorName = trim((string) ($request->user()?->name ?? 'System'));
+        $synced = 0;
+        $missingApplication = 0;
+        $unchanged = 0;
+        $failed = 0;
+
+        $eligibleQuery = LoanBookLoan::query()
+            ->select('id')
+            ->whereNotNull('loan_book_application_id');
+        $this->scopeByAssignedLoanClient($eligibleQuery, $request->user());
+
+        if (! (clone $eligibleQuery)->exists()) {
+            return redirect()
+                ->route('loan.book.loans.index')
+                ->with('loan_register_bulk_title', 'Schedule sync result')
+                ->with('status', 'No linked loans found to sync.');
+        }
+
+        $eligibleQuery
+            ->orderBy('id')
+            ->chunkById(200, function (Collection $rows) use (&$synced, &$missingApplication, &$unchanged, &$failed, $actorName): void {
+                foreach ($rows as $row) {
+                    try {
+                        DB::transaction(function () use ($row, &$synced, &$missingApplication, &$unchanged, $actorName): void {
+                            /** @var LoanBookLoan|null $loan */
+                            $loan = LoanBookLoan::query()
+                                ->with('application')
+                                ->lockForUpdate()
+                                ->find($row->id);
+                            if (! $loan) {
+                                return;
+                            }
+
+                            $applied = $this->applyScheduleSyncFromApplication($loan, $actorName);
+                            if ($applied === true) {
+                                $synced++;
+
+                                return;
+                            }
+
+                            if ($applied === null) {
+                                $unchanged++;
+
+                                return;
+                            }
+
+                            $missingApplication++;
+                        });
+                    } catch (\Throwable) {
+                        $failed++;
+                    }
+                }
+            });
+
+        $status = "Bulk schedule sync complete: {$synced} synced";
+        if ($unchanged > 0) {
+            $status .= ", {$unchanged} unchanged";
+        }
+        if ($missingApplication > 0) {
+            $status .= ", {$missingApplication} skipped (no linked application)";
+        }
+        if ($failed > 0) {
+            $status .= ", {$failed} failed";
+        }
+        $status .= '.';
+
+        return redirect()
+            ->route('loan.book.loans.index')
+            ->with('loan_register_bulk_title', 'Schedule sync result')
+            ->with('status', $status);
+    }
+
+    public function rebuildSnapshotsBulk(Request $request): RedirectResponse
+    {
+        $actorName = trim((string) ($request->user()?->name ?? 'System'));
+        $rebuilt = 0;
+        $unchanged = 0;
+        $failed = 0;
+
+        $eligibleQuery = LoanBookLoan::query()->select('id');
+        $this->scopeByAssignedLoanClient($eligibleQuery, $request->user());
+
+        if (! (clone $eligibleQuery)->exists()) {
+            return redirect()
+                ->route('loan.book.loans.index')
+                ->with('loan_register_bulk_title', 'Snapshot rebuild result')
+                ->with('status', 'No loans in your portfolio to rebuild.');
+        }
+
+        $eligibleQuery
+            ->orderBy('id')
+            ->chunkById(200, function (Collection $rows) use (&$rebuilt, &$unchanged, &$failed, $actorName): void {
+                foreach ($rows as $row) {
+                    try {
+                        DB::transaction(function () use ($row, &$rebuilt, &$unchanged, $actorName): void {
+                            /** @var LoanBookLoan|null $loan */
+                            $loan = LoanBookLoan::query()
+                                ->lockForUpdate()
+                                ->find($row->id);
+                            if (! $loan) {
+                                return;
+                            }
+
+                            if ($this->applyRebuildSnapshotIfNeeded($loan, $actorName)) {
+                                $rebuilt++;
+                            } else {
+                                $unchanged++;
+                            }
+                        });
+                    } catch (\Throwable) {
+                        $failed++;
+                    }
+                }
+            });
+
+        $status = "Bulk snapshot rebuild complete: {$rebuilt} corrected";
+        if ($unchanged > 0) {
+            $status .= ", {$unchanged} already matched";
+        }
+        if ($failed > 0) {
+            $status .= ", {$failed} failed";
+        }
+        $status .= '.';
+
+        return redirect()
+            ->route('loan.book.loans.index')
+            ->with('loan_register_bulk_title', 'Snapshot rebuild result')
+            ->with('status', $status);
     }
 
     public function update(Request $request, LoanBookLoan $loan_book_loan): RedirectResponse
@@ -1051,11 +1104,43 @@ class LoanBookLoansController extends Controller
                 ->withErrors(['status' => 'Cannot set status to Closed while remaining balance is greater than zero.'])
                 ->withInput();
         }
+        $hadProcessedPayments = $loan_book_loan->payments()->processedQueue()->exists();
         $loan_book_loan->update($validated);
+        $loan_book_loan->refresh();
+
+        $interestInputsChanged = $loan_book_loan->wasChanged([
+            'interest_rate',
+            'interest_rate_period',
+            'term_value',
+            'term_unit',
+            'disbursed_at',
+            'maturity_date',
+        ]);
+        if ($interestInputsChanged && ! $hadProcessedPayments) {
+            $principalOutstanding = max(0.0, (float) $loan_book_loan->principal_outstanding);
+            if ($principalOutstanding <= 0.0) {
+                $principalOutstanding = max(0.0, (float) $loan_book_loan->principal);
+            }
+            $loan_book_loan->interest_outstanding = $this->loanMath->estimateInterestForLoan(
+                $loan_book_loan,
+                $principalOutstanding,
+                max(0.0, (float) $loan_book_loan->interest_rate)
+            );
+            $loan_book_loan->balance = round(max(
+                0.0,
+                $principalOutstanding + (float) $loan_book_loan->interest_outstanding + (float) $loan_book_loan->fees_outstanding
+            ), 2);
+            $loan_book_loan->save();
+        }
+
+        $status = __('Loan updated.');
+        if ($interestInputsChanged && $hadProcessedPayments) {
+            $status = __('Loan updated. This loan has repayments recorded — open the loan and click Rebuild snapshot to refresh interest and balances from the new settings.');
+        }
 
         return redirect()
             ->route('loan.book.loans.index')
-            ->with('status', __('Loan updated.'));
+            ->with('status', $status);
     }
 
     public function destroy(LoanBookLoan $loan_book_loan): RedirectResponse
@@ -1121,7 +1206,8 @@ class LoanBookLoansController extends Controller
                 if ($app->term_unit !== null) {
                     $validated['term_unit'] = strtolower((string) $app->term_unit);
                 }
-                if ($app->interest_rate_period !== null) {
+                // Loan form may set interest_rate_period explicitly; only fall back to the application when absent.
+                if ($app->interest_rate_period !== null && ! array_key_exists('interest_rate_period', $validated)) {
                     $validated['interest_rate_period'] = strtolower((string) $app->interest_rate_period);
                 }
             }
@@ -1354,9 +1440,9 @@ class LoanBookLoansController extends Controller
         $interestOutstanding = $this->loanMath->estimateInterestOutstanding(
             principal: $principal,
             ratePercent: $interestRate,
-            ratePeriod: strtolower((string) ($application?->interest_rate_period ?? 'term')),
-            termValue: $application?->term_value !== null ? (int) $application->term_value : null,
-            termUnit: $application?->term_unit !== null ? (string) $application->term_unit : null,
+            ratePeriod: strtolower((string) ($validated['interest_rate_period'] ?? 'term')),
+            termValue: isset($validated['term_value']) ? (int) $validated['term_value'] : null,
+            termUnit: $validated['term_unit'] ?? null,
             disbursedAt: $validated['disbursed_at'] ?? null,
             maturityDate: $validated['maturity_date'] ?? null
         );
@@ -1420,6 +1506,185 @@ class LoanBookLoansController extends Controller
         return round(max(0.0, $total), 2);
     }
 
+    private function applyScheduleSyncFromApplication(LoanBookLoan $loan, string $actorName): ?bool
+    {
+        $app = $loan->application;
+        if (! $app) {
+            return false;
+        }
+
+        $termValue = $app->term_value !== null ? (int) $app->term_value : (int) ($loan->term_value ?? 12);
+        $termUnit = strtolower(trim((string) ($app->term_unit ?? $loan->term_unit ?? 'monthly')));
+        $ratePeriod = strtolower(trim((string) ($app->interest_rate_period ?? $loan->interest_rate_period ?? 'term')));
+
+        $principalOutstanding = max(0.0, (float) $loan->principal_outstanding);
+        // Do not substitute full booked principal when the loan is already paid down (PO legitimately 0),
+        // otherwise schedule sync "re-opens" closed loans and inflates balance / to-pay on the register.
+        $seedPrincipalFromBooked = $principalOutstanding <= 0.0
+            && (float) $loan->principal > 0.0
+            && $loan->status !== LoanBookLoan::STATUS_CLOSED
+            && ! $loan->processedRepayments()->exists();
+        if ($seedPrincipalFromBooked) {
+            $principalOutstanding = max(0.0, (float) $loan->principal);
+        }
+
+        $normalizedTermUnit = in_array($termUnit, ['daily', 'weekly', 'monthly'], true) ? $termUnit : 'monthly';
+        $normalizedRatePeriod = in_array($ratePeriod, ['term', 'daily', 'weekly', 'monthly', 'annual'], true) ? $ratePeriod : 'term';
+        $computedInterestOutstanding = $this->loanMath->estimateInterestForLoan(
+            $loan,
+            $principalOutstanding,
+            max(0.0, (float) $loan->interest_rate)
+        );
+        $computedBalance = round(max(0.0, $principalOutstanding + (float) $computedInterestOutstanding + (float) $loan->fees_outstanding), 2);
+        $computedStatus = $loan->status;
+        if ($computedBalance > 0.0 && $computedStatus === LoanBookLoan::STATUS_CLOSED) {
+            $computedStatus = LoanBookLoan::STATUS_ACTIVE;
+        }
+
+        $unchanged =
+            (int) ($loan->term_value ?? 0) === $termValue
+            && strtolower((string) ($loan->term_unit ?? '')) === $normalizedTermUnit
+            && strtolower((string) ($loan->interest_rate_period ?? '')) === $normalizedRatePeriod
+            && round((float) ($loan->interest_outstanding ?? 0), 2) === round((float) $computedInterestOutstanding, 2)
+            && round((float) ($loan->balance ?? 0), 2) === round((float) $computedBalance, 2)
+            && (string) $loan->status === (string) $computedStatus;
+
+        if ($unchanged) {
+            return null;
+        }
+
+        $loan->term_value = $termValue;
+        $loan->term_unit = $normalizedTermUnit;
+        $loan->interest_rate_period = $normalizedRatePeriod;
+        $loan->interest_outstanding = $computedInterestOutstanding;
+        $loan->balance = $computedBalance;
+        if ($loan->balance > 0.0 && $loan->status === LoanBookLoan::STATUS_CLOSED) {
+            $loan->status = LoanBookLoan::STATUS_ACTIVE;
+        }
+
+        $audit = '[Schedule sync '.now()->format('Y-m-d H:i').'] Synced term/rate period from application '
+            .$app->reference.' by '.$actorName.'.';
+        $existingNotes = trim((string) ($loan->notes ?? ''));
+        $loan->notes = $existingNotes !== '' ? $existingNotes."\n".$audit : $audit;
+
+        $loan->save();
+
+        return true;
+    }
+
+    /**
+     * @return array{principal_outstanding: float, interest_outstanding: float, fees_outstanding: float, balance: float, status: string}
+     */
+    private function computeLoanRepaymentSnapshotState(LoanBookLoan $loan): array
+    {
+        $disbursedPrincipal = (float) $loan->disbursements()->sum('amount');
+        $storedPrincipal = max(0.0, (float) $loan->principal);
+        if ($disbursedPrincipal <= 0.0) {
+            $disbursedPrincipal = $storedPrincipal;
+        }
+        $rebuildPrincipalBase = $storedPrincipal > 0.0 ? $storedPrincipal : $disbursedPrincipal;
+
+        $principalOutstanding = $rebuildPrincipalBase;
+        $interestOutstanding = $this->estimateInterestOutstanding(
+            $loan,
+            $rebuildPrincipalBase,
+            max(0.0, (float) $loan->interest_rate)
+        );
+        $feesOutstanding = max(0.0, (float) $loan->fees_outstanding);
+
+        $payments = LoanBookPayment::query()
+            ->where('loan_book_loan_id', $loan->id)
+            ->processedQueue()
+            ->orderBy('transaction_at')
+            ->orderBy('id')
+            ->get();
+
+        foreach ($payments as $payment) {
+            $delta = abs((float) $payment->amount);
+            if ($delta <= 0.0) {
+                continue;
+            }
+
+            if ($payment->payment_kind === LoanBookPayment::KIND_C2B_REVERSAL) {
+                $principalOutstanding = round($principalOutstanding + $delta, 2);
+
+                continue;
+            }
+
+            $remaining = $delta;
+            foreach ($this->repaymentOrder() as $bucket) {
+                if ($remaining <= 0.0) {
+                    break;
+                }
+                if ($bucket === 'fees' || $bucket === 'penalty') {
+                    $apply = min($remaining, max(0.0, $feesOutstanding));
+                    $feesOutstanding = round($feesOutstanding - $apply, 2);
+                    $remaining -= $apply;
+
+                    continue;
+                }
+                if ($bucket === 'interest') {
+                    $apply = min($remaining, max(0.0, $interestOutstanding));
+                    $interestOutstanding = round($interestOutstanding - $apply, 2);
+                    $remaining -= $apply;
+
+                    continue;
+                }
+                if ($bucket === 'principal') {
+                    $apply = min($remaining, max(0.0, $principalOutstanding));
+                    $principalOutstanding = round($principalOutstanding - $apply, 2);
+                    $remaining -= $apply;
+                }
+            }
+        }
+
+        $balance = round(max(0.0, $principalOutstanding + $interestOutstanding + $feesOutstanding), 2);
+        $newStatus = $balance <= 0.0
+            ? LoanBookLoan::STATUS_CLOSED
+            : (in_array($loan->status, [LoanBookLoan::STATUS_PENDING_DISBURSEMENT, LoanBookLoan::STATUS_CLOSED], true)
+                ? LoanBookLoan::STATUS_ACTIVE
+                : $loan->status);
+
+        return [
+            'principal_outstanding' => $principalOutstanding,
+            'interest_outstanding' => $interestOutstanding,
+            'fees_outstanding' => $feesOutstanding,
+            'balance' => $balance,
+            'status' => $newStatus,
+        ];
+    }
+
+    private function applyRebuildSnapshotIfNeeded(LoanBookLoan $loan, string $actorName): bool
+    {
+        $snap = $this->computeLoanRepaymentSnapshotState($loan);
+
+        $unchanged =
+            round((float) $snap['principal_outstanding'], 2) === round((float) $loan->principal_outstanding, 2)
+            && round((float) $snap['interest_outstanding'], 2) === round((float) $loan->interest_outstanding, 2)
+            && round((float) $snap['fees_outstanding'], 2) === round((float) $loan->fees_outstanding, 2)
+            && round((float) $snap['balance'], 2) === round((float) $loan->balance, 2)
+            && (string) $loan->status === (string) $snap['status'];
+
+        if ($unchanged) {
+            return false;
+        }
+
+        $audit = '[Snapshot rebuild '.now()->format('Y-m-d H:i').'] Recomputed from disbursements + processed payments by '
+            .$actorName.'.';
+        $existingNotes = trim((string) ($loan->notes ?? ''));
+
+        $loan->update([
+            'principal_outstanding' => $snap['principal_outstanding'],
+            'interest_outstanding' => $snap['interest_outstanding'],
+            'fees_outstanding' => $snap['fees_outstanding'],
+            'balance' => $snap['balance'],
+            'status' => $snap['status'],
+            'notes' => $existingNotes !== '' ? $existingNotes."\n".$audit : $audit,
+        ]);
+
+        return true;
+    }
+
     private function estimateInterestOutstanding(LoanBookLoan $loan, float $principal, float $ratePercent): float
     {
         return $this->loanMath->estimateInterestForLoan($loan, $principal, $ratePercent);
@@ -1430,19 +1695,11 @@ class LoanBookLoansController extends Controller
      */
     private function repaymentOrder(): array
     {
-        $raw = (string) (LoanSystemSetting::getValue('loan_repayment_allocation_order', 'principal,interest,fees,penalty,overpayment') ?? '');
-        $parts = array_values(array_filter(array_map(
-            static fn (string $p) => strtolower(trim($p)),
-            explode(',', $raw)
-        )));
-        $valid = ['principal', 'interest', 'fees', 'penalty'];
-        $order = array_values(array_intersect($parts, $valid));
-        foreach ($valid as $v) {
-            if (! in_array($v, $order, true)) {
-                $order[] = $v;
-            }
-        }
+        $full = app(LoanRepaymentAllocationService::class)->repaymentOrder();
 
-        return $order;
+        return array_values(array_filter(
+            $full,
+            static fn (string $b): bool => $b !== 'overpayment'
+        ));
     }
 }

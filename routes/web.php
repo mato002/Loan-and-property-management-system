@@ -36,6 +36,17 @@ use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
+// Public, no-auth invoice share / download. Token is a random 40-char
+// opaque string stored on pm_invoices.share_token. The controller resolves
+// outside of agent global scopes so tenants without portal accounts can
+// still view / download their bill via SMS or email link.
+Route::get('/invoices/p/{token}', [\App\Http\Controllers\Property\Agent\PmInvoiceController::class, 'publicShow'])
+    ->where('token', '[A-Za-z0-9]{20,80}')
+    ->name('property.invoices.public.show');
+Route::get('/invoices/p/{token}/pdf', [\App\Http\Controllers\Property\Agent\PmInvoiceController::class, 'publicPdf'])
+    ->where('token', '[A-Za-z0-9]{20,80}')
+    ->name('property.invoices.public.pdf');
+
 Route::get('/', [PublicController::class, 'home'])->name('public.home');
 Route::get('/properties', [PublicController::class, 'properties'])->name('public.properties');
 Route::get('/properties/{id}', [PublicController::class, 'propertyDetails'])->name('public.property_details');
@@ -626,6 +637,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/loans/create', [LoanBookLoansController::class, 'create'])->name('loans.create');
             Route::post('/loans', [LoanBookLoansController::class, 'store'])->name('loans.store');
             Route::post('/loans/quick-branch', [LoanBookLoansController::class, 'quickBranchStore'])->name('loans.quick_branch');
+            Route::post('/loans/sync-schedules', [LoanBookLoansController::class, 'syncSchedulesFromApplicationsBulk'])->name('loans.sync_schedules_bulk');
+            Route::post('/loans/rebuild-snapshots', [LoanBookLoansController::class, 'rebuildSnapshotsBulk'])->name('loans.rebuild_snapshots_bulk');
             Route::get('/loans', [LoanBookLoansController::class, 'index'])->name('loans.index');
             Route::get('/loan-arrears', [LoanBookLoansController::class, 'arrears'])->name('loan_arrears');
             Route::post('/loan-arrears/send-sms', [LoanBookLoansController::class, 'arrearsSendSms'])->name('loan_arrears.send_sms');
@@ -764,6 +777,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/setup/client-settings', [LoanSystemHelpController::class, 'setupClientSettingsUpdate'])->middleware('loan.permission:system.help.configure')->name('setup.client_settings.update');
             Route::get('/setup/loan-products', [LoanSystemHelpController::class, 'setupLoanProducts'])->name('setup.loan_products');
             Route::get('/setup/loan-products/create', [LoanSystemHelpController::class, 'setupLoanProductsCreate'])->middleware('loan.permission:system.help.create')->name('setup.loan_products.create');
+            Route::get('/setup/loan-products/{loan_product}', [LoanSystemHelpController::class, 'setupLoanProductsShow'])->name('setup.loan_products.show');
             Route::post('/setup/loan-products', [LoanSystemHelpController::class, 'setupLoanProductsStore'])->middleware('loan.permission:system.help.create')->name('setup.loan_products.store');
             Route::patch('/setup/loan-products/{loan_product}', [LoanSystemHelpController::class, 'setupLoanProductsUpdate'])->middleware('loan.permission:system.help.update')->name('setup.loan_products.update');
             Route::delete('/setup/loan-products/{loan_product}', [LoanSystemHelpController::class, 'setupLoanProductsDestroy'])->middleware('loan.permission:system.help.delete')->name('setup.loan_products.destroy');

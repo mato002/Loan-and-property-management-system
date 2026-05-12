@@ -3,67 +3,53 @@
         $emailErr = $errors->first('email');
         $passErr = $errors->first('password');
         $moduleErr = $errors->first('module');
+        $badgeClass = 'inline-flex items-center rounded-full bg-[#6a9f97]/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#386f66] ring-1 ring-[#6a9f97]/35';
     @endphp
 
-    <div class="mb-8 flex items-center justify-between gap-4">
-        <a
-            href="{{ url('/') }}"
-            class="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-[#4d8d82]/40 hover:text-[#4d8d82]"
-            aria-label="{{ __('Back to home') }}"
-        >
-            <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-            </svg>
-        </a>
-        <p class="text-sm text-slate-600">
-            {{ __('Not a member?') }}
-            @if (Route::has('register'))
-                <a href="{{ route('register') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70]">{{ __('Sign up') }}</a>
-            @endif
+    <div class="text-center mb-7">
+        <p class="{{ $badgeClass }}">{{ __('Operations') }}</p>
+        <h1 class="mt-4 text-2xl font-bold tracking-tight text-slate-900">{{ __('Welcome back') }}</h1>
+        <p class="mt-2 text-sm leading-relaxed text-slate-500">
+            {{ __('Sign in with your staff credentials to open your workspace.') }}
         </p>
     </div>
 
-    <h1 class="text-3xl font-bold tracking-tight text-slate-900">{{ __('Sign in') }}</h1>
-    <p class="mt-2 text-sm leading-relaxed text-slate-500">
-        {{ __('Access property and loan staff portals with your work email.') }}
-    </p>
-
     @if ($moduleErr)
-        <div class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div class="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 text-left" role="alert">
             {{ $moduleErr }}
         </div>
     @endif
 
-    <p class="mt-4 text-xs leading-relaxed text-slate-500">
-        {{ __('Renting or owning through us?') }}
-        <a href="{{ route('property.tenant.login') }}" class="font-semibold text-[#4d8d82] hover:underline">{{ __('Tenant sign-in') }}</a>
-        <span class="text-slate-300" aria-hidden="true">·</span>
-        <a href="{{ route('property.landlord.login') }}" class="font-semibold text-[#4d8d82] hover:underline">{{ __('Landlord sign-in') }}</a>
-    </p>
-
-    <form method="POST" action="{{ route('login') }}" class="mt-10 space-y-6" x-data="{ showPassword: false }">
+    <form method="POST" action="{{ route('login') }}" class="space-y-5" x-data="{ showPassword: false }">
         @csrf
 
-        <x-auth.field-underline
-            label="{{ __('Email') }}"
-            id="email"
-            name="email"
-            type="email"
-            :value="old('email')"
-            required
-            autocomplete="username"
-            placeholder="name@company.com"
-            :error="$emailErr"
-        >
-            <x-slot name="icon">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
-                </svg>
-            </x-slot>
-        </x-auth.field-underline>
+        <div class="space-y-1">
+            <label for="email" class="text-xs font-semibold uppercase tracking-wide text-slate-600">{{ __('Email') }}</label>
+            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $emailErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}">
+                <span class="text-slate-400" aria-hidden="true">
+                    <svg class="h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+                    </svg>
+                </span>
+                <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    value="{{ old('email') }}"
+                    required
+                    autofocus
+                    autocomplete="username"
+                    placeholder="name@company.com"
+                    class="min-w-0 flex-1 border-0 bg-transparent p-0 text-base text-slate-900 placeholder:text-slate-400 focus:ring-0"
+                />
+            </div>
+            @if ($emailErr)
+                <p class="text-xs text-red-600 text-left">{{ $emailErr }}</p>
+            @endif
+        </div>
 
         <div class="space-y-1">
-            <label for="password" class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ __('Password') }}</label>
+            <label for="password" class="text-xs font-semibold uppercase tracking-wide text-slate-600">{{ __('Password') }}</label>
             <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $passErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}">
                 <span class="text-slate-400" aria-hidden="true">
                     <svg class="h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -76,8 +62,8 @@
                     x-bind:type="showPassword ? 'text' : 'password'"
                     required
                     autocomplete="current-password"
-                    class="min-w-0 flex-1 border-0 bg-transparent p-0 text-base text-slate-900 placeholder:text-slate-400 focus:ring-0"
                     placeholder="••••••••"
+                    class="min-w-0 flex-1 border-0 bg-transparent p-0 text-base text-slate-900 placeholder:text-slate-400 focus:ring-0"
                 />
                 <button
                     type="button"
@@ -96,31 +82,52 @@
                 </button>
             </div>
             @if ($passErr)
-                <p class="text-xs text-red-600">{{ $passErr }}</p>
+                <p class="text-xs text-red-600 text-left">{{ $passErr }}</p>
             @endif
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-3">
-            <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-slate-600">
-                <input id="remember_me" type="checkbox" name="remember" class="h-4 w-4 rounded border-slate-300 text-[#4d8d82] focus:ring-[#4d8d82]" />
-                <span>{{ __('Remember me') }}</span>
+        <div class="block">
+            <label for="remember_me" class="inline-flex items-center">
+                <input
+                    id="remember_me"
+                    type="checkbox"
+                    class="rounded border-slate-300 text-[#4d8d82] shadow-sm focus:ring-[#4d8d82]"
+                    name="remember"
+                />
+                <span class="ms-2 text-sm text-slate-600">{{ __('Remember me') }}</span>
             </label>
-            @if (Route::has('password.request'))
-                <a href="{{ route('password.request') }}" class="text-sm font-semibold text-[#4d8d82] hover:text-[#3f7a70]">{{ __('Forgot password?') }}</a>
-            @endif
         </div>
 
-        <button
-            type="submit"
-            class="group relative flex w-full items-center justify-center gap-3 rounded-full bg-[#4d8d82] py-4 text-base font-semibold text-white shadow-lg shadow-[#4d8d82]/35 transition hover:bg-[#3f7a70] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4d8d82] focus-visible:ring-offset-2"
-        >
-            {{ __('Sign in') }}
-            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 transition group-hover:bg-white/30" aria-hidden="true">
-                <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                </svg>
-            </span>
-        </button>
-    </form>
-</x-guest-layout>
+        <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+            @if (Route::has('password.request'))
+                <a
+                    class="text-sm text-slate-500 hover:text-[#3f7a70] underline underline-offset-2 text-center sm:text-left"
+                    href="{{ route('password.request') }}"
+                >
+                    {{ __('Forgot password?') }}
+                </a>
+            @endif
 
+            <x-primary-button class="w-full sm:w-auto justify-center rounded-full border-transparent bg-[#4d8d82] hover:bg-[#3f7a70] focus:ring-[#4d8d82] px-7 py-3">
+                {{ __('Sign in') }}
+            </x-primary-button>
+        </div>
+    </form>
+
+    <div class="mt-8 text-center text-xs text-slate-500 space-y-3">
+        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">{{ __('Quick access') }}</p>
+        <p class="space-x-2">
+            <a href="{{ route('property.tenant.login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Tenant portal') }}</a>
+            <span class="text-slate-300" aria-hidden="true">·</span>
+            <a href="{{ route('property.landlord.login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Landlord portal') }}</a>
+            <span class="text-slate-300" aria-hidden="true">·</span>
+            <a href="{{ url('/') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Home') }}</a>
+        </p>
+        @if (Route::has('register'))
+            <p>
+                {{ __('Not a member?') }}
+                <a href="{{ route('register') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Create account') }}</a>
+            </p>
+        @endif
+    </div>
+</x-guest-layout>

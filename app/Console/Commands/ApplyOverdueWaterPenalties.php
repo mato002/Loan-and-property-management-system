@@ -3,9 +3,12 @@
 namespace App\Console\Commands;
 
 use App\Models\PmInvoice;
+use App\Models\PmInvoiceEvent;
+use App\Models\PmInvoicePenaltyApplication;
 use App\Models\PmPenaltyRule;
 use App\Models\PropertyPortalSetting;
 use Illuminate\Console\Command;
+use Illuminate\Database\QueryException;
 
 class ApplyOverdueWaterPenalties extends Command
 {
@@ -78,10 +81,45 @@ class ApplyOverdueWaterPenalties extends Command
                     continue;
                 }
 
+                // A4: idempotency guard. The unique key
+                // (pm_invoice_id, pm_penalty_rule_id, threshold_date) on the
+                // applications table prevents re-running the cron from
+                // stacking penalties for the same invoice/rule/cutoff.
+                try {
+                    PmInvoicePenaltyApplication::query()->create([
+                        'pm_invoice_id' => (int) $invoice->id,
+                        'pm_penalty_rule_id' => (int) $rule->id,
+                        'threshold_date' => $threshold,
+                        'amount' => round($penalty, 2),
+                        'applied_at' => now(),
+                    ]);
+                } catch (QueryException $e) {
+                    // Duplicate => already applied for this rule + threshold.
+                    if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
+                        continue;
+                    }
+                    throw $e;
+                }
+
                 $invoice->amount = (float) $invoice->amount + $penalty;
+                $invoice->total_amount = (float) ($invoice->total_amount ?? $invoice->amount);
                 $invoice->description = trim(((string) $invoice->description).' | Water penalty '.$rule->name.' '.$today);
                 $invoice->save();
                 $invoice->refreshComputedStatus();
+
+                PmInvoiceEvent::record(
+                    (int) $invoice->id,
+                    PmInvoiceEvent::EVENT_PENALTY_APPLIED,
+                    null,
+                    sprintf('Penalty applied: %s (KES %s)', $rule->name, number_format($penalty, 2)),
+                    [
+                        'rule_id' => (int) $rule->id,
+                        'rule_name' => $rule->name,
+                        'threshold_date' => $threshold,
+                        'amount' => round($penalty, 2),
+                        'new_invoice_amount' => (float) $invoice->amount,
+                    ]
+                );
 
                 $applied++;
             }
