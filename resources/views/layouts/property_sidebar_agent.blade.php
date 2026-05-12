@@ -787,11 +787,12 @@
                         'property.settings.system_setup.access.permissions.update',
                         'property.settings.system_setup.access.permissions.destroy',
                         'property.settings.system_setup.access.roles.permissions.store',
+                        'property.settings.system_setup.access.matrix.store',
                         'property.settings.system_setup.access.users.roles.store',
                         'property.settings.system_setup.access.users.permissions.store',
                     ],
                     'badge' => null,
-                    'requires_superadmin' => true,
+                    'requires_pm_permission' => 'settings.manage',
                 ],
             ],
         ],
@@ -804,6 +805,12 @@
         foreach ($items as $item) {
             if (! $propertyAgentIsSuperAdmin && ! empty($item['requires_superadmin'])) {
                 continue;
+            }
+            if (! empty($item['requires_pm_permission'] ?? null)) {
+                $u = auth()->user();
+                if (! $u || ! $u->hasPmPermission($item['requires_pm_permission'])) {
+                    continue;
+                }
             }
             $children = $item['children'] ?? null;
             if (is_array($children) && $children !== []) {
@@ -822,7 +829,19 @@
         $sections = array_values(array_map(static function (array $section): array {
             $section['items'] = array_values(array_filter(
                 $section['items'],
-                static fn (array $item): bool => empty($item['requires_superadmin'])
+                static function (array $item): bool {
+                    if (! empty($item['requires_superadmin'])) {
+                        return false;
+                    }
+                    if (! empty($item['requires_pm_permission'] ?? null)) {
+                        $u = auth()->user();
+                        if (! $u || ! $u->hasPmPermission($item['requires_pm_permission'])) {
+                            return false;
+                        }
+                    }
+
+                    return true;
+                }
             ));
 
             return $section;

@@ -1,23 +1,9 @@
 <x-property-layout>
     <x-slot name="header">System setup</x-slot>
-
-    <x-property.page
-        title="System setup"
-        subtitle="Manage global form behavior, workflow automation, and document templates used across the portal."
-    >
-        <div class="mb-4 flex flex-wrap gap-2">
-            <a href="{{ route('property.settings.roles') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Property users</a>
-            <a href="{{ route('property.settings.commission') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Commission</a>
-            <a href="{{ route('property.settings.payments') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment config</a>
-            <a href="{{ route('property.settings.forwarder') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">My SMS Forwarder</a>
-            <a href="{{ route('property.settings.branding') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Branding</a>
-            <a href="{{ route('property.settings.rules') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System rules</a>
-            <a href="{{ route('property.settings.deposits') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Deposit rules</a>
-            <a href="{{ route('property.settings.expenses') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Expense charge rules</a>
-            <a href="{{ route('property.settings.system_setup') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">System setup</a>
-        </div>
-
-        <x-property.hub-grid :items="[
+    @php
+        $isSuperAdmin = (bool) (auth()->user()->is_super_admin ?? false);
+        $canAccessControl = auth()->user()->hasPmPermission('settings.access.manage');
+        $systemSetupHubItems = [
             ['route' => 'property.settings.system_setup.property_onboarding_fields', 'title' => 'Property onboarding fields', 'description' => 'Define exact fields shown when creating/onboarding a property.'],
             ['route' => 'property.settings.system_setup.unit_fields', 'title' => 'Unit fields', 'description' => 'Configure fields used when adding or editing units.'],
             ['route' => 'property.settings.system_setup.amenity_fields', 'title' => 'Amenity fields', 'description' => 'Define amenity creation fields and optional metadata.'],
@@ -37,8 +23,31 @@
             ['route' => 'property.settings.deposits', 'title' => 'Deposit rules', 'description' => 'Define deposit lines, requirements, and formulas used by leases.'],
             ['route' => 'property.settings.expenses', 'title' => 'Expense charge rules', 'description' => 'Define utility/expense charge templates and default ledger mapping.'],
             ['route' => 'property.settings.system_setup.templates', 'title' => 'Template adjustments', 'description' => 'Default lease and notice text used by forms.'],
-            ['route' => 'property.settings.system_setup.access', 'title' => 'Access control', 'description' => 'Create roles, permissions, and user role mappings.'],
-        ]" />
+        ];
+        if ($canAccessControl) {
+            $systemSetupHubItems[] = ['route' => 'property.settings.system_setup.access', 'title' => 'Access control', 'description' => 'Create roles, permissions, and user role mappings.'];
+        }
+    @endphp
+
+    <x-property.page
+        title="System setup"
+        subtitle="Manage global form behavior, workflow automation, and document templates used across the portal."
+    >
+        <div class="mb-4 flex flex-wrap gap-2">
+            @if ($isSuperAdmin)
+                <a href="{{ route('property.settings.roles') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Property users</a>
+            @endif
+            <a href="{{ route('property.settings.commission') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Commission</a>
+            <a href="{{ route('property.settings.payments') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment config</a>
+            <a href="{{ route('property.settings.forwarder') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">My SMS Forwarder</a>
+            <a href="{{ route('property.settings.branding') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Branding</a>
+            <a href="{{ route('property.settings.rules') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System rules</a>
+            <a href="{{ route('property.settings.deposits') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Deposit rules</a>
+            <a href="{{ route('property.settings.expenses') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Expense charge rules</a>
+            <a href="{{ route('property.settings.system_setup') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">System setup</a>
+        </div>
+
+        <x-property.hub-grid :items="$systemSetupHubItems" />
 
         @php
             $completion = $fieldModuleCompletion ?? ['configured' => 0, 'total' => 0, 'pending' => 0, 'configured_keys' => [], 'items' => []];

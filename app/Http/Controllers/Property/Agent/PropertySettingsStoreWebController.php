@@ -308,25 +308,43 @@ class PropertySettingsStoreWebController extends Controller
                 'roles' => collect(),
                 'permissionsByGroup' => collect(),
                 'portalUsers' => collect(),
+                'portalUserRbacSummaries' => [],
                 'tablesReady' => false,
             ]);
         }
 
         $this->ensureAccessControlDefaults();
 
-        $roles = PmRole::query()->with('permissions:id')->orderBy('portal_scope')->orderBy('name')->get();
-        $permissionsByGroup = PmPermission::query()->orderBy('group')->orderBy('name')->get()->groupBy('group');
+        $roles = PmRole::query()->with(['permissions:id,key,name,group'])->orderBy('portal_scope')->orderBy('name')->get();
+        $permissionsByGroup = PmPermission::query()->orderBy('group')->orderBy('name')->get(['id', 'key', 'name', 'group'])->groupBy('group');
+
         $portalUsers = User::query()
             ->whereNotNull('property_portal_role')
-            ->with('pmRoles:id,name', 'pmPermissions:id,name')
+            ->with([
+                'pmRoles.permissions:id,key',
+                'pmPermissions:id,key',
+            ])
             ->orderBy('name')
             ->limit(200)
             ->get(['id', 'name', 'email', 'property_portal_role']);
+
+        $portalUserRbacSummaries = [];
+        foreach ($portalUsers as $user) {
+            $rolePermIds = $user->pmRoles->flatMap(static fn (PmRole $r) => $r->permissions->pluck('id'))->unique()->values();
+            $directIds = $user->pmPermissions->pluck('id');
+            $effectiveIds = $rolePermIds->merge($directIds)->unique()->values();
+            $portalUserRbacSummaries[$user->id] = [
+                'from_roles_count' => $rolePermIds->count(),
+                'direct_count' => $directIds->count(),
+                'effective_count' => $effectiveIds->count(),
+            ];
+        }
 
         return view('property.agent.settings.system_setup.access', [
             'roles' => $roles,
             'permissionsByGroup' => $permissionsByGroup,
             'portalUsers' => $portalUsers,
+            'portalUserRbacSummaries' => $portalUserRbacSummaries,
             'tablesReady' => true,
         ]);
     }
@@ -421,6 +439,28 @@ class PropertySettingsStoreWebController extends Controller
         $pmRole->permissions()->sync($data['permission_ids'] ?? []);
 
         return back()->with('success', __('Role permissions updated.'));
+    }
+
+    public function storeSystemSetupAccessMatrix(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'matrix_role_ids' => ['required', 'array', 'min:1'],
+            'matrix_role_ids.*' => ['integer', 'exists:pm_roles,id'],
+            'matrix' => ['nullable', 'array'],
+            'matrix.*' => ['array'],
+            'matrix.*.*' => ['integer', 'exists:pm_permissions,id'],
+        ]);
+
+        foreach ($data['matrix_role_ids'] as $roleId) {
+            $roleId = (int) $roleId;
+            $permIds = array_values(array_unique(array_map('intval', (array) $request->input('matrix.'.$roleId, []))));
+            $role = PmRole::query()->find($roleId);
+            if ($role) {
+                $role->permissions()->sync($permIds);
+            }
+        }
+
+        return back()->with('success', __('Role permission matrix saved.'));
     }
 
     public function storeSystemSetupUserRoles(Request $request, User $user): RedirectResponse

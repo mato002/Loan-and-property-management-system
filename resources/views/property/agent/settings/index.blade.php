@@ -2,6 +2,7 @@
     <x-slot name="header">Settings</x-slot>
     @php
         $isSuperAdmin = (bool) (auth()->user()->is_super_admin ?? false);
+        $canSystemSetup = auth()->user()->hasPmPermission('settings.manage');
         $tabLinks = [
             ['route' => 'property.settings.commission', 'label' => 'Commission'],
             ['route' => 'property.settings.payments', 'label' => 'Payment config'],
@@ -24,21 +25,21 @@
             $tabLinks = array_merge([
                 ['route' => 'property.settings.roles', 'label' => 'Property users'],
                 ['route' => 'property.settings.permissions', 'label' => 'Permissions'],
-            ], $tabLinks, [
-                ['route' => 'property.settings.system_setup', 'label' => 'System setup'],
-            ]);
+            ], $tabLinks);
             $hubItems = array_merge([
                 ['route' => 'property.settings.roles', 'title' => 'Property users', 'description' => 'RBAC for your team.'],
                 ['route' => 'property.settings.permissions', 'title' => 'Permissions', 'description' => 'View all permission keys and usage.'],
-            ], $hubItems, [
-                ['route' => 'property.settings.system_setup', 'title' => 'System setup', 'description' => 'Adjust forms, workflows, and templates.'],
-            ]);
+            ], $hubItems);
+        }
+        if ($canSystemSetup) {
+            $tabLinks[] = ['route' => 'property.settings.system_setup', 'label' => 'System setup'];
+            $hubItems[] = ['route' => 'property.settings.system_setup', 'title' => 'System setup', 'description' => 'Adjust forms, workflows, and templates.'];
         }
     @endphp
 
     <x-property.page
         title="Settings"
-        subtitle="{{ $isSuperAdmin ? 'Users, commissions, M-Pesa rails, and automation rules.' : 'Commission, payment config, branding, and automation rules for agents.' }}"
+        subtitle="{{ $isSuperAdmin ? 'Users, commissions, M-Pesa rails, and automation rules.' : ($canSystemSetup ? 'Commission, payment config, branding, automation rules, and system setup for agents with settings access.' : 'Commission, payment config, branding, and automation rules for agents.') }}"
     >
         <x-property.module-status label="Settings" class="mb-4" />
 

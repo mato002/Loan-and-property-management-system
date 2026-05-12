@@ -10,7 +10,9 @@
             <a href="{{ route('property.settings.system_setup.forms') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Form adjustments</a>
             <a href="{{ route('property.settings.system_setup.workflows') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Workflow adjustments</a>
             <a href="{{ route('property.settings.system_setup.templates') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Template adjustments</a>
-            <a href="{{ route('property.settings.system_setup.access') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Access control</a>
+            @if (auth()->user()->hasPmPermission('settings.access.manage'))
+                <a href="{{ route('property.settings.system_setup.access') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Access control</a>
+            @endif
         </div>
 
         @if (session('success'))
