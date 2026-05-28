@@ -71,7 +71,7 @@ class PmVendorWebController extends Controller
             ];
         })->all();
 
-        return view('property.agent.vendors.directory', [
+        return property_view('property.agent.vendors.directory', [
             'stats' => $stats,
             'columns' => ['Vendor', 'Category', 'Contact', 'Payment terms', 'Insurance until', 'Rating', 'Status', 'Actions'],
             'tableRows' => $rows,
@@ -187,7 +187,7 @@ class PmVendorWebController extends Controller
             ];
         })->all();
 
-        return view('property.agent.vendors.show', [
+        return property_view('property.agent.vendors.show', [
             'vendor' => $vendor,
             'stats' => [
                 ['label' => 'Total jobs', 'value' => (string) $jobs->count(), 'hint' => 'All statuses'],
@@ -437,7 +437,7 @@ class PmVendorWebController extends Controller
 
     public function edit(PmVendor $vendor): View
     {
-        return view('property.agent.vendors.edit', [
+        return property_view('property.agent.vendors.edit', [
             'vendor' => $vendor,
         ]);
     }
@@ -472,7 +472,7 @@ class PmVendorWebController extends Controller
 
     public function createBiddingRfqForm(): View
     {
-        return view('property.agent.vendors.bidding_create');
+        return property_view('property.agent.vendors.bidding_create');
     }
 
     public function storeBiddingRfq(Request $request): RedirectResponse
@@ -529,7 +529,7 @@ class PmVendorWebController extends Controller
             new HtmlString('<a href="'.route('property.vendors.quotes').'" class="text-indigo-600 hover:text-indigo-700 font-medium">Open quotes</a>'),
         ])->all();
 
-        return view('property.agent.vendors.bidding', [
+        return property_view('property.agent.vendors.bidding', [
             'stats' => $stats,
             'columns' => ['RFQ #', 'Property / unit', 'Scope', 'Deadline', 'Invited', 'Quotes', 'Status', 'Actions'],
             'tableRows' => $rows,
@@ -575,7 +575,7 @@ class PmVendorWebController extends Controller
             ];
         })->all();
 
-        return view('property.agent.vendors.quotes', [
+        return property_view('property.agent.vendors.quotes', [
             'stats' => $stats,
             'columns' => ['Job', 'Vendor', 'Unit', 'Quote', 'Date', 'Status', 'Lead time', 'Select'],
             'tableRows' => $rows,
@@ -630,7 +630,7 @@ class PmVendorWebController extends Controller
             ? round(100 * $jobs->where('status', 'done')->count() / $jobs->count(), 1)
             : null;
 
-        return view('property.agent.vendors.performance', [
+        return property_view('property.agent.vendors.performance', [
             'stats' => [
                 ['label' => 'Vendors used', 'value' => (string) count($rows), 'hint' => 'With jobs'],
                 ['label' => 'Jobs sampled', 'value' => (string) $jobs->count(), 'hint' => ''],
@@ -662,7 +662,7 @@ class PmVendorWebController extends Controller
             new HtmlString('<a href="'.route('property.maintenance.history').'" class="text-indigo-600 hover:text-indigo-700 font-medium">History</a>'),
         ])->all();
 
-        return view('property.agent.vendors.work_records', [
+        return property_view('property.agent.vendors.work_records', [
             'stats' => [
                 ['label' => 'Records', 'value' => (string) $jobs->count(), 'hint' => 'Completed'],
             ],

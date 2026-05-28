@@ -37,6 +37,7 @@ class LandlordReportService
 
 		if (count($leaseIds) > 0) {
 			$arrearsByLease = PmInvoice::query()
+				->liveBalances()
 				->select('pm_lease_id', DB::raw('SUM(GREATEST(amount - amount_paid, 0)) as arrears_total'))
 				->whereIn('pm_lease_id', $leaseIds)
 				->whereDate('due_date', '<', $carryForwardCutoff)
@@ -563,6 +564,7 @@ class LandlordReportService
 			->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
 			->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
 			->join('properties as p', 'p.id', '=', 'u.property_id')
+			->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
 			->whereExists(function ($sub) {
 				$sub->selectRaw('1')
 					->from('pm_accounting_entries as ae')
@@ -589,6 +591,7 @@ class LandlordReportService
 			->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
 			->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
 			->join('properties as p', 'p.id', '=', 'u.property_id')
+			->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
 			->whereExists(function ($sub) {
 				$sub->selectRaw('1')
 					->from('pm_accounting_entries as ae')

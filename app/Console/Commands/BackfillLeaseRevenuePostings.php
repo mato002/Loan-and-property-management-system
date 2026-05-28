@@ -25,7 +25,7 @@ class BackfillLeaseRevenuePostings extends Command
         $leaseId = (int) ($this->option('lease-id') ?? 0);
         $dryRun = (bool) $this->option('dry-run');
 
-        $query = PmLease::query()->with(['units:id,property_id,label']);
+        $query = PmLease::query()->with(['units.property']);
         if ($leaseId > 0) {
             $query->where('id', $leaseId);
         }
@@ -76,6 +76,7 @@ class BackfillLeaseRevenuePostings extends Command
                 $billingMonth = ($lease->start_date?->format('Y-m')) ?: now()->format('Y-m');
 
                 PmInvoice::query()
+                    ->withoutGlobalScopes()
                     ->where('pm_lease_id', $lease->id)
                     ->where('description', 'like', self::AUTO_ARREARS_PREFIX.'%')
                     ->delete();
@@ -114,10 +115,13 @@ class BackfillLeaseRevenuePostings extends Command
                         $lease->opening_arrears_note ? 'Note: '.$lease->opening_arrears_note : null,
                     ]);
 
+                    $agentUserId = optional($unit->property)->agent_user_id;
+
                     PmInvoice::query()->create([
                         'pm_lease_id' => $lease->id,
                         'property_unit_id' => $unitId,
                         'pm_tenant_id' => $tenantId,
+                        'agent_user_id' => $agentUserId,
                         'invoice_no' => PmInvoice::nextInvoiceNumber(),
                         'issue_date' => $issueDate,
                         'due_date' => $dueDate,

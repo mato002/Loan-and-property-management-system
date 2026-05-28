@@ -12,10 +12,12 @@ use RuntimeException;
 
 class PropertyTransactionReversalService
 {
-    public function reversePayment(PmPayment $payment, ?int $actorId = null, ?string $reason = null): void
+    public function reversePayment(PmPayment $payment, ?int $actorId = null, ?string $reason = null, ?int $utilityOverrideRequestId = null): void
     {
-        DB::transaction(function () use ($payment, $actorId, $reason) {
+        DB::transaction(function () use ($payment, $actorId, $reason, $utilityOverrideRequestId) {
             $payment->loadMissing('allocations.invoice');
+            $actor = $actorId ? \App\Models\User::query()->find($actorId) : null;
+            app(UtilityPeriodGuardService::class)->assertPaymentReversalMutable($payment, $actor, $utilityOverrideRequestId);
 
             $journalBatch = AccountingJournalBatch::query()
                 ->where('source_type', 'pm_payment')

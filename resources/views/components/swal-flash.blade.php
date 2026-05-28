@@ -33,6 +33,16 @@
         ];
     }
 
+    $successMessage = session('success');
+    if (is_string($successMessage) && trim($successMessage) !== '') {
+        $flashes[] = [
+            'icon' => 'success',
+            'title' => 'Success',
+            'text' => $successMessage,
+            'confirmButtonColor' => '#059669',
+        ];
+    }
+
     $statusMessage = session('status');
     if (is_string($statusMessage) && trim($statusMessage) !== '') {
         $flashes[] = [
@@ -66,6 +76,7 @@
     }
 @endphp
 @if (count($flashes))
+    <div data-swal-flash='@json($flashes)' hidden aria-hidden="true"></div>
     <script>
         window.__laravelSwalFlash = @json($flashes);
     </script>

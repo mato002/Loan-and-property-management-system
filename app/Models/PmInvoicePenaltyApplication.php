@@ -15,6 +15,9 @@ class PmInvoicePenaltyApplication extends Model
         'threshold_date',
         'amount',
         'applied_at',
+        'reversed_at',
+        'reversed_by',
+        'reversal_reason',
     ];
 
     protected function casts(): array
@@ -22,6 +25,7 @@ class PmInvoicePenaltyApplication extends Model
         return [
             'threshold_date' => 'date',
             'applied_at' => 'datetime',
+            'reversed_at' => 'datetime',
             'amount' => 'decimal:2',
         ];
     }

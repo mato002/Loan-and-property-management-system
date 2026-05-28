@@ -11,8 +11,14 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmWaterReading;
 use App\Models\PropertyUnit;
-use App\Support\TabularExport;
+use App\Support\Property\UtilityWorkspaceViewData;
+use App\Exceptions\Property\UtilityPeriodClosedException;
+use App\Jobs\RefreshUtilityIntelligenceCacheJob;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\UtilityIntelligenceService;
+use App\Services\Property\UtilityPeriodGuardService;
+use App\Services\Property\WaterBillingService;
+use App\Services\Property\WaterPenaltyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -95,7 +101,7 @@ class PropertyUtilityChargeController extends Controller
 
         $charges = (clone $query)->paginate($perPage)->withQueryString();
         $waterReadingsQuery = PmWaterReading::query()
-            ->with(['unit.property', 'invoice'])
+            ->with(['unit.property', 'invoice.allocations'])
             ->when($filters['wr_q'] !== '', function ($q) use ($filters): void {
                 $term = $filters['wr_q'];
                 $q->where(function ($inner) use ($term): void {
@@ -111,6 +117,9 @@ class PropertyUtilityChargeController extends Controller
             ->orderByDesc('billing_month')
             ->orderByDesc('id');
         $waterReadings = $waterReadingsQuery->paginate($wrPerPage, ['*'], 'wr_page')->withQueryString();
+        $readingAnomalies = app(UtilityIntelligenceService::class)->anomalyMapForReadingIds(
+            $waterReadings->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->all()
+        );
         $waterReadingUnitIdsByMonth = PmWaterReading::query()
             ->select(['billing_month', 'property_unit_id'])
             ->get()
@@ -123,12 +132,6 @@ class PropertyUtilityChargeController extends Controller
             ->whereMonth('created_at', now()->month)
             ->sum('amount');
 
-        $stats = [
-            ['label' => 'Charge lines', 'value' => (string) $charges->total(), 'hint' => 'Filtered total'],
-            ['label' => 'New (MTD)', 'value' => PropertyMoney::kes((float) $mtd), 'hint' => 'Sum of amounts'],
-            ['label' => 'Distinct units', 'value' => (string) $charges->getCollection()->unique('property_unit_id')->count(), 'hint' => 'Current page'],
-            ['label' => 'Water readings', 'value' => (string) $waterReadings->count(), 'hint' => 'Recent'],
-        ];
         $waterChargePropertyIdsQuery = DB::table('pm_unit_utility_charges as charges')
             ->join('property_units as units', 'units.id', '=', 'charges.property_unit_id')
             ->where('charges.charge_type', 'water')
@@ -261,18 +264,56 @@ class PropertyUtilityChargeController extends Controller
             ]);
         }
 
-        return view('property.agent.revenue.utilities', [
+        $billingReadiness = [
+            'month' => $readinessMonth,
+            'missing' => $missingWaterReadings,
+            'anomalies' => $usageAnomalies->values(),
+            'water_enabled_units' => $waterEnabledUnitIds->count(),
+            'recorded_units' => $monthReadings->count(),
+        ];
+
+        $openWaterAr = (float) PmInvoice::query()
+            ->liveBalances()
+            ->whereIn('invoice_type', [PmInvoice::TYPE_WATER, PmInvoice::TYPE_MIXED])
+            ->whereColumn('amount_paid', '<', 'amount')
+            ->sum(DB::raw('amount - amount_paid'));
+
+        $uninvoicedReadings = (int) PmWaterReading::query()
+            ->where('billing_month', $readinessMonth)
+            ->whereNull('pm_invoice_id')
+            ->count();
+
+        $stats = [
+            ['label' => 'Readings (page)', 'value' => (string) $waterReadings->count(), 'hint' => 'Current filter'],
+            ['label' => 'Month progress', 'value' => ((int) $billingReadiness['recorded_units']).'/'.((int) $billingReadiness['water_enabled_units']), 'hint' => $readinessMonth.' captured'],
+            ['label' => 'Missing meters', 'value' => (string) collect($billingReadiness['missing'])->count(), 'hint' => 'Need readings'],
+            ['label' => 'Charge lines', 'value' => (string) $charges->total(), 'hint' => 'Filtered ledger'],
+        ];
+
+        $opsKpis = [
+            ['label' => 'Open utility AR', 'value' => PropertyMoney::kes($openWaterAr), 'hint' => 'Water & mixed', 'tone' => $openWaterAr > 0 ? 'warning' : 'success'],
+            ['label' => 'Readings captured', 'value' => ((int) $billingReadiness['recorded_units']).'/'.((int) $billingReadiness['water_enabled_units']), 'hint' => $readinessMonth, 'tone' => 'info'],
+            ['label' => 'Uninvoiced', 'value' => (string) $uninvoicedReadings, 'hint' => 'Readings pending invoice', 'tone' => $uninvoicedReadings > 0 ? 'warning' : 'success'],
+            ['label' => 'Usage alerts', 'value' => (string) collect($billingReadiness['anomalies'])->count(), 'hint' => 'Review before billing', 'tone' => collect($billingReadiness['anomalies'])->count() > 0 ? 'danger' : 'success'],
+        ];
+
+        $units = PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get();
+        $viewFilters = [
+            ...$filters,
+            'sort' => $sortBy,
+            'dir' => $dir,
+            'per_page' => (string) $perPage,
+            'wr_per_page' => (string) $wrPerPage,
+        ];
+
+        return property_view('property.agent.revenue.utilities', [
             'stats' => $stats,
+            'opsKpis' => $opsKpis,
             'charges' => $charges,
             'waterReadings' => $waterReadings,
-            'filters' => [
-                ...$filters,
-                'sort' => $sortBy,
-                'dir' => $dir,
-                'per_page' => (string) $perPage,
-                'wr_per_page' => (string) $wrPerPage,
-            ],
-            'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get(),
+            'readingAnomalies' => $readingAnomalies,
+            'filters' => $viewFilters,
+            'units' => $units,
             'wrProperties' => PropertyUnit::query()->with('property:id,name')->select(['id', 'property_id'])->get()
                 ->pluck('property')
                 ->filter()
@@ -283,13 +324,8 @@ class PropertyUtilityChargeController extends Controller
             'waterTemplateByUnit' => $waterTemplateByUnit,
             'utilityTemplateByUnit' => $utilityTemplateByUnit,
             'waterReadingUnitIdsByMonth' => $waterReadingUnitIdsByMonth,
-            'billingReadiness' => [
-                'month' => $readinessMonth,
-                'missing' => $missingWaterReadings,
-                'anomalies' => $usageAnomalies->values(),
-                'water_enabled_units' => $waterEnabledUnitIds->count(),
-                'recorded_units' => $monthReadings->count(),
-            ],
+            'billingReadiness' => $billingReadiness,
+            ...UtilityWorkspaceViewData::compose($request, $viewFilters, $units, $waterChargePropertyIds->all()),
         ]);
     }
 
@@ -343,6 +379,18 @@ class PropertyUtilityChargeController extends Controller
 
         $billingMonth = (string) $data['billing_month'];
         $dueDate = (string) $data['due_date'];
+        $overrideId = (int) $request->input('utility_override_request_id', 0) ?: null;
+
+        try {
+            app(UtilityPeriodGuardService::class)->assertMutable(
+                $billingMonth,
+                UtilityPeriodGuardService::ACTION_GENERATE_INVOICE,
+                $request->user(),
+                $overrideId,
+            );
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['billing_month' => $e->getMessage()])->withInput();
+        }
 
         $charges = PmUnitUtilityCharge::query()
             ->with('unit')
@@ -417,7 +465,7 @@ class PropertyUtilityChargeController extends Controller
         return back()->with('success', $msg);
     }
 
-    public function storeWaterReading(Request $request): RedirectResponse
+    public function storeWaterReading(Request $request, WaterBillingService $billing): RedirectResponse
     {
         $data = $request->validate([
             'property_unit_id' => ['required', 'exists:property_units,id'],
@@ -426,50 +474,29 @@ class PropertyUtilityChargeController extends Controller
             'current_reading' => ['required', 'numeric', 'min:0'],
             'rate_per_unit' => ['required', 'numeric', 'min:0'],
             'fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'is_estimated' => ['nullable', 'boolean'],
+            'is_meter_reset' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $unitId = (int) $data['property_unit_id'];
-        $month = (string) $data['billing_month'];
-        $current = (float) $data['current_reading'];
-        $rate = (float) $data['rate_per_unit'];
-        $fixed = (float) ($data['fixed_charge'] ?? 0);
-
-        $prev = $request->filled('previous_reading')
-            ? (float) $data['previous_reading']
-            : $this->defaultWaterPreviousReading($unitId, $month);
-        $alreadyExists = PmWaterReading::query()
-            ->where('property_unit_id', $unitId)
-            ->where('billing_month', $month)
-            ->exists();
-        if ($alreadyExists) {
-            return back()->withErrors([
-                'billing_month' => 'A water reading already exists for this unit and month. Remove/update the existing record instead of recording a duplicate.',
-            ])->withInput();
+        if (! $request->filled('previous_reading')) {
+            $data['previous_reading'] = $billing->defaultPreviousReading(
+                (int) $data['property_unit_id'],
+                (string) $data['billing_month']
+            );
         }
 
-        if ($current < $prev) {
-            return back()->withErrors([
-                'current_reading' => 'Current reading cannot be less than previous reading ('.$prev.'). Adjust previous or current.',
-            ])->withInput();
+        $data['utility_override_request_id'] = (int) $request->input('utility_override_request_id', 0) ?: null;
+
+        try {
+            $billing->recordReading($data, $request->user());
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['billing_month' => $e->getMessage()])->withInput();
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
         }
 
-        $unitsUsed = $current - $prev;
-        $amount = ($unitsUsed * $rate) + $fixed;
-
-        PmWaterReading::query()->updateOrCreate(
-            ['property_unit_id' => $unitId, 'billing_month' => $month],
-            [
-                'previous_reading' => $prev,
-                'current_reading' => $current,
-                'units_used' => $unitsUsed,
-                'rate_per_unit' => $rate,
-                'fixed_charge' => $fixed,
-                'amount' => $amount,
-                'status' => 'recorded',
-                'notes' => $data['notes'] ?? null,
-            ]
-        );
+        $this->refreshUtilityIntelligence((int) $request->user()?->id);
 
         return back()->with('success', 'Water meter reading saved.');
     }
@@ -500,7 +527,7 @@ class PropertyUtilityChargeController extends Controller
         return response()->json(['previous_by_unit' => $previousByUnit]);
     }
 
-    public function storeBulkWaterReadings(Request $request): RedirectResponse
+    public function storeBulkWaterReadings(Request $request, WaterBillingService $billing): RedirectResponse
     {
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
@@ -512,6 +539,10 @@ class PropertyUtilityChargeController extends Controller
             'current_readings.*' => ['nullable', 'numeric', 'min:0'],
             'previous_readings' => ['nullable', 'array'],
             'previous_readings.*' => ['nullable', 'numeric', 'min:0'],
+            'is_estimated' => ['nullable', 'array'],
+            'is_estimated.*' => ['nullable', 'boolean'],
+            'is_meter_reset' => ['nullable', 'array'],
+            'is_meter_reset.*' => ['nullable', 'boolean'],
         ]);
 
         $propertyId = (int) $data['property_id'];
@@ -545,197 +576,131 @@ class PropertyUtilityChargeController extends Controller
             return back()->withErrors(['current_readings' => 'Some submitted units do not belong to the selected property.'])->withInput();
         }
 
-        $errors = [];
-        $saved = 0;
-
         $previousReadings = $data['previous_readings'] ?? [];
+        $estimatedFlags = $data['is_estimated'] ?? [];
+        $resetFlags = $data['is_meter_reset'] ?? [];
 
-        DB::transaction(function () use ($submittedReadings, $previousReadings, $month, $rate, $fixed, $notes, $unitMap, &$errors, &$saved) {
-            foreach ($submittedReadings as $unitId => $current) {
-                $unitId = (int) $unitId;
-                $rawPrev = $previousReadings[$unitId] ?? $previousReadings[(string) $unitId] ?? null;
-                $prev = ($rawPrev !== null && $rawPrev !== '')
-                    ? (float) $rawPrev
-                    : $this->defaultWaterPreviousReading($unitId, $month);
-
-                if ($current < $prev) {
-                    $errors['current_readings.'.$unitId] = ($unitMap[$unitId] ?? ('Unit '.$unitId)).': current reading cannot be less than previous reading ('.$prev.'). Adjust previous or current.';
-                    continue;
-                }
-
-                $unitsUsed = $current - $prev;
-                $amount = ($unitsUsed * $rate) + $fixed;
-
-                $alreadyExists = PmWaterReading::query()
-                    ->where('property_unit_id', $unitId)
-                    ->where('billing_month', $month)
-                    ->exists();
-                if ($alreadyExists) {
-                    $errors['current_readings.'.$unitId] = ($unitMap[$unitId] ?? ('Unit '.$unitId)).': reading already exists for '.$month.'.';
-                    continue;
-                }
-
-                PmWaterReading::query()->create([
-                    'property_unit_id' => $unitId,
-                    'billing_month' => $month,
-                    'previous_reading' => $prev,
-                    'current_reading' => $current,
-                    'units_used' => $unitsUsed,
-                    'rate_per_unit' => $rate,
-                    'fixed_charge' => $fixed,
-                    'amount' => $amount,
-                    'status' => 'recorded',
-                    'notes' => $notes,
-                ]);
-                $saved++;
-            }
-        });
-
-        if (! empty($errors)) {
-            return back()->withErrors($errors)->withInput();
+        try {
+            $result = $billing->recordBulkReadings(
+                $submittedReadings->all(),
+                $month,
+                $rate,
+                $fixed,
+                $notes,
+                $previousReadings,
+                $estimatedFlags,
+                $resetFlags,
+                $unitMap->all(),
+                $request->user(),
+                (int) $request->input('utility_override_request_id', 0) ?: null,
+            );
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['billing_month' => $e->getMessage()])->withInput();
         }
 
-        return back()->with('success', $saved.' water meter reading(s) saved in bulk.');
+        if ($result['errors'] !== []) {
+            return back()->withErrors($result['errors'])->withInput();
+        }
+
+        $this->refreshUtilityIntelligence((int) $request->user()?->id);
+
+        return back()->with('success', $result['saved'].' water meter reading(s) saved in bulk.');
     }
 
-    public function generateWaterInvoices(Request $request): RedirectResponse
+    public function generateWaterInvoices(Request $request, WaterBillingService $billing): RedirectResponse
     {
         $data = $request->validate([
             'billing_month' => ['required', 'date_format:Y-m'],
             'due_date' => ['required', 'date'],
         ]);
 
-        $billingMonth = (string) $data['billing_month'];
-        $dueDate = (string) $data['due_date'];
-
-        $readings = PmWaterReading::query()
-            ->with('unit')
-            ->where('billing_month', $billingMonth)
-            ->whereNull('pm_invoice_id')
-            ->get();
-
-        if ($readings->isEmpty()) {
-            return back()->withErrors(['billing_month' => 'No uninvoiced water readings for '.$billingMonth.'.']);
+        try {
+            $stats = $billing->generateInvoicesForMonth(
+                billingMonth: (string) $data['billing_month'],
+                dueDate: (string) $data['due_date'],
+                actor: $request->user(),
+                source: 'utilities.ui',
+                postToGl: true,
+                autoApplyCredit: true,
+                utilityOverrideRequestId: (int) $request->input('utility_override_request_id', 0) ?: null,
+            );
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['billing_month' => $e->getMessage()])->withInput();
         }
 
-        $created = 0;
-        $skippedNoLease = 0;
-        $skippedNoTenant = 0;
-        DB::transaction(function () use ($readings, $billingMonth, $dueDate, &$created, &$skippedNoLease, &$skippedNoTenant): void {
-            foreach ($readings as $reading) {
-                $lease = PmLease::query()
-                    ->where('status', PmLease::STATUS_ACTIVE)
-                    ->whereHas('units', fn ($q) => $q->where('property_units.id', $reading->property_unit_id))
-                    ->with('pmTenant')
-                    ->first();
-
-                if (! $lease) {
-                    $skippedNoLease++;
-                    continue;
-                }
-                if (! $lease->pmTenant) {
-                    $skippedNoTenant++;
-                    continue;
-                }
-
-                $invoiceNo = PmInvoice::nextInvoiceNumber();
-                $amount = (float) $reading->amount;
-
-                $invoice = PmInvoice::query()->create([
-                    'pm_lease_id' => $lease->id,
-                    'property_unit_id' => $reading->property_unit_id,
-                    'pm_tenant_id' => $lease->pm_tenant_id,
-                    'invoice_no' => $invoiceNo,
-                    'issue_date' => now()->toDateString(),
-                    'due_date' => $dueDate,
-                    'amount' => $amount,
-                    'amount_paid' => 0,
-                    'status' => PmInvoice::STATUS_SENT,
-                    'invoice_type' => PmInvoice::TYPE_WATER,
-                    'billing_period' => $billingMonth,
-                    'description' => 'Water bill for '.$billingMonth.' (units '.number_format((float) $reading->units_used, 3).')',
-                ]);
-                $invoice->refreshComputedStatus();
-
-                $reading->update([
-                    'status' => 'invoiced',
-                    'pm_invoice_id' => $invoice->id,
-                ]);
-
-                $created++;
-            }
-        });
-
-        if ($created === 0) {
+        if ($stats['created'] === 0) {
             return back()->withErrors([
-                'billing_month' => 'No water invoices generated for '.$billingMonth
-                    .'. Skipped: '.$skippedNoLease.' unit(s) without active lease'
-                    .', '.$skippedNoTenant.' lease(s) without tenant.',
+                'billing_month' => 'No water invoices generated for '.$data['billing_month']
+                    .'. Skipped: '.$stats['skipped_no_lease'].' (no lease), '
+                    .$stats['skipped_duplicate'].' (duplicate).',
             ]);
         }
 
-        $msg = $created.' water invoice(s) generated for '.$billingMonth.'.';
-        if ($skippedNoLease > 0 || $skippedNoTenant > 0) {
-            $msg .= ' Skipped: '.$skippedNoLease.' unit(s) without active lease, '
-                .$skippedNoTenant.' lease(s) without tenant.';
+        $msg = $stats['created'].' water invoice(s) generated for '.$data['billing_month'].'.';
+        if ($stats['skipped_no_lease'] > 0 || $stats['skipped_duplicate'] > 0) {
+            $msg .= ' Skipped: '.$stats['skipped_no_lease'].' no lease, '.$stats['skipped_duplicate'].' duplicate.';
+        }
+        if ($stats['credit_applied'] > 0) {
+            $msg .= ' Tenant credit auto-applied on '.$stats['credit_applied'].' invoice(s).';
         }
 
         return back()->with('success', $msg);
     }
 
-    public function applyWaterPenalties(): RedirectResponse
+    public function applyWaterPenalties(Request $request, WaterPenaltyService $penalties): RedirectResponse
     {
-        $rules = PmPenaltyRule::query()
-            ->where('is_active', true)
-            ->where('scope', 'water')
-            ->orderBy('id')
-            ->get();
+        if ($request->boolean('preview')) {
+            $rows = $penalties->preview(now()->toDateString());
+            if ($rows->isEmpty()) {
+                return back()->with('success', 'No water penalties would be applied today.');
+            }
 
-        if ($rules->isEmpty()) {
-            return back()->withErrors(['penalty' => 'No active water penalty rule found. Use scope=water.']);
+            return back()->with('success', $rows->count().' water penalty(ies) would be applied. Review overdue water invoices.');
         }
 
-        $rule = $rules->first();
-        $graceDays = (int) ($rule->grace_days ?? 0);
-        $threshold = now()->subDays($graceDays)->toDateString();
+        $stats = $penalties->apply(now()->toDateString(), $request->user(), 'utilities.ui');
 
-        $invoices = PmInvoice::query()
-            ->where('invoice_type', PmInvoice::TYPE_WATER)
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->whereDate('due_date', '<', $threshold)
-            ->get();
+        return back()->with('success', 'Applied water penalties to '.$stats['applied'].' invoice(s).');
+    }
 
-        $count = 0;
-        foreach ($invoices as $invoice) {
-            $base = max(0, (float) $invoice->amount - (float) $invoice->amount_paid);
-            if ($base <= 0) {
-                continue;
-            }
+    public function previewWaterPenalties(WaterPenaltyService $penalties): JsonResponse
+    {
+        $rows = $penalties->preview(now()->toDateString())->map(fn (array $row) => [
+            ...$row,
+            'base_display' => PropertyMoney::kes((float) ($row['base'] ?? 0)),
+            'penalty_display' => PropertyMoney::kes((float) ($row['penalty'] ?? 0)),
+        ])->values();
 
-            $penalty = 0.0;
-            if ($rule->formula === 'flat' || $rule->formula === 'fixed') {
-                $penalty = (float) ($rule->amount ?? 0);
-            } else {
-                $penalty = $base * (((float) ($rule->percent ?? 0)) / 100);
-                if ((float) ($rule->amount ?? 0) > 0) {
-                    $penalty += (float) $rule->amount;
-                }
-            }
-            if ((float) ($rule->cap ?? 0) > 0) {
-                $penalty = min($penalty, (float) $rule->cap);
-            }
-            if ($penalty <= 0) {
-                continue;
-            }
+        return response()->json([
+            'rows' => $rows,
+            'total_penalty' => round($rows->sum('penalty'), 2),
+            'total_penalty_display' => PropertyMoney::kes((float) $rows->sum('penalty')),
+        ]);
+    }
 
-            $invoice->amount = (float) $invoice->amount + $penalty;
-            $invoice->description = trim(((string) $invoice->description).' | Water penalty '.$rule->name.' '.now()->format('Y-m-d'));
-            $invoice->save();
-            $invoice->refreshComputedStatus();
-            $count++;
+    public function reverseWaterPenalty(Request $request, WaterPenaltyService $penalties): RedirectResponse
+    {
+        $data = $request->validate([
+            'application_id' => ['required', 'integer', 'exists:pm_invoice_penalty_applications,id'],
+            'reason' => ['nullable', 'string', 'max:500'],
+            'utility_override_request_id' => ['nullable', 'integer'],
+        ]);
+
+        $application = \App\Models\PmInvoicePenaltyApplication::query()->findOrFail($data['application_id']);
+        try {
+            if (! $penalties->reverseApplication(
+                $application,
+                $request->user(),
+                $data['reason'] ?? null,
+                (int) ($data['utility_override_request_id'] ?? 0) ?: null,
+            )) {
+                return back()->withErrors(['application_id' => 'Penalty could not be reversed (already reversed or invalid).']);
+            }
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['application_id' => $e->getMessage()]);
         }
 
-        return back()->with('success', 'Applied water penalties to '.$count.' invoice(s).');
+        return back()->with('success', 'Water penalty reversed.');
     }
 
     public function destroy(PmUnitUtilityCharge $charge): RedirectResponse
@@ -751,6 +716,7 @@ class PropertyUtilityChargeController extends Controller
             'action' => ['required', 'in:delete'],
             'reading_ids' => ['nullable', 'array'],
             'reading_ids.*' => ['integer', 'exists:pm_water_readings,id'],
+            'utility_override_request_id' => ['nullable', 'integer'],
         ]);
 
         $ids = collect($data['reading_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->unique()->values();
@@ -759,6 +725,25 @@ class PropertyUtilityChargeController extends Controller
         }
 
         if ($data['action'] === 'delete') {
+            $overrideId = (int) ($data['utility_override_request_id'] ?? 0) ?: null;
+            $guard = app(UtilityPeriodGuardService::class);
+            $readings = PmWaterReading::query()->whereIn('id', $ids)->get();
+
+            try {
+                foreach ($readings->pluck('billing_month')->unique() as $month) {
+                    $guard->assertMutable(
+                        (string) $month,
+                        UtilityPeriodGuardService::ACTION_DELETE_READING,
+                        $request->user(),
+                        $overrideId,
+                        'pm_water_reading',
+                        null,
+                    );
+                }
+            } catch (UtilityPeriodClosedException $e) {
+                return back()->withErrors(['reading_ids' => $e->getMessage()]);
+            }
+
             $deleted = PmWaterReading::query()
                 ->whereIn('id', $ids)
                 ->whereNull('pm_invoice_id')
@@ -866,5 +851,15 @@ class PropertyUtilityChargeController extends Controller
             ->lower()
             ->replaceMatches('/[^a-z0-9]+/', '_')
             ->trim('_');
+    }
+
+    private function refreshUtilityIntelligence(?int $agentUserId): void
+    {
+        if (! $agentUserId) {
+            return;
+        }
+
+        app(UtilityIntelligenceService::class)->forgetCache($agentUserId);
+        RefreshUtilityIntelligenceCacheJob::dispatch($agentUserId);
     }
 }

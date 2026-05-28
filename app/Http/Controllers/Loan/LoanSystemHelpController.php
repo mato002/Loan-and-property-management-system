@@ -1227,6 +1227,9 @@ class LoanSystemHelpController extends Controller
                     ->limit(10)
                     ->get()
                 : collect(),
+            'recentAuditLogs' => Schema::hasTable('loan_access_logs')
+                ? LoanAccessLog::query()->with('user:id,name,email')->latest('created_at')->limit(20)->get()
+                : collect(),
             'securityPolicySettings' => [
                 'device_governance_enabled' => LoanSystemSetting::getValue('loan_security_device_governance_enabled', '0'),
                 'role_login_windows_enabled' => LoanSystemSetting::getValue('loan_security_role_login_windows_enabled', '0'),

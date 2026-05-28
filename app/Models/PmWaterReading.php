@@ -23,6 +23,8 @@ class PmWaterReading extends Model
         'status',
         'pm_invoice_id',
         'notes',
+        'is_estimated',
+        'is_meter_reset',
     ];
 
     protected function casts(): array
@@ -34,6 +36,8 @@ class PmWaterReading extends Model
             'rate_per_unit' => 'decimal:2',
             'fixed_charge' => 'decimal:2',
             'amount' => 'decimal:2',
+            'is_estimated' => 'boolean',
+            'is_meter_reset' => 'boolean',
         ];
     }
 

@@ -14,7 +14,10 @@ function applyPropertyTableFilters(el) {
             return;
         }
         const controls = wrap.querySelectorAll('[data-table-filter="parent"]');
-        const rows = wrap.querySelectorAll('tbody tr[data-filter-text]');
+        const rows = [
+            ...wrap.querySelectorAll('tbody tr[data-filter-text]'),
+            ...wrap.querySelectorAll('[data-mobile-record-list] article[data-filter-text]'),
+        ];
         rows.forEach((row) => {
             const hay = (row.getAttribute('data-filter-text') || '').toLowerCase();
             let visible = true;

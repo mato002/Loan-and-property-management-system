@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use App\Services\Property\PropertyDashboardCache;
 use Illuminate\Database\Eloquent\Model;
 
 class PropertyPortalSetting extends Model
 {
     protected $table = 'property_portal_settings';
+
+    /** @var array<string, ?string> */
+    private static array $valueCache = [];
 
     protected $fillable = [
         'key',
@@ -15,9 +19,12 @@ class PropertyPortalSetting extends Model
 
     public static function getValue(string $key, ?string $default = null): ?string
     {
-        $row = static::query()->where('key', $key)->first();
+        if (! array_key_exists($key, static::$valueCache)) {
+            $row = static::query()->where('key', $key)->first();
+            static::$valueCache[$key] = $row?->value;
+        }
 
-        return $row?->value ?? $default;
+        return static::$valueCache[$key] ?? $default;
     }
 
     public static function setValue(string $key, ?string $value): void
@@ -26,6 +33,8 @@ class PropertyPortalSetting extends Model
             ['key' => $key],
             ['value' => $value]
         );
+        static::$valueCache[$key] = $value;
+        PropertyDashboardCache::forgetAll();
     }
 
     /**

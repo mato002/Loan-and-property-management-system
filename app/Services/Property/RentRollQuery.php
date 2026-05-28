@@ -29,17 +29,32 @@ final class RentRollQuery
             ->orderBy('label')
             ->get();
 
+        $unitIds = $units->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        $balanceByUnit = collect();
+        $paidByUnit = collect();
+        if ($unitIds !== []) {
+            $balanceByUnit = PmInvoice::query()
+                ->liveBalances()
+                ->whereIn('property_unit_id', $unitIds)
+                ->selectRaw('property_unit_id, COALESCE(SUM(amount - amount_paid), 0) as balance')
+                ->groupBy('property_unit_id')
+                ->pluck('balance', 'property_unit_id');
+
+            $paidByUnit = PmInvoice::query()
+                ->whereIn('property_unit_id', $unitIds)
+                ->selectRaw('property_unit_id, COALESCE(SUM(amount_paid), 0) as paid')
+                ->groupBy('property_unit_id')
+                ->pluck('paid', 'property_unit_id');
+        }
+
+        $period = now()->format('Y-m');
         $rows = [];
         foreach ($units as $unit) {
             $lease = $unit->leases->first();
             $tenant = $lease?->pmTenant;
-            $balance = (float) PmInvoice::query()
-                ->where('property_unit_id', $unit->id)
-                ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as b')
-                ->value('b');
-
-            $period = now()->format('Y-m');
-            $due = $lease ? PropertyMoney::kes((float) $lease->monthly_rent) : PropertyMoney::kes((float) $unit->rent_amount);
+            $balance = (float) ($balanceByUnit[$unit->id] ?? 0);
+            $paid = (float) ($paidByUnit[$unit->id] ?? 0);
             $other = (float) ($utilityTotals[$unit->id] ?? 0);
             $otherLabel = $other > 0 ? PropertyMoney::kes($other) : '—';
 
@@ -47,9 +62,9 @@ final class RentRollQuery
                 $unit->property->name.' / '.$unit->label,
                 $tenant?->name ?? '—',
                 $period,
-                $due,
+                $lease ? PropertyMoney::kes((float) $lease->monthly_rent) : PropertyMoney::kes((float) $unit->rent_amount),
                 $otherLabel,
-                PropertyMoney::kes(max(0, (float) PmInvoice::query()->where('property_unit_id', $unit->id)->sum('amount_paid'))),
+                PropertyMoney::kes(max(0, $paid)),
                 PropertyMoney::kes($balance),
                 ucfirst($unit->status),
             ];

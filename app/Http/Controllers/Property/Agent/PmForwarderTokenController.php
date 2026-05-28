@@ -28,7 +28,7 @@ class PmForwarderTokenController extends Controller
         $webhookUrl = url('/webhooks/property/payments/sms-ingest');
         $activeTokens = $tokens->whereNull('revoked_at')->values();
 
-        return view('property.agent.settings.my_forwarder', [
+        return property_view('property.agent.settings.my_forwarder', [
             'webhookUrl' => $webhookUrl,
             'tokens' => $tokens,
             'activeTokens' => $activeTokens,
@@ -115,7 +115,7 @@ class PmForwarderTokenController extends Controller
                 ->max('created_at');
         }
 
-        return view('property.agent.settings.my_forwarder_diagnostics', [
+        return property_view('property.agent.settings.my_forwarder_diagnostics', [
             'matched24h' => $matched,
             'unmatched24h' => $unmatched,
             'lastIngestAt' => $lastIngestAt,

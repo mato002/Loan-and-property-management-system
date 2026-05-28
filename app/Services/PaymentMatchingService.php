@@ -65,7 +65,8 @@ class PaymentMatchingService
         $reference = $this->normalizeReference((string) ($transaction['reference'] ?? ''));
         if ($reference !== '') {
             $q = PmInvoice::query()
-                ->withoutGlobalScopes()
+                ->withoutGlobalScope('agent_workspace')
+                ->whereNull('deleted_at')
                 ->whereRaw('UPPER(REPLACE(invoice_no, " ", "")) = ?', [$reference])
                 ->whereNotNull('pm_tenant_id')
                 ->with('tenant');

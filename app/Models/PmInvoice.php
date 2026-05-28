@@ -39,6 +39,8 @@ class PmInvoice extends Model
 
     public const KIND_CREDIT_NOTE = 'credit_note';
 
+    public const LEASE_OPENING_ARREARS_PREFIX = '[Lease Opening Arrears]';
+
     protected $fillable = [
         'pm_lease_id',
         'property_unit_id',
@@ -162,6 +164,63 @@ class PmInvoice extends Model
         return round(max(0, (float) $this->amount - (float) $this->amount_paid), 2);
     }
 
+    public function allocatedAmount(): float
+    {
+        return round((float) $this->allocations()
+            ->where(function (Builder $q) {
+                $q->where('is_reversed', false)->orWhereNull('is_reversed');
+            })
+            ->sum('amount'), 2);
+    }
+
+    /**
+     * Set amount_paid from non-reversed payment allocations (source of truth).
+     */
+    public function syncAmountPaidFromAllocations(): self
+    {
+        $allocated = min($this->allocatedAmount(), round((float) $this->amount, 2));
+        $this->amount_paid = $allocated;
+        $this->refreshComputedStatus();
+
+        return $this;
+    }
+
+    /**
+     * Invoices with a positive open balance (matches dashboard Outstanding AR).
+     */
+    public function scopeWithOutstandingBalance(Builder $query): Builder
+    {
+        return $query
+            ->liveBalances()
+            ->where(function (Builder $inner) {
+                $inner->whereColumn('amount_paid', '<', 'amount')
+                    ->orWhereRaw('(amount - COALESCE(amount_paid, 0)) > 0');
+            });
+    }
+
+    /**
+     * Rows that contribute to live balances (excludes cancelled; Eloquent also
+     * excludes soft-deleted rows via SoftDeletes).
+     */
+    public function scopeLiveBalances(Builder $query): Builder
+    {
+        $table = $query->getModel()->getTable();
+
+        return $query->where("{$table}.status", '!=', self::STATUS_CANCELLED);
+    }
+
+    /**
+     * Apply live-balance constraints to raw query-builder joins on pm_invoices.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     */
+    public static function applyLiveBalanceConstraints($query, string $alias = ''): void
+    {
+        $prefix = $alias !== '' ? $alias.'.' : '';
+        $query->whereNull($prefix.'deleted_at')
+            ->where($prefix.'status', '!=', self::STATUS_CANCELLED);
+    }
+
     public function isCreditNote(): bool
     {
         return (string) ($this->invoice_kind ?? self::KIND_INVOICE) === self::KIND_CREDIT_NOTE;
@@ -191,7 +250,7 @@ class PmInvoice extends Model
             $this->saveQuietly();
 
             return;
-        } elseif ($this->due_date && $this->due_date->isPast()) {
+        } elseif ($this->due_date && $this->due_date->copy()->endOfDay()->isPast()) {
             $this->status = self::STATUS_OVERDUE;
         } else {
             $this->status = self::STATUS_SENT;
@@ -217,6 +276,36 @@ class PmInvoice extends Model
                 );
             }
         }
+    }
+
+    /**
+     * Recompute status for open invoices whose stored status may be stale
+     * (e.g. still "sent" after the due date has passed). Returns how many
+     * rows changed status.
+     */
+    public static function refreshStaleStatuses(int $limit = 500): int
+    {
+        $changed = 0;
+        $today = now()->toDateString();
+
+        static::query()
+            ->whereNotIn('status', [self::STATUS_DRAFT, self::STATUS_CANCELLED])
+            ->where(function ($q) use ($today) {
+                $q->whereColumn('amount_paid', '<', 'amount')
+                    ->orWhereDate('due_date', '<', $today);
+            })
+            ->orderBy('id')
+            ->limit($limit)
+            ->get()
+            ->each(function (self $invoice) use (&$changed) {
+                $before = (string) $invoice->status;
+                $invoice->refreshComputedStatus();
+                if ($before !== (string) $invoice->status) {
+                    $changed++;
+                }
+            });
+
+        return $changed;
     }
 
     public static function nextInvoiceNumber(): string

@@ -28,22 +28,25 @@ class PublicController extends Controller
             ->with(['property', 'publicImages'])
             ->orderByDesc('public_listing_published')
             ->orderByDesc('updated_at')
-            ->limit(3)
+            ->limit(6)
             ->get();
+
+        $publicStats = [
+            'properties' => Property::query()->count(),
+            'vacant_listings' => PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)->count(),
+            'landlords' => User::query()->where('property_portal_role', 'landlord')->count(),
+            'tenants' => PmTenant::query()->count(),
+        ];
 
         return view('public.home', [
             'featuredUnits' => $featuredUnits,
             'availableCities' => $this->availableCities(),
             'availableUnitTypes' => PropertyUnit::typeOptions(),
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
-            'publicPageTitle' => 'Find Verified Rentals',
-            'publicPageDescription' => 'Browse verified rental properties, compare units, and connect with trusted property agents in minutes.',
-            'publicStats' => [
-                'properties' => Property::query()->count(),
-                'vacant_listings' => PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)->count(),
-                'landlords' => User::query()->where('property_portal_role', 'landlord')->count(),
-                'tenants' => PmTenant::query()->count(),
-            ],
+            'publicPageTitle' => 'Find Verified Rentals in Kenya',
+            'publicPageDescription' => 'Browse verified rental properties, compare units, and connect with trusted property professionals across Kenya.',
+            'publicStats' => $publicStats,
+            'heroImage' => self::LISTING_PLACEHOLDER_IMAGE,
         ]);
     }
 
@@ -61,6 +64,18 @@ class PublicController extends Controller
             $city = $request->string('city')->trim();
             $query->whereHas('property', function ($q) use ($city) {
                 $q->where('city', 'like', '%'.$city.'%');
+            });
+        }
+
+        if ($request->filled('q')) {
+            $term = $request->string('q')->trim();
+            $query->where(function ($q) use ($term) {
+                $q->where('label', 'like', '%'.$term.'%')
+                    ->orWhereHas('property', function ($pq) use ($term) {
+                        $pq->where('name', 'like', '%'.$term.'%')
+                            ->orWhere('city', 'like', '%'.$term.'%')
+                            ->orWhere('address_line', 'like', '%'.$term.'%');
+                    });
             });
         }
 
@@ -94,7 +109,7 @@ class PublicController extends Controller
             default => $query->orderByDesc('updated_at'),
         };
 
-        $units = $query->paginate(8)->withQueryString();
+        $units = $query->paginate(12)->withQueryString();
         $filterCities = $this->availableCities();
 
         $sortLabel = match ($sort) {
@@ -116,6 +131,7 @@ class PublicController extends Controller
             'filterCities' => $filterCities,
             'filterUnitTypes' => PropertyUnit::typeOptions(),
             'sortLabel' => $sortLabel,
+            'activeFilters' => $this->buildActiveFilters($request, $sort),
             'publicPageTitle' => $seoTitle,
             'publicPageDescription' => $seoDescription,
         ]);
@@ -148,13 +164,7 @@ class PublicController extends Controller
             ->with(['property', 'publicImages', 'amenities'])
             ->firstOrFail();
 
-        $imageUrls = $unit->publicImages->map(fn ($img) => $img->publicUrl())->values()->all();
-
-        $gallerySlots = [];
-        for ($i = 0; $i < 5; $i++) {
-            $gallerySlots[] = $imageUrls[$i] ?? null;
-        }
-        $extraPhotoCount = max(0, count($imageUrls) - 5);
+        $imageUrls = $unit->publicImages->map(fn ($img) => $img->publicUrl())->filter()->values()->all();
 
         $similarUnits = PropertyUnit::query()
             ->publiclyListed()
@@ -178,16 +188,34 @@ class PublicController extends Controller
             .'. See photos, amenities, and availability before booking a visit.';
         $heroImage = $imageUrls[0] ?? self::LISTING_PLACEHOLDER_IMAGE;
 
+        $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name');
+        $contactWhatsapp = \App\Models\PropertyPortalSetting::getValue('contact_whatsapp', '') ?: '254717018779';
+        $contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '0717018779';
+        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp) ?: '254717018779';
+        $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone) ?: '+254717018779';
+
+        $offerSchema = [
+            '@context' => 'https://schema.org',
+            '@type' => 'Offer',
+            'price' => (float) $unit->rent_amount,
+            'priceCurrency' => 'KES',
+            'availability' => 'https://schema.org/InStock',
+            'url' => url()->current(),
+        ];
+
         return view('public.property_details', [
             'unit' => $unit,
-            'gallerySlots' => $gallerySlots,
-            'extraPhotoCount' => $extraPhotoCount,
+            'imageUrls' => $imageUrls,
             'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
             'similarUnits' => $similarUnits,
             'pageTitle' => $pageTitle,
             'publicPageTitle' => $pageTitle,
             'publicPageDescription' => $pageDescription,
             'publicPageImage' => $heroImage,
+            'companyName' => $companyName,
+            'whatsAppDigits' => $whatsAppDigits,
+            'phoneHref' => $phoneHref,
+            'offerSchema' => $offerSchema,
         ]);
     }
 
@@ -217,12 +245,78 @@ class PublicController extends Controller
     /**
      * Display the public contact form landing.
      */
-    public function contact(): View
+    public function contact(Request $request): View
     {
+        $propertyUnit = null;
+        if ($request->filled('property_unit')) {
+            $propertyUnit = PropertyUnit::query()
+                ->publiclyListed()
+                ->whereHas('property')
+                ->whereKey($request->integer('property_unit'))
+                ->with('property')
+                ->first();
+        }
+
         return view('public.contact', [
+            'propertyUnit' => $propertyUnit,
+            'contactIntent' => $request->string('intent')->toString() ?: 'general',
             'publicPageTitle' => 'Contact Us',
             'publicPageDescription' => 'Reach our property team for site visits, rental inquiries, and support with listings or applications.',
         ]);
+    }
+
+    /**
+     * Store a public contact / newsletter / callback inquiry.
+     */
+    public function contactStore(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'first_name' => ['nullable', 'string', 'max:120'],
+            'last_name' => ['nullable', 'string', 'max:120'],
+            'full_name' => ['nullable', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:64'],
+            'message' => ['nullable', 'string', 'max:5000'],
+            'intent' => ['nullable', 'string', 'max:64'],
+            'property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
+        ]);
+
+        $name = trim($data['full_name'] ?? trim(($data['first_name'] ?? '').' '.($data['last_name'] ?? '')));
+        if ($name === '') {
+            $name = 'Website visitor';
+        }
+
+        $intent = $data['intent'] ?? 'general';
+        $unitLabel = null;
+        if (! empty($data['property_unit_id'])) {
+            $unit = PropertyUnit::query()->with('property')->find($data['property_unit_id']);
+            if ($unit && $unit->property) {
+                $unitLabel = $unit->property->name.' / '.$unit->label;
+            }
+        }
+
+        $bodyParts = array_filter([
+            'Intent: '.$intent,
+            'Name: '.$name,
+            'Email: '.$data['email'],
+            'Phone: '.($data['phone'] ?? '—'),
+            'Unit: '.($unitLabel ?? '—'),
+            'Message: '.($data['message'] ?? '—'),
+            'Source: public.contact',
+        ]);
+
+        PmMessageLog::query()->create([
+            'user_id' => null,
+            'channel' => 'system',
+            'to_address' => 'agents',
+            'subject' => 'Public contact inquiry — '.$intent,
+            'body' => implode(' | ', $bodyParts),
+            'delivery_status' => 'new',
+            'delivery_error' => null,
+            'sent_at' => now(),
+        ]);
+
+        return redirect()->route('public.thank_you', ['type' => 'contact']);
     }
 
     /**
@@ -311,12 +405,92 @@ class PublicController extends Controller
     /**
      * Display the post-application/inquiry thank you confirmation page.
      */
-    public function thankYou(): View
+    public function thankYou(Request $request): View
     {
+        $type = $request->string('type')->toString() ?: 'application';
+
         return view('public.thank_you', [
-            'publicPageTitle' => 'Application Received',
+            'thankYouType' => $type,
+            'publicPageTitle' => $type === 'contact' ? 'Message Received' : 'Application Received',
             'publicPageDescription' => 'Thank you. Your request has been received and our team will contact you.',
             'publicPageRobots' => 'noindex,nofollow',
         ]);
+    }
+
+    /**
+     * Build removable filter chip metadata for the properties index.
+     *
+     * @return array<int, array{label: string, removeUrl: string}>
+     */
+    private function buildActiveFilters(Request $request, string $sort): array
+    {
+        $filters = [];
+        $base = collect($request->query())->except(['page']);
+
+        if ($request->filled('city')) {
+            $remaining = $base->except(['city']);
+            $filters[] = [
+                'label' => 'Location: '.$request->string('city'),
+                'removeUrl' => route('public.properties', $remaining->all()),
+            ];
+        }
+
+        if ($request->filled('unit_type')) {
+            $type = PropertyUnit::typeOptions()[$request->string('unit_type')->toString()] ?? $request->string('unit_type');
+            $remaining = $base->except(['unit_type']);
+            $filters[] = [
+                'label' => 'Type: '.$type,
+                'removeUrl' => route('public.properties', $remaining->all()),
+            ];
+        }
+
+        $bedrooms = $request->input('bedrooms');
+        if ($bedrooms !== null && $bedrooms !== '' && $bedrooms !== 'any') {
+            $label = (int) $bedrooms === 0 ? 'Studio' : (int) $bedrooms.' bed';
+            $remaining = $base->except(['bedrooms']);
+            $filters[] = [
+                'label' => $label,
+                'removeUrl' => route('public.properties', $remaining->all()),
+            ];
+        }
+
+        if ($request->filled('min_rent')) {
+            $remaining = $base->except(['min_rent']);
+            $filters[] = [
+                'label' => 'Min KES '.number_format((float) $request->input('min_rent'), 0),
+                'removeUrl' => route('public.properties', $remaining->all()),
+            ];
+        }
+
+        if ($request->filled('max_rent')) {
+            $remaining = $base->except(['max_rent']);
+            $filters[] = [
+                'label' => 'Max KES '.number_format((float) $request->input('max_rent'), 0),
+                'removeUrl' => route('public.properties', $remaining->all()),
+            ];
+        }
+
+        if ($request->filled('q')) {
+            $remaining = $base->except(['q']);
+            $filters[] = [
+                'label' => 'Search: '.$request->string('q'),
+                'removeUrl' => route('public.properties', $remaining->all()),
+            ];
+        }
+
+        if ($sort !== 'updated') {
+            $remaining = $base->except(['sort']);
+            $filters[] = [
+                'label' => 'Sort: '.match ($sort) {
+                    'rent_asc' => 'Price low',
+                    'rent_desc' => 'Price high',
+                    'featured' => 'Featured',
+                    default => $sort,
+                },
+                'removeUrl' => route('public.properties', $remaining->all()),
+            ];
+        }
+
+        return $filters;
     }
 }

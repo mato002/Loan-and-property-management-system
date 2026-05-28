@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\Property\Agent\AgentPublicListingController;
+use App\Support\Property\PropertyWorkspaceTabs;
 use App\Http\Controllers\Property\Agent\AgentWorkspaceFormController;
 use App\Http\Controllers\Property\Agent\DashboardController;
 use App\Http\Controllers\Property\Agent\FinancialsController;
@@ -10,6 +10,7 @@ use App\Http\Controllers\Property\Agent\PmInvoiceController;
 use App\Http\Controllers\Property\Agent\PmLeaseWebController;
 use App\Http\Controllers\Property\Agent\PmMaintenanceWebController;
 use App\Http\Controllers\Property\Agent\PmPaymentController;
+use App\Http\Controllers\Property\Agent\PmTenantCreditController;
 use App\Http\Controllers\Property\Agent\PmTenantDirectoryController;
 use App\Http\Controllers\Property\Agent\PmVendorWebController;
 use App\Http\Controllers\Property\Agent\PropertyAdvisorWebController;
@@ -20,9 +21,13 @@ use App\Http\Controllers\Property\Agent\PropertyDataExportController;
 use App\Http\Controllers\Property\Agent\PropertyListingsPipelineController;
 use App\Http\Controllers\Property\Agent\PropertyPortfolioController;
 use App\Http\Controllers\Property\Agent\PropertySettingsStoreWebController;
+use App\Http\Controllers\Property\Agent\PropertyTeamUserController;
 use App\Http\Controllers\Property\Agent\PropertySettingsWebController;
 use App\Http\Controllers\Property\Agent\PropertyTenantsOpsWebController;
 use App\Http\Controllers\Property\Agent\PropertyUtilityChargeController;
+use App\Http\Controllers\Property\Agent\UtilityLedgerController;
+use App\Http\Controllers\Property\Agent\UtilityAnalyticsController;
+use App\Http\Controllers\Property\Agent\UtilityPeriodController;
 use App\Http\Controllers\Property\Agent\PropertyReportsController;
 use App\Http\Controllers\Property\Agent\RevenueController;
 use App\Http\Controllers\Property\Agent\EquitySyncController;
@@ -55,6 +60,10 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
             ->name('workspace.form.store');
 
         Route::get('/revenue/rent-roll', [RevenueController::class, 'rentRoll'])->name('revenue.rent_roll');
+        Route::get('/revenue/uninvoiced-leases', [RevenueController::class, 'uninvoicedLeases'])->name('revenue.uninvoiced_leases');
+        Route::post('/revenue/uninvoiced-leases/generate', [RevenueController::class, 'generateUninvoicedInvoices'])
+            ->middleware('property.permission:invoices.manage')
+            ->name('revenue.uninvoiced_leases.generate');
         Route::get('/revenue/arrears', [RevenueController::class, 'arrears'])->name('revenue.arrears');
         Route::get('/revenue/arrears/tenant/{tenant}', [RevenueController::class, 'arrearsTenant'])
             ->whereNumber('tenant')
@@ -88,11 +97,17 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::delete('/revenue/penalties/{penalty_rule}', [RevenueController::class, 'destroyPenaltyRule'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.penalties.destroy');
         Route::get('/revenue/payments', [PmPaymentController::class, 'payments'])->name('revenue.payments');
         Route::post('/revenue/payments', [PmPaymentController::class, 'store'])->middleware('property.permission:payments.record')->name('payments.store');
+        Route::post('/revenue/payments/advance', [PmPaymentController::class, 'storeAdvance'])->middleware('property.permission:payments.record')->name('payments.store_advance');
         Route::patch('/revenue/payments/{payment}/settle', [PmPaymentController::class, 'settle'])->middleware('property.permission:payments.settle')->name('payments.settle');
         Route::post('/revenue/payments/{payment}/reversal/request', [PmPaymentController::class, 'requestReversal'])->middleware('property.permission:payments.settle')->name('payments.reversal.request');
         Route::post('/revenue/payments/{payment}/reversal/approve', [PmPaymentController::class, 'approveReversal'])->middleware('property.permission:payments.settle')->name('payments.reversal.approve');
         Route::get('/revenue/payments/{payment}/receipt', [PmPaymentController::class, 'showReceipt'])->name('payments.receipt.show');
         Route::get('/revenue/payments/{payment}/receipt/download', [PmPaymentController::class, 'downloadReceipt'])->name('payments.receipt.download');
+        Route::get('/revenue/tenant-credits', [PmTenantCreditController::class, 'report'])->name('revenue.tenant_credits');
+        Route::get('/tenants/{tenant}/credit', [PmTenantCreditController::class, 'ledger'])->name('tenants.credit.ledger');
+        Route::post('/tenants/{tenant}/credit/apply', [PmTenantCreditController::class, 'apply'])->middleware('property.permission:payments.record')->name('tenants.credit.apply');
+        Route::post('/tenants/{tenant}/credit/refund', [PmTenantCreditController::class, 'refund'])->middleware('property.permission:payments.record')->name('tenants.credit.refund');
+        Route::post('/tenants/{tenant}/credit/auto-apply', [PmTenantCreditController::class, 'autoApply'])->middleware('property.permission:payments.record')->name('tenants.credit.auto_apply');
         Route::get('/revenue/receipts', [RevenueController::class, 'receipts'])->name('revenue.receipts');
         Route::get('/revenue/utilities-charges', [PropertyUtilityChargeController::class, 'index'])->name('revenue.utilities');
         Route::post('/revenue/utilities-charges', [PropertyUtilityChargeController::class, 'store'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.store');
@@ -103,7 +118,20 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/revenue/utilities-charges/invoices', [PropertyUtilityChargeController::class, 'generateUtilityInvoices'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.invoices.generate');
         Route::post('/revenue/utilities-charges/water-invoices', [PropertyUtilityChargeController::class, 'generateWaterInvoices'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.water_invoices.generate');
         Route::post('/revenue/utilities-charges/water-penalties/apply', [PropertyUtilityChargeController::class, 'applyWaterPenalties'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.utilities.water_penalties.apply');
+        Route::get('/revenue/utilities-charges/water-penalties/preview', [PropertyUtilityChargeController::class, 'previewWaterPenalties'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.utilities.water_penalties.preview');
+        Route::post('/revenue/utilities-charges/water-penalties/reverse', [PropertyUtilityChargeController::class, 'reverseWaterPenalty'])->middleware('property.permission:revenue.penalties.manage')->name('revenue.utilities.water_penalties.reverse');
         Route::delete('/revenue/utilities-charges/{charge}', [PropertyUtilityChargeController::class, 'destroy'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.destroy');
+        Route::get('/revenue/utilities/reconciliation', [UtilityLedgerController::class, 'reconciliation'])->name('revenue.utilities.reconciliation');
+        Route::get('/revenue/utilities/ledger', [UtilityLedgerController::class, 'index'])->name('revenue.utilities.ledger');
+        Route::get('/revenue/utilities/analytics', [UtilityAnalyticsController::class, 'index'])->name('revenue.utilities.analytics');
+        Route::get('/revenue/utilities/periods', [UtilityPeriodController::class, 'index'])->name('revenue.utilities.periods');
+        Route::get('/revenue/utilities/periods/{billingMonth}', [UtilityPeriodController::class, 'show'])->name('revenue.utilities.periods.show');
+        Route::post('/revenue/utilities/periods/{billingMonth}/close', [UtilityPeriodController::class, 'close'])->middleware('property.permission:revenue.utilities.period_close')->name('revenue.utilities.periods.close');
+        Route::get('/revenue/utilities/periods/{billingMonth}/close-report', [UtilityPeriodController::class, 'closeReport'])->name('revenue.utilities.periods.close_report');
+        Route::post('/revenue/utilities/periods/{billingMonth}/overrides', [UtilityPeriodController::class, 'requestOverride'])->middleware('property.permission:revenue.utilities.manage')->name('revenue.utilities.periods.overrides.request');
+        Route::post('/revenue/utilities/period-overrides/{override}/approve', [UtilityPeriodController::class, 'approveOverride'])->middleware('property.permission:revenue.utilities.period_override_approve')->name('revenue.utilities.periods.overrides.approve');
+        Route::post('/revenue/utilities/period-overrides/{override}/reject', [UtilityPeriodController::class, 'rejectOverride'])->middleware('property.permission:revenue.utilities.period_override_approve')->name('revenue.utilities.periods.overrides.reject');
+        Route::get('/tenants/{tenant}/utility-statement', [UtilityLedgerController::class, 'tenantStatement'])->name('tenants.utility.statement');
         Route::get('/revenue/equity/sync-status', [EquitySyncController::class, 'syncStatus'])
             ->middleware('property.permission:payments.settle')
             ->name('equity.sync_status');
@@ -137,12 +165,14 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/revenue/equity/all', [EquitySyncController::class, 'allPayments'])
             ->middleware('property.permission:payments.settle')
             ->name('equity.all');
-        Route::view('/revenue', 'property.agent.revenue.index')->name('revenue.index');
+        Route::get('/revenue', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('collections'))->name('revenue.index');
 
         Route::get('/tenants/directory', [PmTenantDirectoryController::class, 'directory'])->name('tenants.directory');
         Route::get('/tenants/directory/export.csv', [PmTenantDirectoryController::class, 'exportDirectoryCsv'])
             ->middleware('property.permission:tenants.manage')
             ->name('tenants.directory.export');
+        Route::get('/tenants/leases', [PmLeaseWebController::class, 'leases'])->name('tenants.leases');
+        Route::get('/tenants/expiry', [PmLeaseWebController::class, 'expiry'])->name('tenants.expiry');
         Route::get('/tenants/profiles', [PmTenantDirectoryController::class, 'profiles'])->name('tenants.profiles');
         Route::get('/tenants/import', [PmTenantDirectoryController::class, 'importForm'])
             ->middleware('property.permission:tenants.manage')
@@ -157,11 +187,20 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/tenants/create-json', [PmTenantDirectoryController::class, 'storeJson'])->middleware('property.permission:tenants.manage')->name('tenants.store_json');
         Route::get('/tenants/{tenant}', [PmTenantDirectoryController::class, 'show'])->whereNumber('tenant')->name('tenants.show');
         Route::get('/tenants/{tenant}/statement', [PmTenantDirectoryController::class, 'statement'])->whereNumber('tenant')->name('tenants.statement');
+        Route::post('/tenants/{tenant}/repair-allocations', [PmTenantDirectoryController::class, 'repairAllocations'])
+            ->whereNumber('tenant')
+            ->middleware('property.permission:payments.settle')
+            ->name('tenants.repair_allocations');
         Route::get('/tenants/{tenant}/edit', [PmTenantDirectoryController::class, 'edit'])->whereNumber('tenant')->name('tenants.edit');
         Route::put('/tenants/{tenant}', [PmTenantDirectoryController::class, 'update'])->whereNumber('tenant')->middleware('property.permission:tenants.manage')->name('tenants.update');
         Route::delete('/tenants/{tenant}', [PmTenantDirectoryController::class, 'destroy'])->whereNumber('tenant')->middleware('property.permission:tenants.manage')->name('tenants.destroy');
-        Route::get('/tenants/leases', [PmLeaseWebController::class, 'leases'])->name('tenants.leases');
+        Route::get('/leases/create-form', [PmLeaseWebController::class, 'createForm'])->middleware('property.permission:leases.manage')->name('leases.create_form');
+        Route::get('/leases/form/tenants', [PmLeaseWebController::class, 'formTenants'])->middleware('property.permission:leases.manage')->name('leases.form_tenants');
+        Route::get('/leases/form/vacant-units', [PmLeaseWebController::class, 'formVacantUnits'])->middleware('property.permission:leases.manage')->name('leases.form_vacant_units');
+        Route::get('/leases/form/property-rules', [PmLeaseWebController::class, 'formPropertyRules'])->middleware('property.permission:leases.manage')->name('leases.form_property_rules');
         Route::post('/leases', [PmLeaseWebController::class, 'store'])->middleware('property.permission:leases.manage')->name('leases.store');
+        Route::post('/leases/bulk', [PmLeaseWebController::class, 'bulk'])->middleware('property.permission:leases.manage')->name('leases.bulk');
+        Route::post('/leases/bulk', [PmLeaseWebController::class, 'bulk'])->middleware('property.permission:leases.manage')->name('leases.bulk');
         Route::get('/leases/{lease}', [PmLeaseWebController::class, 'show'])->name('leases.show');
         Route::get('/leases/{lease}/edit', [PmLeaseWebController::class, 'edit'])->name('leases.edit');
         Route::put('/leases/{lease}', [PmLeaseWebController::class, 'update'])->middleware('property.permission:leases.manage')->name('leases.update');
@@ -172,12 +211,12 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/tenants/movements/export', [PropertyTenantsOpsWebController::class, 'movementsExport'])->name('tenants.movements.export');
         Route::post('/tenants/movements', [PropertyTenantsOpsWebController::class, 'storeMovement'])->middleware('property.permission:tenants.manage')->name('tenants.movements.store');
         Route::post('/tenants/movements/{movement}/status', [PropertyTenantsOpsWebController::class, 'updateMovementStatus'])->middleware('property.permission:tenants.manage')->name('tenants.movements.status');
-        Route::get('/tenants/expiry', [PmLeaseWebController::class, 'expiry'])->name('tenants.expiry');
         Route::get('/tenants/notices', [PropertyTenantsOpsWebController::class, 'notices'])->name('tenants.notices');
         Route::get('/tenants/notices/export', [PropertyTenantsOpsWebController::class, 'noticesExport'])->name('tenants.notices.export');
         Route::post('/tenants/notices', [PropertyTenantsOpsWebController::class, 'storeNotice'])->middleware('property.permission:tenants.manage')->name('tenants.notices.store');
+        Route::post('/tenants/notices/bulk', [PropertyTenantsOpsWebController::class, 'noticesBulk'])->middleware('property.permission:tenants.manage')->name('tenants.notices.bulk');
         Route::post('/tenants/notices/{notice}/status', [PropertyTenantsOpsWebController::class, 'updateNoticeStatus'])->middleware('property.permission:tenants.manage')->name('tenants.notices.status');
-        Route::view('/tenants', 'property.agent.tenants.index')->name('tenants.index');
+        Route::get('/tenants', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('tenants'))->name('tenants.index');
         Route::get('/reports', fn () => redirect()->route('property.reports.tenant'))->name('reports.center');
         Route::view('/reports/tenant', 'property.agent.reports.tenant.index')->name('reports.tenant');
         Route::view('/reports/landlord', 'property.agent.reports.landlord.index')->name('reports.landlord');
@@ -201,6 +240,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/reports/expense/income-expenses-summary', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'expense_income_expenses_summary')->name('reports.expense.income_expenses_summary');
         Route::get('/reports/expense/maintenance-expense', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'expense_maintenance_expense')->name('reports.expense.maintenance_expense');
         Route::get('/reports/expense/utility-billing', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'expense_utility_billing')->name('reports.expense.utility_billing');
+        Route::get('/reports/expense/utility-aging', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'expense_utility_aging')->name('reports.expense.utility_aging');
         Route::get('/reports/expense/vendor-expense-work', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'expense_vendor_expense_work')->name('reports.expense.vendor_expense_work');
         Route::get('/reports/expense/cash-book', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'expense_cash_book')->name('reports.expense.cash_book');
         Route::get('/reports/maintenance/history', [PropertyReportsController::class, 'reportPage'])->defaults('reportKey', 'maintenance_history')->name('reports.maintenance.history');
@@ -256,7 +296,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/properties/amenities/detach', [PropertyAmenityController::class, 'detach'])->name('properties.amenities.detach');
         Route::delete('/properties/amenities/{amenity}', [PropertyAmenityController::class, 'destroy'])->name('properties.amenities.destroy');
         Route::get('/properties/{property}', [PropertyPortfolioController::class, 'showProperty'])->whereNumber('property')->name('properties.show');
-        Route::view('/properties', 'property.agent.properties.index')->name('properties.index');
+        Route::get('/properties', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('portfolio'))->name('properties.index');
 
         Route::get('/maintenance/requests', [PmMaintenanceWebController::class, 'requests'])->name('maintenance.requests');
         Route::get('/maintenance/requests/export', [PmMaintenanceWebController::class, 'requestsExport'])->name('maintenance.requests.export');
@@ -274,7 +314,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/maintenance/history', [PmMaintenanceWebController::class, 'history'])->name('maintenance.history');
         Route::get('/maintenance/costs', [PmMaintenanceWebController::class, 'costs'])->name('maintenance.costs');
         Route::get('/maintenance/frequency', [PmMaintenanceWebController::class, 'frequency'])->name('maintenance.frequency');
-        Route::view('/maintenance', 'property.agent.maintenance.index')->name('maintenance.index');
+        Route::get('/maintenance', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('maintenance'))->name('maintenance.index');
 
         Route::get('/vendors/directory', [PmVendorWebController::class, 'directory'])->name('vendors.directory');
         Route::get('/vendors/directory/export', [PmVendorWebController::class, 'directoryExport'])->name('vendors.directory.export');
@@ -293,7 +333,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/vendors/{vendor}/jobs/{job}/mark-paid', [PmVendorWebController::class, 'markJobPaid'])->middleware('property.permission:vendors.manage')->name('vendors.jobs.mark_paid');
         Route::post('/vendors/{vendor}/pay-outstanding', [PmVendorWebController::class, 'payOutstanding'])->middleware('property.permission:vendors.manage')->name('vendors.pay_outstanding');
         Route::get('/vendors/{vendor}', [PmVendorWebController::class, 'show'])->name('vendors.show');
-        Route::view('/vendors', 'property.agent.vendors.index')->name('vendors.index');
+        Route::get('/vendors', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('vendors'))->name('vendors.index');
 
         Route::get('/financials/income-expenses', [FinancialsController::class, 'incomeExpenses'])->name('financials.income_expenses');
         Route::get('/financials/cash-flow', [FinancialsController::class, 'cashFlow'])->name('financials.cash_flow');
@@ -365,7 +405,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/performance/arrears-trends', [PerformanceWorkspaceController::class, 'arrearsTrends'])->name('performance.arrears_trends');
         Route::get('/performance/maintenance-trends', [PerformanceWorkspaceController::class, 'maintenanceTrends'])->name('performance.maintenance_trends');
         Route::get('/performance/tenant-reliability', [PerformanceWorkspaceController::class, 'tenantReliability'])->name('performance.tenant_reliability');
-        Route::view('/performance', 'property.agent.performance.index')->name('performance.index');
+        Route::get('/performance', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('analytics'))->name('performance.index');
 
         Route::get('/notifications', [PropertyCommunicationsWebController::class, 'notifications'])->name('notifications');
         Route::post('/notifications/bulk', [PropertyCommunicationsWebController::class, 'notificationsBulk'])->name('notifications.bulk');
@@ -385,7 +425,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::get('/communications/conversations-data', [PropertyCommunicationsWebController::class, 'conversations'])->middleware('property.permission:communications.manage')->name('communications.conversations.data');
         Route::get('/communications/conversations/{conversation}', [PropertyCommunicationsWebController::class, 'showConversation'])->middleware('property.permission:communications.manage')->name('communications.conversations.show');
         Route::post('/communications/conversations/{conversation}/reply', [PropertyCommunicationsWebController::class, 'replyConversation'])->middleware('property.permission:communications.manage')->name('communications.conversations.reply');
-        Route::view('/communications', 'property.agent.communications.index')->name('communications.index');
+        Route::get('/communications', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('communications'))->name('communications.index');
 
         Route::get('/listings/create', [AgentPublicListingController::class, 'create'])->name('listings.create');
         Route::post('/listings/start', [AgentPublicListingController::class, 'start'])->middleware('property.permission:listings.manage')->name('listings.start');
@@ -414,10 +454,12 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
             ->middleware('property.permission:communications.manage')
             ->name('listings.applications.message');
         Route::patch('/listings/applications/{application}', [PropertyListingsPipelineController::class, 'updateApplicationStatus'])->middleware('property.permission:listings.manage')->name('listings.applications.update');
-        Route::get('/listings', [AgentPublicListingController::class, 'hub'])->name('listings.index');
+        Route::get('/listings', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('listings'))->name('listings.index');
 
-        Route::get('/settings/roles', [PropertySettingsWebController::class, 'roles'])->middleware('superadmin')->name('settings.roles');
-        Route::get('/settings/permissions', [PropertySettingsWebController::class, 'permissions'])->middleware('superadmin')->name('settings.permissions');
+        Route::get('/settings/roles', [PropertySettingsWebController::class, 'roles'])->middleware('property.permission:team.users.manage')->name('settings.roles');
+        Route::get('/settings/permissions', [PropertySettingsWebController::class, 'permissions'])->middleware('property.permission:settings.access.manage')->name('settings.permissions');
+        Route::get('/settings/team-users/create', [PropertyTeamUserController::class, 'create'])->middleware('property.permission:team.users.manage')->name('settings.team_users.create');
+        Route::post('/settings/team-users', [PropertyTeamUserController::class, 'store'])->middleware('property.permission:team.users.manage')->name('settings.team_users.store');
         Route::get('/settings/commission', [PropertySettingsStoreWebController::class, 'commission'])->name('settings.commission');
         Route::post('/settings/commission', [PropertySettingsStoreWebController::class, 'storeCommission'])->middleware('property.permission:settings.manage')->name('settings.commission.store');
         Route::get('/settings/payments', [PropertySettingsStoreWebController::class, 'payments'])->name('settings.payments');
@@ -481,7 +523,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
         Route::post('/settings/system-setup/access/matrix', [PropertySettingsStoreWebController::class, 'storeSystemSetupAccessMatrix'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.matrix.store');
         Route::post('/settings/system-setup/access/users/{user}/roles', [PropertySettingsStoreWebController::class, 'storeSystemSetupUserRoles'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.users.roles.store');
         Route::post('/settings/system-setup/access/users/{user}/permissions', [PropertySettingsStoreWebController::class, 'storeSystemSetupUserPermissions'])->middleware('property.permission:settings.access.manage')->name('settings.system_setup.access.users.permissions.store');
-        Route::view('/settings', 'property.agent.settings.index')->name('settings.index');
+        Route::get('/settings', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('settings'))->name('settings.index');
 
         Route::get('/advisor', [PropertyAdvisorWebController::class, 'show'])->name('advisor');
         Route::post('/advisor/ask', [PropertyAdvisorWebController::class, 'ask'])->name('advisor.ask');
@@ -543,6 +585,7 @@ Route::middleware(['auth', 'module.access:property', 'property.system'])->group(
 
     Route::middleware(['property.portal:tenant'])->prefix('property/tenant')->name('property.tenant.')->group(function () {
         Route::get('/home', [TenantPortalController::class, 'home'])->name('home');
+        Route::get('/credit', [TenantPortalController::class, 'creditHistory'])->name('credit.history');
         Route::get('/payments/pay', [TenantPortalController::class, 'pay'])->name('payments.pay');
         Route::post('/payments/pay', [TenantPortalController::class, 'paymentStore'])->name('payments.store');
         Route::post('/payments/stk', [TenantPortalController::class, 'stkIntentStore'])->name('payments.stk.store');

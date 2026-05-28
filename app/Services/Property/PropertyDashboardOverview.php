@@ -17,6 +17,7 @@ use App\Models\UnassignedPayment;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -24,22 +25,56 @@ use App\Services\BulkSmsService;
 
 final class PropertyDashboardOverview
 {
+    private const CACHE_TTL_SECONDS = 60;
+
     /**
-     * @return array{
-     *   kpis: list<array{label: string, value: string, icon: string, route: string, bar: string}>,
-     *   chartYear: int,
-     *   chartLabels: list<string>,
-     *   chartInvoices: list<float>,
-     *   chartPayments: list<float>,
-     *   recentRequests: list<array{summary: string, unit: string, reported: string, status: string, url: string}>,
-     *   recentPayments: list<array{ref: string, tenant: string, amount: string, channel: string, date: string, url: string}>,
-     *   arrears7: string,
-     *   arrears14: string,
-     *   arrears30: string,
-     *   occupancyDisplay: string,
-     * }
+     * @return array<string, mixed>
      */
     public static function forAgent(): array
+    {
+        $userId = (int) (Auth::id() ?? 0);
+        $scoped = AgentWorkspaceScope::shouldApply();
+        $cacheKey = PropertyDashboardCache::overviewKey($userId, $scoped);
+
+        return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildForAgent());
+    }
+
+    /**
+     * Landlord counts aligned with Landlords workspace (role=landlord, agent-scoped).
+     *
+     * @return array{landlord_users: int, linked_landlord_users: int, unlinked_landlord_users: int}
+     */
+    private static function landlordWorkspaceStats(bool $applyAgentFilter, ?int $agentUserId): array
+    {
+        $landlordsQuery = User::query()->where('property_portal_role', 'landlord');
+        if ($applyAgentFilter && $agentUserId) {
+            if (Schema::hasColumn('users', 'agent_user_id')) {
+                $landlordsQuery->where('agent_user_id', $agentUserId);
+            } else {
+                $landlordsQuery->whereHas('landlordProperties', fn ($q) => $q->where('properties.agent_user_id', $agentUserId));
+            }
+        }
+
+        $landlordUsers = (int) (clone $landlordsQuery)->count();
+
+        $linkedQuery = (clone $landlordsQuery)->whereHas('landlordProperties', function ($q) use ($applyAgentFilter, $agentUserId) {
+            if ($applyAgentFilter && $agentUserId) {
+                $q->where('properties.agent_user_id', $agentUserId);
+            }
+        });
+        $linkedLandlordUsers = (int) $linkedQuery->count();
+
+        return [
+            'landlord_users' => $landlordUsers,
+            'linked_landlord_users' => $linkedLandlordUsers,
+            'unlinked_landlord_users' => max(0, $landlordUsers - $linkedLandlordUsers),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function buildForAgent(): array
     {
         $year = (int) now()->year;
 
@@ -55,6 +90,7 @@ final class PropertyDashboardOverview
             ->count();
 
         $openInvoiceBalance = (float) (PmInvoice::query()
+            ->liveBalances()
             ->whereColumn('amount_paid', '<', 'amount')
             ->selectRaw('COALESCE(SUM(amount - amount_paid), 0) as t')
             ->value('t') ?? 0);
@@ -70,26 +106,10 @@ final class PropertyDashboardOverview
         $applyAgentFilter = AgentWorkspaceScope::shouldApply();
         $agentUserId = $applyAgentFilter ? (int) Auth::id() : null;
 
-        $landlordsQuery = User::query()->where('property_portal_role', 'landlord');
-        if ($applyAgentFilter) {
-            $landlordsQuery->whereExists(function ($q) use ($agentUserId) {
-                $q->selectRaw('1')
-                    ->from('property_landlord as pl_landlords')
-                    ->join('properties as p_landlords', 'p_landlords.id', '=', 'pl_landlords.property_id')
-                    ->whereColumn('pl_landlords.user_id', 'users.id')
-                    ->where('p_landlords.agent_user_id', $agentUserId);
-            });
-        }
-        $landlords = $landlordsQuery->count();
-
-        $linkedLandlordsQuery = DB::table('property_landlord as pl')
-            ->distinct();
-        if ($applyAgentFilter) {
-            $linkedLandlordsQuery
-                ->join('properties as p_link', 'p_link.id', '=', 'pl.property_id')
-                ->where('p_link.agent_user_id', $agentUserId);
-        }
-        $linkedLandlords = (int) $linkedLandlordsQuery->count('pl.user_id');
+        $landlordStats = self::landlordWorkspaceStats($applyAgentFilter, $agentUserId);
+        $landlords = $landlordStats['landlord_users'];
+        $linkedLandlords = $landlordStats['linked_landlord_users'];
+        $unlinkedLandlordUsers = $landlordStats['unlinked_landlord_users'];
 
         $linkedProperties = (int) Property::query()->has('landlords')->count();
         $propertiesWithoutLandlord = max(0, $properties - $linkedProperties);
@@ -97,7 +117,7 @@ final class PropertyDashboardOverview
             ? (int) UnassignedPayment::query()->count()
             : 0;
 
-        $occ = PropertyDashboardStats::occupancyRate();
+        $occ = $unitsTotal > 0 ? round(100 * $unitsOccupied / $unitsTotal, 1) : null;
 
         $kpis = [
             [
@@ -178,7 +198,7 @@ final class PropertyDashboardOverview
                 'bar' => 'bg-slate-500',
             ],
             [
-                'label' => 'Linked landlords',
+                'label' => 'Landlords on properties',
                 'value' => (string) $linkedLandlords,
                 'icon' => 'fa-user-check',
                 'route' => 'property.landlords.index',
@@ -207,21 +227,27 @@ final class PropertyDashboardOverview
             ],
         ];
 
+        $invoiceByMonth = PmInvoice::query()
+            ->whereYear('issue_date', $year)
+            ->selectRaw('MONTH(issue_date) as month_num, COALESCE(SUM(amount), 0) as total')
+            ->groupByRaw('MONTH(issue_date)')
+            ->pluck('total', 'month_num');
+
+        $paymentByMonth = PmPayment::query()
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->whereNotNull('paid_at')
+            ->whereYear('paid_at', $year)
+            ->selectRaw('MONTH(paid_at) as month_num, COALESCE(SUM(amount), 0) as total')
+            ->groupByRaw('MONTH(paid_at)')
+            ->pluck('total', 'month_num');
+
         $chartLabels = [];
         $chartInvoices = [];
         $chartPayments = [];
         for ($m = 1; $m <= 12; $m++) {
             $chartLabels[] = Carbon::createFromDate($year, $m, 1)->format('M');
-            $chartInvoices[] = (float) PmInvoice::query()
-                ->whereYear('issue_date', $year)
-                ->whereMonth('issue_date', $m)
-                ->sum('amount');
-            $chartPayments[] = (float) PmPayment::query()
-                ->where('status', PmPayment::STATUS_COMPLETED)
-                ->whereNotNull('paid_at')
-                ->whereYear('paid_at', $year)
-                ->whereMonth('paid_at', $m)
-                ->sum('amount');
+            $chartInvoices[] = (float) ($invoiceByMonth[$m] ?? 0);
+            $chartPayments[] = (float) ($paymentByMonth[$m] ?? 0);
         }
 
         $recentRequests = PmMaintenanceRequest::query()
@@ -359,7 +385,11 @@ final class PropertyDashboardOverview
             ->value('delivery_error') ?? '';
         $bulk = app(BulkSmsService::class);
         $smsWalletBalance = $bulk->walletBalance();
-        $provider = $bulk->providerBalance();
+        $provider = Cache::remember(
+            PropertyDashboardCache::smsProviderBalanceKey(),
+            300,
+            static fn () => $bulk->providerBalance(),
+        );
 
         $recentLandlordLinksQuery = DB::table('property_landlord as pl')
             ->join('properties as p', 'p.id', '=', 'pl.property_id')
@@ -404,6 +434,7 @@ final class PropertyDashboardOverview
             'overdueCount' => $overdueCount,
             'landlords' => $landlords,
             'linkedLandlords' => $linkedLandlords,
+            'unlinkedLandlordUsers' => $unlinkedLandlordUsers,
             'linkedProperties' => $linkedProperties,
             'propertiesWithoutLandlord' => $propertiesWithoutLandlord,
             'jobsActive' => $jobsActive,

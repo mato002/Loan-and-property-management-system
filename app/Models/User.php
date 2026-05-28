@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'email', 'password', 'profile_photo_path', 'property_portal_role', 'loan_role', 'is_super_admin'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'profile_photo_path', 'property_portal_role', 'loan_role', 'is_super_admin'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {

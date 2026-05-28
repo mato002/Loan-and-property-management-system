@@ -11,6 +11,9 @@ use App\Support\TabularExport;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentReversalApprovalService;
+use App\Services\Property\PropertyPaymentSettlementService;
+use App\Services\Property\TenantCreditService;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +26,8 @@ class PmPaymentController extends Controller
 {
     public function payments(Request $request): View|StreamedResponse
     {
+        [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $receivedRangeLabel] = $this->resolvePaymentReceivedRange($request);
+
         $filters = [
             'q' => trim((string) $request->query('q', '')),
             'status' => strtolower(trim((string) $request->query('status', ''))),
@@ -30,36 +35,21 @@ class PmPaymentController extends Controller
             'channel' => strtolower(trim((string) $request->query('channel', ''))),
             'from' => (string) $request->query('from', ''),
             'to' => (string) $request->query('to', ''),
+            'range_months' => (string) $rangeMonths,
+            'range_end' => $rangeEndYm,
             'sort' => strtolower(trim((string) $request->query('sort', 'paid_at'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
         ];
+        if ($rangeMonths > 0 && ($filters['from'] === '' || $filters['to'] === '')) {
+            $filters['from'] = $rangeFrom->toDateString();
+            $filters['to'] = $rangeTo->toDateString();
+        }
         $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
 
-        $baseQuery = PmPayment::query()->with(['tenant', 'allocations.invoice']);
-        if ($filters['status'] !== '' && in_array($filters['status'], [
-            PmPayment::STATUS_PENDING,
-            PmPayment::STATUS_COMPLETED,
-            PmPayment::STATUS_FAILED,
-        ], true)) {
-            $baseQuery->where('status', $filters['status']);
-        }
-        if ($filters['reversal_status'] !== '' && in_array($filters['reversal_status'], [
-            PmPayment::REVERSAL_STATUS_PENDING,
-            PmPayment::REVERSAL_STATUS_APPROVED,
-            PmPayment::REVERSAL_STATUS_REJECTED,
-            PmPayment::REVERSAL_STATUS_REVERSED,
-        ], true)) {
-            $baseQuery->where('reversal_status', $filters['reversal_status']);
-        }
-        if ($filters['channel'] !== '') {
-            $baseQuery->where('channel', $filters['channel']);
-        }
-        if ($filters['from'] !== '') {
-            $baseQuery->whereDate('created_at', '>=', $filters['from']);
-        }
-        if ($filters['to'] !== '') {
-            $baseQuery->whereDate('created_at', '<=', $filters['to']);
-        }
+        $baseQuery = $this->applyPaymentListFilters(
+            PmPayment::query()->with(['tenant.user', 'allocations.invoice.tenant.user']),
+            $filters
+        );
         if ($filters['q'] !== '') {
             $q = $filters['q'];
             $baseQuery->where(function ($builder) use ($q) {
@@ -88,7 +78,7 @@ class PmPaymentController extends Controller
             $rows = (clone $baseQuery)->limit(5000)->get();
             return TabularExport::stream(
                 'property-payments-'.now()->format('Ymd_His'),
-                ['Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer ref', 'Allocated to', 'Status'],
+                ['Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status'],
                 function () use ($rows) {
                     foreach ($rows as $p) {
                         $allocatedTo = $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
@@ -108,7 +98,7 @@ class PmPaymentController extends Controller
                             $this->channelLabel($p->channel),
                             number_format((float) $p->amount, 2, '.', ''),
                             $p->paid_at?->format('Y-m-d H:i:s') ?? '',
-                            (string) ($p->external_ref ?? ''),
+                            $this->payerPhoneOrRef($p, ''),
                             $allocatedTo,
                             ucfirst((string) $p->status),
                         ];
@@ -122,17 +112,92 @@ class PmPaymentController extends Controller
 
         $pageCollection = $payments->getCollection();
 
-        $mtdCompleted = (float) PmPayment::query()
-            ->where('status', PmPayment::STATUS_COMPLETED)
-            ->whereYear('paid_at', now()->year)
-            ->whereMonth('paid_at', now()->month)
-            ->sum('amount');
+        $summaryQuery = $this->applyPaymentListFilters(PmPayment::query(), array_merge($filters, [
+            'status' => '',
+            'reversal_status' => '',
+            'q' => '',
+        ]));
 
-        $stats = [
-            ['label' => 'Completed (MTD)', 'value' => PropertyMoney::kes($mtdCompleted), 'hint' => 'All payments'],
-            ['label' => 'All-time count', 'value' => (string) $payments->total(), 'hint' => 'Across pages'],
-            ['label' => 'Pending (this page)', 'value' => (string) $pageCollection->where('status', PmPayment::STATUS_PENDING)->count(), 'hint' => ''],
-            ['label' => 'Failed (this page)', 'value' => (string) $pageCollection->where('status', PmPayment::STATUS_FAILED)->count(), 'hint' => ''],
+        $completed = PmPayment::STATUS_COMPLETED;
+        $pending = PmPayment::STATUS_PENDING;
+        $failed = PmPayment::STATUS_FAILED;
+
+        $summaryRow = (clone $summaryQuery)
+            ->selectRaw(
+                'COUNT(*) as payment_count,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as completed_count,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as failed_count,
+                COALESCE(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 0) as collected_amount,
+                COALESCE(SUM(CASE WHEN status = ? THEN amount ELSE 0 END), 0) as pending_amount,
+                COALESCE(SUM(amount), 0) as gross_amount,
+                COUNT(DISTINCT CASE WHEN status = ? AND pm_tenant_id IS NOT NULL THEN pm_tenant_id END) as tenant_count',
+                [$completed, $pending, $failed, $completed, $pending, $completed]
+            )
+            ->first();
+
+        $collectedAmount = (float) ($summaryRow->collected_amount ?? 0);
+        $completedCount = (int) ($summaryRow->completed_count ?? 0);
+        $paymentCount = (int) ($summaryRow->payment_count ?? 0);
+        $tenantCount = (int) ($summaryRow->tenant_count ?? 0);
+        $avgPayment = $completedCount > 0 ? $collectedAmount / $completedCount : 0.0;
+
+        $statsPrimary = [
+            [
+                'label' => 'Collected',
+                'value' => PropertyMoney::kes($collectedAmount),
+                'hint' => 'Completed payments · '.$receivedRangeLabel,
+                'emphasis' => true,
+            ],
+            [
+                'label' => 'Completed payments',
+                'value' => (string) $completedCount,
+                'hint' => $receivedRangeLabel,
+            ],
+            [
+                'label' => 'Tenants paid',
+                'value' => (string) $tenantCount,
+                'hint' => 'Distinct tenants with completed payment',
+            ],
+            [
+                'label' => 'Avg payment',
+                'value' => PropertyMoney::kes($avgPayment),
+                'hint' => 'Per completed receipt',
+            ],
+            [
+                'label' => 'Pending',
+                'value' => PropertyMoney::kes((float) ($summaryRow->pending_amount ?? 0)),
+                'hint' => (string) ((int) ($summaryRow->pending_count ?? 0)).' awaiting settlement',
+            ],
+            [
+                'label' => 'Failed',
+                'value' => (string) ((int) ($summaryRow->failed_count ?? 0)),
+                'hint' => $receivedRangeLabel,
+            ],
+            [
+                'label' => 'All receipts',
+                'value' => (string) $paymentCount,
+                'hint' => 'Any status · '.$receivedRangeLabel,
+            ],
+            [
+                'label' => 'Gross inflow',
+                'value' => PropertyMoney::kes((float) ($summaryRow->gross_amount ?? 0)),
+                'hint' => 'Sum of all payment amounts in period',
+            ],
+        ];
+
+        $statsTable = [
+            [
+                'label' => 'Rows in table',
+                'value' => (string) $payments->total(),
+                'hint' => 'After status / channel / search filters',
+            ],
+            [
+                'label' => 'On this page',
+                'value' => (string) $pageCollection->count(),
+                'hint' => 'Pending: '.$pageCollection->where('status', $pending)->count()
+                    .' · Failed: '.$pageCollection->where('status', $failed)->count(),
+            ],
         ];
 
         $rows = $pageCollection->map(function (PmPayment $p) {
@@ -146,80 +211,10 @@ class PmPaymentController extends Controller
             }
 
             $source = $this->sourceBadge($p);
-            $receiptUrl = route('property.payments.receipt.show', ['payment' => $p->id], false);
-            $actions = new HtmlString(
-                '<div class="relative inline-block text-left">'.
-                '<details>'.
-                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
-                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
-                '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">View</a>'.
-                '</div>'.
-                '</details>'.
-                '</div>'
-            );
-            if ($p->status === PmPayment::STATUS_PENDING && $canSettle) {
-                $completeUrl = route('property.payments.settle', $p);
-                $failUrl = route('property.payments.settle', $p);
-                $actions = new HtmlString(
-                    '<div class="relative inline-block text-left">'.
-                    '<details>'.
-                    '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
-                    '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
-                    '<form method="post" action="'.$completeUrl.'" class="block">'.
-                    csrf_field().
-                    method_field('PATCH').
-                    '<input type="hidden" name="decision" value="completed">'.
-                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-emerald-700 hover:bg-emerald-50">Mark complete</button>'.
-                    '</form>'.
-                    '<form method="post" action="'.$failUrl.'" class="block">'.
-                    csrf_field().
-                    method_field('PATCH').
-                    '<input type="hidden" name="decision" value="failed">'.
-                    '<button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-rose-50">Mark failed</button>'.
-                    '</form>'.
-                    '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">View</a>'.
-                    '</div>'.
-                    '</details>'.
-                    '</div>'
-                );
-            }
-            if ($p->status === PmPayment::STATUS_COMPLETED && $canSettle) {
-                $requestUrl = route('property.payments.reversal.request', $p);
-                $approveUrl = route('property.payments.reversal.approve', $p);
-                $reversalStatus = (string) ($p->reversal_status ?? '');
-                $requestForm = '';
-                $approveForm = '';
-
-                if ($reversalStatus === '' || $reversalStatus === PmPayment::REVERSAL_STATUS_REJECTED) {
-                    $requestForm =
-                        '<form method="post" action="'.$requestUrl.'" class="block js-reversal-request-form" data-payment-ref="PAY-'.$p->id.'">'.
-                        csrf_field().
-                        '<input type="hidden" name="reason" value="">'.
-                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-amber-700 hover:bg-amber-50">Request reversal</button>'.
-                        '</form>';
-                }
-                if ($reversalStatus === PmPayment::REVERSAL_STATUS_PENDING) {
-                    $approveForm =
-                        '<form method="post" action="'.$approveUrl.'" class="block js-reversal-approve-form" data-payment-ref="PAY-'.$p->id.'" data-swal-confirm="Approve this reversal now?">'.
-                        csrf_field().
-                        '<input type="hidden" name="reason" value="">'.
-                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50">Approve reversal</button>'.
-                        '</form>';
-                }
-
-                $actions = new HtmlString(
-                    '<div class="relative inline-block text-left">'.
-                    '<details>'.
-                    '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
-                    '<div class="absolute right-0 z-30 mt-1 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
-                    $requestForm.
-                    $approveForm.
-                    '<a href="'.$receiptUrl.'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">View</a>'.
-                    '</div>'.
-                    '</details>'.
-                    '</div>'
-                );
-            }
+            $actions = new HtmlString(view('property.agent.partials.payment_row_actions', [
+                'payment' => $p,
+                'canSettle' => $canSettle,
+            ])->render());
 
             $statusLabel = ucfirst((string) $p->status);
             if (! blank($p->reversal_status)) {
@@ -227,21 +222,25 @@ class PmPaymentController extends Controller
             }
 
             return [
-                new HtmlString('<label class="inline-flex items-center"><input type="checkbox" name="ids[]" value="'.$p->id.'" form="property-payments-bulk-form" class="rounded border-slate-300"><span class="sr-only">Select</span></label>'),
+                new HtmlString('<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="ids[]" value="'.$p->id.'" form="property-payments-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select</span></label>'),
                 'PAY-'.$p->id,
                 $source,
                 $this->channelLabel($p->channel),
                 number_format((float) $p->amount, 2),
                 $p->paid_at?->format('Y-m-d H:i') ?? '—',
-                $p->external_ref ?? '—',
+                $this->payerPhoneOrRef($p),
                 $allocatedTo !== '' ? $allocatedTo : '—',
                 $statusLabel,
                 $actions,
             ];
         })->all();
 
-        return view('property.agent.revenue.payments', [
-            'stats' => $stats,
+        return property_view('property.agent.revenue.payments', [
+            // Legacy workspace view still reads `$stats`; v2 uses statsPrimary/statsTable in the above slot.
+            'stats' => $statsPrimary,
+            'statsPrimary' => $statsPrimary,
+            'statsTable' => $statsTable,
+            'receivedRangeLabel' => $receivedRangeLabel,
             'columns' => ['Select', 'Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status', 'Actions'],
             'tableRows' => $rows,
             'paginator' => $payments,
@@ -259,6 +258,8 @@ class PmPaymentController extends Controller
                 })
                 ->orderBy('name')
                 ->get(),
+            'tenantsForAdvance' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
+            'advanceCreditsEnabled' => app(TenantCreditService::class)->isEnabled(),
         ]);
     }
 
@@ -344,6 +345,82 @@ class PmPaymentController extends Controller
         return back()->with('success', 'Payment recorded and allocated.');
     }
 
+    /**
+     * Record a tenant payment with no invoice required (prepay / advance rent).
+     * Applies to any open invoices first, then holds the remainder as tenant credit.
+     */
+    public function storeAdvance(Request $request): RedirectResponse
+    {
+        $creditService = app(TenantCreditService::class);
+        if (! $creditService->isEnabled()) {
+            return back()
+                ->withErrors(['advance' => 'Tenant advance credits are not available. Run database migrations (pm_tenant_credit tables) first.'])
+                ->withInput();
+        }
+
+        $data = $request->validate([
+            'pm_tenant_id' => ['required', 'exists:pm_tenants,id'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'channel' => ['required', 'in:mpesa,bank,cash,card,cheque'],
+            'external_ref' => ['nullable', 'string', 'max:128'],
+            'paid_at' => ['nullable', 'date'],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        if ($data['channel'] !== 'cash' && blank($data['external_ref'] ?? null)) {
+            return back()->withErrors(['external_ref' => 'Reference is required for non-cash payments.'])->withInput();
+        }
+
+        $paymentId = null;
+
+        DB::transaction(function () use ($data, $request, &$paymentId): void {
+            $payment = PmPayment::query()->create([
+                'pm_tenant_id' => $data['pm_tenant_id'],
+                'channel' => $data['channel'],
+                'amount' => $data['amount'],
+                'external_ref' => $data['external_ref'] ?? null,
+                'paid_at' => $data['paid_at'] ?? now(),
+                'status' => PmPayment::STATUS_COMPLETED,
+                'meta' => [
+                    'source' => 'manual',
+                    'payment_kind' => 'advance',
+                    'notes' => $data['notes'] ?? null,
+                ],
+            ]);
+
+            $settlement = app(PropertyPaymentSettlementService::class);
+            $remaining = $settlement->allocatePaymentToOpenInvoices($payment);
+            $settlement->finalizeIdentifiedPayment($payment, $request->user(), $remaining);
+
+            $paymentId = (int) $payment->id;
+        });
+
+        $payment = PmPayment::query()->with('allocations')->find($paymentId);
+        $allocated = round((float) $payment?->allocations->sum('amount'), 2);
+        $credit = round((float) data_get($payment?->meta, 'tenant_credit_created', 0), 2);
+        if ($credit <= 0 && $payment) {
+            $credit = max(0.0, round((float) $payment->amount - $allocated, 2));
+        }
+
+        $parts = ['Advance payment recorded.'];
+        if ($allocated > 0) {
+            $parts[] = PropertyMoney::kes($allocated).' applied to open invoice(s).';
+        }
+        if ($credit > 0) {
+            $parts[] = PropertyMoney::kes($credit).' held as tenant advance credit.';
+        }
+
+        $message = implode(' ', $parts);
+
+        if ($request->input('return_to') === 'credit_ledger') {
+            return redirect()
+                ->route('property.tenants.credit.ledger', ['tenant' => $data['pm_tenant_id']])
+                ->with('success', $message);
+        }
+
+        return back()->with('success', $message);
+    }
+
     public function settle(Request $request, PmPayment $payment): RedirectResponse
     {
         $data = $request->validate([
@@ -361,53 +438,19 @@ class PmPaymentController extends Controller
             }
 
             if ($data['decision'] === 'failed') {
-                $payment->update([
-                    'status' => PmPayment::STATUS_FAILED,
-                    'paid_at' => null,
-                ]);
+                app(PropertyPaymentSettlementService::class)
+                    ->fail($payment, $payment->external_ref, 'Marked failed by agent', 'manual_settle');
 
                 return;
             }
 
-            $payment->update([
-                'status' => PmPayment::STATUS_COMPLETED,
-                'paid_at' => now(),
-            ]);
-
-            $remaining = (float) $payment->amount;
-            $openInvoices = PmInvoice::query()
-                ->where('pm_tenant_id', $payment->pm_tenant_id)
-                ->whereColumn('amount_paid', '<', 'amount')
-                ->orderBy('due_date')
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get();
-
-            foreach ($openInvoices as $invoice) {
-                if ($remaining <= 0) {
-                    break;
-                }
-
-                $invoiceRemaining = max(0.0, (float) $invoice->amount - (float) $invoice->amount_paid);
-                if ($invoiceRemaining <= 0) {
-                    continue;
-                }
-
-                $allocation = min($remaining, $invoiceRemaining);
-                PmPaymentAllocation::query()->create([
-                    'pm_payment_id' => $payment->id,
-                    'pm_invoice_id' => $invoice->id,
-                    'amount' => $allocation,
-                ]);
-
-                $invoice->amount_paid = (float) $invoice->amount_paid + $allocation;
-                $invoice->save();
-                $invoice->refreshComputedStatus();
-                $remaining -= $allocation;
-            }
-
-            $payment->load('allocations.invoice.unit');
-            PropertyAccountingPostingService::postPaymentReceived($payment, $request->user());
+            app(PropertyPaymentSettlementService::class)->complete(
+                $payment,
+                $payment->external_ref,
+                now(),
+                'Settled manually by agent',
+                'manual_settle',
+            );
         });
 
         return back()->with('success', 'Payment settlement updated.');
@@ -417,12 +460,20 @@ class PmPaymentController extends Controller
     {
         $data = $request->validate([
             'reason' => ['required', 'string', 'max:500'],
+            'utility_override_request_id' => ['nullable', 'integer'],
         ]);
 
         try {
             app(PropertyPaymentReversalApprovalService::class)
-                ->request($payment, (int) $request->user()->id, (string) $data['reason']);
+                ->request(
+                    $payment,
+                    (int) $request->user()->id,
+                    (string) $data['reason'],
+                    (int) ($data['utility_override_request_id'] ?? 0) ?: null,
+                );
         } catch (RuntimeException $e) {
+            return back()->withErrors(['payment' => $e->getMessage()]);
+        } catch (\App\Exceptions\Property\UtilityPeriodClosedException $e) {
             return back()->withErrors(['payment' => $e->getMessage()]);
         }
 
@@ -450,9 +501,16 @@ class PmPaymentController extends Controller
         abort_unless($payment->status === PmPayment::STATUS_COMPLETED, 404);
 
         $payment->loadMissing(['tenant', 'allocations.invoice']);
+        $allocatedTotal = round((float) $payment->allocations->sum('amount'), 2);
+        $creditCreated = round((float) data_get($payment->meta, 'tenant_credit_created', 0), 2);
+        if ($creditCreated <= 0) {
+            $creditCreated = max(0.0, round((float) $payment->amount - $allocatedTotal, 2));
+        }
 
-        return view('property.agent.revenue.payment_receipt', [
+        return property_view('property.agent.revenue.payment_receipt', [
             'payment' => $payment,
+            'allocatedTotal' => $allocatedTotal,
+            'creditCreated' => $creditCreated,
         ]);
     }
 
@@ -473,5 +531,107 @@ class PmPaymentController extends Controller
         }, $fileName, [
             'Content-Type' => 'text/html; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * @return array{0: int, 1: string, 2: Carbon, 3: Carbon, 4: string}
+     */
+    private function resolvePaymentReceivedRange(Request $request): array
+    {
+        $allowed = [0, 1, 2, 3, 6, 12];
+        $rangeMonths = (int) $request->query('range_months', 1);
+        if (! in_array($rangeMonths, $allowed, true)) {
+            $rangeMonths = 1;
+        }
+
+        $rangeEndYm = trim((string) $request->query('range_end', now()->format('Y-m')));
+        if (preg_match('/^\d{4}\-\d{2}$/', $rangeEndYm) !== 1) {
+            $rangeEndYm = now()->format('Y-m');
+        }
+
+        $rangeTo = Carbon::createFromFormat('Y-m', $rangeEndYm)->endOfMonth()->startOfDay();
+        $rangeFrom = $rangeTo->copy()->subMonths(max(0, $rangeMonths - 1))->startOfMonth()->startOfDay();
+
+        $receivedRangeLabel = match ($rangeMonths) {
+            0 => 'All dates',
+            1 => 'Received '.$rangeFrom->format('M Y'),
+            default => 'Received '.$rangeFrom->format('M Y').' – '.$rangeTo->format('M Y').' ('.$rangeMonths.' mo)',
+        };
+
+        return [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $receivedRangeLabel];
+    }
+
+    /**
+     * Payer phone from ingest/meta, else payment reference, else allocated tenant phone.
+     */
+    private function payerPhoneOrRef(PmPayment $payment, string $empty = '—'): string
+    {
+        $metaPhone = trim((string) (data_get($payment->meta, 'payer_phone') ?? data_get($payment->meta, 'phone') ?? ''));
+        if ($metaPhone !== '') {
+            return $metaPhone;
+        }
+
+        $externalRef = trim((string) ($payment->external_ref ?? ''));
+        if ($externalRef !== '') {
+            return $externalRef;
+        }
+
+        $tenant = $payment->tenant;
+        if (! $tenant && $payment->relationLoaded('allocations')) {
+            $tenant = $payment->allocations->first()?->invoice?->tenant;
+        }
+
+        $tenantPhone = trim((string) ($tenant?->phone ?? $tenant?->user?->phone ?? ''));
+        if ($tenantPhone !== '') {
+            return $tenantPhone;
+        }
+
+        return $empty;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function applyPaymentListFilters(\Illuminate\Database\Eloquent\Builder $query, array $filters): \Illuminate\Database\Eloquent\Builder
+    {
+        if (($filters['status'] ?? '') !== '' && in_array($filters['status'], [
+            PmPayment::STATUS_PENDING,
+            PmPayment::STATUS_COMPLETED,
+            PmPayment::STATUS_FAILED,
+        ], true)) {
+            $query->where('status', $filters['status']);
+        }
+        if (($filters['reversal_status'] ?? '') !== '' && in_array($filters['reversal_status'], [
+            PmPayment::REVERSAL_STATUS_PENDING,
+            PmPayment::REVERSAL_STATUS_APPROVED,
+            PmPayment::REVERSAL_STATUS_REJECTED,
+            PmPayment::REVERSAL_STATUS_REVERSED,
+        ], true)) {
+            $query->where('reversal_status', $filters['reversal_status']);
+        }
+        if (($filters['channel'] ?? '') !== '') {
+            $query->where('channel', $filters['channel']);
+        }
+
+        $from = (string) ($filters['from'] ?? '');
+        $to = (string) ($filters['to'] ?? '');
+        if ($from !== '') {
+            $query->where(function (\Illuminate\Database\Eloquent\Builder $inner) use ($from) {
+                $inner->whereDate('paid_at', '>=', $from)
+                    ->orWhere(function (\Illuminate\Database\Eloquent\Builder $pending) use ($from) {
+                        $pending->whereNull('paid_at')->whereDate('created_at', '>=', $from);
+                    });
+            });
+        }
+        if ($to !== '') {
+            $query->where(function (\Illuminate\Database\Eloquent\Builder $inner) use ($to) {
+                $inner->whereDate('paid_at', '<=', $to)
+                    ->orWhere(function (\Illuminate\Database\Eloquent\Builder $pending) use ($to) {
+                        $pending->whereNull('paid_at')->whereDate('created_at', '<=', $to);
+                    });
+            });
+        }
+
+        return $query;
     }
 }

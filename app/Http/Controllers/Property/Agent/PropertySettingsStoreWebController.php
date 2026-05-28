@@ -31,7 +31,7 @@ class PropertySettingsStoreWebController extends Controller
             ->values()
             ->all();
 
-        return view('property.agent.settings.system_setup.index', [
+        return property_view('property.agent.settings.system_setup.index', [
             'formsCount' => (int) PropertyPortalSetting::getValue('system_setup_forms_count', '0'),
             'propertyOnboardingFieldsCount' => count($this->configuredFields('property_onboarding')),
             'unitFieldsCount' => count($this->configuredFields('unit')),
@@ -61,7 +61,7 @@ class PropertySettingsStoreWebController extends Controller
 
     public function systemSetupForms(): View
     {
-        return view('property.agent.settings.system_setup.forms', [
+        return property_view('property.agent.settings.system_setup.forms', [
             'tenantMoveInEnabled' => PropertyPortalSetting::getValue('form_tenant_move_in_enabled', '1') === '1',
             'maintenanceEnabled' => PropertyPortalSetting::getValue('form_maintenance_enabled', '1') === '1',
             'customFields' => PropertyPortalSetting::getValue('form_custom_fields_json', ''),
@@ -86,7 +86,7 @@ class PropertySettingsStoreWebController extends Controller
 
     public function systemSetupPropertyOnboardingFields(): View
     {
-        return view('property.agent.settings.system_setup.property_onboarding_fields', [
+        return property_view('property.agent.settings.system_setup.property_onboarding_fields', [
             'fields' => $this->configuredFields('property_onboarding'),
         ]);
     }
@@ -106,7 +106,7 @@ class PropertySettingsStoreWebController extends Controller
 
     public function systemSetupUnitFields(): View
     {
-        return view('property.agent.settings.system_setup.unit_fields', [
+        return property_view('property.agent.settings.system_setup.unit_fields', [
             'fields' => $this->configuredFields('unit'),
         ]);
     }
@@ -239,7 +239,7 @@ class PropertySettingsStoreWebController extends Controller
         $envOverride = config('property.workflow_automation_enabled');
         $workflowAutomationEnvIsSet = $envOverride !== null && $envOverride !== '';
 
-        return view('property.agent.settings.system_setup.workflows', [
+        return property_view('property.agent.settings.system_setup.workflows', [
             'autoAssignTickets' => PropertyPortalSetting::getValue('workflow_auto_assign_tickets', '0') === '1',
             'autoReminders' => PropertyPortalSetting::getValue('workflow_auto_reminders', '0') === '1',
             'workflowAutomationEffective' => PropertyPortalSetting::isAnyScheduledPropertyAutomationOn(),
@@ -281,7 +281,7 @@ class PropertySettingsStoreWebController extends Controller
 
     public function systemSetupTemplates(): View
     {
-        return view('property.agent.settings.system_setup.templates', [
+        return property_view('property.agent.settings.system_setup.templates', [
             'leaseTemplate' => PropertyPortalSetting::getValue('template_lease_text', ''),
             'noticeTemplate' => PropertyPortalSetting::getValue('template_notice_text', ''),
         ]);
@@ -304,7 +304,7 @@ class PropertySettingsStoreWebController extends Controller
     public function systemSetupAccess(): View
     {
         if (! Schema::hasTable('pm_roles') || ! Schema::hasTable('pm_permissions')) {
-            return view('property.agent.settings.system_setup.access', [
+            return property_view('property.agent.settings.system_setup.access', [
                 'roles' => collect(),
                 'permissionsByGroup' => collect(),
                 'portalUsers' => collect(),
@@ -340,7 +340,7 @@ class PropertySettingsStoreWebController extends Controller
             ];
         }
 
-        return view('property.agent.settings.system_setup.access', [
+        return property_view('property.agent.settings.system_setup.access', [
             'roles' => $roles,
             'permissionsByGroup' => $permissionsByGroup,
             'portalUsers' => $portalUsers,
@@ -856,7 +856,7 @@ class PropertySettingsStoreWebController extends Controller
 
     private function renderModuleFieldSetup(string $module, string $title, string $subtitle): View
     {
-        return view('property.agent.settings.system_setup.module_fields', [
+        return property_view('property.agent.settings.system_setup.module_fields', [
             'module' => $module,
             'title' => $title,
             'subtitle' => $subtitle,
@@ -877,7 +877,7 @@ class PropertySettingsStoreWebController extends Controller
         return back()->with('success', __($successMessage));
     }
 
-    private function ensureAccessControlDefaults(): void
+    public function ensureAccessControlDefaults(): void
     {
         $defaultPermissions = [
             ['name' => 'Manage properties', 'key' => 'properties.manage', 'group' => 'properties'],
@@ -890,6 +890,8 @@ class PropertySettingsStoreWebController extends Controller
             ['name' => 'Manage invoices', 'key' => 'invoices.manage', 'group' => 'revenue'],
             ['name' => 'Manage penalties', 'key' => 'revenue.penalties.manage', 'group' => 'revenue'],
             ['name' => 'Manage utilities', 'key' => 'revenue.utilities.manage', 'group' => 'revenue'],
+            ['name' => 'Close utility billing periods', 'key' => 'revenue.utilities.period_close', 'group' => 'revenue'],
+            ['name' => 'Approve utility period overrides', 'key' => 'revenue.utilities.period_override_approve', 'group' => 'revenue'],
             ['name' => 'Manage accounting entries', 'key' => 'accounting.entries.manage', 'group' => 'accounting'],
             ['name' => 'Manage payroll', 'key' => 'accounting.payroll.manage', 'group' => 'accounting'],
             ['name' => 'Manage communications', 'key' => 'communications.manage', 'group' => 'communications'],
@@ -900,6 +902,7 @@ class PropertySettingsStoreWebController extends Controller
             ['name' => 'Manage listings', 'key' => 'listings.manage', 'group' => 'listings'],
             ['name' => 'Manage settings', 'key' => 'settings.manage', 'group' => 'settings'],
             ['name' => 'Manage access control', 'key' => 'settings.access.manage', 'group' => 'settings'],
+            ['name' => 'Onboard internal staff', 'key' => 'team.users.manage', 'group' => 'settings'],
         ];
 
         foreach ($defaultPermissions as $perm) {
@@ -921,9 +924,10 @@ class PropertySettingsStoreWebController extends Controller
                 'permissions' => [
                     'properties.manage', 'tenants.manage', 'leases.manage', 'maintenance.manage', 'vendors.manage',
                     'invoices.manage', 'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
+                    'revenue.utilities.period_close', 'revenue.utilities.period_override_approve',
                     'accounting.entries.manage', 'accounting.payroll.manage', 'communications.manage', 'communications.export', 'communications.view_message_body',
                     'communications.send_legal_notice', 'communications.approve_notice',
-                    'listings.manage', 'settings.manage', 'settings.access.manage',
+                    'listings.manage', 'settings.manage', 'settings.access.manage', 'team.users.manage',
                 ],
             ],
             'accountant' => [
@@ -932,6 +936,7 @@ class PropertySettingsStoreWebController extends Controller
                 'description' => 'Finance and accounting operations.',
                 'permissions' => [
                     'invoices.manage', 'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
+                    'revenue.utilities.period_close', 'revenue.utilities.period_override_approve',
                     'accounting.entries.manage', 'accounting.payroll.manage',
                 ],
             ],
@@ -965,7 +970,7 @@ class PropertySettingsStoreWebController extends Controller
                 'portal_scope' => 'agent',
                 'description' => 'Configuration and access-control management.',
                 'permissions' => [
-                    'settings.manage', 'settings.access.manage',
+                    'settings.manage', 'settings.access.manage', 'team.users.manage',
                 ],
             ],
             'landlord_portal_user' => [
@@ -997,6 +1002,16 @@ class PropertySettingsStoreWebController extends Controller
                 $role->permissions()->sync($permIds);
             }
         }
+
+        $teamPerm = PmPermission::query()->where('key', 'team.users.manage')->first();
+        if ($teamPerm) {
+            foreach (['property_manager', 'settings_admin'] as $slug) {
+                $r = PmRole::query()->where('slug', $slug)->first();
+                if ($r && ! $r->permissions()->where('pm_permissions.id', $teamPerm->id)->exists()) {
+                    $r->permissions()->attach($teamPerm->id);
+                }
+            }
+        }
     }
 
     public function commission(): View
@@ -1012,7 +1027,7 @@ class PropertySettingsStoreWebController extends Controller
             }
         }
 
-        return view('property.agent.settings.commission', [
+        return property_view('property.agent.settings.commission', [
             'defaultPercent' => PropertyPortalSetting::getValue('commission_default_percent', ''),
             'notes' => PropertyPortalSetting::getValue('commission_notes', ''),
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
@@ -1063,7 +1078,7 @@ class PropertySettingsStoreWebController extends Controller
             }
         }
 
-        return view('property.agent.settings.payments', [
+        return property_view('property.agent.settings.payments', [
             'shortcode' => PropertyPortalSetting::getValue('mpesa_shortcode', ''),
             'consumerKey' => PropertyPortalSetting::getValue('mpesa_consumer_key', ''),
             'callbackUrl' => PropertyPortalSetting::getValue('mpesa_callback_url', ''),
@@ -1163,7 +1178,7 @@ class PropertySettingsStoreWebController extends Controller
 
     public function rules(): View
     {
-        return view('property.agent.settings.rules', [
+        return property_view('property.agent.settings.rules', [
             'graceDays' => PropertyPortalSetting::getValue('rules_grace_days', '3'),
             'lateFeePercent' => PropertyPortalSetting::getValue('rules_late_fee_percent', '0'),
             'notes' => PropertyPortalSetting::getValue('rules_notes', ''),
@@ -1187,7 +1202,7 @@ class PropertySettingsStoreWebController extends Controller
 
     public function deposits(): View
     {
-        return view('property.agent.settings.deposits', [
+        return property_view('property.agent.settings.deposits', [
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'units' => PropertyUnit::query()->with('property:id,name')->orderBy('property_id')->orderBy('label')->get(['id', 'property_id', 'label']),
             'definitions' => Schema::hasTable('deposit_definitions')
@@ -1248,7 +1263,7 @@ class PropertySettingsStoreWebController extends Controller
 
     public function expenses(): View
     {
-        return view('property.agent.settings.expenses', [
+        return property_view('property.agent.settings.expenses', [
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'units' => PropertyUnit::query()->with('property:id,name')->orderBy('property_id')->orderBy('label')->get(['id', 'property_id', 'label']),
             'definitions' => Schema::hasTable('expense_definitions')
@@ -1351,7 +1366,7 @@ class PropertySettingsStoreWebController extends Controller
 
     public function branding(): View
     {
-        return view('property.agent.settings.branding', [
+        return property_view('property.agent.settings.branding', [
             'companyName' => PropertyPortalSetting::getValue('company_name', ''),
             'companyLogoUrl' => PropertyPortalSetting::getValue('company_logo_url', ''),
             'siteFaviconUrl' => PropertyPortalSetting::getValue('site_favicon_url', ''),

@@ -108,7 +108,7 @@ class PropertyAmenityController extends Controller
             ->mapWithKeys(fn (PmAmenity $a) => [$a->id => $a->properties()->pluck('properties.id')->map(fn ($id) => (int) $id)->all()])
             ->all();
 
-        return view('property.agent.properties.amenities', [
+        return property_view('property.agent.properties.amenities', [
             'stats' => [
                 ['label' => 'Amenity types', 'value' => (string) $amenityLibrary->count(), 'hint' => 'In library'],
                 ['label' => 'Properties tagged', 'value' => (string) $propertiesTagged, 'hint' => 'With ≥1 amenity'],

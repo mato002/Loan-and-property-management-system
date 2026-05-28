@@ -15,7 +15,7 @@
         : 'inline-flex items-center rounded-full bg-[#6a9f97]/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#386f66] ring-1 ring-[#6a9f97]/35';
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-pwa-context="portal">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -27,6 +27,17 @@
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
         @vite(['resources/css/app.css', 'resources/js/app.js'])
+        @php
+            $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');
+            $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
+            $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
+        @endphp
+        <link rel="icon" href="{{ $faviconVersioned }}" />
+        <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
+        <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
+        <link rel="manifest" href="{{ route('pwa.manifest.portal') }}" />
+        <meta name="theme-color" content="#059669" />
+        <script src="{{ asset('js/pwa-install.js') }}?v=2" defer></script>
     </head>
     <body class="font-sans antialiased text-slate-900 bg-[#eef5f3]">
         <x-swal-flash />
@@ -102,5 +113,6 @@
                 </div>
             </div>
         </div>
+        <x-public.pwa-install-prompt context="portal" position="left" />
     </body>
 </html>

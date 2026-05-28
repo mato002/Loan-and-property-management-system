@@ -1,0 +1,10 @@
+<form
+    id="property-lease-row-action-form"
+    method="post"
+    action=""
+    data-turbo-frame="property-main"
+    class="hidden"
+    aria-hidden="true"
+>
+    @csrf
+</form>

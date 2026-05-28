@@ -57,6 +57,7 @@ class PropertyAccountingController extends Controller
             ->value('bal');
 
         $accountsReceivable = (float) PmInvoice::query()
+            ->liveBalances()
             ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as bal')
             ->value('bal');
 
@@ -109,7 +110,7 @@ class PropertyAccountingController extends Controller
             'negative_cash' => $cashBalance < 0 ? 1 : 0,
         ];
 
-        return view('property.agent.accounting.index', [
+        return property_view('property.agent.accounting.index', [
             'stats' => [
                 ['label' => 'Cash Balance', 'value' => PropertyMoney::kes($cashBalance), 'hint' => 'Cash & bank'],
                 ['label' => 'Accounts Receivable', 'value' => PropertyMoney::kes($accountsReceivable), 'hint' => 'Open tenant balances'],
@@ -251,7 +252,7 @@ class PropertyAccountingController extends Controller
             ->orderBy('code')
             ->get(['id', 'code', 'name']);
 
-        return view('property.agent.accounting.entries', [
+        return property_view('property.agent.accounting.entries', [
             'stats' => [
                 ['label' => 'Total Entries (This Month)', 'value' => (string) (clone $monthBatches)->count(), 'hint' => 'Journal batches'],
                 ['label' => 'Total Debits', 'value' => PropertyMoney::kes((float) ($monthLines?->debit_total ?? 0)), 'hint' => 'This month'],
@@ -417,7 +418,7 @@ class PropertyAccountingController extends Controller
         })->count();
         $today = (clone $summaryQuery)->whereDate('created_at', now()->toDateString())->count();
 
-        return view('property.agent.accounting.audit_trail', [
+        return property_view('property.agent.accounting.audit_trail', [
             'stats' => [
                 ['label' => 'Total Activities', 'value' => (string) $total, 'hint' => 'Filtered scope'],
                 ['label' => 'Manual Actions', 'value' => (string) $manual, 'hint' => 'User initiated'],
@@ -519,7 +520,7 @@ class PropertyAccountingController extends Controller
             ->orderBy('id')
             ->get();
 
-        return view('property.agent.accounting.audit_trail_show', [
+        return property_view('property.agent.accounting.audit_trail_show', [
             'batch' => $batch,
             'lineImpact' => $lineImpact,
             'sourceRecord' => $sourceRecord,
@@ -916,7 +917,7 @@ class PropertyAccountingController extends Controller
             ->where('reversed_from_batch_id', $batch->id)
             ->first();
 
-        return view('property.agent.accounting.entry_show', [
+        return property_view('property.agent.accounting.entry_show', [
             'batch' => $batch,
             'totalDebit' => $totalDebit,
             'totalCredit' => $totalCredit,
@@ -989,7 +990,7 @@ class PropertyAccountingController extends Controller
             PropertyMoney::kes($a['balance']),
         ])->all();
 
-        return view('property.agent.accounting.reports.trial_balance', [
+        return property_view('property.agent.accounting.reports.trial_balance', [
             'stats' => [
                 ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'All accounts'],
                 ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'All accounts'],
@@ -1149,7 +1150,7 @@ class PropertyAccountingController extends Controller
             ->paginate($perPage, ['*'], 'txn_page')
             ->withQueryString();
 
-        return view('property.agent.accounting.reports.income_statement', [
+        return property_view('property.agent.accounting.reports.income_statement', [
             'income' => PropertyMoney::kes($income),
             'expenses' => PropertyMoney::kes($expenses),
             'net' => PropertyMoney::kes($net),
@@ -1213,7 +1214,7 @@ class PropertyAccountingController extends Controller
 
         $paginator = $this->paginateCollection($request, $rows, 50);
 
-        return view('property.agent.accounting.reports.cash_book', [
+        return property_view('property.agent.accounting.reports.cash_book', [
             'columns' => ['Date', 'Description', 'Debit', 'Credit', 'Balance', 'Reference'],
             'tableRows' => $paginator->items(),
             'stats' => [
@@ -1304,7 +1305,7 @@ class PropertyAccountingController extends Controller
             ];
         })->all();
 
-        return view('property.agent.accounting.payroll.index', [
+        return property_view('property.agent.accounting.payroll.index', [
             'stats' => [
                 ['label' => 'Employees Paid (this month)', 'value' => (string) $employeesPaidThisMonth, 'hint' => 'Distinct employees'],
                 ['label' => 'Total Payroll (this month)', 'value' => PropertyMoney::kes((float) (clone $thisMonthScope)->sum('total_gross')), 'hint' => 'Gross payroll'],
@@ -1656,7 +1657,7 @@ class PropertyAccountingController extends Controller
             ->limit(60)
             ->get(['id', 'label', 'status']);
 
-        return view('property.agent.accounting.payroll.payslips', [
+        return property_view('property.agent.accounting.payroll.payslips', [
             'stats' => [
                 ['label' => 'Total Payslips', 'value' => (string) (clone $summaryBase)->count(), 'hint' => 'Filtered result'],
                 ['label' => 'Total Gross', 'value' => PropertyMoney::kes((float) (clone $summaryBase)->sum('gross_pay')), 'hint' => 'Payroll gross'],
@@ -1714,7 +1715,7 @@ class PropertyAccountingController extends Controller
         $raw = PropertyPortalSetting::query()->where('key', 'property_payroll_settings')->value('value');
         $settings = is_string($raw) ? (json_decode($raw, true) ?: []) : [];
 
-        return view('property.agent.accounting.payroll.settings', [
+        return property_view('property.agent.accounting.payroll.settings', [
             'settings' => $settings,
         ]);
     }
@@ -1743,7 +1744,7 @@ class PropertyAccountingController extends Controller
         $this->ensurePayrollScope($request, $period);
         $period->load(['lines.employee', 'createdByUser:id,name', 'approvedByUser:id,name', 'postedByUser:id,name', 'reversedByUser:id,name']);
 
-        return view('property.agent.accounting.payroll.show', [
+        return property_view('property.agent.accounting.payroll.show', [
             'period' => $period,
             'totals' => [
                 'gross' => (float) $period->total_gross,
@@ -1862,7 +1863,7 @@ class PropertyAccountingController extends Controller
 
         [$companyName, $logoUrl, $entries] = $this->buildRunPayslipPayload($period, $line);
 
-        return view('property.agent.accounting.payroll.payslip', [
+        return property_view('property.agent.accounting.payroll.payslip', [
             'reference' => $line->payslip_number ?: ('PSL-'.$period->id.'-'.$line->id),
             'entryDate' => $period->period_end?->format('Y-m-d') ?? now()->format('Y-m-d'),
             'employeeName' => (string) ($line->employee?->full_name ?: 'Employee #'.$line->employee_id),
@@ -2060,7 +2061,7 @@ class PropertyAccountingController extends Controller
                 : asset($logoRaw);
         }
 
-        return view('property.agent.accounting.payroll.payslip', [
+        return property_view('property.agent.accounting.payroll.payslip', [
             'reference' => $reference,
             'entryDate' => $first?->entry_date?->format('Y-m-d') ?? now()->format('Y-m-d'),
             'employeeName' => (string) ($meta['employee_name'] ?? 'Employee'),
@@ -2171,7 +2172,7 @@ class PropertyAccountingController extends Controller
             ->keyBy('account_name');
 
         $accountMap = PropertyAccountingPostingService::accountMap();
-        $protectedCodes = ['1100', '1200', '1250', '2100', '2200', '2300', '2350', '4100', '4200', '5101'];
+        $protectedCodes = ['1100', '1200', '1250', '2100', '2200', '2260', '2300', '2350', '4100', '4200', '5101'];
         $protectedNameHints = ['cash', 'accounts receivable', 'landlord payable', 'tenant deposit', 'suspense', 'accounts payable', 'payroll payable', 'rental income', 'management fee', 'maintenance expense'];
 
         $typed = $accounts->map(function (AccountingChartAccount $a) use ($journalStats, $pmStats, $accountMap, $protectedCodes, $protectedNameHints) {
@@ -2249,7 +2250,7 @@ class PropertyAccountingController extends Controller
             'disabled_accounts' => (int) $summarySource->where('is_active', false)->count(),
         ];
 
-        return view('property.agent.accounting.chart_accounts', [
+        return property_view('property.agent.accounting.chart_accounts', [
             'groups' => $groups,
             'summary' => $summary,
             'typeOptions' => ['asset', 'liability', 'equity', 'income', 'expense'],
@@ -2519,7 +2520,7 @@ class PropertyAccountingController extends Controller
             $sourceLinks[(int) $batch->id] = $this->resolveBatchSourceLink($batch);
         }
 
-        return view('property.agent.accounting.journal_batches', [
+        return property_view('property.agent.accounting.journal_batches', [
             'batches' => $batches,
             'lineTotals' => $lineTotals,
             'batchLines' => $batchLines,
@@ -2598,7 +2599,7 @@ class PropertyAccountingController extends Controller
             })->values());
         }
 
-        return view('property.agent.accounting.receivables_accounts', [
+        return property_view('property.agent.accounting.receivables_accounts', [
             'rows' => $rows,
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'tenants' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
@@ -2614,7 +2615,7 @@ class PropertyAccountingController extends Controller
             ->paginate(50)
             ->withQueryString();
 
-        return view('property.agent.accounting.receivables_tenant_statements', ['tenants' => $tenants]);
+        return property_view('property.agent.accounting.receivables_tenant_statements', ['tenants' => $tenants]);
     }
 
     public function landlordPayables(Request $request): View
@@ -2633,7 +2634,7 @@ class PropertyAccountingController extends Controller
             ->paginate(50)
             ->withQueryString();
 
-        return view('property.agent.accounting.payables_landlord', [
+        return property_view('property.agent.accounting.payables_landlord', [
             'rows' => $rows,
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'filters' => ['property_id' => $propertyId, 'landlord' => $landlord],
@@ -2649,7 +2650,7 @@ class PropertyAccountingController extends Controller
             ->paginate(50)
             ->withQueryString();
 
-        return view('property.agent.accounting.payables_landlord_payouts', [
+        return property_view('property.agent.accounting.payables_landlord_payouts', [
             'rows' => $rows,
             'filters' => compact('status'),
         ]);
@@ -2671,7 +2672,7 @@ class PropertyAccountingController extends Controller
                 ->paginate(50)
             : new LengthAwarePaginator([], 0, 50, 1, ['path' => $request->url(), 'query' => $request->query()]);
 
-        return view('property.agent.accounting.payables_accounts', [
+        return property_view('property.agent.accounting.payables_accounts', [
             'rows' => $rows,
             'filters' => ['status' => $status, 'supplier' => $supplier],
         ]);
@@ -2692,7 +2693,7 @@ class PropertyAccountingController extends Controller
             ? UnassignedPayment::query()->orderByDesc('id')->limit(100)->get()
             : collect();
 
-        return view('property.agent.accounting.cash_bank_reconciliation', [
+        return property_view('property.agent.accounting.cash_bank_reconciliation', [
             'cashSide' => $cashSide,
             'bankSide' => $bankSide,
         ]);
@@ -2706,7 +2707,7 @@ class PropertyAccountingController extends Controller
         $liabilities = (float) $entries->where('category', PmAccountingEntry::CATEGORY_LIABILITY)->reduce(fn ($c, $e) => $c + ($e->entry_type === PmAccountingEntry::TYPE_CREDIT ? (float) $e->amount : -(float) $e->amount), 0);
         $equity = (float) $entries->where('category', PmAccountingEntry::CATEGORY_EQUITY)->reduce(fn ($c, $e) => $c + ($e->entry_type === PmAccountingEntry::TYPE_CREDIT ? (float) $e->amount : -(float) $e->amount), 0);
 
-        return view('property.agent.accounting.reports.balance_sheet', compact('asAt', 'assets', 'liabilities', 'equity'));
+        return property_view('property.agent.accounting.reports.balance_sheet', compact('asAt', 'assets', 'liabilities', 'equity'));
     }
 
     public function agedReceivables(Request $request): View
@@ -2721,7 +2722,7 @@ class PropertyAccountingController extends Controller
                 return ['invoice' => $inv, 'balance' => $balance, 'days' => $days];
             });
 
-        return view('property.agent.accounting.reports.aged_receivables', ['rows' => $rows]);
+        return property_view('property.agent.accounting.reports.aged_receivables', ['rows' => $rows]);
     }
 
     public function agedPayables(Request $request): View
@@ -2735,7 +2736,7 @@ class PropertyAccountingController extends Controller
                 ->get()
             : collect();
 
-        return view('property.agent.accounting.reports.aged_payables', ['rows' => $rows]);
+        return property_view('property.agent.accounting.reports.aged_payables', ['rows' => $rows]);
     }
 
     public function depositLiabilityReport(Request $request): View
@@ -2750,7 +2751,7 @@ class PropertyAccountingController extends Controller
                 ->get()
             : collect();
 
-        return view('property.agent.accounting.reports.deposit_liability', ['rows' => $rows]);
+        return property_view('property.agent.accounting.reports.deposit_liability', ['rows' => $rows]);
     }
 
     public function reversals(Request $request): View
@@ -2761,14 +2762,14 @@ class PropertyAccountingController extends Controller
             ->paginate(50)
             ->withQueryString();
 
-        return view('property.agent.accounting.controls.reversals', ['rows' => $entryReversals]);
+        return property_view('property.agent.accounting.controls.reversals', ['rows' => $entryReversals]);
     }
 
     public function periods(Request $request): View
     {
         $rows = AccountingPeriod::query()->orderByDesc('start_date')->paginate(50)->withQueryString();
 
-        return view('property.agent.accounting.controls.periods', ['rows' => $rows]);
+        return property_view('property.agent.accounting.controls.periods', ['rows' => $rows]);
     }
 
     public function updatePeriodStatus(Request $request, AccountingPeriod $period): RedirectResponse
@@ -2786,7 +2787,7 @@ class PropertyAccountingController extends Controller
 
     public function accountMapping(): View
     {
-        return view('property.agent.accounting.settings.account_mapping', [
+        return property_view('property.agent.accounting.settings.account_mapping', [
             'accountMap' => PropertyAccountingPostingService::accountMap(),
         ]);
     }
@@ -2797,7 +2798,7 @@ class PropertyAccountingController extends Controller
         $payroll = is_string($payrollRaw) ? (json_decode($payrollRaw, true) ?: []) : [];
         $defaultCommission = PropertyPortalSetting::getValue('commission_default_percent', '10');
 
-        return view('property.agent.accounting.settings.financial_settings', [
+        return property_view('property.agent.accounting.settings.financial_settings', [
             'defaultCommission' => $defaultCommission,
             'payroll' => $payroll,
         ]);
@@ -3059,7 +3060,7 @@ class PropertyAccountingController extends Controller
     {
         $code = (string) $account->code;
         $nameLc = strtolower((string) $account->name);
-        $protectedCodes = ['1100', '1200', '1250', '2100', '2200', '2300', '2350', '4100', '4200', '5101'];
+        $protectedCodes = ['1100', '1200', '1250', '2100', '2200', '2260', '2300', '2350', '4100', '4200', '5101'];
         $protectedNameHints = ['cash', 'accounts receivable', 'landlord payable', 'tenant deposit', 'suspense', 'accounts payable', 'payroll payable', 'rental income', 'management fee', 'maintenance expense'];
         if (in_array($code, $protectedCodes, true)) {
             return true;

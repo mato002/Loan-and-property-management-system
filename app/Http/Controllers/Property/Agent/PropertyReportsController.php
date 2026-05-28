@@ -180,7 +180,7 @@ class PropertyReportsController extends Controller
             return $this->exportTenantStatements($exportRows, $export);
         }
 
-        return view('property.agent.reports.tenant.statements', [
+        return property_view('property.agent.reports.tenant.statements', [
             'title' => 'Tenant Statements',
             'subtitle' => 'Tenant Reports',
             'backRoute' => 'property.reports.tenant',
@@ -502,7 +502,7 @@ class PropertyReportsController extends Controller
             return $this->exportLandlordStatements($exportRows, $export);
         }
 
-        return view('property.agent.reports.landlord.statements', [
+        return property_view('property.agent.reports.landlord.statements', [
             'title' => 'Landlord Statements',
             'subtitle' => 'Landlord Reports',
             'backRoute' => 'property.reports.landlord',
@@ -870,6 +870,12 @@ class PropertyReportsController extends Controller
                 'back_route' => 'property.reports.expense',
                 'builder' => fn () => $this->buildUtilityBillingReport(),
             ],
+            'expense_utility_aging' => [
+                'title' => 'Utility AR Aging',
+                'group' => 'Expense Reports',
+                'back_route' => 'property.reports.expense',
+                'builder' => fn () => $this->buildUtilityAgingReport(),
+            ],
             'expense_vendor_expense_work' => [
                 'title' => 'Vendor Expense Work Report',
                 'group' => 'Expense Reports',
@@ -1042,33 +1048,19 @@ class PropertyReportsController extends Controller
 
     private function buildUtilityBillingReport(): array
     {
-        $query = PmUnitUtilityCharge::query()->with('unit.property');
         $from = $this->filterDateFrom();
         $to = $this->filterDateTo();
-        if ($from !== null) {
-            $query->where('billing_month', '>=', substr($from, 0, 7));
-        }
-        if ($to !== null) {
-            $query->where('billing_month', '<=', substr($to, 0, 7));
-        }
-        $charges = $query->latest('id')->limit(250)->get();
+        $monthFrom = $from ? substr($from, 0, 7) : null;
+        $monthTo = $to ? substr($to, 0, 7) : null;
 
-        return [
-            'stats' => [
-                ['label' => 'Charges', 'value' => (string) $charges->count(), 'hint' => 'Recent'],
-                ['label' => 'Amount', 'value' => $this->money((float) $charges->sum('amount')), 'hint' => 'Billed'],
-                ['label' => 'Invoiced', 'value' => (string) $charges->where('is_invoiced', true)->count(), 'hint' => 'Converted'],
-            ],
-            'columns' => ['Month', 'Type', 'Property / Unit', 'Label', 'Amount', 'Invoiced'],
-            'tableRows' => $charges->map(fn (PmUnitUtilityCharge $charge) => [
-                (string) ($charge->billing_month ?? '—'),
-                ucfirst((string) ($charge->charge_type ?? '—')),
-                trim(($charge->unit?->property?->name ?? '—').' / '.($charge->unit?->label ?? '—')),
-                (string) ($charge->label ?? '—'),
-                $this->money((float) ($charge->amount ?? 0)),
-                $charge->is_invoiced ? 'Yes' : 'No',
-            ])->all(),
-        ];
+        return app(\App\Services\Property\UtilityBillingReportService::class)
+            ->billingSummary($monthFrom, $monthTo);
+    }
+
+    private function buildUtilityAgingReport(): array
+    {
+        return app(\App\Services\Property\UtilityReconciliationService::class)
+            ->agingReport(null);
     }
 
     private function buildVendorExpenseReport(): array

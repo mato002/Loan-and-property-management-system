@@ -3,12 +3,13 @@
 namespace App\Services\Property;
 
 use App\Models\PmPayment;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class PropertyPaymentReversalApprovalService
 {
-    public function request(PmPayment $payment, int $makerUserId, string $reason): PmPayment
+    public function request(PmPayment $payment, int $makerUserId, string $reason, ?int $utilityOverrideRequestId = null): PmPayment
     {
         if ($payment->status !== PmPayment::STATUS_COMPLETED) {
             throw new RuntimeException('Only completed payments can be submitted for reversal.');
@@ -17,8 +18,19 @@ class PropertyPaymentReversalApprovalService
             throw new RuntimeException('Payment is already reversed.');
         }
 
-        return DB::transaction(function () use ($payment, $makerUserId, $reason) {
+        app(UtilityPeriodGuardService::class)->assertPaymentReversalMutable(
+            $payment,
+            User::query()->find($makerUserId),
+            $utilityOverrideRequestId,
+        );
+
+        return DB::transaction(function () use ($payment, $makerUserId, $reason, $utilityOverrideRequestId) {
             $payment->refresh();
+            $meta = is_array($payment->meta) ? $payment->meta : [];
+            if ($utilityOverrideRequestId) {
+                $meta['utility_override_request_id'] = $utilityOverrideRequestId;
+            }
+            $payment->meta = $meta;
             $payment->reversal_status = PmPayment::REVERSAL_STATUS_PENDING;
             $payment->reversal_reason = $reason;
             $payment->reversal_requested_by = $makerUserId;
@@ -48,7 +60,7 @@ class PropertyPaymentReversalApprovalService
             }
 
             app(PropertyTransactionReversalService::class)
-                ->reversePayment($payment, $checkerUserId, $reason ?: $payment->reversal_reason);
+                ->reversePayment($payment, $checkerUserId, $reason ?: $payment->reversal_reason, (int) ($payment->meta['utility_override_request_id'] ?? 0) ?: null);
 
             $payment->refresh();
             $payment->reversal_status = PmPayment::REVERSAL_STATUS_REVERSED;

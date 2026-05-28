@@ -45,7 +45,7 @@ class AgentPublicListingController extends Controller
             ],
         ];
 
-        return view('property.agent.listings.index', [
+        return property_view('property.agent.listings.index', [
             'hubItems' => $hubItems,
             'hubStats' => [
                 ['label' => 'Vacant', 'value' => (string) $vacantCount, 'hint' => null],
@@ -69,7 +69,7 @@ class AgentPublicListingController extends Controller
             ['label' => 'Total photos', 'value' => (string) $published->sum(fn (PropertyUnit $u) => $u->publicImages->count()), 'hint' => 'Across listings'],
         ];
 
-        return view('property.agent.listings.ads', [
+        return property_view('property.agent.listings.ads', [
             'stats' => $stats,
             'publishedUnits' => $published,
         ]);
@@ -99,7 +99,7 @@ class AgentPublicListingController extends Controller
             ['label' => 'Featured', 'value' => (string) $vacantUnits->where('public_listing_published', true)->count(), 'hint' => 'Photos + publish'],
         ];
 
-        return view('property.agent.listings.create', [
+        return property_view('property.agent.listings.create', [
             'stats' => $stats,
             'vacantUnits' => $vacantUnits,
             'selectedUnit' => $selectedUnit,

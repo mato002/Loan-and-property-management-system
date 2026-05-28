@@ -21,6 +21,7 @@ use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\LoanClientPortalMatchService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentSettlementService;
+use App\Services\Property\TenantCreditService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -55,7 +56,7 @@ class TenantPortalController extends Controller
                 ->keyBy('pm_message_log_id');
         }
 
-        return view('property.tenant.notifications', [
+        return property_view('property.tenant.notifications', [
             'logs' => $logs,
             'readMap' => $readMap,
         ]);
@@ -124,8 +125,11 @@ class TenantPortalController extends Controller
         $channelCounts = [];
         $monthlyPaidTrend = [];
         $loanEligible = false;
+        $creditBalance = 0.0;
         if ($tenant) {
+            $creditBalance = app(TenantCreditService::class)->balanceForTenant((int) $tenant->id);
             $balance = (float) PmInvoice::query()
+                ->liveBalances()
                 ->where('pm_tenant_id', $tenant->id)
                 ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
                 ->value('t');
@@ -194,11 +198,13 @@ class TenantPortalController extends Controller
             $loanEligible = $balance <= 0;
         }
 
-        return view('property.tenant.home', [
+        return property_view('property.tenant.home', [
             'balance' => PropertyMoney::kes($balance),
             'balanceAmount' => $balance,
             'rentBalanceAmount' => $rentBalance ?? 0,
             'waterBalanceAmount' => $waterBalance ?? 0,
+            'creditBalance' => $creditBalance,
+            'creditBalanceFormatted' => PropertyMoney::kes($creditBalance),
             'nextDue' => $due?->format('Y-m-d') ?? '—',
             'nextDueDate' => $due,
             'recentPayments' => $recentPayments,
@@ -207,6 +213,21 @@ class TenantPortalController extends Controller
             'paymentChannelCounts' => $channelCounts,
             'monthlyPaidTrend' => $monthlyPaidTrend,
             'loanEligible' => $loanEligible,
+        ]);
+    }
+
+    public function creditHistory(Request $request): View
+    {
+        $tenant = $request->user()->pmTenantProfile;
+        abort_unless($tenant, 403);
+
+        $transactions = app(TenantCreditService::class)->ledgerForTenant((int) $tenant->id, 50);
+        $balance = app(TenantCreditService::class)->balanceForTenant((int) $tenant->id);
+
+        return property_view('property.tenant.credit_history', [
+            'balance' => $balance,
+            'balanceFormatted' => PropertyMoney::kes($balance),
+            'transactions' => $transactions,
         ]);
     }
 
@@ -221,7 +242,7 @@ class TenantPortalController extends Controller
             ? $lease->units->map(fn ($u) => $u->property->name.'/'.$u->label)->implode(', ')
             : '—';
 
-        return view('property.tenant.lease', [
+        return property_view('property.tenant.lease', [
             'unitLabel' => $unitLabel,
             'rent' => $lease ? PropertyMoney::kes((float) $lease->monthly_rent) : '—',
             'start' => $lease?->start_date?->format('Y-m-d') ?? '—',
@@ -247,7 +268,7 @@ class TenantPortalController extends Controller
         }
         $invoices = $base->orderByDesc('issue_date')->orderByDesc('id')->paginate(30)->withQueryString();
 
-        return view('property.tenant.invoices.index', [
+        return property_view('property.tenant.invoices.index', [
             'invoices' => $invoices,
             'status' => $status,
             'tenant' => $tenant,
@@ -263,7 +284,7 @@ class TenantPortalController extends Controller
         $invoice->loadMissing('tenant');
 
         // Reuse the public view template — it's already mobile-friendly.
-        return view('property.public.invoice_show', [
+        return property_view('property.public.invoice_show', [
             'invoice' => $invoice,
             'tenantContext' => true,
             'pdfUrl' => route('property.tenant.invoices.pdf', $invoice->id),
@@ -358,7 +379,7 @@ class TenantPortalController extends Controller
                 ->get()
             : collect();
 
-        return view('property.tenant.payments.index', [
+        return property_view('property.tenant.payments.index', [
             'nextDueAmount' => $nextInvoice ? (float) max(0, (float) $nextInvoice->amount - (float) $nextInvoice->amount_paid) : null,
             'nextDueDate' => $nextInvoice?->due_date,
             'outstandingBalance' => $balance,
@@ -419,7 +440,7 @@ class TenantPortalController extends Controller
             },
         ])->all();
 
-        return view('property.tenant.payments.history', [
+        return property_view('property.tenant.payments.history', [
             'stats' => [
                 ['label' => 'Successful', 'value' => (string) $payments->getCollection()->where('status', 'completed')->count(), 'hint' => 'On this page'],
                 ['label' => 'Pending', 'value' => (string) $payments->getCollection()->where('status', 'pending')->count(), 'hint' => 'On this page'],
@@ -545,7 +566,7 @@ class TenantPortalController extends Controller
             ];
         })->all();
 
-        return view('property.tenant.payments.receipts', [
+        return property_view('property.tenant.payments.receipts', [
             'stats' => [['label' => 'Receipts', 'value' => (string) $invoices->count(), 'hint' => 'Paid invoices']],
             'columns' => ['Date', 'Receipt #', 'Amount', 'Tax', 'Invoice', 'eTIMS status', 'Download'],
             'tableRows' => $rows,
@@ -574,7 +595,7 @@ class TenantPortalController extends Controller
             }
         }
 
-        return view('property.tenant.payments.pay', [
+        return property_view('property.tenant.payments.pay', [
             'amountDue' => PropertyMoney::kes($balance),
             'amountDueRaw' => $balance,
             'rentDue' => $this->openBalanceForTenant((int) $tenant?->id, PmInvoice::TYPE_RENT),
@@ -689,7 +710,7 @@ class TenantPortalController extends Controller
     {
         abort_unless($payment->pm_tenant_id === (auth()->user()?->pmTenantProfile?->id), 403);
 
-        return view('property.tenant.payments.pending', [
+        return property_view('property.tenant.payments.pending', [
             'payment' => $payment->fresh(),
         ]);
     }
@@ -933,6 +954,7 @@ class TenantPortalController extends Controller
         }
 
         $query = PmInvoice::query()
+            ->liveBalances()
             ->where('pm_tenant_id', $tenantId)
             ->whereColumn('amount_paid', '<', 'amount');
         if ($invoiceType !== null) {
@@ -1181,7 +1203,7 @@ class TenantPortalController extends Controller
             ])->values())
             ->toArray();
 
-        return view('property.tenant.maintenance.report', [
+        return property_view('property.tenant.maintenance.report', [
             'leaseUnits' => $leaseUnits,
             'propertyOptions' => $propertyOptions,
             'unitsByProperty' => $unitsByProperty,
@@ -1199,7 +1221,7 @@ class TenantPortalController extends Controller
             ->limit(40)
             ->get();
 
-        return view('property.tenant.maintenance.index', [
+        return property_view('property.tenant.maintenance.index', [
             'requests' => $requests,
         ]);
     }
@@ -1272,7 +1294,7 @@ class TenantPortalController extends Controller
             ->limit(50)
             ->get();
 
-        return view('property.tenant.requests', [
+        return property_view('property.tenant.requests', [
             'requests' => $list,
         ]);
     }
@@ -1321,7 +1343,7 @@ class TenantPortalController extends Controller
             ->limit(24)
             ->get();
 
-        return view('property.tenant.explore', [
+        return property_view('property.tenant.explore', [
             'units' => $units,
             'leasePropertyIds' => $leasePropertyIds,
         ]);
@@ -1332,7 +1354,7 @@ class TenantPortalController extends Controller
         $arrearsOutstanding = $this->tenantArrearsOutstanding($request->user());
         $portalLoans = $this->portalLoansFor($request->user());
 
-        return view('property.tenant.loans', [
+        return property_view('property.tenant.loans', [
             'arrearsOutstanding' => $arrearsOutstanding,
             'hasArrears' => $arrearsOutstanding > 0,
             'defaultProductName' => 'Tenant personal loan',
@@ -1439,6 +1461,7 @@ class TenantPortalController extends Controller
         }
 
         $invoiceArrears = (float) (PmInvoice::query()
+            ->liveBalances()
             ->where('pm_tenant_id', $tenant->id)
             ->whereColumn('amount_paid', '<', 'amount')
             ->selectRaw('COALESCE(SUM(amount - amount_paid), 0) as arrears')
@@ -1548,7 +1571,7 @@ class TenantPortalController extends Controller
 
         $payment->loadMissing(['tenant', 'allocations.invoice']);
 
-        return view('property.tenant.payments.receipt', [
+        return property_view('property.tenant.payments.receipt', [
             'payment' => $payment,
         ]);
     }

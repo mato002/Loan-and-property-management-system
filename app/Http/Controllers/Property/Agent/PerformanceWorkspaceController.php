@@ -21,7 +21,7 @@ class PerformanceWorkspaceController extends Controller
         $bundle = PropertyDashboardStats::collectionRateMtd();
         $trend = PropertyChartSeries::monthlyCollectionTrend(6);
 
-        return view('property.agent.performance.collection_rate', [
+        return property_view('property.agent.performance.collection_rate', [
             'stats' => [
                 ['label' => 'Target', 'value' => $bundle['target'].'%', 'hint' => 'This month'],
                 ['label' => 'Actual', 'value' => $bundle['actual'] !== null ? $bundle['actual'].'%' : '—', 'hint' => '% of billed'],
@@ -60,7 +60,7 @@ class PerformanceWorkspaceController extends Controller
             ->values()
             ->all();
 
-        return view('property.agent.performance.vacancy', [
+        return property_view('property.agent.performance.vacancy', [
             'stats' => [
                 ['label' => 'Occupancy', 'value' => $rate !== null ? $rate.'%' : '—', 'hint' => 'All units'],
                 ['label' => 'Vacant units', 'value' => (string) $vac, 'hint' => 'Now'],
@@ -80,7 +80,7 @@ class PerformanceWorkspaceController extends Controller
         $b30 = PropertyDashboardStats::arrearsBucket(30);
         $total = $b7 + $b14 + $b30;
 
-        return view('property.agent.performance.arrears_trends', [
+        return property_view('property.agent.performance.arrears_trends', [
             'stats' => [
                 ['label' => '7–14d past due', 'value' => PropertyMoney::kes($b7), 'hint' => 'Balance due'],
                 ['label' => '14–30d past due', 'value' => PropertyMoney::kes($b14), 'hint' => 'Balance due'],
@@ -110,7 +110,7 @@ class PerformanceWorkspaceController extends Controller
             $series[] = ['label' => $start->format('M y'), 'value' => $spend];
         }
 
-        return view('property.agent.performance.maintenance_trends', [
+        return property_view('property.agent.performance.maintenance_trends', [
             'stats' => [
                 ['label' => 'Spend (MTD)', 'value' => PropertyMoney::kes(PropertyDashboardStats::maintenanceSpendMtd()), 'hint' => 'Completed jobs'],
                 ['label' => '6-mo total', 'value' => PropertyMoney::kes(array_sum(array_column($series, 'value'))), 'hint' => 'Quoted'],
@@ -135,7 +135,7 @@ class PerformanceWorkspaceController extends Controller
             '—',
         ])->all();
 
-        return view('property.agent.performance.tenant_reliability', [
+        return property_view('property.agent.performance.tenant_reliability', [
             'stats' => [
                 ['label' => 'Tenants on file', 'value' => (string) $tenants->count(), 'hint' => ''],
                 ['label' => 'Elevated risk flag', 'value' => (string) $elevated, 'hint' => 'Not “normal”'],

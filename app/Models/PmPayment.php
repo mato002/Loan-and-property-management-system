@@ -26,6 +26,7 @@ class PmPayment extends Model
 
     protected $fillable = [
         'pm_tenant_id',
+        'agent_user_id',
         'channel',
         'amount',
         'external_ref',

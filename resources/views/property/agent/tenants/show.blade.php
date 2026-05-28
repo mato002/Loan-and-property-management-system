@@ -5,21 +5,52 @@
     :stats="[
         ['label' => 'Risk', 'value' => ucfirst($tenant->risk_level), 'hint' => 'Current'],
         ['label' => 'Leases', 'value' => (string) ($tenant->leases_count ?? 0), 'hint' => 'Linked'],
-        ['label' => 'Invoices', 'value' => (string) ($tenant->invoices_count ?? 0), 'hint' => 'Recent snapshot'],
-        ['label' => 'Outstanding', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($invoiceTotals['due'] ?? 0)), 'hint' => 'Recent invoices'],
+        ['label' => 'Invoices', 'value' => (string) ($invoiceTotals['count'] ?? $tenant->invoices_count ?? 0), 'hint' => 'All periods'],
+        ['label' => 'Outstanding', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($invoiceTotals['due'] ?? 0)), 'hint' => 'Invoices + carry-forward'],
     ]"
     :columns="[]"
 >
+    @php
+        $leaseCarryForward = $leaseCarryForward ?? ['total' => 0.0, 'lines' => [], 'invoiced' => false];
+    @endphp
     <x-slot name="actions">
         <a href="{{ route('property.tenants.edit', $tenant, false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit tenant</a>
         <a href="{{ route('property.tenants.directory', ['q' => $tenant->name], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Directory</a>
         <a href="{{ route('property.tenants.leases', ['pm_tenant_id' => $tenant->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Leases</a>
-        <a href="{{ route('property.revenue.invoices', ['q' => $tenant->name], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-cyan-300 bg-white px-3 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50">Invoices</a>
+        <a href="{{ route('property.revenue.invoices', ['tenant_id' => $tenant->id, 'q' => $tenant->name], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-cyan-300 bg-white px-3 py-2 text-sm font-medium text-cyan-700 hover:bg-cyan-50">Invoices</a>
         <a href="{{ route('property.revenue.payments', ['q' => $tenant->name], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-teal-300 bg-white px-3 py-2 text-sm font-medium text-teal-700 hover:bg-teal-50">Payments</a>
         <a href="{{ route('property.tenants.notices', ['tenant_id' => $tenant->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50">Notices</a>
         <a href="{{ route('property.reports.tenant.statements', ['tenant_id' => $tenant->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300 bg-white px-3 py-2 text-sm font-medium text-fuchsia-700 hover:bg-fuchsia-50">Reports</a>
         <a href="{{ route('property.tenants.statement', $tenant, false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">Statement</a>
     </x-slot>
+
+    <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mb-4">
+        <h3 class="text-sm font-semibold text-slate-900">Financial summary</h3>
+        <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div class="rounded-xl bg-rose-50 border border-rose-100 p-3">
+                <p class="text-xs text-rose-700 uppercase font-semibold">Outstanding</p>
+                <p class="mt-1 text-lg font-bold text-rose-900">{{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceTotals['due'] ?? 0)) }}</p>
+            </div>
+            <div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3">
+                <p class="text-xs text-emerald-700 uppercase font-semibold">Credit balance</p>
+                <p class="mt-1 text-lg font-bold text-emerald-900">{{ \App\Services\Property\PropertyMoney::kes((float) ($creditBalance ?? 0)) }}</p>
+            </div>
+            <div class="rounded-xl bg-blue-50 border border-blue-100 p-3">
+                <p class="text-xs text-blue-700 uppercase font-semibold">Last payment</p>
+                <p class="mt-1 font-semibold text-blue-900">
+                    @if ($lastPayment ?? null)
+                        {{ \App\Services\Property\PropertyMoney::kes((float) $lastPayment->amount) }}
+                        <span class="block text-xs font-normal text-blue-700">{{ $lastPayment->paid_at?->format('Y-m-d') ?? '—' }}</span>
+                    @else
+                        —
+                    @endif
+                </p>
+            </div>
+            <div class="rounded-xl bg-indigo-50 border border-indigo-100 p-3 flex flex-col justify-center">
+                <a href="{{ route('property.tenants.credit.ledger', $tenant, false) }}" data-turbo-frame="property-main" class="text-sm font-semibold text-indigo-700 hover:underline">View credit ledger →</a>
+            </div>
+        </div>
+    </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -29,16 +60,25 @@
                 <p><span class="text-slate-500">Phone:</span> {{ $tenant->phone ?: '—' }}</p>
                 <p><span class="text-slate-500">Email:</span> {{ $tenant->email ?: '—' }}</p>
                 <p><span class="text-slate-500">National ID / ref:</span> {{ $tenant->national_id ?: '—' }}</p>
-                <p><span class="text-slate-500">Opening arrears total:</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_amount ?? 0)) }}</p>
+                <p><span class="text-slate-500">Tenant carry-forward (profile):</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_amount ?? 0)) }}</p>
+                @if ((float) ($leaseCarryForward['total'] ?? 0) > 0)
+                    <p><span class="text-slate-500">Lease carry-forward:</span> {{ \App\Services\Property\PropertyMoney::kes((float) $leaseCarryForward['total']) }}
+                        @if ($leaseCarryForward['invoiced'] ?? false)
+                            <span class="text-xs text-emerald-700">(posted as invoices)</span>
+                        @else
+                            <span class="text-xs text-amber-700">(not yet invoiced — re-save lease or run backfill)</span>
+                        @endif
+                    </p>
+                @endif
                 <p class="text-xs text-slate-500">
-                    Rent {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_rent ?? 0)) }},
+                    Tenant breakdown — Rent {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_rent ?? 0)) }},
                     Utilities {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_utilities ?? 0)) }},
                     Penalties {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_penalties ?? 0)) }},
                     Other {{ \App\Services\Property\PropertyMoney::kes((float) ($tenant->opening_arrears_other ?? 0)) }}
                 </p>
                 @if (is_array($tenant->opening_arrears_items) && count($tenant->opening_arrears_items) > 0)
                     <div class="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2">
-                        <p class="text-xs font-semibold text-amber-900">Opening arrears lines</p>
+                        <p class="text-xs font-semibold text-amber-900">Tenant carry-forward lines</p>
                         <ul class="mt-1 space-y-1 text-xs text-amber-800">
                             @foreach ($tenant->opening_arrears_items as $line)
                                 @php
@@ -56,6 +96,25 @@
                                     @if ($lineRef !== '')
                                         <span class="text-amber-700">- {{ $lineRef }}</span>
                                     @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
+                @if (! empty($leaseCarryForward['lines'] ?? []))
+                    <div class="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-2">
+                        <p class="text-xs font-semibold text-indigo-900">Lease carry-forward lines</p>
+                        <ul class="mt-1 space-y-1 text-xs text-indigo-800">
+                            @foreach ($leaseCarryForward['lines'] as $line)
+                                <li>
+                                    Lease #{{ $line['lease_id'] }} · {{ ucfirst(str_replace('_', ' ', (string) ($line['charge_type'] ?? 'other'))) }}
+                                    @if (trim((string) ($line['specific_charge'] ?? '')) !== '')
+                                        — {{ $line['specific_charge'] }}
+                                    @endif
+                                    @if (trim((string) ($line['period'] ?? '')) !== '')
+                                        ({{ $line['period'] }})
+                                    @endif
+                                    : {{ \App\Services\Property\PropertyMoney::kes((float) ($line['amount'] ?? 0)) }}
                                 </li>
                             @endforeach
                         </ul>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Gaitho Property Agency</string>
+    <string name="title_activity_main">Gaitho Property Agency</string>
+    <string name="package_name">ke.co.gaithoproperties.portal</string>
+    <string name="custom_url_scheme">ke.co.gaithoproperties.portal</string>
+</resources>

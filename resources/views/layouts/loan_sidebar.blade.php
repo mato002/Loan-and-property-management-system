@@ -91,17 +91,12 @@
             use App\Support\LoanNavigation;
 
             $menu = [
-                'Employees' => [
+                'Human Resources' => [
                     'icon' => '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"/>',
                     'links' => [
+                        ['label' => 'HR Workspace', 'route' => 'loan.hr.dashboard', 'active_pattern' => 'loan.hr.*'],
                         ['label' => 'Add Employee', 'route' => 'loan.employees.create'],
-                        ['label' => 'Staff Leaves', 'route' => 'loan.employees.leaves'],
-                        ['label' => 'Staff Groups', 'route' => 'loan.employees.groups'],
-                        ['label' => 'Staff Portfolios', 'route' => 'loan.employees.portfolios'],
-                        ['label' => 'Loan Applications', 'route' => 'loan.employees.loan_applications'],
-                        ['label' => 'Staff Loans', 'route' => 'loan.employees.staff_loans'],
-                        ['label' => 'Daily Workplan', 'route' => 'loan.employees.workplan'],
-                        ['label' => 'View Employees', 'route' => 'loan.employees.index'],
+                        ['label' => 'Employee Directory', 'route' => 'loan.employees.index'],
                     ],
                 ],
                 'Accounting' => [
@@ -252,22 +247,9 @@
 
         <div class="space-y-3">
             @foreach($menu as $groupName => $data)
-            <div x-data="loanSidebarGroup(@js($groupName), false)">
+            <div x-data="loanSidebarGroup(@js($groupName), @js(LoanNavigation::activeSidebarGroupName($groupName)))">
                 @php
-                    $isGroupActive = (
-                        ($groupName === 'Employees' && request()->routeIs('loan.employees.*')) ||
-                        ($groupName === 'Accounting' && request()->routeIs('loan.accounting.*')) ||
-                        ($groupName === 'Branches & Regions' && (request()->routeIs('loan.regions.*') || request()->routeIs('loan.branches.*'))) ||
-                        ($groupName === 'Business Analytics' && request()->routeIs('loan.analytics.*')) ||
-                        ($groupName === 'Clients' && request()->routeIs('loan.clients.*')) ||
-                        ($groupName === 'LoanBook' && request()->routeIs('loan.book.*')) ||
-                        ($groupName === 'Payments' && request()->routeIs('loan.payments.*')) ||
-                        ($groupName === 'Bulk SMS' && request()->routeIs('loan.bulksms.*')) ||
-                        ($groupName === 'Financial' && request()->routeIs('loan.financial.*')) ||
-                        ($groupName === 'Asset Financing' && request()->routeIs('loan.assets.*')) ||
-                        ($groupName === 'My Account' && (request()->routeIs('loan.account.*') || request()->routeIs('profile.*'))) ||
-                        ($groupName === 'System & Help' && request()->routeIs('loan.system.*'))
-                    );
+                    $isGroupActive = LoanNavigation::activeSidebarGroupName($groupName);
                 @endphp
                 <button type="button" @click="toggleGroup()" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group {{ $isGroupActive ? 'bg-white/15 text-white shadow-sm' : 'text-[#d4e4e3] hover:bg-[#406866]/80 hover:text-white' }}" :class="sidebarDesktopOpen ? '' : 'md:justify-center md:px-2'" :title="sidebarDesktopOpen ? '' : @js($groupName)">
                     <div class="flex items-center gap-3 w-4/5" :class="sidebarDesktopOpen ? '' : 'md:w-auto'">

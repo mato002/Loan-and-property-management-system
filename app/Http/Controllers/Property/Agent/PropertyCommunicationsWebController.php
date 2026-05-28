@@ -58,7 +58,7 @@ class PropertyCommunicationsWebController extends Controller
             ['label' => 'This week', 'value' => (string) $statsRows->filter(fn (PmMessageLog $l) => $l->created_at?->greaterThanOrEqualTo(now()->startOfWeek()))->count(), 'hint' => ''],
         ];
 
-        return view('property.agent.communications.notifications', [
+        return property_view('property.agent.communications.notifications', [
             'stats' => $stats,
             'logs' => $logs,
             'readLookup' => $readLookup,
@@ -217,7 +217,7 @@ class PropertyCommunicationsWebController extends Controller
             ];
         });
 
-        return view('property.agent.communications.messages', [
+        return property_view('property.agent.communications.messages', [
             'stats' => $stats,
             'columns' => ['When', 'Channel', 'Status', 'To', 'Subject', 'Preview / Error', 'By', 'Actions'],
             'tableRows' => $mapped->map(fn (array $r) => $r['cells'])->values()->all(),
@@ -268,7 +268,7 @@ class PropertyCommunicationsWebController extends Controller
             );
         }
 
-        return view('property.agent.communications.message_show', ['log' => $log]);
+        return property_view('property.agent.communications.message_show', ['log' => $log]);
     }
 
     /**
@@ -545,7 +545,7 @@ class PropertyCommunicationsWebController extends Controller
             $t->updated_at->format('Y-m-d'),
         ])->all();
 
-        return view('property.agent.communications.templates', [
+        return property_view('property.agent.communications.templates', [
             'stats' => $stats,
             'columns' => ['Name', 'Channel', 'Subject', 'Body preview', 'Updated'],
             'tableRows' => $rows,
@@ -605,7 +605,7 @@ class PropertyCommunicationsWebController extends Controller
             ];
         });
 
-        return view('property.agent.communications.bulk', [
+        return property_view('property.agent.communications.bulk', [
             'stats' => $stats,
             'columns' => ['When', 'Channel', 'Status', 'Segment / label', 'Notes', 'Actions'],
             'tableRows' => $mapped->map(fn (array $r) => $r['cells'])->values()->all(),
@@ -726,7 +726,7 @@ class PropertyCommunicationsWebController extends Controller
             ->get()
             ->values();
 
-        return view('property.agent.communications.conversations', [
+        return property_view('property.agent.communications.conversations', [
             'rows' => $rows,
         ]);
     }

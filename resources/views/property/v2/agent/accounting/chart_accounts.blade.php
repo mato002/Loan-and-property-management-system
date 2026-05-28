@@ -1,0 +1,218 @@
+<x-property.workspace
+    title="Chart of accounts"
+    subtitle="Grouped account hierarchy with protection and usage controls."
+    back-route="property.accounting.index"
+    :stats="[
+        ['label' => 'Total Accounts', 'value' => (string) ($summary['total_accounts'] ?? 0), 'hint' => 'All filtered accounts'],
+        ['label' => 'Assets Balance', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($summary['assets_balance'] ?? 0)), 'hint' => 'Debit-normal totals'],
+        ['label' => 'Liabilities Balance', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($summary['liabilities_balance'] ?? 0)), 'hint' => 'Credit-normal totals'],
+        ['label' => 'Income Balance', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($summary['income_balance'] ?? 0)), 'hint' => 'Posted income'],
+        ['label' => 'Expenses Balance', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($summary['expenses_balance'] ?? 0)), 'hint' => 'Posted expenses'],
+        ['label' => 'Disabled Accounts', 'value' => (string) ($summary['disabled_accounts'] ?? 0), 'hint' => 'Inactive chart rows'],
+    ]"
+    :columns="[]"
+    :table-rows="[]"
+>
+    <x-slot name="actions">
+        <button type="button" id="coa-open-create" class="inline-flex justify-center items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Add Account</button>
+        @include('property.agent.partials.export_dropdown', [
+            'csvUrl' => route('property.accounting.gl.chart_accounts.export', array_merge(request()->query(), ['format' => 'csv'])),
+            'xlsUrl' => route('property.accounting.gl.chart_accounts.export', array_merge(request()->query(), ['format' => 'xls'])),
+        ])
+    </x-slot>
+    <x-slot name="toolbar">
+        <form method="get" action="{{ route('property.accounting.gl.chart_accounts') }}" class="flex flex-wrap gap-2">
+            <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search code/name…" class="rounded-lg border border-slate-200 px-3 py-2 text-sm w-52" />
+            <select name="type" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <option value="">Type: All</option>
+                @foreach (($typeOptions ?? []) as $t)
+                    <option value="{{ $t }}" @selected(($filters['type'] ?? '') === $t)>{{ ucfirst($t) }}</option>
+                @endforeach
+            </select>
+            <select name="status" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <option value="">Status: All</option>
+                <option value="active" @selected(($filters['status'] ?? '') === 'active')>Active</option>
+                <option value="disabled" @selected(($filters['status'] ?? '') === 'disabled')>Disabled</option>
+            </select>
+            <select name="system_filter" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <option value="">System: All</option>
+                <option value="system" @selected(($filters['system_filter'] ?? '') === 'system')>System only</option>
+                <option value="custom" @selected(($filters['system_filter'] ?? '') === 'custom')>Custom only</option>
+            </select>
+            <select name="usage" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                <option value="">Usage: All</option>
+                @foreach (($usageOptions ?? []) as $u)
+                    <option value="{{ $u }}" @selected(($filters['usage'] ?? '') === $u)>{{ ucfirst($u) }}</option>
+                @endforeach
+            </select>
+            <button type="submit" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">Apply</button>
+            <a href="{{ route('property.accounting.gl.chart_accounts') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">Clear filters</a>
+        </form>
+    </x-slot>
+
+    @if (collect($groups ?? [])->isEmpty())
+        <div class="rounded-xl border border-slate-200 bg-white p-6 text-center">
+            <p class="text-sm text-slate-700">No accounts found for the selected filters.</p>
+            <a href="{{ route('property.accounting.gl.chart_accounts') }}" class="mt-3 inline-flex rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">Clear filters</a>
+        </div>
+    @endif
+
+    <div class="space-y-4">
+        @foreach (($groups ?? []) as $group)
+            @php $groupKey = 'coa-group-'.strtolower((string) $group['type']); @endphp
+            <div class="rounded-2xl border border-slate-200 bg-white shadow-sm" x-data="propertySidebarGroup(@js($groupKey), false)">
+                <button type="button" class="w-full flex items-center justify-between px-4 py-3 text-left" @click="toggleGroup()">
+                    <div>
+                        <p class="text-sm font-semibold text-slate-900">{{ $group['label'] }}</p>
+                        <p class="text-xs text-slate-500">Total: {{ \App\Services\Property\PropertyMoney::kes((float) $group['total_balance']) }} | {{ $group['count'] }} accounts</p>
+                    </div>
+                    <i class="fa-solid fa-chevron-down text-xs text-slate-500 transition-transform" :class="{ 'rotate-180': open }"></i>
+                </button>
+                <div x-show="open" x-cloak class="px-4 pb-4">
+                    <div class="overflow-auto">
+                        <table class="min-w-full text-sm">
+                            <thead>
+                            <tr class="text-left text-slate-500 border-b">
+                                <th class="py-2 pr-3">Code</th>
+                                <th class="py-2 pr-3">Account Name</th>
+                                <th class="py-2 pr-3">Type</th>
+                                <th class="py-2 pr-3">Parent</th>
+                                <th class="py-2 pr-3">Balance</th>
+                                <th class="py-2 pr-3">Usage</th>
+                                <th class="py-2 pr-3">Status</th>
+                                <th class="py-2 pr-3">Protection</th>
+                                <th class="py-2">Actions</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (($group['rows'] ?? []) as $row)
+                                @php
+                                    $account = $row['model'];
+                                    $indent = (int) ($row['level'] ?? 0) * 16;
+                                    $usage = collect($row['usage'] ?? []);
+                                    $protection = $row['is_control'] ? 'Control' : ($row['is_system'] ? 'System' : 'Custom');
+                                @endphp
+                                <tr class="border-b last:border-b-0">
+                                    <td class="py-2 pr-3 font-mono">{{ $row['code'] }}</td>
+                                    <td class="py-2 pr-3">
+                                        <div style="padding-left: {{ $indent }}px">
+                                            {{ $row['name'] }}
+                                        </div>
+                                    </td>
+                                    <td class="py-2 pr-3">{{ ucfirst((string) $row['type']) }}</td>
+                                    <td class="py-2 pr-3">{{ $row['parent_name'] ?: '—' }}</td>
+                                    <td class="py-2 pr-3">
+                                        <a href="{{ route('property.accounting.entries', ['q' => $row['name']]) }}" class="text-indigo-600 hover:text-indigo-700">{{ \App\Services\Property\PropertyMoney::kes((float) $row['balance']) }}</a>
+                                    </td>
+                                    <td class="py-2 pr-3">
+                                        <div class="flex flex-wrap gap-1">
+                                            @foreach ($usage as $tag)
+                                                <span class="rounded px-2 py-0.5 text-[11px] bg-slate-100 text-slate-700">{{ ucfirst((string) $tag) }}</span>
+                                            @endforeach
+                                        </div>
+                                    </td>
+                                    <td class="py-2 pr-3">
+                                        <span class="rounded px-2 py-0.5 text-[11px] {{ $row['is_active'] ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700' }}">
+                                            {{ $row['is_active'] ? 'Active' : 'Disabled' }}
+                                        </span>
+                                    </td>
+                                    <td class="py-2 pr-3">
+                                        <span class="rounded px-2 py-0.5 text-[11px] {{ $protection === 'Custom' ? 'bg-slate-100 text-slate-700' : 'bg-amber-100 text-amber-700' }}">{{ $protection }}</span>
+                                    </td>
+                                    <td class="py-2" data-row-ignore-click>
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <a href="{{ route('property.accounting.entries', ['q' => $row['name']]) }}" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 text-xs font-medium">View ledger</a>
+                                            <x-property.action-menu label="More" width="w-44">
+                                                <a href="{{ route('property.accounting.entries', ['q' => $row['name']]) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">View transactions</a>
+                                                <form method="post" action="{{ route('property.accounting.gl.chart_accounts.clone', ['account' => $account->id]) }}" data-turbo-frame="property-main">
+                                                    @csrf
+                                                    <button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">Clone account</button>
+                                                </form>
+                                                <form method="post" action="{{ route('property.accounting.gl.chart_accounts.usage_default', ['account' => $account->id]) }}" data-turbo-frame="property-main">
+                                                    @csrf
+                                                    <input type="hidden" name="usage" value="{{ $usage->first() ?: 'manual' }}">
+                                                    <button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">Set as default mapping</button>
+                                                </form>
+                                                <button
+                                                    type="button"
+                                                    class="block w-full px-3 py-2 text-left text-xs {{ $row['is_protected'] ? 'text-slate-400 cursor-not-allowed' : 'text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-slate-700/50' }}"
+                                                    @if (! $row['is_protected'])
+                                                        onclick="openDisableModal({{ $account->id }}, '{{ addslashes($row['code']) }}', '{{ addslashes($row['name']) }}', '{{ \App\Services\Property\PropertyMoney::kes((float) $row['balance']) }}', {{ (int) $row['tx_count'] }}, {{ $row['mapping_used'] ? 'true' : 'false' }}, {{ $row['is_protected'] ? 'true' : 'false' }})"
+                                                    @endif
+                                                >Disable account</button>
+                                            </x-property.action-menu>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        @endforeach
+    </div>
+
+    <div id="coa-create-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+        <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5">
+            <div class="flex items-center justify-between">
+                <h3 class="text-base font-semibold">Add account</h3>
+                <button type="button" id="coa-create-close" class="text-slate-600">Close</button>
+            </div>
+            <form method="post" action="{{ route('property.accounting.gl.chart_accounts.store') }}" class="mt-4 grid gap-3 sm:grid-cols-2">
+                @csrf
+                <div><label class="text-xs">Account code</label><input required name="code" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></div>
+                <div><label class="text-xs">Account name</label><input required name="name" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></div>
+                <div><label class="text-xs">Account type</label><select id="coa-type" name="type" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">@foreach (($typeOptions ?? []) as $t)<option value="{{ $t }}">{{ ucfirst($t) }}</option>@endforeach</select></div>
+                <div><label class="text-xs">Parent account</label><select name="parent_id" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"><option value="">—</option>@foreach (($parentOptions ?? []) as $p)<option value="{{ $p['id'] }}">{{ $p['label'] }}</option>@endforeach</select></div>
+                <div><label class="text-xs">Normal balance</label><select name="normal_balance" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"><option value="debit">Debit</option><option value="credit">Credit</option></select></div>
+                <div><label class="text-xs">Default usage mapping</label><select name="default_usage" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"><option value="">—</option>@foreach (($usageOptions ?? []) as $u)<option value="{{ $u }}">{{ ucfirst($u) }}</option>@endforeach</select></div>
+                <div><label class="inline-flex items-center gap-2 text-xs"><input type="checkbox" name="is_control_account" value="1"> Is control account</label></div>
+                <div><label class="text-xs">Status</label><select name="status" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"><option value="active">Active</option><option value="disabled">Disabled</option></select></div>
+                <div class="sm:col-span-2 text-xs text-slate-500">Suggested code ranges: 1000-1999 Assets, 2000-2999 Liabilities, 3000-3999 Equity, 4000-4999 Income, 5000-5999 Expenses.</div>
+                <div class="sm:col-span-2"><button class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" type="submit">Create account</button></div>
+            </form>
+        </div>
+    </div>
+
+    <div id="coa-disable-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
+        <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5">
+            <h3 class="text-base font-semibold">Disable account</h3>
+            <p class="mt-2 text-sm text-slate-600" id="coa-disable-details"></p>
+            <form id="coa-disable-form" method="post" class="mt-4">
+                @csrf
+                <input type="hidden" name="confirm" value="yes" />
+                <button type="submit" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700">Disable account</button>
+                <button type="button" onclick="closeDisableModal()" class="ml-2 rounded-xl border border-slate-300 px-4 py-2 text-sm">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const createModal = document.getElementById('coa-create-modal');
+            const openCreate = document.getElementById('coa-open-create');
+            const closeCreate = document.getElementById('coa-create-close');
+            if (openCreate && createModal && closeCreate) {
+                openCreate.addEventListener('click', () => { createModal.classList.remove('hidden'); createModal.classList.add('flex'); });
+                closeCreate.addEventListener('click', () => { createModal.classList.add('hidden'); createModal.classList.remove('flex'); });
+            }
+        })();
+        function openDisableModal(id, code, name, balance, txCount, mappingUsed, isProtected) {
+            if (isProtected) return;
+            const modal = document.getElementById('coa-disable-modal');
+            const form = document.getElementById('coa-disable-form');
+            const details = document.getElementById('coa-disable-details');
+            form.action = "{{ route('property.accounting.gl.chart_accounts.disable', ['account' => '__ID__']) }}".replace('__ID__', id);
+            details.textContent = `${code} ${name} | Balance: ${balance} | Transactions: ${txCount} | Used in mappings: ${mappingUsed ? 'Yes' : 'No'}.`;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+        function closeDisableModal() {
+            const modal = document.getElementById('coa-disable-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+    </script>
+</x-property.workspace>
+

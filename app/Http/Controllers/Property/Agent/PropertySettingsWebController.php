@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Property\Agent;
 
+use App\Http\Controllers\Property\Agent\PropertySettingsStoreWebController;
 use App\Http\Controllers\Controller;
 use App\Models\PmPermission;
 use App\Models\PmRole;
@@ -14,6 +15,8 @@ class PropertySettingsWebController extends Controller
 {
     public function roles(): View
     {
+        app(PropertySettingsStoreWebController::class)->ensureAccessControlDefaults();
+
         $portalUsers = User::query()
             ->whereNotNull('property_portal_role')
             ->with('pmRoles:id,name')
@@ -53,7 +56,7 @@ class PropertySettingsWebController extends Controller
             ];
         })->all();
 
-        return view('property.agent.settings.roles', [
+        return property_view('property.agent.settings.roles', [
             'stats' => [
                 ['label' => 'Portal users', 'value' => (string) $portalUsers->count(), 'hint' => 'Agent / landlord / tenant'],
                 ['label' => 'Agents', 'value' => (string) $portalUsers->where('property_portal_role', 'agent')->count(), 'hint' => ''],
@@ -67,8 +70,10 @@ class PropertySettingsWebController extends Controller
 
     public function permissions(): View
     {
+        app(PropertySettingsStoreWebController::class)->ensureAccessControlDefaults();
+
         if (! Schema::hasTable('pm_permissions')) {
-            return view('property.agent.settings.permissions', [
+            return property_view('property.agent.settings.permissions', [
                 'stats' => [
                     ['label' => 'Permissions', 'value' => '0', 'hint' => 'Run migrations first'],
                 ],
@@ -83,7 +88,7 @@ class PropertySettingsWebController extends Controller
             ->orderBy('name')
             ->get();
 
-        return view('property.agent.settings.permissions', [
+        return property_view('property.agent.settings.permissions', [
             'stats' => [
                 ['label' => 'Permissions', 'value' => (string) $permissions->count(), 'hint' => 'System-wide'],
                 ['label' => 'Groups', 'value' => (string) $permissions->pluck('group')->filter()->unique()->count(), 'hint' => 'Categories'],

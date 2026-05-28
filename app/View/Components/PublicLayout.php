@@ -9,12 +9,20 @@ class PublicLayout extends Component
 {
     public function __construct(
         public ?string $pageTitle = null,
+        public ?string $pageDescription = null,
+        public ?string $pageImage = null,
+        public ?string $pageRobots = null,
     ) {}
 
     public function render(): View
     {
-        return view('layouts.public', [
+        $data = array_filter([
             'publicPageTitle' => $this->pageTitle,
-        ]);
+            'publicPageDescription' => $this->pageDescription,
+            'publicPageImage' => $this->pageImage,
+            'publicPageRobots' => $this->pageRobots,
+        ], fn ($value) => $value !== null && trim((string) $value) !== '');
+
+        return view('layouts.public', $data);
     }
 }

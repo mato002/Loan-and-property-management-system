@@ -7,6 +7,7 @@ use App\Models\PmInvoiceEvent;
 use App\Models\PmLease;
 use App\Models\PropertyPortalSetting;
 use App\Services\Property\PropertyAccountingPostingService;
+use App\Services\Property\TenantCreditService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -113,6 +114,14 @@ class GenerateMonthlyRentInvoices extends Command
                     // rent invoice shows up in receivables, income, and the
                     // journal batch audit trail just like agent-manual ones.
                     PropertyAccountingPostingService::postInvoiceIssued($inv);
+
+                    if ($lease->pm_tenant_id) {
+                        app(TenantCreditService::class)->autoApplyForTenant(
+                            (int) $lease->pm_tenant_id,
+                            null,
+                            (int) $inv->id,
+                        );
+                    }
 
                     PmInvoiceEvent::record(
                         (int) $inv->id,

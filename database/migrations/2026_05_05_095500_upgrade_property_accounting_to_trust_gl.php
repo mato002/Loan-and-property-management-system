@@ -216,12 +216,22 @@ return new class extends Migration
 
         Schema::create('pm_invoice_items', function (Blueprint $table): void {
             $table->id();
-            $table->foreignId('invoice_id')->constrained('pm_invoices')->cascadeOnDelete();
-            $table->string('type', 24);
-            $table->decimal('amount', 14, 2);
-            $table->foreignId('account_id')->nullable()->constrained('accounting_chart_accounts')->nullOnDelete();
-            $table->foreignId('agent_user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('pm_invoice_id')->constrained('pm_invoices')->cascadeOnDelete();
+            $table->unsignedSmallInteger('line_no')->default(1);
+            $table->string('description', 255);
+            $table->decimal('quantity', 14, 3)->default(1);
+            $table->decimal('unit_price', 14, 2)->default(0);
+            $table->decimal('line_subtotal', 14, 2)->default(0);
+            $table->decimal('discount_pct', 6, 3)->default(0);
+            $table->decimal('discount_amount', 14, 2)->default(0);
+            $table->decimal('tax_pct', 6, 3)->default(0);
+            $table->decimal('tax_amount', 14, 2)->default(0);
+            $table->decimal('line_total', 14, 2)->default(0);
+            $table->string('source_type', 32)->default('custom');
+            $table->unsignedBigInteger('source_id')->nullable();
             $table->timestamps();
+            $table->index(['pm_invoice_id', 'line_no']);
+            $table->index(['source_type', 'source_id']);
         });
     }
 
@@ -371,6 +381,7 @@ return new class extends Migration
             ['code' => '1300', 'name' => 'Landlord Collection Clearing', 'type' => 'asset', 'normal_balance' => 'debit'],
             ['code' => '2100', 'name' => 'Landlord Payable', 'type' => 'liability', 'normal_balance' => 'credit'],
             ['code' => '2200', 'name' => 'Tenant Deposit Liability', 'type' => 'liability', 'normal_balance' => 'credit'],
+            ['code' => '2260', 'name' => 'Tenant Credit Liability', 'type' => 'liability', 'normal_balance' => 'credit'],
             ['code' => '2300', 'name' => 'Accounts Payable', 'type' => 'liability', 'normal_balance' => 'credit'],
             ['code' => '2350', 'name' => 'Payroll Payable', 'type' => 'liability', 'normal_balance' => 'credit'],
             ['code' => '2400', 'name' => 'Tax Payable', 'type' => 'liability', 'normal_balance' => 'credit'],

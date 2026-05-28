@@ -43,6 +43,7 @@ final class LoanNavigation
     {
         if ($user && ($user->loanPermissionKeys() !== [])) {
             $permissionGroupMap = [
+                'Human Resources' => 'employees.view',
                 'Employees' => 'employees.view',
                 'Accounting' => 'accounting.view',
                 'Branches & Regions' => 'branches.view',
@@ -213,5 +214,66 @@ final class LoanNavigation
         $r = self::normalizeLoanRole($user);
 
         return in_array($r, ['admin', 'manager'], true);
+    }
+
+    /**
+     * Resolve the active loan sidebar group for the current route.
+     *
+     * - No argument: returns the active group label, or null.
+     * - With argument: returns whether that group is active.
+     */
+    public static function activeSidebarGroupName(?string $groupName = null): bool|string|null
+    {
+        if ($groupName !== null && $groupName !== '') {
+            return self::isSidebarGroupActive($groupName);
+        }
+
+        foreach (self::sidebarGroupNames() as $name) {
+            if (self::isSidebarGroupActive($name)) {
+                return $name;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function sidebarGroupNames(): array
+    {
+        return [
+            'Human Resources',
+            'Accounting',
+            'Branches & Regions',
+            'Business Analytics',
+            'Clients',
+            'LoanBook',
+            'Payments',
+            'Bulk SMS',
+            'Financial',
+            'Asset Financing',
+            'My Account',
+            'System & Help',
+        ];
+    }
+
+    private static function isSidebarGroupActive(string $groupName): bool
+    {
+        return match ($groupName) {
+            'Human Resources' => request()->routeIs('loan.hr.*', 'loan.employees.*'),
+            'Accounting' => request()->routeIs('loan.accounting.*'),
+            'Branches & Regions' => request()->routeIs('loan.regions.*', 'loan.branches.*'),
+            'Business Analytics' => request()->routeIs('loan.analytics.*'),
+            'Clients' => request()->routeIs('loan.clients.*'),
+            'LoanBook' => request()->routeIs('loan.book.*'),
+            'Payments' => request()->routeIs('loan.payments.*'),
+            'Bulk SMS' => request()->routeIs('loan.bulksms.*'),
+            'Financial' => request()->routeIs('loan.financial.*'),
+            'Asset Financing' => request()->routeIs('loan.assets.*'),
+            'My Account' => request()->routeIs('loan.account.*', 'profile.*'),
+            'System & Help' => request()->routeIs('loan.system.*'),
+            default => false,
+        };
     }
 }

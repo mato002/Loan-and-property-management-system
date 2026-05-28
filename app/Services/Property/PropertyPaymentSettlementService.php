@@ -9,11 +9,14 @@ use App\Models\PmPaymentAllocation;
 use App\Models\Property;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
-use App\Services\Property\PropertyAccountingPostingService;
 use Illuminate\Support\Facades\DB;
 
 class PropertyPaymentSettlementService
 {
+    public function __construct(
+        private readonly TenantCreditService $tenantCreditService,
+    ) {}
+
     public function fail(PmPayment $payment, ?string $externalRef, ?string $message, string $source): PmPayment
     {
         $meta = is_array($payment->meta) ? $payment->meta : [];
@@ -40,10 +43,7 @@ class PropertyPaymentSettlementService
         ?string $message,
         string $source,
         ?float $paidAmount = null,
-    ): PmPayment
-    {
-        // If the provider callback includes a definitive amount, prefer it.
-        // This avoids cases where the initiated amount differs from the confirmed amount.
+    ): PmPayment {
         if ($paidAmount !== null && $paidAmount > 0) {
             $payment->amount = $paidAmount;
         }
@@ -70,54 +70,113 @@ class PropertyPaymentSettlementService
             default => null,
         };
 
-        $remaining = (float) $payment->amount;
+        $remaining = $this->allocatePaymentToOpenInvoices($payment, $invoiceType);
+
+        $payment->load('allocations.invoice.unit');
+        $this->finalizeIdentifiedPayment($payment, null, $remaining);
+
+        return $payment->fresh();
+    }
+
+    /**
+     * Apply a completed payment to open invoices (oldest due first).
+     * Uses allocation totals as source of truth so a stale amount_paid cannot
+     * cause a second payment to land on an already-settled invoice.
+     *
+     * @return float Unallocated remainder
+     */
+    public function allocatePaymentToOpenInvoices(PmPayment $payment, ?string $invoiceType = null): float
+    {
+        $remaining = round((float) $payment->amount, 2);
+        if ($remaining <= 0.0001 || (int) $payment->pm_tenant_id <= 0) {
+            return $remaining;
+        }
+
         $openInvoices = PmInvoice::query()
             ->where('pm_tenant_id', $payment->pm_tenant_id)
-            ->whereColumn('amount_paid', '<', 'amount')
+            ->where('status', '!=', PmInvoice::STATUS_CANCELLED)
             ->when($invoiceType !== null, fn ($q) => $q->where('invoice_type', $invoiceType))
             ->orderBy('due_date')
             ->orderBy('id')
             ->lockForUpdate()
-            ->get();
+            ->get()
+            ->each(fn (PmInvoice $invoice) => $invoice->syncAmountPaidFromAllocations())
+            ->filter(fn (PmInvoice $invoice) => $invoice->balanceFloat() > 0.0001)
+            ->values();
 
         foreach ($openInvoices as $invoice) {
-            if ($remaining <= 0) {
+            if ($remaining <= 0.0001) {
                 break;
             }
 
-            $invoiceRemaining = max(0.0, (float) $invoice->amount - (float) $invoice->amount_paid);
-            if ($invoiceRemaining <= 0) {
+            $invoice->syncAmountPaidFromAllocations();
+            $invoiceRemaining = $invoice->balanceFloat();
+            if ($invoiceRemaining <= 0.0001) {
                 continue;
             }
 
-            $allocation = min($remaining, $invoiceRemaining);
+            $allocation = round(min($remaining, $invoiceRemaining), 2);
+            if ($allocation <= 0.0001) {
+                continue;
+            }
+
+            // Hard cap: never allocate more than invoice balance after sync.
+            $invoice->syncAmountPaidFromAllocations();
+            $liveBalance = $invoice->balanceFloat();
+            $allocation = round(min($allocation, max(0.0, $liveBalance)), 2);
+            if ($allocation <= 0.0001) {
+                continue;
+            }
+
             PmPaymentAllocation::query()->create([
                 'pm_payment_id' => $payment->id,
                 'pm_invoice_id' => $invoice->id,
                 'amount' => $allocation,
             ]);
 
-            $invoice->amount_paid = (float) $invoice->amount_paid + $allocation;
-            $invoice->save();
-            $invoice->refreshComputedStatus();
-            $remaining -= $allocation;
+            $invoice->syncAmountPaidFromAllocations();
+            $remaining = round($remaining - $allocation, 2);
         }
 
-        $payment->load('allocations.invoice.unit');
-        if ($payment->allocations->isEmpty()) {
-            PropertyAccountingPostingService::postUnmatchedPaymentToSuspense($payment, null);
+        return max(0.0, $remaining);
+    }
 
-            return $payment->fresh();
+    /**
+     * Post GL / tenant credit after allocations are already on the payment.
+     */
+    public function finalizeIdentifiedPayment(PmPayment $payment, ?User $actor = null, ?float $unallocatedAmount = null): void
+    {
+        if ($payment->status !== PmPayment::STATUS_COMPLETED) {
+            return;
         }
 
-        PropertyAccountingPostingService::postPaymentReceived($payment, null);
-        $this->postLandlordLedgerCredits($payment);
+        $payment->loadMissing('allocations.invoice.unit');
+        $allocated = round((float) $payment->allocations->sum('amount'), 2);
+        $gross = round((float) $payment->amount, 2);
+        $remaining = $unallocatedAmount !== null
+            ? max(0.0, round((float) $unallocatedAmount, 2))
+            : max(0.0, round($gross - $allocated, 2));
+        $tenantId = (int) $payment->pm_tenant_id;
 
-        if ($remaining > 0) {
-            PropertyAccountingPostingService::postUnmatchedPaymentToSuspense($payment, null);
+        if ($remaining > 0.0001 && $tenantId > 0 && $this->tenantCreditService->isEnabled()) {
+            $this->tenantCreditService->createCreditFromOverpayment($payment, $remaining, $actor);
+            $remaining = 0.0;
         }
 
-        return $payment->fresh();
+        if ($payment->allocations->isEmpty() && $remaining > 0.0001) {
+            PropertyAccountingPostingService::postUnmatchedPaymentToSuspense($payment, $actor);
+
+            return;
+        }
+
+        if ($payment->allocations->isNotEmpty() || ($tenantId > 0 && $gross > 0)) {
+            PropertyAccountingPostingService::postPaymentReceived($payment, $actor);
+            $this->postLandlordLedgerCredits($payment);
+        }
+
+        if ($remaining > 0.0001) {
+            PropertyAccountingPostingService::postUnmatchedPaymentToSuspense($payment, $actor);
+        }
     }
 
     public function settlePending(
@@ -133,7 +192,6 @@ class PropertyPaymentSettlementService
             /** @var PmPayment $payment */
             $payment = PmPayment::query()->lockForUpdate()->findOrFail($paymentId);
 
-            // Idempotency
             if ($payment->status !== PmPayment::STATUS_PENDING) {
                 return $payment;
             }
@@ -152,7 +210,6 @@ class PropertyPaymentSettlementService
             return;
         }
 
-        // Idempotency: don't post landlord credits twice for the same payment.
         $already = PmLandlordLedgerEntry::query()
             ->where('reference_type', 'pm_payment')
             ->where('reference_id', $payment->id)
@@ -166,7 +223,6 @@ class PropertyPaymentSettlementService
             return;
         }
 
-        // Group allocated amounts by property_id
         $byProperty = [];
         foreach ($allocs as $a) {
             $propertyId = (int) optional(optional($a->invoice)->unit)->property_id;
@@ -179,7 +235,6 @@ class PropertyPaymentSettlementService
             return;
         }
 
-        // Commission settings
         $defaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
         $defaultPct = is_numeric($defaultRaw) ? (float) $defaultRaw : 10.0;
         $defaultPct = max(0.0, $defaultPct);
@@ -202,7 +257,6 @@ class PropertyPaymentSettlementService
                 continue;
             }
 
-            // Split net-to-owners by ownership percent
             $links = DB::table('property_landlord')
                 ->where('property_id', $propertyId)
                 ->get(['user_id', 'ownership_percent']);
@@ -237,4 +291,3 @@ class PropertyPaymentSettlementService
         }
     }
 }
-

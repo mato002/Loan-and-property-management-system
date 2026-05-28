@@ -12,6 +12,7 @@ use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
 use App\Services\EquityBankService;
 use App\Services\PaymentMatchingService;
+use App\Support\MpesaSmsForwarderParser;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -130,7 +131,7 @@ class EquitySyncController extends Controller
             $liveStats['unmatched'] = (int) Payment::query()->where('status', 'unmatched')->count();
         }
 
-        return view('property.agent.equity.sync_status', [
+        return property_view('property.agent.equity.sync_status', [
             'runs' => $runs,
             'latest' => $latest,
             'latestSuccess' => $latestSuccess,
@@ -176,25 +177,14 @@ class EquitySyncController extends Controller
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
         $items = $query->paginate($perPage)->withQueryString();
 
-        $txnIds = $items->getCollection()->pluck('transaction_id')->filter()->values()->all();
-        $smsSourceMap = $this->loadSmsSourceMap($txnIds);
-        $items->setCollection(
-            $items->getCollection()->map(function ($item) use ($hasPaymentMethod, $smsSourceMap) {
-                $item->source_label = $this->resolveSourceLabel(
-                    (string) ($item->transaction_id ?? ''),
-                    $hasPaymentMethod ? (string) ($item->payment_method ?? '') : '',
-                    $smsSourceMap
-                );
+        $this->enrichUnmatchedItems($items->getCollection(), $hasPaymentMethod);
 
-                return $item;
-            })
-        );
-
-        return view('property.agent.equity.unmatched_payments', [
+        return property_view('property.agent.equity.unmatched_payments', [
             'items' => $items,
             'hasPaymentMethod' => $hasPaymentMethod,
             'filters' => [
                 'q' => (string) $request->query('q', ''),
+                'name' => (string) $request->query('name', ''),
                 'source' => (string) $request->query('source', ''),
                 'from' => (string) $request->query('from', ''),
                 'to' => (string) $request->query('to', ''),
@@ -211,26 +201,29 @@ class EquitySyncController extends Controller
 
         $hasPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
         $query = $this->buildUnmatchedQuery($request, $hasPaymentMethod);
-        $txnIds = (clone $query)->pluck('transaction_id')->filter()->values()->all();
-        $smsSourceMap = $this->loadSmsSourceMap($txnIds);
+        $messageMaps = $this->loadUnmatchedMessageMaps((clone $query)->pluck('transaction_id')->all());
         $format = strtolower((string) $request->query('format', 'csv'));
         if ($format === 'pdf') {
             return TabularExport::stream(
                 'unmatched-payments-'.now()->format('Ymd_His'),
-                ['Date', 'Transaction', 'Amount', 'Account', 'Phone', 'Source', 'Reason'],
-                function () use ($query, $hasPaymentMethod, $smsSourceMap) {
+                ['Date', 'Transaction', 'Payer name', 'Amount', 'Account', 'Phone', 'Source', 'Message', 'Reason'],
+                function () use ($query, $hasPaymentMethod, $messageMaps) {
                     foreach ($query->cursor() as $item) {
+                        $this->enrichUnmatchedItem(
+                            $item,
+                            $hasPaymentMethod,
+                            $messageMaps['ingests'],
+                            $messageMaps['payment_messages']
+                        );
                         yield [
                             optional($item->created_at)->format('Y-m-d H:i:s'),
                             (string) $item->transaction_id,
+                            (string) ($item->payer_name ?? ''),
                             number_format((float) $item->amount, 2, '.', ''),
                             (string) ($item->account_number ?? ''),
                             (string) ($item->phone ?? ''),
-                            $this->resolveSourceLabel(
-                                (string) ($item->transaction_id ?? ''),
-                                $hasPaymentMethod ? (string) ($item->payment_method ?? '') : '',
-                                $smsSourceMap
-                            ),
+                            (string) ($item->source_label ?? 'Equity'),
+                            (string) ($item->display_message ?? ''),
                             (string) ($item->reason ?? ''),
                         ];
                     }
@@ -247,29 +240,34 @@ class EquitySyncController extends Controller
             ? 'application/vnd.ms-excel; charset=UTF-8'
             : 'text/csv; charset=UTF-8';
 
-        return response()->streamDownload(function () use ($query, $sep, $hasPaymentMethod, $smsSourceMap) {
+        return response()->streamDownload(function () use ($query, $sep, $hasPaymentMethod, $messageMaps) {
             $out = fopen('php://output', 'w');
             if (! $out) {
                 return;
             }
+            $headers = ['Date', 'Transaction', 'Payer name', 'Amount', 'Account', 'Phone', 'Source', 'Message', 'Reason'];
             if ($sep === ',') {
-                fputcsv($out, ['Date', 'Transaction', 'Amount', 'Account', 'Phone', 'Source', 'Reason']);
+                fputcsv($out, $headers);
             } else {
-                fwrite($out, implode($sep, ['Date', 'Transaction', 'Amount', 'Account', 'Phone', 'Source', 'Reason'])."\n");
+                fwrite($out, implode($sep, $headers)."\n");
             }
 
             foreach ($query->cursor() as $item) {
+                $this->enrichUnmatchedItem(
+                    $item,
+                    $hasPaymentMethod,
+                    $messageMaps['ingests'],
+                    $messageMaps['payment_messages']
+                );
                 $row = [
                     optional($item->created_at)->format('Y-m-d H:i:s'),
                     (string) $item->transaction_id,
+                    (string) ($item->payer_name ?? ''),
                     number_format((float) $item->amount, 2, '.', ''),
                     (string) ($item->account_number ?? ''),
                     (string) ($item->phone ?? ''),
-                    $this->resolveSourceLabel(
-                        (string) ($item->transaction_id ?? ''),
-                        $hasPaymentMethod ? (string) ($item->payment_method ?? '') : '',
-                        $smsSourceMap
-                    ),
+                    (string) ($item->source_label ?? 'Equity'),
+                    (string) ($item->display_message ?? ''),
                     (string) ($item->reason ?? ''),
                 ];
 
@@ -298,17 +296,7 @@ class EquitySyncController extends Controller
         $items = $this->buildUnmatchedQuery($request, $hasPaymentMethod)
             ->limit(2000)
             ->get();
-        $txnIds = $items->pluck('transaction_id')->filter()->values()->all();
-        $smsSourceMap = $this->loadSmsSourceMap($txnIds);
-        $items = $items->map(function ($item) use ($hasPaymentMethod, $smsSourceMap) {
-            $item->source_label = $this->resolveSourceLabel(
-                (string) ($item->transaction_id ?? ''),
-                $hasPaymentMethod ? (string) ($item->payment_method ?? '') : '',
-                $smsSourceMap
-            );
-
-            return $item;
-        });
+        $this->enrichUnmatchedItems($items, $hasPaymentMethod);
 
         return response()->view('property.agent.equity.unmatched_payments_print', [
             'items' => $items,
@@ -324,9 +312,20 @@ class EquitySyncController extends Controller
 
         $this->authorizeUnassignedPaymentAccess($request, $unassignedPayment);
 
-        return view('property.agent.equity.unmatched_assign', [
+        $tenantQuery = PmTenant::query()->orderBy('name');
+        $user = $request->user();
+        if (
+            $user
+            && ($user->is_super_admin ?? false) !== true
+            && (string) ($user->property_portal_role ?? '') === 'agent'
+            && Schema::hasColumn('pm_tenants', 'agent_user_id')
+        ) {
+            $tenantQuery->where('agent_user_id', $user->id);
+        }
+
+        return property_view('property.agent.equity.unmatched_assign', [
             'item' => $unassignedPayment,
-            'tenants' => PmTenant::query()->orderBy('name')->get(['id', 'name', 'phone', 'account_number']),
+            'tenants' => $tenantQuery->get(['id', 'name', 'phone', 'account_number']),
         ]);
     }
 
@@ -592,9 +591,29 @@ class EquitySyncController extends Controller
             }
         }
 
-        $summary = "Bulk auto re-match complete. Matched: {$matched}, Skipped: {$skipped}, Failed: {$failed}.";
+        $summary = "Matched: {$matched}, Skipped: {$skipped}, Failed: {$failed}.";
 
-        return back()->with($failed > 0 ? 'status' : 'success', $summary);
+        if ($matched === 0 && $skipped === 0 && $failed === 0) {
+            return back()->with('info', 'No payments were processed.');
+        }
+
+        $flash = [
+            'title' => 'Bulk auto re-match complete',
+            'text' => $summary,
+            'confirmButtonColor' => '#2563eb',
+        ];
+
+        if ($failed > 0) {
+            $flash['icon'] = 'warning';
+            $flash['title'] = 'Bulk auto re-match finished with errors';
+        } elseif ($matched > 0) {
+            $flash['icon'] = 'success';
+        } else {
+            $flash['icon'] = 'info';
+            $flash['title'] = 'No payments could be auto-matched';
+        }
+
+        return back()->with('swal_flash', $flash);
     }
 
     public function allPayments(Request $request): View|StreamedResponse
@@ -749,7 +768,7 @@ class EquitySyncController extends Controller
             $trendByDay[$day]['total'] += $amount;
         }
 
-        return view('property.agent.equity.all_payments', [
+        return property_view('property.agent.equity.all_payments', [
             'items' => tap($query->paginate($perPage)->withQueryString(), function ($paginator) {
                 $paginator->setCollection(
                     $paginator->getCollection()->map(function (Payment $item) {
@@ -848,7 +867,7 @@ class EquitySyncController extends Controller
 
     private function notReadyView(string $reason): View
     {
-        return view('property.agent.equity.not_ready', [
+        return property_view('property.agent.equity.not_ready', [
             'reason' => $reason,
         ]);
     }
@@ -875,6 +894,32 @@ class EquitySyncController extends Controller
                     ->orWhere('reason', 'like', '%'.$q.'%');
             });
         }
+        if ($request->filled('name')) {
+            $like = '%'.trim((string) $request->query('name')).'%';
+            $hasSms = Schema::hasTable('pm_sms_ingests');
+            $hasPayments = Schema::hasTable('payments');
+            if ($hasSms || $hasPayments) {
+                $query->where(function (Builder $outer) use ($like, $hasSms, $hasPayments) {
+                    if ($hasSms) {
+                        $outer->whereExists(function ($sub) use ($like) {
+                            $sub->selectRaw('1')
+                                ->from('pm_sms_ingests as sms')
+                                ->whereColumn('sms.provider_txn_code', 'unassigned_payments.transaction_id')
+                                ->where('sms.raw_message', 'like', $like);
+                        });
+                    }
+                    if ($hasPayments) {
+                        $exists = $hasSms ? 'orWhereExists' : 'whereExists';
+                        $outer->{$exists}(function ($sub) use ($like) {
+                            $sub->selectRaw('1')
+                                ->from('payments as p')
+                                ->whereColumn('p.transaction_id', 'unassigned_payments.transaction_id')
+                                ->where('p.raw_payload', 'like', $like);
+                        });
+                    }
+                });
+            }
+        }
         if ($hasPaymentMethod && $request->filled('source')) {
             $source = strtolower((string) $request->query('source'));
             if (in_array($source, ['equity', 'sms_forwarder'], true)) {
@@ -886,40 +931,160 @@ class EquitySyncController extends Controller
     }
 
     /**
-     * @param  array<int,string>  $transactionIds
-     * @return array<string,string>
+     * @param  \Illuminate\Support\Collection<int, UnassignedPayment>|\Illuminate\Database\Eloquent\Collection<int, UnassignedPayment>  $items
      */
-    private function loadSmsSourceMap(array $transactionIds): array
+    private function enrichUnmatchedItems($items, bool $hasPaymentMethod): void
     {
-        if ($transactionIds === []) {
+        if ($items->isEmpty()) {
+            return;
+        }
+
+        $messageMaps = $this->loadUnmatchedMessageMaps($items->pluck('transaction_id')->all());
+        $items->each(function (UnassignedPayment $item) use ($hasPaymentMethod, $messageMaps) {
+            $this->enrichUnmatchedItem(
+                $item,
+                $hasPaymentMethod,
+                $messageMaps['ingests'],
+                $messageMaps['payment_messages']
+            );
+        });
+    }
+
+    /**
+     * @param  array<int, mixed>  $transactionIds
+     * @return array{ingests: array<string, PmSmsIngest>, payment_messages: array<string, string>}
+     */
+    private function loadUnmatchedMessageMaps(array $transactionIds): array
+    {
+        $txnIds = collect($transactionIds)
+            ->filter()
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        return [
+            'ingests' => $this->loadSmsIngestMap($txnIds),
+            'payment_messages' => $this->loadPaymentRawMessageMap($txnIds),
+        ];
+    }
+
+    /**
+     * @param  array<string, PmSmsIngest>  $ingestMap
+     * @param  array<string, string>  $paymentMessageMap
+     */
+    private function enrichUnmatchedItem(
+        UnassignedPayment $item,
+        bool $hasPaymentMethod,
+        ?array $ingestMap = null,
+        ?array $paymentMessageMap = null
+    ): void {
+        $txn = (string) ($item->transaction_id ?? '');
+        if ($ingestMap === null || $paymentMessageMap === null) {
+            $ingestMap = $this->loadSmsIngestMap([$txn]);
+            $paymentMessageMap = $this->loadPaymentRawMessageMap([$txn]);
+        }
+
+        $ingest = $ingestMap[$txn] ?? null;
+        $message = (string) ($ingest?->raw_message ?? '');
+        if ($message === '') {
+            $message = (string) ($paymentMessageMap[$txn] ?? '');
+        }
+
+        $item->display_message = $message;
+        $item->payer_name = $this->resolvePayerName($message, $ingest?->payload);
+        $item->source_label = $this->resolveSourceLabel(
+            $txn,
+            $hasPaymentMethod ? (string) ($item->payment_method ?? '') : '',
+            $ingest
+        );
+    }
+
+    /**
+     * @param  array<int, string>  $transactionIds
+     * @return array<string, PmSmsIngest>
+     */
+    private function loadSmsIngestMap(array $transactionIds): array
+    {
+        if ($transactionIds === [] || ! Schema::hasTable('pm_sms_ingests')) {
             return [];
         }
 
         return PmSmsIngest::query()
             ->whereIn('provider_txn_code', $transactionIds)
-            ->get(['provider_txn_code', 'provider'])
-            ->mapWithKeys(function (PmSmsIngest $ingest) {
-                $provider = strtolower((string) ($ingest->provider ?? ''));
-                $label = $provider !== '' ? 'SMS Ingest ('.strtoupper($provider).')' : 'SMS Ingest';
-
-                return [(string) $ingest->provider_txn_code => $label];
-            })
+            ->get(['provider_txn_code', 'provider', 'raw_message', 'payload'])
+            ->keyBy(fn (PmSmsIngest $ingest) => (string) $ingest->provider_txn_code)
             ->all();
     }
 
     /**
-     * @param  array<string,string>  $smsSourceMap
+     * @param  array<int, string>  $transactionIds
+     * @return array<string, string>
      */
-    private function resolveSourceLabel(string $transactionId, string $paymentMethod, array $smsSourceMap): string
+    private function loadPaymentRawMessageMap(array $transactionIds): array
     {
-        if (isset($smsSourceMap[$transactionId])) {
-            return $smsSourceMap[$transactionId];
+        if ($transactionIds === [] || ! Schema::hasTable('payments')) {
+            return [];
+        }
+
+        $map = [];
+        Payment::query()
+            ->whereIn('transaction_id', $transactionIds)
+            ->get(['transaction_id', 'raw_payload'])
+            ->each(function (Payment $payment) use (&$map) {
+                $txn = (string) ($payment->transaction_id ?? '');
+                if ($txn === '' || isset($map[$txn])) {
+                    return;
+                }
+                $payload = is_array($payment->raw_payload) ? $payment->raw_payload : [];
+                $message = (string) ($payload['raw_message'] ?? '');
+                if ($message === '' && isset($payload['message'])) {
+                    $message = (string) $payload['message'];
+                }
+                if ($message !== '') {
+                    $map[$txn] = $message;
+                }
+            });
+
+        return $map;
+    }
+
+    private function resolveSourceLabel(string $transactionId, string $paymentMethod, ?PmSmsIngest $ingest): string
+    {
+        if ($ingest !== null) {
+            $provider = strtolower((string) ($ingest->provider ?? ''));
+            if ($provider !== '') {
+                return 'SMS Ingest ('.strtoupper($provider).')';
+            }
+
+            return 'SMS Ingest';
         }
         if ($paymentMethod === 'sms_forwarder') {
             return 'SMS Ingest';
         }
 
         return 'Equity';
+    }
+
+    private function resolvePayerName(string $message, mixed $payload): string
+    {
+        $parsed = MpesaSmsForwarderParser::extractMpesaFields($message);
+        $name = trim((string) ($parsed['sender_name'] ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        $normalized = MpesaSmsForwarderParser::normalizePayload($payload);
+        if (is_array($normalized)) {
+            foreach (['sender_name', 'payer_name', 'name', 'customer_name'] as $key) {
+                $candidate = trim((string) ($normalized[$key] ?? ''));
+                if ($candidate !== '') {
+                    return $candidate;
+                }
+            }
+        }
+
+        return '';
     }
 
     private function paymentMatchAgentUserId(): ?int
@@ -949,23 +1114,34 @@ class EquitySyncController extends Controller
         if ((string) ($user->property_portal_role ?? '') !== 'agent') {
             return;
         }
+
+        // Must mirror App\Models\UnassignedPayment global scope (agent_user_id
+        // attribution OR legacy phone/account tenant match).
+        if (Schema::hasColumn('unassigned_payments', 'agent_user_id')) {
+            $attributedAgentId = (int) ($unassignedPayment->agent_user_id ?? 0);
+            if ($attributedAgentId > 0 && $attributedAgentId === (int) $user->id) {
+                return;
+            }
+        }
+
         if (! Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+            abort(404);
+        }
+
+        $phone = (string) ($unassignedPayment->phone ?? '');
+        $account = (string) ($unassignedPayment->account_number ?? '');
+        if ($phone === '' && $account === '') {
             abort(404);
         }
 
         $owns = PmTenant::query()
             ->where('agent_user_id', $user->id)
-            ->where(function ($q) use ($unassignedPayment) {
-                $phone = (string) ($unassignedPayment->phone ?? '');
-                $account = (string) ($unassignedPayment->account_number ?? '');
+            ->where(function ($q) use ($phone, $account) {
                 if ($phone !== '') {
                     $q->where('phone', $phone);
                 }
                 if ($account !== '') {
                     $q->orWhere('account_number', $account);
-                }
-                if ($phone === '' && $account === '') {
-                    $q->whereRaw('1 = 0');
                 }
             })
             ->exists();

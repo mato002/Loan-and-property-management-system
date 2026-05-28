@@ -2,6 +2,7 @@
 
 namespace App\View\Components;
 
+use App\Support\Property\PropertyUiVersion;
 use Illuminate\View\Component;
 use Illuminate\View\View;
 
@@ -36,7 +37,10 @@ class PropertyLayout extends Component
     public function render(): View
     {
         $role = $this->inferRole();
+        $view = request()->header('Turbo-Frame') === 'property-main'
+            ? PropertyUiVersion::frameLayoutView()
+            : PropertyUiVersion::layoutView();
 
-        return view('layouts.property', ['propertyPortal' => $role]);
+        return view($view, ['propertyPortal' => $role]);
     }
 }

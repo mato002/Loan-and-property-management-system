@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\UserModuleAccess;
 use App\Mail\TenantPortalCredentialsMail;
 use App\Models\PmInvoice;
+use App\Models\PmLease;
 use App\Models\PmPayment;
 use App\Models\PmTenant;
 use App\Models\PropertyPortalSetting;
@@ -25,12 +26,14 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyPaymentAllocationRepairService;
+use App\Services\Property\TenantCreditService;
 
 class PmTenantDirectoryController extends Controller
 {
     public function directory(): View
     {
-        return view('property.agent.tenants.directory', $this->tenantListPayload(
+        return property_view('property.agent.tenants.directory', $this->tenantListPayload(
             pageTitle: 'Tenant list',
             pageSubtitle: 'Operational directory — add tenants here, then leases and billing.',
             showTenantForm: true,
@@ -301,20 +304,14 @@ class PmTenantDirectoryController extends Controller
      */
     private function tenantListPayload(string $pageTitle, string $pageSubtitle, bool $showTenantForm): array
     {
-        $tenantQuery = $this->buildTenantDirectoryQuery(request());
-        $statsSource = (clone $tenantQuery)->get();
-        $perPage = $this->directoryPerPage(request());
+        $request = request();
+        $tenantQuery = $this->buildTenantDirectoryQuery($request);
+        $stats = $this->tenantDirectoryStatsFromQuery($request);
+        $perPage = $this->directoryPerPage($request);
         $tenants = $tenantQuery
             ->orderBy('name')
             ->paginate($perPage)
             ->withQueryString();
-
-        $stats = [
-            ['label' => 'Tenants', 'value' => (string) $statsSource->count(), 'hint' => 'Filtered records'],
-            ['label' => 'With portal login', 'value' => (string) $statsSource->whereNotNull('user_id')->count(), 'hint' => 'Linked user'],
-            ['label' => 'High risk flagged', 'value' => (string) $statsSource->where('risk_level', 'high')->count(), 'hint' => 'Manual'],
-            ['label' => 'Total leases', 'value' => (string) $statsSource->sum('leases_count'), 'hint' => 'Linked'],
-        ];
 
         $rows = $tenants->getCollection()->map(function (PmTenant $t) {
             $leaseEnd = $t->leases_max_end_date
@@ -417,6 +414,39 @@ class PmTenantDirectoryController extends Controller
             ->withCount(['leases', 'invoices'])
             ->withMax('leases', 'end_date');
 
+        $this->applyTenantDirectoryFilters($query, $request);
+
+        return $query;
+    }
+
+    /**
+     * @return array<int, array{label: string, value: string, hint: string}>
+     */
+    private function tenantDirectoryStatsFromQuery(Request $request): array
+    {
+        $filteredTenants = PmTenant::query();
+        $this->applyTenantDirectoryFilters($filteredTenants, $request);
+
+        $aggregates = (clone $filteredTenants)
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw('COALESCE(SUM(CASE WHEN pm_tenants.user_id IS NOT NULL THEN 1 ELSE 0 END), 0) as portal_count')
+            ->selectRaw("COALESCE(SUM(CASE WHEN pm_tenants.risk_level = 'high' THEN 1 ELSE 0 END), 0) as high_risk_count")
+            ->first();
+
+        $totalLeases = PmLease::query()
+            ->whereIn('pm_tenant_id', (clone $filteredTenants)->select('pm_tenants.id'))
+            ->count();
+
+        return [
+            ['label' => 'Tenants', 'value' => (string) (int) ($aggregates->total_count ?? 0), 'hint' => 'Filtered records'],
+            ['label' => 'With portal login', 'value' => (string) (int) ($aggregates->portal_count ?? 0), 'hint' => 'Linked user'],
+            ['label' => 'High risk flagged', 'value' => (string) (int) ($aggregates->high_risk_count ?? 0), 'hint' => 'Manual'],
+            ['label' => 'Total leases', 'value' => (string) $totalLeases, 'hint' => 'Linked'],
+        ];
+    }
+
+    private function applyTenantDirectoryFilters(Builder $query, Request $request): void
+    {
         $search = trim((string) $request->string('q'));
         if ($search !== '') {
             $query->where(function (Builder $builder) use ($search): void {
@@ -439,8 +469,6 @@ class PmTenantDirectoryController extends Controller
         } elseif ($portal === 'without') {
             $query->whereNull('user_id');
         }
-
-        return $query;
     }
 
     public function store(Request $request): RedirectResponse
@@ -675,8 +703,9 @@ class PmTenantDirectoryController extends Controller
     {
         $tenant->load([
             'leases' => fn ($q) => $q->with(['units.property'])->orderByDesc('start_date'),
-            'invoices' => fn ($q) => $q->latest('issue_date')->limit(10),
         ])->loadCount(['leases', 'invoices']);
+
+        $billing = $this->resolveTenantBillingSnapshot($tenant);
 
         $leaseRows = $tenant->leases->map(function ($lease) {
             $units = $lease->units->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
@@ -691,22 +720,20 @@ class PmTenantDirectoryController extends Controller
             ];
         });
 
-        $invoiceTotal = (float) $tenant->invoices->sum('amount');
-        $invoicePaid = (float) $tenant->invoices->sum('amount_paid');
-        $openingArrears = (float) ($tenant->opening_arrears_amount ?? 0);
-        $completedPayments = (float) $tenant->payments()
+        $creditBalance = app(TenantCreditService::class)->balanceForTenant((int) $tenant->id);
+        $lastPayment = $tenant->payments()
             ->where('status', PmPayment::STATUS_COMPLETED)
-            ->sum('amount');
-        $invoiceDue = max(0.0, ($openingArrears + $invoiceTotal) - max($invoicePaid, $completedPayments));
+            ->orderByDesc('paid_at')
+            ->orderByDesc('id')
+            ->first();
 
         return view('property.agent.tenants.show', [
             'tenant' => $tenant,
             'leaseRows' => $leaseRows,
-            'invoiceTotals' => [
-                'total' => $invoiceTotal,
-                'paid' => $invoicePaid,
-                'due' => $invoiceDue,
-            ],
+            'invoiceTotals' => $billing['invoice_totals'],
+            'leaseCarryForward' => $billing['lease_carry_forward'],
+            'creditBalance' => $creditBalance,
+            'lastPayment' => $lastPayment,
         ]);
     }
 
@@ -955,7 +982,38 @@ class PmTenantDirectoryController extends Controller
             'invoiceSummary' => $invoiceSummary,
             'paymentSummary' => $paymentSummary,
             'embed' => $embed,
+            'canRepairAllocations' => (bool) auth()->user()?->hasPmPermission('payments.settle'),
         ]);
+    }
+
+    public function repairAllocations(
+        Request $request,
+        PmTenant $tenant,
+        PropertyPaymentAllocationRepairService $repair,
+    ): RedirectResponse {
+        $result = $repair->repairTenant((int) $tenant->id);
+
+        $message = match (true) {
+            $result['allocations_moved'] > 0 => sprintf(
+                'Payment allocations rebuilt (oldest invoice first). %d invoice balance(s) corrected across %d payment(s).',
+                $result['invoices_synced'],
+                $result['allocations_moved'],
+            ),
+            $result['invoices_synced'] > 0 => sprintf(
+                'Invoice balances updated from payment allocations (%d invoice(s)).',
+                $result['invoices_synced'],
+            ),
+            default => 'Allocations already correct — no changes made.',
+        };
+
+        $query = array_filter([
+            'from' => $request->input('from', $request->query('from')),
+            'to' => $request->input('to', $request->query('to')),
+        ], static fn ($v) => $v !== null && $v !== '');
+
+        return redirect()
+            ->route('property.tenants.statement', ['tenant' => $tenant->id] + $query)
+            ->with('success', $message);
     }
 
     public function edit(PmTenant $tenant): View
@@ -1162,6 +1220,78 @@ class PmTenantDirectoryController extends Controller
             'opening_arrears_as_of' => $asOf,
             'opening_arrears_notes' => $data['opening_arrears_notes'] ?? null,
             'opening_arrears_items' => $items->all(),
+        ];
+    }
+
+    /**
+     * @return array{
+     *     invoice_totals: array{count:int,total:float,paid:float,due:float},
+     *     lease_carry_forward: array{total:float,lines:array<int,array<string,mixed>>,invoiced:bool}
+     * }
+     */
+    private function resolveTenantBillingSnapshot(PmTenant $tenant): array
+    {
+        $arrearsPrefix = '[Lease Opening Arrears]';
+
+        // Bypass agent visibility scope only — keep SoftDeletes so replaced carry-forward
+        // invoices are not counted twice in outstanding totals.
+        $invoiceAgg = PmInvoice::query()
+            ->withoutGlobalScope('agent_workspace')
+            ->liveBalances()
+            ->where('pm_tenant_id', $tenant->id)
+            ->selectRaw('COUNT(*) as invoice_count')
+            ->selectRaw('COALESCE(SUM(amount), 0) as total_billed')
+            ->selectRaw('COALESCE(SUM(amount_paid), 0) as total_paid')
+            ->selectRaw('COALESCE(SUM(GREATEST(0, amount - COALESCE(amount_paid, 0))), 0) as outstanding')
+            ->first();
+
+        $invoiceOutstanding = round((float) ($invoiceAgg->outstanding ?? 0), 2);
+        $tenantOpening = round((float) ($tenant->opening_arrears_amount ?? 0), 2);
+
+        $leaseLines = [];
+        $leaseCarryForwardTotal = 0.0;
+        foreach ($tenant->leases ?? [] as $lease) {
+            foreach (collect((array) ($lease->opening_arrears ?? [])) as $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+                $amount = (float) ($row['amount'] ?? 0);
+                if ($amount <= 0) {
+                    continue;
+                }
+                $leaseCarryForwardTotal += $amount;
+                $leaseLines[] = [
+                    'lease_id' => (int) $lease->id,
+                    'charge_type' => (string) ($row['charge_type'] ?? 'other'),
+                    'specific_charge' => (string) ($row['specific_charge'] ?? ''),
+                    'period' => (string) ($row['period'] ?? ''),
+                    'amount' => $amount,
+                ];
+            }
+        }
+        $leaseCarryForwardTotal = round($leaseCarryForwardTotal, 2);
+
+        $hasLeaseCarryForwardInvoices = PmInvoice::query()
+            ->withoutGlobalScope('agent_workspace')
+            ->liveBalances()
+            ->where('pm_tenant_id', $tenant->id)
+            ->where('description', 'like', $arrearsPrefix.'%')
+            ->exists();
+
+        $uninvoicedLeaseCarryForward = $hasLeaseCarryForwardInvoices ? 0.0 : $leaseCarryForwardTotal;
+
+        return [
+            'invoice_totals' => [
+                'count' => (int) ($invoiceAgg->invoice_count ?? 0),
+                'total' => round((float) ($invoiceAgg->total_billed ?? 0), 2),
+                'paid' => round((float) ($invoiceAgg->total_paid ?? 0), 2),
+                'due' => round($invoiceOutstanding + $tenantOpening + $uninvoicedLeaseCarryForward, 2),
+            ],
+            'lease_carry_forward' => [
+                'total' => $leaseCarryForwardTotal,
+                'lines' => $leaseLines,
+                'invoiced' => $hasLeaseCarryForwardInvoices,
+            ],
         ];
     }
 

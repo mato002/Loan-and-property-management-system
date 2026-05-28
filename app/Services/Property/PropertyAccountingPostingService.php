@@ -2,6 +2,7 @@
 
 namespace App\Services\Property;
 
+use App\Models\AccountingChartAccount;
 use App\Models\AccountingJournalBatch;
 use App\Models\PmAccountingEntry;
 use App\Models\PmInvoice;
@@ -14,12 +15,18 @@ class PropertyAccountingPostingService
 {
     private const ACC_CASH_BANK = '1100';
     private const ACC_AR = '1200';
+    private const ACC_UTILITY_AR = '1210';
     private const ACC_SUSPENSE = '1250';
     private const ACC_LANDLORD_CLEARING = '1300';
     private const ACC_LANDLORD_PAYABLE = '2100';
+    private const ACC_TENANT_CREDIT_LIABILITY = '2260';
     private const ACC_ACCOUNTS_PAYABLE = '2300';
     private const ACC_RENTAL_INCOME = '4100';
     private const ACC_MANAGEMENT_FEE_INCOME = '4200';
+    private const ACC_UTILITY_RECOVERY_INCOME = '4300';
+    private const ACC_WATER_REVENUE = '4310';
+    private const ACC_PENALTY_INCOME = '4400';
+    private const ACC_UTILITY_PENALTY_INCOME = '4410';
     private const ACC_MAINTENANCE_EXPENSE = '5101';
 
     /**
@@ -63,6 +70,9 @@ class PropertyAccountingPostingService
         $date = $invoice->issue_date?->toDateString() ?? now()->toDateString();
 
         $journal = app(PropertyJournalService::class);
+        $receivableCode = self::receivableAccountCodeForInvoice($invoice);
+        $incomeCode = self::incomeAccountCodeForInvoice($invoice);
+
         $journal->postBatch([
             'date' => $date,
             'description' => 'Invoice '.$invoice->invoice_no.' issued',
@@ -75,7 +85,7 @@ class PropertyAccountingPostingService
             'posted_by' => $actor?->id,
         ], [
             [
-                'account_id' => $journal->accountIdByCode(self::ACC_AR),
+                'account_id' => $journal->accountIdByCode($receivableCode),
                 'debit' => (float) $invoice->amount,
                 'credit' => 0,
                 'reference' => $invoice->invoice_no,
@@ -85,7 +95,7 @@ class PropertyAccountingPostingService
                 'agent_user_id' => $agentUserId,
             ],
             [
-                'account_id' => $journal->accountIdByCode(self::ACC_RENTAL_INCOME),
+                'account_id' => $journal->accountIdByCode($incomeCode),
                 'debit' => 0,
                 'credit' => (float) $invoice->amount,
                 'reference' => $invoice->invoice_no,
@@ -100,7 +110,10 @@ class PropertyAccountingPostingService
             'entry_date' => $date,
             'property_id' => $propertyId,
             'recorded_by_user_id' => $actor?->id,
-            'account_name' => self::accountName('accounts_receivable', 'Accounts Receivable'),
+            'account_name' => self::accountName(
+                $receivableCode === self::ACC_UTILITY_AR ? 'utility_accounts_receivable' : 'accounts_receivable',
+                $receivableCode === self::ACC_UTILITY_AR ? 'Utility Accounts Receivable' : 'Accounts Receivable'
+            ),
             'category' => PmAccountingEntry::CATEGORY_ASSET,
             'entry_type' => PmAccountingEntry::TYPE_DEBIT,
             'amount' => (float) $invoice->amount,
@@ -113,7 +126,10 @@ class PropertyAccountingPostingService
             'entry_date' => $date,
             'property_id' => $propertyId,
             'recorded_by_user_id' => $actor?->id,
-            'account_name' => self::accountName('rental_income', 'Rental Income'),
+            'account_name' => self::accountName(
+                self::incomeAccountMapKey($invoice),
+                self::incomeAccountLabel($invoice)
+            ),
             'category' => PmAccountingEntry::CATEGORY_INCOME,
             'entry_type' => PmAccountingEntry::TYPE_CREDIT,
             'amount' => (float) $invoice->amount,
@@ -121,6 +137,138 @@ class PropertyAccountingPostingService
             'description' => 'Invoice issued',
             'source_key' => 'invoice_issued',
         ]);
+    }
+
+    /**
+     * Post incremental water penalty to utility AR / utility penalty income.
+     */
+    public static function postWaterPenalty(PmInvoice $invoice, float $penaltyAmount, int $applicationId, ?User $actor = null): void
+    {
+        if ($penaltyAmount <= 0 || (string) $invoice->invoice_type !== PmInvoice::TYPE_WATER) {
+            return;
+        }
+
+        $existing = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_invoice_penalty_application')
+            ->where('source_id', $applicationId)
+            ->where('event_type', 'water_penalty_applied')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->exists();
+        if ($existing) {
+            return;
+        }
+
+        $invoice->loadMissing('unit.property');
+        $propertyId = optional($invoice->unit)->property_id;
+        $agentUserId = (int) ($invoice->agent_user_id
+            ?? optional(optional($invoice->unit)->property)->agent_user_id
+            ?? 0) ?: null;
+        $date = now()->toDateString();
+        $reference = $invoice->invoice_no.'-PEN-'.$applicationId;
+
+        $journal = app(PropertyJournalService::class);
+        $journal->postBatch([
+            'date' => $date,
+            'description' => 'Water penalty on '.$invoice->invoice_no,
+            'source_type' => 'pm_invoice_penalty_application',
+            'source_id' => $applicationId,
+            'event_type' => 'water_penalty_applied',
+            'source_key' => 'water_penalty:'.$applicationId,
+            'agent_user_id' => $agentUserId,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], [
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_UTILITY_AR),
+                'debit' => $penaltyAmount,
+                'credit' => 0,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'tenant_id' => $invoice->pm_tenant_id,
+                'unit_id' => $invoice->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::resolveAccountCode(self::ACC_UTILITY_PENALTY_INCOME, self::ACC_PENALTY_INCOME)),
+                'debit' => 0,
+                'credit' => $penaltyAmount,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'tenant_id' => $invoice->pm_tenant_id,
+                'unit_id' => $invoice->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+        ]);
+    }
+
+    public static function reverseWaterPenalty(PmInvoice $invoice, float $penaltyAmount, int $applicationId, ?User $actor = null, ?string $reason = null): void
+    {
+        if ($penaltyAmount <= 0) {
+            return;
+        }
+
+        $batch = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_invoice_penalty_application')
+            ->where('source_id', $applicationId)
+            ->where('event_type', 'water_penalty_applied')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->first();
+
+        if ($batch) {
+            app(PropertyJournalService::class)->reverseBatch($batch, $actor?->id, $reason ?: 'Water penalty reversed');
+        }
+    }
+
+    public static function receivableAccountCodeForInvoice(PmInvoice $invoice): string
+    {
+        $type = (string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT);
+
+        return match ($type) {
+            PmInvoice::TYPE_WATER => self::resolveAccountCode(self::ACC_UTILITY_AR, self::ACC_AR),
+            PmInvoice::TYPE_MIXED => self::resolveAccountCode(self::ACC_UTILITY_AR, self::ACC_AR),
+            default => self::ACC_AR,
+        };
+    }
+
+    public static function incomeAccountCodeForInvoice(PmInvoice $invoice): string
+    {
+        $type = (string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT);
+
+        return match ($type) {
+            PmInvoice::TYPE_WATER => self::resolveAccountCode(self::ACC_WATER_REVENUE, self::ACC_UTILITY_RECOVERY_INCOME),
+            PmInvoice::TYPE_MIXED => self::resolveAccountCode(self::ACC_UTILITY_RECOVERY_INCOME, self::ACC_RENTAL_INCOME),
+            default => self::ACC_RENTAL_INCOME,
+        };
+    }
+
+    private static function incomeAccountMapKey(PmInvoice $invoice): string
+    {
+        return match ((string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT)) {
+            PmInvoice::TYPE_WATER => 'water_revenue',
+            PmInvoice::TYPE_MIXED => 'utility_recovery_income',
+            default => 'rental_income',
+        };
+    }
+
+    private static function incomeAccountLabel(PmInvoice $invoice): string
+    {
+        return match ((string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT)) {
+            PmInvoice::TYPE_WATER => 'Water Revenue',
+            PmInvoice::TYPE_MIXED => 'Utility Recovery Income',
+            default => 'Rental Income',
+        };
+    }
+
+    /**
+     * Prefer primary code; fall back if chart account missing (legacy installs).
+     */
+    private static function resolveAccountCode(string $primary, string $fallback): string
+    {
+        if (AccountingChartAccount::query()->where('code', $primary)->exists()) {
+            return $primary;
+        }
+
+        return $fallback;
     }
 
     /**
@@ -156,7 +304,10 @@ class PropertyAccountingPostingService
             'entry_date' => $date,
             'property_id' => $propertyId,
             'recorded_by_user_id' => $actor?->id,
-            'account_name' => self::accountName('accounts_receivable', 'Accounts Receivable'),
+            'account_name' => self::accountName(
+                self::receivableAccountCodeForInvoice($invoice) === self::ACC_UTILITY_AR ? 'utility_accounts_receivable' : 'accounts_receivable',
+                self::receivableAccountCodeForInvoice($invoice) === self::ACC_UTILITY_AR ? 'Utility Accounts Receivable' : 'Accounts Receivable'
+            ),
             'category' => PmAccountingEntry::CATEGORY_ASSET,
             'entry_type' => PmAccountingEntry::TYPE_CREDIT,
             'amount' => (float) $invoice->amount,
@@ -168,7 +319,7 @@ class PropertyAccountingPostingService
             'entry_date' => $date,
             'property_id' => $propertyId,
             'recorded_by_user_id' => $actor?->id,
-            'account_name' => self::accountName('rental_income', 'Rental Income'),
+            'account_name' => self::accountName(self::incomeAccountMapKey($invoice), self::incomeAccountLabel($invoice)),
             'category' => PmAccountingEntry::CATEGORY_INCOME,
             'entry_type' => PmAccountingEntry::TYPE_DEBIT,
             'amount' => (float) $invoice->amount,
@@ -218,6 +369,8 @@ class PropertyAccountingPostingService
         $eventVersion = $forwardCount + 1;
 
         $journal = app(PropertyJournalService::class);
+        $receivableCode = self::receivableAccountCodeForInvoice($invoice);
+        $incomeCode = self::incomeAccountCodeForInvoice($invoice);
         $journal->postBatch([
             'date' => $date,
             'description' => 'Invoice '.$invoice->invoice_no.' re-issued (rev '.$eventVersion.')',
@@ -230,7 +383,7 @@ class PropertyAccountingPostingService
             'posted_by' => $actor?->id,
         ], [
             [
-                'account_id' => $journal->accountIdByCode(self::ACC_AR),
+                'account_id' => $journal->accountIdByCode($receivableCode),
                 'debit' => (float) $invoice->amount,
                 'credit' => 0,
                 'reference' => $invoice->invoice_no,
@@ -240,7 +393,7 @@ class PropertyAccountingPostingService
                 'agent_user_id' => $agentUserId,
             ],
             [
-                'account_id' => $journal->accountIdByCode(self::ACC_RENTAL_INCOME),
+                'account_id' => $journal->accountIdByCode($incomeCode),
                 'debit' => 0,
                 'credit' => (float) $invoice->amount,
                 'reference' => $invoice->invoice_no,
@@ -265,23 +418,17 @@ class PropertyAccountingPostingService
         $reference = $payment->external_ref ?: ('PAY-'.$payment->id);
         $entryDate = $payment->paid_at?->toDateString() ?? now()->toDateString();
 
+        $allocatedTotal = round((float) $payment->allocations->sum('amount'), 2);
+        $gross = round((float) $payment->amount, 2);
+        $creditToLiability = round(max(0.0, $gross - $allocatedTotal), 2);
+        $arSettled = round(min($allocatedTotal, $gross), 2);
+
         $commissionPct = self::defaultCommissionPercentForProperty($propertyId);
-        $gross = (float) $payment->amount;
-        $commission = round($gross * ($commissionPct / 100), 2);
-        $landlordNet = max(0.0, round($gross - $commission, 2));
+        $commission = round($arSettled * ($commissionPct / 100), 2);
+        $landlordNet = max(0.0, round($arSettled - $commission, 2));
 
         $journal = app(PropertyJournalService::class);
-        $journal->postBatch([
-            'date' => $entryDate,
-            'description' => 'Tenant payment received and settled',
-            'source_type' => 'pm_payment',
-            'source_id' => (int) $payment->id,
-            'event_type' => 'payment_received',
-            'source_key' => 'pm_payment:'.$payment->id.':received',
-            'agent_user_id' => $agentUserId,
-            'created_by' => $actor?->id,
-            'posted_by' => $actor?->id,
-        ], [
+        $lines = [
             [
                 'account_id' => $journal->accountIdByCode(self::ACC_CASH_BANK),
                 'debit' => $gross,
@@ -291,25 +438,60 @@ class PropertyAccountingPostingService
                 'tenant_id' => $payment->pm_tenant_id,
                 'agent_user_id' => $agentUserId,
             ],
-            [
-                'account_id' => $journal->accountIdByCode(self::ACC_AR),
+        ];
+
+        if ($arSettled > 0) {
+            $arByAccount = [];
+            foreach ($payment->allocations as $allocation) {
+                $invoice = $allocation->invoice;
+                if (! $invoice) {
+                    continue;
+                }
+                $code = self::receivableAccountCodeForInvoice($invoice);
+                $arByAccount[$code] = ($arByAccount[$code] ?? 0.0) + (float) $allocation->amount;
+            }
+            if ($arByAccount === []) {
+                $arByAccount[self::ACC_AR] = $arSettled;
+            }
+            foreach ($arByAccount as $accountCode => $amount) {
+                if ($amount <= 0) {
+                    continue;
+                }
+                $lines[] = [
+                    'account_id' => $journal->accountIdByCode($accountCode),
+                    'debit' => 0,
+                    'credit' => round($amount, 2),
+                    'reference' => $reference,
+                    'property_id' => $propertyId,
+                    'tenant_id' => $payment->pm_tenant_id,
+                    'agent_user_id' => $agentUserId,
+                ];
+            }
+        }
+
+        if ($creditToLiability > 0) {
+            $lines[] = [
+                'account_id' => $journal->accountIdByCode(self::ACC_TENANT_CREDIT_LIABILITY),
                 'debit' => 0,
-                'credit' => $gross,
+                'credit' => $creditToLiability,
                 'reference' => $reference,
                 'property_id' => $propertyId,
                 'tenant_id' => $payment->pm_tenant_id,
                 'agent_user_id' => $agentUserId,
-            ],
-            [
+            ];
+        }
+
+        if ($arSettled > 0) {
+            $lines[] = [
                 'account_id' => $journal->accountIdByCode(self::ACC_LANDLORD_CLEARING),
-                'debit' => $gross,
+                'debit' => $arSettled,
                 'credit' => 0,
                 'reference' => $reference,
                 'property_id' => $propertyId,
                 'tenant_id' => $payment->pm_tenant_id,
                 'agent_user_id' => $agentUserId,
-            ],
-            [
+            ];
+            $lines[] = [
                 'account_id' => $journal->accountIdByCode(self::ACC_LANDLORD_PAYABLE),
                 'debit' => 0,
                 'credit' => $landlordNet,
@@ -317,8 +499,8 @@ class PropertyAccountingPostingService
                 'property_id' => $propertyId,
                 'tenant_id' => $payment->pm_tenant_id,
                 'agent_user_id' => $agentUserId,
-            ],
-            [
+            ];
+            $lines[] = [
                 'account_id' => $journal->accountIdByCode(self::ACC_MANAGEMENT_FEE_INCOME),
                 'debit' => 0,
                 'credit' => $commission,
@@ -326,8 +508,22 @@ class PropertyAccountingPostingService
                 'property_id' => $propertyId,
                 'tenant_id' => $payment->pm_tenant_id,
                 'agent_user_id' => $agentUserId,
-            ],
-        ]);
+            ];
+        }
+
+        $journal->postBatch([
+            'date' => $entryDate,
+            'description' => $creditToLiability > 0
+                ? 'Tenant payment received (invoices + advance credit)'
+                : 'Tenant payment received and settled',
+            'source_type' => 'pm_payment',
+            'source_id' => (int) $payment->id,
+            'event_type' => 'payment_received',
+            'source_key' => 'pm_payment:'.$payment->id.':received',
+            'agent_user_id' => $agentUserId,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], $lines);
 
         self::firstOrCreateEntry([
             'entry_date' => $entryDate,
@@ -349,10 +545,123 @@ class PropertyAccountingPostingService
             'account_name' => self::accountName('accounts_receivable', 'Accounts Receivable'),
             'category' => PmAccountingEntry::CATEGORY_ASSET,
             'entry_type' => PmAccountingEntry::TYPE_CREDIT,
-            'amount' => (float) $payment->amount,
+            'amount' => $arSettled > 0 ? $arSettled : (float) $payment->amount,
             'reference' => $reference,
             'description' => 'Tenant payment allocation',
             'source_key' => 'payment_received',
+        ]);
+    }
+
+    /**
+     * Apply tenant advance credit to an open invoice.
+     * DR Tenant Credit Liability / CR Accounts Receivable
+     */
+    public static function postTenantCreditApplied(PmInvoice $invoice, float $amount, int $creditTransactionId, ?User $actor = null): void
+    {
+        if ($amount <= 0) {
+            return;
+        }
+
+        $existing = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_tenant_credit_transaction')
+            ->where('source_id', $creditTransactionId)
+            ->where('event_type', 'tenant_credit_applied')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->exists();
+        if ($existing) {
+            return;
+        }
+
+        $invoice->loadMissing('unit.property');
+        $propertyId = optional($invoice->unit)->property_id;
+        $agentUserId = (int) ($invoice->agent_user_id
+            ?? optional(optional($invoice->unit)->property)->agent_user_id
+            ?? 0) ?: null;
+        $date = now()->toDateString();
+        $reference = $invoice->invoice_no.'-CREDIT-'.$creditTransactionId;
+
+        $journal = app(PropertyJournalService::class);
+        $journal->postBatch([
+            'date' => $date,
+            'description' => 'Tenant advance credit applied to '.$invoice->invoice_no,
+            'source_type' => 'pm_tenant_credit_transaction',
+            'source_id' => $creditTransactionId,
+            'event_type' => 'tenant_credit_applied',
+            'source_key' => 'pm_tenant_credit:'.$creditTransactionId.':applied',
+            'agent_user_id' => $agentUserId,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], [
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_TENANT_CREDIT_LIABILITY),
+                'debit' => $amount,
+                'credit' => 0,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'tenant_id' => $invoice->pm_tenant_id,
+                'unit_id' => $invoice->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_AR),
+                'debit' => 0,
+                'credit' => $amount,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'tenant_id' => $invoice->pm_tenant_id,
+                'unit_id' => $invoice->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+        ]);
+    }
+
+    /**
+     * Refund unused tenant credit to cash.
+     * DR Tenant Credit Liability / CR Cash/Bank
+     */
+    public static function postTenantCreditRefund(int $tenantId, float $amount, ?string $reference, ?User $actor = null): void
+    {
+        if ($amount <= 0 || $tenantId <= 0) {
+            return;
+        }
+
+        $ref = $reference ?: ('CREDIT-REFUND-'.$tenantId.'-'.now()->format('YmdHis'));
+        $sourceKey = 'pm_tenant_credit_refund:'.$tenantId.':'.$ref;
+
+        $existing = AccountingJournalBatch::query()
+            ->where('source_key', $sourceKey)
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->exists();
+        if ($existing) {
+            return;
+        }
+
+        $journal = app(PropertyJournalService::class);
+        $journal->postBatch([
+            'date' => now()->toDateString(),
+            'description' => 'Tenant advance credit refunded',
+            'source_type' => 'pm_tenant',
+            'source_id' => $tenantId,
+            'event_type' => 'tenant_credit_refunded',
+            'source_key' => $sourceKey,
+            'agent_user_id' => null,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], [
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_TENANT_CREDIT_LIABILITY),
+                'debit' => $amount,
+                'credit' => 0,
+                'reference' => $ref,
+                'tenant_id' => $tenantId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_CASH_BANK),
+                'debit' => 0,
+                'credit' => $amount,
+                'reference' => $ref,
+                'tenant_id' => $tenantId,
+            ],
         ]);
     }
 
@@ -489,7 +798,11 @@ class PropertyAccountingPostingService
     {
         $default = [
             'accounts_receivable' => 'Accounts Receivable',
+            'utility_accounts_receivable' => 'Utility Accounts Receivable',
             'rental_income' => 'Rental Income',
+            'water_revenue' => 'Water Revenue',
+            'utility_recovery_income' => 'Utility Recovery Income',
+            'utility_penalty_income' => 'Utility Penalty Income',
             'cash_bank' => 'Cash / Bank',
             'maintenance_expense' => 'Maintenance Expense',
             'accounts_payable' => 'Accounts Payable',

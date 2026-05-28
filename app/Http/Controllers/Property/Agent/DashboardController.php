@@ -10,6 +10,6 @@ class DashboardController extends Controller
 {
     public function commandCenter(): View
     {
-        return view('property.agent.dashboard', PropertyDashboardOverview::forAgent());
+        return property_view('property.agent.dashboard', PropertyDashboardOverview::forAgent());
     }
 }

@@ -99,7 +99,7 @@ class PmMaintenanceWebController extends Controller
             ];
         })->all();
 
-        return view('property.agent.maintenance.requests', [
+        return property_view('property.agent.maintenance.requests', [
             'stats' => $stats,
             'columns' => ['ID', 'Unit', 'Category', 'Summary', 'Reported', 'Priority', 'Status', 'Assignee', 'Actions'],
             'tableRows' => $rows,
@@ -206,7 +206,7 @@ class PmMaintenanceWebController extends Controller
     {
         $requestItem->load(['unit.property', 'reportedBy']);
 
-        return view('property.agent.maintenance.request_edit', [
+        return property_view('property.agent.maintenance.request_edit', [
             'requestItem' => $requestItem,
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get(),
         ]);
@@ -331,7 +331,7 @@ class PmMaintenanceWebController extends Controller
             ];
         })->all();
 
-        return view('property.agent.maintenance.jobs', [
+        return property_view('property.agent.maintenance.jobs', [
             'stats' => $stats,
             'columns' => ['Job #', 'Unit', 'Vendor', 'Quote', 'Approved', 'Schedule', 'Status', 'Actions'],
             'tableRows' => $rows,
@@ -391,7 +391,7 @@ class PmMaintenanceWebController extends Controller
     {
         $job->load(['request.unit.property', 'vendor']);
 
-        return view('property.agent.maintenance.job_edit', [
+        return property_view('property.agent.maintenance.job_edit', [
             'job' => $job,
             'requests' => PmMaintenanceRequest::query()->with('unit.property')->orderByDesc('id')->limit(200)->get(),
             'vendors' => PmVendor::query()->where('status', 'active')->orderBy('name')->get(),
@@ -505,7 +505,7 @@ class PmMaintenanceWebController extends Controller
             Str::limit((string) $j->notes, 36),
         ])->all();
 
-        return view('property.agent.maintenance.history', [
+        return property_view('property.agent.maintenance.history', [
             'stats' => $stats,
             'columns' => ['Completed', 'Job #', 'Unit', 'Vendor', 'Quote', 'Status', 'Notes'],
             'tableRows' => $rows,
@@ -551,7 +551,7 @@ class PmMaintenanceWebController extends Controller
             $topCategory = (string) $byCategory->sortByDesc(fn ($g) => $g->sum(fn (PmMaintenanceJob $j) => (float) $j->quote_amount))->keys()->first();
         }
 
-        return view('property.agent.maintenance.costs', [
+        return property_view('property.agent.maintenance.costs', [
             'stats' => [
                 ['label' => 'Spend (YTD)', 'value' => PropertyMoney::kes($ytdSum), 'hint' => 'Completed jobs, quoted'],
                 ['label' => 'Cost / door (YTD)', 'value' => PropertyMoney::kes($costPerDoor), 'hint' => 'Avg across '.$unitCount.' units'],
@@ -695,7 +695,7 @@ class PmMaintenanceWebController extends Controller
         $monthsWithData = $byMonth->count();
         $emergencyTotal = $requests->where('urgency', 'emergency')->count();
 
-        return view('property.agent.maintenance.frequency', [
+        return property_view('property.agent.maintenance.frequency', [
             'stats' => [
                 ['label' => 'Requests (12 mo)', 'value' => (string) $requests->count(), 'hint' => ''],
                 ['label' => 'Months with data', 'value' => (string) $monthsWithData, 'hint' => ''],

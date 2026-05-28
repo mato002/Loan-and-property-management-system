@@ -1,69 +1,64 @@
-<x-public-layout>
-    <div class="bg-gray-50 border-b border-gray-200">
-        <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-            <h1 class="text-4xl font-black text-gray-900 tracking-tight mb-4">Rental Application</h1>
-            <p class="text-lg text-gray-500">
+<x-public-layout
+    :page-title="$publicPageTitle ?? 'Apply for a Rental'"
+    :page-description="$publicPageDescription ?? null"
+    :page-robots="$publicPageRobots ?? 'noindex,nofollow'"
+>
+    <section class="bg-gradient-to-b from-slate-50 to-white border-b border-gray-100">
+        <div class="public-container py-8 sm:py-12 text-center max-w-3xl mx-auto">
+            <p class="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600 mb-2">Quick application</p>
+            <h1 class="public-section-title">Apply for a rental</h1>
+            <p class="public-section-subtitle mx-auto">
                 @if ($applyUnit ?? null)
-                    You are applying for <span class="font-bold text-gray-900">{{ $applyUnit->property->name }} — Unit {{ $applyUnit->label }}</span>. Please complete all fields accurately.
+                    Applying for <strong class="text-gray-900">{{ $applyUnit->property->name }} — Unit {{ $applyUnit->label }}</strong>. We'll contact you within 24 hours.
                 @else
-                    Complete the form below. If you opened this page from a listing, the unit reference may be missing — go back and use <strong>Apply Online</strong> from the listing detail page.
+                    Submit your details and our team will match you with available units.
                 @endif
             </p>
         </div>
-    </div>
+    </section>
 
-    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div class="bg-white rounded-[2rem] border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.06)] overflow-hidden">
+    <div class="public-container py-8 sm:py-12">
+        <div class="max-w-2xl mx-auto bg-white rounded-2xl border border-gray-100 shadow-[0_12px_40px_rgb(0,0,0,0.06)] overflow-hidden">
             <form action="{{ route('public.apply.store') }}" method="POST">
                 @csrf
-                <div class="px-8 py-10 space-y-8">
+                <div class="p-5 sm:p-8 space-y-5">
                     <div>
-                        <h3 class="text-2xl font-black text-gray-900 border-b border-gray-100 pb-4 mb-6">Quick Application</h3>
-                        <p class="text-sm text-gray-500 mb-6">Only the essentials. We will contact you fast via phone/WhatsApp.</p>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div class="md:col-span-2">
-                                <label for="full_name" class="block text-sm font-bold text-gray-700 mb-2">Full Name</label>
-                                <input id="full_name" name="full_name" type="text" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none" required>
-                            </div>
-                            <div class="md:col-span-2">
-                                <label for="phone" class="block text-sm font-bold text-gray-700 mb-2">Phone Number</label>
-                                <input id="phone" name="phone" type="tel" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="e.g. 07XXXXXXXX" required>
-                            </div>
-                            <div class="md:col-span-2">
-                                <label for="email" class="block text-sm font-bold text-gray-700 mb-2">Email <span class="text-gray-400 font-medium">(Optional)</span></label>
-                                <input id="email" name="email" type="email" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="name@example.com">
-                            </div>
+                        <label for="full_name" class="block text-xs font-bold text-gray-700 mb-1">Full name</label>
+                        <input id="full_name" name="full_name" type="text" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500" required>
+                    </div>
+                    <div>
+                        <label for="phone" class="block text-xs font-bold text-gray-700 mb-1">Phone number</label>
+                        <input id="phone" name="phone" type="tel" placeholder="07XXXXXXXX" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500" required>
+                    </div>
+                    <div>
+                        <label for="email" class="block text-xs font-bold text-gray-700 mb-1">Email <span class="text-gray-400 font-medium">(optional)</span></label>
+                        <input id="email" name="email" type="email" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
+                    </div>
 
-                            @if ($applyUnit ?? null)
-                                <div class="md:col-span-2">
-                                    <label class="block text-sm font-bold text-gray-700 mb-2">Property</label>
-                                    <input type="text" value="{{ $applyUnit->property->name }} — Unit {{ $applyUnit->label }}" class="w-full rounded-2xl border-gray-300 shadow-sm py-4 bg-gray-100 text-gray-700" readonly>
-                                    <input type="hidden" name="property_unit_id" value="{{ $applyUnit->id }}">
-                                </div>
-                            @else
-                                <div class="md:col-span-2">
-                                    <label for="property" class="block text-sm font-bold text-gray-700 mb-2">Property</label>
-                                    <input id="property" name="property" type="text" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none" placeholder="Property name or unit reference" required>
-                                </div>
-                            @endif
-
-                            <div class="md:col-span-2">
-                                <label for="move_in_date" class="block text-sm font-bold text-gray-700 mb-2">Move-in Date <span class="text-gray-400 font-medium">(Optional)</span></label>
-                                <input id="move_in_date" name="move_in_date" type="date" class="w-full rounded-2xl border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 py-4 bg-gray-50 focus:bg-white outline-none">
-                            </div>
+                    @if ($applyUnit ?? null)
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Property</label>
+                            <input type="text" value="{{ $applyUnit->property->name }} — Unit {{ $applyUnit->label }}" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 bg-gray-50 text-sm" readonly>
+                            <input type="hidden" name="property_unit_id" value="{{ $applyUnit->id }}">
                         </div>
+                    @else
+                        <div>
+                            <label for="property" class="block text-xs font-bold text-gray-700 mb-1">Property reference</label>
+                            <input id="property" name="property" type="text" placeholder="Building name or unit reference" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500" required>
+                        </div>
+                    @endif
+
+                    <div>
+                        <label for="move_in_date" class="block text-xs font-bold text-gray-700 mb-1">Preferred move-in date</label>
+                        <input id="move_in_date" name="move_in_date" type="date" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
                     </div>
                 </div>
-                <div class="bg-gray-50 px-8 py-6 border-t border-gray-100 flex items-center justify-between">
-                    <div class="flex items-center">
-                        <input id="terms" type="checkbox" required class="h-5 w-5 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
-                        <label for="terms" class="ml-3 block text-sm font-medium text-gray-900">
-                            I verify this information is accurate.
-                        </label>
-                    </div>
-                    <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-10 py-5 rounded-xl shadow-xl shadow-emerald-600/30 transition-transform hover:-translate-y-1">
-                        Submit Application
-                    </button>
+                <div class="bg-gray-50 px-5 sm:px-8 py-5 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <label class="flex items-start gap-2 text-xs text-gray-700">
+                        <input id="terms" type="checkbox" required class="mt-0.5 h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
+                        I confirm this information is accurate.
+                    </label>
+                    <button type="submit" class="public-btn public-btn-primary w-full sm:w-auto !px-8">Submit application</button>
                 </div>
             </form>
         </div>

@@ -2,11 +2,22 @@ import './bootstrap';
 import './swal-init';
 import './superadmin-auto-filter';
 import './property-portal-ui';
+import './property-modal-manager';
+import './property-lease-row-actions';
+import './property-dropdown-cleanup';
+import './property-export-dropdowns';
+import './property-workspace-ui';
+import './property-workspace-tabs';
+import './property-bulk-actions';
+import './lease-form-modals';
 import './property-portal-turbo';
 import './property-dashboard';
+import './utility-analytics';
+import './utility-operations';
 
 import Alpine from 'alpinejs';
 import { Chart, registerables } from 'chart.js';
+import { propertyModalState } from './property-modal-manager';
 
 window.Alpine = Alpine;
 Chart.register(...registerables);
@@ -43,5 +54,6 @@ function persistedSidebarAccordion(storageKey) {
 
 Alpine.data('loanSidebarGroup', persistedSidebarAccordion('loan.sidebar.openGroups'));
 Alpine.data('propertySidebarGroup', persistedSidebarAccordion('property.sidebar.openGroups'));
+Alpine.data('propertyModalState', propertyModalState);
 
 Alpine.start();

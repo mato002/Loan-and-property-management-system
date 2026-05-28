@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full overflow-hidden" data-pwa-context="portal">
     <head>
         @php
             $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');
@@ -19,12 +19,80 @@
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
         <!-- Scripts -->
+        @php
+            use App\Support\Property\PropertyNavMode;
+
+            $propertyNavMode = ($propertyPortal ?? 'agent') === 'agent'
+                ? PropertyNavMode::current()
+                : PropertyNavMode::CLASSIC;
+            $propertySidebarExpanded = match ($propertyNavMode) {
+                PropertyNavMode::HYBRID => '16rem',
+                default => '19rem',
+            };
+            $propertySidebarCollapsed = match ($propertyNavMode) {
+                PropertyNavMode::HYBRID => '4.75rem',
+                default => '5.5rem',
+            };
+        @endphp
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         <link rel="icon" href="{{ $faviconVersioned }}" />
         <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
         <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
+        <link rel="manifest" href="{{ route('pwa.manifest.portal') }}" />
+        <meta name="theme-color" content="#059669" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="{{ \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Property Portal') }}" />
+        <script src="{{ asset('js/pwa-install.js') }}?v=2" defer></script>
         
         <style>
+            /* Portal shell — flush layout without body position:fixed (that + scroll-lock top offset clips the header) */
+            html[data-pwa-context='portal'] {
+                margin: 0 !important;
+                padding: 0 !important;
+                height: 100% !important;
+                overflow: hidden !important;
+                background: #047857;
+            }
+            html[data-pwa-context='portal'] body {
+                margin: 0 !important;
+                padding: 0 !important;
+                position: relative !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                min-height: 100dvh;
+                overflow: hidden !important;
+                background: #e8ecf1 !important;
+            }
+            html[data-pwa-context='portal'] .property-print-root {
+                display: flex !important;
+                flex-direction: row !important;
+                width: 100% !important;
+                height: 100% !important;
+                min-height: 100dvh;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            html[data-pwa-context='portal'] #property-shell-header {
+                display: flex;
+                flex-direction: column;
+                gap: 0;
+                overflow: visible !important;
+                flex-shrink: 0;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            html[data-pwa-context='portal'] #property-shell-header > .property-topbar {
+                margin: 0 !important;
+            }
+            @media (min-width: 1024px) {
+                html[data-pwa-context='portal'] #property-mobile-search-overlay {
+                    display: none !important;
+                }
+            }
+
             [x-cloak] { display: none !important; }
             .custom-scrollbar::-webkit-scrollbar {
                 width: 6px;
@@ -116,10 +184,107 @@
             .dark #property-main table td {
                 border-color: #334155;
             }
+            /* Property workspace shell — fixed sidebar/header, scrollable workspace only */
+            .property-print-root {
+                isolation: isolate;
+                height: 100%;
+                min-height: 0;
+            }
+            #property-shell-sidebar {
+                position: relative;
+                z-index: 40;
+            }
+            #property-shell-header {
+                position: relative;
+                z-index: 50;
+            }
+            #property-workspace-main {
+                position: relative;
+                z-index: 0;
+                isolation: isolate;
+            }
+            #property-global-nav-progress {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                z-index: 45;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.15s ease;
+            }
+            #property-global-nav-progress[data-active] {
+                opacity: 1;
+            }
+            #property-global-nav-progress > span {
+                display: block;
+                height: 100%;
+                width: 35%;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, #059669 0%, #6ee7b7 45%, #059669 90%);
+                background-size: 200% 100%;
+                animation: property-frame-progress 0.9s ease-in-out infinite;
+            }
+            #property-workspace-loading {
+                position: absolute;
+                inset: 0;
+                z-index: 25;
+                display: none;
+                padding: 0.75rem;
+                background: rgb(232 236 241 / 0.72);
+                backdrop-filter: blur(1px);
+            }
+            #property-workspace-loading[data-active] {
+                display: block;
+                pointer-events: none;
+            }
+            #property-workspace-loading .property-workspace-loading {
+                pointer-events: none;
+            }
+            #property-workspace-error {
+                display: none;
+            }
+            #property-workspace-error[data-active] {
+                display: block;
+            }
+            /* Turbo frame loading — progress bar + stable containment */
+            turbo-frame#property-main {
+                display: block;
+                width: 100%;
+                max-width: 100%;
+                min-height: 12rem;
+                position: relative;
+                overflow: visible;
+            }
+            turbo-frame#property-main[data-property-loading] {
+                pointer-events: none;
+            }
+            turbo-frame#property-main[data-property-loading]::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                z-index: 30;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, #059669 0%, #6ee7b7 45%, #059669 90%);
+                background-size: 200% 100%;
+                animation: property-frame-progress 0.9s ease-in-out infinite;
+            }
+            turbo-frame#property-main > * {
+                max-width: 100%;
+            }
+            @keyframes property-frame-progress {
+                0% { background-position: 100% 0; }
+                100% { background-position: -100% 0; }
+            }
         </style>
     </head>
     <body
-        class="font-sans antialiased h-screen overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif"
+        class="font-sans antialiased h-full min-h-0 overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif"
+        data-property-nav-mode="{{ $propertyNavMode }}"
         x-data="{
             sidebarOpen: false,
             sidebarDesktopOpen: true,
@@ -134,20 +299,31 @@
                 this.sidebarDesktopOpen = !this.sidebarDesktopOpen;
                 const portal = @js($propertyPortal ?? 'agent');
                 window.localStorage.setItem(`property.sidebar.desktop.open.${portal}`, this.sidebarDesktopOpen ? '1' : '0');
+            },
+            expandDesktopSidebar() {
+                if (!this.sidebarDesktopOpen) {
+                    this.sidebarDesktopOpen = true;
+                    const portal = @js($propertyPortal ?? 'agent');
+                    window.localStorage.setItem(`property.sidebar.desktop.open.${portal}`, '1');
+                }
             }
         }"
+        @property-sidebar-expand.window="expandDesktopSidebar()"
+        x-effect="(() => { document.documentElement.classList.toggle('property-sidebar-collapsed', !sidebarDesktopOpen && window.matchMedia('(min-width: 1024px)').matches); document.documentElement.classList.toggle('overflow-hidden', sidebarOpen && window.innerWidth < 1024); })()"
     >
-        <div class="h-full flex property-print-root">
+        <div class="flex h-full min-h-0 w-full property-print-root">
             
-            <!-- Property Module Dedicated Sidebar -->
+            <!-- Property Module Dedicated Sidebar (persists across Turbo navigations) -->
             <div
-                class="property-print-hide h-full flex-shrink-0 transition-all duration-300"
-                :class="sidebarDesktopOpen ? 'lg:w-[18rem] lg:max-w-[18rem] lg:min-w-[18rem] lg:opacity-100' : 'lg:w-[5.5rem] lg:max-w-[5.5rem] lg:min-w-[5.5rem] lg:opacity-100'"
+                id="property-shell-sidebar"
+                data-turbo-permanent
+                class="property-print-hide h-full w-0 min-w-0 max-w-0 overflow-hidden lg:flex-shrink-0 lg:w-[{{ $propertySidebarExpanded }}] lg:max-w-[{{ $propertySidebarExpanded }}] lg:min-w-[{{ $propertySidebarExpanded }}] transition-all duration-300"
+                :class="sidebarDesktopOpen ? 'lg:w-[{{ $propertySidebarExpanded }}] lg:max-w-[{{ $propertySidebarExpanded }}] lg:min-w-[{{ $propertySidebarExpanded }}] lg:opacity-100' : 'lg:w-[{{ $propertySidebarCollapsed }}] lg:max-w-[{{ $propertySidebarCollapsed }}] lg:min-w-[{{ $propertySidebarCollapsed }}] lg:opacity-100'"
                 :style="window.matchMedia('(min-width: 1024px)').matches
                     ? (sidebarDesktopOpen
-                        ? 'width: 18rem; min-width: 18rem; max-width: 18rem;'
-                        : 'width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem;')
-                    : ''"
+                        ? 'width: {{ $propertySidebarExpanded }}; min-width: {{ $propertySidebarExpanded }}; max-width: {{ $propertySidebarExpanded }};'
+                        : 'width: {{ $propertySidebarCollapsed }}; min-width: {{ $propertySidebarCollapsed }}; max-width: {{ $propertySidebarCollapsed }};')
+                    : 'width: 0; min-width: 0; max-width: 0;'"
             >
                 @include('layouts.property_sidebar')
             </div>
@@ -155,25 +331,43 @@
             <!-- Main view container (Header, Content, Footer) -->
             <div class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
                 
-                <!-- Dedicated Header -->
-                <div class="property-print-hide">
+                <!-- Dedicated Header (persists across Turbo navigations) -->
+                <div id="property-shell-header" data-turbo-permanent class="property-print-hide shrink-0 overflow-visible">
                     @include('layouts.property_header')
                 </div>
 
                 <!-- Scrollable Content Area (Header/Footer remain constant) -->
-                <main class="property-print-main relative z-0 flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar">
-                    <div class="p-4 sm:p-6 lg:p-8 w-full">
-                        <turbo-frame id="property-main" data-turbo-action="advance">
-                            <div id="property-main-route" data-route-name="{{ Route::currentRouteName() ?? '' }}" hidden></div>
+                <main
+                    id="property-workspace-main"
+                    class="property-print-main relative z-0 flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar"
+                    :class="{ 'overflow-hidden': sidebarOpen && window.innerWidth < 1024 }"
+                >
+                    <div id="property-global-nav-progress" aria-hidden="true"><span></span></div>
+                    <div id="property-workspace-loading" aria-hidden="true">
+                        <x-property.workspace-loading />
+                    </div>
+                    <div id="property-workspace-error" class="absolute inset-x-0 top-0 z-30 p-4 sm:p-6" aria-live="polite"></div>
+                    <div class="p-3 sm:p-4 lg:p-8 w-full max-w-full min-w-0 property-mobile-safe-bottom">
+                        <turbo-frame id="property-main" data-turbo-action="advance" data-turbo-cache="false">
+                            <div id="property-main-route" data-route-name="{{ Route::currentRouteName() ?? '' }}" data-page-title="{{ trim((string) ($header ?? '')) }}" hidden></div>
                             <x-property.next-steps-modal />
                             <x-swal-flash />
+                            @php
+                                use App\Support\Property\PropertyUiVersion;
+                                use App\Support\Property\PropertyWorkspaceTabs;
+
+                                $shellRouteName = Route::currentRouteName();
+                            @endphp
+                            @if (! PropertyUiVersion::isV2() && PropertyWorkspaceTabs::shouldShow($shellRouteName))
+                                <x-property.workspace-tabs :workspace="PropertyWorkspaceTabs::resolveWorkspaceKey($shellRouteName)" />
+                            @endif
                             {{ $slot }}
                         </turbo-frame>
                     </div>
                 </main>
 
-                <!-- Dedicated Footer (constant) -->
-                <div class="property-print-hide">
+                <!-- Dedicated Footer (persists across Turbo navigations) -->
+                <div id="property-shell-footer" data-turbo-permanent class="property-print-hide">
                     @include('layouts.property_footer')
                 </div>
 
@@ -184,10 +378,11 @@
             <a
                 href="{{ route('property.advisor') }}"
                 data-turbo-frame="property-main"
-                class="property-print-hide fixed bottom-5 right-5 z-30 flex items-center gap-2 rounded-full bg-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 ring-2 ring-white/20 hover:bg-violet-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 transition-colors"
+                class="property-print-hide fixed z-30 flex items-center justify-center gap-2 rounded-full bg-violet-600 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 ring-2 ring-white/20 hover:bg-violet-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 transition-colors bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+3.5rem))] right-3 h-11 w-11 sm:bottom-5 sm:right-5 sm:h-auto sm:w-auto sm:px-4 sm:py-3"
                 title="AI advisor"
+                aria-label="Ask AI advisor"
             >
-                <i class="fa-solid fa-robot text-lg" aria-hidden="true"></i>
+                <i class="fa-solid fa-robot text-base sm:text-lg" aria-hidden="true"></i>
                 <span class="hidden sm:inline">Ask</span>
             </a>
         @endif
@@ -195,6 +390,12 @@
         <script>
             (function () {
                 const SEARCH_DEBOUNCE_MS = 1100;
+
+                function formFilterControls(form) {
+                    const controls = form?.elements ? Array.from(form.elements) : [];
+
+                    return controls.filter((el) => el instanceof HTMLElement && !el.matches('[data-auto-submit="off"]'));
+                }
 
                 function wireAutoFilterForms(scopeRoot) {
                     const root = scopeRoot || document;
@@ -206,8 +407,9 @@
                         }
                         form.dataset.autoSubmitBound = '1';
 
-                        const searchInputs = Array.from(form.querySelectorAll('input[name="q"], input[type="search"], input[data-auto-search="true"]'))
-                            .filter((input) => !input.matches('[data-auto-submit="off"]'));
+                        const searchInputs = formFilterControls(form).filter((input) =>
+                            input.matches('input[name="q"], input[type="search"], input[data-auto-search="true"]')
+                        );
                         searchInputs.forEach((input) => {
                             input.addEventListener('input', () => {
                                 window.clearTimeout(input._autoSearchTimer);
@@ -215,121 +417,59 @@
                             });
                         });
 
-                        const autoControls = Array.from(form.querySelectorAll('select, input[type="date"], input[type="month"], input[type="number"], input[type="checkbox"], input[type="radio"]'))
-                            .filter((el) => !el.matches('[data-auto-submit="off"]'));
+                        const autoControls = formFilterControls(form).filter((control) =>
+                            control.matches('select, input[type="date"], input[type="month"], input[type="number"], input[type="checkbox"], input[type="radio"]')
+                        );
                         autoControls.forEach((control) => {
                             control.addEventListener('change', () => form.requestSubmit());
                         });
                     });
                 }
 
-                function wireExportDropdowns(scopeRoot) {
-                    const root = scopeRoot || document;
-                    const forms = Array.from(root.querySelectorAll('form[method="get"]'));
-
-                    forms.forEach((form) => {
-                        if (form.dataset.exportDropdownBound === '1') {
+                function syncPropertyFilterDesktopForms() {
+                    const isMobile = window.matchMedia('(max-width: 767px)').matches;
+                    document.querySelectorAll('[data-property-filter-form-desktop]').forEach((form) => {
+                        if (!(form instanceof HTMLFormElement)) {
                             return;
                         }
-                        form.dataset.exportDropdownBound = '1';
-
-                        if (form.querySelector('[data-export-dropdown-auto]')) {
-                            return;
-                        }
-
-                        // Respect any existing manual export dropdown component.
-                        if (form.querySelector('select[onchange*="window.location.href"]')) {
-                            return;
-                        }
-
-                        const exportLinks = Array.from(form.querySelectorAll('a[href*="export="]'));
-                        const exportButtons = Array.from(form.querySelectorAll('button[name="export"][value], input[type="submit"][name="export"][value]'));
-                        const exportItems = [];
-
-                        exportLinks.forEach((link) => {
-                            const href = link.getAttribute('href') || '';
-                            if (!href) return;
-                            exportItems.push({
-                                label: (link.textContent || '').trim().replace(/^Export\s+/i, '') || 'File',
-                                mode: 'link',
-                                value: href,
-                                node: link,
-                            });
-                        });
-
-                        exportButtons.forEach((button) => {
-                            const value = button.getAttribute('value') || '';
-                            if (!value) return;
-                            exportItems.push({
-                                label: (button.textContent || button.getAttribute('value') || '').trim().replace(/^Export\s+/i, '') || String(value).toUpperCase(),
-                                mode: 'submit',
-                                value,
-                                node: button,
-                            });
-                        });
-
-                        if (exportItems.length < 2) {
-                            return;
-                        }
-
-                        const insertBeforeNode = exportItems[0].node;
-                        const dropdown = document.createElement('select');
-                        dropdown.setAttribute('data-export-dropdown-auto', '1');
-                        dropdown.className = 'rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 max-w-full';
-
-                        const placeholder = document.createElement('option');
-                        placeholder.value = '';
-                        placeholder.textContent = 'Export';
-                        dropdown.appendChild(placeholder);
-
-                        exportItems.forEach((item) => {
-                            const option = document.createElement('option');
-                            option.value = item.value;
-                            option.textContent = item.label;
-                            option.dataset.mode = item.mode;
-                            dropdown.appendChild(option);
-                        });
-
-                        dropdown.addEventListener('change', () => {
-                            const selected = dropdown.options[dropdown.selectedIndex];
-                            if (!selected || !selected.value) return;
-
-                            if (selected.dataset.mode === 'submit') {
-                                let hidden = form.querySelector('input[name="export"][data-auto-export="1"]');
-                                if (!hidden) {
-                                    hidden = document.createElement('input');
-                                    hidden.type = 'hidden';
-                                    hidden.name = 'export';
-                                    hidden.setAttribute('data-auto-export', '1');
-                                    form.appendChild(hidden);
-                                }
-                                hidden.value = selected.value;
-                                form.requestSubmit();
-                            } else {
-                                window.location.href = selected.value;
+                        Array.from(form.elements).forEach((el) => {
+                            if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement || el instanceof HTMLButtonElement)) {
+                                return;
                             }
-
-                            dropdown.selectedIndex = 0;
+                            if (isMobile) {
+                                el.setAttribute('disabled', 'disabled');
+                            } else {
+                                el.removeAttribute('disabled');
+                            }
                         });
-
-                        insertBeforeNode.parentNode?.insertBefore(dropdown, insertBeforeNode);
-                        exportItems.forEach((item) => item.node.remove());
                     });
                 }
 
-                document.addEventListener('DOMContentLoaded', () => wireAutoFilterForms(document));
-                document.addEventListener('turbo:load', () => wireAutoFilterForms(document));
-                document.addEventListener('turbo:frame-load', (event) => wireAutoFilterForms(event.target));
-                document.addEventListener('livewire:navigated', () => wireAutoFilterForms(document));
-                document.addEventListener('alpine:navigated', () => wireAutoFilterForms(document));
+                document.addEventListener('DOMContentLoaded', () => {
+                    wireAutoFilterForms(document);
+                    syncPropertyFilterDesktopForms();
+                });
+                document.addEventListener('turbo:load', () => {
+                    wireAutoFilterForms(document);
+                    syncPropertyFilterDesktopForms();
+                });
+                document.addEventListener('turbo:frame-load', (event) => {
+                    wireAutoFilterForms(event.target);
+                    syncPropertyFilterDesktopForms();
+                });
+                document.addEventListener('livewire:navigated', () => {
+                    wireAutoFilterForms(document);
+                    syncPropertyFilterDesktopForms();
+                });
+                document.addEventListener('alpine:navigated', () => {
+                    wireAutoFilterForms(document);
+                    syncPropertyFilterDesktopForms();
+                });
+                window.addEventListener('resize', syncPropertyFilterDesktopForms, { passive: true });
 
-                document.addEventListener('DOMContentLoaded', () => wireExportDropdowns(document));
-                document.addEventListener('turbo:load', () => wireExportDropdowns(document));
-                document.addEventListener('turbo:frame-load', (event) => wireExportDropdowns(event.target));
-                document.addEventListener('livewire:navigated', () => wireExportDropdowns(document));
-                document.addEventListener('alpine:navigated', () => wireExportDropdowns(document));
             })();
         </script>
         @stack('scripts')
+        <x-public.pwa-install-prompt context="portal" position="left" />
     </body>
 </html>

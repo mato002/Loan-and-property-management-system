@@ -16,15 +16,20 @@ use App\Models\PropertyUnit;
 use App\Services\BulkSmsService;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\UtilityPeriodGuardService;
+use App\Exceptions\Property\UtilityPeriodClosedException;
+use App\Services\Property\TenantCreditService;
 use App\Support\TabularExport;
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
@@ -51,7 +56,7 @@ class PmInvoiceController extends Controller
             $sharedUrl = route('property.invoices.public.show', ['token' => $invoice->share_token]);
         }
 
-        return view('property.agent.revenue.invoices_show', [
+        return property_view('property.agent.revenue.invoices_show', [
             'invoice' => $invoice,
             'sharedUrl' => $sharedUrl,
         ]);
@@ -66,7 +71,7 @@ class PmInvoiceController extends Controller
             'items',
         ]);
 
-        return view('property.agent.revenue.invoices_edit', [
+        return property_view('property.agent.revenue.invoices_edit', [
             'invoice' => $invoice,
         ]);
     }
@@ -98,6 +103,17 @@ class PmInvoiceController extends Controller
 
         if ((string) $data['status'] === PmInvoice::STATUS_CANCELLED && $amountPaid > 0) {
             return back()->withErrors(['status' => 'Cannot cancel an invoice that already has payments.'])->withInput();
+        }
+
+        $overrideId = (int) $request->input('utility_override_request_id', 0) ?: null;
+        try {
+            $guard = app(UtilityPeriodGuardService::class);
+            $action = (string) $data['status'] === PmInvoice::STATUS_CANCELLED
+                ? UtilityPeriodGuardService::ACTION_REVERSE_INVOICE
+                : UtilityPeriodGuardService::ACTION_EDIT_INVOICE;
+            $guard->assertInvoiceMutable($invoice, $action, $request->user(), $overrideId);
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['period' => $e->getMessage()])->withInput();
         }
 
         $previousAmount = (float) $invoice->amount;
@@ -171,6 +187,18 @@ class PmInvoiceController extends Controller
             return back()->withErrors([
                 'invoice' => 'Cannot delete an invoice that already has payment allocations. Cancel it or issue a credit note instead.',
             ]);
+        }
+
+        $overrideId = (int) $request->input('utility_override_request_id', 0) ?: null;
+        try {
+            app(UtilityPeriodGuardService::class)->assertInvoiceMutable(
+                $invoice,
+                UtilityPeriodGuardService::ACTION_REVERSE_INVOICE,
+                $request->user(),
+                $overrideId,
+            );
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['period' => $e->getMessage()]);
         }
 
         $invoiceNo = (string) $invoice->invoice_no;
@@ -371,6 +399,13 @@ class PmInvoiceController extends Controller
         // Only post to GL once the invoice is "sent" — drafts stay off-ledger.
         if ((string) $invoice->status !== PmInvoice::STATUS_DRAFT) {
             PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
+            if ($invoice->pm_tenant_id) {
+                app(TenantCreditService::class)->autoApplyForTenant(
+                    (int) $invoice->pm_tenant_id,
+                    $request->user(),
+                    (int) $invoice->id,
+                );
+            }
         }
 
         PmInvoiceEvent::record(
@@ -388,6 +423,10 @@ class PmInvoiceController extends Controller
 
     public function invoices(Request $request): View|StreamedResponse
     {
+        PmInvoice::refreshStaleStatuses(1000);
+
+        [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $billingRangeLabel] = $this->resolveInvoiceBillingRange($request);
+
         $filters = [
             'q' => trim((string) $request->query('q', '')),
             'status' => strtolower(trim((string) $request->query('status', ''))),
@@ -399,60 +438,21 @@ class PmInvoiceController extends Controller
             'to' => (string) $request->query('to', ''),
             'due_from' => (string) $request->query('due_from', ''),
             'due_to' => (string) $request->query('due_to', ''),
+            'range_months' => (string) $rangeMonths,
+            'range_end' => $rangeEndYm,
             'sort' => strtolower(trim((string) $request->query('sort', 'issue_date'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
         ];
+        if ($filters['from'] === '' || $filters['to'] === '') {
+            $filters['from'] = $rangeFrom->toDateString();
+            $filters['to'] = $rangeTo->toDateString();
+        }
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
-        $baseQuery = PmInvoice::query()->with(['tenant', 'unit.property']);
-        if ($filters['q'] !== '') {
-            $q = $filters['q'];
-            $baseQuery->where(function ($inner) use ($q) {
-                $inner->where('invoice_no', 'like', '%'.$q.'%')
-                    ->orWhere('description', 'like', '%'.$q.'%')
-                    ->orWhere('notes', 'like', '%'.$q.'%')
-                    ->orWhereHas('tenant', fn ($tq) => $tq
-                        ->where('name', 'like', '%'.$q.'%')
-                        ->orWhere('phone', 'like', '%'.$q.'%'))
-                    ->orWhereHas('unit', fn ($uq) => $uq
-                        ->where('label', 'like', '%'.$q.'%')
-                        ->orWhereHas('property', fn ($pq) => $pq->where('name', 'like', '%'.$q.'%')));
-            });
-        }
-        if ($filters['status'] !== '' && in_array($filters['status'], [
-            PmInvoice::STATUS_DRAFT,
-            PmInvoice::STATUS_SENT,
-            PmInvoice::STATUS_PARTIAL,
-            PmInvoice::STATUS_PAID,
-            PmInvoice::STATUS_OVERDUE,
-            PmInvoice::STATUS_CANCELLED,
-        ], true)) {
-            $baseQuery->where('status', $filters['status']);
-        }
-        if (in_array($filters['type'], [PmInvoice::TYPE_RENT, PmInvoice::TYPE_WATER, PmInvoice::TYPE_MIXED], true)) {
-            $baseQuery->where('invoice_type', $filters['type']);
-        }
-        if ($filters['tenant_id'] > 0) {
-            $baseQuery->where('pm_tenant_id', $filters['tenant_id']);
-        }
-        if ($filters['unit_id'] > 0) {
-            $baseQuery->where('property_unit_id', $filters['unit_id']);
-        }
-        if ($filters['period'] !== '' && preg_match('/^\d{4}\-\d{2}$/', $filters['period']) === 1) {
-            $baseQuery->where('billing_period', $filters['period']);
-        }
-        if ($filters['from'] !== '') {
-            $baseQuery->whereDate('issue_date', '>=', $filters['from']);
-        }
-        if ($filters['to'] !== '') {
-            $baseQuery->whereDate('issue_date', '<=', $filters['to']);
-        }
-        if ($filters['due_from'] !== '') {
-            $baseQuery->whereDate('due_date', '>=', $filters['due_from']);
-        }
-        if ($filters['due_to'] !== '') {
-            $baseQuery->whereDate('due_date', '<=', $filters['due_to']);
-        }
+        $baseQuery = $this->applyInvoiceListFilters(
+            PmInvoice::query()->with(['tenant', 'unit.property']),
+            $filters
+        );
         $sortMap = [
             'issue_date' => 'issue_date',
             'due_date' => 'due_date',
@@ -494,66 +494,81 @@ class PmInvoiceController extends Controller
         }
 
         $invoices = (clone $baseQuery)->paginate($perPage)->withQueryString();
-        $statsBase = (clone $baseQuery)->get();
+
+        $summaryQuery = $this->applyInvoiceListFilters(
+            PmInvoice::query(),
+            array_merge($filters, ['status' => '', 'q' => ''])
+        );
+        $summary = $this->aggregateInvoiceSummary($summaryQuery);
+        $activeTenantCount = (int) PmLease::query()
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->whereNotNull('pm_tenant_id')
+            ->distinct()
+            ->count('pm_tenant_id');
+
+        $invoiceCount = max(0, (int) ($summary->invoice_count ?? 0));
+        $paidCount = max(0, (int) ($summary->paid_count ?? 0));
+        $paidPct = $invoiceCount > 0 ? round(($paidCount / $invoiceCount) * 100) : 0;
 
         $stats = [
-            ['label' => 'Draft', 'value' => (string) $statsBase->where('status', PmInvoice::STATUS_DRAFT)->count(), 'hint' => 'Filtered'],
-            ['label' => 'Open', 'value' => (string) $statsBase->whereIn('status', [PmInvoice::STATUS_SENT, PmInvoice::STATUS_PARTIAL, PmInvoice::STATUS_OVERDUE])->count(), 'hint' => 'Filtered'],
-            ['label' => 'Paid', 'value' => (string) $statsBase->where('status', PmInvoice::STATUS_PAID)->count(), 'hint' => 'Filtered'],
-            ['label' => 'Outstanding', 'value' => PropertyMoney::kes((float) $statsBase->sum(fn ($i) => max(0, (float) $i->amount - (float) $i->amount_paid))), 'hint' => 'Filtered open balance'],
+            [
+                'label' => 'Active tenants',
+                'value' => (string) $activeTenantCount,
+                'hint' => 'On active leases (portfolio)',
+            ],
+            [
+                'label' => 'Tenants billed',
+                'value' => (string) max(0, (int) ($summary->tenant_count ?? 0)),
+                'hint' => $billingRangeLabel,
+            ],
+            [
+                'label' => 'Invoices issued',
+                'value' => (string) $invoiceCount,
+                'hint' => 'Excludes cancelled · '.$billingRangeLabel,
+            ],
+            [
+                'label' => 'Paid in full',
+                'value' => (string) $paidCount,
+                'hint' => $invoiceCount > 0 ? $paidPct.'% of invoices in period' : $billingRangeLabel,
+            ],
+            [
+                'label' => 'Open / unpaid',
+                'value' => (string) max(0, (int) ($summary->open_count ?? 0)),
+                'hint' => 'Sent, partial, or overdue',
+            ],
+            [
+                'label' => 'Draft bills',
+                'value' => (string) max(0, (int) ($summary->draft_count ?? 0)),
+                'hint' => 'Not yet sent',
+            ],
+            [
+                'label' => 'Total billed',
+                'value' => PropertyMoney::kes((float) ($summary->total_billed ?? 0)),
+                'hint' => $billingRangeLabel,
+            ],
+            [
+                'label' => 'Collected',
+                'value' => PropertyMoney::kes((float) ($summary->total_collected ?? 0)),
+                'hint' => 'Payments allocated in period',
+            ],
+            [
+                'label' => 'Outstanding',
+                'value' => PropertyMoney::kes((float) ($summary->total_outstanding ?? 0)),
+                'hint' => 'Open balance on period invoices',
+            ],
         ];
 
         $rows = $invoices->getCollection()->map(function (PmInvoice $i) {
-            $csrf = csrf_token();
-            $statusAction = route('property.revenue.invoices.status', $i, false);
             $showAction = route('property.revenue.invoices.show', $i, false);
-            $editAction = route('property.revenue.invoices.edit', $i, false);
-            $destroyAction = route('property.revenue.invoices.destroy', $i, false);
-            $pdfAction = route('property.revenue.invoices.pdf', $i, false);
             $balance = max(0, (float) $i->amount - (float) $i->amount_paid);
 
-            $options = collect([
-                PmInvoice::STATUS_DRAFT => 'Draft',
-                PmInvoice::STATUS_SENT => 'Sent',
-                PmInvoice::STATUS_CANCELLED => 'Cancelled',
-            ])->map(function (string $label, string $value) use ($i): string {
-                $selected = (string) $i->status === $value ? ' selected' : '';
-
-                return '<option value="'.$value.'"'.$selected.'>'.$label.'</option>';
-            })->implode('');
-
-            $actions = new HtmlString(
-                '<div class="relative inline-block text-left">'.
-                    '<details>'.
-                        '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
-                        '<div class="absolute right-0 z-30 mt-1 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
-                            '<a href="'.$showAction.'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View</a>'.
-                            '<a href="'.$editAction.'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Edit</a>'.
-                            '<a href="'.$pdfAction.'" target="_blank" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Download PDF</a>'.
-                            ($balance > 0 ? '<a href="'.$showAction.'#record-payment" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Record payment</a>' : '').
-                            '<form method="post" action="'.$statusAction.'" class="block px-3 py-2">'.
-                        '<input type="hidden" name="_token" value="'.$csrf.'">'.
-                        '<input type="hidden" name="_method" value="patch">'.
-                        '<select name="status" class="w-full rounded border border-slate-300 px-1.5 py-0.5 text-xs">'.
-                            $options.
-                        '</select>'.
-                        '<button type="submit" class="mt-2 rounded bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-slate-700">Save</button>'.
-                            '</form>'.
-                            '<form method="post" action="'.$destroyAction.'" class="block" data-swal-confirm="Delete this invoice? This only works for invoices without payments.">'.
-                        '<input type="hidden" name="_token" value="'.$csrf.'">'.
-                        '<input type="hidden" name="_method" value="delete">'.
-                        '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-red-700 hover:bg-rose-50">Delete</button>'.
-                            '</form>'.
-                        '</div>'.
-                    '</details>'.
-                '</div>'
-            );
+            $actions = new HtmlString(view('property.agent.partials.invoice_row_actions', ['invoice' => $i])->render());
 
             $typeLabel = ucfirst((string) ($i->invoice_type ?? 'rent'));
             $statusBadge = '<span class="rounded-full px-2 py-0.5 text-[11px] font-semibold '.self::statusBadgeClasses((string) $i->status).'">'.ucfirst((string) $i->status).'</span>';
 
             return [
-                new HtmlString('<label class="inline-flex items-center"><input type="checkbox" name="ids[]" value="'.$i->id.'" form="property-invoices-bulk-form" class="rounded border-slate-300"><span class="sr-only">Select</span></label>'),
+                new HtmlString('<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="ids[]" value="'.$i->id.'" form="property-invoices-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select</span></label>'),
                 new HtmlString('<a href="'.$showAction.'" class="font-semibold text-blue-700 hover:underline">'.$i->invoice_no.'</a>'),
                 $typeLabel,
                 $i->tenant->name ?? '—',
@@ -568,8 +583,9 @@ class PmInvoiceController extends Controller
             ];
         })->all();
 
-        return view('property.agent.revenue.invoices', [
+        return property_view('property.agent.revenue.invoices', [
             'stats' => $stats,
+            'billingRangeLabel' => $billingRangeLabel,
             'columns' => ['Select', 'Invoice #', 'Type', 'Tenant', 'Unit', 'Period', 'Amount', 'Balance', 'Issued', 'Due', 'Status', 'Actions'],
             'tableRows' => $rows,
             'paginator' => $invoices,
@@ -582,6 +598,7 @@ class PmInvoiceController extends Controller
             'leases' => PmLease::query()->with(['pmTenant', 'units'])->orderByDesc('start_date')->get(),
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
             'tenants' => PmTenant::query()->orderBy('name')->get(),
+            'tenantsForFilter' => $this->invoiceFilterTenants((int) $filters['tenant_id']),
         ]);
     }
 
@@ -628,6 +645,18 @@ class PmInvoiceController extends Controller
         }
         if ((string) $invoice->status === PmInvoice::STATUS_CANCELLED) {
             return back()->with('info', 'Invoice is already cancelled.');
+        }
+
+        $overrideId = (int) $request->input('utility_override_request_id', 0) ?: null;
+        try {
+            app(UtilityPeriodGuardService::class)->assertInvoiceMutable(
+                $invoice,
+                UtilityPeriodGuardService::ACTION_REVERSE_INVOICE,
+                $request->user(),
+                $overrideId,
+            );
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['period' => $e->getMessage()]);
         }
 
         DB::transaction(function () use ($invoice, $request, $data) {
@@ -700,9 +729,15 @@ class PmInvoiceController extends Controller
                 'status' => PmPayment::STATUS_COMPLETED,
                 'meta' => null,
             ]);
-            if (\Illuminate\Support\Facades\Schema::hasColumn('payments', 'agent_user_id')
-                || \Illuminate\Support\Facades\Schema::hasColumn('pm_payments', 'agent_user_id')) {
-                $payment->forceFill(['agent_user_id' => $invoice->agent_user_id])->save();
+            if (Schema::hasColumn('pm_payments', 'agent_user_id')) {
+                $agentUserId = (int) ($invoice->agent_user_id ?? 0);
+                if ($agentUserId <= 0) {
+                    $invoice->loadMissing('unit.property');
+                    $agentUserId = (int) ($invoice->unit?->property?->agent_user_id ?? 0);
+                }
+                if ($agentUserId > 0) {
+                    $payment->update(['agent_user_id' => $agentUserId]);
+                }
             }
 
             PmPaymentAllocation::query()->create([
@@ -746,10 +781,8 @@ class PmInvoiceController extends Controller
     public function printable(PmInvoice $invoice): View
     {
         $invoice->loadMissing(['tenant', 'unit.property', 'items']);
-        return view('property.agent.revenue.invoice_print', [
-            'invoice' => $invoice,
-            'branding' => $this->branding(),
-        ]);
+
+        return property_view('property.agent.revenue.invoice_print', $this->invoicePrintViewData($invoice));
     }
 
     /**
@@ -942,7 +975,7 @@ class PmInvoiceController extends Controller
     {
         $invoice = $this->resolvePublic($token);
         $invoice->loadMissing(['tenant', 'unit.property', 'items']);
-        return view('property.public.invoice_show', [
+        return property_view('property.public.invoice_show', [
             'invoice' => $invoice,
             'branding' => $this->branding(),
         ]);
@@ -961,10 +994,7 @@ class PmInvoiceController extends Controller
     {
         $invoice->loadMissing(['tenant', 'unit.property', 'items']);
 
-        $html = view('property.agent.revenue.invoice_print', [
-            'invoice' => $invoice,
-            'branding' => $this->branding(),
-        ])->render();
+        $html = view('property.agent.revenue.invoice_print', $this->invoicePrintViewData($invoice))->render();
 
         try {
             $options = new Options();
@@ -994,10 +1024,7 @@ class PmInvoiceController extends Controller
     private function buildPdfBinary(PmInvoice $invoice): string
     {
         $invoice->loadMissing(['tenant', 'unit.property', 'items']);
-        $html = view('property.agent.revenue.invoice_print', [
-            'invoice' => $invoice,
-            'branding' => $this->branding(),
-        ])->render();
+        $html = view('property.agent.revenue.invoice_print', $this->invoicePrintViewData($invoice))->render();
 
         $options = new Options();
         $options->set('isRemoteEnabled', true);
@@ -1011,12 +1038,23 @@ class PmInvoiceController extends Controller
         return (string) $dompdf->output();
     }
 
+    /**
+     * @return array{invoice: PmInvoice, branding: array<string, mixed>, payments: array<string, string>}
+     */
+    private function invoicePrintViewData(PmInvoice $invoice): array
+    {
+        return [
+            'invoice' => $invoice,
+            'branding' => $this->branding(),
+            'payments' => $this->paymentInstructions(),
+        ];
+    }
+
     private function resolvePublic(string $token): PmInvoice
     {
         $invoice = PmInvoice::query()
-            ->withoutGlobalScopes()
+            ->withoutGlobalScope('agent_workspace')
             ->where('share_token', $token)
-            ->whereNull('deleted_at')
             ->first();
 
         if (! $invoice) {
@@ -1031,15 +1069,37 @@ class PmInvoiceController extends Controller
         $decoded = is_string($b) ? json_decode($b, true) : (is_array($b) ? $b : []);
 
         $defaults = [
-            'company_name' => 'Property Manager',
+            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
             'address' => '',
             'phone' => '',
-            'email' => '',
-            'logo_url' => '',
-            'colour' => '#1e40af',
+            'email' => PropertyPortalSetting::getValue('contact_email_primary', ''),
+            'logo_url' => PropertyPortalSetting::getValue('company_logo_url', ''),
+            'colour' => '#0f766e',
             'footer_note' => 'Thank you for your business.',
         ];
-        return array_merge($defaults, is_array($decoded) ? $decoded : []);
+        $merged = array_merge($defaults, is_array($decoded) ? $decoded : []);
+        if (trim((string) ($merged['logo_url'] ?? '')) === '') {
+            $merged['logo_url'] = PropertyPortalSetting::getValue('company_logo_url', '');
+        }
+
+        return $merged;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function paymentInstructions(): array
+    {
+        return [
+            'mpesa_shortcode' => trim((string) PropertyPortalSetting::getValue('mpesa_shortcode', '')),
+            'trust_bank_name' => trim((string) PropertyPortalSetting::getValue('trust_bank_name', '')),
+            'trust_account_number' => trim((string) PropertyPortalSetting::getValue('trust_account_number', '')),
+            'trust_account_label' => trim((string) PropertyPortalSetting::getValue('trust_account_label', '')),
+            'payments_notes' => trim((string) PropertyPortalSetting::getValue('payments_notes', '')),
+            'rules_notes' => trim((string) PropertyPortalSetting::getValue('rules_notes', '')),
+            'late_fee_percent' => trim((string) PropertyPortalSetting::getValue('rules_late_fee_percent', '')),
+            'grace_days' => trim((string) PropertyPortalSetting::getValue('rules_grace_days', '')),
+        ];
     }
 
     private static function statusBadgeClasses(string $status): string
@@ -1052,5 +1112,148 @@ class PmInvoiceController extends Controller
             PmInvoice::STATUS_DRAFT => 'bg-slate-100 text-slate-700',
             default => 'bg-blue-100 text-blue-700',
         };
+    }
+
+    /**
+     * @return array{0: int, 1: string, 2: Carbon, 3: Carbon, 4: string}
+     */
+    private function resolveInvoiceBillingRange(Request $request): array
+    {
+        $allowed = [1, 2, 3, 6, 12];
+        $rangeMonths = (int) $request->query('range_months', 1);
+        if (! in_array($rangeMonths, $allowed, true)) {
+            $rangeMonths = 1;
+        }
+
+        $rangeEndYm = trim((string) $request->query('range_end', now()->format('Y-m')));
+        if (preg_match('/^\d{4}\-\d{2}$/', $rangeEndYm) !== 1) {
+            $rangeEndYm = now()->format('Y-m');
+        }
+
+        $rangeTo = Carbon::createFromFormat('Y-m', $rangeEndYm)->endOfMonth()->startOfDay();
+        $rangeFrom = $rangeTo->copy()->subMonths($rangeMonths - 1)->startOfMonth()->startOfDay();
+
+        $billingRangeLabel = $rangeMonths === 1
+            ? $rangeFrom->format('M Y')
+            : $rangeFrom->format('M Y').' – '.$rangeTo->format('M Y').' ('.$rangeMonths.' mo)';
+
+        return [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $billingRangeLabel];
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function applyInvoiceListFilters(\Illuminate\Database\Eloquent\Builder $query, array $filters): \Illuminate\Database\Eloquent\Builder
+    {
+        if (($filters['q'] ?? '') !== '') {
+            $q = (string) $filters['q'];
+            $query->where(function ($inner) use ($q) {
+                $inner->where('invoice_no', 'like', '%'.$q.'%')
+                    ->orWhere('description', 'like', '%'.$q.'%')
+                    ->orWhere('notes', 'like', '%'.$q.'%')
+                    ->orWhereHas('tenant', fn ($tq) => $tq
+                        ->where('name', 'like', '%'.$q.'%')
+                        ->orWhere('phone', 'like', '%'.$q.'%'))
+                    ->orWhereHas('unit', fn ($uq) => $uq
+                        ->where('label', 'like', '%'.$q.'%')
+                        ->orWhereHas('property', fn ($pq) => $pq->where('name', 'like', '%'.$q.'%')));
+            });
+        }
+        $status = strtolower(trim((string) ($filters['status'] ?? '')));
+        if ($status !== '' && in_array($status, [
+            PmInvoice::STATUS_DRAFT,
+            PmInvoice::STATUS_SENT,
+            PmInvoice::STATUS_PARTIAL,
+            PmInvoice::STATUS_PAID,
+            PmInvoice::STATUS_OVERDUE,
+            PmInvoice::STATUS_CANCELLED,
+        ], true)) {
+            $query->where('status', $status);
+        }
+        $type = strtolower(trim((string) ($filters['type'] ?? '')));
+        if (in_array($type, [PmInvoice::TYPE_RENT, PmInvoice::TYPE_WATER, PmInvoice::TYPE_MIXED], true)) {
+            $query->where('invoice_type', $type);
+        }
+        if ((int) ($filters['tenant_id'] ?? 0) > 0) {
+            $query->where('pm_tenant_id', (int) $filters['tenant_id']);
+        }
+        if ((int) ($filters['unit_id'] ?? 0) > 0) {
+            $query->where('property_unit_id', (int) $filters['unit_id']);
+        }
+        $period = trim((string) ($filters['period'] ?? ''));
+        if ($period !== '' && preg_match('/^\d{4}\-\d{2}$/', $period) === 1) {
+            $query->where('billing_period', $period);
+        }
+
+        $from = (string) ($filters['from'] ?? '');
+        $to = (string) ($filters['to'] ?? '');
+        $searchQ = trim((string) ($filters['q'] ?? ''));
+        $tenantId = (int) ($filters['tenant_id'] ?? 0);
+        $scopedToTenant = $tenantId > 0 || $searchQ !== '';
+
+        // Carry-forward invoices are issued on historical dates — hide them only during month browsing.
+        if ($from !== '' && $to !== '' && ! $scopedToTenant) {
+            $query->whereDate('issue_date', '>=', $from);
+            $query->whereDate('issue_date', '<=', $to);
+        }
+        if (($filters['due_from'] ?? '') !== '') {
+            $query->whereDate('due_date', '>=', (string) $filters['due_from']);
+        }
+        if (($filters['due_to'] ?? '') !== '') {
+            $query->whereDate('due_date', '<=', (string) $filters['due_to']);
+        }
+
+        return $query;
+    }
+
+    /**
+     * Tenants that appear on at least one invoice (for billing filters only).
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, PmTenant>
+     */
+    private function invoiceFilterTenants(int $ensureTenantId = 0): \Illuminate\Database\Eloquent\Collection
+    {
+        $tenantIds = PmInvoice::query()
+            ->whereNotNull('pm_tenant_id')
+            ->distinct()
+            ->pluck('pm_tenant_id');
+
+        if ($ensureTenantId > 0 && ! $tenantIds->contains($ensureTenantId)) {
+            $tenantIds->push($ensureTenantId);
+        }
+
+        if ($tenantIds->isEmpty()) {
+            return PmTenant::query()->whereRaw('1 = 0')->get(['id', 'name']);
+        }
+
+        return PmTenant::query()
+            ->whereIn('id', $tenantIds)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+    }
+
+    private function aggregateInvoiceSummary(\Illuminate\Database\Eloquent\Builder $query): object
+    {
+        $paid = PmInvoice::STATUS_PAID;
+        $draft = PmInvoice::STATUS_DRAFT;
+        $sent = PmInvoice::STATUS_SENT;
+        $partial = PmInvoice::STATUS_PARTIAL;
+        $overdue = PmInvoice::STATUS_OVERDUE;
+        $cancelled = PmInvoice::STATUS_CANCELLED;
+
+        return (clone $query)
+            ->where('status', '!=', $cancelled)
+            ->selectRaw(
+                'COUNT(*) as invoice_count,
+                COUNT(DISTINCT pm_tenant_id) as tenant_count,
+                COALESCE(SUM(amount), 0) as total_billed,
+                COALESCE(SUM(amount_paid), 0) as total_collected,
+                COALESCE(SUM(GREATEST(0, amount - amount_paid)), 0) as total_outstanding,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as paid_count,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as draft_count,
+                SUM(CASE WHEN status IN (?, ?, ?) THEN 1 ELSE 0 END) as open_count',
+                [$paid, $draft, $sent, $partial, $overdue]
+            )
+            ->first() ?? (object) [];
     }
 }

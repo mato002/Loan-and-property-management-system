@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Models\PmLease;
+use App\Models\PmInvoice;
 use App\Models\PmTenant;
 use App\Models\PmTenantNotice;
 use App\Models\PmTenantNoticeEvent;
@@ -259,7 +260,7 @@ class PropertyTenantsOpsWebController extends Controller
             ->filter(fn (PmUnitMovement $m) => $m->scheduled_on && $m->scheduled_on->betweenIncluded(now()->startOfDay(), now()->addDays(7)->endOfDay()))
             ->count();
 
-        return view('property.agent.tenants.movements', [
+        return property_view('property.agent.tenants.movements', [
             'stats' => $stats,
             'columns' => ['Unit', 'Type', 'Status', 'Scheduled', 'Completed', 'Owner', 'Actions'],
             'tableRows' => $rows,
@@ -346,6 +347,14 @@ class PropertyTenantsOpsWebController extends Controller
 
         $user = $request->user();
         $rows = $notices->map(function (PmTenantNotice $n) use ($user) {
+            $selectCell = in_array($n->status, ['closed'], true)
+                ? ''
+                : new HtmlString(
+                    '<label class="inline-flex items-center" data-row-ignore-click>'.
+                    '<input type="checkbox" name="notice_ids[]" value="'.(int) $n->id.'" form="property-notices-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">'.
+                    '<span class="sr-only">Select notice</span></label>'
+                );
+
             $actions = '—';
             if (! in_array($n->status, ['closed'], true)) {
                 $actionForms = [];
@@ -403,6 +412,7 @@ class PropertyTenantsOpsWebController extends Controller
             }
 
             return [
+                $selectCell,
                 $n->tenant?->name ?? '—',
                 $n->unit ? $n->unit->property->name.'/'.$n->unit->label : '—',
                 str_replace('_', ' ', $n->notice_type),
@@ -420,6 +430,7 @@ class PropertyTenantsOpsWebController extends Controller
         $tenantUnitMapQuery = DB::table('pm_invoices as i')
             ->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
             ->whereNotNull('i.property_unit_id')
+            ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
             ->selectRaw('i.pm_tenant_id as tenant_id, i.property_unit_id as unit_id, MAX(COALESCE(i.issue_date, i.due_date, DATE(i.created_at))) as latest_date')
             ->groupBy('i.pm_tenant_id', 'i.property_unit_id')
             ->orderByDesc('latest_date');
@@ -442,9 +453,9 @@ class PropertyTenantsOpsWebController extends Controller
             ->filter(static fn (?int $unitId): bool => $unitId !== null)
             ->toArray();
 
-        return view('property.agent.tenants.notices', [
+        return property_view('property.agent.tenants.notices', [
             'stats' => $stats,
-            'columns' => ['Tenant', 'Unit', 'Type', 'Status', 'Due', 'By', 'Actions'],
+            'columns' => ['', 'Tenant', 'Unit', 'Type', 'Status', 'Due', 'By', 'Actions'],
             'tableRows' => $rows,
             'tenants' => $tenants,
             'units' => $units,
@@ -566,6 +577,47 @@ class PropertyTenantsOpsWebController extends Controller
         return back()->with('success', __('Movement status updated.'));
     }
 
+    public function noticesBulk(Request $request): RedirectResponse
+    {
+        $allowedStatuses = $this->legalNoticeStatuses();
+        $data = $request->validate([
+            'action' => ['required', 'in:'.implode(',', $allowedStatuses)],
+            'notice_ids' => ['required', 'array', 'min:1'],
+            'notice_ids.*' => ['integer', 'exists:pm_tenant_notices,id'],
+        ]);
+
+        $to = (string) $data['action'];
+        $notices = PmTenantNotice::query()->whereIn('id', $data['notice_ids'])->get();
+        $applied = 0;
+        $skipped = 0;
+        $errors = [];
+
+        foreach ($notices as $notice) {
+            $error = $this->transitionNoticeTo($request, $notice, $to);
+            if ($error !== null) {
+                $skipped++;
+                $errors[] = 'Notice #'.$notice->id.': '.$error;
+
+                continue;
+            }
+            $applied++;
+        }
+
+        $summary = "Updated {$applied} notice(s)";
+        if ($skipped > 0) {
+            $summary .= ", skipped {$skipped}";
+        }
+        $summary .= '.';
+
+        if ($errors !== []) {
+            return back()
+                ->with($applied > 0 ? 'success' : 'warning', $summary)
+                ->with('bulk_notice_errors', array_slice($errors, 0, 8));
+        }
+
+        return back()->with('success', $summary);
+    }
+
     public function updateNoticeStatus(Request $request, PmTenantNotice $notice): RedirectResponse
     {
         $allowedStatuses = $this->legalNoticeStatuses();
@@ -575,8 +627,46 @@ class PropertyTenantsOpsWebController extends Controller
         ]);
         $from = (string) ($notice->status ?? 'draft');
         $to = (string) $data['status'];
+
+        if ($from !== $to) {
+            $error = $this->transitionNoticeTo($request, $notice, $to);
+            if ($error !== null) {
+                return back()->withErrors(['status' => $error]);
+            }
+            $notice->refresh();
+        }
+
+        $uploaded = $request->file('proof_attachment');
+        if ($uploaded) {
+            $proofPath = $uploaded->store('property/notices/proof', 'public');
+            $notice->update(['proof_attachment' => $proofPath]);
+            $this->logNoticeEvent(
+                $notice,
+                'status_changed',
+                $from,
+                $to,
+                (int) $request->user()->id,
+                'Proof attachment updated.',
+                [
+                    'proof_attachment' => $proofPath,
+                    'message_id' => $notice->message_id,
+                    'delivery_proof_id' => $notice->delivery_proof_id,
+                ]
+            );
+        }
+
+        return back()->with('success', __('Notice status updated.'));
+    }
+
+    private function transitionNoticeTo(Request $request, PmTenantNotice $notice, string $to): ?string
+    {
+        $from = (string) ($notice->status ?? 'draft');
+        if ($from === $to) {
+            return null;
+        }
+
         $transitions = $this->legalNoticeTransitions();
-        if ($from !== $to && ! in_array($to, $transitions[$from] ?? [], true)) {
+        if (! in_array($to, $transitions[$from] ?? [], true)) {
             $this->logNoticeEvent(
                 $notice,
                 'transition_denied',
@@ -586,8 +676,10 @@ class PropertyTenantsOpsWebController extends Controller
                 'Denied invalid status transition.',
                 ['reason' => 'invalid_transition']
             );
-            return back()->withErrors(['status' => 'Invalid notice status transition from '.$from.' to '.$to.'.']);
+
+            return 'Invalid transition from '.$from.' to '.$to.'.';
         }
+
         if ($this->isLegalNoticeType((string) $notice->notice_type)) {
             if ($to === 'approved' && ! $request->user()->hasPmPermission('communications.approve_notice')) {
                 $this->logNoticeEvent(
@@ -599,7 +691,8 @@ class PropertyTenantsOpsWebController extends Controller
                     'Denied status change due to missing communications.approve_notice permission.',
                     ['required_permission' => 'communications.approve_notice']
                 );
-                return back()->withErrors(['status' => 'You do not have permission to approve legal notices.']);
+
+                return 'Missing permission to approve legal notices.';
             }
             if (in_array($to, ['sent', 'delivered', 'acknowledged', 'escalated'], true) && ! $request->user()->hasPmPermission('communications.send_legal_notice')) {
                 $this->logNoticeEvent(
@@ -611,21 +704,15 @@ class PropertyTenantsOpsWebController extends Controller
                     'Denied status change due to missing communications.send_legal_notice permission.',
                     ['required_permission' => 'communications.send_legal_notice']
                 );
-                return back()->withErrors(['status' => 'You do not have permission to send legal notices.']);
-            }
-        }
 
-        $proofPath = $notice->proof_attachment;
-        $uploaded = $request->file('proof_attachment');
-        if ($uploaded) {
-            $proofPath = $uploaded->store('property/notices/proof', 'public');
+                return 'Missing permission to send legal notices.';
+            }
         }
 
         $notice->update([
             'status' => $to,
             'served_by_user_id' => in_array($to, ['sent', 'delivered', 'acknowledged'], true) ? $request->user()->id : $notice->served_by_user_id,
             'served_at' => in_array($to, ['sent', 'delivered', 'acknowledged'], true) ? now() : $notice->served_at,
-            'proof_attachment' => $proofPath,
         ]);
         $this->logNoticeEvent(
             $notice,
@@ -633,16 +720,16 @@ class PropertyTenantsOpsWebController extends Controller
             $from,
             $to,
             (int) $request->user()->id,
-            $from === $to ? 'Notice status updated.' : 'Notice status changed from '.$from.' to '.$to.'.',
+            'Notice status changed from '.$from.' to '.$to.'.',
             [
-                'proof_attachment' => $proofPath,
+                'proof_attachment' => $notice->proof_attachment,
                 'message_id' => $notice->message_id,
                 'delivery_proof_id' => $notice->delivery_proof_id,
             ]
         );
         $this->dispatchNoticeIfRequired($notice, $request);
 
-        return back()->with('success', __('Notice status updated.'));
+        return null;
     }
 
     private function dispatchNoticeIfRequired(PmTenantNotice $notice, Request $request): void

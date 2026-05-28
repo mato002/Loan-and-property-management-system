@@ -20,4 +20,32 @@ return [
     */
     'workflow_automation_enabled' => env('PROPERTY_WORKFLOW_AUTOMATION_ENABLED'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Property portal UI version
+    |--------------------------------------------------------------------------
+    |
+    | false — legacy sidebar, pages, and components (pre-ERP workspace UI).
+    | true  — v2 ERP workspace navigation and redesigned pages.
+    |
+    | Toggle with PROPERTY_UI_V2 in .env, then run:
+    | php artisan optimize:clear
+    |
+    */
+    'ui_v2' => filter_var(env('PROPERTY_UI_V2', false), FILTER_VALIDATE_BOOL),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Legacy agent sidebar (nested groups)
+    |--------------------------------------------------------------------------
+    */
+    'classic_sidebar' => require __DIR__.'/property_classic_sidebar.php',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Navigation shell mode (sidebar/header presentation)
+    |--------------------------------------------------------------------------
+    */
+    'navigation' => require __DIR__.'/property_navigation.php',
+
 ];

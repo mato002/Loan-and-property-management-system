@@ -128,8 +128,8 @@
     </x-loan.page>
 </x-loan-layout>
 
-<script>
-    window.__groupClientOptions = @json(($clientOptions ?? collect())->map(function ($c) {
+@php
+    $groupClientOptions = ($clientOptions ?? collect())->map(function ($c) {
         return [
             'id' => (int) $c->id,
             'client_number' => (string) $c->client_number,
@@ -137,5 +137,8 @@
             'phone' => (string) ($c->phone ?? ''),
             'id_number' => (string) ($c->id_number ?? ''),
         ];
-    })->values());
+    })->values();
+@endphp
+<script>
+    window.__groupClientOptions = @json($groupClientOptions);
 </script>

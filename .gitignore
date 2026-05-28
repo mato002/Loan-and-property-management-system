@@ -23,3 +23,6 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Capacitor local server URL (copy from capacitor.env.example)
+/capacitor.env

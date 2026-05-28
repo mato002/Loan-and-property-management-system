@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full" data-pwa-context="portal">
+    <head>
+        @php
+            $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');
+            $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
+            $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
+        @endphp
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="csrf-token" content="{{ csrf_token() }}">
+
+        <title>Property Management System</title>
+
+        <!-- Fonts -->
+        <link rel="preconnect" href="https://fonts.bunny.net">
+        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+        <!-- Scripts -->
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
+        <link rel="icon" href="{{ $faviconVersioned }}" />
+        <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
+        <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
+        <link rel="manifest" href="{{ route('pwa.manifest.portal') }}" />
+        <meta name="theme-color" content="#059669" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="{{ \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Property Portal') }}" />
+        <script src="{{ asset('js/pwa-install.js') }}?v=2" defer></script>
+        
+        <style>
+            /* Portal shell — flush layout without body position:fixed (that + scroll-lock top offset clips the header) */
+            html[data-pwa-context='portal'] {
+                margin: 0 !important;
+                padding: 0 !important;
+                height: 100% !important;
+                overflow: hidden !important;
+                background: #047857;
+            }
+            html[data-pwa-context='portal'] body {
+                margin: 0 !important;
+                padding: 0 !important;
+                position: relative !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                min-height: 100dvh;
+                overflow: hidden !important;
+                background: #e8ecf1 !important;
+            }
+            html[data-pwa-context='portal'] .property-print-root {
+                display: flex !important;
+                flex-direction: row !important;
+                width: 100% !important;
+                height: 100% !important;
+                min-height: 100dvh;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            html[data-pwa-context='portal'] #property-shell-header {
+                overflow: visible !important;
+                flex-shrink: 0;
+            }
+            @media (min-width: 1024px) {
+                html[data-pwa-context='portal'] #property-shell-sidebar {
+                    width: {{ $propertySidebarExpanded }};
+                    min-width: {{ $propertySidebarExpanded }};
+                    max-width: {{ $propertySidebarExpanded }};
+                }
+                html[data-pwa-context='portal'] #property-mobile-search-overlay {
+                    display: none !important;
+                }
+            }
+
+            [x-cloak] { display: none !important; }
+            .custom-scrollbar::-webkit-scrollbar {
+                width: 6px;
+                height: 6px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb {
+                background: #b8c2ce;
+                border-radius: 10px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                background: #94a3b8;
+            }
+            /* Firefox */
+            .custom-scrollbar {
+                scrollbar-width: auto;
+                scrollbar-color: #b8c2ce transparent;
+                scrollbar-gutter: stable;
+            }
+            @media print {
+                @page { size: auto; margin: 12mm; }
+                html, body {
+                    background: #fff !important;
+                    color: #000 !important;
+                    height: auto !important;
+                    overflow: visible !important;
+                }
+                .property-print-hide,
+                .print-hide {
+                    display: none !important;
+                }
+                .property-print-only {
+                    display: block !important;
+                }
+                .property-print-root {
+                    display: block !important;
+                    width: 100% !important;
+                    min-height: auto !important;
+                }
+                .property-print-main {
+                    overflow: visible !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                #property-main {
+                    display: block !important;
+                    width: 100% !important;
+                }
+                a {
+                    text-decoration: none !important;
+                    color: #000 !important;
+                }
+                .shadow-sm, .shadow, .shadow-lg, .rounded-2xl, .rounded-xl, .rounded-lg {
+                    box-shadow: none !important;
+                }
+            }
+            .property-print-only {
+                display: none;
+            }
+            /* Reusable high-attention blocks for first-time user guidance */
+            .property-attention-card {
+                border-width: 2px;
+                border-color: #bfdbfe;
+                background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+            }
+            .property-attention-title {
+                font-size: 1.125rem;
+                line-height: 1.5rem;
+                font-weight: 700;
+                color: #0f172a;
+                letter-spacing: -0.01em;
+            }
+            .property-attention-hint {
+                font-size: 0.8rem;
+                line-height: 1.15rem;
+                color: #475569;
+            }
+            /* Property module table grid lines (global) */
+            #property-main table {
+                border-collapse: collapse;
+            }
+            #property-main table th,
+            #property-main table td {
+                border: 1px solid #cbd5e1;
+            }
+            .dark #property-main table th,
+            .dark #property-main table td {
+                border-color: #334155;
+            }
+            /* Property workspace shell — fixed sidebar/header, scrollable workspace only */
+            .property-print-root {
+                isolation: isolate;
+            }
+            #property-shell-sidebar {
+                position: relative;
+                z-index: 40;
+            }
+            #property-shell-header {
+                position: relative;
+                z-index: 50;
+            }
+            #property-workspace-main {
+                position: relative;
+                z-index: 0;
+                isolation: isolate;
+            }
+            #property-global-nav-progress {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                z-index: 45;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.15s ease;
+            }
+            #property-global-nav-progress[data-active] {
+                opacity: 1;
+            }
+            #property-global-nav-progress > span {
+                display: block;
+                height: 100%;
+                width: 35%;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, #059669 0%, #6ee7b7 45%, #059669 90%);
+                background-size: 200% 100%;
+                animation: property-frame-progress 0.9s ease-in-out infinite;
+            }
+            #property-workspace-loading {
+                position: absolute;
+                inset: 0;
+                z-index: 25;
+                display: none;
+                padding: 0.75rem;
+                background: rgb(232 236 241 / 0.72);
+                backdrop-filter: blur(1px);
+            }
+            #property-workspace-loading[data-active] {
+                display: block;
+                pointer-events: none;
+            }
+
+            #property-workspace-loading[data-active] .property-workspace-loading {
+                opacity: 0.55;
+            }
+
+            turbo-frame#property-main {
+                position: relative;
+            }
+
+            turbo-frame#property-main [data-property-frame-skeleton] {
+                position: absolute;
+                inset: 0;
+                z-index: 12;
+                overflow: hidden;
+                background: rgb(232 236 241 / 0.94);
+                backdrop-filter: blur(1px);
+            }
+            #property-workspace-loading .property-workspace-loading {
+                pointer-events: none;
+            }
+            #property-workspace-error {
+                display: none;
+            }
+            #property-workspace-error[data-active] {
+                display: block;
+            }
+            /* Turbo frame loading — progress bar + stable containment */
+            turbo-frame#property-main {
+                display: block;
+                width: 100%;
+                max-width: 100%;
+                min-height: 12rem;
+                position: relative;
+                overflow: visible;
+            }
+            turbo-frame#property-main[data-property-loading] {
+                pointer-events: none;
+            }
+            turbo-frame#property-main[data-property-loading]::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                z-index: 30;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, #059669 0%, #6ee7b7 45%, #059669 90%);
+                background-size: 200% 100%;
+                animation: property-frame-progress 0.9s ease-in-out infinite;
+            }
+            turbo-frame#property-main > * {
+                max-width: 100%;
+            }
+            @keyframes property-frame-progress {
+                0% { background-position: 100% 0; }
+                100% { background-position: -100% 0; }
+            }
+        </style>
+        @php
+            use App\Support\Property\PropertyNavMode;
+
+            $propertyNavMode = ($propertyPortal ?? 'agent') === 'agent'
+                ? PropertyNavMode::current()
+                : PropertyNavMode::CLASSIC;
+            $propertySidebarExpanded = match ($propertyNavMode) {
+                PropertyNavMode::HYBRID => '16rem',
+                default => '19rem',
+            };
+            $propertySidebarCollapsed = match ($propertyNavMode) {
+                PropertyNavMode::HYBRID => '4.75rem',
+                default => '5.5rem',
+            };
+        @endphp
+    </head>
+    <body
+        class="font-sans antialiased h-screen overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 @if(($propertyPortal ?? 'agent') === 'tenant') selection:bg-teal-200 @endif"
+        data-property-portal="{{ $propertyPortal ?? 'agent' }}"
+        data-property-nav-mode="{{ $propertyNavMode }}"
+        x-data="{
+            sidebarOpen: false,
+            sidebarDesktopOpen: true,
+            init() {
+                const portal = @js($propertyPortal ?? 'agent');
+                const saved = window.localStorage.getItem(`property.sidebar.desktop.open.${portal}`);
+                if (saved !== null) {
+                    this.sidebarDesktopOpen = saved === '1';
+                }
+            },
+            toggleDesktopSidebar() {
+                this.sidebarDesktopOpen = !this.sidebarDesktopOpen;
+                const portal = @js($propertyPortal ?? 'agent');
+                window.localStorage.setItem(`property.sidebar.desktop.open.${portal}`, this.sidebarDesktopOpen ? '1' : '0');
+            },
+            expandDesktopSidebar() {
+                if (!this.sidebarDesktopOpen) {
+                    this.sidebarDesktopOpen = true;
+                    const portal = @js($propertyPortal ?? 'agent');
+                    window.localStorage.setItem(`property.sidebar.desktop.open.${portal}`, '1');
+                }
+            }
+        }"
+        @property-sidebar-expand.window="expandDesktopSidebar()"
+        x-effect="(() => { document.documentElement.classList.toggle('property-sidebar-collapsed', !sidebarDesktopOpen && window.matchMedia('(min-width: 1024px)').matches); document.documentElement.classList.toggle('overflow-hidden', sidebarOpen && window.innerWidth < 1024); })()"
+    >
+        <script>
+            (function () {
+                function resetPortalShellPosition() {
+                    if (!document.body?.dataset?.propertyNavMode) {
+                        return;
+                    }
+                    document.body.classList.remove('property-modal-scroll-lock');
+                    document.body.style.removeProperty('top');
+                    document.body.style.removeProperty('position');
+                    document.body.style.removeProperty('width');
+                    document.body.style.removeProperty('padding-right');
+                    document.documentElement.classList.remove('property-modal-scroll-lock');
+                    document.documentElement.scrollTop = 0;
+                    document.body.scrollTop = 0;
+                    window.scrollTo(0, 0);
+                }
+                resetPortalShellPosition();
+                document.addEventListener('DOMContentLoaded', resetPortalShellPosition);
+                document.addEventListener('turbo:load', resetPortalShellPosition);
+                document.addEventListener('turbo:render', resetPortalShellPosition);
+            })();
+        </script>
+        <div class="h-full flex property-print-root">
+            
+            <!-- Property Module Dedicated Sidebar (persists across Turbo navigations) -->
+            <div
+                id="property-shell-sidebar"
+                data-turbo-permanent
+                class="property-print-hide h-full w-0 min-w-0 max-w-0 overflow-hidden lg:flex-shrink-0 lg:w-[{{ $propertySidebarExpanded }}] lg:max-w-[{{ $propertySidebarExpanded }}] lg:min-w-[{{ $propertySidebarExpanded }}] transition-all duration-300"
+                :class="sidebarDesktopOpen ? 'lg:w-[{{ $propertySidebarExpanded }}] lg:max-w-[{{ $propertySidebarExpanded }}] lg:min-w-[{{ $propertySidebarExpanded }}] lg:opacity-100' : 'lg:w-[{{ $propertySidebarCollapsed }}] lg:max-w-[{{ $propertySidebarCollapsed }}] lg:min-w-[{{ $propertySidebarCollapsed }}] lg:opacity-100'"
+                :style="window.matchMedia('(min-width: 1024px)').matches
+                    ? (sidebarDesktopOpen
+                        ? 'width: {{ $propertySidebarExpanded }}; min-width: {{ $propertySidebarExpanded }}; max-width: {{ $propertySidebarExpanded }};'
+                        : 'width: {{ $propertySidebarCollapsed }}; min-width: {{ $propertySidebarCollapsed }}; max-width: {{ $propertySidebarCollapsed }};')
+                    : 'width: 0; min-width: 0; max-width: 0;'"
+            >
+                @include('layouts.property_sidebar_' . ($propertyPortal ?? 'agent') . '_v2')
+            </div>
+
+            <!-- Main view container (Header, Content, Footer) -->
+            <div class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                
+                <!-- Dedicated Header (persists across Turbo navigations) -->
+                <div id="property-shell-header" data-turbo-permanent class="property-print-hide shrink-0 overflow-visible">
+                    @include('layouts.property_header_v2')
+                </div>
+
+                <!-- Scrollable Content Area (Header/Footer remain constant) -->
+                <main
+                    id="property-workspace-main"
+                    class="property-print-main relative z-0 flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar"
+                    :class="{ 'overflow-hidden': sidebarOpen && window.innerWidth < 1024 }"
+                >
+                    <div id="property-global-nav-progress" aria-hidden="true"><span></span></div>
+                    <div id="property-workspace-loading" aria-hidden="true">
+                        <x-property.workspace-loading />
+                    </div>
+                    <div id="property-workspace-error" class="absolute inset-x-0 top-0 z-30 p-4 sm:p-6" aria-live="polite"></div>
+                    <div class="p-3 sm:p-4 lg:p-8 w-full max-w-full min-w-0 property-mobile-safe-bottom">
+                        <turbo-frame id="property-main" data-turbo-action="advance" data-turbo-cache="false">
+                            <div id="property-main-route" data-route-name="{{ Route::currentRouteName() ?? '' }}" data-page-title="{{ trim((string) ($header ?? '')) }}" hidden></div>
+                            <x-property.next-steps-modal />
+                            <x-swal-flash />
+                            {{ $slot }}
+                        </turbo-frame>
+                    </div>
+                </main>
+
+                <!-- Dedicated Footer (persists across Turbo navigations) -->
+                <div id="property-shell-footer" data-turbo-permanent class="property-print-hide @if(($propertyPortal ?? 'agent') === 'agent') property-mobile-hide-footer lg:block @endif">
+                    @include('layouts.property_footer_v2')
+                </div>
+
+            </div>
+        </div>
+
+        @if (($propertyPortal ?? 'agent') === 'agent')
+            <div data-turbo-permanent>
+                <x-property.mobile-bottom-nav />
+                <x-property.mobile-more-drawer />
+            </div>
+        @endif
+
+        @if (($propertyPortal ?? 'agent') === 'agent')
+            <a
+                href="{{ route('property.advisor') }}"
+                data-turbo-frame="property-main"
+                class="property-print-hide property-mobile-advisor-fab fixed z-[55] flex items-center justify-center gap-2 rounded-full bg-violet-600 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 ring-2 ring-white/20 hover:bg-violet-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 transition-colors bottom-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.25rem))] right-3 h-11 w-11 lg:bottom-5 lg:right-5 lg:h-auto lg:w-auto lg:px-4 lg:py-3"
+                title="AI advisor"
+                aria-label="Ask AI advisor"
+            >
+                <i class="fa-solid fa-robot text-base lg:text-lg" aria-hidden="true"></i>
+                <span class="hidden lg:inline">Ask</span>
+            </a>
+        @endif
+
+        <script>
+            (function () {
+                const SEARCH_DEBOUNCE_MS = 1100;
+
+                function formFilterControls(form) {
+                    const controls = form?.elements ? Array.from(form.elements) : [];
+
+                    return controls.filter((el) => el instanceof HTMLElement && !el.matches('[data-auto-submit="off"]'));
+                }
+
+                function wireAutoFilterForms(scopeRoot) {
+                    const root = scopeRoot || document;
+                    const forms = Array.from(root.querySelectorAll('form[method="get"]:not([data-auto-submit="off"])'));
+
+                    forms.forEach((form) => {
+                        if (form.dataset.autoSubmitBound === '1') {
+                            return;
+                        }
+                        form.dataset.autoSubmitBound = '1';
+
+                        const searchInputs = formFilterControls(form).filter((input) =>
+                            input.matches('input[name="q"], input[type="search"], input[data-auto-search="true"]')
+                        );
+                        searchInputs.forEach((input) => {
+                            input.addEventListener('input', () => {
+                                window.clearTimeout(input._autoSearchTimer);
+                                input._autoSearchTimer = window.setTimeout(() => form.requestSubmit(), SEARCH_DEBOUNCE_MS);
+                            });
+                        });
+
+                        const autoControls = formFilterControls(form).filter((control) =>
+                            control.matches('select, input[type="date"], input[type="month"], input[type="number"], input[type="checkbox"], input[type="radio"]')
+                        );
+                        autoControls.forEach((control) => {
+                            control.addEventListener('change', () => form.requestSubmit());
+                        });
+                    });
+                }
+
+                function syncPropertyFilterDesktopForms() {
+                    const isMobile = window.matchMedia('(max-width: 767px)').matches;
+                    document.querySelectorAll('[data-property-filter-form-desktop]').forEach((form) => {
+                        if (!(form instanceof HTMLFormElement)) {
+                            return;
+                        }
+                        Array.from(form.elements).forEach((el) => {
+                            if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement || el instanceof HTMLButtonElement)) {
+                                return;
+                            }
+                            if (isMobile) {
+                                el.setAttribute('disabled', 'disabled');
+                            } else {
+                                el.removeAttribute('disabled');
+                            }
+                        });
+                    });
+                }
+
+                document.addEventListener('DOMContentLoaded', () => {
+                    wireAutoFilterForms(document);
+                    syncPropertyFilterDesktopForms();
+                });
+                document.addEventListener('turbo:load', () => {
+                    wireAutoFilterForms(document);
+                    syncPropertyFilterDesktopForms();
+                });
+                document.addEventListener('turbo:frame-load', (event) => {
+                    wireAutoFilterForms(event.target);
+                    syncPropertyFilterDesktopForms();
+                });
+                document.addEventListener('livewire:navigated', () => {
+                    wireAutoFilterForms(document);
+                    syncPropertyFilterDesktopForms();
+                });
+                document.addEventListener('alpine:navigated', () => {
+                    wireAutoFilterForms(document);
+                    syncPropertyFilterDesktopForms();
+                });
+                window.addEventListener('resize', syncPropertyFilterDesktopForms, { passive: true });
+
+            })();
+        </script>
+        @stack('scripts')
+
+        <template id="property-frame-skeleton-template">
+            <x-property.frame-skeleton />
+        </template>
+
+        <x-public.pwa-install-prompt context="portal" position="left" />
+    </body>
+</html>

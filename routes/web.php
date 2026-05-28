@@ -17,6 +17,7 @@ use App\Http\Controllers\Loan\LoanClientWalletController;
 use App\Http\Controllers\Loan\LoanDashboardController;
 use App\Http\Controllers\Loan\LoanEmployeesController;
 use App\Http\Controllers\Loan\LoanFinancialController;
+use App\Http\Controllers\Loan\LoanHrController;
 use App\Http\Controllers\Loan\LoanFormSetupController;
 use App\Http\Controllers\Loan\LoanNotificationController;
 use App\Http\Controllers\Loan\LoanOrganizationController;
@@ -47,11 +48,15 @@ Route::get('/invoices/p/{token}/pdf', [\App\Http\Controllers\Property\Agent\PmIn
     ->where('token', '[A-Za-z0-9]{20,80}')
     ->name('property.invoices.public.pdf');
 
+Route::get('/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController::class, 'public'])->name('pwa.manifest');
+Route::get('/property/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController::class, 'portal'])->name('pwa.manifest.portal');
+
 Route::get('/', [PublicController::class, 'home'])->name('public.home');
 Route::get('/properties', [PublicController::class, 'properties'])->name('public.properties');
 Route::get('/properties/{id}', [PublicController::class, 'propertyDetails'])->name('public.property_details');
 Route::get('/about', [PublicController::class, 'about'])->name('public.about');
 Route::get('/contact', [PublicController::class, 'contact'])->name('public.contact');
+Route::post('/contact', [PublicController::class, 'contactStore'])->name('public.contact.store');
 Route::get('/apply', [PublicController::class, 'apply'])->name('public.apply');
 Route::post('/apply', [PublicController::class, 'applyStore'])->name('public.apply.store');
 Route::get('/thank-you', [PublicController::class, 'thankYou'])->name('public.thank_you');
@@ -114,23 +119,25 @@ Route::get('/sitemap.xml', function () {
         ['loc' => url('/terms-of-service'), 'lastmod' => $viewLastMod('public.terms', $now), 'changefreq' => 'yearly', 'priority' => '0.4'],
     ];
 
-    if (class_exists(Property::class) && Schema::hasTable('properties')) {
+    if (class_exists(Property::class) && Schema::hasTable('property_units')) {
         try {
-            Property::query()
+            \App\Models\PropertyUnit::query()
+                ->publiclyListed()
+                ->whereHas('property')
                 ->select(['id', 'updated_at'])
                 ->orderByDesc('updated_at')
                 ->limit(500)
                 ->get()
-                ->each(function ($property) use (&$urls) {
+                ->each(function ($unit) use (&$urls) {
                     $urls[] = [
-                        'loc' => route('public.property_details', ['id' => $property->id]),
-                        'lastmod' => optional($property->updated_at)->toAtomString() ?: now()->toAtomString(),
+                        'loc' => route('public.property_details', ['id' => $unit->id]),
+                        'lastmod' => optional($unit->updated_at)->toAtomString() ?: now()->toAtomString(),
                         'changefreq' => 'weekly',
                         'priority' => '0.8',
                     ];
                 });
         } catch (Throwable) {
-            // Keep sitemap generation resilient even if property table/schema differs.
+            // Keep sitemap generation resilient even if schema differs.
         }
     }
 
@@ -437,6 +444,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/{employee}/edit', [LoanEmployeesController::class, 'edit'])->middleware('loan.permission:employees.update')->name('edit');
             Route::patch('/{employee}', [LoanEmployeesController::class, 'update'])->middleware('loan.permission:employees.update')->name('update');
             Route::delete('/{employee}', [LoanEmployeesController::class, 'destroy'])->middleware('loan.permission:employees.delete')->name('destroy');
+        });
+
+        Route::prefix('loan/hr')->middleware('loan.permission:employees.view')->name('loan.hr.')->group(function () {
+            Route::get('/', [LoanHrController::class, 'dashboard'])->name('dashboard');
+            Route::get('/{section}', [LoanHrController::class, 'section'])->name('section');
+            Route::post('/documents', [LoanHrController::class, 'storeDocument'])->middleware('loan.permission:employees.update')->name('documents.store');
+            Route::delete('/documents/{employeeDocument}', [LoanHrController::class, 'destroyDocument'])->middleware('loan.permission:employees.update')->name('documents.destroy');
+            Route::post('/training', [LoanHrController::class, 'storeTraining'])->middleware('loan.permission:employees.update')->name('training.store');
+            Route::delete('/training/{staffTrainingRecord}', [LoanHrController::class, 'destroyTraining'])->middleware('loan.permission:employees.update')->name('training.destroy');
         });
 
         Route::prefix('loan/regions')->name('loan.regions.')->group(function () {

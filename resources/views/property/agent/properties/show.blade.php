@@ -10,23 +10,23 @@
     @endphp
 
     <x-slot name="actions">
-        <a href="{{ route('property.properties.edit', ['property' => $property->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit property</a>
-        <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Units</a>
+        <a href="{{ route('property.properties.edit', ['property' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit property</a>
+        <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Units</a>
         @if (count($units ?? []) === 0)
-            <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Add units</a>
+            <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Add units</a>
         @endif
-        <a href="{{ route('property.tenants.leases', ['property_id' => $property->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Add lease</a>
+        <a href="{{ route('property.tenants.leases', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Add lease</a>
         @if ($firstVacantUnit)
-            <a href="{{ route('property.tenants.leases', ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Assign tenant</a>
-            <a href="{{ route('property.listings.create', ['selected_unit' => $firstVacantUnit->id], false) }}#listing-publish" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">Publish vacant unit</a>
+            <a href="{{ route('property.tenants.leases', ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Assign tenant</a>
+            <a href="{{ route('property.listings.create', ['selected_unit' => $firstVacantUnit->id], false) }}#listing-publish" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">Publish vacant unit</a>
         @endif
         @if (($property->landlords?->count() ?? 0) === 0)
-            <a href="{{ route('property.properties.list', ['property_id' => $property->id], false) }}#link-landlord-form" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Link landlord</a>
+            <a href="{{ route('property.properties.list', ['property_id' => $property->id], false) }}#link-landlord-form" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Link landlord</a>
         @endif
     </x-slot>
 
     <x-slot name="above">
-        <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-end gap-2">
+        <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-end gap-2">
             <div>
                 <label class="block text-xs font-medium text-slate-600">Month</label>
                 <input type="month" name="month" value="{{ $monthValue ?? '' }}" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
@@ -67,7 +67,7 @@
                 </select>
             </div>
             <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply period</button>
-            <a href="{{ route('property.properties.show', ['property' => $property->id], false) }}" data-turbo-frame="_top" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
+            <a href="{{ route('property.properties.show', ['property' => $property->id], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
             <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
             <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export PDF</a>
             <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export Word</a>
@@ -489,7 +489,7 @@
         </div>
     </div>
 
-    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto overflow-y-visible">
         <div class="px-4 py-3 border-b border-slate-100">
             <div class="flex items-center justify-between gap-3">
                 <h3 class="text-sm font-semibold text-slate-900">Unit status & arrears</h3>
@@ -517,26 +517,29 @@
                 </tr>
             </thead>
             <tbody>
+                @php
+                    $unitsById = collect($units ?? [])->keyBy('id');
+                @endphp
                 @forelse($unitSnapshots as $u)
+                    @php
+                        $unitModel = $unitsById->get((int) $u->id);
+                    @endphp
                     <tr class="border-t border-slate-100 hover:bg-slate-50/70">
                         <td class="px-4 py-3 font-medium text-slate-900">{{ $u->label }}</td>
                         <td class="px-4 py-3 capitalize text-slate-700">{{ $u->status }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->rent_amount) }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
                         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
-                            <td class="px-4 py-3">
-                                <form
-                                    method="post"
-                                    action="{{ route('property.units.destroy', ['unit' => $u->id], false) }}"
-                                    class="inline-flex"
-                                    data-swal-title="Remove this unit?"
-                                    data-swal-confirm="Use this for demolished/invalid units. Deletion is blocked if the unit has lease, invoice, utility, or maintenance history."
-                                    data-swal-confirm-text="Yes, remove unit"
-                                >
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="rounded border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50">Remove</button>
-                                </form>
+                            <td class="px-4 py-3 overflow-visible">
+                                @if ($unitModel)
+                                    @include('property.agent.partials.unit_row_actions', [
+                                        'unit' => $unitModel,
+                                        'arrears' => (float) $u->arrears,
+                                        'propertyId' => $property->id,
+                                    ])
+                                @else
+                                    <span class="text-xs text-slate-400">—</span>
+                                @endif
                             </td>
                         @endif
                     </tr>
@@ -547,23 +550,19 @@
         </table>
 
         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
-            <div
-                x-show="addUnitOpen"
-                x-cloak
-                @keydown.escape.window="addUnitOpen = false"
-                class="fixed inset-0 z-[7000] flex items-center justify-center bg-slate-900/50 p-4"
-            >
-                <div class="w-full max-w-3xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" @click.outside="addUnitOpen = false">
-                    @php
-                        $unitFieldCfg = $unitFields ?? [];
-                        $unitEnabled = fn (string $k, bool $d = true) => (bool) (($unitFieldCfg[$k]['enabled'] ?? $d));
-                        $unitRequired = fn (string $k, bool $d = false) => (bool) (($unitFieldCfg[$k]['required'] ?? $d) && $unitEnabled($k, $d));
-                    @endphp
-                    <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+            @php
+                $unitFieldCfg = $unitFields ?? [];
+                $unitEnabled = fn (string $k, bool $d = true) => (bool) (($unitFieldCfg[$k]['enabled'] ?? $d));
+                $unitRequired = fn (string $k, bool $d = false) => (bool) (($unitFieldCfg[$k]['required'] ?? $d) && $unitEnabled($k, $d));
+            @endphp
+            <x-property.modal show="addUnitOpen" close="addUnitOpen = false" name="add-unit" max-width="3xl">
+                <x-slot name="header">
+                    <div class="flex items-center justify-between gap-3">
                         <h3 class="text-base font-semibold text-slate-900">Add unit to {{ $property->name }}</h3>
                         <button type="button" class="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" @click="addUnitOpen = false">Close</button>
                     </div>
-                    <form method="post" action="{{ route('property.units.store', absolute: false) }}" class="p-5 space-y-4" data-turbo="false">
+                </x-slot>
+                    <form method="post" action="{{ route('property.units.store', absolute: false) }}" class="space-y-4" data-turbo="false">
                         @csrf
                         <input type="hidden" name="property_id" value="{{ $property->id }}" />
                         <input type="hidden" name="unit_count" value="1" />
@@ -630,8 +629,7 @@
                             <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save unit</button>
                         </div>
                     </form>
-                </div>
-            </div>
+            </x-property.modal>
         @endif
     </div>
     <script>

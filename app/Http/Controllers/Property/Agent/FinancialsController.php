@@ -61,7 +61,7 @@ class FinancialsController extends Controller
             );
         }
 
-        return view('property.agent.financials.income_expenses', [
+        return property_view('property.agent.financials.income_expenses', [
             'stats' => [
                 ['label' => 'Billed', 'value' => PropertyMoney::kes($income), 'hint' => $periodLabel],
                 ['label' => 'Maint. booked', 'value' => PropertyMoney::kes($maint), 'hint' => 'Job quotes'],
@@ -147,7 +147,7 @@ class FinancialsController extends Controller
             $dual[] = ['label' => $m['label'], 'a' => $m['in'], 'b' => $m['out']];
         }
 
-        return view('property.agent.financials.cash_flow', [
+        return property_view('property.agent.financials.cash_flow', [
             'stats' => [
                 ['label' => 'In (period)', 'value' => PropertyMoney::kes($inMtd), 'hint' => $periodLabel],
                 ['label' => 'Out (period)', 'value' => PropertyMoney::kes($outMtd), 'hint' => $periodLabel],
@@ -200,6 +200,7 @@ class FinancialsController extends Controller
         $pendingByProperty = DB::table('pm_invoices as i')
             ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
             ->whereDate('i.issue_date', '<=', $end->toDateString())
+            ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
             ->groupBy('pu.property_id')
             ->selectRaw('pu.property_id as property_id, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as total')
             ->pluck('total', 'property_id');
@@ -262,7 +263,7 @@ class FinancialsController extends Controller
             );
         }
 
-        return view('property.agent.financials.owner_balances', [
+        return property_view('property.agent.financials.owner_balances', [
             'stats' => [
                 ['label' => 'Held in trust', 'value' => PropertyMoney::kes($held), 'hint' => 'All owners'],
                 ['label' => 'Pending remit', 'value' => PropertyMoney::kes($pending), 'hint' => 'Based on receivables'],
@@ -330,6 +331,7 @@ class FinancialsController extends Controller
         $invoicedMtdByProperty = DB::table('pm_invoices as i')
             ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
             ->whereBetween('i.issue_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
+            ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
             ->groupBy('pu.property_id')
             ->selectRaw('pu.property_id as property_id, COALESCE(SUM(i.amount),0) as total')
             ->pluck('total', 'property_id');
@@ -410,7 +412,7 @@ class FinancialsController extends Controller
             );
         }
 
-        return view('property.agent.financials.commission', [
+        return property_view('property.agent.financials.commission', [
             'stats' => [
                 ['label' => 'Accrued', 'value' => PropertyMoney::kes($totalAccrued), 'hint' => $periodLabel],
                 ['label' => 'Invoiced', 'value' => PropertyMoney::kes($totalInvoiced), 'hint' => 'From invoice base'],

@@ -81,4 +81,14 @@ class Employee extends Model
     {
         return $this->hasMany(StaffLoan::class);
     }
+
+    public function documents(): HasMany
+    {
+        return $this->hasMany(EmployeeDocument::class);
+    }
+
+    public function trainingRecords(): HasMany
+    {
+        return $this->hasMany(StaffTrainingRecord::class);
+    }
 }

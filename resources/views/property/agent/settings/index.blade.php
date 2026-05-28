@@ -3,6 +3,8 @@
     @php
         $isSuperAdmin = (bool) (auth()->user()->is_super_admin ?? false);
         $canSystemSetup = auth()->user()->hasPmPermission('settings.manage');
+        $canTeamUsers = auth()->user()->hasPmPermission('team.users.manage');
+        $canViewPermissionCatalog = auth()->user()->hasPmPermission('settings.access.manage');
         $tabLinks = [
             ['route' => 'property.settings.commission', 'label' => 'Commission'],
             ['route' => 'property.settings.payments', 'label' => 'Payment config'],
@@ -21,16 +23,18 @@
             ['route' => 'property.settings.deposits', 'title' => 'Deposit rules', 'description' => 'Deposit types, required flags, formulas, ledger mapping.'],
             ['route' => 'property.settings.expenses', 'title' => 'Expense charge rules', 'description' => 'Charge lines, required flags, formulas, and ledger mapping.'],
         ];
-        if ($isSuperAdmin) {
-            $tabLinks = array_merge([
-                ['route' => 'property.settings.roles', 'label' => 'Property users'],
-                ['route' => 'property.settings.permissions', 'label' => 'Permissions'],
-            ], $tabLinks);
-            $hubItems = array_merge([
-                ['route' => 'property.settings.roles', 'title' => 'Property users', 'description' => 'RBAC for your team.'],
-                ['route' => 'property.settings.permissions', 'title' => 'Permissions', 'description' => 'View all permission keys and usage.'],
-            ], $hubItems);
+        $prefixTabs = [];
+        $prefixHub = [];
+        if ($isSuperAdmin || $canTeamUsers) {
+            $prefixTabs[] = ['route' => 'property.settings.roles', 'label' => 'Property users'];
+            $prefixHub[] = ['route' => 'property.settings.roles', 'title' => 'Property users', 'description' => 'Add staff logins and review assignments.'];
         }
+        if ($isSuperAdmin || $canViewPermissionCatalog) {
+            $prefixTabs[] = ['route' => 'property.settings.permissions', 'label' => 'Permissions'];
+            $prefixHub[] = ['route' => 'property.settings.permissions', 'title' => 'Permissions', 'description' => 'View all permission keys and usage.'];
+        }
+        $tabLinks = array_merge($prefixTabs, $tabLinks);
+        $hubItems = array_merge($prefixHub, $hubItems);
         if ($canSystemSetup) {
             $tabLinks[] = ['route' => 'property.settings.system_setup', 'label' => 'System setup'];
             $hubItems[] = ['route' => 'property.settings.system_setup', 'title' => 'System setup', 'description' => 'Adjust forms, workflows, and templates.'];
@@ -39,15 +43,11 @@
 
     <x-property.page
         title="Settings"
-        subtitle="{{ $isSuperAdmin ? 'Users, commissions, M-Pesa rails, and automation rules.' : ($canSystemSetup ? 'Commission, payment config, branding, automation rules, and system setup for agents with settings access.' : 'Commission, payment config, branding, and automation rules for agents.') }}"
+        subtitle="{{ $isSuperAdmin ? 'Users, commissions, M-Pesa rails, and automation rules.' : (($canSystemSetup || $canTeamUsers || $canViewPermissionCatalog) ? 'Team access, commissions, payment config, branding, rules, and optional system setup.' : 'Commission, payment config, branding, and automation rules for agents.') }}"
     >
         <x-property.module-status label="Settings" class="mb-4" />
 
-        <div class="mb-4 flex flex-wrap gap-2">
-            @foreach ($tabLinks as $tab)
-                <a href="{{ route($tab['route']) }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">{{ $tab['label'] }}</a>
-            @endforeach
-        </div>
+        @include('property.agent.settings.partials.subnav')
 
         <x-property.hub-grid :items="$hubItems" />
     </x-property.page>

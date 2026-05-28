@@ -18,7 +18,7 @@ class PropertyAdvisorWebController extends Controller
 {
     public function show(): View
     {
-        return view('property.agent.advisor', [
+        return property_view('property.agent.advisor', [
             'lastAnswer' => session('advisor_answer'),
             'lastQuestion' => session('advisor_question'),
             'history' => (array) session('advisor_history', []),

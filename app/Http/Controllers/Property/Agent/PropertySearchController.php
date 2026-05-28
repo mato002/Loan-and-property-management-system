@@ -177,7 +177,7 @@ class PropertySearchController extends Controller
             }
         }
 
-        return view('property.agent.search.index', [
+        return property_view('property.agent.search.index', [
             'q' => trim((string) preg_replace('/\s+/', ' ', $q)),
             'scope' => $scope,
             'landlords' => $landlords,
@@ -451,6 +451,7 @@ class PropertySearchController extends Controller
             ['title' => 'Invoices', 'subtitle' => 'Create and track invoices', 'route' => 'property.revenue.invoices', 'keywords' => 'billing rent bills'],
             ['title' => 'Payments', 'subtitle' => 'Record and track payments', 'route' => 'property.revenue.payments', 'keywords' => 'receipts collection mpesa bank cash'],
             ['title' => 'Arrears', 'subtitle' => 'Overdue invoices and reminders', 'route' => 'property.revenue.arrears', 'keywords' => 'overdue aging late'],
+            ['title' => 'Uninvoiced leases', 'subtitle' => 'Active leases missing rent invoice', 'route' => 'property.revenue.uninvoiced_leases', 'keywords' => 'uninvoiced missing bill billing not invoiced'],
             ['title' => 'Rent Roll', 'subtitle' => 'Unit-by-unit billing status', 'route' => 'property.revenue.rent_roll', 'keywords' => 'roll schedule'],
             ['title' => 'Receipts', 'subtitle' => 'Fiscal receipts and eTIMS records', 'route' => 'property.revenue.receipts', 'keywords' => 'receipts etims tax invoices'],
             ['title' => 'Utilities Charges', 'subtitle' => 'Water and utility recoveries', 'route' => 'property.revenue.utilities', 'keywords' => 'utilities water charges billing'],

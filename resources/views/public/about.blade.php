@@ -1,94 +1,80 @@
-<x-public-layout>
+<x-public-layout
+    :page-title="$publicPageTitle ?? 'About Us'"
+    :page-description="$publicPageDescription ?? null"
+>
     @php
-        $brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: 'Gaitho Property Agency';
-        $contactEmail = \App\Models\PropertyPortalSetting::getValue('contact_email_primary', '') ?: 'gaithoarthur17@gmail.com';
-        $contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '0717018779';
+        $brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: 'Gaitho Properties';
+        $contactEmail = \App\Models\PropertyPortalSetting::getValue('contact_email_primary', '') ?: 'info@gaithoproperties.co.ke';
+        $contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '0717 018779';
+        $publicStats = [
+            'properties' => \App\Models\Property::query()->count(),
+            'vacant_listings' => \App\Models\PropertyUnit::query()->where('status', \App\Models\PropertyUnit::STATUS_VACANT)->count(),
+            'landlords' => \App\Models\User::query()->where('property_portal_role', 'landlord')->count(),
+            'tenants' => \App\Models\PmTenant::query()->count(),
+        ];
     @endphp
 
-    <section class="relative border-b border-gray-200 py-16 sm:py-20 overflow-hidden">
-        <div class="absolute inset-0">
-            <img
-                src="https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=2400&q=80"
-                alt="Modern apartment exterior"
-                class="w-full h-full object-cover"
-            >
-            <div class="absolute inset-0 bg-slate-900/70"></div>
-        </div>
-        <div class="relative w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20 min-h-[440px] flex items-center justify-center">
-            <div class="max-w-5xl text-center rounded-3xl bg-slate-950/35 backdrop-blur-[2px] px-6 py-10 sm:px-10 sm:py-12 border border-white/10 shadow-[0_20px_60px_rgba(2,6,23,0.45)]">
-                <p class="text-gray-200 text-xs sm:text-sm font-semibold uppercase tracking-[0.24em] drop-shadow-[0_2px_8px_rgba(15,23,42,0.7)]">About us</p>
-                <h1 class="mt-4 text-5xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white leading-[0.95] drop-shadow-[0_6px_20px_rgba(15,23,42,0.95)]">{{ $brandName }}</h1>
-                <p class="mt-5 text-xl sm:text-2xl text-gray-200 font-semibold drop-shadow-[0_2px_8px_rgba(15,23,42,0.85)]">Relax, we got you.</p>
-                <p class="mt-6 text-lg sm:text-xl leading-relaxed text-white max-w-4xl mx-auto drop-shadow-[0_3px_10px_rgba(15,23,42,0.95)]">
-                    We specialize in hands-free rental management for busy landlords. From rent collection to tenant follow-ups,
-                    our team ensures your property works for you with less stress and consistent reporting.
-                </p>
+    <x-public.page-hero
+        eyebrow="Property management + marketplace"
+        :title="$brandName"
+        subtitle="We combine rental discovery with hands-on property operations — so landlords earn with less stress and tenants find verified homes faster."
+    >
+        <x-slot:background>
+            <img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2400&q=80" alt="Premium property" class="w-full h-full object-cover">
+            <div class="absolute inset-0 bg-slate-950/70"></div>
+        </x-slot:background>
+    </x-public.page-hero>
+
+    <section class="py-10 sm:py-14 bg-white">
+        <div class="public-container grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div class="public-animate-in">
+                <h2 class="public-section-title mb-4">Relax — we handle the operations</h2>
+                <p class="text-gray-600 leading-relaxed mb-4">From rent collection and tenant follow-ups to maintenance coordination and monthly reporting, our team runs day-to-day rental operations with accountability and transparency.</p>
+                <p class="text-gray-600 leading-relaxed">Landlords get clear performance visibility. Tenants get faster communication and a professional rental experience from search to move-in.</p>
+            </div>
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 sm:p-8 public-animate-in">
+                <h3 class="text-lg font-black text-emerald-900 mb-4">What makes us different</h3>
+                <ul class="space-y-2.5 text-emerald-900 text-sm font-semibold">
+                    <li class="flex gap-2"><svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Verified public listings synced from live vacancy data</li>
+                    <li class="flex gap-2"><svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Transparent earnings breakdown for landlords</li>
+                    <li class="flex gap-2"><svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Mobile-first tenant & landlord portals</li>
+                    <li class="flex gap-2"><svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>WhatsApp & SMS communication built-in</li>
+                    <li class="flex gap-2"><svg class="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>Timely payouts and local office support</li>
+                </ul>
             </div>
         </div>
     </section>
 
-    <section class="py-16 sm:py-20 bg-white">
-        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-6 sm:p-8">
-                    <h2 class="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">Why partner with {{ $brandName }}?</h2>
-                    <p class="mt-4 text-slate-700 leading-relaxed">
-                        We run day-to-day rental operations with accountability, timely updates, and practical support.
-                        Landlords get transparency on performance while tenants receive faster communication and service.
-                    </p>
-                </div>
-                <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 sm:p-8">
-                    <h3 class="text-xl font-black text-emerald-900">What makes us different</h3>
-                    <ul class="mt-4 space-y-2 text-emerald-900">
-                        <li>Personalized landlord service</li>
-                        <li>Transparent earnings breakdown</li>
-                        <li>Available on both mobile and laptop</li>
-                        <li>Simple setup and no hidden charges</li>
-                        <li>Timely payouts and local office support</li>
-                    </ul>
-                </div>
+    <x-public.why-choose-us :stats="$publicStats" />
+
+    <section class="py-10 sm:py-14 bg-slate-50">
+        <div class="public-container">
+            <h2 class="public-section-title mb-8">Services for landlords</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                @foreach ([
+                    ['title' => 'Rent collection', 'desc' => 'Automated follow-ups with clear payment records.'],
+                    ['title' => 'Tenant screening', 'desc' => 'Structured applications and onboarding workflow.'],
+                    ['title' => 'Maintenance', 'desc' => 'Track requests from report to resolution.'],
+                    ['title' => 'Monthly reports', 'desc' => 'Statements, collections, and performance at a glance.'],
+                ] as $service)
+                    <div class="rounded-xl bg-white border border-gray-100 p-5 shadow-sm public-animate-in">
+                        <h3 class="font-black text-gray-900 mb-2">{{ $service['title'] }}</h3>
+                        <p class="text-sm text-gray-600">{{ $service['desc'] }}</p>
+                    </div>
+                @endforeach
             </div>
         </div>
     </section>
 
-    <section class="py-14 sm:py-16 bg-slate-50 border-y border-slate-200">
-        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
-            <h2 class="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">What we offer landlords</h2>
-            <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div class="rounded-xl border border-slate-200 bg-white p-5">
-                    <h3 class="text-lg font-extrabold text-slate-900">Full rent collection and tracking</h3>
-                    <p class="mt-2 text-sm text-slate-600">Stop chasing rent manually. We follow up and keep a clear record of inflows.</p>
-                </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-5">
-                    <h3 class="text-lg font-extrabold text-slate-900">SMS and WhatsApp alerts</h3>
-                    <p class="mt-2 text-sm text-slate-600">Tenants receive reminders and you stay updated from one connected workflow.</p>
-                </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-5">
-                    <h3 class="text-lg font-extrabold text-slate-900">Monthly reports and statements</h3>
-                    <p class="mt-2 text-sm text-slate-600">Review collections, expenses, balances, and overall performance at a glance.</p>
-                </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-5">
-                    <h3 class="text-lg font-extrabold text-slate-900">Online landlord portal access</h3>
-                    <p class="mt-2 text-sm text-slate-600">View property status, statements, and collection trends anywhere.</p>
-                </div>
-            </div>
-        </div>
-    </section>
+    <x-public.testimonials />
 
-    <section class="py-16 bg-white">
-        <div class="w-full px-4 sm:px-6 lg:px-12 xl:px-16 2xl:px-20">
-            <div class="rounded-3xl border border-emerald-200 bg-emerald-50 p-8 sm:p-10 text-center shadow-sm">
-                <h2 class="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">Let your property earn. We will do the work.</h2>
-                <p class="mt-4 text-gray-700 text-base sm:text-lg">
-                    Call or WhatsApp: <span class="font-bold text-gray-900">{{ $contactPhone }}</span>
-                    <span class="hidden sm:inline"> · </span>
-                    <br class="sm:hidden">
-                    Email: <span class="font-bold text-gray-900">{{ $contactEmail }}</span>
-                </p>
-                <div class="mt-6 flex flex-wrap justify-center gap-3">
-                    <a href="{{ route('public.contact') }}" class="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-extrabold text-white hover:bg-emerald-700 transition">Contact us</a>
-                    <a href="{{ route('public.properties') }}" class="rounded-xl border border-emerald-300 px-6 py-3 text-sm font-extrabold text-emerald-700 hover:bg-emerald-100 transition">View listings</a>
-                </div>
+    <section class="py-12 sm:py-16 bg-emerald-600">
+        <div class="public-container text-center public-animate-in">
+            <h2 class="text-2xl sm:text-4xl font-black text-white mb-3">Let your property earn. We do the work.</h2>
+            <p class="text-emerald-100 mb-6">Call {{ $contactPhone }} · Email {{ $contactEmail }}</p>
+            <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                <a href="{{ route('public.contact', ['intent' => 'landlord']) }}" class="public-btn bg-white text-emerald-700 hover:bg-emerald-50">Partner with us</a>
+                <a href="{{ route('public.properties') }}" class="public-btn public-btn-ghost">Browse listings</a>
             </div>
         </div>
     </section>

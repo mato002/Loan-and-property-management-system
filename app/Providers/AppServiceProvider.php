@@ -9,14 +9,24 @@ use App\Http\Middleware\EnsureModuleAccess;
 use App\Http\Middleware\EnsurePropertyPermission;
 use App\Http\Middleware\EnsurePropertyPortalRole;
 use App\Http\Middleware\EnsureSuperAdmin;
-use App\Models\AccountingChartAccount;
 use App\Models\LoanBookApplication;
 use App\Models\LoanBookLoan;
+use App\Models\DepositDefinition;
+use App\Models\ExpenseDefinition;
+use App\Models\PmInvoice;
+use App\Models\PmLease;
+use App\Models\PmMaintenanceJob;
+use App\Models\PmMaintenanceRequest;
+use App\Models\PmPayment;
+use App\Models\PmTenant;
+use App\Models\Property;
+use App\Models\PropertyUnit;
+use App\Models\UnassignedPayment;
 use App\Observers\LoanBookApplicationClientLeadObserver;
 use App\Observers\LoanBookLoanClientLeadObserver;
+use App\Observers\PropertyDashboardCacheObserver;
 use App\View\Compilers\AppBladeCompiler;
 use Illuminate\Pagination\Paginator;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use RuntimeException;
@@ -66,21 +76,32 @@ class AppServiceProvider extends ServiceProvider
         LoanBookApplication::observe(LoanBookApplicationClientLeadObserver::class);
         LoanBookLoan::observe(LoanBookLoanClientLeadObserver::class);
 
+        $dashboardCacheObserver = PropertyDashboardCacheObserver::class;
+        foreach ([
+            PmInvoice::class,
+            PmPayment::class,
+            PmLease::class,
+            PmTenant::class,
+            Property::class,
+            PropertyUnit::class,
+            PmMaintenanceRequest::class,
+            PmMaintenanceJob::class,
+            UnassignedPayment::class,
+            ExpenseDefinition::class,
+            DepositDefinition::class,
+        ] as $model) {
+            $model::observe($dashboardCacheObserver);
+        }
+
         Paginator::defaultView('pagination::tailwind');
         Paginator::defaultSimpleView('pagination::simple-tailwind');
 
-        View::composer('*', function ($view) {
-            $overdrawnCount = 0;
-            if (Schema::hasTable('accounting_chart_accounts')
-                && Schema::hasColumn('accounting_chart_accounts', 'allow_overdraft')
-                && Schema::hasColumn('accounting_chart_accounts', 'current_balance')) {
-                $overdrawnCount = AccountingChartAccount::query()
-                    ->where('allow_overdraft', true)
-                    ->where('current_balance', '<', 0)
-                    ->count();
-            }
-            $allowDestructiveDbCommands = filter_var((string) env('ALLOW_DESTRUCTIVE_DB_COMMANDS', false), FILTER_VALIDATE_BOOLEAN);
-            $view->with('overdrawnCount', $overdrawnCount);
+        // Only property sidebars read this flag; avoid Schema/DB work on every view render.
+        $allowDestructiveDbCommands = filter_var((string) env('ALLOW_DESTRUCTIVE_DB_COMMANDS', false), FILTER_VALIDATE_BOOLEAN);
+        View::composer([
+            'layouts.property.*',
+            'layouts.property_sidebar_*',
+        ], function ($view) use ($allowDestructiveDbCommands) {
             $view->with('allowDestructiveDbCommands', $allowDestructiveDbCommands);
         });
     }

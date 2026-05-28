@@ -12,8 +12,11 @@ use App\Models\PmTenantNotice;
 use App\Services\BulkSmsService;
 use App\Services\Property\PropertyDashboardStats;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\RentInvoiceGenerator;
 use App\Services\Property\RentRollQuery;
+use App\Models\PropertyPortalSetting;
 use App\Support\TabularExport;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -79,7 +82,7 @@ class RevenueController extends Controller
             ['label' => 'Units on roll', 'value' => (string) count($rows), 'hint' => 'Filtered total'],
         ];
 
-        return view('property.agent.revenue.rent_roll', [
+        return property_view('property.agent.revenue.rent_roll', [
             'stats' => $stats,
             'columns' => ['Unit', 'Tenant', 'Period', 'Rent due', 'Other charges', 'Paid', 'Balance', 'Status'],
             'tableRows' => $pageRows,
@@ -91,6 +94,203 @@ class RevenueController extends Controller
                 'per_page' => (string) $perPage,
             ],
         ]);
+    }
+
+    public function uninvoicedLeases(Request $request): View|StreamedResponse
+    {
+        $generator = app(RentInvoiceGenerator::class);
+        $month = trim((string) $request->query('month', now()->format('Y-m')));
+        $filter = strtolower(trim((string) $request->query('filter', 'missing')));
+        if (! in_array($filter, ['missing', 'all', 'blocked', 'invoiced'], true)) {
+            $filter = 'missing';
+        }
+        $q = trim((string) $request->query('q', ''));
+        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+
+        $allRows = $generator->reportRows($month);
+        $counts = [
+            'missing' => 0,
+            'already' => 0,
+            'no_unit' => 0,
+            'zero_rent' => 0,
+        ];
+        foreach ($allRows as $row) {
+            match ($row['reason']) {
+                RentInvoiceGenerator::REASON_MISSING => $counts['missing']++,
+                RentInvoiceGenerator::REASON_ALREADY => $counts['already']++,
+                RentInvoiceGenerator::REASON_NO_UNIT => $counts['no_unit']++,
+                RentInvoiceGenerator::REASON_ZERO_RENT => $counts['zero_rent']++,
+                default => null,
+            };
+        }
+
+        $rows = collect($allRows)->filter(function (array $row) use ($filter) {
+            return match ($filter) {
+                'missing' => $row['reason'] === RentInvoiceGenerator::REASON_MISSING,
+                'blocked' => in_array($row['reason'], [
+                    RentInvoiceGenerator::REASON_NO_UNIT,
+                    RentInvoiceGenerator::REASON_ZERO_RENT,
+                ], true),
+                'invoiced' => $row['reason'] === RentInvoiceGenerator::REASON_ALREADY,
+                default => true,
+            };
+        });
+
+        if ($q !== '') {
+            $needle = mb_strtolower($q);
+            $rows = $rows->filter(function (array $row) use ($needle) {
+                $hay = mb_strtolower(implode(' ', [
+                    $row['tenant_name'],
+                    $row['property_name'],
+                    $row['unit_label'],
+                    $row['reason_label'],
+                ]));
+
+                return str_contains($hay, $needle);
+            });
+        }
+
+        $rows = $rows->values();
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            return TabularExport::stream(
+                'uninvoiced-leases-'.$month.'-'.now()->format('Ymd_His'),
+                ['Tenant', 'Property', 'Unit', 'Bill amount', 'Due date', 'Status', 'Lease'],
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield [
+                            $row['tenant_name'],
+                            $row['property_name'],
+                            $row['unit_label'],
+                            number_format((float) $row['bill_amount'], 2, '.', ''),
+                            $row['due_date'],
+                            $row['reason_label'],
+                            '#'.$row['lease_id'],
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $paginator = $this->paginateRows($rows->all(), $perPage, $request);
+        $canGenerate = (bool) auth()->user()?->hasPmPermission('invoices.manage');
+
+        $tableRows = $paginator->getCollection()->map(function (array $row) use ($month, $canGenerate) {
+            $tenantCell = new HtmlString(
+                '<a href="'.route('property.leases.edit', $row['lease_id'], false).'" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">'
+                .e($row['tenant_name']).'</a>'
+            );
+
+            $reasonClass = match ($row['reason']) {
+                RentInvoiceGenerator::REASON_MISSING => 'bg-amber-100 text-amber-800',
+                RentInvoiceGenerator::REASON_ALREADY => 'bg-emerald-100 text-emerald-800',
+                RentInvoiceGenerator::REASON_NO_UNIT, RentInvoiceGenerator::REASON_ZERO_RENT => 'bg-slate-100 text-slate-700',
+                default => 'bg-slate-100 text-slate-700',
+            };
+            $statusCell = new HtmlString(
+                '<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold '.$reasonClass.'">'.e($row['reason_label']).'</span>'
+            );
+
+            $actionCell = '—';
+            if ($row['can_generate'] && $canGenerate) {
+                $actionCell = new HtmlString(
+                    '<form method="post" action="'.route('property.revenue.uninvoiced_leases.generate', absolute: false).'" data-turbo-frame="property-main" class="inline">'
+                    .csrf_field()
+                    .'<input type="hidden" name="month" value="'.e($month).'" />'
+                    .'<input type="hidden" name="keys[]" value="'.e($row['key']).'" />'
+                    .'<button type="submit" class="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700">Generate</button>'
+                    .'</form>'
+                );
+            } elseif ($row['reason'] === RentInvoiceGenerator::REASON_NO_UNIT) {
+                $actionCell = new HtmlString(
+                    '<a href="'.route('property.leases.edit', $row['lease_id'], false).'" data-turbo-frame="property-main" class="text-xs font-medium text-indigo-700 hover:underline">Fix lease</a>'
+                );
+            }
+
+            $selectCell = $row['can_generate']
+                ? new HtmlString(
+                    '<input type="checkbox" name="keys[]" value="'.e($row['key']).'" form="uninvoiced-selected-form" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />'
+                )
+                : '';
+
+            return [
+                $selectCell,
+                $tenantCell,
+                e($row['property_name']),
+                e($row['unit_label']),
+                PropertyMoney::kes((float) $row['bill_amount']),
+                $row['due_date'],
+                $statusCell,
+                $actionCell,
+            ];
+        })->all();
+
+        $paginator->setCollection(collect($tableRows));
+
+        $automationOn = PropertyPortalSetting::isRentInvoiceAutomationEnabled();
+
+        return property_view('property.agent.revenue.uninvoiced_leases', [
+            'stats' => [
+                ['label' => 'Not invoiced', 'value' => (string) $counts['missing'], 'hint' => $month],
+                ['label' => 'Already invoiced', 'value' => (string) $counts['already'], 'hint' => 'This month'],
+                ['label' => 'No unit', 'value' => (string) $counts['no_unit'], 'hint' => 'Fix lease'],
+                ['label' => 'Zero rent', 'value' => (string) $counts['zero_rent'], 'hint' => 'Cannot bill'],
+            ],
+            'columns' => ['', 'Tenant', 'Property', 'Unit', 'Bill amount', 'Due date', 'Status', 'Action'],
+            'tableRows' => $tableRows,
+            'paginator' => $paginator,
+            'month' => $month,
+            'automationOn' => $automationOn,
+            'canGenerate' => $canGenerate,
+            'filters' => [
+                'month' => $month,
+                'filter' => $filter,
+                'q' => $q,
+                'per_page' => (string) $perPage,
+            ],
+            'missingCount' => $counts['missing'],
+        ]);
+    }
+
+    public function generateUninvoicedInvoices(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'month' => ['required', 'date_format:Y-m'],
+            'keys' => ['nullable', 'array'],
+            'keys.*' => ['string', 'max:64'],
+            'generate_all' => ['nullable', 'boolean'],
+        ]);
+
+        $month = $data['month'];
+        $generateAll = $request->boolean('generate_all');
+        $keys = $generateAll
+            ? null
+            : collect($data['keys'] ?? [])->filter()->values()->all();
+
+        if (! $generateAll && $keys === []) {
+            return back()->withErrors(['keys' => 'Select at least one row, or use Generate all missing.'])->withInput();
+        }
+
+        $result = app(RentInvoiceGenerator::class)->generateMissing(
+            $month,
+            $keys,
+            $request->user(),
+        );
+
+        $message = "Generated {$result['created']} rent invoice(s) for {$month}.";
+        if ($result['skipped'] > 0) {
+            $message .= " Skipped {$result['skipped']}.";
+        }
+        if ($result['errors'] !== []) {
+            return back()
+                ->with('warning', $message)
+                ->with('bulk_invoice_errors', array_slice($result['errors'], 0, 8));
+        }
+
+        return redirect()
+            ->route('property.revenue.uninvoiced_leases', ['month' => $month, 'filter' => 'missing'])
+            ->with('success', $message);
     }
 
     public function invoicesBulk(Request $request): RedirectResponse
@@ -172,19 +372,32 @@ class RevenueController extends Controller
      */
     public function arrears(Request $request): View|StreamedResponse
     {
+        [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $dueRangeLabel] = $this->resolveArrearsDueRange($request);
+
         $filters = [
             'q' => trim((string) $request->query('q', '')),
+            'aging' => strtolower(trim((string) $request->query('aging', ''))),
             'workflow' => strtolower(trim((string) $request->query('workflow', ''))),
             'from' => (string) $request->query('from', ''),
             'to' => (string) $request->query('to', ''),
+            'range_months' => (string) $rangeMonths,
+            'range_end' => $rangeEndYm,
             'sort' => strtolower(trim((string) $request->query('sort', 'oldest_due'))),
             'dir' => strtolower(trim((string) $request->query('dir', 'asc'))),
         ];
+        if ($rangeMonths > 0 && ($filters['from'] === '' || $filters['to'] === '')) {
+            $filters['from'] = $rangeFrom->toDateString();
+            $filters['to'] = $rangeTo->toDateString();
+        }
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
-        $invoices = $this->buildArrearsInvoices($filters)->limit(5000)->get();
-
         $today = now()->startOfDay();
+        $baseFilters = array_merge($filters, ['aging' => '', 'workflow' => '']);
+        $allInvoices = $this->buildArrearsInvoices($baseFilters)->limit(5000)->get();
+        $invoices = $allInvoices->filter(
+            fn (PmInvoice $invoice) => $this->arrearsInvoiceMatchesDisplayFilters($invoice, $filters, $today)
+        )->values();
+        $summaryInvoices = $allInvoices;
         $aggregated = $invoices
             ->filter(fn (PmInvoice $i) => (int) ($i->pm_tenant_id ?? 0) > 0)
             ->groupBy('pm_tenant_id')
@@ -194,8 +407,14 @@ class RevenueController extends Controller
                 $tenant = $first->tenant;
                 $totalBalance = (float) $group->sum(fn (PmInvoice $i) => max(0.0, (float) $i->amount - (float) $i->amount_paid));
                 $oldestDue = $group->pluck('due_date')->filter()->min();
-                $daysLate = $oldestDue ? (int) $oldestDue->copy()->startOfDay()->diffInDays($today, true) : 0;
-                $workflow = $daysLate >= 30 ? 'Escalated' : ($daysLate >= 14 ? 'Follow-up' : 'Reminder');
+                $maxDaysOverdue = (int) $group->max(fn (PmInvoice $i) => $this->arrearsDaysOverdue($i->due_date, $today));
+                $daysLate = $maxDaysOverdue > 0
+                    ? $maxDaysOverdue
+                    : ($oldestDue ? (int) $today->diffInDays($oldestDue->copy()->startOfDay(), true) : 0);
+                $agingLabel = $maxDaysOverdue > 0
+                    ? (string) $maxDaysOverdue
+                    : $this->arrearsAgingLabel($oldestDue, $today);
+                $workflow = $this->arrearsWorkflowForDaysOverdue($maxDaysOverdue);
 
                 $units = $group
                     ->map(fn (PmInvoice $i) => trim(((string) ($i->unit?->property?->name ?? '')).' / '.((string) ($i->unit?->label ?? '')), ' /'))
@@ -226,6 +445,7 @@ class RevenueController extends Controller
                     'types' => $types,
                     'oldest_due' => $oldestDue,
                     'days_late' => $daysLate,
+                    'aging_label' => $agingLabel,
                     'balance' => $totalBalance,
                     'last_contact' => $lastContact,
                     'workflow' => $workflow,
@@ -256,7 +476,7 @@ class RevenueController extends Controller
 
             return TabularExport::stream(
                 'arrears-'.now()->format('Ymd_His'),
-                ['Tenant', 'Phone', 'Email', 'Account', 'Units', 'Invoices', 'Arrears types', 'Oldest due', 'Days late', 'Total balance', 'Last contact', 'Workflow'],
+                ['Tenant', 'Phone', 'Email', 'Account', 'Units', 'Invoices', 'Arrears types', 'Oldest due', 'Aging', 'Total balance', 'Last contact', 'Workflow'],
                 function () use ($exportRows) {
                     foreach ($exportRows as $row) {
                         yield [
@@ -268,7 +488,7 @@ class RevenueController extends Controller
                             (string) $row['invoice_count'],
                             implode(', ', $row['types']),
                             $row['oldest_due']?->format('Y-m-d') ?? '',
-                            (string) $row['days_late'],
+                            (string) ($row['aging_label'] ?? $row['days_late']),
                             number_format($row['balance'], 2, '.', ''),
                             $row['last_contact']?->format('Y-m-d') ?? '',
                             $row['workflow'],
@@ -293,44 +513,117 @@ class RevenueController extends Controller
             ]
         );
 
-        // Aging buckets driven by the *currently filtered* data set, so the
-        // numbers always match what's on the page.
-        $buckets = [
+        $summaryBuckets = [
+            'not_due' => 0.0,
             '0_30' => 0.0,
             '31_60' => 0.0,
             '61_90' => 0.0,
             'over_90' => 0.0,
         ];
-        foreach ($invoices as $i) {
+        foreach ($summaryInvoices as $i) {
             $balance = max(0.0, (float) $i->amount - (float) $i->amount_paid);
-            if ($balance <= 0) {
-                continue;
-            }
-            $days = $i->due_date ? (int) $i->due_date->copy()->startOfDay()->diffInDays(now()->startOfDay(), true) : 0;
-            if ($days < 31) {
-                $buckets['0_30'] += $balance;
-            } elseif ($days < 61) {
-                $buckets['31_60'] += $balance;
-            } elseif ($days < 91) {
-                $buckets['61_90'] += $balance;
-            } else {
-                $buckets['over_90'] += $balance;
-            }
+            $this->addToArrearsBuckets($i->due_date, $today, $balance, $summaryBuckets);
         }
 
-        $stats = [
-            ['label' => '0–30 days', 'value' => PropertyMoney::kes($buckets['0_30']), 'hint' => 'Early arrears'],
-            ['label' => '31–60 days', 'value' => PropertyMoney::kes($buckets['31_60']), 'hint' => ''],
-            ['label' => '61–90 days', 'value' => PropertyMoney::kes($buckets['61_90']), 'hint' => 'Escalate'],
-            ['label' => '90+ days', 'value' => PropertyMoney::kes($buckets['over_90']), 'hint' => 'Final notice'],
-            ['label' => 'Tenants in arrears', 'value' => (string) $total, 'hint' => 'Filtered'],
+        $summaryTotal = (float) $summaryInvoices->sum(fn (PmInvoice $i) => max(0.0, (float) $i->amount - (float) $i->amount_paid));
+        $summaryOverdue = $summaryBuckets['0_30'] + $summaryBuckets['31_60'] + $summaryBuckets['61_90'] + $summaryBuckets['over_90'];
+        $summaryInvoiceCount = $summaryInvoices->count();
+        $summaryTenantCount = $summaryInvoices
+            ->filter(fn (PmInvoice $i) => (int) ($i->pm_tenant_id ?? 0) > 0)
+            ->pluck('pm_tenant_id')
+            ->unique()
+            ->count();
+        $overdueTenantCount = $summaryInvoices
+            ->filter(fn (PmInvoice $i) => $this->arrearsDaysOverdue($i->due_date, $today) > 0)
+            ->pluck('pm_tenant_id')
+            ->filter(fn ($id) => (int) $id > 0)
+            ->unique()
+            ->count();
+        $summaryCollectedOnOpen = (float) $summaryInvoices->sum(fn (PmInvoice $i) => (float) $i->amount_paid);
+        $overduePct = $summaryTotal > 0 ? round(($summaryOverdue / $summaryTotal) * 100) : 0;
+        $avgPerTenant = $summaryTenantCount > 0 ? $summaryTotal / $summaryTenantCount : 0.0;
+
+        $statsPrimary = [
+            [
+                'label' => 'Total arrears',
+                'value' => PropertyMoney::kes($summaryTotal),
+                'hint' => $dueRangeLabel.' · open balances',
+                'emphasis' => true,
+            ],
+            [
+                'label' => 'Total overdue',
+                'value' => PropertyMoney::kes($summaryOverdue),
+                'hint' => $overduePct.'% of arrears · past due date',
+                'emphasis' => true,
+            ],
+            [
+                'label' => 'Not yet due',
+                'value' => PropertyMoney::kes($summaryBuckets['not_due']),
+                'hint' => 'Unpaid but due date still ahead',
+            ],
+            [
+                'label' => 'Partially paid (open)',
+                'value' => PropertyMoney::kes($summaryCollectedOnOpen),
+                'hint' => 'Already collected on unpaid invoices',
+            ],
+            [
+                'label' => 'Tenants with arrears',
+                'value' => (string) $summaryTenantCount,
+                'hint' => 'Distinct tenants · '.$dueRangeLabel,
+            ],
+            [
+                'label' => 'Tenants overdue',
+                'value' => (string) $overdueTenantCount,
+                'hint' => 'At least one invoice past due',
+            ],
+            [
+                'label' => 'Unpaid invoices',
+                'value' => (string) $summaryInvoiceCount,
+                'hint' => $dueRangeLabel,
+            ],
+            [
+                'label' => 'Avg per tenant',
+                'value' => PropertyMoney::kes($avgPerTenant),
+                'hint' => 'Mean open balance',
+            ],
+        ];
+
+        $statsAging = [
+            [
+                'label' => '0–30 days overdue',
+                'value' => PropertyMoney::kes($summaryBuckets['0_30']),
+                'hint' => 'Recent overdue',
+            ],
+            [
+                'label' => '31–60 days',
+                'value' => PropertyMoney::kes($summaryBuckets['31_60']),
+                'hint' => 'Follow-up',
+            ],
+            [
+                'label' => '61–90 days',
+                'value' => PropertyMoney::kes($summaryBuckets['61_90']),
+                'hint' => 'Escalate',
+            ],
+            [
+                'label' => '90+ days',
+                'value' => PropertyMoney::kes($summaryBuckets['over_90']),
+                'hint' => 'Final notice',
+            ],
+        ];
+
+        $statsTable = [
+            [
+                'label' => 'Rows in table',
+                'value' => (string) $total,
+                'hint' => 'After search / aging / workflow filters',
+            ],
         ];
 
         $rows = $sliced->map(function (array $r) {
             $invoiceIdsCsv = implode(',', $r['invoice_ids']);
             $tenantLabel = e($r['tenant_name']);
             $selector = new HtmlString(
-                '<input type="checkbox" class="arrears-invoice-pick rounded border-slate-300 text-blue-600 focus:ring-blue-500" value="'.e($invoiceIdsCsv).'" data-invoice-count="'.(int) $r['invoice_count'].'" aria-label="Select tenant '.$tenantLabel.'" />'
+                '<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" class="property-bulk-row-checkbox arrears-invoice-pick h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" value="'.e($invoiceIdsCsv).'" data-invoice-count="'.(int) $r['invoice_count'].'" aria-label="Select tenant '.$tenantLabel.'" /><span class="sr-only">Select</span></label>'
             );
             $unitsList = $r['units'];
             $unitText = $unitsList->take(2)->implode(', ');
@@ -366,13 +659,35 @@ class RevenueController extends Controller
                 $invoiceCell,
                 $typesText,
                 $oldestDue,
-                (string) $r['days_late'],
+                (string) ($r['aging_label'] ?? $r['days_late']),
                 PropertyMoney::kes((float) $r['balance']),
                 $lastContact,
                 $r['workflow'],
                 $actions,
             ];
         })->all();
+
+        $grandTotalBalance = (float) $aggregated->sum(fn (array $r) => (float) $r['balance']);
+        $grandTotalInvoices = (int) $aggregated->sum(fn (array $r) => (int) $r['invoice_count']);
+        $invoiceTotalLabel = $grandTotalInvoices === 1 ? '1 invoice' : $grandTotalInvoices.' invoices';
+        $tenantTotalLabel = $total === 1 ? '1 tenant' : $total.' tenants';
+        $tableFooterRow = [
+            '',
+            new HtmlString('<span class="font-semibold text-slate-900 dark:text-white">Totals</span>'),
+            '',
+            '',
+            new HtmlString(
+                '<span>'.$invoiceTotalLabel.'</span>'.
+                '<span class="block text-xs font-normal text-slate-500 dark:text-slate-400">'.$tenantTotalLabel.'</span>'
+            ),
+            '',
+            '',
+            '',
+            new HtmlString('<span class="font-semibold text-rose-700 dark:text-rose-400">'.PropertyMoney::kes($grandTotalBalance).'</span>'),
+            '',
+            '',
+            '',
+        ];
 
         $reminderTargets = $invoices
             ->filter(fn (PmInvoice $i) => (int) ($i->pm_tenant_id ?? 0) > 0)
@@ -384,10 +699,15 @@ class RevenueController extends Controller
             ->values()
             ->all();
 
-        return view('property.agent.revenue.arrears', [
-            'stats' => $stats,
-            'columns' => ['Pick', 'Tenant', 'Phone', 'Unit(s)', 'Invoices', 'Arrears types', 'Oldest due', 'Days late', 'Balance', 'Last contact', 'Workflow', 'Actions'],
+        return property_view('property.agent.revenue.arrears', [
+            'stats' => $statsPrimary,
+            'statsPrimary' => $statsPrimary,
+            'statsAging' => $statsAging,
+            'statsTable' => $statsTable,
+            'dueRangeLabel' => $dueRangeLabel,
+            'columns' => ['Pick', 'Tenant', 'Phone', 'Unit(s)', 'Invoices', 'Arrears types', 'Oldest due', 'Aging', 'Balance', 'Last contact', 'Workflow', 'Actions'],
             'tableRows' => $rows,
+            'tableFooterRow' => $tableFooterRow,
             'paginator' => $paginator,
             'perPage' => $perPage,
             'reminderTargets' => $reminderTargets,
@@ -401,7 +721,7 @@ class RevenueController extends Controller
     }
 
     /**
-     * Per-tenant arrears detail. Lists every overdue invoice for the
+     * Per-tenant arrears detail. Lists every unpaid invoice for the
      * tenant with the same per-invoice "pick + send reminders" flow as
      * the legacy arrears index.
      */
@@ -418,31 +738,34 @@ class RevenueController extends Controller
 
         $orderColumn = $sortBy === 'balance' ? 'amount' : $sortBy;
 
-        $invoices = PmInvoice::query()
+        $invoices = $this->buildArrearsInvoices([])
             ->with(['unit.property'])
             ->where('pm_tenant_id', $tenant->id)
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->where('due_date', '<', now()->toDateString())
-            ->whereNotIn('status', [PmInvoice::STATUS_DRAFT, PmInvoice::STATUS_CANCELLED])
+            ->reorder()
             ->orderBy($orderColumn, $sortDir)
             ->orderBy('id')
             ->get();
 
         $today = now()->startOfDay();
         $totalBalance = 0.0;
+        $totalAmount = 0.0;
+        $totalPaid = 0.0;
 
-        $rows = $invoices->map(function (PmInvoice $i) use ($today, &$totalBalance) {
+        $rows = $invoices->map(function (PmInvoice $i) use ($today, &$totalBalance, &$totalAmount, &$totalPaid) {
             $bal = max(0.0, (float) $i->amount - (float) $i->amount_paid);
             $totalBalance += $bal;
-            $days = $i->due_date ? (int) $i->due_date->copy()->startOfDay()->diffInDays($today, true) : 0;
-            $workflow = $days >= 30 ? 'Escalated' : ($days >= 14 ? 'Follow-up' : 'Reminder');
+            $totalAmount += (float) $i->amount;
+            $totalPaid += (float) $i->amount_paid;
+            $daysOverdue = $this->arrearsDaysOverdue($i->due_date, $today);
+            $agingLabel = $this->arrearsAgingLabel($i->due_date, $today);
+            $workflow = $this->arrearsWorkflowForDaysOverdue($daysOverdue);
             $type = strtoupper((string) ($i->invoice_type ?: 'rent'));
             $typeLabel = $type;
             if (is_string($i->description) && trim($i->description) !== '') {
                 $typeLabel .= ' - '.trim($i->description);
             }
             $selector = new HtmlString(
-                '<input type="checkbox" class="arrears-invoice-pick rounded border-slate-300 text-blue-600 focus:ring-blue-500" value="'.(int) $i->id.'" aria-label="Select invoice '.e((string) $i->invoice_no).'" />'
+                '<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" class="property-bulk-row-checkbox arrears-invoice-pick h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" value="'.(int) $i->id.'" aria-label="Select invoice '.e((string) $i->invoice_no).'" /><span class="sr-only">Select</span></label>'
             );
             $invoiceLink = new HtmlString(
                 '<a href="'.e(route('property.revenue.invoices.show', ['invoice' => $i->id], false)).'" class="text-indigo-600 hover:text-indigo-700 font-medium">'.e((string) ($i->invoice_no ?? '—')).'</a>'
@@ -455,7 +778,7 @@ class RevenueController extends Controller
                 $typeLabel,
                 $i->issue_date?->format('Y-m-d') ?? '—',
                 $i->due_date?->format('Y-m-d') ?? '—',
-                (string) $days,
+                $agingLabel,
                 PropertyMoney::kes((float) $i->amount),
                 PropertyMoney::kes((float) $i->amount_paid),
                 PropertyMoney::kes($bal),
@@ -470,19 +793,19 @@ class RevenueController extends Controller
 
             return TabularExport::stream(
                 'arrears-tenant-'.($tenant->name ? \Illuminate\Support\Str::slug($tenant->name) : (string) $tenant->id).'-'.now()->format('Ymd_His'),
-                ['Invoice', 'Unit', 'Type', 'Issued', 'Due', 'Days late', 'Amount', 'Paid', 'Balance', 'Last update', 'Workflow'],
+                ['Invoice', 'Unit', 'Type', 'Issued', 'Due', 'Aging', 'Amount', 'Paid', 'Balance', 'Last update', 'Workflow'],
                 function () use ($exportInvoices, $today) {
                     foreach ($exportInvoices as $i) {
                         $bal = max(0.0, (float) $i->amount - (float) $i->amount_paid);
-                        $days = $i->due_date ? (int) $i->due_date->copy()->startOfDay()->diffInDays($today, true) : 0;
-                        $workflow = $days >= 30 ? 'Escalated' : ($days >= 14 ? 'Follow-up' : 'Reminder');
+                        $daysOverdue = $this->arrearsDaysOverdue($i->due_date, $today);
+                        $workflow = $this->arrearsWorkflowForDaysOverdue($daysOverdue);
                         yield [
                             (string) ($i->invoice_no ?? ''),
                             (string) (($i->unit?->property?->name ?? '').'/'.($i->unit?->label ?? '')),
                             strtoupper((string) ($i->invoice_type ?: 'rent')),
                             $i->issue_date?->format('Y-m-d') ?? '',
                             $i->due_date?->format('Y-m-d') ?? '',
-                            (string) $days,
+                            $this->arrearsAgingLabel($i->due_date, $today),
                             number_format((float) $i->amount, 2, '.', ''),
                             number_format((float) $i->amount_paid, 2, '.', ''),
                             number_format($bal, 2, '.', ''),
@@ -496,8 +819,26 @@ class RevenueController extends Controller
         }
 
         $oldestDue = $invoices->pluck('due_date')->filter()->min();
-        $maxDays = $oldestDue ? (int) $oldestDue->copy()->startOfDay()->diffInDays($today, true) : 0;
-        $workflow = $maxDays >= 30 ? 'Escalated' : ($maxDays >= 14 ? 'Follow-up' : 'Reminder');
+        $maxDaysOverdue = (int) $invoices->max(fn (PmInvoice $i) => $this->arrearsDaysOverdue($i->due_date, $today));
+        $maxDays = $maxDaysOverdue > 0
+            ? $maxDaysOverdue
+            : ($oldestDue ? (int) $today->diffInDays($oldestDue->copy()->startOfDay(), true) : 0);
+        $workflow = $this->arrearsWorkflowForDaysOverdue($maxDaysOverdue);
+
+        $tableFooterRow = [
+            '',
+            new HtmlString('<span class="font-semibold text-slate-900 dark:text-white">Totals</span>'),
+            '',
+            '',
+            '',
+            '',
+            '',
+            PropertyMoney::kes($totalAmount),
+            PropertyMoney::kes($totalPaid),
+            new HtmlString('<span class="font-semibold text-rose-700 dark:text-rose-400">'.PropertyMoney::kes($totalBalance).'</span>'),
+            '',
+            '',
+        ];
 
         $reminderTargets = $invoices
                 ->map(fn (PmInvoice $i) => [
@@ -507,16 +848,20 @@ class RevenueController extends Controller
                 ->values()
             ->all();
 
-        return view('property.agent.revenue.arrears_tenant', [
+        return property_view('property.agent.revenue.arrears_tenant', [
             'tenant' => $tenant,
             'tableRows' => $rows,
-            'columns' => ['Pick', 'Invoice', 'Unit', 'Arrears type', 'Issued', 'Due', 'Days late', 'Amount', 'Paid', 'Balance', 'Last update', 'Workflow'],
+            'tableFooterRow' => $tableFooterRow,
+            'columns' => ['Pick', 'Invoice', 'Unit', 'Arrears type', 'Issued', 'Due', 'Aging', 'Amount', 'Paid', 'Balance', 'Last update', 'Workflow'],
             'reminderTargets' => $reminderTargets,
             'summary' => [
                 'invoice_count' => $invoices->count(),
                 'total_balance' => $totalBalance,
                 'oldest_due' => $oldestDue?->format('Y-m-d') ?? '—',
                 'days_late' => $maxDays,
+                'aging_label' => $maxDaysOverdue > 0
+                    ? (string) $maxDaysOverdue
+                    : $this->arrearsAgingLabel($oldestDue, $today),
                 'workflow' => $workflow,
                 'last_contact' => $invoices->max('updated_at')?->format('Y-m-d') ?? '—',
             ],
@@ -536,11 +881,15 @@ class RevenueController extends Controller
      */
     private function buildArrearsInvoices(array $filters): \Illuminate\Database\Eloquent\Builder
     {
+        $today = now()->toDateString();
+
         $query = PmInvoice::query()
             ->with(['tenant', 'unit.property'])
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->where('due_date', '<', now()->toDateString())
-            ->whereNotIn('status', [PmInvoice::STATUS_DRAFT, PmInvoice::STATUS_CANCELLED]);
+            ->withOutstandingBalance()
+            ->where(function (\Illuminate\Database\Eloquent\Builder $inner) {
+                $inner->whereNull('invoice_kind')
+                    ->orWhere('invoice_kind', PmInvoice::KIND_INVOICE);
+            });
 
         $q = trim((string) ($filters['q'] ?? ''));
         if ($q !== '') {
@@ -554,6 +903,14 @@ class RevenueController extends Controller
                         ->orWhereHas('property', fn ($pq) => $pq->where('name', 'like', '%'.$q.'%')));
             });
         }
+
+        $aging = strtolower((string) ($filters['aging'] ?? ''));
+        if ($aging === 'overdue') {
+            $query->whereDate('due_date', '<', $today);
+        } elseif ($aging === 'not_due') {
+            $query->whereDate('due_date', '>=', $today);
+        }
+
         if (! empty($filters['from'])) {
             $query->whereDate('due_date', '>=', $filters['from']);
         }
@@ -563,14 +920,20 @@ class RevenueController extends Controller
 
         $workflow = strtolower((string) ($filters['workflow'] ?? ''));
         if (in_array($workflow, ['reminder', 'follow-up', 'escalated'], true)) {
-            $today = now()->startOfDay()->toDateString();
             if ($workflow === 'escalated') {
                 $query->whereRaw('DATEDIFF(?, due_date) >= 30', [$today]);
             } elseif ($workflow === 'follow-up') {
                 $query->whereRaw('DATEDIFF(?, due_date) >= 14', [$today])
                     ->whereRaw('DATEDIFF(?, due_date) < 30', [$today]);
             } else {
-                $query->whereRaw('DATEDIFF(?, due_date) < 14', [$today]);
+                // Reminder: upcoming unpaid OR overdue under 14 days.
+                $query->where(function (\Illuminate\Database\Eloquent\Builder $inner) use ($today) {
+                    $inner->whereDate('due_date', '>=', $today)
+                        ->orWhere(function (\Illuminate\Database\Eloquent\Builder $overdue) use ($today) {
+                            $overdue->whereRaw('DATEDIFF(?, due_date) >= 0', [$today])
+                                ->whereRaw('DATEDIFF(?, due_date) < 14', [$today]);
+                        });
+                });
             }
         }
 
@@ -611,11 +974,8 @@ class RevenueController extends Controller
             ->values()
             ->all();
 
-        $invoicesQuery = PmInvoice::query()
-            ->with(['tenant:id,name,email,phone', 'unit:id,label,property_id', 'unit.property:id,name'])
-            ->whereNotIn('status', [PmInvoice::STATUS_DRAFT, PmInvoice::STATUS_CANCELLED])
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->where('due_date', '<=', now()->toDateString());
+        $invoicesQuery = $this->buildArrearsInvoices([])
+            ->with(['tenant:id,name,email,phone', 'unit:id,label,property_id', 'unit.property:id,name']);
 
         if ($targetMode === 'single') {
             if ($singleInvoiceId <= 0) {
@@ -673,7 +1033,7 @@ class RevenueController extends Controller
                 continue;
             }
 
-            $daysOverdue = max(0, now()->diffInDays($inv->due_date, false) * -1);
+            $daysOverdue = $this->arrearsDaysOverdue($inv->due_date, now()->startOfDay());
             $propertyUnit = trim((string) (($inv->unit?->property?->name ?? '—').'/'.($inv->unit?->label ?? '—')), '/');
             $subject = '[ARREARS] '.$inv->invoice_no.' D+'.(string) $daysOverdue;
             $tenantEmail = strtolower(trim((string) ($tenant->email ?? '')));
@@ -970,7 +1330,7 @@ class RevenueController extends Controller
             ];
         })->all();
 
-        return view('property.agent.revenue.penalties', [
+        return property_view('property.agent.revenue.penalties', [
             'stats' => [
                 ['label' => 'Rules', 'value' => (string) $rules->total(), 'hint' => 'Filtered total'],
                 ['label' => 'Active', 'value' => (string) $active->count(), 'hint' => ''],
@@ -1103,7 +1463,7 @@ class RevenueController extends Controller
             new HtmlString('<a href="'.route('property.revenue.invoices.show', ['invoice' => $i->id], false).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'),
         ])->all();
 
-        return view('property.agent.revenue.receipts', [
+        return property_view('property.agent.revenue.receipts', [
             'stats' => $stats,
             'columns' => ['Receipt #', 'Invoice', 'Tenant', 'Amount', 'Tax', 'Submitted', 'eTIMS status', 'Actions'],
             'tableRows' => $rows,
@@ -1134,6 +1494,130 @@ class RevenueController extends Controller
             $page,
             ['path' => $request->url(), 'query' => $request->query()]
         ))->withQueryString();
+    }
+
+    /**
+     * @param  array<string, string>  $filters
+     */
+    private function arrearsInvoiceMatchesDisplayFilters(PmInvoice $invoice, array $filters, \Carbon\Carbon $today): bool
+    {
+        $aging = strtolower(trim((string) ($filters['aging'] ?? '')));
+        if ($aging === 'overdue') {
+            if (! $invoice->due_date || ! $invoice->due_date->copy()->startOfDay()->lt($today)) {
+                return false;
+            }
+        } elseif ($aging === 'not_due') {
+            if (! $invoice->due_date || $invoice->due_date->copy()->startOfDay()->lt($today)) {
+                return false;
+            }
+        }
+
+        $workflow = strtolower(trim((string) ($filters['workflow'] ?? '')));
+        if ($workflow === '') {
+            return true;
+        }
+
+        $daysOverdue = $this->arrearsDaysOverdue($invoice->due_date, $today);
+
+        return match ($workflow) {
+            'escalated' => $daysOverdue >= 30,
+            'follow-up' => $daysOverdue >= 14 && $daysOverdue < 30,
+            'reminder' => $invoice->due_date && (
+                $invoice->due_date->copy()->startOfDay()->gte($today)
+                || ($daysOverdue >= 0 && $daysOverdue < 14)
+            ),
+            default => true,
+        };
+    }
+
+    private function arrearsDaysOverdue(?\Carbon\CarbonInterface $dueDate, \Carbon\Carbon $today): int
+    {
+        if (! $dueDate) {
+            return 0;
+        }
+
+        $due = \Carbon\Carbon::parse($dueDate)->startOfDay();
+        if ($due->gte($today)) {
+            return 0;
+        }
+
+        return (int) $due->diffInDays($today, true);
+    }
+
+    private function arrearsAgingLabel(?\Carbon\CarbonInterface $dueDate, \Carbon\Carbon $today): string
+    {
+        if (! $dueDate) {
+            return '—';
+        }
+
+        $due = \Carbon\Carbon::parse($dueDate)->startOfDay();
+        if ($due->gte($today)) {
+            $daysUntil = (int) $today->diffInDays($due, true);
+
+            return $daysUntil === 0 ? 'Due today' : 'Due in '.$daysUntil.'d';
+        }
+
+        return (string) (int) $due->diffInDays($today, true);
+    }
+
+    private function arrearsWorkflowForDaysOverdue(int $daysOverdue): string
+    {
+        return $daysOverdue >= 30 ? 'Escalated' : ($daysOverdue >= 14 ? 'Follow-up' : 'Reminder');
+    }
+
+    /**
+     * @param  array{not_due: float, 0_30: float, 31_60: float, 61_90: float, over_90: float}  $buckets
+     */
+    /**
+     * @return array{0: int, 1: string, 2: Carbon, 3: Carbon, 4: string}
+     */
+    private function resolveArrearsDueRange(Request $request): array
+    {
+        $allowed = [0, 1, 2, 3, 6, 12];
+        $rangeMonths = (int) $request->query('range_months', 0);
+        if (! in_array($rangeMonths, $allowed, true)) {
+            $rangeMonths = 0;
+        }
+
+        $rangeEndYm = trim((string) $request->query('range_end', now()->format('Y-m')));
+        if (preg_match('/^\d{4}\-\d{2}$/', $rangeEndYm) !== 1) {
+            $rangeEndYm = now()->format('Y-m');
+        }
+
+        $rangeTo = Carbon::createFromFormat('Y-m', $rangeEndYm)->endOfMonth()->startOfDay();
+        $rangeFrom = $rangeTo->copy()->subMonths(max(0, $rangeMonths - 1))->startOfMonth()->startOfDay();
+
+        $dueRangeLabel = match ($rangeMonths) {
+            0 => 'All due dates',
+            1 => 'Due '.$rangeFrom->format('M Y'),
+            default => 'Due '.$rangeFrom->format('M Y').' – '.$rangeTo->format('M Y').' ('.$rangeMonths.' mo)',
+        };
+
+        return [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $dueRangeLabel];
+    }
+
+    private function addToArrearsBuckets(?\Carbon\CarbonInterface $dueDate, \Carbon\Carbon $today, float $balance, array &$buckets): void
+    {
+        if ($balance <= 0) {
+            return;
+        }
+
+        if (! $dueDate || \Carbon\Carbon::parse($dueDate)->startOfDay()->gte($today)) {
+            $buckets['not_due'] += $balance;
+
+            return;
+        }
+
+        $days = $this->arrearsDaysOverdue($dueDate, $today);
+        if ($days < 31) {
+            $buckets['0_30'] += $balance;
+        } elseif ($days < 61) {
+            $buckets['31_60'] += $balance;
+        } elseif ($days < 91) {
+            $buckets['61_90'] += $balance;
+        } else {
+            $buckets['over_90'] += $balance;
+        }
     }
 
     /**

@@ -2,14 +2,9 @@
 
 namespace App\Console\Commands;
 
-use App\Models\PmInvoice;
-use App\Models\PmInvoiceEvent;
-use App\Models\PmLease;
-use App\Models\PmWaterReading;
 use App\Models\PropertyPortalSetting;
-use App\Services\Property\PropertyAccountingPostingService;
+use App\Services\Property\WaterBillingService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 class GenerateMonthlyWaterInvoices extends Command
 {
@@ -17,11 +12,11 @@ class GenerateMonthlyWaterInvoices extends Command
 
     protected $description = 'Generate monthly water invoices from recorded meter readings for active leases (per unit).';
 
-    public function handle(): int
+    public function handle(WaterBillingService $billing): int
     {
         $enabled = PropertyPortalSetting::isWaterInvoiceAutomationEnabled();
         if (! $enabled) {
-            $this->info('Water invoice automation is off (workflow toggles or PROPERTY_WORKFLOW_AUTOMATION_ENABLED). Skipping water invoice generation.');
+            $this->info('Water invoice automation is off. Skipping water invoice generation.');
 
             return self::SUCCESS;
         }
@@ -40,103 +35,23 @@ class GenerateMonthlyWaterInvoices extends Command
             return self::FAILURE;
         }
 
-        $readings = PmWaterReading::query()
-            ->where('billing_month', $ym)
-            ->whereNull('pm_invoice_id')
-            ->orderBy('property_unit_id')
-            ->get();
+        $stats = $billing->generateInvoicesForMonth(
+            billingMonth: $ym,
+            dueDate: $due,
+            actor: null,
+            source: 'water:generate-invoices',
+            postToGl: true,
+            autoApplyCredit: true,
+        );
 
-        if ($readings->isEmpty()) {
-            $this->info("No uninvoiced water readings for {$ym}.");
-
-            return self::SUCCESS;
-        }
-
-        $created = 0;
-        $skipped = 0;
-
-        foreach ($readings as $reading) {
-            $lease = PmLease::query()
-                ->where('status', PmLease::STATUS_ACTIVE)
-                ->whereHas('units', fn ($q) => $q->where('property_units.id', $reading->property_unit_id))
-                ->first();
-
-            if (! $lease) {
-                $skipped++;
-
-                continue;
-            }
-
-            // Prevent duplicates if someone manually created a water invoice for the same unit + period.
-            $exists = PmInvoice::query()
-                ->where('property_unit_id', $reading->property_unit_id)
-                ->where('pm_tenant_id', $lease->pm_tenant_id)
-                ->where('invoice_type', PmInvoice::TYPE_WATER)
-                ->where('billing_period', $ym)
-                ->exists();
-            if ($exists) {
-                $reading->update(['pm_invoice_id' => null, 'status' => 'recorded']);
-                $skipped++;
-
-                continue;
-            }
-
-            DB::transaction(function () use ($lease, $reading, $ym, $due, &$created) {
-                $invoiceNo = PmInvoice::nextInvoiceNumber();
-                $unit = $reading->propertyUnit ?? null;
-                $agentUserId = $unit?->property?->agent_user_id
-                    ?? \App\Models\PropertyUnit::query()
-                        ->where('id', $reading->property_unit_id)
-                        ->join('properties', 'properties.id', '=', 'property_units.property_id')
-                        ->value('properties.agent_user_id');
-
-                $inv = PmInvoice::query()->create([
-                    'pm_lease_id' => $lease->id,
-                    'property_unit_id' => $reading->property_unit_id,
-                    'pm_tenant_id' => $lease->pm_tenant_id,
-                    'agent_user_id' => $agentUserId,
-                    'invoice_no' => $invoiceNo,
-                    'issue_date' => now()->toDateString(),
-                    'due_date' => $due,
-                    'amount' => (float) $reading->amount,
-                    'amount_paid' => 0,
-                    'subtotal_amount' => (float) $reading->amount,
-                    'total_amount' => (float) $reading->amount,
-                    'status' => PmInvoice::STATUS_SENT,
-                    'sent_at' => now(),
-                    'invoice_type' => PmInvoice::TYPE_WATER,
-                    'billing_period' => $ym,
-                    'description' => 'Water bill '.$ym.' ('.number_format((float) $reading->units_used, 3).' units)',
-                ]);
-                $inv->refreshComputedStatus();
-
-                $reading->update([
-                    'pm_invoice_id' => $inv->id,
-                    'status' => 'invoiced',
-                ]);
-
-                // A2: post to the trust/GL ledger so water cron also
-                // creates the receivable + income lines.
-                PropertyAccountingPostingService::postInvoiceIssued($inv);
-
-                PmInvoiceEvent::record(
-                    (int) $inv->id,
-                    PmInvoiceEvent::EVENT_ISSUED,
-                    null,
-                    'Auto-generated water invoice for '.$ym,
-                    [
-                        'source' => 'water:generate-invoices',
-                        'amount' => (float) $inv->amount,
-                        'units_used' => (float) $reading->units_used,
-                        'water_reading_id' => (int) $reading->id,
-                    ]
-                );
-
-                $created++;
-            });
-        }
-
-        $this->info("Water invoices generated for {$ym}. Created={$created}, Skipped={$skipped}.");
+        $this->info(sprintf(
+            'Water invoices for %s. Created=%d, Skipped(no lease)=%d, Skipped(duplicate)=%d, Credit auto-applied=%d.',
+            $ym,
+            $stats['created'],
+            $stats['skipped_no_lease'],
+            $stats['skipped_duplicate'],
+            $stats['credit_applied'],
+        ));
 
         return self::SUCCESS;
     }

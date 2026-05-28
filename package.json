@@ -3,13 +3,19 @@
     "private": true,
     "type": "module",
     "dependencies": {
+        "@capacitor/android": "^8.3.4",
+        "@capacitor/cli": "^8.3.4",
+        "@capacitor/core": "^8.3.4",
         "@hotwired/turbo": "^8.0.23",
         "chart.js": "^4.5.1",
         "sweetalert2": "^11.26.24"
     },
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "cap:sync": "npx cap sync",
+        "cap:copy": "npx cap copy",
+        "cap:android": "npx cap open android"
     },
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.2",
@@ -21,6 +27,7 @@
         "laravel-vite-plugin": "^3.0.0",
         "postcss": "^8.4.31",
         "tailwindcss": "^3.1.0",
+        "typescript": "^6.0.3",
         "vite": "^8.0.0"
     }
 }

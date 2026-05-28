@@ -7,14 +7,14 @@
     :table-rows="[]"
 >
     <x-slot name="actions">
-        <a href="{{ route('property.accounting.entries') }}" class="inline-flex justify-center items-center rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">+ New Journal Entry</a>
-        <a href="{{ route('property.revenue.payments') }}" class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">+ Record Payment</a>
-        <a href="{{ route('property.accounting.payables.landlord_payouts') }}" class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">+ Create Landlord Payout</a>
-        <a href="{{ route('property.accounting.payroll') }}" class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">+ Run Payroll</a>
+        <a href="{{ route('property.accounting.entries') }}" class="inline-flex justify-center items-center rounded-xl bg-blue-600 px-4 py-2.5 min-h-[44px] text-sm font-medium text-white hover:bg-blue-700 w-full sm:w-auto">+ New Journal Entry</a>
+        <a href="{{ route('property.revenue.payments') }}" class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2.5 min-h-[44px] text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto">+ Record Payment</a>
+        <a href="{{ route('property.accounting.payables.landlord_payouts') }}" class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2.5 min-h-[44px] text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto">+ Create Landlord Payout</a>
+        <a href="{{ route('property.accounting.payroll') }}" class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2.5 min-h-[44px] text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto">+ Run Payroll</a>
     </x-slot>
 
-    <div class="grid gap-4 md:grid-cols-2">
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm">
+    <x-property.responsive.compact-card-grid class="gap-3 sm:gap-4">
+        <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm">
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Revenue vs Expenses (last 6 months)</h3>
             <div class="mt-3 space-y-2">
                 @foreach (($monthlyTrend ?? []) as $m)
@@ -38,7 +38,7 @@
                 @endforeach
             </div>
         </div>
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm">
+        <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm">
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Rent billed vs collected (this month)</h3>
             @php
                 $billed = (float) ($rentSnapshot['billed'] ?? 0);
@@ -60,7 +60,7 @@
                 <a href="{{ route('property.maintenance.costs') }}" class="text-sm text-slate-700 hover:text-slate-900">Maintenance cost trend →</a>
             </div>
         </div>
-        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+        <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50 shadow-sm">
             <h3 class="text-sm font-semibold text-amber-900">Alerts</h3>
             <ul class="mt-3 space-y-2 text-sm">
                 <li><a href="{{ route('property.revenue.arrears') }}" class="text-amber-900 hover:underline">⚠ Overdue tenant balances: {{ (int) ($alerts['overdue_tenants'] ?? 0) }}</a></li>
@@ -70,15 +70,15 @@
                 <li class="{{ ((int) ($alerts['negative_cash'] ?? 0)) > 0 ? 'text-rose-700 font-semibold' : 'text-emerald-700' }}">⚠ Negative cash warning: {{ ((int) ($alerts['negative_cash'] ?? 0)) > 0 ? 'Yes' : 'No' }}</li>
             </ul>
         </div>
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm">
+        <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm">
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Quick drill-down</h3>
-            <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                <a href="{{ route('property.accounting.gl.chart_accounts') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50">Chart of Accounts</a>
-                <a href="{{ route('property.accounting.gl.journal_batches') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50">Journal Batches</a>
-                <a href="{{ route('property.accounting.reports.balance_sheet') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50">Balance Sheet</a>
-                <a href="{{ route('property.accounting.controls.reversals') }}" class="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50">Reversals</a>
-            </div>
+            <x-property.responsive.quick-action-grid class="mt-3">
+                <a href="{{ route('property.accounting.gl.chart_accounts') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Chart of accounts</a>
+                <a href="{{ route('property.accounting.gl.journal_batches') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Journal batches</a>
+                <a href="{{ route('property.accounting.reports.balance_sheet') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Balance sheet</a>
+                <a href="{{ route('property.accounting.controls.reversals') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Reversals</a>
+            </x-property.responsive.quick-action-grid>
         </div>
-    </div>
+    </x-property.responsive.compact-card-grid>
 </x-property.workspace>
 

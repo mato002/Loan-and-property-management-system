@@ -1,7 +1,11 @@
 @php
+    use App\Support\Property\PropertyNavMode;
+    use App\Support\Property\PropertyNavigation;
+
     $companyLogoUrl = \App\Models\PropertyPortalSetting::getValue('company_logo_url', '');
     $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '');
     $portalRole = $propertyPortal ?? 'agent';
+    $agentNavMode = $portalRole === 'agent' ? PropertyNavMode::current() : PropertyNavMode::CLASSIC;
     $homeRoute = match ($portalRole) {
         'landlord' => 'property.landlord.portfolio',
         'tenant' => 'property.tenant.home',
@@ -35,22 +39,43 @@
             ['label' => 'Maintenance', 'route' => 'property.tenant.maintenance.index', 'patterns' => ['property.tenant.maintenance.*']],
             ['label' => 'Lease', 'route' => 'property.tenant.lease', 'patterns' => ['property.tenant.lease']],
         ],
-        default => [
-            ['label' => 'Dashboard', 'route' => 'property.dashboard', 'patterns' => ['property.dashboard']],
-            ['label' => 'Rent roll', 'route' => 'property.revenue.rent_roll', 'patterns' => ['property.revenue.rent_roll']],
-            ['label' => 'Arrears', 'route' => 'property.revenue.arrears', 'patterns' => ['property.revenue.arrears']],
-            ['label' => 'Properties', 'route' => 'property.properties.list', 'patterns' => ['property.properties.*', 'property.landlords.index', 'property.units.store']],
-            ['label' => 'Tenants', 'route' => 'property.tenants.directory', 'patterns' => ['property.tenants.*', 'property.leases.store']],
-            (($auth = Auth::user()) && (($auth->is_super_admin ?? false) === true))
-                ? ['label' => 'Property users', 'route' => 'property.settings.roles', 'patterns' => ['property.settings.roles']]
-                : ['label' => 'Settings', 'route' => 'property.settings.index', 'patterns' => ['property.settings.*']],
-            ['label' => 'Maintenance', 'route' => 'property.maintenance.requests', 'patterns' => ['property.maintenance.*']],
-            ['label' => 'Listings', 'route' => 'property.listings.vacant', 'patterns' => ['property.listings.*']],
-            ['label' => 'Financials', 'route' => 'property.financials.index', 'patterns' => ['property.financials.*']],
-            ['label' => 'Accounting', 'route' => 'property.accounting.index', 'patterns' => ['property.accounting.*']],
-            ['label' => 'Settings', 'route' => 'property.settings.index', 'patterns' => ['property.settings.*']],
-        ],
+        default => match ($agentNavMode) {
+            PropertyNavMode::WORKSPACE, PropertyNavMode::HYBRID => PropertyNavigation::agentHeaderWorkspaces(),
+            default => [
+                ['label' => 'Dashboard', 'route' => 'property.dashboard', 'patterns' => ['property.dashboard']],
+                ['label' => 'Rent roll', 'route' => 'property.revenue.rent_roll', 'patterns' => ['property.revenue.rent_roll']],
+                ['label' => 'Arrears', 'route' => 'property.revenue.arrears', 'patterns' => ['property.revenue.arrears', 'property.revenue.arrears.*']],
+                ['label' => 'Properties', 'route' => 'property.properties.list', 'patterns' => ['property.properties.*', 'property.landlords.index', 'property.units.store']],
+                ['label' => 'Tenants', 'route' => 'property.tenants.directory', 'patterns' => ['property.tenants.*', 'property.leases.store']],
+                ['label' => 'Revenue', 'route' => 'property.revenue.index', 'patterns' => [
+                    'property.revenue.index',
+                    'property.revenue.uninvoiced_leases',
+                    'property.revenue.uninvoiced_leases.*',
+                    'property.revenue.invoices',
+                    'property.revenue.invoices.*',
+                    'property.revenue.payments',
+                    'property.revenue.payments.*',
+                    'property.revenue.receipts',
+                    'property.revenue.tenant_credits',
+                    'property.revenue.penalties',
+                    'property.revenue.penalties.*',
+                    'property.revenue.utilities',
+                    'property.revenue.utilities.*',
+                ]],
+                ['label' => 'Maintenance', 'route' => 'property.maintenance.requests', 'patterns' => ['property.maintenance.*']],
+                ['label' => 'Listings', 'route' => 'property.listings.index', 'patterns' => ['property.listings.*']],
+                ['label' => 'Financials', 'route' => 'property.financials.index', 'patterns' => ['property.financials.*']],
+                ['label' => 'Accounting', 'route' => 'property.accounting.index', 'patterns' => ['property.accounting.*']],
+                (($auth = Auth::user()) && (($auth->is_super_admin ?? false) === true))
+                    ? ['label' => 'Property users', 'route' => 'property.settings.roles', 'patterns' => ['property.settings.roles']]
+                    : ['label' => 'Settings', 'route' => 'property.settings.index', 'patterns' => ['property.settings.*']],
+            ],
+        },
     };
+
+    $activeAgentWorkspace = ($portalRole === 'agent' && in_array($agentNavMode, [PropertyNavMode::WORKSPACE, PropertyNavMode::HYBRID], true))
+        ? PropertyNavigation::workspaceForRoute(Route::currentRouteName() ?? '')
+        : null;
 
     $linkActive = function (array $patterns): bool {
         foreach ($patterns as $p) {
@@ -106,7 +131,7 @@
         </div>
     @endif
     <div class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 text-white overflow-visible">
-        <div class="relative z-[120] flex items-center justify-between h-[60px] sm:h-[64px] px-3 sm:px-5 lg:px-6 gap-2 sm:gap-4">
+        <div class="relative z-[120] flex items-center justify-between h-14 sm:h-[60px] lg:h-[64px] px-3 sm:px-5 lg:px-6 gap-2 sm:gap-4">
             <div class="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                 <button
                     type="button"
@@ -150,7 +175,10 @@
 
                 @isset($header)
                     <div class="hidden md:flex items-center min-w-0 pl-3 sm:pl-4 ml-2 sm:ml-3 border-l border-white/25">
-                        <span class="text-xs sm:text-sm font-medium text-white/95 truncate max-w-[140px] sm:max-w-[200px] lg:max-w-[280px] xl:max-w-md">{{ $header }}</span>
+                        @if ($activeAgentWorkspace)
+                            <span class="hidden lg:inline-flex items-center rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-100 mr-2 shrink-0">{{ $activeAgentWorkspace['label'] }}</span>
+                        @endif
+                        <span data-property-header-title class="text-xs sm:text-sm font-medium text-white/95 truncate max-w-[140px] sm:max-w-[200px] lg:max-w-[280px] xl:max-w-md">{{ $header }}</span>
                     </div>
                 @endisset
             </div>
@@ -187,7 +215,18 @@
                 <time class="text-xs font-semibold text-white/90 tabular-nums" datetime="{{ now()->toDateString() }}">{{ $todayLabel }}</time>
             </div>
 
-            <div class="flex items-center gap-1 sm:gap-2 shrink-0">
+            <div class="flex items-center gap-0.5 sm:gap-2 shrink-0">
+                @if ($portalRole === 'agent')
+                    <button
+                        type="button"
+                        id="property-mobile-search-open"
+                        class="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-white/90 hover:bg-white/15 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                        aria-label="Open search"
+                    >
+                        <i class="fa-solid fa-magnifying-glass text-lg" aria-hidden="true"></i>
+                    </button>
+                @endif
+
                 @if ($portalRole === 'agent')
                     <a
                         href="{{ route('public.home') }}"
@@ -297,7 +336,7 @@
                             <p class="text-xs text-slate-500 truncate">{{ Auth::user()->email ?? '' }}</p>
                         </div>
 
-                        <a href="{{ route('profile.edit') }}" class="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition-colors">
+                        <a href="{{ route('profile.edit') }}" data-turbo-frame="property-main" class="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition-colors">
                             <i class="fa-regular fa-user w-4 text-center text-slate-400" aria-hidden="true"></i>
                             Profile settings
                         </a>
@@ -316,17 +355,17 @@
             </div>
         </div>
 
-        {{-- Quick shortcuts (role-specific) --}}
-        <div class="relative z-[20] hidden md:block border-t border-white/15 bg-emerald-800/35 backdrop-blur-sm">
-            <nav class="property-header-quick flex items-center gap-1 px-4 py-2 overflow-x-auto custom-scrollbar" aria-label="Quick shortcuts">
+        {{-- Quick shortcuts — horizontal scroll on mobile --}}
+        <div class="relative z-[20] border-t border-white/15 bg-emerald-800/40 backdrop-blur-sm @if($portalRole === 'agent' && $agentNavMode === PropertyNavMode::CLASSIC) property-header-quick-classic @elseif($portalRole === 'agent') property-header-quick-workspace @endif">
+            <nav class="property-header-quick flex items-center gap-1 px-3 py-1.5 sm:px-4 sm:py-2 overflow-x-auto custom-scrollbar snap-x snap-mandatory" aria-label="Quick shortcuts">
                 @foreach ($quickLinks as $link)
                     @php $active = $linkActive($link['patterns']); @endphp
                     <a
-                        href="{{ route($link['route']) }}"
+                        href="{{ PropertyNavigation::workspaceHref($link) }}"
                         data-turbo-frame="property-main"
                         data-property-nav="{{ implode('|', $link['patterns']) }}"
                         @if ($active) aria-current="page" @endif
-                        class="shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm"
+                        class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
                     >
                         {{ $link['label'] }}
                     </a>
@@ -335,6 +374,148 @@
         </div>
     </div>
 </header>
+
+@if ($portalRole === 'agent')
+    {{-- Mobile search overlay --}}
+    <div
+        id="property-mobile-search-overlay"
+        class="fixed inset-0 z-[7000] lg:hidden hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
+    >
+        <div id="property-mobile-search-backdrop" class="absolute inset-0 bg-slate-950/60 backdrop-blur-[1px]"></div>
+        <div class="relative mx-3 mt-3 sm:mx-4 sm:mt-4 rounded-2xl border border-white/20 bg-emerald-700 p-3 shadow-2xl">
+            <div class="flex items-center gap-2">
+                <form
+                    id="property-mobile-search-form"
+                    method="get"
+                    action="{{ route('property.search') }}"
+                    data-turbo-frame="property-main"
+                    class="flex-1 min-w-0"
+                >
+                    <label class="sr-only" for="property-mobile-search-input">Search</label>
+                    <input
+                        id="property-mobile-search-input"
+                        name="q"
+                        value="{{ request('q') }}"
+                        placeholder="Search tenants, units, invoices…"
+                        autocomplete="off"
+                        class="w-full rounded-xl bg-white text-slate-900 placeholder:text-slate-500 border border-white/70 px-4 py-3 text-sm font-medium shadow-inner focus:outline-none focus:ring-2 focus:ring-white/40"
+                    />
+                </form>
+                <button
+                    type="button"
+                    id="property-mobile-search-close"
+                    class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white/90 hover:bg-white/15"
+                    aria-label="Close search"
+                >
+                    <i class="fa-solid fa-xmark text-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div id="property-mobile-search-suggest" class="hidden mt-2 max-h-[60vh] overflow-y-auto rounded-xl border border-slate-200 bg-white text-slate-800 shadow-xl"></div>
+        </div>
+    </div>
+@endif
+
+@if ($portalRole === 'agent')
+    <script>
+        function initPropertyMobileSearchOverlay() {
+            const openBtn = document.getElementById('property-mobile-search-open');
+            const overlay = document.getElementById('property-mobile-search-overlay');
+            const backdrop = document.getElementById('property-mobile-search-backdrop');
+            const closeBtn = document.getElementById('property-mobile-search-close');
+            const input = document.getElementById('property-mobile-search-input');
+            const form = document.getElementById('property-mobile-search-form');
+            const box = document.getElementById('property-mobile-search-suggest');
+            if (!openBtn || !overlay || !input || !form || !box) return;
+            if (openBtn.dataset.mobileSearchInit === '1') return;
+            openBtn.dataset.mobileSearchInit = '1';
+
+            const endpoint = @json(route('property.search.suggest'));
+            let timer = null;
+            let ctrl = null;
+            let lastQ = '';
+            let firstUrl = '';
+
+            const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[ch]));
+            const highlight = (txt, q) => {
+                const t = String(txt ?? '');
+                const qq = String(q ?? '').trim();
+                if (!qq) return esc(t);
+                const safe = esc(t);
+                const re = new RegExp(qq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+                return safe.replace(re, (m) => `<mark class="bg-yellow-100 px-0.5 rounded">${m}</mark>`);
+            };
+            const labels = { pages: 'Pages', landlords: 'Landlords', tenants: 'Tenants', properties: 'Properties', units: 'Units', invoices: 'Invoices', payments: 'Payments' };
+
+            const closeOverlay = () => {
+                overlay.classList.add('hidden');
+                document.documentElement.classList.remove('overflow-hidden');
+                box.classList.add('hidden');
+                box.innerHTML = '';
+            };
+            const openOverlay = () => {
+                overlay.classList.remove('hidden');
+                document.documentElement.classList.add('overflow-hidden');
+                window.setTimeout(() => input.focus(), 50);
+            };
+            const render = (payload, q) => {
+                const groups = payload?.groups || {};
+                const keys = Object.keys(labels);
+                const hasAny = keys.some((k) => Array.isArray(groups[k]) && groups[k].length > 0);
+                if (!hasAny) {
+                    box.innerHTML = '<div class="px-4 py-3 text-sm text-slate-500">No results</div>';
+                    box.classList.remove('hidden');
+                    return;
+                }
+                const html = keys.map((k) => {
+                    const rows = Array.isArray(groups[k]) ? groups[k] : [];
+                    if (rows.length === 0) return '';
+                    const items = rows.slice(0, 5).map((r) => `
+                        <a href="${esc(r.url)}" data-turbo-frame="property-main" class="block px-4 py-3 hover:bg-slate-50">
+                            <div class="text-sm font-semibold text-slate-900">${highlight(r.title, q)}</div>
+                            <div class="text-xs text-slate-500">${highlight(r.subtitle, q)}</div>
+                        </a>
+                    `).join('');
+                    return `<div class="border-b border-slate-100 last:border-b-0"><div class="px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 bg-slate-50">${labels[k]}</div>${items}</div>`;
+                }).join('');
+                const firstGroup = keys.find((k) => Array.isArray(groups[k]) && groups[k].length > 0);
+                firstUrl = firstGroup ? (groups[firstGroup][0]?.url || '') : '';
+                box.innerHTML = html;
+                box.classList.remove('hidden');
+            };
+            const load = async () => {
+                const q = (input.value || '').trim();
+                if (q.length < 1) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+                if (q === lastQ) return;
+                lastQ = q;
+                if (ctrl) ctrl.abort();
+                ctrl = new AbortController();
+                try {
+                    const res = await fetch(`${endpoint}?q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+                    if (!res.ok) { box.classList.add('hidden'); return; }
+                    render(await res.json(), q);
+                } catch (_) { box.classList.add('hidden'); }
+            };
+
+            openBtn.addEventListener('click', openOverlay);
+            closeBtn?.addEventListener('click', closeOverlay);
+            backdrop?.addEventListener('click', closeOverlay);
+            input.addEventListener('input', () => { if (timer) clearTimeout(timer); timer = setTimeout(load, 220); });
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (!box.classList.contains('hidden') && firstUrl) { window.visitPropertyMain?.(firstUrl); closeOverlay(); return; }
+                load();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeOverlay();
+            });
+        }
+        document.addEventListener('DOMContentLoaded', initPropertyMobileSearchOverlay);
+        document.addEventListener('turbo:load', initPropertyMobileSearchOverlay);
+    </script>
+@endif
 
 @if ($portalRole === 'agent')
     <script>
@@ -450,7 +631,7 @@
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
                 if (!box.classList.contains('hidden') && firstUrl) {
-                    window.location.href = firstUrl;
+                    window.visitPropertyMain?.(firstUrl);
                     return;
                 }
                 load();

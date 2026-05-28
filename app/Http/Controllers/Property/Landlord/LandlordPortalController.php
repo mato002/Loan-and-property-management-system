@@ -72,7 +72,7 @@ class LandlordPortalController extends Controller
         $collectionRate = $gross > 0 ? round(($mtdCollected / $gross) * 100, 1) : null;
 
         $arrears = $unitIds->isNotEmpty()
-            ? (float) PmInvoice::query()->whereIn('property_unit_id', $unitIds)
+            ? (float) PmInvoice::query()->liveBalances()->whereIn('property_unit_id', $unitIds)
                 ->whereColumn('amount_paid', '<', 'amount')
                 ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
                 ->value('t')
@@ -80,6 +80,7 @@ class LandlordPortalController extends Controller
 
         $dueNext30Days = $unitIds->isNotEmpty()
             ? (float) PmInvoice::query()
+                ->liveBalances()
                 ->whereIn('property_unit_id', $unitIds)
                 ->whereBetween('due_date', [now()->startOfDay(), now()->copy()->addDays(30)->endOfDay()])
                 ->whereColumn('amount_paid', '<', 'amount')
@@ -109,6 +110,7 @@ class LandlordPortalController extends Controller
 
             $pArrears = $pUnitIds->isNotEmpty()
                 ? (float) PmInvoice::query()
+                    ->liveBalances()
                     ->whereIn('property_unit_id', $pUnitIds)
                     ->whereColumn('amount_paid', '<', 'amount')
                     ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
@@ -177,7 +179,7 @@ class LandlordPortalController extends Controller
             return ['name' => $p->name, 'rate' => $rate];
         })->sortByDesc('rate')->take(8)->values();
 
-        return view('property.landlord.portfolio', [
+        return property_view('property.landlord.portfolio', [
             'incomeMonth' => PropertyMoney::kes($gross),
             'incomeCollectedMonth' => PropertyMoney::kes($mtdCollected),
             'collectionRateDisplay' => $collectionRate !== null ? $collectionRate.'%' : '—',
@@ -209,6 +211,7 @@ class LandlordPortalController extends Controller
         $unitIds = PropertyUnit::query()->whereIn('property_id', $propIds)->pluck('id');
         $pending = $unitIds->isNotEmpty()
             ? (float) PmInvoice::query()
+                ->liveBalances()
                 ->whereIn('property_unit_id', $unitIds)
                 ->whereColumn('amount_paid', '<', 'amount')
                 ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
@@ -217,7 +220,7 @@ class LandlordPortalController extends Controller
 
         $payoutPrefs = $this->latestActionContext($user, 'landlord_payout_preferences');
 
-        return view('property.landlord.earnings.index', [
+        return property_view('property.landlord.earnings.index', [
             'available' => PropertyMoney::kes($bal),
             'pending' => PropertyMoney::kes($pending),
             'payoutPrefs' => $payoutPrefs,
@@ -228,7 +231,7 @@ class LandlordPortalController extends Controller
     {
         $prefs = $this->latestActionContext($request->user(), 'landlord_payout_preferences');
 
-        return view('property.landlord.earnings.withdraw', [
+        return property_view('property.landlord.earnings.withdraw', [
             'available' => PropertyMoney::kes(LandlordLedger::balance($request->user())),
             'payoutPrefs' => $prefs,
         ]);
@@ -276,7 +279,7 @@ class LandlordPortalController extends Controller
 
     public function payoutSettings(Request $request): View
     {
-        return view('property.landlord.earnings.settings', [
+        return property_view('property.landlord.earnings.settings', [
             'payoutPrefs' => $this->latestActionContext($request->user(), 'landlord_payout_preferences'),
         ]);
     }
@@ -333,7 +336,7 @@ class LandlordPortalController extends Controller
             '—',
         ])->all();
 
-        return view('property.landlord.earnings.history', [
+        return property_view('property.landlord.earnings.history', [
             'stats' => [
                 ['label' => 'Ledger balance', 'value' => PropertyMoney::kes(LandlordLedger::balance($user)), 'hint' => 'Latest'],
                 ['label' => 'Credits (MTD)', 'value' => PropertyMoney::kes($creditMtd), 'hint' => 'To you'],
@@ -486,7 +489,7 @@ class LandlordPortalController extends Controller
                 ];
             })->values()->all();
 
-        return view('property.landlord.property_show', [
+        return property_view('property.landlord.property_show', [
             'property' => $property,
             'columns' => ['Unit', 'Summary', 'Rent', 'Actions'],
             'tableRows' => $rows,
@@ -555,7 +558,7 @@ class LandlordPortalController extends Controller
             ];
         })->all();
 
-        return view('property.landlord.properties', [
+        return property_view('property.landlord.properties', [
             'stats' => [
                 ['label' => 'Properties', 'value' => (string) $properties->count(), 'hint' => ''],
                 ['label' => 'Units', 'value' => (string) $properties->sum('units_count'), 'hint' => ''],
@@ -595,7 +598,7 @@ class LandlordPortalController extends Controller
             return true;
         }));
 
-        return view('property.landlord.notifications', [
+        return property_view('property.landlord.notifications', [
             'notifications' => $items,
             'notificationPrefs' => $prefs,
         ]);
@@ -643,7 +646,7 @@ class LandlordPortalController extends Controller
             ['label' => 'Open jobs', 'value' => (string) $jobs->whereNotIn('status', ['done', 'cancelled'])->count(), 'hint' => 'In progress'],
         ];
 
-        return view('property.landlord.maintenance', [
+        return property_view('property.landlord.maintenance', [
             'stats' => $stats,
             'jobs' => $jobs,
             'approvalThreshold' => $threshold,
@@ -758,7 +761,7 @@ class LandlordPortalController extends Controller
             ucfirst($i->status),
         ])->all();
 
-        return view('property.landlord.reports.income', [
+        return property_view('property.landlord.reports.income', [
             'stats' => [
                 ['label' => 'Billed', 'value' => PropertyMoney::kes((float) $invoices->sum('amount')), 'hint' => 'Due '.$month],
                 ['label' => 'Collected', 'value' => PropertyMoney::kes($collected), 'hint' => 'Paid '.$month],
@@ -812,7 +815,7 @@ class LandlordPortalController extends Controller
             ucfirst(str_replace('_', ' ', $j->status)),
         ])->all();
 
-        return view('property.landlord.reports.expenses', [
+        return property_view('property.landlord.reports.expenses', [
             'stats' => [
                 ['label' => 'Maintenance booked', 'value' => PropertyMoney::kes((float) $jobs->sum(fn ($j) => (float) ($j->quote_amount ?? 0))), 'hint' => $month],
             ],
@@ -872,7 +875,7 @@ class LandlordPortalController extends Controller
             ];
         }
 
-        return view('property.landlord.reports.cash_flow', [
+        return property_view('property.landlord.reports.cash_flow', [
             'stats' => [
                 ['label' => 'Cash in', 'value' => PropertyMoney::kes($cashIn), 'hint' => $month],
                 ['label' => 'Cash out', 'value' => PropertyMoney::kes($cashOut), 'hint' => $month],
@@ -959,7 +962,7 @@ class LandlordPortalController extends Controller
             ->value('balance_after');
         $closing = $opening + $ledgerCredits - $ledgerDebits;
 
-        return view('property.landlord.reports.statement', [
+        return property_view('property.landlord.reports.statement', [
             'month' => $month,
             'selectedPropertyId' => $selectedPropertyId > 0 ? $selectedPropertyId : null,
             'selectedUnitId' => $selectedUnitId,
@@ -1050,7 +1053,7 @@ class LandlordPortalController extends Controller
             ? PmMaintenanceJob::query()->with(['request.unit.property'])->whereHas('request', fn ($q) => $q->whereIn('property_unit_id', $unitIds))->orderByDesc('updated_at')->limit(12)->get()
             : collect();
 
-        return view('property.landlord.documents', [
+        return property_view('property.landlord.documents', [
             'invoiceDocs' => $latestInvoices,
             'maintenanceDocs' => $latestJobs,
         ]);
@@ -1088,7 +1091,7 @@ class LandlordPortalController extends Controller
             ->orderBy('action_key')
             ->pluck('action_key');
 
-        return view('property.landlord.audit_trail', [
+        return property_view('property.landlord.audit_trail', [
             'actions' => $actions,
             'actionKeys' => $actionKeys,
             'actionKey' => $actionKey,
@@ -1137,7 +1140,7 @@ class LandlordPortalController extends Controller
 
     public function loans(Request $request): View
     {
-        return view('property.landlord.loans', [
+        return property_view('property.landlord.loans', [
             'defaultProductName' => 'Landlord property improvement loan',
             'defaultPurpose' => 'Property-related financing request from landlord portal.',
             'portalLoans' => $this->portalLoansFor($request->user()),

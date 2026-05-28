@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Property\Concerns\RecordsPmPortalDraft;
+use App\Models\PmRole;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
+use Illuminate\Validation\Rule;
 
 class AgentWorkspaceFormController extends Controller
 {
@@ -40,7 +43,11 @@ class AgentWorkspaceFormController extends Controller
 
         $def = $this->definition($form);
 
-        return view('property.workspace.draft_form', [
+        if ($form === 'settings-invite-user') {
+            $def['fields'] = $this->inviteUserFieldsWithRoleSelect($def['fields']);
+        }
+
+        return property_view('property.workspace.draft_form', [
             'formKey' => $form,
             'storeRoute' => 'property.workspace.form.store',
             'title' => $def['title'],
@@ -59,6 +66,9 @@ class AgentWorkspaceFormController extends Controller
         }
 
         $def = $this->definition($form);
+        if ($form === 'settings-invite-user') {
+            $def['rules'] = $this->inviteUserValidationRules();
+        }
         $data = $request->validate($def['rules']);
         [$notes, $context] = $this->resolveNotesAndContext($request, $form, $data);
 
@@ -91,6 +101,7 @@ class AgentWorkspaceFormController extends Controller
                 $notes = $data['message'] ?? null;
                 $ctx = array_filter([
                     'email' => $data['email'] ?? null,
+                    'phone' => $data['phone'] ?? null,
                     'role' => $data['role'] ?? null,
                 ], static fn ($v) => $v !== null && $v !== '');
 
@@ -274,20 +285,22 @@ class AgentWorkspaceFormController extends Controller
             ],
             'settings-invite-user' => [
                 'title' => 'Invite team user',
-                'subtitle' => 'Record an invite request; invitations send once your identity provider is connected.',
+                'subtitle' => 'Record a request with phone or email and the role they should get. This saves a draft for approval — it does not create the login yet. After the account exists, assign the same role under Settings → System setup → Access control.',
                 'back_route' => 'property.settings.roles',
                 'back_label' => '← Back to roles',
                 'action_key' => 'invite_team_user',
                 'success' => 'Invite request recorded.',
                 'submit_label' => 'Record invite',
                 'rules' => [
-                    'email' => ['required', 'email', 'max:255'],
+                    'email' => ['nullable', 'required_without:phone', 'email', 'max:255'],
+                    'phone' => ['nullable', 'required_without:email', 'string', 'max:64'],
                     'role' => ['nullable', 'string', 'max:128'],
                     'message' => ['nullable', 'string', 'max:2000'],
                 ],
                 'fields' => [
-                    ['name' => 'email', 'label' => 'Email', 'type' => 'email', 'required' => true],
-                    ['name' => 'role', 'label' => 'Role', 'type' => 'text', 'placeholder' => 'e.g. Property manager'],
+                    ['name' => 'phone', 'label' => 'Phone', 'type' => 'tel', 'placeholder' => 'e.g. +254712345678'],
+                    ['name' => 'email', 'label' => 'Email', 'type' => 'email', 'placeholder' => 'Optional if phone is set'],
+                    ['name' => 'role', 'label' => 'Role', 'type' => 'text', 'placeholder' => 'Define roles under System setup → Access if empty here'],
                     ['name' => 'message', 'label' => 'Note to approver', 'type' => 'textarea'],
                 ],
             ],
@@ -581,5 +594,64 @@ class AgentWorkspaceFormController extends Controller
                 ],
             ],
         };
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $fields
+     * @return list<array<string, mixed>>
+     */
+    private function inviteUserFieldsWithRoleSelect(array $fields): array
+    {
+        if (! Schema::hasTable('pm_roles')) {
+            return $fields;
+        }
+
+        $rows = PmRole::query()
+            ->whereIn('portal_scope', ['agent', 'any'])
+            ->orderBy('name')
+            ->get(['name', 'slug']);
+
+        if ($rows->isEmpty()) {
+            return $fields;
+        }
+
+        $options = array_merge(
+            [['value' => '', 'label' => '— Select role —']],
+            $rows->map(static fn (PmRole $r) => [
+                'value' => (string) $r->slug,
+                'label' => (string) $r->name,
+            ])->all()
+        );
+
+        foreach ($fields as $idx => $field) {
+            if (($field['name'] ?? '') === 'role') {
+                $fields[$idx]['type'] = 'select';
+                $fields[$idx]['options'] = $options;
+                $fields[$idx]['required'] = true;
+                unset($fields[$idx]['placeholder']);
+
+                break;
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * @return array<string, array<int, \Illuminate\Contracts\Validation\ValidationRule|string>>
+     */
+    private function inviteUserValidationRules(): array
+    {
+        $hasStaffRoles = Schema::hasTable('pm_roles')
+            && PmRole::query()->whereIn('portal_scope', ['agent', 'any'])->exists();
+
+        return [
+            'email' => ['nullable', 'required_without:phone', 'email', 'max:255'],
+            'phone' => ['nullable', 'required_without:email', 'string', 'max:64'],
+            'role' => $hasStaffRoles
+                ? ['required', Rule::exists('pm_roles', 'slug')->where(static fn ($q) => $q->whereIn('portal_scope', ['agent', 'any']))]
+                : ['nullable', 'string', 'max:128'],
+            'message' => ['nullable', 'string', 'max:2000'],
+        ];
     }
 }

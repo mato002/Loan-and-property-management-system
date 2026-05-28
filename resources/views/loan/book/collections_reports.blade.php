@@ -60,12 +60,28 @@
 
     $exportQuery = array_merge(request()->query(), ['export' => 'csv']);
     $exportHref = route('loan.book.collections_reports', $exportQuery);
+
+    use App\Support\LoanWorkspaces;
+    use App\Support\LoanWorkspaceTabs;
+
+    $collectionsWorkspace = LoanWorkspaces::COLLECTIONS;
+    $collectionsTabs = LoanWorkspaceTabs::partitionedTabsForUser(auth()->user(), $collectionsWorkspace);
+    $collectionsSearch = LoanWorkspaceTabs::searchCommandsForUser(auth()->user(), $collectionsWorkspace);
+    $collectionsFocusModes = LoanWorkspaceTabs::focusModesForWorkspace($collectionsWorkspace);
+    $collectionsTabKeys = array_column($collectionsTabs['all'] ?? [], 'key');
 @endphp
 
 <x-loan-layout>
     <x-loan.page :title="$title" :subtitle="$subtitle" :show-quick-links="false">
         <x-slot name="actions">
-            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            <div
+                class="flex flex-wrap items-center gap-2 text-xs text-slate-600"
+                x-data="loanWorkspaceHeader(@js([
+                    'workspace' => $collectionsWorkspace,
+                    'focusModes' => $collectionsFocusModes,
+                    'searchCommands' => $collectionsSearch,
+                ]))"
+            >
                 <span class="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-2 font-semibold">
                     {{ $today->format('l, d M Y') }}
                 </span>
@@ -80,33 +96,50 @@
                         @endforeach
                     </select>
                 </form>
+                @if (count($collectionsFocusModes) > 1)
+                    <select x-model="focusMode" @change="applyFocusMode()" class="rounded-lg border-slate-200 bg-white text-xs font-semibold text-slate-700 py-2" title="Focus mode">
+                        <option value="default">Standard</option>
+                        @foreach ($collectionsFocusModes as $mode)
+                            @if ($mode !== 'default')
+                                <option value="{{ $mode }}">{{ ucwords(str_replace('_', ' ', $mode)) }}</option>
+                            @endif
+                        @endforeach
+                    </select>
+                @endif
+                <input
+                    type="search"
+                    x-model="searchQuery"
+                    @keydown.enter.prevent="runFirstMatch()"
+                    placeholder="Search collections…"
+                    class="rounded-lg border-slate-200 bg-white py-2 px-3 text-xs font-medium min-w-[10rem]"
+                />
                 <a href="{{ $exportHref }}" class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-semibold text-blue-700 hover:bg-blue-100 transition-colors">
                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 16V4m0 12l-4-4m4 4l4-4M4 20h16" />
                     </svg>
-                    Export Report
+                    Export
                 </a>
             </div>
         </x-slot>
 
-        <div x-data="{ activeTab: 'overview' }" class="space-y-5 bg-slate-50 p-3 sm:p-4 rounded-xl">
-            <section class="rounded-xl border border-slate-200 bg-white px-4 pt-2 shadow-sm">
-                <nav class="overflow-x-auto">
-                    <div class="flex min-w-max items-center gap-5 border-b border-slate-200">
-                        <button type="button" @click="activeTab = 'overview'" :class="activeTab === 'overview' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Overview</button>
-                        <button type="button" @click="activeTab = 'collection_sheet'" :class="activeTab === 'collection_sheet' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Collection Sheet</button>
-                        <button type="button" @click="activeTab = 'upcoming'" :class="activeTab === 'upcoming' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Upcoming</button>
-                        <button type="button" @click="activeTab = 'missed_pending'" :class="activeTab === 'missed_pending' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Missed/Pending</button>
-                        <button type="button" @click="activeTab = 'rates'" :class="activeTab === 'rates' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Rates</button>
-                        <button type="button" @click="activeTab = 'reports'" :class="activeTab === 'reports' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Reports</button>
-                        <button type="button" @click="activeTab = 'agents'" :class="activeTab === 'agents' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Agents</button>
-                        <button type="button" @click="activeTab = 'cashflow'" :class="activeTab === 'cashflow' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Cashflow</button>
-                        <button type="button" @click="activeTab = 'inflow_forecast'" :class="activeTab === 'inflow_forecast' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Inflow Forecast</button>
-                        <button type="button" @click="activeTab = 'lending_capacity'" :class="activeTab === 'lending_capacity' ? 'border-[#0f766e] text-[#0f766e]' : 'border-transparent text-slate-500 hover:text-slate-700'" class="border-b-2 px-1 py-3 text-sm font-semibold whitespace-nowrap">Lending Capacity</button>
-                    </div>
-                </nav>
-            </section>
+        <div
+            x-data="loanWorkspacePanels(@js([
+                'workspace' => $collectionsWorkspace,
+                'initialTab' => 'overview',
+                'storageKey' => 'loan.workspace.tab.collections',
+                'validTabs' => $collectionsTabKeys,
+            ]))"
+            class="space-y-5 bg-slate-50 p-3 sm:p-4 rounded-xl"
+            data-loan-workspace="{{ $collectionsWorkspace }}"
+        >
+            <x-loan.workspace-tabs
+                :workspace="$collectionsWorkspace"
+                :tabs="$collectionsTabs"
+                active-key="overview"
+                mode="panel"
+            />
 
+            <template x-if="shouldRender('overview')">
             <section x-show="activeTab === 'overview'" x-cloak class="space-y-5">
                 <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
                 <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -346,7 +379,9 @@
                 </div>
                 </section>
             </section>
+            </template>
 
+            <template x-if="shouldRender('collection_sheet')">
             <section x-show="activeTab === 'collection_sheet'" x-cloak class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 class="text-lg font-semibold text-[#0f3d3e]">Collection Sheet (Today)</h3>
                 <p class="mt-1 text-sm text-slate-600">Daily receipting battle plan and posting queue.</p>
@@ -355,7 +390,9 @@
                     <a href="{{ route('loan.book.collection_sheet.index') }}" class="mt-3 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Open Collection Sheet →</a>
                 </div>
             </section>
+            </template>
 
+            <template x-if="shouldRender('upcoming')">
             <section x-show="activeTab === 'upcoming'" x-cloak class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 class="text-lg font-semibold text-[#0f3d3e]">Upcoming Collections</h3>
                 <p class="mt-1 text-sm text-slate-600">Expected inflows due soon for proactive collection planning.</p>

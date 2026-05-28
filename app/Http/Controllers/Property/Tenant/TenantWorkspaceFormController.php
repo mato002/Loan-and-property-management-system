@@ -22,7 +22,7 @@ class TenantWorkspaceFormController extends Controller
             abort(404);
         }
 
-        return view('property.workspace.draft_form', [
+        return property_view('property.workspace.draft_form', [
             'formKey' => $form,
             'storeRoute' => 'property.tenant.workspace.form.store',
             'title' => 'Email all receipts',

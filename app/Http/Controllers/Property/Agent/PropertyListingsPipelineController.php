@@ -64,7 +64,7 @@ class PropertyListingsPipelineController extends Controller
             ];
         })->all();
 
-        return view('property.agent.listings.leads', [
+        return property_view('property.agent.listings.leads', [
             'stats' => $stats,
             'columns' => ['Name', 'Phone', 'Email', 'Source', 'Stage', 'Unit', 'Updated', 'Actions'],
             'tableRows' => $rows,
@@ -243,7 +243,7 @@ class PropertyListingsPipelineController extends Controller
             ];
         })->all();
 
-        return view('property.agent.listings.applications', [
+        return property_view('property.agent.listings.applications', [
             'stats' => $stats,
             'columns' => ['#', 'Applicant', 'Phone', 'Email', 'Unit', 'Status', 'Submitted', 'Actions'],
             'tableRows' => $rows,
@@ -338,7 +338,7 @@ class PropertyListingsPipelineController extends Controller
     {
         $application->loadMissing('unit.property');
 
-        return view('property.agent.listings.application_show', [
+        return property_view('property.agent.listings.application_show', [
             'application' => $application,
             'emailTemplates' => PmMessageTemplate::query()
                 ->where('channel', 'email')

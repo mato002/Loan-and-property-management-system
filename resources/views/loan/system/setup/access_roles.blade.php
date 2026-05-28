@@ -534,10 +534,44 @@
                 </div>
             </div>
 
-            <div class="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600" x-show="activeTab !== 'roles' && activeTab !== 'permission_matrix'">
-                <p class="font-semibold text-slate-800" x-text="activeTab.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())"></p>
-                <p class="mt-2">Coming soon. This section is queued for backend integration and will be functional in the next increment.</p>
-                <button type="button" class="mt-3 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100" @click="activeTab = 'roles'">Back to Roles</button>
+            <div class="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600" x-show="activeTab === 'data_scope'" x-cloak>
+                <p class="font-semibold text-slate-800">Data Scope</p>
+                <p class="mt-2">Configure branch and role visibility using the security policy JSON below. Role login windows and IP overrides define where each role can sign in from.</p>
+                <p class="mt-3 text-xs text-slate-500">Use the policy toggles on the Roles tab, or edit JSON directly under Access Policies.</p>
+            </div>
+
+            <div class="mt-4 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600" x-show="activeTab === 'maker_checker'" x-cloak>
+                <p class="font-semibold text-slate-800">Maker-Checker Rules</p>
+                <p class="mt-2">Temporary access requests on the Roles tab enforce maker-checker for elevated permissions. Approvers must hold <span class="font-medium">access_roles.approve</span>.</p>
+                <p class="mt-3">Pending requests: <span class="font-semibold text-slate-900">{{ ($temporaryAccessRequests ?? collect())->where('status', 'pending')->count() }}</span></p>
+            </div>
+
+            <div class="mt-4 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600" x-show="activeTab === 'access_policies'" x-cloak>
+                <p class="font-semibold text-slate-800">Access Policies</p>
+                <p class="mt-2">Device governance, IP allowlists, and role login windows are configured on the Roles tab under “Policy toggles & JSON config”.</p>
+                <div class="mt-4 grid gap-2 sm:grid-cols-3 text-xs">
+                    <div class="rounded-lg border border-slate-200 px-3 py-2">Device governance: <span class="font-semibold">{{ ($securityPolicySettings['device_governance_enabled'] ?? '0') === '1' ? 'ON' : 'OFF' }}</span></div>
+                    <div class="rounded-lg border border-slate-200 px-3 py-2">Login windows: <span class="font-semibold">{{ ($securityPolicySettings['role_login_windows_enabled'] ?? '0') === '1' ? 'ON' : 'OFF' }}</span></div>
+                    <div class="rounded-lg border border-slate-200 px-3 py-2">IP restrictions: <span class="font-semibold">{{ ($securityPolicySettings['ip_restrictions_enabled'] ?? '0') === '1' ? 'ON' : 'OFF' }}</span></div>
+                </div>
+                <button type="button" class="mt-4 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100" @click="activeTab = 'roles'">Edit on Roles tab</button>
+            </div>
+
+            <div class="mt-4 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600" x-show="activeTab === 'audit_preview'" x-cloak>
+                <p class="font-semibold text-slate-800">Audit Preview</p>
+                <p class="mt-2">Recent privileged and security-related access events.</p>
+                <div class="mt-4 max-h-80 space-y-2 overflow-y-auto">
+                    @forelse (($recentAuditLogs ?? collect()) as $log)
+                        <div class="rounded-lg border border-slate-100 px-3 py-2 text-xs">
+                            <p class="font-medium text-slate-800">{{ $log->user?->name ?? 'System' }} · {{ $log->action_type ?? 'event' }}</p>
+                            <p class="text-slate-600">{{ $log->activity ?? $log->path ?? '—' }}</p>
+                            <p class="text-slate-400">{{ optional($log->created_at)->format('Y-m-d H:i') }}</p>
+                        </div>
+                    @empty
+                        <p class="text-slate-500">No audit entries yet.</p>
+                    @endforelse
+                </div>
+                <a href="{{ route('loan.system.access_logs.index') }}" class="mt-4 inline-flex rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Full access logs</a>
             </div>
 
             <div class="fixed bottom-4 right-4 z-50" x-show="toastOpen" x-cloak>

@@ -3,6 +3,9 @@ import 'sweetalert2/dist/sweetalert2.min.css';
 
 window.Swal = Swal;
 
+/** Above property modals (max 7110), below global search (99999). See MODAL_Z.alert in property-modal-manager.js */
+const SWAL_Z_INDEX = 95000;
+
 const SWAL_RECOVERY_TIMEOUT_MS = 3000;
 const OVERLAY_DEBUG =
     import.meta.env.DEV ||
@@ -25,6 +28,7 @@ function restoreInteractionState() {
     document.body.style.removeProperty('overflow');
     document.body.style.removeProperty('padding-right');
     document.documentElement.style.removeProperty('overflow');
+    window.recoverPropertyScrollState?.('swal:cleanup');
 }
 
 function cleanupSwalBackdrop(reason = 'manual') {
@@ -56,16 +60,35 @@ function cleanupRecoverableOverlays(reason = 'manual') {
     }
 }
 
+function elevateSwalContainer(popup) {
+    const container = popup?.closest?.('.swal2-container')
+        ?? document.querySelector('.swal2-container.swal2-backdrop-show, .swal2-container.swal2-noanimation');
+    if (container instanceof HTMLElement) {
+        container.style.zIndex = String(SWAL_Z_INDEX);
+    }
+}
+
 function safeSwalFire(opts, source = 'unknown') {
     debugLog('SweetAlert open', source);
     let settled = false;
+
+    const mergedOpts = typeof opts === 'object' && opts !== null ? { ...opts } : opts;
+    if (typeof mergedOpts === 'object' && mergedOpts !== null) {
+        const userDidOpen = mergedOpts.didOpen;
+        mergedOpts.didOpen = (popup) => {
+            elevateSwalContainer(popup);
+            if (typeof userDidOpen === 'function') {
+                userDidOpen(popup);
+            }
+        };
+    }
 
     const watchdog = window.setTimeout(() => {
         if (settled) return;
         cleanupSwalBackdrop(`watchdog:${source}`);
     }, SWAL_RECOVERY_TIMEOUT_MS);
 
-    return Swal.fire(opts)
+    return Swal.fire(mergedOpts)
         .then((result) => {
             settled = true;
             return result;
@@ -82,14 +105,71 @@ function safeSwalFire(opts, source = 'unknown') {
         });
 }
 
-function runFlash() {
-    const queue = window.__laravelSwalFlash;
-    if (!Array.isArray(queue) || queue.length === 0) {
-        return;
+/** Ensure direct Swal.fire() calls (lease validation, quick-create, etc.) stack above modals. */
+const nativeSwalFire = Swal.fire.bind(Swal);
+Swal.fire = function patchedSwalFire(...args) {
+    if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
+        const opts = { ...args[0] };
+        const userDidOpen = opts.didOpen;
+        opts.didOpen = (popup) => {
+            elevateSwalContainer(popup);
+            if (typeof userDidOpen === 'function') {
+                userDidOpen(popup);
+            }
+        };
+        return nativeSwalFire(opts);
     }
-    delete window.__laravelSwalFlash;
 
-    (async () => {
+    return nativeSwalFire(...args);
+};
+window.Swal = Swal;
+
+let flashDrainPromise = null;
+
+function readFlashPayloadFromDom(scope) {
+    const root = scope instanceof Element ? scope : document;
+    const payloads = [];
+
+    root.querySelectorAll('[data-swal-flash]').forEach((el) => {
+        const raw = el.getAttribute('data-swal-flash');
+        if (!raw) {
+            return;
+        }
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                payloads.push(...parsed);
+            } else if (parsed && typeof parsed === 'object') {
+                payloads.push(parsed);
+            }
+        } catch (error) {
+            debugLog('SweetAlert flash parse error', error);
+        }
+        el.removeAttribute('data-swal-flash');
+    });
+
+    return payloads;
+}
+
+function runFlash(scope) {
+    if (flashDrainPromise) {
+        return flashDrainPromise;
+    }
+
+    const queue = [];
+
+    if (Array.isArray(window.__laravelSwalFlash) && window.__laravelSwalFlash.length > 0) {
+        queue.push(...window.__laravelSwalFlash);
+        delete window.__laravelSwalFlash;
+    }
+
+    queue.push(...readFlashPayloadFromDom(scope));
+
+    if (queue.length === 0) {
+        return Promise.resolve();
+    }
+
+    flashDrainPromise = (async () => {
         for (const item of queue) {
             const opts = {
                 icon: item.icon || 'info',
@@ -104,22 +184,35 @@ function runFlash() {
             } else if (item.text) {
                 opts.text = item.text;
             }
+            if (item.timer !== undefined) {
+                opts.timer = item.timer;
+            }
+            if (item.showConfirmButton !== undefined) {
+                opts.showConfirmButton = item.showConfirmButton;
+            } else if (opts.icon === 'success' && !opts.html) {
+                opts.timer = 2400;
+                opts.showConfirmButton = false;
+            }
             await safeSwalFire(opts, 'flash_queue');
         }
-    })();
+    })().finally(() => {
+        flashDrainPromise = null;
+    });
+
+    return flashDrainPromise;
 }
 
 window.__runSwalFlash = runFlash;
 
 /**
- * Turbo applies the new document before inline scripts in the body run. If we call runFlash()
- * synchronously on turbo:render / turbo:load, __laravelSwalFlash from <x-swal-flash /> may not
- * exist yet — defer to the next task so queued session flashes reliably show (e.g. Save Loan Form Setup).
+ * Turbo applies the new document before inline scripts in the body run. Read flash
+ * payloads from data-swal-flash nodes (available immediately) and defer once so
+ * frame swaps (e.g. lease save → show page) reliably show SweetAlert feedback.
  */
-function scheduleRunFlashAfterTurboDom() {
+function scheduleRunFlashAfterTurboDom(scope) {
     queueMicrotask(() => {
         window.setTimeout(() => {
-            runFlash();
+            runFlash(scope);
         }, 0);
     });
 }
@@ -138,15 +231,23 @@ if (document.readyState === 'loading') {
 // flashes on Turbo events across the whole app (loan + public + auth pages too).
 document.addEventListener('turbo:load', () => {
     cleanupRecoverableOverlays('turbo:load');
-    scheduleRunFlashAfterTurboDom();
+    scheduleRunFlashAfterTurboDom(document.getElementById('property-main') || document);
 });
 document.addEventListener('turbo:render', () => {
     cleanupRecoverableOverlays('turbo:render');
-    scheduleRunFlashAfterTurboDom();
+    scheduleRunFlashAfterTurboDom(document.getElementById('property-main') || document);
 });
-document.addEventListener('turbo:frame-load', () => {
+document.addEventListener('turbo:frame-load', (event) => {
     cleanupRecoverableOverlays('turbo:frame-load');
-    scheduleRunFlashAfterTurboDom();
+    const frame = event.target instanceof Element ? event.target : document.getElementById('property-main');
+    scheduleRunFlashAfterTurboDom(frame || document);
+});
+document.addEventListener('turbo:submit-end', (event) => {
+    if (!event.detail?.success) {
+        return;
+    }
+    const frame = document.getElementById('property-main');
+    scheduleRunFlashAfterTurboDom(frame || document);
 });
 
 document.addEventListener(

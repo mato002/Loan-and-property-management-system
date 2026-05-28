@@ -8,6 +8,7 @@ use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\DepositDefinition;
 use App\Models\ExpenseDefinition;
 use App\Models\PmLease;
+use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\Property;
 use App\Models\PropertyPortalSetting;
@@ -334,7 +335,7 @@ class PropertyPortfolioController extends Controller
 
     public function showProperty(Request $request, Property $property)
     {
-        $month = (string) $request->query('month', '');
+        $month = trim((string) $request->query('month', ''));
         $fy = (int) $request->query('fy', now()->year);
         $unitStatus = (string) $request->query('unit_status', '');
         if (! in_array($unitStatus, [
@@ -358,16 +359,29 @@ class PropertyPortfolioController extends Controller
             $periodStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
             $periodEnd = $periodStart->copy()->endOfMonth();
             $periodLabel = $periodStart->format('M Y');
-        } else {
+        } elseif ($request->has('fy') && $month === '') {
             $periodStart = Carbon::create($fy, 1, 1)->startOfDay();
             $periodEnd = $periodStart->copy()->endOfYear();
             $periodLabel = 'FY '.$fy;
+        } else {
+            $periodStart = now()->startOfMonth();
+            $periodEnd = $periodStart->copy()->endOfMonth();
+            $periodLabel = $periodStart->format('M Y');
+            $month = $periodStart->format('Y-m');
         }
 
         $property->load(['landlords' => fn ($q) => $q->orderBy('name')]);
 
         $units = PropertyUnit::query()
             ->where('property_id', $property->id)
+            ->with([
+                'leases' => function ($q) {
+                    $q->where('pm_leases.status', PmLease::STATUS_ACTIVE)
+                        ->with('pmTenant:id,name')
+                        ->orderByDesc('pm_leases.start_date')
+                        ->orderByDesc('pm_leases.id');
+                },
+            ])
             ->orderBy('label')
             ->get();
         $unitIds = $units->pluck('id')->map(fn ($id) => (int) $id)->all();
@@ -392,6 +406,7 @@ class PropertyPortfolioController extends Controller
             $invoiced = (float) DB::table('pm_invoices')
                 ->whereIn('property_unit_id', $unitIds)
                 ->whereBetween('issue_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q))
                 ->sum('amount');
 
             $collected = (float) DB::table('pm_payment_allocations as a')
@@ -405,6 +420,7 @@ class PropertyPortfolioController extends Controller
             $arrears = (float) DB::table('pm_invoices')
                 ->whereIn('property_unit_id', $unitIds)
                 ->whereDate('issue_date', '<=', $periodEnd->toDateString())
+                ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q))
                 ->sum(DB::raw('GREATEST(amount - amount_paid, 0)'));
 
             $activeLeaseRows = DB::table('pm_lease_unit as lu')
@@ -463,7 +479,11 @@ class PropertyPortfolioController extends Controller
                 ->all();
 
             $unitSnapshots = DB::table('property_units as u')
-                ->leftJoin('pm_invoices as i', 'i.property_unit_id', '=', 'u.id')
+                ->leftJoin('pm_invoices as i', function ($join) {
+                    $join->on('i.property_unit_id', '=', 'u.id')
+                        ->whereNull('i.deleted_at')
+                        ->where('i.status', '!=', PmInvoice::STATUS_CANCELLED);
+                })
                 ->selectRaw('u.id, u.label, u.status, u.rent_amount, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as arrears')
                 ->where('u.property_id', $property->id)
                 ->when($unitStatus !== '', fn ($q) => $q->where('u.status', $unitStatus))
@@ -1084,6 +1104,7 @@ class PropertyPortfolioController extends Controller
         $pendingByProperty = DB::table('pm_invoices as i')
             ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
             ->whereDate('i.issue_date', '<=', $periodEnd->toDateString())
+            ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
             ->groupBy('pu.property_id')
             ->selectRaw('pu.property_id as property_id, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as total')
             ->pluck('total', 'property_id');
@@ -1301,6 +1322,7 @@ class PropertyPortfolioController extends Controller
                 ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
                 ->whereIn('pu.property_id', $propertyIds)
                 ->whereDate('i.issue_date', '<=', $periodEnd->toDateString())
+                ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
                 ->groupBy('pu.property_id')
                 ->selectRaw('pu.property_id as property_id, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as total')
                 ->pluck('total', 'property_id');
@@ -1769,44 +1791,7 @@ class PropertyPortfolioController extends Controller
         $rows = $unitCollection->map(function (PropertyUnit $u) {
             $activeLease = $u->leases->first();
             $activeTenantName = (string) ($activeLease?->pmTenant?->name ?? '');
-            $actions = [
-                '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View property</a>',
-                '<a href="'.route('property.units.edit', $u, absolute: false).'" data-turbo="false" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Edit unit</a>',
-                // Quick path to onboarding or takeover: create a lease (often future-dated) for this unit
-                '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Add lease</a>',
-            ];
-
-            if ($u->status === PropertyUnit::STATUS_VACANT) {
-                $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit listing</a>';
-            }
-
-            foreach ([PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE] as $targetStatus) {
-                if ($targetStatus === $u->status) {
-                    continue;
-                }
-                $actions[] = '<form method="POST" action="'.route('property.units.status', $u, absolute: false).'">'
-                    .csrf_field()
-                    .'<input type="hidden" name="status" value="'.$targetStatus.'" />'
-                    .'<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">Mark '.ucfirst($targetStatus).'</button>'
-                    .'</form>';
-            }
-
-            $actions[] = '<form method="POST" action="'.route('property.units.destroy', $u, absolute: false).'" data-swal-title="Delete unit?" data-swal-confirm="Delete '.$u->label.' from '.$u->property->name.'? This cannot be undone." data-swal-confirm-text="Yes, delete">'
-                .csrf_field()
-                .method_field('DELETE')
-                .'<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'
-                .'</form>';
-
-            $action = new HtmlString(
-                '<div class="relative inline-block text-left">'.
-                '<details>'.
-                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
-                '<div class="absolute right-0 z-30 mt-1 w-48 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
-                implode('', $actions).
-                '</div>'.
-                '</details>'.
-                '</div>'
-            );
+            $action = new HtmlString(view('property.agent.partials.units_list_row_actions', ['unit' => $u])->render());
 
             return [
                 $u->label,

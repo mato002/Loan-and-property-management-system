@@ -141,6 +141,53 @@ class InvoiceLifecycleTest extends TestCase
         $this->assertSame(1, $applications, 'Penalty must only be applied once per (invoice, rule, threshold).');
     }
 
+    public function test_water_invoice_posts_to_utility_accounts(): void
+    {
+        $this->seedOpenPeriod();
+        $this->seedUtilityAccounts();
+
+        $invoice = $this->makeInvoice([
+            'invoice_type' => PmInvoice::TYPE_WATER,
+        ]);
+
+        PropertyAccountingPostingService::postInvoiceIssued($invoice);
+
+        $batch = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_invoice')
+            ->where('source_id', $invoice->id)
+            ->where('event_type', 'invoice_issued')
+            ->first();
+        $this->assertNotNull($batch);
+
+        $lines = AccountingJournalLine::query()->where('batch_id', $batch->id)->with('account')->get();
+        $codes = $lines->pluck('account.code')->filter()->values()->all();
+
+        $this->assertContains('1210', $codes, 'Water invoice should debit Utility AR (1210).');
+        $this->assertContains('4310', $codes, 'Water invoice should credit Water Revenue (4310).');
+        $this->assertNotContains('4100', $codes, 'Water invoice must not credit Rental Income (4100).');
+    }
+
+    private function seedUtilityAccounts(): void
+    {
+        foreach ([
+            ['code' => '1210', 'name' => 'Utility Accounts Receivable', 'type' => 'asset', 'normal_balance' => 'debit'],
+            ['code' => '4310', 'name' => 'Water Revenue', 'type' => 'income', 'normal_balance' => 'credit'],
+            ['code' => '4410', 'name' => 'Utility Penalty Income', 'type' => 'income', 'normal_balance' => 'credit'],
+        ] as $row) {
+            \App\Models\AccountingChartAccount::query()->firstOrCreate(
+                ['code' => $row['code']],
+                [
+                    'name' => $row['name'],
+                    'account_type' => $row['type'],
+                    'type' => $row['type'],
+                    'normal_balance' => $row['normal_balance'],
+                    'module' => 'property',
+                    'is_active' => true,
+                ]
+            );
+        }
+    }
+
     private function makeInvoice(array $overrides = []): PmInvoice
     {
         $property = Property::query()->create(['name' => 'Inv Property']);
