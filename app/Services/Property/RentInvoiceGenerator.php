@@ -51,6 +51,14 @@ final class RentInvoiceGenerator
             ->where(function ($q) use ($periodStart) {
                 $q->whereNull('end_date')->orWhere('end_date', '>=', $periodStart->toDateString());
             })
+            ->whereHas('units.property', function ($q) {
+                if (\Illuminate\Support\Facades\Schema::hasColumn('properties', 'management_status')) {
+                    $q->whereNotIn('management_status', [
+                        \App\Models\Property::MANAGEMENT_ARCHIVED,
+                        \App\Models\Property::MANAGEMENT_ENDED,
+                    ]);
+                }
+            })
             ->with(['units.property', 'pmTenant:id,name,phone'])
             ->orderBy('id')
             ->get();
@@ -195,7 +203,7 @@ final class RentInvoiceGenerator
             return null;
         }
 
-        $dueDate = $row['due_date'] ?: $this->dueDateForLease($lease, $period['period_start']);
+        $dueDate = $row['due_date'] ?: app(RentDueDayResolver::class)->dueDateForBillingMonth($lease, $period['period_start']);
 
         return DB::transaction(function () use ($lease, $unit, $amount, $period, $dueDate, $actor) {
             $invoiceNo = PmInvoice::nextInvoiceNumber();
@@ -227,7 +235,6 @@ final class RentInvoiceGenerator
                 app(TenantCreditService::class)->autoApplyForTenant(
                     (int) $lease->pm_tenant_id,
                     $actor,
-                    (int) $inv->id,
                 );
             }
 
@@ -262,7 +269,7 @@ final class RentInvoiceGenerator
             }
         }
 
-        $dueDate = $this->dueDateForLease($lease, $period['period_start']);
+        $dueDate = app(RentDueDayResolver::class)->dueDateForBillingMonth($lease, $period['period_start']);
         $unitId = $unit?->id;
         $key = $unitId ? $lease->id.'-'.$unitId : (string) $lease->id.'-0';
 
@@ -281,14 +288,6 @@ final class RentInvoiceGenerator
             'reason_label' => $this->reasonLabel($reason),
             'can_generate' => $reason === self::REASON_MISSING && $unitId !== null,
         ];
-    }
-
-    private function dueDateForLease(PmLease $lease, Carbon $periodStart): string
-    {
-        $dueDay = (int) ($lease->start_date?->day ?? 1);
-        $dueDay = max(1, min($dueDay, (int) $periodStart->daysInMonth));
-
-        return $periodStart->copy()->day($dueDay)->toDateString();
     }
 
     public function reasonLabel(string $reason): string

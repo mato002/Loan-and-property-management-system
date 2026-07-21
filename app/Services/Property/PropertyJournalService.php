@@ -6,6 +6,7 @@ use App\Models\AccountingChartAccount;
 use App\Models\AccountingJournalBatch;
 use App\Models\AccountingJournalLine;
 use App\Models\AccountingPeriod;
+use App\Services\Property\AccountingPeriodService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -156,12 +157,10 @@ class PropertyJournalService
 
     private function assertCurrentPeriodOpen(string $date, int $agentUserId): void
     {
-        $period = AccountingPeriod::query()
-            ->when($agentUserId > 0, fn ($q) => $q->where('agent_user_id', $agentUserId))
-            ->whereDate('start_date', '<=', $date)
-            ->whereDate('end_date', '>=', $date)
-            ->orderByDesc('id')
-            ->first();
+        $period = app(AccountingPeriodService::class)->findPeriodCovering(
+            \Carbon\Carbon::parse($date),
+            $agentUserId > 0 ? $agentUserId : null,
+        );
 
         if ($period && $period->status === AccountingPeriod::STATUS_LOCKED) {
             throw new RuntimeException('Cannot post into a locked accounting period.');
@@ -170,15 +169,15 @@ class PropertyJournalService
 
     private function assertReversalPeriodOpen(int $agentUserId): void
     {
-        $current = AccountingPeriod::query()
-            ->when($agentUserId > 0, fn ($q) => $q->where('agent_user_id', $agentUserId))
-            ->whereDate('start_date', '<=', now()->toDateString())
-            ->whereDate('end_date', '>=', now()->toDateString())
-            ->orderByDesc('id')
-            ->first();
+        $current = app(AccountingPeriodService::class)->findOpenPeriodCovering(
+            now(),
+            $agentUserId > 0 ? $agentUserId : null,
+        );
 
-        if (! $current || $current->status !== AccountingPeriod::STATUS_OPEN) {
-            throw new RuntimeException('Reversal is only allowed in current open period.');
+        if (! $current) {
+            throw new RuntimeException(
+                'Reversal is only allowed in current open period. Go to Accounting → Controls → Periods and click "Open current month".'
+            );
         }
     }
 }

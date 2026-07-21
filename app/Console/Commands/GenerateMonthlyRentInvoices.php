@@ -7,6 +7,7 @@ use App\Models\PmInvoiceEvent;
 use App\Models\PmLease;
 use App\Models\PropertyPortalSetting;
 use App\Services\Property\PropertyAccountingPostingService;
+use App\Services\Property\RentDueDayResolver;
 use App\Services\Property\TenantCreditService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -15,9 +16,9 @@ class GenerateMonthlyRentInvoices extends Command
 {
     protected $signature = 'rent:generate-invoices {--month= : Target month YYYY-MM (default: current)}';
 
-    protected $description = 'Generate monthly rent invoices for active leases (per unit), using due day = lease start date day.';
+    protected $description = 'Generate monthly rent invoices for active leases (per unit), due on configured rent due day (default 5th).';
 
-    public function handle(): int
+    public function handle(RentDueDayResolver $dueDays): int
     {
         $enabled = PropertyPortalSetting::isRentInvoiceAutomationEnabled();
         if (! $enabled) {
@@ -48,7 +49,7 @@ class GenerateMonthlyRentInvoices extends Command
             ->where(function ($q) use ($periodStart) {
                 $q->whereNull('end_date')->orWhere('end_date', '>=', $periodStart->toDateString());
             })
-            ->with(['units:id,property_id,label', 'pmTenant:id,name'])
+            ->with(['units:id,property_id,label', 'units.property:id,rent_due_day,management_status', 'pmTenant:id,name'])
             ->orderBy('id')
             ->get();
 
@@ -61,9 +62,12 @@ class GenerateMonthlyRentInvoices extends Command
                 continue;
             }
 
-            $dueDay = (int) ($lease->start_date?->day ?? 1);
-            $dueDay = max(1, min($dueDay, (int) $periodStart->daysInMonth));
-            $dueDate = $periodStart->copy()->day($dueDay)->toDateString();
+            $property = optional($units->first())->property;
+            if ($property && ! app(\App\Services\Property\PropertyManagementGuardService::class)->allowsRentBilling($property)) {
+                continue;
+            }
+
+            $dueDate = $dueDays->dueDateForBillingMonth($lease, $periodStart);
 
             $perUnitAmount = (float) $lease->monthly_rent;
             if ($units->count() > 1) {
@@ -118,8 +122,6 @@ class GenerateMonthlyRentInvoices extends Command
                     if ($lease->pm_tenant_id) {
                         app(TenantCreditService::class)->autoApplyForTenant(
                             (int) $lease->pm_tenant_id,
-                            null,
-                            (int) $inv->id,
                         );
                     }
 
@@ -136,7 +138,7 @@ class GenerateMonthlyRentInvoices extends Command
             }
         }
 
-        $this->info("Rent invoices generated for {$ym}. Created={$created}, Skipped(existing)={$skipped}.");
+        $this->info("Rent invoices for {$ym}: created={$created}, skipped_existing={$skipped}.");
 
         return self::SUCCESS;
     }

@@ -1,5 +1,5 @@
 <x-property-layout>
-    <x-slot name="header">System setup ┬╖ {{ $title }}</x-slot>
+    <x-slot name="header">System setup  -  {{ $title }}</x-slot>
 
     <x-property.page
         :title="$title"

@@ -1,5 +1,5 @@
 <x-property-layout>
-    <x-slot name="header">System setup ┬╖ Workflows</x-slot>
+    <x-slot name="header">System setup  -  Workflows</x-slot>
 
     <x-property.page
         title="Workflow adjustments"

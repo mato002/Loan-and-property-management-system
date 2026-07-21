@@ -29,6 +29,7 @@ class PmTenant extends Model
         'opening_arrears_penalties',
         'opening_arrears_other',
         'opening_arrears_amount',
+        'opening_arrears_status',
         'opening_arrears_as_of',
         'opening_arrears_notes',
         'opening_arrears_items',

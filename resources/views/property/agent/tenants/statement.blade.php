@@ -1,6 +1,6 @@
 <x-property.workspace
     :title="'Tenant Statement: '.$tenant->name"
-    subtitle="Full tenant ledger — invoices, payments, and running balance."
+    subtitle="Full tenant ledger — invoices, payments, and running balance (informational). Closing balance uses canonical billable AR."
     back-route="property.tenants.directory"
     :stats="$stats"
     :columns="$columns"
@@ -70,9 +70,9 @@
                             </div>
                             <div class="mt-1 text-slate-700">
                                 <span class="text-slate-500">Start:</span> {{ $l['start'] }}
-                                <span class="text-slate-300">┬╖</span>
+                                <span class="text-slate-300"> - </span>
                                 <span class="text-slate-500">End:</span> {{ $l['end'] }}
-                                <span class="text-slate-300">┬╖</span>
+                                <span class="text-slate-300"> - </span>
                                 <span class="text-slate-500">Rent:</span> {{ $l['rent'] }}
                             </div>
                         </div>
@@ -83,6 +83,7 @@
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h3 class="text-sm font-semibold text-slate-900">Billing snapshot</h3>
+                @php($totalDue = $totalDue ?? ['invoice_ar' => 0.0, 'uninvoiced_cf' => 0.0, 'tenant_credit' => 0.0, 'total_due' => 0.0])
                 <div class="mt-2 text-sm text-slate-700 space-y-1">
                     <p><span class="text-slate-500">Invoices:</span> {{ $invoiceSummary['count'] }}</p>
                     <p><span class="text-slate-500">Opening arrears:</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceSummary['opening_arrears'] ?? 0)) }}</p>
@@ -119,13 +120,15 @@
                     @endif
                     <p><span class="text-slate-500">Invoiced total:</span> {{ \App\Services\Property\PropertyMoney::kes((float) $invoiceSummary['total']) }}</p>
                     <p><span class="text-slate-500">Paid on invoices:</span> {{ \App\Services\Property\PropertyMoney::kes((float) $invoiceSummary['paid']) }}</p>
-                    <p><span class="text-slate-500">Outstanding:</span> {{ \App\Services\Property\PropertyMoney::kes((float) $invoiceSummary['outstanding']) }}</p>
+                    <p><span class="text-slate-500">Outstanding (invoice AR):</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceSummary['outstanding'] ?? 0)) }}</p>
+                    <p><span class="text-slate-500">Total due:</span> {{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['total_due'] ?? 0)) }}</p>
+                    <p class="text-xs text-slate-500">AR {{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['invoice_ar'] ?? 0)) }} + CF {{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['uninvoiced_cf'] ?? 0)) }} − credit {{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['tenant_credit'] ?? 0)) }}</p>
                     <p><span class="text-slate-500">Open invoices:</span> {{ $invoiceSummary['openCount'] }}</p>
                 </div>
                 <hr class="my-3 border-slate-200">
                 <div class="text-sm text-slate-700 space-y-1">
                     <p><span class="text-slate-500">Payments:</span> {{ $paymentSummary['count'] }}</p>
-                    <p><span class="text-slate-500">Completed:</span> {{ $paymentSummary['completedCount'] }} ({{ \App\Services\Property\PropertyMoney::kes((float) $paymentSummary['completedAmount']) }})</p>
+                    <p><span class="text-slate-500">Collections (allocations):</span> {{ $paymentSummary['completedCount'] }} ({{ \App\Services\Property\PropertyMoney::kes((float) $paymentSummary['completedAmount']) }})</p>
                     <p><span class="text-slate-500">Pending:</span> {{ $paymentSummary['pendingCount'] }} ({{ \App\Services\Property\PropertyMoney::kes((float) $paymentSummary['pendingAmount']) }})</p>
                     <p><span class="text-slate-500">Failed:</span> {{ $paymentSummary['failedCount'] }}</p>
                 </div>

@@ -28,6 +28,7 @@ final class PropertyEntityHub
         ['key' => 'maintenance', 'label' => 'Maintenance'],
         ['key' => 'performance', 'label' => 'Performance'],
         ['key' => 'revenue', 'label' => 'Revenue'],
+        ['key' => 'offboarding', 'label' => 'Offboarding'],
     ];
 
     public const UNIT_TABS = [

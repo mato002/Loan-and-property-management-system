@@ -53,6 +53,12 @@
                     @error('address_line')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent due day (property default)</label>
+                    <input type="number" name="rent_due_day" value="{{ old('rent_due_day', $property->rent_due_day) }}" min="1" max="31" class="mt-1 w-full sm:max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Blank = system default" />
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">If blank, uses system default ({{ app(\App\Services\Property\RentDueDayResolver::class)->systemDefaultDueDay() }}). Individual leases may override.</p>
+                    @error('rent_due_day')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Commission %</label>
                     <input type="number" name="commission_percent" value="{{ old('commission_percent', $propertyCommissionPercent ?? null) }}" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional (uses default if empty)" />
                     @error('commission_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

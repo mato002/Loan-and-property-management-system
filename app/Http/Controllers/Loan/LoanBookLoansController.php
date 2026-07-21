@@ -17,6 +17,7 @@ use App\Models\LoanSystemSetting;
 use App\Services\BulkSmsService;
 use App\Services\LoanBook\BorrowerClassificationService;
 use App\Services\LoanBook\LoanBookLoanUpdateService;
+use App\Services\LoanBook\LoanDpdService;
 use App\Services\LoanBook\LoanRepaymentAllocationService;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
@@ -313,6 +314,10 @@ class LoanBookLoansController extends Controller
     public function arrears(Request $request)
     {
         try {
+            app(LoanDpdService::class)->refreshActiveLoans(function (Builder $query): void {
+                $this->scopeByAssignedLoanClient($query, auth()->user());
+            });
+
             $query = LoanBookLoan::query()
                 ->with(['loanClient.assignedEmployee', 'loanBranch.region'])
                 ->withSum('processedRepayments', 'amount');
@@ -850,6 +855,8 @@ class LoanBookLoansController extends Controller
         ]);
         $this->ensureLoanClientOwner($loan_book_loan->loanClient);
 
+        app(LoanDpdService::class)->refreshLoan($loan_book_loan);
+
         $recentCollections = LoanBookCollectionEntry::query()
             ->where('loan_book_loan_id', $loan_book_loan->id)
             ->orderByDesc('collected_on')
@@ -899,6 +906,7 @@ class LoanBookLoansController extends Controller
             /** @var LoanBookLoan $loan */
             $loan = LoanBookLoan::query()->lockForUpdate()->findOrFail($loan_book_loan->id);
             $changed = $this->applyRebuildSnapshotIfNeeded($loan, $actorName);
+            app(LoanDpdService::class)->refreshLoan($loan);
         });
 
         $status = $changed

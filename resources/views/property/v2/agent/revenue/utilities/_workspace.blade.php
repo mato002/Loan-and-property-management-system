@@ -4,6 +4,7 @@
                 penaltyModalOpen: false,
                 penaltyLoading: false,
                 penaltyRows: [],
+                penaltyWarnings: [],
                 penaltyTotal: 0,
                 penaltyTotalDisplay: '',
                 penaltyError: null,
@@ -213,6 +214,7 @@
                     this.penaltyLoading = true;
                     this.penaltyError = null;
                     this.penaltyRows = [];
+                    this.penaltyWarnings = [];
                     this.penaltyTotal = 0;
                     try {
                         const res = await fetch(this.penaltyPreviewUrl, {
@@ -222,6 +224,7 @@
                         if (!res.ok) throw new Error('Preview failed');
                         const data = await res.json();
                         this.penaltyRows = data.rows || [];
+                        this.penaltyWarnings = data.warnings || [];
                         this.penaltyTotal = Number(data.total_penalty || 0);
                         this.penaltyTotalDisplay = String(data.total_penalty_display || '');
                     } catch (e) {

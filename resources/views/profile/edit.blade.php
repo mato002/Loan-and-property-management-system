@@ -5,9 +5,10 @@
 @endphp
 <x-dynamic-component :component="$layoutName">
     <x-slot name="header">
-        <h2 class="font-semibold text-xl text-slate-900 leading-tight">
-            {{ __('Profile') }}
-        </h2>
+        <div>
+            <h2 class="text-lg font-bold tracking-tight text-[#0f2744]">{{ __('Profile') }}</h2>
+            <p class="mt-0.5 text-xs text-slate-500">Account settings, security, and access summary.</p>
+        </div>
     </x-slot>
 
     @include('profile.partials.profile-content')

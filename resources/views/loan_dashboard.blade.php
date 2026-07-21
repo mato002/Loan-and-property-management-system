@@ -49,9 +49,6 @@
                 <h1 class="text-xl font-semibold text-slate-900 tracking-tight">Operations dashboard</h1>
             </div>
             <div class="flex flex-col items-start lg:items-end gap-1.5 text-xs text-slate-500 w-full lg:w-auto">
-                <div class="w-full lg:w-auto">
-                    @include('loan.partials.quick-links-strip')
-                </div>
                 @if ($bookReady)
                     <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-100 px-2.5 py-1 font-semibold">LoanBook connected</span>
                 @else
@@ -83,18 +80,169 @@
             class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start"
             x-data="{
                 smsTopupOpen: {{ ($errors->has('sms_topup') || $errors->has('amount') || $errors->has('phone')) ? 'true' : 'false' }},
+                topupSubmitting: false,
+                topupError: @js($errors->first('sms_topup')),
+                topupPhase: 'idle',
+                topupStatusMessage: '',
+                topupTransactionId: '',
+                topupPollAttempts: 0,
+                topupPollTimer: null,
+                topupStatusUrl: @js(route('loan.dashboard.sms_topup_status')),
+                topupCurrency: @js($currencyCode ?? 'KES'),
                 debug: {{ app()->environment('local') ? 'true' : 'false' }},
                 log(action, reason = '') {
                     if (!this.debug) return;
                     console.debug('[LoanDashboard][SMS Topup]', action, reason);
                 },
+                resetTopupFlow() {
+                    this.stopTopupPolling();
+                    this.topupSubmitting = false;
+                    this.topupError = '';
+                    this.topupPhase = 'idle';
+                    this.topupStatusMessage = '';
+                    this.topupTransactionId = '';
+                    this.topupPollAttempts = 0;
+                },
                 openSmsTopup(reason = 'manual') {
+                    this.resetTopupFlow();
                     this.smsTopupOpen = true;
                     this.log('open', reason);
                 },
                 closeSmsTopup(reason = 'manual') {
+                    this.stopTopupPolling();
                     this.smsTopupOpen = false;
+                    this.topupSubmitting = false;
                     this.log('close', reason);
+                },
+                stopTopupPolling() {
+                    if (this.topupPollTimer) {
+                        window.clearTimeout(this.topupPollTimer);
+                        this.topupPollTimer = null;
+                    }
+                },
+                isTerminalTopupStatus(status) {
+                    const value = (status || '').toLowerCase();
+                    return ['completed', 'success', 'paid', 'failed', 'cancelled', 'canceled', 'declined', 'rejected'].includes(value);
+                },
+                isSuccessfulTopupStatus(status) {
+                    const value = (status || '').toLowerCase();
+                    return ['completed', 'success', 'paid'].includes(value);
+                },
+                formatTopupStatusMessage(status, transaction = {}) {
+                    const value = (status || '').toLowerCase();
+                    const receipt = transaction.mpesa_receipt || transaction.receipt || transaction.transaction_id || '';
+                    if (this.isSuccessfulTopupStatus(value)) {
+                        return receipt
+                            ? `Payment completed. M-Pesa receipt ${receipt}. SMS balance will refresh shortly.`
+                            : 'Payment completed. SMS balance will refresh shortly.';
+                    }
+                    if (['failed', 'declined', 'rejected'].includes(value)) {
+                        return transaction.message || 'Payment failed. No funds were deducted.';
+                    }
+                    if (['cancelled', 'canceled'].includes(value)) {
+                        return 'Payment cancelled on your phone. No funds were deducted.';
+                    }
+                    return 'Waiting for M-Pesa confirmation on your phone…';
+                },
+                updateDashboardSmsBalance(balance) {
+                    if (balance === null || balance === undefined || Number.isNaN(Number(balance))) return;
+                    const el = document.getElementById('dashboard-sms-balance');
+                    if (!el) return;
+                    el.textContent = `${this.topupCurrency} ${Number(balance).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
+                },
+                async pollTopupStatus() {
+                    if (!this.topupTransactionId || this.topupPhase !== 'awaiting') return;
+                    this.topupPollAttempts += 1;
+                    try {
+                        const url = new URL(this.topupStatusUrl, window.location.origin);
+                        url.searchParams.set('transaction_id', this.topupTransactionId);
+                        const response = await fetch(url.toString(), {
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                        });
+                        const payload = await response.json();
+                        if (!response.ok || !payload.ok) {
+                            throw new Error(payload.error || 'Could not check payment status.');
+                        }
+                        const status = (payload.status || '').toLowerCase();
+                        const transaction = payload.transaction || {};
+                        if (payload.wallet_balance !== null && payload.wallet_balance !== undefined) {
+                            this.updateDashboardSmsBalance(payload.wallet_balance);
+                        }
+                        if (this.isTerminalTopupStatus(status)) {
+                            this.stopTopupPolling();
+                            this.topupPhase = this.isSuccessfulTopupStatus(status) ? 'completed' : 'failed';
+                            this.topupStatusMessage = this.formatTopupStatusMessage(status, transaction);
+                            return;
+                        }
+                        this.topupStatusMessage = this.formatTopupStatusMessage(status, transaction);
+                    } catch (error) {
+                        if (this.topupPollAttempts >= 3) {
+                            this.topupStatusMessage = 'Still waiting for M-Pesa. Complete or cancel the prompt on your phone.';
+                        }
+                    }
+                    if (this.topupPollAttempts >= 60) {
+                        this.stopTopupPolling();
+                        this.topupPhase = 'failed';
+                        this.topupStatusMessage = 'Timed out waiting for M-Pesa confirmation. Check your phone or try again.';
+                        return;
+                    }
+                    this.topupPollTimer = window.setTimeout(() => this.pollTopupStatus(), 3000);
+                },
+                startTopupPolling(transactionId) {
+                    this.topupTransactionId = transactionId || '';
+                    this.topupPollAttempts = 0;
+                    this.topupPhase = 'awaiting';
+                    this.topupStatusMessage = 'STK sent to your phone. Enter your M-Pesa PIN to approve.';
+                    this.stopTopupPolling();
+                    this.topupPollTimer = window.setTimeout(() => this.pollTopupStatus(), 2500);
+                },
+                finishTopupAndReload() {
+                    this.closeSmsTopup('completed_reload');
+                    window.location.reload();
+                },
+                async submitSmsTopup(event) {
+                    event.preventDefault();
+                    if (this.topupSubmitting || this.topupPhase === 'awaiting') return;
+                    this.topupSubmitting = true;
+                    this.topupError = '';
+                    this.topupPhase = 'sending';
+                    const form = event.target;
+                    const controller = new AbortController();
+                    const timeout = window.setTimeout(() => controller.abort(), 30000);
+                    try {
+                        const response = await fetch(form.action, {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            body: new FormData(form),
+                            signal: controller.signal,
+                        });
+                        let payload = {};
+                        try {
+                            payload = await response.json();
+                        } catch (parseError) {
+                            throw new Error('Unexpected server response. Please refresh and try again.');
+                        }
+                        if (!response.ok || !payload.ok) {
+                            this.topupPhase = 'idle';
+                            this.topupError = payload.error || payload.message || 'Could not send M-Pesa STK push.';
+                            return;
+                        }
+                        this.startTopupPolling(payload.transaction_id || '');
+                    } catch (error) {
+                        this.topupPhase = 'idle';
+                        this.topupError = (error && error.name === 'AbortError')
+                            ? 'Request timed out. Verify Pradytec API settings (BULKSMS_API_URL / API key) or try again.'
+                            : (error?.message || 'Network error. Please try again.');
+                    } finally {
+                        window.clearTimeout(timeout);
+                        this.topupSubmitting = false;
+                    }
                 }
             }"
         >
@@ -149,7 +297,7 @@
                     <div class="flex items-center justify-between rounded-xl border border-emerald-200/60 bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/40 px-3 py-2.5 shadow-sm">
                         <p class="text-xs font-semibold text-slate-600">Bulk SMS Balance</p>
                         <div class="flex items-center gap-3">
-                            <p class="text-xl font-bold text-emerald-700 tabular-nums drop-shadow-sm">{{ $currencyCode }} {{ number_format((float) ($profileCard['sms_balance'] ?? 0), 1) }}</p>
+                            <p id="dashboard-sms-balance" class="text-xl font-bold text-emerald-700 tabular-nums drop-shadow-sm">{{ $currencyCode }} {{ number_format((float) ($profileCard['sms_balance'] ?? 0), 1) }}</p>
                             <button type="button" @click="openSmsTopup('topup_button_click')" class="rounded-lg border border-emerald-300/80 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800 shadow-sm hover:bg-emerald-50 transition-colors">Topup</button>
                         </div>
                     </div>
@@ -169,35 +317,82 @@
                 x-cloak
                 x-transition.opacity
                 class="fixed inset-0 z-[70] flex items-start sm:items-center justify-center bg-slate-900/55 backdrop-blur-[2px] p-3 sm:p-6"
-                @keydown.escape.window="closeSmsTopup('escape_key')"
+                @keydown.escape.window="topupPhase === 'awaiting' ? null : closeSmsTopup('escape_key')"
             >
-                <div @click.away="closeSmsTopup('click_away')" class="w-full max-w-xl mt-12 sm:mt-0 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+                <div @click.away="topupPhase === 'awaiting' ? null : closeSmsTopup('click_away')" class="w-full max-w-xl mt-12 sm:mt-0 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
                     <div class="px-5 sm:px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-white via-slate-50 to-indigo-50/40">
                         <div class="flex items-center justify-between gap-3">
                             <h3 class="text-xl sm:text-2xl font-semibold text-slate-800 tracking-tight">Topup SMS Wallet</h3>
                             <button type="button" @click="closeSmsTopup('close_button')" class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 transition-colors" aria-label="Close topup modal">&times;</button>
                         </div>
                     </div>
-                    <form method="post" action="{{ route('loan.dashboard.sms_topup') }}" class="space-y-4 px-5 sm:px-6 py-4 sm:py-5">
+                    <form method="post" action="{{ route('loan.dashboard.sms_topup') }}" class="space-y-4 px-5 sm:px-6 py-4 sm:py-5" @submit.prevent="submitSmsTopup($event)" x-show="topupPhase === 'idle' || topupPhase === 'sending'" x-cloak>
                         @csrf
-                        @if ($errors->has('sms_topup'))
-                            <p class="text-sm text-red-600">{{ $errors->first('sms_topup') }}</p>
+                        @php
+                            $topupConfig = (array) (($smsTopup ?? [])['config'] ?? []);
+                            $topupMin = (float) ($topupConfig['min_amount'] ?? 10);
+                            $topupMax = (float) ($topupConfig['max_amount'] ?? 50000);
+                            $topupCurrency = (string) ($topupConfig['currency'] ?? $currencyCode ?? 'KES');
+                            $topupPhone = old('phone', (string) (($smsTopup ?? [])['default_phone'] ?? ''));
+                            $canTopup = (bool) (($smsTopup ?? [])['can_topup'] ?? false);
+                        @endphp
+                        <p class="text-xs text-slate-500">
+                            M-Pesa STK via Pradytec paybill. Approve on your phone to credit provider SMS balance ({{ number_format($topupMin, 0) }}–{{ number_format($topupMax, 0) }} {{ $topupCurrency }}).
+                        </p>
+                        @if (! $canTopup)
+                            <p class="text-sm text-amber-800">{{ $topupConfig['error'] ?? 'SMS top-up is unavailable. Check Bulk SMS provider configuration.' }}</p>
                         @endif
+                        <p x-show="topupError" x-cloak class="text-sm text-red-600" x-text="topupError"></p>
                         <div>
-                            <label for="sms_topup_phone" class="mb-1 block text-sm font-medium text-slate-700">Enter MPESA Phone Number</label>
-                            <input id="sms_topup_phone" name="phone" type="text" maxlength="32" value="{{ old('phone') }}" class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20 focus:outline-none" placeholder="07XXXXXXXX">
+                            <label for="sms_topup_phone" class="mb-1 block text-sm font-medium text-slate-700">M-Pesa phone</label>
+                            <input id="sms_topup_phone" name="phone" type="text" maxlength="32" value="{{ $topupPhone }}" required @disabled(! $canTopup) class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20 focus:outline-none disabled:opacity-60" placeholder="07XXXXXXXX">
                             @error('phone')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                         </div>
                         <div>
-                            <label for="sms_topup_amount" class="mb-1 block text-sm font-medium text-slate-700">Amount to topup</label>
-                            <input id="sms_topup_amount" name="amount" type="number" step="0.01" min="0.01" value="{{ old('amount') }}" required class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20 focus:outline-none" placeholder="0.00">
+                            <label for="sms_topup_amount" class="mb-1 block text-sm font-medium text-slate-700">Amount ({{ $topupCurrency }})</label>
+                            <input id="sms_topup_amount" name="amount" type="number" step="1" min="{{ $topupMin }}" max="{{ $topupMax }}" value="{{ old('amount') }}" required @disabled(! $canTopup) class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 shadow-sm focus:border-[#2f4f4f] focus:ring-2 focus:ring-[#2f4f4f]/20 focus:outline-none disabled:opacity-60" placeholder="{{ number_format($topupMin, 0) }}">
                             @error('amount')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                         </div>
-                        <input type="hidden" name="notes" value="Dashboard SMS wallet topup">
                         <div class="pt-1 flex justify-end">
-                            <button type="submit" class="inline-flex items-center justify-center rounded-lg border border-[#2f4f4f] bg-[#2f4f4f] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Pay Now</button>
+                            <button type="submit" @disabled(! $canTopup) :disabled="topupSubmitting || topupPhase === 'sending'" class="inline-flex items-center justify-center rounded-lg border border-[#2f4f4f] bg-[#2f4f4f] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors disabled:cursor-not-allowed disabled:opacity-60">
+                                <span x-show="!topupSubmitting && topupPhase !== 'sending'">Send STK push</span>
+                                <span x-show="topupSubmitting || topupPhase === 'sending'" x-cloak>Sending STK…</span>
+                            </button>
                         </div>
                     </form>
+
+                    <div x-show="topupPhase === 'awaiting'" x-cloak class="space-y-4 px-5 sm:px-6 py-4 sm:py-5">
+                        <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950">
+                            <p class="font-semibold">Waiting for M-Pesa</p>
+                            <p class="mt-2" x-text="topupStatusMessage"></p>
+                            <p class="mt-3 text-xs text-amber-800">Keep this window open until you approve or cancel on your phone.</p>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs text-slate-500">
+                            <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[#2f4f4f]"></span>
+                            Checking payment status…
+                        </div>
+                    </div>
+
+                    <div x-show="topupPhase === 'completed'" x-cloak class="space-y-4 px-5 sm:px-6 py-4 sm:py-5">
+                        <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
+                            <p class="font-semibold">Top-up successful</p>
+                            <p class="mt-2" x-text="topupStatusMessage"></p>
+                        </div>
+                        <div class="flex flex-wrap justify-end gap-2">
+                            <button type="button" @click="finishTopupAndReload()" class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Done</button>
+                        </div>
+                    </div>
+
+                    <div x-show="topupPhase === 'failed'" x-cloak class="space-y-4 px-5 sm:px-6 py-4 sm:py-5">
+                        <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-900">
+                            <p class="font-semibold">Top-up not completed</p>
+                            <p class="mt-2" x-text="topupStatusMessage"></p>
+                        </div>
+                        <div class="flex flex-wrap justify-end gap-2">
+                            <button type="button" @click="resetTopupFlow()" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Try again</button>
+                            <button type="button" @click="closeSmsTopup('failed_close')" class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900">Close</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

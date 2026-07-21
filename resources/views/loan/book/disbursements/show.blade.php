@@ -9,15 +9,19 @@
             $remainingToDisburse = max(0, $principal - $totalDisbursedSoFar);
             $isPartial = $loan ? ($totalDisbursedSoFar + 0.01) < $principal : false;
             $disbursementType = $loan ? ($isPartial ? 'Partial / tranche' : 'Full') : 'Standalone';
-            $payoutStatus = strtolower((string) ($disbursement->payout_status ?? 'completed'));
-            $statusMeta = match ($payoutStatus) {
-                'failed' => ['label' => 'Failed', 'icon' => '🔴', 'class' => 'bg-red-100 text-red-700'],
-                'pending', 'queued', 'processing' => ['label' => 'Pending', 'icon' => '🟡', 'class' => 'bg-amber-100 text-amber-700'],
-                default => ['label' => 'Completed', 'icon' => '🟢', 'class' => 'bg-emerald-100 text-emerald-700'],
+            $payoutStatus = $disbursement->effectivePayoutStatus();
+            $statusMeta = $disbursement->payoutStatusBadge();
+            $statusMeta['icon'] = match ($payoutStatus) {
+                'reversed' => '↩️',
+                'failed' => '🔴',
+                'pending', 'queued', 'processing' => '🟡',
+                default => '🟢',
             };
             $method = strtolower((string) ($disbursement->method ?? ''));
             $hasPayoutReference = filled($disbursement->payout_transaction_id) || filled($disbursement->reference);
             $postedToAccounting = (bool) $disbursement->accounting_journal_entry_id;
+            $journalReversed = ($disbursement->accountingJournalEntry?->status ?? '') === \App\Models\AccountingJournalEntry::STATUS_REVERSED;
+            $canRemoveDisbursement = $disbursement->canBeRemoved();
             $matchesLoanTerms = ! $loan || ($totalDisbursedSoFar <= ($principal + 0.01));
             $integrityChecks = [
                 ['ok' => $postedToAccounting, 'pass' => 'Posted to accounting', 'fail' => 'Not posted to accounting'],
@@ -109,14 +113,32 @@
                         </div>
                     @endforeach
                 </div>
+                @if (! $matchesLoanTerms)
+                    <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50/90 p-3 text-xs text-amber-950">
+                        <p class="font-semibold text-amber-900">Fix a mistyped amount</p>
+                        <ol class="mt-2 list-decimal space-y-1 pl-4">
+                            <li>Open the linked journal entry below and click <strong>Reverse</strong> (Accounting undoes the wrong posting).</li>
+                            <li>Return here and click <strong>Remove disbursement</strong> (enabled after reversal).</li>
+                            <li>Record a new disbursement for <strong>{{ number_format($principal, 2) }}</strong> — the loan principal, not principal plus interest.</li>
+                            <li>On the loan page, click <strong>Rebuild snapshot</strong> if balances still look off.</li>
+                        </ol>
+                    </div>
+                @endif
                 <div class="mt-4 border-t border-slate-100 pt-4 space-y-2">
                     <button type="button" onclick="window.print()" class="inline-flex w-full items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Print voucher</button>
-                    @if (! $postedToAccounting)
-                        <form method="post" action="{{ route('loan.book.disbursements.destroy', $disbursement) }}" data-swal-confirm="Remove this disbursement line?">
+                    @if ($journalReversed && $disbursement->loan)
+                        <a href="{{ route('loan.book.disbursements.create', ['loan_book_loan_id' => $disbursement->loan->id]) }}" class="inline-flex w-full items-center justify-center rounded-lg bg-[#2f4f4f] px-3 py-2 text-sm font-semibold text-white hover:bg-[#264040]">Re-record disbursement</a>
+                    @endif
+                    @if ($canRemoveDisbursement)
+                        <form method="post" action="{{ route('loan.book.disbursements.destroy', $disbursement) }}" data-swal-confirm="Remove this disbursement line and record it again with the correct amount?">
                             @csrf
                             @method('delete')
                             <button type="submit" class="inline-flex w-full items-center justify-center rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100">Remove disbursement</button>
                         </form>
+                    @elseif ($postedToAccounting && ! $journalReversed)
+                        <p class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                            To correct the amount, reverse journal #{{ $disbursement->accounting_journal_entry_id }} first — then you can remove and re-record this disbursement.
+                        </p>
                     @endif
                     @if ($method === 'mpesa' && $payoutStatus === 'failed' && ($b2cPayoutConfigured ?? false))
                         <form method="post" action="{{ route('loan.book.disbursements.retry_payout', $disbursement) }}" data-swal-confirm="Retry this M-Pesa payout request?">

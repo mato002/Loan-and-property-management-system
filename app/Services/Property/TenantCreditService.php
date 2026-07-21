@@ -4,7 +4,6 @@ namespace App\Services\Property;
 
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
-use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
 use App\Models\PmTenantCreditBalance;
 use App\Models\PmTenantCreditTransaction;
@@ -32,6 +31,105 @@ class TenantCreditService
             ->value('balance');
 
         return round(max(0.0, (float) $row), 2);
+    }
+
+    /**
+     * Reverse tenant advance credit created from an overpayment when the
+     * source payment is reversed. Throws if credit has already been applied.
+     */
+    public function reverseCreditFromPayment(PmPayment $payment, ?User $actor = null, ?string $reason = null): void
+    {
+        if (! $this->isEnabled()) {
+            return;
+        }
+
+        $txnId = (int) data_get($payment->meta, 'tenant_credit_transaction_id', 0);
+        if ($txnId <= 0) {
+            return;
+        }
+
+        $created = PmTenantCreditTransaction::query()->find($txnId);
+        if (! $created || $created->type !== PmTenantCreditTransaction::TYPE_CREDIT_CREATED) {
+            return;
+        }
+
+        $reference = 'PAY-REV-'.(int) $payment->id;
+        $alreadyReversed = PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', (int) $created->pm_tenant_id)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_REVERSED)
+            ->where('reference', $reference)
+            ->exists();
+        if ($alreadyReversed) {
+            return;
+        }
+
+        $creditAmount = round((float) $created->amount, 2);
+        if ($creditAmount <= 0) {
+            return;
+        }
+
+        $tenantId = (int) $created->pm_tenant_id;
+        $appliedAfter = round((float) PmTenantCreditTransaction::query()
+            ->where('pm_tenant_id', $tenantId)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_APPLIED)
+            ->where('id', '>', (int) $created->id)
+            ->sum('amount'), 2);
+
+        if ($appliedAfter > 0.01) {
+            throw new RuntimeException(
+                'Cannot reverse payment #'.$payment->id.': tenant credit from overpayment has been applied to invoices.'
+            );
+        }
+
+        DB::transaction(function () use ($payment, $actor, $reason, $tenantId, $creditAmount, $reference) {
+            $balance = $this->lockBalanceRow($tenantId);
+            $available = round((float) $balance->balance, 2);
+            if ($available + 0.01 < $creditAmount) {
+                throw new RuntimeException(
+                    'Cannot reverse payment #'.$payment->id.': tenant credit balance is insufficient.'
+                );
+            }
+
+            PmTenantCreditTransaction::query()->create([
+                'pm_tenant_id' => $tenantId,
+                'pm_payment_id' => (int) $payment->id,
+                'pm_invoice_id' => null,
+                'type' => PmTenantCreditTransaction::TYPE_CREDIT_REVERSED,
+                'amount' => $creditAmount,
+                'reference' => $reference,
+                'notes' => $reason ?: ('Reversed with payment #'.$payment->id),
+                'application_mode' => PmTenantCreditTransaction::MODE_AUTO,
+                'created_by' => $actor?->id,
+            ]);
+
+            $balance->balance = round(max(0.0, $available - $creditAmount), 2);
+            $balance->save();
+        });
+    }
+
+    /**
+     * Reverse GL + operational credit application for tenant_credit channel payments.
+     */
+    public function reverseCreditApplicationPayment(PmPayment $payment, ?User $actor = null, ?string $reason = null): void
+    {
+        if (! $this->isEnabled() || (string) $payment->channel !== 'tenant_credit') {
+            return;
+        }
+
+        $appliedTxn = PmTenantCreditTransaction::query()
+            ->where('pm_payment_id', (int) $payment->id)
+            ->where('type', PmTenantCreditTransaction::TYPE_CREDIT_APPLIED)
+            ->first();
+
+        if (! $appliedTxn) {
+            return;
+        }
+
+        PropertyAccountingPostingService::reverseTenantCreditApplied(
+            (int) $appliedTxn->id,
+            $actor,
+            $reason ?: 'Tenant credit payment reversed'
+        );
     }
 
     /**
@@ -107,12 +205,14 @@ class TenantCreditService
 
             $openInvoices = PmInvoice::query()
                 ->where('pm_tenant_id', $tenantId)
-                ->whereColumn('amount_paid', '<', 'amount')
+                ->where('status', '!=', PmInvoice::STATUS_CANCELLED)
                 ->when($prioritizeInvoiceId, fn ($q) => $q->where('id', '!=', $prioritizeInvoiceId))
                 ->orderBy('due_date')
                 ->orderBy('id')
                 ->lockForUpdate()
-                ->get();
+                ->get()
+                ->each(fn (PmInvoice $invoice) => $invoice->syncAmountPaidFromAllocations())
+                ->filter(fn (PmInvoice $invoice) => $invoice->balanceFloat() > 0.0001);
 
             foreach ($openInvoices as $invoice) {
                 if ($this->balanceForTenant($tenantId) <= 0.0001) {
@@ -139,7 +239,8 @@ class TenantCreditService
 
         return DB::transaction(function () use ($tenantId, $invoice, $amount, $actor, $notes) {
             $invoice = PmInvoice::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
-            $invoiceRemaining = max(0.0, (float) $invoice->amount - (float) $invoice->amount_paid);
+            $invoice->syncAmountPaidFromAllocations();
+            $invoiceRemaining = $invoice->balanceFloat();
             $amount = min(round($amount, 2), $invoiceRemaining, $this->balanceForTenant($tenantId));
             if ($amount <= 0.0001) {
                 throw new RuntimeException('No credit available or invoice has no open balance.');
@@ -186,7 +287,8 @@ class TenantCreditService
             $balance->balance = round(max(0.0, $available - $amount), 2);
             $balance->save();
 
-            PropertyAccountingPostingService::postTenantCreditRefund($tenantId, $amount, $txn->reference, $actor);
+            app(PropertyAccountingFinalizeService::class)
+                ->afterTenantCreditRefunded($tenantId, $amount, $txn->reference, $actor);
 
             return $txn;
         });
@@ -214,7 +316,8 @@ class TenantCreditService
             return null;
         }
 
-        $invoiceRemaining = max(0.0, (float) $invoice->amount - (float) $invoice->amount_paid);
+        $invoice->syncAmountPaidFromAllocations();
+        $invoiceRemaining = $invoice->balanceFloat();
         if ($invoiceRemaining <= 0.0001) {
             return null;
         }
@@ -241,15 +344,7 @@ class TenantCreditService
             ],
         ]);
 
-        PmPaymentAllocation::query()->create([
-            'pm_payment_id' => $creditPayment->id,
-            'pm_invoice_id' => $invoice->id,
-            'amount' => $amount,
-        ]);
-
-        $invoice->amount_paid = (float) $invoice->amount_paid + $amount;
-        $invoice->save();
-        $invoice->refreshComputedStatus();
+        app(PropertyPaymentSettlementService::class)->createAllocation($creditPayment, $invoice, $amount);
 
         $txn = PmTenantCreditTransaction::query()->create([
             'pm_tenant_id' => $tenantId,
@@ -266,7 +361,8 @@ class TenantCreditService
         $balance->balance = round(max(0.0, $available - $amount), 2);
         $balance->save();
 
-        PropertyAccountingPostingService::postTenantCreditApplied($invoice, $amount, (int) $txn->id, $actor);
+        app(PropertyAccountingFinalizeService::class)
+            ->afterTenantCreditApplied($invoice, $amount, (int) $txn->id, $actor);
 
         return [
             'invoice_id' => (int) $invoice->id,

@@ -44,7 +44,7 @@
             @foreach($linkedBatches as $linked)
                 <li>
                     <a class="text-indigo-600 hover:text-indigo-700" href="{{ route('property.accounting.audit_trail.show', ['batch' => $linked->id]) }}">
-                        JRN-{{ str_pad((string) $linked->id, 6, '0', STR_PAD_LEFT) }} ┬╖ {{ $linked->event_type }} ┬╖ {{ ucfirst((string) $linked->status) }}
+                        JRN-{{ str_pad((string) $linked->id, 6, '0', STR_PAD_LEFT) }}  -  {{ $linked->event_type }}  -  {{ ucfirst((string) $linked->status) }}
                     </a>
                 </li>
             @endforeach
@@ -82,7 +82,7 @@
             <h3 class="font-semibold text-slate-900 dark:text-white">Landlord impact</h3>
             <ul class="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-300">
                 @forelse($landlordImpact as $entry)
-                    <li>{{ $entry->entry_date?->format('Y-m-d') }} ┬╖ {{ $entry->entry_type }} ┬╖ {{ number_format((float) $entry->amount, 2) }} ┬╖ {{ $entry->description ?: $entry->reference_type }}</li>
+                    <li>{{ $entry->entry_date?->format('Y-m-d') }}  -  {{ $entry->entry_type }}  -  {{ number_format((float) $entry->amount, 2) }}  -  {{ $entry->description ?: $entry->reference_type }}</li>
                 @empty
                     <li>No landlord ledger impact recorded.</li>
                 @endforelse
@@ -94,7 +94,7 @@
             <ul class="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-300">
                 @foreach($reversalHistory as $item)
                     <li>
-                        JRN-{{ str_pad((string) $item->id, 6, '0', STR_PAD_LEFT) }} ┬╖ {{ $item->event_type }} ┬╖ {{ ucfirst((string) $item->status) }}
+                        JRN-{{ str_pad((string) $item->id, 6, '0', STR_PAD_LEFT) }}  -  {{ $item->event_type }}  -  {{ ucfirst((string) $item->status) }}
                         @if($item->reversed_from_batch_id)
                             (reversal of #{{ $item->reversed_from_batch_id }})
                         @endif

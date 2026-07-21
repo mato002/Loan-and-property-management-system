@@ -275,6 +275,13 @@ class WaterBillingService
                     return;
                 }
 
+                $property = $locked->unit?->property;
+                if ($property && ! app(\App\Services\Property\PropertyManagementGuardService::class)->allowsWaterBilling($property)) {
+                    $stats['skipped_no_lease']++;
+
+                    return;
+                }
+
                 $duplicate = PmInvoice::query()
                     ->where('property_unit_id', $locked->property_unit_id)
                     ->where('pm_tenant_id', $lease->pm_tenant_id)

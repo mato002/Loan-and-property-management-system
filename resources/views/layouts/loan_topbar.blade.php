@@ -9,7 +9,6 @@
         $greeting = 'evening';
     }
     $firstName = Auth::check() ? explode(' ', Auth::user()->name ?? 'User')[0] : 'User';
-    $quickLinks = LoanNavigation::quickLinksForUser(Auth::user());
     $loanNotificationItems = collect();
     $loanNotificationUnread = 0;
     if (Auth::check() && \Illuminate\Support\Facades\Schema::hasTable('notifications')) {
@@ -59,29 +58,15 @@
             </div>
 
             <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0 justify-end">
-                {{-- Quick nav (tablet+) --}}
-                <nav class="hidden lg:flex items-center gap-0.5 rounded-xl bg-white/90 border border-slate-200 p-1 shadow-sm" aria-label="Quick navigation">
-                    @foreach ($quickLinks as $link)
-                        @if (Route::has($link['route']))
-                            <a
-                                href="{{ route($link['route']) }}"
-                                class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap {{ $link['active'] ? 'bg-[#2f4f4f] text-white shadow-sm ring-1 ring-[#2f4f4f]/20' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900' }}"
-                            >
-                                {{ $link['label'] }}
-                            </a>
-                        @endif
-                    @endforeach
-                </nav>
-
                 <div class="flex items-center gap-2 sm:gap-2">
                     @if (LoanNavigation::canOpenLoanSystemSetup(Auth::user()))
-                        <a href="{{ route('loan.system.setup') }}" class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100 transition-colors" title="System setup">
+                        <a href="{{ route('loan.system.setup') }}" data-turbo-frame="loan-main" class="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-100 transition-colors" title="System setup">
                             <svg class="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                             Setup
                         </a>
                     @endif
 
-                    <a href="{{ route('loan.system.tickets.create') }}" class="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors" title="Support">
+                    <a href="{{ route('loan.system.tickets.create') }}" data-turbo-frame="loan-main" class="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors" title="Support">
                         <svg class="w-4 h-4 shrink-0 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
                         Help
                     </a>
@@ -111,7 +96,7 @@
                         >
                             <div class="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
                                 <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Previous Notifications</p>
-                                <a href="{{ route('loan.notifications.index') }}" class="text-xs font-semibold text-indigo-600 hover:text-indigo-500">View all</a>
+                                <a href="{{ route('loan.notifications.index') }}" data-turbo-frame="loan-main" class="text-xs font-semibold text-indigo-600 hover:text-indigo-500">View all</a>
                             </div>
                             <div class="max-h-96 overflow-y-auto">
                                 @forelse ($loanNotificationItems as $item)
@@ -130,6 +115,8 @@
                             </div>
                         </div>
                     </div>
+
+                    <x-staff-module-switcher current="loan" variant="pill-loan" />
 
                     <div class="relative z-[60]" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
                         <button type="button" @click="userMenuOpen = !userMenuOpen" class="flex items-center gap-2 p-1 pr-2 sm:pr-3 rounded-full bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shadow-sm">
@@ -161,7 +148,8 @@
                                 <p class="text-sm font-medium text-slate-900 truncate">{{ Auth::user()->email ?? '' }}</p>
                             </div>
                             <a href="{{ route('profile.edit') }}" class="block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 hover:text-indigo-600 transition-colors">Profile settings</a>
-                            <a href="{{ route('loan.dashboard') }}" class="lg:hidden block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">Dashboard</a>
+                            <x-staff-module-switcher current="loan" variant="menu-loan" />
+                            <a href="{{ route('loan.dashboard') }}" data-turbo-frame="loan-main" data-loan-nav="loan.dashboard" class="lg:hidden block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50">Dashboard</a>
                             <div class="border-t border-slate-100 my-1"></div>
                             <form method="POST" action="{{ route('logout') }}">
                                 @csrf
@@ -175,18 +163,6 @@
             </div>
         </div>
 
-        {{-- Secondary strip: mobile quick links + hint --}}
-        <div class="lg:hidden flex flex-nowrap items-center gap-2 overflow-x-auto pb-2 -mt-0.5 border-t border-slate-100/80 pt-1.5">
-            @foreach (array_slice($quickLinks, 0, 4) as $link)
-                @if (Route::has($link['route']))
-                    <a
-                        href="{{ route($link['route']) }}"
-                        class="inline-flex shrink-0 items-center rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide border transition-colors whitespace-nowrap {{ $link['active'] ? 'bg-[#2f4f4f] text-white border-[#2f4f4f]' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50' }}"
-                    >
-                        {{ $link['label'] }}
-                    </a>
-                @endif
-            @endforeach
-        </div>
+        @include('loan.partials.header-quick-links')
     </div>
 </header>

@@ -12,8 +12,7 @@
     x-data="{ filterOpen: false }"
     x-on:keydown.escape.window="filterOpen = false"
     x-on:turbo:before-visit.window="filterOpen = false"
-    x-on:turbo:before-render.window="filterOpen = false"
-    x-on:turbo:before-frame-render.window="filterOpen = false"
+    x-on:turbo:frame-load.window="if ($event.target?.id === 'property-main') filterOpen = false"
     {{ $attributes->merge(['class' => 'w-full min-w-0']) }}
 >
     {{-- Desktop: filters inline --}}

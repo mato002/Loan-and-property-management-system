@@ -18,7 +18,7 @@
     /** When false, toolbar slot renders as-is (e.g. x-property.filter-toolbar) without legacy mobile drawer wrapper */
     'legacyToolbar' => true,
     'tableMinWidth' => '720px',
-    /** Show mobile-record-list below md; table hidden on small screens */
+    /** When true, renders mobile-record-list below md and hides the table on small screens */
     'responsiveCards' => false,
     /** @var list<array<string, mixed>>|null $columnConfig */
     'columnConfig' => null,
@@ -30,6 +30,7 @@
 
 @php
     use App\Support\Property\ResponsiveTableColumns;
+    use App\Support\Property\PropertyNavigation;
     use App\Support\Property\PropertyWorkspaceTabs;
 
     $routeName = request()->route()?->getName();
@@ -47,12 +48,13 @@
     $customRowFilters = is_array($tableRowFilters ?? null)
         && count($tableRowFilters) === count($tableRows);
     $canShowDefaultSearch = (bool) $showSearch && $hasTable;
-    $useResponsiveCards = (bool) ($responsiveCards ?? false) && $hasTable;
+    $useResponsiveCards = ($responsiveCards ?? true) !== false && $hasTable;
+    $routeColumnPreset = ResponsiveTableColumns::forRoute($routeName);
     $resolvedColumnConfig = $useResponsiveCards
         ? ResponsiveTableColumns::normalize(
             is_array($columnConfig) && count($columnConfig) > 0
                 ? $columnConfig
-                : $columns
+                : ($routeColumnPreset ?? $columns)
         )
         : [];
     $filterActiveCount = collect(request()->query())
@@ -113,7 +115,7 @@
             <div class="print-hide flex flex-wrap items-center gap-3 min-w-0">
                 @if ($backRoute && ! $renderWorkspaceTabs)
                     <a
-                        href="{{ route($backRoute, $backRouteParams ?? [], false) }}"
+                        href="{{ PropertyNavigation::workspaceHref(['route' => $backRoute, 'route_params' => $backRouteParams ?? []]) }}"
                         data-turbo-frame="property-main"
                         data-property-nav="{{ $backRoute }}"
                         class="inline-flex items-center text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"

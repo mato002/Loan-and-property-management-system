@@ -17,6 +17,7 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use RuntimeException;
 use Illuminate\View\View;
@@ -317,30 +318,25 @@ class PmPaymentController extends Controller
             return back()->withErrors(['external_ref' => 'Reference is required for non-cash payments.'])->withInput();
         }
 
-        DB::transaction(function () use ($data, $invoice, $request) {
-            $payment = PmPayment::query()->create([
-                'pm_tenant_id' => $data['pm_tenant_id'],
-                'channel' => $data['channel'],
-                'amount' => $data['amount'],
-                'external_ref' => $data['external_ref'] ?? null,
-                'paid_at' => $data['paid_at'] ?? now(),
-                'status' => PmPayment::STATUS_COMPLETED,
-                'meta' => null,
-            ]);
+        $agentUserId = null;
+        if (Schema::hasColumn('pm_payments', 'agent_user_id')) {
+            $agentUserId = (int) ($invoice->agent_user_id ?? 0);
+            if ($agentUserId <= 0) {
+                $invoice->loadMissing('unit.property');
+                $agentUserId = (int) ($invoice->unit?->property?->agent_user_id ?? 0);
+            }
+        }
 
-            PmPaymentAllocation::query()->create([
-                'pm_payment_id' => $payment->id,
-                'pm_invoice_id' => $invoice->id,
-                'amount' => $data['amount'],
-            ]);
-
-            $invoice->amount_paid = (float) $invoice->amount_paid + (float) $data['amount'];
-            $invoice->save();
-            $invoice->refreshComputedStatus();
-
-            $payment->load('allocations.invoice.unit');
-            PropertyAccountingPostingService::postPaymentReceived($payment, $request->user());
-        });
+        app(PropertyPaymentSettlementService::class)->recordPaymentToInvoice(
+            $invoice,
+            (float) $data['amount'],
+            (string) $data['channel'],
+            $data['external_ref'] ?? null,
+            $data['paid_at'] ?? now(),
+            $request->user(),
+            null,
+            $agentUserId > 0 ? $agentUserId : null,
+        );
 
         return back()->with('success', 'Payment recorded and allocated.');
     }
@@ -373,27 +369,21 @@ class PmPaymentController extends Controller
 
         $paymentId = null;
 
-        DB::transaction(function () use ($data, $request, &$paymentId): void {
-            $payment = PmPayment::query()->create([
-                'pm_tenant_id' => $data['pm_tenant_id'],
-                'channel' => $data['channel'],
-                'amount' => $data['amount'],
-                'external_ref' => $data['external_ref'] ?? null,
-                'paid_at' => $data['paid_at'] ?? now(),
-                'status' => PmPayment::STATUS_COMPLETED,
-                'meta' => [
-                    'source' => 'manual',
-                    'payment_kind' => 'advance',
-                    'notes' => $data['notes'] ?? null,
-                ],
-            ]);
+        $payment = app(PropertyPaymentSettlementService::class)->recordAdvancePayment([
+            'pm_tenant_id' => $data['pm_tenant_id'],
+            'channel' => $data['channel'],
+            'amount' => $data['amount'],
+            'external_ref' => $data['external_ref'] ?? null,
+            'paid_at' => $data['paid_at'] ?? now(),
+            'notes' => $data['notes'] ?? null,
+            'meta' => [
+                'source' => 'manual',
+                'payment_kind' => 'advance',
+                'notes' => $data['notes'] ?? null,
+            ],
+        ], $request->user());
 
-            $settlement = app(PropertyPaymentSettlementService::class);
-            $remaining = $settlement->allocatePaymentToOpenInvoices($payment);
-            $settlement->finalizeIdentifiedPayment($payment, $request->user(), $remaining);
-
-            $paymentId = (int) $payment->id;
-        });
+        $paymentId = (int) $payment->id;
 
         $payment = PmPayment::query()->with('allocations')->find($paymentId);
         $allocated = round((float) $payment?->allocations->sum('amount'), 2);
@@ -415,6 +405,12 @@ class PmPaymentController extends Controller
         if ($request->input('return_to') === 'credit_ledger') {
             return redirect()
                 ->route('property.tenants.credit.ledger', ['tenant' => $data['pm_tenant_id']])
+                ->with('success', $message);
+        }
+
+        if ($request->input('return_to') === 'tenant_credits') {
+            return redirect()
+                ->route('property.revenue.tenant_credits')
                 ->with('success', $message);
         }
 

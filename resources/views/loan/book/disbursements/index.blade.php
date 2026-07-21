@@ -214,12 +214,15 @@
                                 <td class="px-5 py-3 text-right tabular-nums font-medium">{{ number_format((float) $d->amount, 2) }}</td>
                                 <td class="px-5 py-3 text-slate-600">{{ $d->method }}</td>
                                 <td class="px-5 py-3">
-                                    @php($ps = strtolower((string) ($d->payout_status ?? 'completed')))
-                                    <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold {{ $ps === 'completed' ? 'bg-emerald-100 text-emerald-700' : ($ps === 'failed' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700') }}">
-                                        {{ ucfirst($ps) }}
+                                    @php($badge = $d->payoutStatusBadge())
+                                    <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold {{ $badge['class'] }}">
+                                        {{ $badge['label'] }}
                                     </span>
-                                    @if ($ps === 'failed' && filled($d->payout_result_desc))
+                                    @if ($d->effectivePayoutStatus() === 'failed' && filled($d->payout_result_desc))
                                         <p class="mt-1 max-w-xs text-[11px] leading-4 text-red-700">{{ \Illuminate\Support\Str::limit((string) $d->payout_result_desc, 90) }}</p>
+                                    @endif
+                                    @if ($d->isJournalReversed())
+                                        <p class="mt-1 max-w-xs text-[11px] leading-4 text-violet-700">Journal reversed — remove or re-record payout.</p>
                                     @endif
                                 </td>
                                 <td class="px-5 py-3 text-slate-500 text-xs">{{ $d->reference }}</td>
@@ -254,11 +257,16 @@
                                             class="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg"
                                         >
                                             <a href="{{ route('loan.book.disbursements.show', $d) }}" class="block px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">View</a>
-                                            <form method="post" action="{{ route('loan.book.disbursements.destroy', $d) }}" data-swal-confirm="Remove this disbursement line?">
-                                                @csrf
-                                                @method('delete')
-                                                <button type="submit" class="block w-full px-3 py-2 text-left text-xs font-medium text-red-700 hover:bg-red-50">Delete</button>
-                                            </form>
+                                            @if ($d->isJournalReversed() && $d->loan)
+                                                <a href="{{ route('loan.book.disbursements.create', ['loan_book_loan_id' => $d->loan->id]) }}" class="block px-3 py-2 text-left text-xs font-medium text-emerald-700 hover:bg-emerald-50">Re-record payout</a>
+                                            @endif
+                                            @if ($d->canBeRemoved())
+                                                <form method="post" action="{{ route('loan.book.disbursements.destroy', $d) }}" data-swal-confirm="Remove this disbursement line?">
+                                                    @csrf
+                                                    @method('delete')
+                                                    <button type="submit" class="block w-full px-3 py-2 text-left text-xs font-medium text-red-700 hover:bg-red-50">Delete</button>
+                                                </form>
+                                            @endif
                                         </div>
                                     </div>
                                 </td>

@@ -25,6 +25,7 @@ class PmLease extends Model
     protected $fillable = [
         'pm_tenant_id',
         'start_date',
+        'rent_due_day',
         'end_date',
         'monthly_rent',
         'deposit_amount',
@@ -44,6 +45,7 @@ class PmLease extends Model
     {
         return [
             'start_date' => 'date',
+            'rent_due_day' => 'integer',
             'end_date' => 'date',
             'monthly_rent' => 'decimal:2',
             'deposit_amount' => 'decimal:2',
@@ -96,6 +98,11 @@ class PmLease extends Model
     public function depositLines(): HasMany
     {
         return $this->hasMany(LeaseDepositLine::class, 'pm_lease_id');
+    }
+
+    public function carryForwardLines(): HasMany
+    {
+        return $this->hasMany(PmLeaseCarryForwardLine::class, 'pm_lease_id');
     }
 
     public function isActive(): bool

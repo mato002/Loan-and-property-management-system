@@ -23,14 +23,14 @@
 
     @if ($payment->status === PmPayment::STATUS_COMPLETED && ($canSettle ?? false))
         @if ($reversalStatus === '' || $reversalStatus === PmPayment::REVERSAL_STATUS_REJECTED)
-            <form method="post" action="{{ route('property.payments.reversal.request', $payment) }}" class="block js-reversal-request-form" data-payment-ref="PAY-{{ $payment->id }}">
+            <form method="post" action="{{ route('property.payments.reversal.request', $payment) }}" class="block js-reversal-request-form" data-turbo-frame="property-main" data-payment-ref="PAY-{{ $payment->id }}">
                 @csrf
                 <input type="hidden" name="reason" value="" />
                 <button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-slate-700/50">Request reversal</button>
             </form>
         @endif
         @if ($reversalStatus === PmPayment::REVERSAL_STATUS_PENDING)
-            <form method="post" action="{{ route('property.payments.reversal.approve', $payment) }}" class="block js-reversal-approve-form" data-payment-ref="PAY-{{ $payment->id }}" data-swal-confirm="Approve this reversal now?">
+            <form method="post" action="{{ route('property.payments.reversal.approve', $payment) }}" class="block js-reversal-approve-form" data-turbo-frame="property-main" data-payment-ref="PAY-{{ $payment->id }}" data-swal-confirm="Approve this reversal now?">
                 @csrf
                 <input type="hidden" name="reason" value="" />
                 <button type="submit" class="block w-full px-3 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-slate-700/50">Approve reversal</button>

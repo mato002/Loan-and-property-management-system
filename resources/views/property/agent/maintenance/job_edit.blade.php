@@ -14,7 +14,7 @@
                 <select name="pm_maintenance_request_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                     @foreach ($requests as $r)
                         <option value="{{ $r->id }}" @selected((int) old('pm_maintenance_request_id', $job->pm_maintenance_request_id) === (int) $r->id)>
-                            #{{ $r->id }} ┬╖ {{ $r->unit->property->name }}/{{ $r->unit->label }} ┬╖ {{ $r->category }}
+                            #{{ $r->id }}  -  {{ $r->unit->property->name }}/{{ $r->unit->label }}  -  {{ $r->category }}
                         </option>
                     @endforeach
                 </select>

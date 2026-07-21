@@ -14,8 +14,16 @@ class SendEmailJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $tries = 3;
+
+    public int $timeout = 90;
+
+    /** @var list<int> */
+    public array $backoff = [30, 60, 120];
+
     public function __construct(public int $recipientId)
     {
+        $this->onQueue('high');
     }
 
     public function handle(PropertyCommunicationService $service): void

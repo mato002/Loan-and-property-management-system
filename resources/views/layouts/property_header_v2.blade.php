@@ -1,6 +1,7 @@
 @php
     use App\Support\Property\PropertyNavMode;
     use App\Support\Property\PropertyNavigation;
+    use App\Support\Property\LandlordPortalNavigation;
 
     $companyLogoUrl = \App\Models\PropertyPortalSetting::getValue('company_logo_url', '');
     $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '');
@@ -25,13 +26,7 @@
     };
 
     $quickLinks = match ($portalRole) {
-        'landlord' => [
-            ['label' => 'Portfolio', 'route' => 'property.landlord.portfolio', 'patterns' => ['property.landlord.portfolio']],
-            ['label' => 'Earnings', 'route' => 'property.landlord.earnings.index', 'patterns' => ['property.landlord.earnings.*']],
-            ['label' => 'Reports', 'route' => 'property.landlord.reports.index', 'patterns' => ['property.landlord.reports.*']],
-            ['label' => 'Maintenance', 'route' => 'property.landlord.maintenance', 'patterns' => ['property.landlord.maintenance']],
-            ['label' => 'Audit trail', 'route' => 'property.landlord.audit_trail', 'patterns' => ['property.landlord.audit_trail']],
-        ],
+        'landlord' => LandlordPortalNavigation::headerQuickLinks(),
         'tenant' => [
             ['label' => 'Home', 'route' => 'property.tenant.home', 'patterns' => ['property.tenant.home']],
             ['label' => 'Pay rent', 'route' => 'property.tenant.payments.pay', 'patterns' => ['property.tenant.payments.pay']],
@@ -114,8 +109,8 @@
         </div>
     @endif
     <div class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 text-white overflow-visible">
-        <div class="relative z-[120] flex items-center justify-between h-14 sm:h-[60px] lg:h-[64px] px-3 sm:px-5 lg:px-6 gap-2 sm:gap-4">
-            <div class="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+        <div class="relative z-[120] flex items-center h-14 sm:h-[60px] lg:h-[64px] px-3 sm:px-5 lg:px-6 gap-2 sm:gap-3 min-w-0">
+            <div class="flex items-center gap-2 sm:gap-4 min-w-0 shrink">
                 <button
                     type="button"
                     @click="sidebarOpen = true"
@@ -172,7 +167,7 @@
                     method="get"
                     action="{{ route('property.search') }}"
                     data-turbo-frame="property-main"
-                    class="hidden lg:flex items-center shrink-0 min-w-[320px] max-w-[520px] w-[38vw]"
+                    class="hidden lg:flex items-center flex-1 min-w-0 basis-0 max-w-xs xl:max-w-sm 2xl:max-w-md mx-1 xl:mx-2"
                 >
                     <label class="sr-only" for="property-global-search">Search</label>
                     <div class="relative w-full z-[150]" id="property-global-search-wrap">
@@ -180,25 +175,25 @@
                             id="property-global-search"
                             name="q"
                             value="{{ request('q') }}"
-                            placeholder="Search tenants, units, invoices, payments…"
+                            placeholder="Search…"
                             autocomplete="off"
-                            class="w-full rounded-xl bg-white text-slate-900 placeholder:text-slate-500 border border-white/70 px-4 py-2.5 pr-11 text-sm font-medium shadow-inner focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40"
+                            title="Search tenants, units, invoices, payments"
+                            class="w-full min-w-0 rounded-xl bg-white text-slate-900 placeholder:text-slate-500 border border-white/70 px-3 xl:px-4 py-2.5 pr-11 text-sm font-medium shadow-inner focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40"
                         />
                         <button type="button" id="property-global-search-btn" class="absolute right-1.5 top-1.5 h-8 w-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700">
                             <i class="fa-solid fa-magnifying-glass text-sm" aria-hidden="true"></i>
                             <span class="sr-only">Search</span>
                         </button>
-                        <div id="property-search-suggest" class="hidden absolute z-[99999] mt-2 w-full rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl overflow-hidden"></div>
+                        <div id="property-search-suggest" class="hidden pointer-events-none absolute z-[99999] mt-2 w-full rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl overflow-hidden"></div>
                     </div>
                 </form>
             @endif
 
-            <div class="hidden sm:flex flex-col items-end justify-center shrink-0 text-right leading-tight pr-1">
-                <span class="text-[10px] uppercase tracking-wider text-white/55 font-semibold">Today</span>
-                <time class="text-xs font-semibold text-white/90 tabular-nums" datetime="{{ now()->toDateString() }}">{{ $todayLabel }}</time>
-            </div>
-
-            <div class="flex items-center gap-0.5 sm:gap-2 shrink-0">
+            <div class="flex items-center gap-0.5 sm:gap-2 shrink-0 ml-auto">
+                <div class="hidden xl:flex flex-col items-end justify-center shrink-0 text-right leading-tight pr-1">
+                    <span class="text-[10px] uppercase tracking-wider text-white/55 font-semibold">Today</span>
+                    <time class="text-xs font-semibold text-white/90 tabular-nums" datetime="{{ now()->toDateString() }}">{{ $todayLabel }}</time>
+                </div>
                 @if ($portalRole === 'agent')
                     <button
                         type="button"
@@ -282,6 +277,8 @@
 
                 <div class="hidden sm:block w-px h-8 bg-white/20 mx-0.5" aria-hidden="true"></div>
 
+                <x-staff-module-switcher current="property" variant="pill" />
+
                 <div class="relative z-[60]" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
                     <button
                         type="button"
@@ -323,6 +320,8 @@
                             <i class="fa-regular fa-user w-4 text-center text-slate-400" aria-hidden="true"></i>
                             Profile settings
                         </a>
+
+                        <x-staff-module-switcher current="property" variant="menu-property" />
 
                         <div class="border-t border-slate-100 my-1"></div>
 
@@ -561,7 +560,7 @@
             };
 
             const closeBox = () => {
-                box.classList.add('hidden');
+                box.classList.add('hidden', 'pointer-events-none');
                 box.innerHTML = '';
                 firstUrl = '';
             };
@@ -571,7 +570,7 @@
                 const hasAny = keys.some((k) => Array.isArray(groups[k]) && groups[k].length > 0);
                 if (!hasAny) {
                     box.innerHTML = '<div class="px-4 py-3 text-sm text-slate-500">No results</div>';
-                    box.classList.remove('hidden');
+                    box.classList.remove('hidden', 'pointer-events-none');
                     return;
                 }
                 const html = keys.map((k) => {
@@ -593,7 +592,7 @@
                 const firstGroup = keys.find((k) => Array.isArray(groups[k]) && groups[k].length > 0);
                 firstUrl = firstGroup ? (groups[firstGroup][0]?.url || '') : '';
                 box.innerHTML = html;
-                box.classList.remove('hidden');
+                box.classList.remove('hidden', 'pointer-events-none');
             };
 
             const load = async () => {

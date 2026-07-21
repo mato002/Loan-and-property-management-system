@@ -24,8 +24,10 @@ use Illuminate\Support\Facades\Mail;
 
 class PropertyCommunicationService
 {
-    public function __construct(private readonly BulkSmsService $sms)
-    {
+    public function __construct(
+        private readonly BulkSmsService $sms,
+        private readonly SmsWalletMonitoringService $smsWalletMonitor,
+    ) {
     }
 
     /**
@@ -58,7 +60,15 @@ class PropertyCommunicationService
                     ->where('idempotency_key', $idempotencyKey)
                     ->first();
                 if ($existing) {
-                    return $existing;
+                    if (
+                        $sendNow
+                        && (string) ($payload['category'] ?? '') === 'rent_reminder'
+                        && ! $this->rentReminderEligibility()->messageBlocksRentReminderRetry($existing)
+                    ) {
+                        $this->redispatchRentReminderRecipients($existing, sync: true);
+                    }
+
+                    return $existing->fresh(['recipients']);
                 }
             }
 
@@ -79,7 +89,7 @@ class PropertyCommunicationService
             $subject = $this->renderTemplate((string) ($payload['subject'] ?? ''), (array) ($payload['variables'] ?? []));
             $body = $this->renderTemplate((string) ($payload['body'] ?? ''), (array) ($payload['variables'] ?? []));
 
-            $policy = $this->evaluateDispatchPolicy($channel, count($recipients));
+            $policy = $this->evaluateDispatchPolicy($channel, count($recipients), $payload);
             $resolvedSendNow = $sendNow && ($policy['defer_until'] ?? null) === null;
 
             $message = PmMessage::query()->create([
@@ -92,6 +102,8 @@ class PropertyCommunicationService
                 'severity' => (string) ($payload['severity'] ?? 'info'),
                 'status' => $resolvedSendNow ? 'queued' : 'scheduled',
                 'subject' => $subject !== '' ? $subject : null,
+                'internal_stage' => $payload['internal_stage'] ?? null,
+                'display_stage' => $payload['display_stage'] ?? null,
                 'body' => $body,
                 'template_id' => $payload['template_id'] ?? null,
                 'template_version' => $payload['template_version'] ?? null,
@@ -136,25 +148,53 @@ class PropertyCommunicationService
             }
 
             if ($resolvedSendNow) {
-                SendBulkCommunicationJob::dispatch($message->id);
+                if ($channel === 'sms') {
+                    $this->guardSmsBatchAffordability($message, count($recipientRows));
+                }
+
+                if (($payload['is_bulk'] ?? false) === true) {
+                    SendBulkCommunicationJob::dispatch($message->id);
+                } else {
+                    $this->queueMessageRecipients($message->fresh(['recipients']), sync: true);
+                }
             }
 
             return $message->fresh(['recipients']);
         });
     }
 
-    public function queueMessageRecipients(PmMessage $message): void
+    public function queueMessageRecipients(PmMessage $message, bool $sync = false): void
     {
         $message->loadMissing('recipients');
+
+        $pendingSms = $message->recipients
+            ->where('channel', 'sms')
+            ->filter(fn (PmMessageRecipient $recipient) => in_array($recipient->status, ['queued', 'scheduled', 'sending'], true));
+
+        if ($pendingSms->isNotEmpty()) {
+            $afford = $this->sms->canAffordRecipients($pendingSms->count());
+            if (! ($afford['ok'] ?? false)) {
+                $this->smsWalletMonitor->notifyBatchShortfall($pendingSms->count(), $afford, (int) $message->id);
+            }
+        }
+
         foreach ($message->recipients as $recipient) {
             if ($recipient->status === 'cancelled') {
                 continue;
             }
 
             if ($recipient->channel === 'sms') {
-                SendSmsJob::dispatch($recipient->id);
+                if ($sync) {
+                    $this->dispatchSmsRecipient($recipient);
+                } else {
+                    SendSmsJob::dispatch($recipient->id);
+                }
             } elseif ($recipient->channel === 'email') {
-                SendEmailJob::dispatch($recipient->id);
+                if ($sync) {
+                    $this->dispatchEmailRecipient($recipient);
+                } else {
+                    SendEmailJob::dispatch($recipient->id);
+                }
             }
         }
     }
@@ -176,10 +216,13 @@ class PropertyCommunicationService
                 'provider_response' => $result,
                 'cost' => $this->sms->costPerSms(),
             ]);
+
             return;
         }
 
-        $this->markDeliveryFailure($recipient, $delivery, (string) ($result['error'] ?? 'SMS dispatch failed.'));
+        $error = (string) ($result['error'] ?? 'SMS dispatch failed.');
+        $this->smsWalletMonitor->notifySendFailureDueToBalance($error, $message->created_by_user_id);
+        $this->markDeliveryFailure($recipient, $delivery, $error);
     }
 
     public function dispatchEmailRecipient(PmMessageRecipient $recipient): void
@@ -286,16 +329,53 @@ class PropertyCommunicationService
             'sent_at' => now(),
         ]);
 
-        PmMessageLog::query()->create([
-            'user_id' => $recipient->message?->created_by_user_id,
-            'channel' => $recipient->channel,
-            'to_address' => $recipient->to_address,
-            'subject' => $recipient->message?->subject,
-            'body' => (string) ($recipient->message?->body ?? ''),
-            'delivery_status' => 'sent',
-            'delivery_error' => null,
-            'sent_at' => now(),
-        ]);
+        $sentLog = null;
+        if (! $this->messageLogSentDuplicate($recipient)) {
+            $sentLog = PmMessageLog::query()->create([
+                'user_id' => $recipient->message?->created_by_user_id,
+                'channel' => $recipient->channel,
+                'to_address' => $recipient->to_address,
+                'subject' => $recipient->message?->subject,
+                'internal_stage' => $recipient->message?->internal_stage,
+                'display_stage' => $recipient->message?->display_stage,
+                'template_category' => $recipient->message?->category,
+                'body' => (string) ($recipient->message?->body ?? ''),
+                'delivery_status' => 'sent',
+                'delivery_error' => null,
+                'sent_at' => now(),
+            ]);
+        }
+
+        if ($recipient->channel === 'sms' && ($recipient->message?->category ?? '') === 'rent_reminder') {
+            $eligibility = app(RentReminderEligibilityService::class);
+            $body = (string) ($recipient->message?->body ?? '');
+            $subject = (string) ($recipient->message?->subject ?? '');
+            $invoiceNo = $eligibility->extractInvoiceNoFromLogText($subject, $body);
+            $internalStage = $eligibility->extractInternalStageFromLogText(
+                $subject,
+                (string) ($recipient->message?->internal_stage ?? '')
+            );
+            $messageHash = $eligibility->messageBodyHash($body);
+            $successLogId = $sentLog?->id
+                ?? $eligibility->findSuccessfulLogForIntent(
+                    (string) $recipient->to_address,
+                    $invoiceNo,
+                    $internalStage,
+                    $messageHash
+                )?->id;
+
+            if ($invoiceNo !== '' && $successLogId !== null) {
+                $eligibility->supersedeFailedLogsForRecipientInvoice(
+                    (string) $recipient->to_address,
+                    $invoiceNo,
+                    null,
+                    $internalStage,
+                    $messageHash,
+                    (int) $successLogId
+                );
+            }
+        }
+
         $this->syncConversationForRecipient($recipient, 'outbound');
     }
 
@@ -330,17 +410,66 @@ class PropertyCommunicationService
             }
         }
 
+        $deliveryError = $reason;
+        if ($recipient->channel === 'sms') {
+            $deliveryError = app(SmsDeliveryErrorPresenter::class)->forAgent($reason);
+        }
+
         PmMessageLog::query()->create([
             'user_id' => $recipient->message?->created_by_user_id,
             'channel' => $recipient->channel,
             'to_address' => $recipient->to_address,
             'subject' => $recipient->message?->subject,
+            'internal_stage' => $recipient->message?->internal_stage,
+            'display_stage' => $recipient->message?->display_stage,
+            'template_category' => $recipient->message?->category,
             'body' => (string) ($recipient->message?->body ?? ''),
             'delivery_status' => 'failed',
-            'delivery_error' => $reason,
+            'delivery_error' => $deliveryError,
             'sent_at' => null,
         ]);
         $this->syncConversationForRecipient($recipient, 'outbound', $reason);
+    }
+
+    private function redispatchRentReminderRecipients(PmMessage $message, bool $sync): void
+    {
+        $message->loadMissing('recipients');
+
+        $reset = false;
+        foreach ($message->recipients as $recipient) {
+            if (in_array($recipient->status, ['sent', 'queued', 'scheduled', 'sending', 'cancelled'], true)) {
+                continue;
+            }
+
+            $recipient->update([
+                'status' => 'queued',
+                'queued_at' => now(),
+                'sending_at' => null,
+                'sent_at' => null,
+                'failed_at' => null,
+                'last_error' => null,
+                'next_retry_at' => null,
+                'retry_count' => 0,
+            ]);
+            $reset = true;
+        }
+
+        if (! $reset) {
+            return;
+        }
+
+        $message->update([
+            'status' => 'queued',
+            'queued_at' => now(),
+            'sent_at' => null,
+        ]);
+
+        $this->queueMessageRecipients($message->fresh(['recipients']), sync: $sync);
+    }
+
+    private function rentReminderEligibility(): RentReminderEligibilityService
+    {
+        return app(RentReminderEligibilityService::class);
     }
 
     private function checkRecipientPolicy(string $channel, string $category, string $recipientType, int $recipientId): array
@@ -357,6 +486,10 @@ class PropertyCommunicationService
 
         if (! $pref) {
             return ['allowed' => true];
+        }
+
+        if ($category === 'rent_reminder' && ! (bool) $pref->allow_arrears_reminders) {
+            return ['allowed' => false, 'reason' => 'Recipient opted out of rent reminders.'];
         }
 
         if ($channel === 'sms' && ! $pref->allow_sms) {
@@ -417,11 +550,17 @@ class PropertyCommunicationService
     }
 
     /**
+     * @param  array<string, mixed>  $payload
      * @return array{defer_until:\Illuminate\Support\CarbonInterface|null}
      */
-    private function evaluateDispatchPolicy(string $channel, int $recipientCount): array
+    private function evaluateDispatchPolicy(string $channel, int $recipientCount, array $payload = []): array
     {
         if ($channel !== 'sms') {
+            return ['defer_until' => null];
+        }
+
+        $purpose = strtolower((string) ($payload['purpose'] ?? ''));
+        if (in_array($purpose, ['manual_message', 'conversation_reply'], true)) {
             return ['defer_until' => null];
         }
 
@@ -449,6 +588,18 @@ class PropertyCommunicationService
         }
 
         return ['defer_until' => null];
+    }
+
+    private function guardSmsBatchAffordability(PmMessage $message, int $recipientCount): void
+    {
+        if ($recipientCount < 1) {
+            return;
+        }
+
+        $afford = $this->sms->canAffordRecipients($recipientCount);
+        if (! ($afford['ok'] ?? false)) {
+            $this->smsWalletMonitor->notifyBatchShortfall($recipientCount, $afford, (int) $message->id);
+        }
     }
 
     private function syncConversationForRecipient(PmMessageRecipient $recipient, string $direction, ?string $error = null): void
@@ -503,5 +654,97 @@ class PropertyCommunicationService
         }
 
         return $text;
+    }
+
+    private function messageLogSentDuplicate(PmMessageRecipient $recipient): bool
+    {
+        $subject = trim((string) ($recipient->message?->subject ?? ''));
+        $to = trim((string) $recipient->to_address);
+        if ($subject === '' || $to === '') {
+            return false;
+        }
+
+        return PmMessageLog::query()
+            ->withoutGlobalScopes()
+            ->where('channel', $recipient->channel)
+            ->where('delivery_status', 'sent')
+            ->where('to_address', $to)
+            ->where('subject', $subject)
+            ->whereDate('created_at', now()->toDateString())
+            ->exists();
+    }
+
+    /**
+     * @return array{released: int, skipped: int, failed: int}
+     */
+    public function releaseDueScheduledMessages(int $limit = 100): array
+    {
+        $released = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        $messages = PmMessage::query()
+            ->where('status', 'scheduled')
+            ->whereNotNull('scheduled_at')
+            ->where('scheduled_at', '<=', now())
+            ->orderBy('scheduled_at')
+            ->limit($limit)
+            ->get();
+
+        foreach ($messages as $message) {
+            try {
+                if ($this->releaseScheduledMessage($message)) {
+                    $released++;
+                } else {
+                    $skipped++;
+                }
+            } catch (\Throwable) {
+                $failed++;
+            }
+        }
+
+        return compact('released', 'skipped', 'failed');
+    }
+
+    public function releaseScheduledMessage(PmMessage $message): bool
+    {
+        $message->loadMissing('recipients');
+        if ((string) $message->status !== 'scheduled') {
+            return false;
+        }
+
+        $pending = $message->recipients
+            ->filter(fn (PmMessageRecipient $recipient) => in_array($recipient->status, ['scheduled', 'queued'], true));
+
+        if ($message->channel === 'sms' && $pending->isNotEmpty()) {
+            $afford = $this->sms->canAffordRecipients($pending->count());
+            if (! ($afford['ok'] ?? false)) {
+                $this->smsWalletMonitor->notifyBatchShortfall($pending->count(), $afford, (int) $message->id);
+
+                return false;
+            }
+        }
+
+        $message->update([
+            'status' => 'queued',
+            'queued_at' => now(),
+        ]);
+
+        PmMessageRecipient::query()
+            ->where('message_id', $message->id)
+            ->where('status', 'scheduled')
+            ->update([
+                'status' => 'queued',
+                'queued_at' => now(),
+            ]);
+
+        $fresh = $message->fresh(['recipients']);
+        if ($fresh->batch_id !== null) {
+            SendBulkCommunicationJob::dispatch((int) $fresh->id);
+        } else {
+            $this->queueMessageRecipients($fresh, sync: false);
+        }
+
+        return true;
     }
 }

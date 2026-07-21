@@ -228,6 +228,84 @@
             main table.loan-grid-lines td {
                 border: 1px solid #cbd5e1;
             }
+
+            #loan-shell-sidebar {
+                height: 100%;
+                max-height: 100vh;
+                min-height: 0;
+                overflow: hidden;
+                flex-shrink: 0;
+            }
+            #loan-shell-sidebar > aside {
+                height: 100%;
+                max-height: 100vh;
+            }
+            #loan-sidebar-nav {
+                overscroll-behavior: contain;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            #loan-workspace-main {
+                position: relative;
+                z-index: 0;
+                isolation: isolate;
+            }
+            #loan-global-nav-progress {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                z-index: 45;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.15s ease;
+            }
+            #loan-global-nav-progress[data-active] {
+                opacity: 1;
+            }
+            #loan-global-nav-progress > span {
+                display: block;
+                height: 100%;
+                width: 35%;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, #0f766e 0%, #5eead4 45%, #0f766e 90%);
+                background-size: 200% 100%;
+                animation: loan-frame-progress 0.9s ease-in-out infinite;
+            }
+            #loan-workspace-loading {
+                position: absolute;
+                inset: 0;
+                z-index: 25;
+                display: none;
+                padding: 0.75rem;
+                background: rgb(244 247 250 / 0.72);
+                backdrop-filter: blur(1px);
+            }
+            #loan-workspace-loading[data-active] {
+                display: block;
+                pointer-events: none;
+            }
+            #loan-workspace-loading[data-active] .loan-workspace-loading {
+                opacity: 0.55;
+            }
+            #loan-workspace-error {
+                display: none;
+            }
+            #loan-workspace-error[data-active] {
+                display: block;
+            }
+            turbo-frame#loan-main {
+                display: block;
+                width: 100%;
+                max-width: 100%;
+                min-height: 12rem;
+                position: relative;
+            }
+            @keyframes loan-frame-progress {
+                0% { background-position: 100% 0; }
+                100% { background-position: -100% 0; }
+            }
         </style>
     </head>
     <body
@@ -247,27 +325,56 @@
             }
         }"
     >
-        <x-swal-flash />
-        <div id="loan-app-shell" class="h-full flex bg-slate-50 dark:bg-slate-900">
+        <div id="loan-app-shell" class="h-full min-h-0 flex overflow-hidden bg-slate-50 dark:bg-slate-900">
             
-            <!-- Loan Module Dedicated Sidebar -->
-            @include('layouts.loan_sidebar')
+            <!-- Loan Module Dedicated Sidebar (persists across Turbo navigations) -->
+            <div id="loan-shell-sidebar" data-turbo-permanent class="h-full max-h-screen min-h-0 overflow-hidden flex-shrink-0">
+                @include('layouts.loan_sidebar')
+            </div>
 
             <!-- Main view container (Header, Content, Footer) -->
             <div class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-[#f4f7fa]">
                 
-                <!-- Dedicated Clean Topbar -->
-                @include('layouts.loan_topbar')
+                <!-- Dedicated Clean Topbar (persists across Turbo navigations) -->
+                <div id="loan-shell-header" data-turbo-permanent class="shrink-0">
+                    @include('layouts.loan_topbar')
+                </div>
 
                 <!-- Scrollable Content Area (Topbar/Footer remain constant) -->
-                <main class="flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar overscroll-contain">
+                <main id="loan-workspace-main" class="relative flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar overscroll-contain">
+                    <div id="loan-global-nav-progress" aria-hidden="true"><span></span></div>
+                    <div id="loan-workspace-loading" aria-hidden="true">
+                        <div class="loan-workspace-loading pointer-events-none" aria-hidden="true">
+                            <div class="animate-pulse space-y-4 p-1">
+                                <div class="h-7 w-48 max-w-[70%] rounded-lg bg-slate-200/90"></div>
+                                <div class="h-4 w-full max-w-xl rounded bg-slate-200/70"></div>
+                                <div class="rounded-2xl border border-slate-200/80 bg-white/70 p-4 space-y-3">
+                                    @for ($i = 0; $i < 5; $i++)
+                                        <div class="flex items-center gap-3">
+                                            <div class="h-4 w-4 rounded bg-slate-200/90 shrink-0"></div>
+                                            <div class="h-4 flex-1 rounded bg-slate-200/70"></div>
+                                            <div class="h-4 w-16 rounded bg-slate-200/60 shrink-0"></div>
+                                        </div>
+                                    @endfor
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="loan-workspace-error" class="absolute inset-x-0 top-0 z-30 p-4 sm:p-6" aria-live="polite"></div>
                     <div class="px-4 pb-4 pt-2 sm:px-6 sm:pb-6 sm:pt-3 lg:px-8 lg:pb-8 lg:pt-4">
-                        {{ $slot }}
+                        <turbo-frame id="loan-main" data-turbo-action="advance" data-turbo-cache="false">
+                            <div id="loan-main-route" data-route-name="{{ Route::currentRouteName() ?? '' }}" data-page-title="{{ trim((string) ($title ?? ($header ?? ''))) }}" hidden></div>
+                            <x-swal-flash />
+                            @include('layouts.partials.loan_workspace_shell')
+                            {{ $slot }}
+                        </turbo-frame>
                     </div>
                 </main>
 
-                <!-- Dedicated Footer (constant) -->
-                @include('layouts.loan_footer')
+                <!-- Dedicated Footer (persists across Turbo navigations) -->
+                <div id="loan-shell-footer" data-turbo-permanent class="shrink-0">
+                    @include('layouts.loan_footer')
+                </div>
 
             </div>
         </div>
@@ -430,7 +537,13 @@
             document.addEventListener('turbo:load', ensureMobileTableScroll);
             document.addEventListener('turbo:load', ensureTableGridLines);
             document.addEventListener('turbo:load', function () { wireAutoFilterForms(document); });
-            document.addEventListener('turbo:frame-load', function (event) { wireAutoFilterForms(event.target); });
+            document.addEventListener('turbo:frame-load', function (event) {
+                wireAutoFilterForms(event.target);
+                if (event.target && event.target.id === 'loan-main') {
+                    ensureMobileTableScroll();
+                    ensureTableGridLines();
+                }
+            });
             document.addEventListener('livewire:navigated', ensureGlobalPrintButton);
             document.addEventListener('livewire:navigated', ensureMobileTableScroll);
             document.addEventListener('livewire:navigated', ensureTableGridLines);

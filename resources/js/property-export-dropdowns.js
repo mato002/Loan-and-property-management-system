@@ -85,18 +85,11 @@ export function wireExportDropdowns(scopeRoot) {
             }
 
             if (selected.dataset.mode === 'submit') {
-                let hidden = form.querySelector('input[name="export"][data-auto-export="1"]');
-                if (!hidden) {
-                    hidden = document.createElement('input');
-                    hidden.type = 'hidden';
-                    hidden.name = 'export';
-                    hidden.setAttribute('data-auto-export', '1');
-                    form.appendChild(hidden);
-                }
-                hidden.value = selected.value;
-                form.requestSubmit();
-            } else if (typeof window.visitPropertyMain === 'function') {
-                window.visitPropertyMain(selected.value);
+                const url = new URL(form.action || window.location.href, window.location.href);
+                const params = new URLSearchParams(new FormData(form));
+                params.set('export', selected.value);
+                url.search = params.toString();
+                window.location.href = url.toString();
             } else {
                 window.location.href = selected.value;
             }

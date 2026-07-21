@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Property;
 
 use App\Http\Controllers\Controller;
 use App\Services\Property\LoginActivityLogger;
+use App\Services\Property\PropertyPortalAuthService;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,7 @@ class PropertyPortalGuestLoginController extends Controller
         return view('auth.property-portal-login', [
             'portalRole' => 'landlord',
             'postRoute' => route('property.landlord.login.store'),
+            'allowPhoneLogin' => true,
         ]);
     }
 
@@ -43,20 +45,36 @@ class PropertyPortalGuestLoginController extends Controller
 
     protected function authenticatePortalUser(Request $request, string $requiredRole, string $successRoute): RedirectResponse
     {
-        $request->validate([
-            'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string'],
-        ]);
+        $allowPhoneLogin = $requiredRole === 'landlord';
 
-        $this->ensureIsNotRateLimited($request, $requiredRole);
+        if ($allowPhoneLogin) {
+            $request->validate([
+                'login' => ['required_without:email', 'nullable', 'string', 'max:255'],
+                'email' => ['required_without:login', 'nullable', 'string', 'max:255'],
+                'password' => ['required', 'string'],
+            ]);
+            $loginIdentifier = trim((string) ($request->input('login') ?: $request->input('email')));
+        } else {
+            $request->validate([
+                'email' => ['required', 'string', 'email'],
+                'password' => ['required', 'string'],
+            ]);
+            $loginIdentifier = trim((string) $request->input('email'));
+        }
 
-        if (! Auth::attempt($request->only('email', 'password'), $request->boolean('remember'))) {
-            RateLimiter::hit($this->throttleKey($request, $requiredRole));
+        $this->ensureIsNotRateLimited($request, $requiredRole, $loginIdentifier);
+
+        $authenticated = $allowPhoneLogin
+            ? app(PropertyPortalAuthService::class)->attempt($loginIdentifier, (string) $request->input('password'), $request->boolean('remember'))
+            : Auth::attempt($request->only('email', 'password'), $request->boolean('remember'));
+
+        if (! $authenticated) {
+            RateLimiter::hit($this->throttleKey($request, $requiredRole, $loginIdentifier));
             app(LoginActivityLogger::class)->log(
                 null,
                 'failed',
                 ucfirst($requiredRole).' portal login failed',
-                (string) $request->input('email'),
+                $loginIdentifier,
                 [
                     'portal' => $requiredRole,
                     'ip' => (string) $request->ip(),
@@ -65,11 +83,11 @@ class PropertyPortalGuestLoginController extends Controller
             );
 
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                $allowPhoneLogin ? 'login' : 'email' => trans('auth.failed'),
             ]);
         }
 
-        RateLimiter::clear($this->throttleKey($request, $requiredRole));
+        RateLimiter::clear($this->throttleKey($request, $requiredRole, $loginIdentifier));
 
         $user = Auth::user();
         if (($user->property_portal_role ?? null) !== $requiredRole) {
@@ -90,7 +108,7 @@ class PropertyPortalGuestLoginController extends Controller
             $request->session()->regenerateToken();
 
             throw ValidationException::withMessages([
-                'email' => $requiredRole === 'tenant'
+                ($allowPhoneLogin ? 'login' : 'email') => $requiredRole === 'tenant'
                     ? __('This page is for tenants only. Use the landlord or staff sign-in if that matches your account.')
                     : __('This page is for landlords only. Use the tenant or staff sign-in if that matches your account.'),
             ]);
@@ -114,7 +132,7 @@ class PropertyPortalGuestLoginController extends Controller
             $request->session()->regenerateToken();
 
             throw ValidationException::withMessages([
-                'email' => __('Your account is not approved for Property management access yet.'),
+                ($allowPhoneLogin ? 'login' : 'email') => __('Your account is not approved for Property management access yet.'),
             ]);
         }
 
@@ -135,9 +153,9 @@ class PropertyPortalGuestLoginController extends Controller
         return redirect()->intended(route($successRoute, absolute: false));
     }
 
-    protected function ensureIsNotRateLimited(Request $request, string $portal): void
+    protected function ensureIsNotRateLimited(Request $request, string $portal, string $loginIdentifier = ''): void
     {
-        $key = $this->throttleKey($request, $portal);
+        $key = $this->throttleKey($request, $portal, $loginIdentifier);
 
         if (! RateLimiter::tooManyAttempts($key, 5)) {
             return;
@@ -147,16 +165,22 @@ class PropertyPortalGuestLoginController extends Controller
 
         $seconds = RateLimiter::availableIn($key);
 
+        $errorField = $portal === 'landlord' ? 'login' : 'email';
+
         throw ValidationException::withMessages([
-            'email' => trans('auth.throttle', [
+            $errorField => trans('auth.throttle', [
                 'seconds' => $seconds,
                 'minutes' => ceil($seconds / 60),
             ]),
         ]);
     }
 
-    protected function throttleKey(Request $request, string $portal): string
+    protected function throttleKey(Request $request, string $portal, string $loginIdentifier = ''): string
     {
-        return Str::transliterate(Str::lower($request->string('email')).'|'.$portal.'-portal|'.$request->ip());
+        $login = $loginIdentifier !== ''
+            ? $loginIdentifier
+            : trim((string) ($request->input('login') ?: $request->input('email')));
+
+        return Str::transliterate(Str::lower($login).'|'.$portal.'-portal|'.$request->ip());
     }
 }

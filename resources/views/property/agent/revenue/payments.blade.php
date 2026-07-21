@@ -2,6 +2,8 @@
     title="Payment tracking"
     subtitle="Manual receipt entry — allocates to an open invoice and updates balances."
     back-route="property.revenue.index"
+    :legacy-toolbar="false"
+    :show-search="false"
     :stats="$stats ?? $statsPrimary ?? []"
     :columns="$columns"
     :table-rows="$tableRows"
@@ -25,6 +27,10 @@
                     View receipts
                     <i class="fa-solid fa-receipt" aria-hidden="true"></i>
                 </a>
+                <a href="{{ route('property.revenue.tenant_credits', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                    Tenant credits
+                    <i class="fa-solid fa-piggy-bank" aria-hidden="true"></i>
+                </a>
                 @if (auth()->user()?->hasPmPermission('payments.settle'))
                     <a href="{{ route('property.equity.matched', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">
                         Matched payments
@@ -40,33 +46,36 @@
                     </a>
                 @endif
             </div>
+            @include('property.agent.revenue.partials.payment_collection_ctas')
         </div>
 
         @php
-            $showPaymentFormByDefault = $errors->hasAny(['pm_tenant_id','channel','pm_invoice_id','amount','paid_at','external_ref']);
+            $showPaymentFormByDefault = request('form') === 'invoice'
+                || (old('payment_form') !== 'advance' && $errors->hasAny(['pm_tenant_id','channel','pm_invoice_id','amount','paid_at','external_ref']));
         @endphp
-        <details class="space-y-3 group" @if($showPaymentFormByDefault) open @endif>
-            <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                <i class="fa-solid fa-money-check-dollar" aria-hidden="true"></i>
-                <span class="group-open:hidden">Record payment</span>
-                <span class="hidden group-open:inline">Hide record payment form</span>
-            </summary>
+        <details id="invoice-payment-panel" class="group mt-4 rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-gray-800/80 shadow-sm" @if($showPaymentFormByDefault) open @endif>
+            <summary class="sr-only">Invoice payment form</summary>
+            <div class="flex justify-end border-b border-slate-100 px-4 py-2 dark:border-slate-700">
+                <button type="button" class="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" data-collapse-payment-panel="invoice-payment-panel">Hide form</button>
+            </div>
 
             <form
                 method="post"
                 action="{{ route('property.payments.store') }}"
-                class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl"
+                class="space-y-3 p-5 max-w-3xl"
             >
                 @csrf
-                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Record payment</h3>
+                <input type="hidden" name="payment_form" value="invoice" />
+                <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Record payment (against invoice)</h3>
                 <div class="grid gap-3 sm:grid-cols-2">
                     <div>
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
                         <x-property.quick-create-select
-                            id="payment-tenant-select"
+                            selectId="payment-tenant-select"
                             name="pm_tenant_id"
                             :required="true"
-                            :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id') === (string) $t->id])->all()"
+                            :searchable="true"
+                            :options="\App\Support\Property\PmTenantSelectOptions::fromCollection($tenants, old('pm_tenant_id'))"
                             :create="[
                                 'mode' => 'ajax',
                                 'title' => 'Create tenant',
@@ -99,13 +108,15 @@
                             @foreach ($openInvoices as $inv)
                                 @php $open = max(0, (float) $inv->amount - (float) $inv->amount_paid); @endphp
                                 <option value="{{ $inv->id }}" data-tenant-id="{{ $inv->pm_tenant_id }}" @selected(old('pm_invoice_id') == $inv->id)>
-                                    {{ $inv->invoice_no }} ┬╖ {{ $inv->tenant->name }} ┬╖ bal {{ number_format($open, 2) }}
+                                    {{ $inv->invoice_no }}  -  {{ $inv->tenant->name }}  -  bal {{ number_format($open, 2) }}
                                 </option>
                             @endforeach
                         </select>
                         @error('pm_invoice_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                         <p id="payment-no-invoices-hint" class="mt-1 hidden text-xs text-amber-700">
-                            No open invoices for the selected tenant. Create an invoice first.
+                            No open invoices for this tenant.
+                            <button type="button" class="font-semibold text-emerald-700 underline" data-open-payment-panel="advance-payment-panel">Record advance payment</button>
+                            instead.
                         </p>
                     </div>
                     <div>
@@ -128,26 +139,11 @@
             </form>
         </details>
 
-        <div id="payment-reversal-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
-            <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <h3 id="payment-reversal-modal-title" class="text-base font-semibold text-slate-900">Payment reversal action</h3>
-                        <p id="payment-reversal-modal-subtitle" class="mt-1 text-xs text-slate-600">Provide a reason to continue.</p>
-                    </div>
-                    <button type="button" id="payment-reversal-modal-close" class="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">Close</button>
-                </div>
-                <div class="mt-4">
-                    <label for="payment-reversal-modal-reason" class="block text-xs font-medium text-slate-700">Reason</label>
-                    <textarea id="payment-reversal-modal-reason" rows="4" maxlength="500" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Enter reason..."></textarea>
-                    <p id="payment-reversal-modal-hint" class="mt-1 text-xs text-slate-500"></p>
-                </div>
-                <div class="mt-4 flex items-center justify-end gap-2">
-                    <button type="button" id="payment-reversal-modal-cancel" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-                    <button type="button" id="payment-reversal-modal-submit" class="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Continue</button>
-                </div>
-            </div>
-        </div>
+        @include('property.agent.revenue.partials.advance_payment_form', [
+            'tenantsForAdvance' => $tenantsForAdvance ?? collect(),
+            'advanceCreditsEnabled' => $advanceCreditsEnabled ?? false,
+            'hideSummary' => true,
+        ])
 
         <script>
             (function () {
@@ -184,142 +180,15 @@
                 tenantSelect.addEventListener('change', filterInvoices);
                 filterInvoices(); // initial load (old input)
             })();
-
-            (function () {
-                const requestForms = document.querySelectorAll('.js-reversal-request-form');
-                const approveForms = document.querySelectorAll('.js-reversal-approve-form');
-                const modal = document.getElementById('payment-reversal-modal');
-                const modalTitle = document.getElementById('payment-reversal-modal-title');
-                const modalSubtitle = document.getElementById('payment-reversal-modal-subtitle');
-                const modalReason = document.getElementById('payment-reversal-modal-reason');
-                const modalHint = document.getElementById('payment-reversal-modal-hint');
-                const modalClose = document.getElementById('payment-reversal-modal-close');
-                const modalCancel = document.getElementById('payment-reversal-modal-cancel');
-                const modalSubmit = document.getElementById('payment-reversal-modal-submit');
-                let activeForm = null;
-                let activeMode = null;
-
-                if (!modal || !modalTitle || !modalSubtitle || !modalReason || !modalHint || !modalClose || !modalCancel || !modalSubmit) {
-                    return;
-                }
-
-                function showModal(form, mode) {
-                    activeForm = form;
-                    activeMode = mode;
-                    const ref = form.getAttribute('data-payment-ref') || 'payment';
-                    modalReason.value = '';
-                    if (mode === 'request') {
-                        modalTitle.textContent = `Request reversal for ${ref}`;
-                        modalSubtitle.textContent = 'A clear reason is required for maker submission.';
-                        modalHint.textContent = 'Minimum 5 characters.';
-                    } else {
-                        modalTitle.textContent = `Approve reversal for ${ref}`;
-                        modalSubtitle.textContent = 'Checker note is optional but recommended.';
-                        modalHint.textContent = 'Up to 500 characters.';
-                    }
-                    modal.classList.remove('hidden');
-                    modal.classList.add('flex');
-                    setTimeout(() => modalReason.focus(), 0);
-                }
-
-                function closeModal() {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                    activeForm = null;
-                    activeMode = null;
-                }
-
-                requestForms.forEach((form) => {
-                    form.addEventListener('submit', function (e) {
-                        e.preventDefault();
-                        showModal(this, 'request');
-                    });
-                });
-
-                approveForms.forEach((form) => {
-                    form.addEventListener('submit', function (e) {
-                        e.preventDefault();
-                        showModal(this, 'approve');
-                    });
-                });
-
-                modalSubmit.addEventListener('click', function () {
-                    if (!activeForm) return;
-                    const reason = modalReason.value.trim();
-                    if (activeMode === 'request' && reason.length < 5) {
-                        window.alert('Please enter a clearer reason (at least 5 characters).');
-                        modalReason.focus();
-                        return;
-                    }
-                    const input = activeForm.querySelector('input[name="reason"]');
-                    if (input) {
-                        input.value = reason;
-                    }
-                    const formToSubmit = activeForm;
-                    closeModal();
-                    formToSubmit.submit();
-                });
-
-                modalClose.addEventListener('click', closeModal);
-                modalCancel.addEventListener('click', closeModal);
-                modal.addEventListener('click', function (e) {
-                    if (e.target === modal) closeModal();
-                });
-            })();
         </script>
     </x-slot>
 
     <x-slot name="toolbar">
-        <div class="flex flex-wrap items-center gap-2">
-            <form method="get" action="{{ route('property.revenue.payments') }}" class="flex flex-wrap items-center gap-2">
-                <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search ref, tenant, phone..." class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-64" />
-                <select name="status" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
-                    <option value="">Status: All</option>
-                    <option value="completed" @selected(($filters['status'] ?? '') === 'completed')>Completed</option>
-                    <option value="pending" @selected(($filters['status'] ?? '') === 'pending')>Pending</option>
-                    <option value="failed" @selected(($filters['status'] ?? '') === 'failed')>Failed</option>
-                </select>
-                <select name="reversal_status" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
-                    <option value="">Reversal: All</option>
-                    <option value="pending" @selected(($filters['reversal_status'] ?? '') === 'pending')>Pending approval</option>
-                    <option value="reversed" @selected(($filters['reversal_status'] ?? '') === 'reversed')>Reversed</option>
-                    <option value="approved" @selected(($filters['reversal_status'] ?? '') === 'approved')>Approved</option>
-                    <option value="rejected" @selected(($filters['reversal_status'] ?? '') === 'rejected')>Rejected</option>
-                </select>
-                <select name="channel" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
-                    <option value="">Channel: All</option>
-                    @foreach (['mpesa' => 'M-Pesa', 'equity_paybill' => 'Equity Paybill API', 'mpesa_sms_ingest' => 'SMS Forwarder', 'bank' => 'Bank', 'cash' => 'Cash', 'card' => 'Card', 'cheque' => 'Cheque', 'mpesa_stk' => 'M-Pesa STK'] as $cv => $cl)
-                        <option value="{{ $cv }}" @selected(($filters['channel'] ?? '') === $cv)>{{ $cl }}</option>
-                    @endforeach
-                </select>
-                <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-                <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-                <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                    <option value="paid_at" @selected(($filters['sort'] ?? 'paid_at') === 'paid_at')>Sort: Received at</option>
-                    <option value="created_at" @selected(($filters['sort'] ?? '') === 'created_at')>Sort: Created at</option>
-                    <option value="amount" @selected(($filters['sort'] ?? '') === 'amount')>Sort: Amount</option>
-                    <option value="status" @selected(($filters['sort'] ?? '') === 'status')>Sort: Status</option>
-                    <option value="id" @selected(($filters['sort'] ?? '') === 'id')>Sort: ID</option>
-                </select>
-                <select name="dir" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                    <option value="desc" @selected(($filters['dir'] ?? 'desc') === 'desc')>Desc</option>
-                    <option value="asc" @selected(($filters['dir'] ?? '') === 'asc')>Asc</option>
-                </select>
-                <label class="text-xs text-slate-500">Per page</label>
-                <select name="per_page" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                    @foreach ([10, 30, 50, 100, 200] as $size)
-                        <option value="{{ $size }}" @selected((int) ($perPage ?? request('per_page', 30)) === $size)>{{ $size }}</option>
-                    @endforeach
-                </select>
-                <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
-                <a href="{{ route('property.revenue.payments', absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
-                @include('property.agent.partials.export_dropdown', [
-                    'csvUrl' => route('property.revenue.payments', array_merge(request()->query(), ['export' => 'csv']), false),
-                    'xlsUrl' => route('property.revenue.payments', array_merge(request()->query(), ['export' => 'xls']), false),
-                    'pdfUrl' => route('property.revenue.payments', array_merge(request()->query(), ['export' => 'pdf']), false),
-                ])
-            </form>
-        </div>
+        @include('property.agent.partials.filter_toolbars.payments', [
+            'filters' => $filters,
+            'perPage' => $perPage ?? null,
+            'receivedRangeLabel' => $receivedRangeLabel ?? null,
+        ])
     </x-slot>
 
     <x-slot name="footer">

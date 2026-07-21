@@ -70,9 +70,9 @@
                             </div>
                             <div class="mt-1 text-slate-700">
                                 <span class="text-slate-500">Start:</span> {{ $l['start'] }}
-                                <span class="text-slate-300">┬╖</span>
+                                <span class="text-slate-300"> - </span>
                                 <span class="text-slate-500">End:</span> {{ $l['end'] }}
-                                <span class="text-slate-300">┬╖</span>
+                                <span class="text-slate-300"> - </span>
                                 <span class="text-slate-500">Rent:</span> {{ $l['rent'] }}
                             </div>
                         </div>

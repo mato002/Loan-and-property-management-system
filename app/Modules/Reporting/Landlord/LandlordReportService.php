@@ -10,6 +10,8 @@ use App\Models\PmPayment;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
 use App\Modules\Reporting\Support\ReportFilters;
+use App\Services\Property\FinanceBalanceSnapshotService;
+use App\Services\Property\FinancialReportingFormulaService;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -32,49 +34,34 @@ class LandlordReportService
 		$leases = $leaseQuery->latest('start_date')->limit(300)->get();
 
 		$leaseIds = $leases->pluck('id')->all();
-		$arrearsByLease = [];
-		$carryForwardCutoff = now()->startOfMonth()->toDateString();
-
-		if (count($leaseIds) > 0) {
-			$arrearsByLease = PmInvoice::query()
-				->liveBalances()
-				->select('pm_lease_id', DB::raw('SUM(GREATEST(amount - amount_paid, 0)) as arrears_total'))
-				->whereIn('pm_lease_id', $leaseIds)
-				->whereDate('due_date', '<', $carryForwardCutoff)
-				->groupBy('pm_lease_id')
-				->pluck('arrears_total', 'pm_lease_id')
-				->toArray();
-		}
+		$formulas = app(FinancialReportingFormulaService::class);
+		$balanceByLease = $formulas->leaseOutstandingMap($leaseIds);
+		$arrearsByLease = $formulas->leaseArrearsMap(
+			$leaseIds,
+			now()->startOfMonth()
+		);
 
 		return [
 			'stats' => [
 				['label' => 'Lease rows', 'value' => (string) $leases->count(), 'hint' => 'Landlord statement lines'],
 				['label' => 'Monthly rent', 'value' => $this->money((float) $leases->sum('monthly_rent')), 'hint' => 'Current contract rent'],
 				['label' => 'Amount paid', 'value' => $this->money((float) $leases->sum('invoices_paid_total')), 'hint' => 'Invoice settlements'],
-				['label' => 'Total balance', 'value' => $this->money((float) $leases->sum(function (PmLease $lease) use ($arrearsByLease) {
-					$monthlyRent = (float) ($lease->monthly_rent ?? 0);
-					$arrears = (float) ($arrearsByLease[$lease->id] ?? 0);
-					$total = $monthlyRent + $arrears;
-					$paid = (float) ($lease->invoices_paid_total ?? 0);
-
-					return max(0.0, $total - $paid);
-				})), 'hint' => 'Outstanding'],
+				['label' => 'Tenant arrears', 'value' => $this->money((float) collect($balanceByLease)->sum()), 'hint' => 'Billable open invoice AR'],
 			],
-			'columns' => ['Unit', 'Tenant Name', 'Monthly Rent', 'Arrears', 'Total', 'Amount Paid', 'Total Balance'],
-			'tableRows' => $leases->map(function (PmLease $lease) use ($arrearsByLease) {
+			'columns' => ['Unit', 'Tenant Name', 'Monthly Rent', 'Tenant arrears', 'Total', 'Amount Paid', 'Tenant balance'],
+			'tableRows' => $leases->map(function (PmLease $lease) use ($arrearsByLease, $balanceByLease) {
 				$units = $lease->units->map(fn ($unit) => ($unit->property->name ?? '—').' / '.($unit->label ?? '—'))->implode(', ');
 				$monthlyRent = (float) ($lease->monthly_rent ?? 0);
 				$arrears = (float) ($arrearsByLease[$lease->id] ?? 0);
-				$total = $monthlyRent + $arrears;
 				$paid = (float) ($lease->invoices_paid_total ?? 0);
-				$balance = max(0.0, $total - $paid);
+				$balance = (float) ($balanceByLease[$lease->id] ?? 0);
 
 				return [
 					$units !== '' ? $units : '—',
 					(string) ($lease->pmTenant?->name ?? '—'),
 					$this->money($monthlyRent),
 					$this->money($arrears),
-					$this->money($total),
+					$this->money($monthlyRent + $arrears),
 					$this->money($paid),
 					$this->money($balance),
 				];
@@ -116,8 +103,20 @@ class LandlordReportService
 		$this->applyDateRange($query, 'occurred_at');
 		$entries = $query->limit(2000)->get();
 
+		$invoiceIds = $entries
+			->filter(fn (PmLandlordLedgerEntry $e) => $e->reference_type === 'invoice' && $e->reference_id)
+			->pluck('reference_id')
+			->unique()
+			->map(fn ($id) => (int) $id)
+			->filter(fn (int $id) => $id > 0)
+			->values()
+			->all();
+		$invoiceNosById = $invoiceIds === []
+			? collect()
+			: PmInvoice::query()->whereIn('id', $invoiceIds)->pluck('invoice_no', 'id');
+
 		$running = 0.0;
-		$rows = $entries->map(function (PmLandlordLedgerEntry $e) use (&$running) {
+		$rows = $entries->map(function (PmLandlordLedgerEntry $e) use (&$running, $invoiceNosById) {
 			$amount = (float) $e->amount;
 			$isCredit = $e->direction === PmLandlordLedgerEntry::DIRECTION_CREDIT;
 
@@ -134,7 +133,7 @@ class LandlordReportService
 
 			$invoiceNo = '—';
 			if ($e->reference_type === 'invoice' && $e->reference_id) {
-				$invoiceNo = (string) (PmInvoice::query()->where('id', $e->reference_id)->value('invoice_no') ?? '—');
+				$invoiceNo = (string) ($invoiceNosById[(int) $e->reference_id] ?? '—');
 			}
 
 			$payments = $isCredit ? $this->money($amount) : $this->money(0);
@@ -410,7 +409,7 @@ class LandlordReportService
 		$q = trim((string) request()->query('q', ''));
 		$perPage = min(200, max(10, (int) request()->integer('per_page', 30)));
 
-		$query = PmPayment::query()->with(['tenant', 'invoices.unit.property']);
+		$query = PmPayment::query()->with(['tenant', 'invoices.unit.property', 'allocations']);
 		if ($landlordId !== null) {
 			$query->whereExists(function ($sub) use ($landlordId) {
 				$sub->selectRaw('1')
@@ -448,13 +447,16 @@ class LandlordReportService
 			->withQueryString();
 		$payments = $paginator->getCollection();
 
+		$formulas = app(FinancialReportingFormulaService::class);
+		$collectedTotal = $formulas->collectionsFromPayments($payments);
+
 		$channelSummary = $payments
 			->where('status', PmPayment::STATUS_COMPLETED)
 			->groupBy(fn (PmPayment $p) => (string) ($p->channel ?: 'unknown'))
 			->map(fn ($group, $channel) => [
 				'channel' => ucfirst((string) $channel),
 				'count' => $group->count(),
-				'amount' => (float) $group->sum('amount'),
+				'amount' => $formulas->collectionsFromPayments($group),
 			])
 			->sortByDesc('amount')
 			->values()
@@ -488,44 +490,50 @@ class LandlordReportService
 				['label' => 'Landlord', 'value' => (string) ($landlords->firstWhere('id', $landlordId)?->name ?? 'All'), 'hint' => 'Filter'],
 				['label' => 'Payments', 'value' => (string) $payments->count(), 'hint' => 'Recent'],
 				['label' => 'Completed', 'value' => (string) $payments->where('status', PmPayment::STATUS_COMPLETED)->count(), 'hint' => 'Settled'],
-				['label' => 'Collected', 'value' => $this->money((float) $payments->where('status', PmPayment::STATUS_COMPLETED)->sum('amount')), 'hint' => 'Completed only'],
+				['label' => 'Collections', 'value' => $this->money($collectedTotal), 'hint' => 'Completed allocation sums'],
 				['label' => 'Pending', 'value' => (string) $payments->where('status', PmPayment::STATUS_PENDING)->count(), 'hint' => 'Awaiting settlement'],
 				['label' => 'Failed', 'value' => (string) $payments->where('status', PmPayment::STATUS_FAILED)->count(), 'hint' => 'Failed attempts'],
 			],
 			'columns' => ['Date', 'Tenant', 'Property / Unit', 'Channel', 'Amount', 'Reference', 'Status'],
-			'tableRows' => $payments->map(function (PmPayment $payment) {
+			'tableRows' => $payments->map(function (PmPayment $payment) use ($formulas) {
 				$allocations = $payment->invoices
 					->map(fn ($invoice) => (($invoice->unit?->property?->name ?? '—').' / '.($invoice->unit?->label ?? '—')))
 					->filter()
 					->unique()
 					->values()
 					->implode(', ');
+				$allocatedAmount = $payment->status === PmPayment::STATUS_COMPLETED
+					? $formulas->collectionsFromPayments([$payment])
+					: 0.0;
 
 				return [
 					$this->dateTime((string) $payment->paid_at),
 					(string) ($payment->tenant?->name ?? '—'),
 					$allocations !== '' ? $allocations : '—',
 					ucfirst((string) ($payment->channel ?? '—')),
-					$this->money((float) $payment->amount),
+					$this->money($allocatedAmount),
 					(string) ($payment->external_ref ?? '—'),
 					ucfirst((string) $payment->status),
 				];
 			})->all(),
-			'exportColumns' => ['Date', 'Tenant', 'Property / Unit', 'Channel', 'Amount', 'Reference', 'Status'],
-			'exportRows' => $payments->map(function (PmPayment $payment) {
+			'exportColumns' => ['Date', 'Tenant', 'Property / Unit', 'Channel', 'Allocated', 'Reference', 'Status'],
+			'exportRows' => $payments->map(function (PmPayment $payment) use ($formulas) {
 				$allocations = $payment->invoices
 					->map(fn ($invoice) => (($invoice->unit?->property?->name ?? '—').' / '.($invoice->unit?->label ?? '—')))
 					->filter()
 					->unique()
 					->values()
 					->implode(', ');
+				$allocatedAmount = $payment->status === PmPayment::STATUS_COMPLETED
+					? $formulas->collectionsFromPayments([$payment])
+					: 0.0;
 
 				return [
 					$this->dateTime((string) $payment->paid_at),
 					(string) ($payment->tenant?->name ?? '—'),
 					$allocations !== '' ? $allocations : '—',
 					ucfirst((string) ($payment->channel ?? '—')),
-					number_format((float) $payment->amount, 2, '.', ''),
+					number_format($allocatedAmount, 2, '.', ''),
 					(string) ($payment->external_ref ?? '—'),
 					ucfirst((string) $payment->status),
 				];
@@ -564,7 +572,7 @@ class LandlordReportService
 			->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
 			->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
 			->join('properties as p', 'p.id', '=', 'u.property_id')
-			->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
+			->tap(fn ($q) => PmInvoice::applyBillableArConstraints($q, 'i'))
 			->whereExists(function ($sub) {
 				$sub->selectRaw('1')
 					->from('pm_accounting_entries as ae')
@@ -572,15 +580,15 @@ class LandlordReportService
 					->whereColumn('ae.reference', 'i.invoice_no');
 			})
 			->whereDate('i.issue_date', '<', $periodStart->toDateString())
-			->whereColumn('i.amount_paid', '<', 'i.amount')
+			->where('i.balance_due', '>', 0)
 			->selectRaw("
                 i.pm_tenant_id as tenant_id,
                 i.property_unit_id as unit_id,
                 MAX(t.name) as tenant_name,
                 MAX(u.label) as unit_label,
                 MAX(p.name) as property_name,
-                COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as opening_balance
-            ")
+                ".FinanceBalanceSnapshotService::outstandingSumSql('i').' as opening_balance
+            ')
 			->groupBy('i.pm_tenant_id', 'i.property_unit_id');
 		if ($propertyQ !== null) {
 			$openingQ->where('p.name', 'like', '%'.$propertyQ.'%');
@@ -591,7 +599,7 @@ class LandlordReportService
 			->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
 			->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
 			->join('properties as p', 'p.id', '=', 'u.property_id')
-			->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
+			->tap(fn ($q) => PmInvoice::applyBillableArConstraints($q, 'i'))
 			->whereExists(function ($sub) {
 				$sub->selectRaw('1')
 					->from('pm_accounting_entries as ae')
@@ -777,7 +785,7 @@ class LandlordReportService
 		return [
 			'stats' => [
 				['label' => 'Rows', 'value' => (string) count($rows), 'hint' => 'Tenant-unit lines'],
-				['label' => 'Total outstanding', 'value' => $this->money((float) $totalClosing), 'hint' => 'Balances'],
+				['label' => 'Tenant arrears (closing)', 'value' => $this->money((float) $totalClosing), 'hint' => 'Billable open balances'],
 				['label' => 'Invoices (posted)', 'value' => $this->money($postedInvoices), 'hint' => 'Accounting module'],
 				['label' => 'Payments (posted)', 'value' => $this->money($postedPayments), 'hint' => 'Accounting module'],
 				['label' => 'Period', 'value' => $periodStart->format('Y-m-d').' -> '.$periodEnd->format('Y-m-d'), 'hint' => 'Filter'],

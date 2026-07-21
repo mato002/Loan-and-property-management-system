@@ -70,7 +70,9 @@
         data-filter-actions
     >
         @if ($hasExport)
-            {{ $export }}
+            <div data-property-export-actions>
+                {{ $export }}
+            </div>
         @endif
         @if ($hasActions)
             {{ $actions }}

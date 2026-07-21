@@ -11,6 +11,8 @@
     ])
 @else
 @php
+    use App\Support\Property\PropertyNavigation;
+
     $companyLogoUrl = \App\Models\PropertyPortalSetting::getValue('company_logo_url', '');
     $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '');
     $navActive = function ($patterns): bool {
@@ -254,7 +256,7 @@
                 @php $item = $section['items'][0]; $active = $navActive($item['active']); @endphp
                 <div class="{{ $si > 0 ? 'mt-2 pt-2 border-t border-[#406866]/40' : '' }}">
                     <a
-                        href="{{ route($item['route']) }}"
+                        href="{{ PropertyNavigation::workspaceHref($item) }}"
                         data-turbo-frame="property-main"
                         data-property-nav="{{ implode('|', $item['active']) }}"
                         @if ($active) aria-current="page" @endif
@@ -283,6 +285,7 @@
                     if ($propertySidebarGroupKey === '') {
                         $propertySidebarGroupKey = 'property-nav-' . $si;
                     }
+                    $sectionHref = PropertyNavigation::sectionDefaultHref($section['items']);
                 @endphp
                 <div
                     class="{{ $si > 0 ? 'mt-2 pt-2 border-t border-[#406866]/40' : '' }} group"
@@ -291,25 +294,51 @@
                     @if ($secActive) data-section-active @endif
                     x-data="propertySidebarGroup(@js($propertySidebarGroupKey), false)"
                 >
-                    <button
-                        type="button"
-                        class="w-full flex items-start gap-2 rounded-xl px-2 py-2.5 text-left text-[#d4e4e3] hover:bg-[#406866]/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 property-collapse-center"
-                        @click="toggleGroup()"
-                        :aria-expanded="open"
-                        aria-controls="nav-section-{{ $si }}"
-                    >
-                        <span class="property-collapse-text flex flex-col items-center justify-center shrink-0 pt-0.5 w-5" aria-hidden="true">
-                            <i class="fa-solid fa-chevron-down text-sm text-[#8db1af] transition-transform duration-200" :class="{ 'rotate-180': open }"></i>
-                        </span>
-                        <span class="property-collapse-text flex-1 min-w-0">
-                            <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold uppercase tracking-wide text-[#8db1af] group-data-[section-active]:text-[#c5ebe8]">
+                    <div class="flex items-stretch gap-0.5">
+                        @if ($sectionHref)
+                            <a
+                                href="{{ $sectionHref }}"
+                                data-turbo-frame="property-main"
+                                data-property-nav="{{ $sectionPatterns }}"
+                                @if ($secActive) aria-current="page" @endif
+                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                                class="group flex flex-1 items-center gap-2 rounded-xl border-l-[3px] px-2 py-2.5 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center min-w-0"
+                            >
                                 @if (! empty($section['icon']))
-                                    <i class="fa-solid {{ $section['icon'] }} text-base text-[#a8c9c7] not-uppercase normal-case group-data-[section-active]:text-[#c5ebe8]" aria-hidden="true"></i>
+                                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40">
+                                        <i class="fa-solid {{ $section['icon'] }} text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                                    </span>
                                 @endif
-                                <span>{{ $section['heading'] }}</span>
-                            </span>
-                        </span>
-                    </button>
+                                <span class="property-collapse-text flex-1 min-w-0">
+                                    <span class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold uppercase tracking-wide text-[#8db1af] group-aria-[current=page]:text-[#c5ebe8]">
+                                        <span>{{ $section['heading'] }}</span>
+                                    </span>
+                                </span>
+                            </a>
+                        @else
+                            <button
+                                type="button"
+                                class="flex-1 w-full flex items-start gap-2 rounded-xl px-2 py-2.5 text-left text-[#d4e4e3] hover:bg-[#406866]/40 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/50 property-collapse-center"
+                                @click="toggleGroup()"
+                                :aria-expanded="open"
+                                aria-controls="nav-section-{{ $si }}"
+                            >
+                                <span class="property-collapse-text flex-1 min-w-0">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-[#8db1af]">{{ $section['heading'] }}</span>
+                                </span>
+                            </button>
+                        @endif
+                        <button
+                            type="button"
+                            class="property-collapse-text shrink-0 inline-flex items-center justify-center rounded-lg px-1.5 text-[#8db1af] hover:bg-[#406866]/40 hover:text-white transition-colors"
+                            @click="toggleGroup()"
+                            :aria-expanded="open"
+                            :title="'Show {{ $section['heading'] }} links'"
+                            aria-controls="nav-section-{{ $si }}"
+                        >
+                            <i class="fa-solid fa-chevron-down text-sm transition-transform duration-200" :class="{ 'rotate-180': open }" aria-hidden="true"></i>
+                        </button>
+                    </div>
 
                     <div
                         id="nav-section-{{ $si }}"
@@ -369,7 +398,7 @@
                                         @foreach ($item['children'] as $child)
                                             @php $childActiveState = $navActive($child['active'] ?? []); @endphp
                                             <a
-                                                href="{{ route($child['route'], $child['route_params'] ?? []) }}"
+                                                href="{{ PropertyNavigation::workspaceHref($child) }}"
                                                 data-turbo-frame="property-main"
                                                 data-property-nav="{{ implode('|', (array) ($child['active'] ?? [])) }}"
                                                 @if ($childActiveState) aria-current="page" @endif
@@ -386,7 +415,7 @@
                                 </div>
                             @else
                                 <a
-                                    href="{{ route($item['route'], $item['route_params'] ?? []) }}"
+                                    href="{{ PropertyNavigation::workspaceHref($item) }}"
                                     data-turbo-frame="property-main"
                                     data-property-nav="{{ implode('|', (array) ($item['active'] ?? [])) }}"
                                     @if ($active) aria-current="page" @endif

@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Property\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\PmInvoice;
 use App\Models\PmMaintenanceRequest;
-use App\Models\PmMessageLog;
 use App\Models\PmPayment;
+use App\Services\Property\SmsHealthService;
 use App\Models\PropertyUnit;
 use App\Services\Property\PropertyDashboardStats;
 use App\Services\Property\PropertyMoney;
@@ -87,9 +87,9 @@ class PropertyAdvisorWebController extends Controller
         }
 
         if (str_contains($q, 'failed message') || str_contains($q, 'failed sms') || str_contains($q, 'failed email') || str_contains($q, 'communication')) {
-            $failed = PmMessageLog::query()->where('delivery_status', 'failed')->count();
+            $failed = app(SmsHealthService::class)->unresolvedCommunicationCount();
 
-            return "You currently have {$failed} failed communication log(s). Open Communications → SMS / email and filter Status = FAILED for details.";
+            return "You currently have {$failed} communication failure(s) needing action (unresolved SMS; failed email). Open Communications → SMS / email and filter Status = Failed (needs action) for details.";
         }
 
         if (str_contains($q, 'rent collection') || str_contains($q, 'report') || str_contains($q, 'landlord report')) {

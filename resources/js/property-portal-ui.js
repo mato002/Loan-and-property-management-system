@@ -229,3 +229,41 @@ document.addEventListener('turbo:frame-load', (e) => initKenyaAddressAutocomplet
     }
     document.addEventListener('submit', onSubmit);
 })();
+
+function initPropertyBareTableScroll(root = document) {
+    const scope = root.querySelector?.('#property-main') ?? root;
+    if (!scope || typeof scope.querySelectorAll !== 'function') {
+        return;
+    }
+
+    scope.querySelectorAll('table').forEach((table) => {
+        if (table.closest('.property-table-scroll')) {
+            return;
+        }
+        if (table.closest('[data-skip-table-scroll]')) {
+            return;
+        }
+        if (table.closest('[data-mobile-record-list]')) {
+            return;
+        }
+
+        const parent = table.parentElement;
+        if (!parent) {
+            return;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'property-table-scroll -mx-3 px-3 sm:-mx-4 sm:px-4 md:mx-0 md:px-0 overflow-x-auto w-full min-w-0';
+        const inner = document.createElement('div');
+        inner.className = 'w-full';
+        inner.style.minWidth = '640px';
+
+        parent.insertBefore(wrapper, table);
+        inner.appendChild(table);
+        wrapper.appendChild(inner);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => initPropertyBareTableScroll(document));
+document.addEventListener('turbo:load', () => initPropertyBareTableScroll(document));
+document.addEventListener('turbo:frame-load', (e) => initPropertyBareTableScroll(e.target));

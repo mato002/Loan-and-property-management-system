@@ -30,7 +30,7 @@
                 <h1 class="text-2xl font-bold" style="color: {{ $branding['colour'] ?? '#1e40af' }}">{{ $branding['company_name'] ?? 'Property Manager' }}</h1>
                 <p class="text-xs text-slate-500">{{ $branding['address'] ?? '' }}</p>
                 @if (!empty($branding['phone']) || !empty($branding['email']))
-                    <p class="text-xs text-slate-500">{{ $branding['phone'] ?? '' }} @if(!empty($branding['email'])) ┬╖ {{ $branding['email'] }}@endif</p>
+                    <p class="text-xs text-slate-500">{{ $branding['phone'] ?? '' }} @if(!empty($branding['email']))  -  {{ $branding['email'] }}@endif</p>
                 @endif
             </div>
             <div class="text-right">

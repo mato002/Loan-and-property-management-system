@@ -509,6 +509,8 @@
                 <tr>
                     <th class="px-4 py-3">Unit</th>
                     <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Tenant</th>
+                    <th class="px-4 py-3">Phone</th>
                     <th class="px-4 py-3">Listed rent</th>
                     <th class="px-4 py-3">Arrears</th>
                     @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
@@ -527,6 +529,8 @@
                     <tr class="border-t border-slate-100 hover:bg-slate-50/70">
                         <td class="px-4 py-3 font-medium text-slate-900">{{ $u->label }}</td>
                         <td class="px-4 py-3 capitalize text-slate-700">{{ $u->status }}</td>
+                        <td class="px-4 py-3 text-slate-700">{{ $u->tenant_name ?: '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap">{{ $u->tenant_phone ?: '—' }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->rent_amount) }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
                         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
@@ -544,7 +548,7 @@
                         @endif
                     </tr>
                 @empty
-                    <tr><td colspan="{{ auth()->check() && auth()->user()?->hasPmPermission('properties.manage') ? 5 : 4 }}" class="px-4 py-10 text-center text-slate-500">No units yet for this property.</td></tr>
+                    <tr><td colspan="{{ auth()->check() && auth()->user()?->hasPmPermission('properties.manage') ? 7 : 6 }}" class="px-4 py-10 text-center text-slate-500">No units yet for this property.</td></tr>
                 @endforelse
             </tbody>
         </table>

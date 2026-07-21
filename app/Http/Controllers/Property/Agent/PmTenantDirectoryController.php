@@ -25,6 +25,8 @@ use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use App\Services\Property\CarryForwardConsolidationService;
+use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentAllocationRepairService;
 use App\Services\Property\TenantCreditService;
@@ -693,7 +695,8 @@ class PmTenantDirectoryController extends Controller
             'ok' => true,
             'item' => [
                 'id' => $tenant->id,
-                'label' => $tenant->name.($tenant->phone ? ' ('.$tenant->phone.')' : ''),
+                'label' => \App\Support\Property\PmTenantSelectOptions::label($tenant),
+                'search' => \App\Support\Property\PmTenantSelectOptions::searchText($tenant),
             ],
             'message' => 'Tenant created.',
         ]);
@@ -705,7 +708,7 @@ class PmTenantDirectoryController extends Controller
             'leases' => fn ($q) => $q->with(['units.property'])->orderByDesc('start_date'),
         ])->loadCount(['leases', 'invoices']);
 
-        $billing = $this->resolveTenantBillingSnapshot($tenant);
+        $billing = app(FinancialReportingFormulaService::class)->tenantBillingSnapshot($tenant);
 
         $leaseRows = $tenant->leases->map(function ($lease) {
             $units = $lease->units->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
@@ -723,22 +726,29 @@ class PmTenantDirectoryController extends Controller
         $creditBalance = app(TenantCreditService::class)->balanceForTenant((int) $tenant->id);
         $lastPayment = $tenant->payments()
             ->where('status', PmPayment::STATUS_COMPLETED)
+            ->with('allocations')
             ->orderByDesc('paid_at')
             ->orderByDesc('id')
             ->first();
+        $lastPaymentAmount = $lastPayment
+            ? app(FinancialReportingFormulaService::class)->collectionsFromPayments([$lastPayment])
+            : 0.0;
 
         return view('property.agent.tenants.show', [
             'tenant' => $tenant,
             'leaseRows' => $leaseRows,
             'invoiceTotals' => $billing['invoice_totals'],
             'leaseCarryForward' => $billing['lease_carry_forward'],
+            'totalDue' => $billing['total_due'],
             'creditBalance' => $creditBalance,
             'lastPayment' => $lastPayment,
+            'lastPaymentAmount' => $lastPaymentAmount,
         ]);
     }
 
     public function statement(Request $request, PmTenant $tenant): View
     {
+        $formulas = app(FinancialReportingFormulaService::class);
         $validated = $request->validate([
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
@@ -752,6 +762,7 @@ class PmTenantDirectoryController extends Controller
         $toDate = $to !== '' ? Carbon::parse($to)->endOfDay() : null;
 
         $invoiceQuery = PmInvoice::query()
+            ->billableAr()
             ->with(['unit.property'])
             ->where('pm_tenant_id', $tenant->id)
             ->when($fromDate, fn ($q) => $q->whereDate('issue_date', '>=', $fromDate->toDateString()))
@@ -768,21 +779,23 @@ class PmTenantDirectoryController extends Controller
 
         $openingInvoices = 0.0;
         $openingPayments = 0.0;
-        $openingArrears = (float) ($tenant->opening_arrears_amount ?? 0);
+        $openingArrears = app(CarryForwardConsolidationService::class)->tenantOpeningArrearsInDue($tenant);
         $openingArrearsAsOf = $tenant->opening_arrears_as_of
             ? Carbon::parse((string) $tenant->opening_arrears_as_of)->startOfDay()
             : null;
         if ($fromDate) {
             $openingInvoices = (float) PmInvoice::query()
+                ->billableAr()
                 ->where('pm_tenant_id', $tenant->id)
                 ->whereDate('issue_date', '<', $fromDate->toDateString())
                 ->sum('amount');
 
-            $openingPayments = (float) PmPayment::query()
-                ->where('pm_tenant_id', $tenant->id)
-                ->where('status', PmPayment::STATUS_COMPLETED)
-                ->whereDate('paid_at', '<', $fromDate->toDateString())
-                ->sum('amount');
+            $openingPayments = (float) DB::table('pm_payment_allocations as a')
+                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
+                ->where('pay.pm_tenant_id', $tenant->id)
+                ->where('pay.status', PmPayment::STATUS_COMPLETED)
+                ->whereDate('pay.paid_at', '<', $fromDate->toDateString())
+                ->sum('a.amount');
 
             if ($openingArrears > 0 && ($openingArrearsAsOf === null || $openingArrearsAsOf->lt($fromDate))) {
                 $openingInvoices += $openingArrears;
@@ -862,7 +875,7 @@ class PmTenantDirectoryController extends Controller
                 'ref' => $label,
                 'description' => $desc,
                 'debit' => 0.0,
-                'credit' => $isCompleted ? (float) $payment->amount : 0.0,
+                'credit' => $isCompleted ? (float) $payment->allocations->sum('amount') : 0.0,
                 'payment_id' => $isCompleted ? $payment->id : null,
                 'status' => ucfirst((string) $payment->status),
             ]);
@@ -923,12 +936,18 @@ class PmTenantDirectoryController extends Controller
             ];
         }
 
+        $billingSnapshot = $formulas->tenantBillingSnapshot($tenant);
+        $canonicalOutstanding = $formulas->tenantStatementClosingBalance((int) $tenant->id);
+        $closingBalance = $canonicalOutstanding;
+        $ledgerRunningBalance = max(0.0, $running);
+
         $stats = [
             ['label' => 'Tenant', 'value' => $tenant->name, 'hint' => 'Statement owner'],
-            ['label' => 'Transactions', 'value' => (string) count($rows), 'hint' => 'Invoices + payments'],
-            ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'Charges'],
-            ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'Payments'],
-            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($running), 'hint' => 'Debit - credit (+ opening)'],
+            ['label' => 'Transactions', 'value' => (string) count($rows), 'hint' => 'Invoices + payments (informational)'],
+            ['label' => 'Total debit', 'value' => PropertyMoney::kes($totalDebit), 'hint' => 'Ledger charges'],
+            ['label' => 'Total credit', 'value' => PropertyMoney::kes($totalCredit), 'hint' => 'Allocation credits in ledger'],
+            ['label' => 'Closing balance', 'value' => PropertyMoney::kes($closingBalance), 'hint' => 'Canonical billable invoice AR'],
+            ['label' => 'Ledger running', 'value' => PropertyMoney::kes($ledgerRunningBalance), 'hint' => 'Informational debit − credit'],
         ];
 
         $tenant->loadMissing([
@@ -959,8 +978,8 @@ class PmTenantDirectoryController extends Controller
                 ->filter(fn ($item): bool => is_array($item) && (float) ($item['amount'] ?? 0) > 0)
                 ->values()
                 ->all(),
-            'outstanding' => max(0.0, $running),
-            'openCount' => $invoices->filter(fn (PmInvoice $i) => (float) $i->amount_paid < (float) $i->amount)->count(),
+            'outstanding' => $canonicalOutstanding,
+            'openCount' => (int) ($billingSnapshot['invoice_totals']['open_count'] ?? 0),
         ];
 
         $paymentSummary = [
@@ -968,7 +987,7 @@ class PmTenantDirectoryController extends Controller
             'completedCount' => $payments->where('status', PmPayment::STATUS_COMPLETED)->count(),
             'pendingCount' => $payments->where('status', PmPayment::STATUS_PENDING)->count(),
             'failedCount' => $payments->where('status', PmPayment::STATUS_FAILED)->count(),
-            'completedAmount' => (float) $payments->where('status', PmPayment::STATUS_COMPLETED)->sum('amount'),
+            'completedAmount' => $formulas->collectionsFromPayments($payments),
             'pendingAmount' => (float) $payments->where('status', PmPayment::STATUS_PENDING)->sum('amount'),
         ];
 
@@ -981,6 +1000,7 @@ class PmTenantDirectoryController extends Controller
             'leaseSummary' => $leaseSummary,
             'invoiceSummary' => $invoiceSummary,
             'paymentSummary' => $paymentSummary,
+            'totalDue' => $billingSnapshot['total_due'],
             'embed' => $embed,
             'canRepairAllocations' => (bool) auth()->user()?->hasPmPermission('payments.settle'),
         ]);
@@ -1220,78 +1240,6 @@ class PmTenantDirectoryController extends Controller
             'opening_arrears_as_of' => $asOf,
             'opening_arrears_notes' => $data['opening_arrears_notes'] ?? null,
             'opening_arrears_items' => $items->all(),
-        ];
-    }
-
-    /**
-     * @return array{
-     *     invoice_totals: array{count:int,total:float,paid:float,due:float},
-     *     lease_carry_forward: array{total:float,lines:array<int,array<string,mixed>>,invoiced:bool}
-     * }
-     */
-    private function resolveTenantBillingSnapshot(PmTenant $tenant): array
-    {
-        $arrearsPrefix = '[Lease Opening Arrears]';
-
-        // Bypass agent visibility scope only — keep SoftDeletes so replaced carry-forward
-        // invoices are not counted twice in outstanding totals.
-        $invoiceAgg = PmInvoice::query()
-            ->withoutGlobalScope('agent_workspace')
-            ->liveBalances()
-            ->where('pm_tenant_id', $tenant->id)
-            ->selectRaw('COUNT(*) as invoice_count')
-            ->selectRaw('COALESCE(SUM(amount), 0) as total_billed')
-            ->selectRaw('COALESCE(SUM(amount_paid), 0) as total_paid')
-            ->selectRaw('COALESCE(SUM(GREATEST(0, amount - COALESCE(amount_paid, 0))), 0) as outstanding')
-            ->first();
-
-        $invoiceOutstanding = round((float) ($invoiceAgg->outstanding ?? 0), 2);
-        $tenantOpening = round((float) ($tenant->opening_arrears_amount ?? 0), 2);
-
-        $leaseLines = [];
-        $leaseCarryForwardTotal = 0.0;
-        foreach ($tenant->leases ?? [] as $lease) {
-            foreach (collect((array) ($lease->opening_arrears ?? [])) as $row) {
-                if (! is_array($row)) {
-                    continue;
-                }
-                $amount = (float) ($row['amount'] ?? 0);
-                if ($amount <= 0) {
-                    continue;
-                }
-                $leaseCarryForwardTotal += $amount;
-                $leaseLines[] = [
-                    'lease_id' => (int) $lease->id,
-                    'charge_type' => (string) ($row['charge_type'] ?? 'other'),
-                    'specific_charge' => (string) ($row['specific_charge'] ?? ''),
-                    'period' => (string) ($row['period'] ?? ''),
-                    'amount' => $amount,
-                ];
-            }
-        }
-        $leaseCarryForwardTotal = round($leaseCarryForwardTotal, 2);
-
-        $hasLeaseCarryForwardInvoices = PmInvoice::query()
-            ->withoutGlobalScope('agent_workspace')
-            ->liveBalances()
-            ->where('pm_tenant_id', $tenant->id)
-            ->where('description', 'like', $arrearsPrefix.'%')
-            ->exists();
-
-        $uninvoicedLeaseCarryForward = $hasLeaseCarryForwardInvoices ? 0.0 : $leaseCarryForwardTotal;
-
-        return [
-            'invoice_totals' => [
-                'count' => (int) ($invoiceAgg->invoice_count ?? 0),
-                'total' => round((float) ($invoiceAgg->total_billed ?? 0), 2),
-                'paid' => round((float) ($invoiceAgg->total_paid ?? 0), 2),
-                'due' => round($invoiceOutstanding + $tenantOpening + $uninvoicedLeaseCarryForward, 2),
-            ],
-            'lease_carry_forward' => [
-                'total' => $leaseCarryForwardTotal,
-                'lines' => $leaseLines,
-                'invoiced' => $hasLeaseCarryForwardInvoices,
-            ],
         ];
     }
 

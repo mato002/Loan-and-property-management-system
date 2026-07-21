@@ -11,6 +11,7 @@ class PmMessageTemplate extends Model
     protected $fillable = [
         'name',
         'channel',
+        'category',
         'subject',
         'body',
         'template_version',

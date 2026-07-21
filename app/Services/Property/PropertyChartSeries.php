@@ -5,7 +5,6 @@ namespace App\Services\Property;
 use App\Models\PmInvoice;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmMaintenanceJob;
-use App\Models\PmPayment;
 use App\Models\User;
 use Carbon\Carbon;
 
@@ -16,19 +15,14 @@ final class PropertyChartSeries
      */
     public static function monthlyCollectionTrend(int $months = 6): array
     {
+        $formulas = app(FinancialReportingFormulaService::class);
         $out = [];
         for ($i = $months - 1; $i >= 0; $i--) {
             $start = Carbon::now()->subMonths($i)->startOfMonth();
             $end = Carbon::now()->subMonths($i)->endOfMonth();
 
-            $collected = (float) PmPayment::query()
-                ->where('status', PmPayment::STATUS_COMPLETED)
-                ->whereBetween('paid_at', [$start, $end])
-                ->sum('amount');
-
-            $billed = (float) PmInvoice::query()
-                ->whereBetween('issue_date', [$start->toDateString(), $end->toDateString()])
-                ->sum('amount');
+            $collected = $formulas->collectionsForPeriod($start, $end);
+            $billed = $formulas->billedForPeriod($start, $end);
 
             $rate = $billed > 0 ? round(min(100.0, 100.0 * $collected / $billed), 1) : null;
 
@@ -43,9 +37,6 @@ final class PropertyChartSeries
         return $out;
     }
 
-    /**
-     * @return list<array{label: string, value: float}>
-     */
     /**
      * Magnitudes for bar display (all non-negative).
      *
@@ -122,15 +113,13 @@ final class PropertyChartSeries
      */
     public static function agentCashFlowMonthly(int $months = 6): array
     {
+        $formulas = app(FinancialReportingFormulaService::class);
         $out = [];
         for ($i = $months - 1; $i >= 0; $i--) {
             $start = Carbon::now()->subMonths($i)->startOfMonth();
             $end = Carbon::now()->subMonths($i)->endOfMonth();
 
-            $in = (float) PmPayment::query()
-                ->where('status', PmPayment::STATUS_COMPLETED)
-                ->whereBetween('paid_at', [$start, $end])
-                ->sum('amount');
+            $in = $formulas->collectionsForPeriod($start, $end);
 
             $outAmt = (float) PmMaintenanceJob::query()
                 ->whereNotNull('completed_at')

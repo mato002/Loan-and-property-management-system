@@ -224,7 +224,7 @@ final class PropertyNavigation
                 'label' => 'Collections',
                 'sublabel' => 'Rent, billing, payments, utilities',
                 'icon' => 'fa-sack-dollar',
-                'route' => 'property.revenue.index',
+                'route' => 'property.revenue.overview',
                 'sidebar' => true,
                 'active' => [
                     'property.revenue.*',
@@ -270,7 +270,7 @@ final class PropertyNavigation
                 'label' => 'Listings',
                 'sublabel' => 'Vacancies, leads, applications',
                 'icon' => 'fa-sign-hanging',
-                'route' => 'property.listings.index',
+                'route' => 'property.listings.create',
                 'sidebar' => true,
                 'active' => [
                     'property.listings.*',
@@ -425,13 +425,53 @@ final class PropertyNavigation
 
     public static function workspaceHref(array $workspace): string
     {
+        $route = (string) ($workspace['route'] ?? '');
+
+        if ($route !== '' && PropertyWorkspaceTabs::isHubShellRoute($route)) {
+            $matched = self::workspaceForRoute($route);
+            $workspaceKey = is_array($matched) ? (string) ($matched['key'] ?? '') : '';
+            if ($workspaceKey !== '') {
+                $direct = PropertyWorkspaceTabs::defaultEntryUrl($workspaceKey);
+                if ($direct !== null) {
+                    return $direct;
+                }
+            }
+        }
+
         $entry = [
-            'route' => (string) ($workspace['route'] ?? ''),
-            'route_params' => $workspace['route_params'] ?? [],
-            'query' => $workspace['route_query'] ?? [],
+            'route' => $route,
+            'route_params' => PropertyWorkspaceTabs::routeParamsWithContext(
+                $workspace['route_params'] ?? [],
+                $route,
+            ),
+            'query' => $workspace['route_query'] ?? ($workspace['query'] ?? []),
         ];
 
         return PropertyWorkspaceTabs::tabUrl($entry);
+    }
+
+    /**
+     * First navigable href for a classic sidebar section (skips group-only rows).
+     *
+     * @param  list<array<string, mixed>>  $items
+     */
+    public static function sectionDefaultHref(array $items): ?string
+    {
+        foreach ($items as $item) {
+            $route = trim((string) ($item['route'] ?? ''));
+            if ($route !== '') {
+                return self::workspaceHref($item);
+            }
+
+            foreach ($item['children'] ?? [] as $child) {
+                $childRoute = trim((string) ($child['route'] ?? ''));
+                if ($childRoute !== '') {
+                    return self::workspaceHref($child);
+                }
+            }
+        }
+
+        return null;
     }
 
     /**

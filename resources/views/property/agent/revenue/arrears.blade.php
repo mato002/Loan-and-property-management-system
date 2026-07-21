@@ -2,6 +2,8 @@
     title="Arrears management"
     subtitle="Overdue invoices with open balance — aging from due date."
     back-route="property.revenue.index"
+    :legacy-toolbar="false"
+    :show-search="false"
     :stats="$stats ?? $statsPrimary ?? []"
     :columns="$columns"
     :table-rows="$tableRows"
@@ -69,41 +71,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.revenue.arrears', absolute: false) }}" class="flex flex-wrap items-end gap-2 w-full">
-            <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" autocomplete="off" placeholder="Search tenant, unit, invoice..." class="min-w-0 w-full sm:w-64 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-            <select name="workflow" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="">Workflow: All</option>
-                <option value="reminder" @selected(($filters['workflow'] ?? '') === 'reminder')>Reminder</option>
-                <option value="follow-up" @selected(($filters['workflow'] ?? '') === 'follow-up')>Follow-up</option>
-                <option value="escalated" @selected(($filters['workflow'] ?? '') === 'escalated')>Escalated</option>
-            </select>
-            <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-            <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-            <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="oldest_due" @selected(($filters['sort'] ?? 'oldest_due') === 'oldest_due')>Sort: Oldest due</option>
-                <option value="days_late" @selected(($filters['sort'] ?? '') === 'days_late')>Sort: Days late</option>
-                <option value="balance" @selected(($filters['sort'] ?? '') === 'balance')>Sort: Balance</option>
-                <option value="last_contact" @selected(($filters['sort'] ?? '') === 'last_contact')>Sort: Last contact</option>
-                <option value="invoice_count" @selected(($filters['sort'] ?? '') === 'invoice_count')>Sort: # invoices</option>
-                <option value="tenant" @selected(($filters['sort'] ?? '') === 'tenant')>Sort: Tenant</option>
-            </select>
-            <select name="dir" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="asc" @selected(($filters['dir'] ?? 'asc') === 'asc')>Asc</option>
-                <option value="desc" @selected(($filters['dir'] ?? '') === 'desc')>Desc</option>
-            </select>
-            <select name="per_page" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                @foreach ([10, 30, 50, 100, 200] as $size)
-                    <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 30) === $size)>{{ $size }}</option>
-                @endforeach
-            </select>
-            <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
-            <a href="{{ route('property.revenue.arrears', absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
-            @include('property.agent.partials.export_dropdown', [
-                'csvUrl' => route('property.revenue.arrears', array_merge(request()->query(), ['export' => 'csv']), false),
-                'xlsUrl' => route('property.revenue.arrears', array_merge(request()->query(), ['export' => 'xls']), false),
-                'pdfUrl' => route('property.revenue.arrears', array_merge(request()->query(), ['export' => 'pdf']), false),
-            ])
-        </form>
+        @include('property.agent.partials.filter_toolbars.arrears', ['filters' => $filters])
     </x-slot>
     <x-slot name="footer">
         @isset($paginator)

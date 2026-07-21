@@ -12,6 +12,10 @@ class LoanLayout extends Component
      */
     public function render(): View
     {
-        return view('layouts.loan');
+        $view = request()->header('Turbo-Frame') === 'loan-main'
+            ? 'layouts.loan_frame'
+            : 'layouts.loan';
+
+        return view($view);
     }
 }

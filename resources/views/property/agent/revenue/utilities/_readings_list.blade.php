@@ -35,16 +35,8 @@
             @error('reading_ids')<p class="text-xs text-red-600 w-full">{{ $message }}</p>@enderror
         </div>
 
-        <div class="md:hidden space-y-2">
-            @forelse ($waterReadings ?? collect() as $r)
-                <x-property.utility.reading-card :reading="$r" :anomalies="$readingAnomalies[$r->id] ?? []" selectable />
-            @empty
-                <p class="text-sm text-slate-500 py-6 text-center">No readings match filters.</p>
-            @endforelse
-        </div>
-
-        <x-property.responsive.table-wrapper class="hidden md:block">
-            <table class="min-w-full border-collapse text-sm">
+        <x-property.responsive.table-wrapper>
+            <table class="property-erp-table min-w-full border-collapse text-sm">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <tr>
                         <th class="px-3 py-2 w-10"></th>

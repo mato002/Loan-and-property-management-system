@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
+use App\Models\MpesaPlatformTransaction;
 use App\Models\PmMessageLog;
 use App\Models\PmMessageRead;
 use App\Models\PmMessageTemplate;
@@ -15,14 +16,22 @@ use App\Models\Property;
 use App\Models\User;
 use App\Services\BulkSmsService;
 use App\Services\Property\PropertyCommunicationService;
+use App\Services\Property\PropertyCommunicationTemplateService;
+use App\Services\Property\RentReminderEligibilityService;
+use App\Services\Property\SmsHealthService;
+use App\Services\Property\RentReminderMessageLogResolver;
+use App\Services\Property\SmsDeliveryErrorPresenter;
+use App\Services\Property\TenantCommunicationStageService;
 use App\Support\CsvExport;
 use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
@@ -64,6 +73,8 @@ class PropertyCommunicationsWebController extends Controller
             'readLookup' => $readLookup,
             'filters' => $filters,
             'perPage' => $perPage,
+            'canManageCommunications' => $this->canManageCommunications($request),
+            'canExportCommunications' => $this->canExportCommunications($request),
         ]);
     }
 
@@ -135,7 +146,7 @@ class PropertyCommunicationsWebController extends Controller
 
         $validIds = PmMessageLog::query()
             ->whereIn('id', $ids->all())
-            ->whereIn('channel', ['system', 'email', 'sms'])
+            ->where('channel', 'system')
             ->pluck('id');
         if ($validIds->isEmpty()) {
             return back()->withErrors(['bulk_action' => 'No valid notifications selected.']);
@@ -164,15 +175,235 @@ class PropertyCommunicationsWebController extends Controller
         return back()->with('success', 'Selected notifications marked as unread.');
     }
 
+    public function notificationsMarkAllRead(Request $request): RedirectResponse
+    {
+        if (! Schema::hasTable('pm_message_reads')) {
+            return back()->withErrors(['bulk_action' => 'Read tracking table not available on this instance.']);
+        }
+
+        $filters = $request->only(['q', 'status', 'read', 'from', 'to']);
+        $uid = (int) $request->user()->id;
+        $ids = $this->notificationLogsQuery($filters)->pluck('id');
+        if ($ids->isEmpty()) {
+            return back()->with('warning', 'No notifications matched the current filters.');
+        }
+
+        $alreadyRead = PmMessageRead::query()
+            ->where('user_id', $uid)
+            ->whereIn('pm_message_log_id', $ids->all())
+            ->pluck('pm_message_log_id');
+        $toMark = $ids->diff($alreadyRead);
+        if ($toMark->isEmpty()) {
+            return back()->with('success', 'All matching notifications are already marked as read.');
+        }
+
+        $now = now();
+        $rows = $toMark->map(fn ($id) => [
+            'pm_message_log_id' => (int) $id,
+            'user_id' => $uid,
+            'read_at' => $now,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ])->all();
+        PmMessageRead::query()->upsert($rows, ['pm_message_log_id', 'user_id'], ['read_at', 'updated_at']);
+
+        return back()->with('success', 'Marked '.$toMark->count().' notification(s) as read.');
+    }
+
+    public function showNotification(PmMessageLog $log): View
+    {
+        if ($log->channel !== 'system') {
+            abort(404);
+        }
+
+        return $this->renderMessageLogDetail($log, 'property.notifications', 'Back to notifications');
+    }
+
     public function messages(Request $request): View
     {
-        $filters = $request->only(['q', 'channel', 'status', 'from', 'to', 'sort', 'dir']);
-        $logs = $this->messageLogsQuery($filters)->limit(300)->get();
+        $filters = $this->normalizeMessageFilters($request->only([
+            'q', 'channel', 'status', 'from', 'to', 'sort', 'dir', 'sender', 'has_error', 'period', 'per_page', 'duplicates',
+        ]));
+        $perPage = (int) ($filters['per_page'] ?? 25);
+        if (! in_array($perPage, [10, 25, 50, 100], true)) {
+            $perPage = 25;
+        }
 
-        // Opening the notifications/messages page marks currently loaded messages as read for this user.
-        if (Schema::hasTable('pm_message_reads') && $logs->isNotEmpty()) {
-            $now = now();
+        $logs = $this->messageLogsQuery($filters)->paginate($perPage)->withQueryString();
+        $stats = $this->messageStats($filters);
+        $canViewBody = $this->canViewMessageBody($request);
+        $senderOptions = $this->messageSenderOptions();
+        $resendActions = app(RentReminderEligibilityService::class)->resendActionsForLogs($logs->getCollection());
+
+        return property_view('property.agent.communications.messages', [
+            'stats' => $stats,
+            'logs' => $logs,
+            'resendActions' => $resendActions,
+            'filters' => $filters,
+            'perPage' => $perPage,
+            'canViewBody' => $canViewBody,
+            'senderOptions' => $senderOptions,
+            'recipientContacts' => $this->recipientContactsForCompose(),
+            'columns' => [],
+            'tableRows' => [],
+            'tableRowFilters' => [],
+            'canManageCommunications' => $this->canManageCommunications($request),
+            'canExportCommunications' => $this->canExportCommunications($request),
+            'smsWallet' => $this->smsWalletStatus(),
+            'composeTemplates' => $this->composeTemplates(),
+        ]);
+    }
+
+    public function smsWalletTopup(Request $request): RedirectResponse
+    {
+        if (! $this->canManageCommunications($request)) {
+            abort(403, 'You do not have permission to top up SMS balance.');
+        }
+
+        /** @var BulkSmsService $bulk */
+        $bulk = app(BulkSmsService::class);
+        $min = $bulk->minTopupAmount();
+        $max = $bulk->maxTopupAmount();
+
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:'.$min, 'max:'.$max],
+            'phone' => ['required', 'string', 'max:32'],
+        ]);
+
+        $result = $bulk->initiateProviderTopup((float) $data['amount'], (string) $data['phone']);
+        if (! ($result['ok'] ?? false)) {
+            return back()
+                ->withInput()
+                ->withErrors(['sms_topup' => (string) ($result['error'] ?? 'Could not initiate M-Pesa top-up.')]);
+        }
+
+        if (Schema::hasTable('mpesa_platform_transactions')) {
+            MpesaPlatformTransaction::query()->create([
+                'reference' => 'PRADYSMS-'.strtoupper(substr(sha1(uniqid((string) mt_rand(), true)), 0, 8)),
+                'amount' => (float) ($result['amount'] ?? $data['amount']),
+                'channel' => 'stk_push',
+                'status' => 'pending',
+                'notes' => 'Pradytec SMS wallet top-up initiated from property communications.',
+                'transaction_id' => (string) ($result['transaction_id'] ?? ''),
+                'meta' => [
+                    'purpose' => 'provider_sms_topup',
+                    'module' => 'property',
+                    'requested_by_user_id' => (int) $request->user()->id,
+                    'requested_phone' => (string) ($result['phone_number'] ?? ''),
+                    'provider' => [
+                        'transaction_id' => (string) ($result['transaction_id'] ?? ''),
+                        'checkout_request_id' => (string) ($result['checkout_request_id'] ?? ''),
+                        'status' => (string) ($result['status'] ?? 'pending'),
+                        'message' => (string) ($result['message'] ?? ''),
+                    ],
+                ],
+            ]);
+        }
+
+        return back()
+            ->with(
+                'success',
+                (string) ($result['message'] ?? 'M-Pesa prompt sent. Complete payment on your phone; SMS balance updates at Pradytec after confirmation.')
+            )
+            ->with('sms_topup_pending_id', (string) ($result['transaction_id'] ?? ''));
+    }
+
+    public function smsBalanceJson(Request $request): JsonResponse
+    {
+        return response()->json([
+            'ok' => true,
+            'wallet' => $this->smsWalletStatus(),
+        ]);
+    }
+
+    public function smsTopupStatusJson(Request $request): JsonResponse
+    {
+        if (! $this->canManageCommunications($request)) {
+            abort(403, 'You do not have permission to check SMS top-up status.');
+        }
+
+        $data = $request->validate([
+            'transaction_id' => ['required', 'string', 'max:128'],
+        ]);
+
+        /** @var BulkSmsService $bulk */
+        $bulk = app(BulkSmsService::class);
+        $result = $bulk->providerTopupStatus((string) $data['transaction_id']);
+        if (! ($result['ok'] ?? false)) {
+            return response()->json([
+                'ok' => false,
+                'error' => (string) ($result['error'] ?? 'Could not load top-up status.'),
+            ], 422);
+        }
+
+        $transaction = (array) ($result['transaction'] ?? []);
+        $status = strtolower((string) ($transaction['status'] ?? 'unknown'));
+
+        return response()->json([
+            'ok' => true,
+            'status' => $status,
+            'transaction' => $transaction,
+            'wallet' => $this->smsWalletStatus(),
+        ]);
+    }
+
+    public function smsProvider(Request $request): View
+    {
+        /** @var BulkSmsService $bulk */
+        $bulk = app(BulkSmsService::class);
+        $filters = $request->only(['status', 'page', 'per_page']);
+        $perPage = (int) ($filters['per_page'] ?? 20);
+        if (! in_array($perPage, [10, 20, 50, 100], true)) {
+            $perPage = 20;
+        }
+        $filters['per_page'] = $perPage;
+
+        $history = $bulk->providerSmsHistory($filters);
+        $statistics = $bulk->providerSmsStatistics();
+        $stats = $this->providerSmsStatsCards($statistics);
+
+        return property_view('property.agent.communications.sms_provider', [
+            'stats' => $stats,
+            'history' => $history,
+            'statistics' => $statistics,
+            'filters' => $filters,
+            'smsWallet' => $this->smsWalletStatus(),
+            'smsTopup' => $this->smsTopupContext($request),
+            'canManageCommunications' => $this->canManageCommunications($request),
+            'webhookUrl' => url('/webhooks/property/communications/pradytec'),
+        ]);
+    }
+
+    public function messagesBulk(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'bulk_action' => ['required', 'in:resend_failed,mark_read'],
+            'selected_ids' => ['required', 'array', 'min:1'],
+            'selected_ids.*' => ['integer'],
+        ]);
+
+        $ids = collect((array) $data['selected_ids'])
+            ->map(static fn ($id) => (int) $id)
+            ->filter(static fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return back()->withErrors(['bulk_action' => 'Select at least one message.']);
+        }
+
+        $logs = PmMessageLog::query()->whereIn('id', $ids->all())->get();
+        if ($logs->isEmpty()) {
+            return back()->withErrors(['bulk_action' => 'No valid messages selected.']);
+        }
+
+        if ($data['bulk_action'] === 'mark_read') {
+            if (! Schema::hasTable('pm_message_reads')) {
+                return back()->withErrors(['bulk_action' => 'Read tracking table not available on this instance.']);
+            }
+
             $uid = (int) $request->user()->id;
+            $now = now();
             $rows = $logs->map(fn (PmMessageLog $log) => [
                 'pm_message_log_id' => (int) $log->id,
                 'user_id' => $uid,
@@ -180,51 +411,247 @@ class PropertyCommunicationsWebController extends Controller
                 'created_at' => $now,
                 'updated_at' => $now,
             ])->all();
+            PmMessageRead::query()->upsert($rows, ['pm_message_log_id', 'user_id'], ['read_at', 'updated_at']);
 
-            PmMessageRead::query()->upsert(
-                $rows,
-                ['pm_message_log_id', 'user_id'],
-                ['read_at', 'updated_at']
+            return back()->with('success', 'Selected messages marked as read.');
+        }
+
+        /** @var BulkSmsService $sms */
+        $sms = app(BulkSmsService::class);
+        $resent = 0;
+        $skipped = 0;
+        $bulkFailures = [];
+        $errorPresenter = app(SmsDeliveryErrorPresenter::class);
+        $delayMs = max(0, (int) config('bulksms.bulk_resend_delay_ms', 1500));
+        $smsLogs = $logs->filter(static fn (PmMessageLog $log): bool => $log->channel === 'sms');
+        $eligibility = app(RentReminderEligibilityService::class);
+        $resendActions = $eligibility->resendActionsForLogs($smsLogs);
+        $eligibleSmsLogs = $smsLogs->filter(
+            static fn (PmMessageLog $log): bool => (bool) (($resendActions[(int) $log->id]['can_bulk_select'] ?? false))
+        );
+        $ineligibleSelectionSkipped = $smsLogs->count() - $eligibleSmsLogs->count();
+        $deduped = $this->dedupeSmsLogsForResend($eligibleSmsLogs, $eligibility);
+        $sendable = 0;
+
+        foreach ($deduped as $log) {
+            if ($sms->normalizeRecipientList((string) $log->to_address) !== []) {
+                $sendable++;
+            }
+        }
+
+        if ($sendable > 0) {
+            $afford = $sms->canAffordRecipients($sendable);
+            if (! ($afford['ok'] ?? false)) {
+                return back()->withErrors([
+                    'bulk_action' => $errorPresenter->forAgent((string) ($afford['error'] ?? 'Insufficient SMS balance for bulk resend.')),
+                ]);
+            }
+        }
+        $duplicateSelectionSkipped = $eligibleSmsLogs->count() - $deduped->count();
+
+        $attemptIndex = 0;
+        $skippedDelivered = 0;
+        foreach ($deduped as $log) {
+            $phones = $sms->normalizeRecipientList((string) $log->to_address);
+            if ($phones === []) {
+                $skipped++;
+                continue;
+            }
+
+            if ($attemptIndex > 0 && $delayMs > 0) {
+                usleep($delayMs * 1000);
+            }
+            $attemptIndex++;
+
+            $result = $this->resendSmsLogRow($sms, $log, $phones, (int) $request->user()->id);
+
+            if (($result['ok'] ?? false) === true) {
+                $resent++;
+            } elseif (($result['skipped'] ?? false) === true) {
+                $skippedDelivered++;
+            } else {
+                $bulkFailures[] = [
+                    'id' => (int) $log->id,
+                    'error' => (string) ($result['error'] ?? 'Send failed'),
+                ];
+            }
+        }
+
+        if ($resent === 0 && $bulkFailures === [] && $skippedDelivered === 0 && $ineligibleSelectionSkipped === 0) {
+            return back()->withErrors(['bulk_action' => 'No SMS messages could be resent from the selection.']);
+        }
+
+        $message = "Resent {$resent} SMS message(s).";
+        if ($ineligibleSelectionSkipped > 0) {
+            $message .= " Ignored {$ineligibleSelectionSkipped} row(s) already sent, delivered, or resolved.";
+        }
+        if ($duplicateSelectionSkipped > 0) {
+            $message .= " Collapsed {$duplicateSelectionSkipped} duplicate row(s) in your selection (same invoice + phone).";
+        }
+        if ($skippedDelivered > 0) {
+            $message .= " Skipped {$skippedDelivered} already-delivered reminder(s).";
+        }
+        if ($skipped > 0) {
+            $message .= " Skipped {$skipped} non-SMS or invalid recipient row(s).";
+        }
+        if ($bulkFailures !== []) {
+            return back()->with('warning', $message.' '.$errorPresenter->summarizeBulkFailures($bulkFailures));
+        }
+
+        return back()->with('success', $message);
+    }
+
+    public function resendMessage(Request $request, PmMessageLog $log): RedirectResponse
+    {
+        if ($log->channel !== 'sms') {
+            return back()->withErrors(['channel' => 'Only SMS messages can be resent from this action.']);
+        }
+
+        /** @var BulkSmsService $sms */
+        $sms = app(BulkSmsService::class);
+        $phones = $sms->normalizeRecipientList((string) $log->to_address);
+        if ($phones === []) {
+            return back()->withErrors(['to_address' => 'Could not normalize the stored phone number.']);
+        }
+
+        $result = $this->resendSmsLogRow($sms, $log, $phones, (int) $request->user()->id);
+
+        if (($result['ok'] ?? false) !== true) {
+            return back()->withErrors([
+                'body' => app(SmsDeliveryErrorPresenter::class)->forAgent((string) ($result['error'] ?? 'SMS resend failed.')),
+            ]);
+        }
+
+        return back()->with('success', 'SMS resent to '.implode(', ', $phones).'.');
+    }
+
+    /**
+     * @param  list<string>  $phones
+     * @return array{ok: bool, skipped?: bool, error?: string}
+     */
+    private function resendSmsLogRow(BulkSmsService $sms, PmMessageLog $log, array $phones, int $userId): array
+    {
+        $eligibility = app(RentReminderEligibilityService::class);
+
+        if (! $eligibility->isLogEligibleForSmsResend($log)) {
+            return [
+                'ok' => false,
+                'skipped' => true,
+                'error' => 'This row is not a failed SMS that needs resending.',
+            ];
+        }
+
+        $resolver = app(RentReminderMessageLogResolver::class);
+        $body = $resolver->resolveSmsBody($log);
+        if ($body === null && $resolver->isRentReminder($log)) {
+            return ['ok' => false, 'error' => 'Could not rebuild this rent reminder (invoice missing or inaccessible). Update the template and try again.'];
+        }
+        $body = $body ?? (string) $log->body;
+        $meta = $resolver->resolveStaffMeta($log);
+        $invoiceNo = $eligibility->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body);
+        $subject = (string) ($meta['subject'] ?? $log->subject);
+        $internalStage = (string) ($meta['internal_stage'] ?? $log->internal_stage);
+        if ($internalStage === '') {
+            $internalStage = $eligibility->extractInternalStageFromLogText($subject, (string) $log->internal_stage);
+        }
+        $messageHash = $eligibility->messageBodyHash($body);
+
+        if ($eligibility->logShowsSuccessfulSmsForIntent(
+            implode(',', $phones),
+            $invoiceNo,
+            $internalStage,
+            $messageHash,
+            (int) $log->id
+        )) {
+            return [
+                'ok' => false,
+                'skipped' => true,
+                'error' => 'A successful SMS for this invoice, stage, and message is already logged. Skipped to avoid duplicate charges.',
+            ];
+        }
+
+        $displayStage = (string) ($meta['display_stage'] ?? $log->display_stage);
+        $templateCategory = $resolver->isRentReminder($log) ? 'rent_reminder' : $log->template_category;
+
+        $result = $sms->sendNow(
+            $body,
+            $phones,
+            $userId,
+            null,
+            'property',
+            verifyBalance: false
+        );
+
+        if (($result['ok'] ?? false) !== true && $this->isProviderRateLimitError((string) ($result['error'] ?? ''))) {
+            sleep(60);
+            $result = $sms->sendNow(
+                $body,
+                $phones,
+                $userId,
+                null,
+                'property',
+                verifyBalance: false
             );
         }
 
-        $stats = [
-            ['label' => 'Logged sends', 'value' => (string) $logs->count(), 'hint' => 'This list'],
-            ['label' => 'Email', 'value' => (string) $logs->where('channel', 'email')->count(), 'hint' => ''],
-            ['label' => 'SMS', 'value' => (string) $logs->where('channel', 'sms')->count(), 'hint' => ''],
-            ['label' => 'System', 'value' => (string) $logs->where('channel', 'system')->count(), 'hint' => ''],
-        ];
+        if (($result['ok'] ?? false) === true) {
+            $sentLog = PmMessageLog::query()->create([
+                'user_id' => $userId,
+                'channel' => 'sms',
+                'to_address' => implode(',', $phones),
+                'subject' => $subject,
+                'internal_stage' => $internalStage !== '' ? $internalStage : null,
+                'display_stage' => $displayStage !== '' ? $displayStage : null,
+                'template_category' => $templateCategory,
+                'body' => $body,
+                'delivery_status' => 'sent',
+                'sent_at' => now(),
+            ]);
 
-        $canViewBody = $this->canViewMessageBody($request);
-        $mapped = $logs->map(function (PmMessageLog $l) use ($canViewBody) {
-            $viewHref = route('property.communications.messages.show', $l, absolute: false);
-            $actions = new HtmlString(
-                '<a href="'.$viewHref.'" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700 hover:bg-indigo-50">View</a>'
-            );
+            if ($invoiceNo !== '') {
+                $eligibility->supersedeFailedLogsForRecipientInvoice(
+                    $phones,
+                    $invoiceNo,
+                    null,
+                    $internalStage,
+                    $messageHash,
+                    (int) $sentLog->id
+                );
+            }
+        }
 
-            return [
-                'filter' => mb_strtolower($l->channel.' '.($l->delivery_status ?? '').' '.$l->to_address.' '.strip_tags($l->body)),
-                'cells' => [
-                    $l->created_at->format('Y-m-d H:i'),
-                    strtoupper($l->channel),
-                    strtoupper((string) ($l->delivery_status ?? 'unknown')),
-                    $this->maskAddress((string) $l->to_address),
-                    $l->subject ?? '—',
-                    ($l->delivery_error ? Str::limit($l->delivery_error, 48) : ($canViewBody ? Str::limit(strip_tags($l->body), 48) : '[MASKED]')),
-                    $l->user->name ?? '—',
-                    $actions,
-                ],
-            ];
-        });
+        return $result;
+    }
 
-        return property_view('property.agent.communications.messages', [
-            'stats' => $stats,
-            'columns' => ['When', 'Channel', 'Status', 'To', 'Subject', 'Preview / Error', 'By', 'Actions'],
-            'tableRows' => $mapped->map(fn (array $r) => $r['cells'])->values()->all(),
-            'tableRowFilters' => $mapped->map(fn (array $r) => $r['filter'])->values()->all(),
-            'filters' => $filters,
-            'recipientContacts' => $this->recipientContactsForCompose(),
-        ]);
+    private function isProviderRateLimitError(string $error): bool
+    {
+        return str_contains($error, '429')
+            || str_contains(strtolower($error), 'rate_limit')
+            || str_contains(strtolower($error), 'too many requests');
+    }
+
+    /**
+     * One resend per invoice + phone in a bulk selection (avoids re-sending the same failed row 4–5 times).
+     *
+     * @param  \Illuminate\Support\Collection<int, PmMessageLog>  $logs
+     * @return \Illuminate\Support\Collection<int, PmMessageLog>
+     */
+    private function dedupeSmsLogsForResend(Collection $logs, RentReminderEligibilityService $eligibility): Collection
+    {
+        $picked = [];
+
+        foreach ($logs->sortBy('id') as $log) {
+            $phones = app(BulkSmsService::class)->normalizeRecipientList((string) $log->to_address);
+            $invoiceNo = $eligibility->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body);
+            $phoneKey = $phones[0] ?? trim((string) $log->to_address);
+            $groupKey = strtolower($invoiceNo !== '' ? $invoiceNo.'|'.$phoneKey : 'log:'.$log->id);
+
+            if (! isset($picked[$groupKey])) {
+                $picked[$groupKey] = $log;
+            }
+        }
+
+        return collect(array_values($picked));
     }
 
     public function messagesExport(Request $request)
@@ -232,33 +659,53 @@ class PropertyCommunicationsWebController extends Controller
         if (! ($request->user()->hasPmPermission('communications.export') || $request->user()->hasPmPermission('communications.manage'))) {
             abort(403, 'You do not have permission to export communications.');
         }
-        $filters = $request->only(['q', 'channel', 'status', 'from', 'to', 'sort', 'dir']);
+        $filters = $this->normalizeMessageFilters($request->only([
+            'q', 'channel', 'status', 'from', 'to', 'sort', 'dir', 'sender', 'has_error', 'period', 'duplicates',
+        ]));
+        $format = strtolower((string) $request->query('format', 'csv'));
+        if (! in_array($format, ['csv', 'xls', 'pdf'], true)) {
+            $format = 'csv';
+        }
         $rows = $this->messageLogsQuery($filters)->get();
         $canViewBody = $this->canViewMessageBody($request);
-        $this->logExportAudit($request, 'messages', 'csv', (int) $rows->count(), $filters);
+        $this->logExportAudit($request, 'messages', $format, (int) $rows->count(), $filters);
 
-        return CsvExport::stream(
-            'communications_messages_'.now()->format('Ymd_His').'.csv',
-            ['ID', 'When', 'Channel', 'Status', 'To', 'Subject', 'Body', 'Delivery Error', 'By'],
+        return TabularExport::stream(
+            'communications-messages',
+            ['ID', 'When', 'Channel', 'Internal Stage', 'Display Label', 'Status', 'To', 'Subject', 'Body', 'Delivery Error', 'Sent At', 'By'],
             function () use ($rows, $canViewBody) {
                 foreach ($rows as $l) {
+                    $parsed = app(TenantCommunicationStageService::class)->parseStaffSubject($l->subject);
                     yield [
                         $l->id,
                         optional($l->created_at)->format('Y-m-d H:i:s'),
-                        $l->channel,
-                        $l->delivery_status,
+                        strtoupper((string) $l->channel),
+                        (string) ($l->internal_stage ?: ($parsed['internal_stage'] ?? '')),
+                        (string) ($l->display_stage ?: ($parsed['display_label'] ?? '')),
+                        strtoupper((string) ($l->delivery_status ?? 'unknown')),
                         $this->maskAddress((string) $l->to_address),
-                        $l->subject,
+                        (string) ($l->subject ?? ''),
                         $canViewBody ? strip_tags((string) $l->body) : '[MASKED]',
-                        $l->delivery_error,
-                        $l->user?->name,
+                        (string) ($l->delivery_error ?? ''),
+                        optional($l->sent_at)->format('Y-m-d H:i:s') ?? '',
+                        (string) ($l->user?->name ?? 'System'),
                     ];
                 }
-            }
+            },
+            $format
         );
     }
 
     public function showMessage(PmMessageLog $log): View
+    {
+        if (! in_array($log->channel, ['email', 'sms'], true)) {
+            abort(404);
+        }
+
+        return $this->renderMessageLogDetail($log, 'property.communications.messages', 'Back to SMS / email log');
+    }
+
+    private function renderMessageLogDetail(PmMessageLog $log, string $backRoute, string $backLabel): View
     {
         $log->loadMissing('user');
         if (Schema::hasTable('pm_message_reads')) {
@@ -268,7 +715,20 @@ class PropertyCommunicationsWebController extends Controller
             );
         }
 
-        return property_view('property.agent.communications.message_show', ['log' => $log]);
+        $resendAction = app(RentReminderEligibilityService::class)->smsResendActionForLog(
+            $log,
+            app(RentReminderEligibilityService::class)->deliveredInvoiceKeysForInvoiceNumbers([
+                app(RentReminderEligibilityService::class)->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body),
+            ])
+        );
+
+        return property_view('property.agent.communications.message_show', [
+            'log' => $log,
+            'backRoute' => $backRoute,
+            'backLabel' => $backLabel,
+            'canManageCommunications' => $this->canManageCommunications(request()),
+            'resendAction' => $resendAction,
+        ]);
     }
 
     /**
@@ -400,6 +860,7 @@ class PropertyCommunicationsWebController extends Controller
             'selected_recipients.*' => ['string', 'max:255'],
             'subject' => ['nullable', 'string', 'max:255'],
             'body' => ['required', 'string', 'max:10000'],
+            'message_template_id' => ['nullable', 'integer', 'exists:pm_message_templates,id'],
             'attachments' => ['nullable', 'array'],
             'attachments.*' => ['file', 'max:10240'],
         ]);
@@ -433,17 +894,48 @@ class PropertyCommunicationsWebController extends Controller
             ]);
         }
 
-        app(PropertyCommunicationService::class)->sendNow([
+        if ($data['channel'] === 'sms') {
+            $afford = app(BulkSmsService::class)->canAffordRecipients(count($recipients));
+            if (! ($afford['ok'] ?? false)) {
+                return back()->withInput()->withErrors([
+                    'to_address' => (string) ($afford['error'] ?? 'Insufficient SMS balance for this send.'),
+                ]);
+            }
+        }
+
+        $message = app(PropertyCommunicationService::class)->sendNow([
             'created_by_user_id' => (int) $request->user()->id,
             'channel' => $data['channel'],
             'category' => 'general_notice',
             'purpose' => 'manual_message',
             'subject' => $data['subject'] ?? null,
             'body' => (string) $data['body'],
+            'template_id' => $data['message_template_id'] ?? null,
             'priority' => 'normal',
             'severity' => 'info',
             'attachments' => $request->file('attachments', []),
         ], $recipients);
+        $message->load('recipients');
+
+        if ($message->status === 'scheduled') {
+            return back()->with('success', __('Message scheduled for :time.', [
+                'time' => optional($message->scheduled_at)->format('Y-m-d H:i') ?? 'later',
+            ]));
+        }
+
+        $failed = $message->recipients->first(static fn ($recipient) => $recipient->status === 'failed');
+        if ($failed) {
+            return back()->withInput()->withErrors([
+                'body' => (string) ($failed->last_error ?: 'Message delivery failed.'),
+            ]);
+        }
+
+        $cancelled = $message->recipients->first(static fn ($recipient) => $recipient->status === 'cancelled');
+        if ($cancelled) {
+            return back()->withInput()->withErrors([
+                'to_address' => (string) ($cancelled->opt_out_reason ?: 'Recipient cannot receive this message.'),
+            ]);
+        }
 
         return back()->with('success', $data['channel'] === 'sms'
             ? __('SMS sent and logged.')
@@ -527,6 +1019,27 @@ class PropertyCommunicationsWebController extends Controller
         return (string) $items->first().' (+'.max(0, $items->count() - 1).' more)';
     }
 
+    /**
+     * @return list<array{id: int, name: string, channel: string, subject: string, body: string}>
+     */
+    private function composeTemplates(): array
+    {
+        return PmMessageTemplate::query()
+            ->where('is_active', true)
+            ->whereIn('channel', ['sms', 'email'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'channel', 'subject', 'body'])
+            ->map(static fn (PmMessageTemplate $template) => [
+                'id' => (int) $template->id,
+                'name' => (string) $template->name,
+                'channel' => (string) $template->channel,
+                'subject' => (string) ($template->subject ?? ''),
+                'body' => (string) $template->body,
+            ])
+            ->values()
+            ->all();
+    }
+
     public function templates(): View
     {
         $templates = PmMessageTemplate::query()->orderBy('name')->get();
@@ -557,12 +1070,18 @@ class PropertyCommunicationsWebController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:128'],
-            'channel' => ['required', 'in:sms,email'],
+            'channel' => ['required', 'in:sms,email,whatsapp,system'],
+            'category' => ['nullable', 'string', 'max:64'],
             'subject' => ['nullable', 'string', 'max:255'],
             'body' => ['required', 'string', 'max:20000'],
         ]);
 
-        PmMessageTemplate::query()->create($data);
+        PmMessageTemplate::query()->create([
+            ...$data,
+            'category' => $data['category'] ?? 'general_notice',
+            'template_version' => 1,
+            'is_active' => true,
+        ]);
 
         return back()->with('success', __('Template saved.'));
     }
@@ -572,6 +1091,77 @@ class PropertyCommunicationsWebController extends Controller
         $template->delete();
 
         return back()->with('success', __('Template deleted.'));
+    }
+
+    public function rentTemplates(Request $request): View
+    {
+        $stageService = app(TenantCommunicationStageService::class);
+        $templateService = app(PropertyCommunicationTemplateService::class);
+        $bulk = app(BulkSmsService::class);
+
+        $stageKeys = $stageService->editableStageKeys();
+        $stageMessages = $stageService->editableStageMessagesForForm();
+        $stageLabels = [];
+        foreach ($stageKeys as $key) {
+            $def = $stageService->stageDefinition($key);
+            $stageLabels[$key] = (string) ($def['display_label'] ?? $key);
+        }
+
+        $defaultStage = 'D+7';
+        $preview = $templateService->previewRentReminder($defaultStage, 'sms');
+
+        return property_view('property.agent.communications.rent_templates', [
+            'stats' => [
+                ['label' => 'Reminder stages', 'value' => (string) count($stageKeys), 'hint' => 'Editable wording'],
+                ['label' => 'SMS cost / segment', 'value' => number_format($bulk->costPerSms(), 2).' '.$bulk->currency(), 'hint' => 'Provider rate'],
+            ],
+            'columns' => [],
+            'tableRows' => [],
+            'stageKeys' => $stageKeys,
+            'stageMessages' => $stageMessages,
+            'stageLabels' => $stageLabels,
+            'preview' => $preview,
+            'costPerSms' => $bulk->costPerSms(),
+            'currency' => $bulk->currency(),
+            'canManageCommunications' => $this->canManageCommunications($request),
+        ]);
+    }
+
+    public function saveRentTemplateMessages(Request $request): RedirectResponse
+    {
+        $stageService = app(TenantCommunicationStageService::class);
+        $rules = ['messages' => ['required', 'array']];
+        foreach ($stageService->editableStageKeys() as $stageKey) {
+            $rules['messages.'.$stageKey] = ['nullable', 'string', 'max:2000'];
+        }
+
+        $data = $request->validate($rules);
+        $stageService->saveEditableStageMessages((array) ($data['messages'] ?? []));
+
+        return back()->with('success', __('Rent reminder wording saved.'));
+    }
+
+    public function previewRentTemplatesJson(Request $request): JsonResponse
+    {
+        $stageService = app(TenantCommunicationStageService::class);
+        $data = $request->validate([
+            'stage_key' => ['required', 'string', 'in:'.implode(',', $stageService->editableStageKeys())],
+            'channel' => ['nullable', 'in:sms,email,whatsapp,portal'],
+            'stage_message' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $overrides = [];
+        if (array_key_exists('stage_message', $data) && trim((string) $data['stage_message']) !== '') {
+            $overrides['stage_message'] = (string) $data['stage_message'];
+        }
+
+        $preview = app(PropertyCommunicationTemplateService::class)->previewRentReminder(
+            (string) $data['stage_key'],
+            (string) ($data['channel'] ?? 'sms'),
+            $overrides
+        );
+
+        return response()->json($preview);
     }
 
     public function bulk(Request $request): View
@@ -613,8 +1203,11 @@ class PropertyCommunicationsWebController extends Controller
             'walletBalance' => app(BulkSmsService::class)->walletBalance(),
             'currency' => app(BulkSmsService::class)->currency(),
             'costPerSms' => app(BulkSmsService::class)->costPerSms(),
+            'smsWallet' => $this->smsWalletStatus(),
+            'smsTopup' => $this->smsTopupContext($request),
             'filters' => $filters,
             'propertyOptions' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'composeTemplates' => $this->composeTemplates(),
         ]);
     }
 
@@ -678,6 +1271,15 @@ class PropertyCommunicationsWebController extends Controller
                     ? 'No valid phone numbers found. Use digits only, separated by comma, semicolon, or new lines.'
                     : 'No valid email addresses found. Use comma, semicolon, space, or new lines.',
                 ]);
+        }
+
+        if ($data['channel'] === 'sms') {
+            $afford = app(BulkSmsService::class)->canAffordRecipients(count($recipients));
+            if (! ($afford['ok'] ?? false)) {
+                return back()->withInput()->withErrors([
+                    'recipients' => (string) ($afford['error'] ?? 'Insufficient SMS balance for this bulk send.'),
+                ]);
+            }
         }
 
         $payload = [
@@ -839,37 +1441,85 @@ class PropertyCommunicationsWebController extends Controller
         return response(['ok' => true]);
     }
 
-    private function messageLogsQuery(array $filters): Builder
+    private function messageLogsQuery(array $filters, bool $applyDuplicates = true): Builder
     {
-        $q = PmMessageLog::query()->with('user');
+        $filters = $this->normalizeMessageFilters($filters);
+        $table = (new PmMessageLog)->getTable();
+        $q = PmMessageLog::query()
+            ->with('user')
+            ->whereIn($table.'.channel', ['email', 'sms']);
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {
-            $q->where(function (Builder $b) use ($search) {
-                $b->where('to_address', 'like', '%'.$search.'%')
-                    ->orWhere('subject', 'like', '%'.$search.'%')
-                    ->orWhere('body', 'like', '%'.$search.'%')
-                    ->orWhere('delivery_error', 'like', '%'.$search.'%');
+            $q->where(function (Builder $b) use ($search, $table) {
+                $b->where($table.'.to_address', 'like', '%'.$search.'%')
+                    ->orWhere($table.'.subject', 'like', '%'.$search.'%')
+                    ->orWhere($table.'.body', 'like', '%'.$search.'%')
+                    ->orWhere($table.'.delivery_error', 'like', '%'.$search.'%');
             });
         }
 
         $channel = trim((string) ($filters['channel'] ?? ''));
-        if ($channel !== '') {
-            $q->where('channel', $channel);
+        if ($channel !== '' && in_array($channel, ['email', 'sms'], true)) {
+            $q->where($table.'.channel', $channel);
         }
 
         $status = trim((string) ($filters['status'] ?? ''));
-        if ($status !== '') {
-            $q->where('delivery_status', $status);
+        if ($status === 'failed') {
+            $q->where(function (Builder $b) use ($table) {
+                $b->where(function (Builder $nonSms) use ($table) {
+                    $nonSms->where($table.'.channel', '!=', 'sms')
+                        ->where($table.'.delivery_status', 'failed');
+                })->orWhere(function (Builder $smsFailed) use ($table) {
+                    app(SmsHealthService::class)->applyUnresolvedFailedSmsScope($smsFailed, $table);
+                });
+            });
+        } elseif ($status === 'failed_all') {
+            $q->where($table.'.delivery_status', 'failed');
+        } elseif ($status !== '') {
+            $q->where($table.'.delivery_status', $status);
+        }
+
+        $sender = trim((string) ($filters['sender'] ?? ''));
+        if ($sender !== '' && ctype_digit($sender)) {
+            $q->where($table.'.user_id', (int) $sender);
+        }
+
+        $hasError = trim((string) ($filters['has_error'] ?? ''));
+        if ($hasError === 'yes') {
+            $q->where(function (Builder $b) use ($table) {
+                $b->where(function (Builder $smsFailed) use ($table) {
+                    app(SmsHealthService::class)->applyUnresolvedFailedSmsScope($smsFailed, $table);
+                })->orWhere(function (Builder $nonSms) use ($table) {
+                    $nonSms->where($table.'.channel', '!=', 'sms')
+                        ->where(function (Builder $inner) use ($table) {
+                            $inner->where($table.'.delivery_status', 'failed')
+                                ->orWhere(function (Builder $err) use ($table) {
+                                    $err->whereNotNull($table.'.delivery_error')
+                                        ->where($table.'.delivery_error', '!=', '');
+                                });
+                        });
+                });
+            });
+        } elseif ($hasError === 'no') {
+            $q->where(function (Builder $b) use ($table) {
+                $b->where(function (Builder $inner) use ($table) {
+                    $inner->whereNull($table.'.delivery_status')
+                        ->orWhere($table.'.delivery_status', '!=', 'failed');
+                })->where(function (Builder $inner) use ($table) {
+                    $inner->whereNull($table.'.delivery_error')
+                        ->orWhere($table.'.delivery_error', '');
+                });
+            });
         }
 
         $from = trim((string) ($filters['from'] ?? ''));
         if ($from !== '') {
-            $q->whereDate('created_at', '>=', $from);
+            $q->whereDate($table.'.created_at', '>=', $from);
         }
         $to = trim((string) ($filters['to'] ?? ''));
         if ($to !== '') {
-            $q->whereDate('created_at', '<=', $to);
+            $q->whereDate($table.'.created_at', '<=', $to);
         }
 
         $sort = (string) ($filters['sort'] ?? 'created_at');
@@ -879,7 +1529,134 @@ class PropertyCommunicationsWebController extends Controller
             $sort = 'created_at';
         }
 
-        return $q->orderBy($sort, $dir)->orderByDesc('id');
+        if ($applyDuplicates) {
+            $this->applyDuplicateSendFilter($q, $filters);
+        }
+
+        return $q->orderBy($table.'.'.$sort, $dir)->orderByDesc($table.'.id');
+    }
+
+    /**
+     * Rows where the same recipient received the same subject more than once on the same day.
+     */
+    private function applyDuplicateSendFilter(Builder $q, array $filters): void
+    {
+        if (trim((string) ($filters['duplicates'] ?? '')) !== 'yes') {
+            return;
+        }
+
+        $table = (new PmMessageLog)->getTable();
+        $baseFilters = $filters;
+        unset($baseFilters['duplicates']);
+
+        $groupSub = $this->messageLogsQuery($baseFilters, applyDuplicates: false)
+            ->select(
+                "{$table}.to_address",
+                "{$table}.subject",
+                DB::raw("DATE({$table}.created_at) as duplicate_day"),
+                "{$table}.channel",
+                DB::raw('COUNT(*) as duplicate_group_count')
+            )
+            ->groupBy("{$table}.to_address", "{$table}.subject", DB::raw("DATE({$table}.created_at)"), "{$table}.channel")
+            ->havingRaw('COUNT(*) > 1');
+
+        $q->joinSub($groupSub, 'dup_groups', function ($join) use ($table) {
+            $join->on("{$table}.to_address", '=', 'dup_groups.to_address')
+                ->on("{$table}.subject", '=', 'dup_groups.subject')
+                ->on("{$table}.channel", '=', 'dup_groups.channel')
+                ->whereRaw("DATE({$table}.created_at) = dup_groups.duplicate_day");
+        })->addSelect("{$table}.*", 'dup_groups.duplicate_group_count');
+    }
+
+    /**
+     * @return list<array{label:string,value:string,hint?:string}>
+     */
+    private function messageStats(array $filters): array
+    {
+        $base = $this->messageLogsQuery($filters);
+        $total = (clone $base)->count();
+        $sms = (clone $base)->where((new PmMessageLog)->getTable().'.channel', 'sms')->count();
+        $email = (clone $base)->where((new PmMessageLog)->getTable().'.channel', 'email')->count();
+        $failed = $this->unresolvedFailedLogCount($filters);
+        $delivered = (clone $base)->whereIn('delivery_status', ['sent', 'delivered'])->count();
+        $successRate = $total > 0 ? (int) round(($delivered / $total) * 100) : 0;
+
+        $stats = [
+            ['label' => 'Matching sends', 'value' => (string) $total, 'hint' => 'Current filters'],
+            ['label' => 'Delivered', 'value' => (string) $delivered, 'hint' => $successRate.'% success rate'],
+            ['label' => 'Failed (needs action)', 'value' => (string) $failed, 'hint' => $failed > 0 ? 'Unresolved SMS failures only' : 'All clear'],
+            ['label' => 'SMS / Email', 'value' => $sms.' / '.$email, 'hint' => 'Channel split'],
+        ];
+
+        if (trim((string) ($filters['duplicates'] ?? '')) === 'yes') {
+            $stats[] = [
+                'label' => 'Duplicate rows',
+                'value' => (string) $total,
+                'hint' => 'Same phone + subject + day (count > 1)',
+            ];
+        } else {
+            $duplicateFilters = array_merge($filters, [
+                'duplicates' => 'yes',
+                'status' => trim((string) ($filters['status'] ?? '')) !== '' ? $filters['status'] : 'sent',
+            ]);
+            $duplicateCount = (clone $this->messageLogsQuery($duplicateFilters))->count();
+            if ($duplicateCount > 0) {
+                $stats[] = [
+                    'label' => 'Sent duplicates',
+                    'value' => (string) $duplicateCount,
+                    'hint' => 'Extra SENT rows (same phone + subject + day). Use Duplicates filter',
+                ];
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Unresolved failed rows for the current filter set (excludes superseded and SMS already delivered).
+     */
+    private function unresolvedFailedLogCount(array $filters): int
+    {
+        return app(SmsHealthService::class)->unresolvedFailedCountForCommunicationsFilters(
+            $filters,
+            fn (array $f) => $this->messageLogsQuery($this->normalizeMessageFilters($f)),
+        );
+    }
+
+    /**
+     * @return list<array{id:int,name:string}>
+     */
+    private function messageSenderOptions(): array
+    {
+        $userIds = PmMessageLog::query()
+            ->whereNotNull('user_id')
+            ->distinct()
+            ->pluck('user_id')
+            ->map(static fn ($id) => (int) $id)
+            ->filter(static fn ($id) => $id > 0)
+            ->values()
+            ->all();
+
+        if ($userIds === []) {
+            return [];
+        }
+
+        return User::query()
+            ->whereIn('id', $userIds)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(static fn (User $user) => ['id' => (int) $user->id, 'name' => (string) $user->name])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    private function normalizeMessageFilters(array $filters): array
+    {
+        return app(SmsHealthService::class)->normalizeCommunicationsPeriodFilters($filters);
     }
 
     private function bulkLogsQuery(array $filters): Builder
@@ -929,7 +1706,7 @@ class PropertyCommunicationsWebController extends Controller
     {
         $q = PmMessageLog::query()
             ->with('user')
-            ->whereIn('channel', ['system', 'email', 'sms']);
+            ->where('channel', 'system');
 
         $search = trim((string) ($filters['q'] ?? ''));
         if ($search !== '') {
@@ -942,8 +1719,8 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         $channel = trim((string) ($filters['channel'] ?? ''));
-        if ($channel !== '' && in_array($channel, ['system', 'email', 'sms'], true)) {
-            $q->where('channel', $channel);
+        if ($channel !== '' && $channel === 'system') {
+            $q->where('channel', 'system');
         }
 
         $status = trim((string) ($filters['status'] ?? ''));
@@ -985,6 +1762,90 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return $q->orderBy($sort, $dir)->orderByDesc('id');
+    }
+
+    private function canManageCommunications(Request $request): bool
+    {
+        return $request->user()->hasPmPermission('communications.manage');
+    }
+
+    private function canExportCommunications(Request $request): bool
+    {
+        $user = $request->user();
+
+        return $user->hasPmPermission('communications.export')
+            || $user->hasPmPermission('communications.manage');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function smsWalletStatus(): array
+    {
+        return app(BulkSmsService::class)->walletStatusForUi();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function smsTopupContext(Request $request): array
+    {
+        /** @var BulkSmsService $bulk */
+        $bulk = app(BulkSmsService::class);
+        $config = $bulk->topupUiConfig();
+
+        return [
+            'config' => $config,
+            'can_topup' => ($config['enabled'] ?? false) && $this->canManageCommunications($request),
+            'recent' => $bulk->recentProviderTopups(6),
+            'default_phone' => $this->defaultTopupPhone($request),
+        ];
+    }
+
+    private function defaultTopupPhone(Request $request): string
+    {
+        $user = $request->user();
+        if (! $user) {
+            return '';
+        }
+
+        foreach ([$user->phone ?? null, $user->mobile ?? null] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array{ok?:bool,statistics?:array<string,mixed>}  $statisticsResult
+     * @return list<array{label:string,value:string,hint:string}>
+     */
+    private function providerSmsStatsCards(array $statisticsResult): array
+    {
+        if (! ($statisticsResult['ok'] ?? false)) {
+            return [
+                ['label' => 'Provider SMS', 'value' => '—', 'hint' => (string) ($statisticsResult['error'] ?? 'Unavailable')],
+            ];
+        }
+
+        $stats = (array) ($statisticsResult['statistics'] ?? []);
+        $today = (array) ($stats['today'] ?? []);
+        $month = (array) ($stats['this_month'] ?? []);
+        $currency = app(BulkSmsService::class)->currency();
+
+        return [
+            ['label' => 'Sent (today)', 'value' => (string) ((int) ($today['sent'] ?? 0)), 'hint' => 'Provider account'],
+            ['label' => 'Delivered (today)', 'value' => (string) ((int) ($today['delivered'] ?? 0)), 'hint' => ''],
+            ['label' => 'Failed (today)', 'value' => (string) ((int) ($today['failed'] ?? 0)), 'hint' => ''],
+            ['label' => 'Cost (today)', 'value' => number_format((float) ($today['cost'] ?? 0), 2).' '.$currency, 'hint' => ''],
+            ['label' => 'Sent (month)', 'value' => (string) ((int) ($month['sent'] ?? 0)), 'hint' => ''],
+            ['label' => 'Delivered (month)', 'value' => (string) ((int) ($month['delivered'] ?? 0)), 'hint' => ''],
+            ['label' => 'Total sent (all time)', 'value' => (string) ((int) ($stats['total_sent'] ?? 0)), 'hint' => ''],
+            ['label' => 'Total cost (all time)', 'value' => number_format((float) ($stats['total_cost'] ?? 0), 2).' '.$currency, 'hint' => ''],
+        ];
     }
 
     private function canViewMessageBody(Request $request): bool

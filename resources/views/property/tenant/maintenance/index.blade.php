@@ -37,9 +37,9 @@
                             <p class="mt-2 text-xs text-slate-500">
                                 Last update: {{ optional($r->updated_at)->format('Y-m-d H:i') }}
                                 @if ($job)
-                                    ┬╖ Job #{{ $job->id }} {{ str_replace('_', ' ', $job->status) }}
+                                     -  Job #{{ $job->id }} {{ str_replace('_', ' ', $job->status) }}
                                     @if ($job->vendor)
-                                        ┬╖ Vendor: {{ $job->vendor->name }}
+                                         -  Vendor: {{ $job->vendor->name }}
                                     @endif
                                 @endif
                             </p>

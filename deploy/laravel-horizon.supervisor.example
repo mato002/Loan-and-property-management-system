@@ -1,0 +1,30 @@
+# Laravel Horizon — Supervisor program (Phase 10).
+# Replaces standalone queue:work when Horizon is enabled.
+#
+# Prerequisites:
+#   - Phase 9 complete: QUEUE_CONNECTION=redis, ops:redis-cutover-verify passes
+#   - Linux VPS with ext-pcntl + ext-posix (Horizon does NOT run on Windows/XAMPP)
+#   - Stop any laravel-queue-worker using queue:work redis before starting Horizon
+#
+# Copy to /etc/supervisor/conf.d/laravel-horizon.conf and adjust paths/user.
+#
+#   sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl start laravel-horizon
+#
+# After deploy:
+#   cd /path/to/project && php artisan horizon:terminate
+#
+# Dashboard: https://your-domain/horizon (super admin login required)
+# Monitoring: docs/QUEUE-MONITORING.md
+
+[program:laravel-horizon]
+process_name=%(program_name)s
+command=php /path/to/project/artisan horizon
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=www-data
+numprocs=1
+redirect_stderr=true
+stdout_logfile=/path/to/project/storage/logs/horizon.log
+stopwaitsecs=3600

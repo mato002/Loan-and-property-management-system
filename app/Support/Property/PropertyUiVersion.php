@@ -20,7 +20,7 @@ final class PropertyUiVersion
     public static function resolveViewName(string $name): string
     {
         $logical = self::normalizeLogicalViewName($name);
-        $version = self::isV2() ? 'v2' : 'legacy';
+        $version = self::isV2() ? 'v2' : 'agent';
         $versioned = "property.{$version}.{$logical}";
 
         if (View::exists($versioned)) {
@@ -63,7 +63,7 @@ final class PropertyUiVersion
      */
     public static function componentView(string $name): string
     {
-        $version = self::isV2() ? 'v2' : 'legacy';
+        $version = self::isV2() ? 'v2' : 'agent';
         $versioned = "components.property.{$version}.{$name}";
 
         if (View::exists($versioned)) {

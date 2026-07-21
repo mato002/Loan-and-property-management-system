@@ -30,7 +30,7 @@
             'items' => [
                 [
                     'label' => 'Dashboard',
-                    'sublabel' => 'Alerts ┬╖ risks ┬╖ KPIs',
+                    'sublabel' => 'Alerts  -  risks  -  KPIs',
                     'route' => 'property.dashboard',
                     'active' => ['property.dashboard'],
                     'badge' => null,
@@ -40,11 +40,11 @@
         [
             'heading' => 'Properties',
             'icon' => 'fa-building',
-            'kicker' => 'Clean ┬╖ structural ΓÇö no financials',
+            'kicker' => 'Clean  -  structural  -  no financials',
             'items' => [
                 [
                     'label' => 'Manage properties',
-                    'sublabel' => 'Add ┬╖ edit ┬╖ link landlords',
+                    'sublabel' => 'Add  -  edit  -  link landlords',
                     'route' => 'property.properties.list',
                     'active' => [
                         'property.properties.list',
@@ -64,7 +64,7 @@
                 ],
                 [
                     'label' => 'Manage units',
-                    'sublabel' => 'Add ┬╖ assign ┬╖ status',
+                    'sublabel' => 'Add  -  assign  -  status',
                     'route' => 'property.properties.units',
                     'active' => ['property.properties.units', 'property.units.store'],
                     'badge' => null,
@@ -132,7 +132,7 @@
                 ],
                 [
                     'label' => 'Enquiries (leads)',
-                    'sublabel' => 'Calls ┬╖ SMS ┬╖ walk-ins',
+                    'sublabel' => 'Calls  -  SMS  -  walk-ins',
                     'route' => 'property.listings.leads',
                     'active' => ['property.listings.leads', 'property.listings.leads.store', 'property.listings.leads.update'],
                     'badge' => null,
@@ -153,11 +153,11 @@
         [
             'heading' => 'Tenants',
             'icon' => 'fa-users',
-            'kicker' => 'People-focused ┬╖ leases live here',
+            'kicker' => 'People-focused  -  leases live here',
             'items' => [
                 [
                     'label' => 'Manage tenants',
-                    'sublabel' => 'Add ┬╖ edit ┬╖ assign',
+                    'sublabel' => 'Add  -  edit  -  assign',
                     'route' => 'property.tenants.directory',
                     'active' => ['property.tenants.directory', 'property.tenants.store'],
                     'badge' => null,
@@ -178,7 +178,7 @@
                 ],
                 [
                     'label' => 'Manage leases',
-                    'sublabel' => 'Create ┬╖ renew ┬╖ update',
+                    'sublabel' => 'Create  -  renew  -  update',
                     'route' => 'property.tenants.leases',
                     'active' => ['property.tenants.leases', 'property.leases.store'],
                     'badge' => null,
@@ -199,7 +199,7 @@
                 ],
                 [
                     'label' => 'Tenant notices',
-                    'sublabel' => 'Vacate ┬╖ eviction',
+                    'sublabel' => 'Vacate  -  eviction',
                     'route' => 'property.tenants.notices',
                     'active' => ['property.tenants.notices', 'property.tenants.notices.store'],
                     'badge' => null,
@@ -209,7 +209,7 @@
         [
             'heading' => 'Revenue',
             'icon' => 'fa-sack-dollar',
-            'kicker' => 'Most used ΓÇö keep high',
+            'kicker' => 'Most used  -  keep high',
             'items' => [
                 [
                     'label' => 'View rent roll',
@@ -234,14 +234,14 @@
                 ],
                 [
                     'label' => 'Payments & reconciliation',
-                    'sublabel' => 'M-Pesa ┬╖ logs ┬╖ matching',
+                    'sublabel' => 'M-Pesa  -  logs  -  matching',
                     'route' => 'property.revenue.payments',
                     'active' => ['property.revenue.payments'],
                     'badge' => null,
                 ],
                 [
                     'label' => 'Utilities & water billing',
-                    'sublabel' => 'Meters ┬╖ invoices ┬╖ penalties',
+                    'sublabel' => 'Meters  -  invoices  -  penalties',
                     'route' => 'property.revenue.utilities',
                     'active' => [
                         'property.revenue.utilities',
@@ -360,7 +360,7 @@
         [
             'heading' => 'Analytics',
             'icon' => 'fa-chart-line',
-            'kicker' => 'Not daily ops ΓÇö avoid clutter',
+            'kicker' => 'Not daily ops  -  avoid clutter',
             'items' => [
                 [
                     'label' => 'Collection rate',
@@ -639,7 +639,7 @@
                 ],
                 [
                     'label' => 'System setup',
-                    'sublabel' => 'Forms ┬╖ workflows ┬╖ templates',
+                    'sublabel' => 'Forms  -  workflows  -  templates',
                     'route' => 'property.settings.system_setup',
                     'active' => [
                         'property.settings.system_setup',

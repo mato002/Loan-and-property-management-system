@@ -103,7 +103,7 @@ class LoanBookOperationsController extends Controller
                             (string) ($d->loan?->product_name ?? ''),
                             number_format($amount, 2, '.', ''),
                             (string) $d->method,
-                            (string) ($d->payout_status ?? 'completed'),
+                            (string) $d->effectivePayoutStatus(),
                             (string) ($d->payout_status === 'failed' ? ($d->payout_result_desc ?? '') : ''),
                             (string) $d->reference,
                             (string) ($d->accounting_journal_entry_id ?? ''),
@@ -184,11 +184,11 @@ class LoanBookOperationsController extends Controller
 
         $pendingLoanQuery = LoanBookLoan::query()
             ->with('loanClient')
+            ->eligibleForNewDisbursement()
             ->whereIn('status', [
                 LoanBookLoan::STATUS_PENDING_DISBURSEMENT,
                 LoanBookLoan::STATUS_ACTIVE,
             ])
-            ->whereDoesntHave('disbursements')
             ->orderByDesc('created_at');
         $this->scopeByAssignedLoanClient($pendingLoanQuery, auth()->user());
         $pendingLoans = $pendingLoanQuery->limit(30)->get();
@@ -222,14 +222,17 @@ class LoanBookOperationsController extends Controller
     {
         $loanQuery = LoanBookLoan::query()
             ->with('loanClient')
-            ->whereDoesntHave('disbursements')
+            ->eligibleForNewDisbursement()
             ->orderByDesc('created_at');
         $this->scopeByAssignedLoanClient($loanQuery, auth()->user());
+
+        $loans = $loanQuery->get();
 
         return view('loan.book.disbursements.create', [
             'title' => 'Record disbursement',
             'subtitle' => 'Link a payout to an existing loan account.',
-            'loans' => $loanQuery->get(),
+            'loans' => $loans,
+            'selectedLoanId' => (string) old('loan_book_loan_id', request()->query('loan_book_loan_id', '')),
             'b2cPayoutConfigured' => app(MpesaDarajaService::class)->isB2cConfigured(),
         ]);
     }
@@ -265,17 +268,43 @@ class LoanBookOperationsController extends Controller
                 ->withInput()
                 ->withErrors(['loan_book_loan_id' => 'Borrower is blocked: '.implode(', ', (array) ($decision['blocking_reasons'] ?? ['risk_policy']))]);
         }
-        if ($loan->disbursements()->exists()) {
+        if ($loan->disbursements()->with('accountingJournalEntry')->get()->contains(fn (LoanBookDisbursement $d) => $d->blocksNewDisbursement())) {
             return redirect()
                 ->back()
                 ->withInput()
-                ->withErrors(['loan_book_loan_id' => __('This loan has already been disbursed. Multiple disbursements are not allowed.')]);
+                ->withErrors(['loan_book_loan_id' => __('This loan has an active disbursement. Reverse its journal and remove the line before recording again.')]);
+        }
+
+        $loanPrincipal = round(max(0.0, (float) $loan->principal), 2);
+        $disburseAmountInput = round(abs((float) ($validated['amount'] ?? 0)), 2);
+        if ($loanPrincipal > 0 && $disburseAmountInput > ($loanPrincipal + 0.01)) {
+            return redirect()
+                ->back()
+                ->withInput()
+                ->withErrors([
+                    'amount' => sprintf(
+                        'Disbursement cannot exceed the loan principal (%s). Cash paid to the borrower is principal only — interest and fees are repaid, not disbursed.',
+                        number_format($loanPrincipal, 2)
+                    ),
+                ]);
         }
 
         try {
             // All methods (including M-Pesa) are recorded as manual payouts: GL posts immediately.
             // Daraja B2C is only used from "Retry M-Pesa payout" when B2C env is fully configured.
-            DB::transaction(function () use ($validated, $request) {
+            DB::transaction(function () use ($validated, $request, $loan) {
+                $removable = $loan->disbursements()->with('accountingJournalEntry')->get()
+                    ->filter(fn (LoanBookDisbursement $d) => $d->canBeRemoved());
+
+                foreach ($removable as $old) {
+                    $old->delete();
+                }
+
+                if ($removable->isNotEmpty()) {
+                    app(LoanBookLoanUpdateService::class)->onLastDisbursementRemoved($loan->fresh());
+                    $loan->refresh();
+                }
+
                 $disburseAmount = round(abs((float) ($validated['amount'] ?? 0)), 2);
                 $mapped = app(AccountingEventRegistryService::class)->resolveEventAccountIdsOrFail('LoanDisbursed');
                 $cashAccountId = (int) ($mapped['credit_account_id'] ?? 0);
@@ -343,22 +372,32 @@ class LoanBookOperationsController extends Controller
 
     public function disbursementsDestroy(LoanBookDisbursement $loan_book_disbursement): RedirectResponse
     {
-        $loan_book_disbursement->load('loan.loanClient');
+        $loan_book_disbursement->load(['loan.loanClient', 'accountingJournalEntry']);
         $this->ensureLoanClientOwner($loan_book_disbursement->loan?->loanClient);
 
-        if ($loan_book_disbursement->accounting_journal_entry_id) {
+        if (! $loan_book_disbursement->canBeRemoved()) {
             return redirect()
-                ->route('loan.book.disbursements.index')
+                ->back()
                 ->withErrors([
-                    'disbursement' => __('This disbursement is linked to a journal entry. Remove that entry under Accounting → Journal first if you need to reverse it.'),
+                    'disbursement' => __($loan_book_disbursement->removalBlockReason() ?? 'This disbursement cannot be removed.'),
                 ]);
         }
 
-        $loan_book_disbursement->delete();
+        $loan = $loan_book_disbursement->loan;
+        $loanId = (int) $loan_book_disbursement->loan_book_loan_id;
+
+        DB::transaction(function () use ($loan_book_disbursement) {
+            $loan = $loan_book_disbursement->loan;
+            $loan_book_disbursement->delete();
+
+            if ($loan) {
+                app(LoanBookLoanUpdateService::class)->onLastDisbursementRemoved($loan);
+            }
+        });
 
         return redirect()
-            ->route('loan.book.disbursements.index')
-            ->with('status', __('Disbursement removed.'));
+            ->route('loan.book.disbursements.create', ['loan_book_loan_id' => $loanId])
+            ->with('status', __('Disbursement removed. Record the correct payout amount below (usually the loan principal only).'));
     }
 
     public function disbursementsShow(LoanBookDisbursement $loan_book_disbursement): View

@@ -85,12 +85,12 @@
                                     <p class="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                                         Created {{ optional($row->created_at)->format('Y-m-d H:i') }}
                                         @if ($row->last_used_at)
-                                            ┬╖ Last used {{ optional($row->last_used_at)->diffForHumans() }}
+                                             -  Last used {{ optional($row->last_used_at)->diffForHumans() }}
                                             @if ($row->last_used_ip)
                                                 from <code class="font-mono">{{ $row->last_used_ip }}</code>
                                             @endif
                                         @else
-                                            ┬╖ Never used yet
+                                             -  Never used yet
                                         @endif
                                     </p>
                                 </div>

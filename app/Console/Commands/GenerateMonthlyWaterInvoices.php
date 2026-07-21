@@ -45,8 +45,9 @@ class GenerateMonthlyWaterInvoices extends Command
         );
 
         $this->info(sprintf(
-            'Water invoices for %s. Created=%d, Skipped(no lease)=%d, Skipped(duplicate)=%d, Credit auto-applied=%d.',
+            'Water invoices for %s (due %s): created=%d, skipped_no_lease=%d, skipped_duplicate=%d, credit_applied=%d.',
             $ym,
+            $due,
             $stats['created'],
             $stats['skipped_no_lease'],
             $stats['skipped_duplicate'],

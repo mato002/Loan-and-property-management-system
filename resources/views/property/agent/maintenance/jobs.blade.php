@@ -83,7 +83,7 @@
                 <select name="pm_maintenance_request_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                     <option value="">Select…</option>
                     @foreach ($requests as $r)
-                        <option value="{{ $r->id }}" @selected(old('pm_maintenance_request_id') == $r->id)>#{{ $r->id }} ┬╖ {{ $r->unit->property->name }}/{{ $r->unit->label }} ┬╖ {{ $r->category }}</option>
+                        <option value="{{ $r->id }}" @selected(old('pm_maintenance_request_id') == $r->id)>#{{ $r->id }}  -  {{ $r->unit->property->name }}/{{ $r->unit->label }}  -  {{ $r->category }}</option>
                     @endforeach
                 </select>
                 @error('pm_maintenance_request_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

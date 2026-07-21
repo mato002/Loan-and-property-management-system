@@ -11,6 +11,7 @@ use App\Models\Property;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Models\User;
+use App\Support\Property\PropertyWorkspaceBranding;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -248,7 +249,10 @@ class PropertySettingsStoreWebController extends Controller
             'waterInvoicesAuto' => PropertyPortalSetting::isWaterInvoiceAutomationEnabled(),
             'rentRemindersAuto' => PropertyPortalSetting::isRentReminderAutomationEnabled(),
             'waterPenaltiesAuto' => PropertyPortalSetting::isWaterPenaltyAutomationEnabled(),
+            'attachedUtilityChargesAuto' => PropertyPortalSetting::isAttachedUtilityChargeAutomationEnabled(),
             'reminderLeadDays' => PropertyPortalSetting::getValue('workflow_reminder_lead_days', '3'),
+            'rentDueDayDefault' => app(\App\Services\Property\RentDueDayResolver::class)->systemDefaultDueDay(),
+            'rentDueDayEnvDefault' => (int) config('property.rent_due_day_default', 5),
             'notes' => PropertyPortalSetting::getValue('workflow_notes', ''),
         ]);
     }
@@ -262,7 +266,9 @@ class PropertySettingsStoreWebController extends Controller
             'workflow_auto_water_invoices' => ['nullable', 'in:0,1'],
             'workflow_auto_rent_reminders' => ['nullable', 'in:0,1'],
             'workflow_auto_water_penalties' => ['nullable', 'in:0,1'],
+            'workflow_auto_attached_utility_charges' => ['nullable', 'in:0,1'],
             'workflow_reminder_lead_days' => ['nullable', 'integer', 'min:0', 'max:60'],
+            'property_rent_due_day_default' => ['nullable', 'integer', 'min:1', 'max:31'],
             'workflow_notes' => ['nullable', 'string', 'max:3000'],
         ]);
 
@@ -272,9 +278,19 @@ class PropertySettingsStoreWebController extends Controller
         PropertyPortalSetting::setValue('workflow_auto_water_invoices', (string) ($data['workflow_auto_water_invoices'] ?? '0'));
         PropertyPortalSetting::setValue('workflow_auto_rent_reminders', (string) ($data['workflow_auto_rent_reminders'] ?? '0'));
         PropertyPortalSetting::setValue('workflow_auto_water_penalties', (string) ($data['workflow_auto_water_penalties'] ?? '0'));
+        PropertyPortalSetting::setValue('workflow_auto_attached_utility_charges', (string) ($data['workflow_auto_attached_utility_charges'] ?? '0'));
         PropertyPortalSetting::setValue('workflow_reminder_lead_days', (string) ($data['workflow_reminder_lead_days'] ?? 3));
+        $rentDueDefault = $data['property_rent_due_day_default'] ?? null;
+        if ($rentDueDefault === null || $rentDueDefault === '') {
+            PropertyPortalSetting::setValue('property_rent_due_day_default', null);
+        } else {
+            PropertyPortalSetting::setValue(
+                'property_rent_due_day_default',
+                (string) \App\Services\Property\RentDueDayResolver::normalizeDueDay((int) $rentDueDefault)
+            );
+        }
         PropertyPortalSetting::setValue('workflow_notes', $data['workflow_notes'] ?? '');
-        PropertyPortalSetting::setValue('system_setup_workflows_count', '7');
+        PropertyPortalSetting::setValue('system_setup_workflows_count', '8');
 
         return back()->with('success', __('Workflow setup saved.'));
     }
@@ -881,6 +897,11 @@ class PropertySettingsStoreWebController extends Controller
     {
         $defaultPermissions = [
             ['name' => 'Manage properties', 'key' => 'properties.manage', 'group' => 'properties'],
+            ['name' => 'Start property offboarding', 'key' => 'property.offboarding.start', 'group' => 'properties'],
+            ['name' => 'Complete property offboarding', 'key' => 'property.offboarding.complete', 'group' => 'properties'],
+            ['name' => 'View archived properties', 'key' => 'property.archive.view', 'group' => 'properties'],
+            ['name' => 'Restore archived properties', 'key' => 'property.archive.restore', 'group' => 'properties'],
+            ['name' => 'Override offboarding gates', 'key' => 'property.archive.override', 'group' => 'properties'],
             ['name' => 'Manage tenants', 'key' => 'tenants.manage', 'group' => 'tenants'],
             ['name' => 'Manage leases', 'key' => 'leases.manage', 'group' => 'tenants'],
             ['name' => 'Manage maintenance', 'key' => 'maintenance.manage', 'group' => 'maintenance'],
@@ -922,7 +943,9 @@ class PropertySettingsStoreWebController extends Controller
                 'portal_scope' => 'agent',
                 'description' => 'Full operational access across property modules.',
                 'permissions' => [
-                    'properties.manage', 'tenants.manage', 'leases.manage', 'maintenance.manage', 'vendors.manage',
+                    'properties.manage', 'property.offboarding.start', 'property.offboarding.complete',
+                    'property.archive.view', 'property.archive.restore', 'property.archive.override',
+                    'tenants.manage', 'leases.manage', 'maintenance.manage', 'vendors.manage',
                     'invoices.manage', 'payments.record', 'payments.settle', 'revenue.penalties.manage', 'revenue.utilities.manage',
                     'revenue.utilities.period_close', 'revenue.utilities.period_override_approve',
                     'accounting.entries.manage', 'accounting.payroll.manage', 'communications.manage', 'communications.export', 'communications.view_message_body',
@@ -1000,6 +1023,15 @@ class PropertySettingsStoreWebController extends Controller
             if ($role->permissions()->count() === 0 && ! empty($roleDef['permissions'])) {
                 $permIds = PmPermission::query()->whereIn('key', $roleDef['permissions'])->pluck('id')->all();
                 $role->permissions()->sync($permIds);
+            }
+
+            if (! empty($roleDef['permissions'])) {
+                $permIds = PmPermission::query()->whereIn('key', $roleDef['permissions'])->pluck('id')->all();
+                $existingIds = $role->permissions()->pluck('pm_permissions.id')->all();
+                $missing = array_values(array_diff($permIds, $existingIds));
+                if ($missing !== []) {
+                    $role->permissions()->attach($missing);
+                }
             }
         }
 
@@ -1367,21 +1399,28 @@ class PropertySettingsStoreWebController extends Controller
     public function branding(): View
     {
         return property_view('property.agent.settings.branding', [
-            'companyName' => PropertyPortalSetting::getValue('company_name', ''),
-            'companyLogoUrl' => PropertyPortalSetting::getValue('company_logo_url', ''),
-            'siteFaviconUrl' => PropertyPortalSetting::getValue('site_favicon_url', ''),
-            'contactEmailPrimary' => PropertyPortalSetting::getValue('contact_email_primary', ''),
-            'contactEmailSupport' => PropertyPortalSetting::getValue('contact_email_support', ''),
-            'contactPhone' => PropertyPortalSetting::getValue('contact_phone', ''),
-            'contactWhatsapp' => PropertyPortalSetting::getValue('contact_whatsapp', ''),
-            'contactAddress' => PropertyPortalSetting::getValue('contact_address', ''),
-            'contactRegNo' => PropertyPortalSetting::getValue('contact_reg_no', ''),
-            'contactMapEmbedUrl' => PropertyPortalSetting::getValue('contact_map_embed_url', ''),
+            'companyName' => PropertyWorkspaceBranding::getForSettings('company_name', ''),
+            'companyLogoUrl' => PropertyWorkspaceBranding::getForSettings('company_logo_url', ''),
+            'siteFaviconUrl' => PropertyWorkspaceBranding::getForSettings('site_favicon_url', ''),
+            'contactEmailPrimary' => PropertyWorkspaceBranding::getForSettings('contact_email_primary', ''),
+            'contactEmailSupport' => PropertyWorkspaceBranding::getForSettings('contact_email_support', ''),
+            'contactPhone' => PropertyWorkspaceBranding::getForSettings('contact_phone', ''),
+            'contactWhatsapp' => PropertyWorkspaceBranding::getForSettings('contact_whatsapp', ''),
+            'contactAddress' => PropertyWorkspaceBranding::getForSettings('contact_address', ''),
+            'contactRegNo' => PropertyWorkspaceBranding::getForSettings('contact_reg_no', ''),
+            'contactMapEmbedUrl' => PropertyWorkspaceBranding::getForSettings('contact_map_embed_url', ''),
+            'brandingEditorAgentUserId' => PropertyWorkspaceBranding::settingsEditorAgentUserId(),
         ]);
     }
 
     public function storeBranding(Request $request): RedirectResponse
     {
+        if (! PropertyWorkspaceBranding::canEditSettingsBranding($request->user())) {
+            return back()->withErrors([
+                'company_name' => __('You do not have permission to save workspace branding.'),
+            ]);
+        }
+
         $data = $request->validate([
             'company_name' => ['nullable', 'string', 'max:255'],
             'company_logo_url' => ['nullable', 'string', 'max:2048'],
@@ -1399,35 +1438,35 @@ class PropertySettingsStoreWebController extends Controller
             'remove_favicon' => ['nullable', 'in:0,1'],
         ]);
 
-        PropertyPortalSetting::setValue('company_name', $data['company_name'] ?? '');
-        PropertyPortalSetting::setValue('contact_email_primary', $data['contact_email_primary'] ?? '');
-        PropertyPortalSetting::setValue('contact_email_support', $data['contact_email_support'] ?? '');
-        PropertyPortalSetting::setValue('contact_phone', $data['contact_phone'] ?? '');
-        PropertyPortalSetting::setValue('contact_whatsapp', $data['contact_whatsapp'] ?? '');
-        PropertyPortalSetting::setValue('contact_address', $data['contact_address'] ?? '');
-        PropertyPortalSetting::setValue('contact_reg_no', $data['contact_reg_no'] ?? '');
-        PropertyPortalSetting::setValue('contact_map_embed_url', $data['contact_map_embed_url'] ?? '');
+        PropertyWorkspaceBranding::setForSettings('company_name', $data['company_name'] ?? '', $request->user());
+        PropertyWorkspaceBranding::setForSettings('contact_email_primary', $data['contact_email_primary'] ?? '', $request->user());
+        PropertyWorkspaceBranding::setForSettings('contact_email_support', $data['contact_email_support'] ?? '', $request->user());
+        PropertyWorkspaceBranding::setForSettings('contact_phone', $data['contact_phone'] ?? '', $request->user());
+        PropertyWorkspaceBranding::setForSettings('contact_whatsapp', $data['contact_whatsapp'] ?? '', $request->user());
+        PropertyWorkspaceBranding::setForSettings('contact_address', $data['contact_address'] ?? '', $request->user());
+        PropertyWorkspaceBranding::setForSettings('contact_reg_no', $data['contact_reg_no'] ?? '', $request->user());
+        PropertyWorkspaceBranding::setForSettings('contact_map_embed_url', $data['contact_map_embed_url'] ?? '', $request->user());
 
         if (($data['remove_logo'] ?? '0') === '1') {
-            PropertyPortalSetting::setValue('company_logo_url', '');
+            PropertyWorkspaceBranding::setForSettings('company_logo_url', '', $request->user());
 
             return back()->with('success', __('Branding settings saved.'));
         }
 
         if ($request->hasFile('company_logo')) {
             $path = $request->file('company_logo')->store('property/branding', 'public');
-            PropertyPortalSetting::setValue('company_logo_url', Storage::url($path));
+            PropertyWorkspaceBranding::setForSettings('company_logo_url', Storage::url($path), $request->user());
         } elseif (array_key_exists('company_logo_url', $data)) {
-            PropertyPortalSetting::setValue('company_logo_url', $data['company_logo_url'] ?? '');
+            PropertyWorkspaceBranding::setForSettings('company_logo_url', $data['company_logo_url'] ?? '', $request->user());
         }
 
         if (($data['remove_favicon'] ?? '0') === '1') {
-            PropertyPortalSetting::setValue('site_favicon_url', '');
+            PropertyWorkspaceBranding::setForSettings('site_favicon_url', '', $request->user());
         } elseif ($request->hasFile('site_favicon')) {
             $path = $request->file('site_favicon')->store('property/branding', 'public');
-            PropertyPortalSetting::setValue('site_favicon_url', Storage::url($path));
+            PropertyWorkspaceBranding::setForSettings('site_favicon_url', Storage::url($path), $request->user());
         } elseif (array_key_exists('site_favicon_url', $data)) {
-            PropertyPortalSetting::setValue('site_favicon_url', $data['site_favicon_url'] ?? '');
+            PropertyWorkspaceBranding::setForSettings('site_favicon_url', $data['site_favicon_url'] ?? '', $request->user());
         }
 
         return back()->with('success', __('Branding settings saved.'));

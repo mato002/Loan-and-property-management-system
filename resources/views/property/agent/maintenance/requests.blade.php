@@ -1,4 +1,6 @@
 <x-property.workspace
+    :legacy-toolbar="false"
+    :show-search="false"
     title="Maintenance requests"
     subtitle="Intake from agents — urgency, unit, and description."
     back-route="property.maintenance.index"
@@ -172,12 +174,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <select data-table-filter="parent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
-            <option value="">Priority: All</option>
-            <option value="normal">Normal</option>
-            <option value="urgent">Urgent</option>
-            <option value="emergency">Emergency</option>
-        </select>
+        @include('property.agent.partials.filter_toolbars.maintenance_requests', ['filters' => $filters])
     </x-slot>
 
     @if (isset($requestPager))

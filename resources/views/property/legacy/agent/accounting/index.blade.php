@@ -26,7 +26,7 @@
                     <div>
                         <div class="flex items-center justify-between text-xs text-slate-600">
                             <span>{{ $m['label'] }}</span>
-                            <span>Rev {{ \App\Services\Property\PropertyMoney::kes((float) $m['income']) }} ┬╖ Exp {{ \App\Services\Property\PropertyMoney::kes((float) $m['expense']) }}</span>
+                            <span>Rev {{ \App\Services\Property\PropertyMoney::kes((float) $m['income']) }}  -  Exp {{ \App\Services\Property\PropertyMoney::kes((float) $m['expense']) }}</span>
                         </div>
                         <div class="mt-1 h-2 rounded bg-slate-100 overflow-hidden">
                             <div class="h-2 bg-emerald-500" style="width: {{ $incomePct }}%"></div>

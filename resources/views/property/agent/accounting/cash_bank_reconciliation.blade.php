@@ -21,8 +21,8 @@
             <div class="mt-3 space-y-2 max-h-[420px] overflow-auto">
                 @foreach (($cashSide ?? collect()) as $r)
                     <div class="rounded-lg border border-slate-200 p-3 text-sm">
-                        <div class="font-medium">{{ $r->entry_date?->format('Y-m-d') ?? '—' }} ┬╖ {{ $r->account_name }}</div>
-                        <div class="text-slate-600">{{ $r->reference ?: '—' }} ┬╖ {{ \App\Services\Property\PropertyMoney::kes((float) $r->amount) }}</div>
+                        <div class="font-medium">{{ $r->entry_date?->format('Y-m-d') ?? '—' }}  -  {{ $r->account_name }}</div>
+                        <div class="text-slate-600">{{ $r->reference ?: '—' }}  -  {{ \App\Services\Property\PropertyMoney::kes((float) $r->amount) }}</div>
                     </div>
                 @endforeach
             </div>
@@ -33,7 +33,7 @@
                 @forelse (($bankSide ?? collect()) as $r)
                     <div class="rounded-lg border border-slate-200 p-3 text-sm">
                         <div class="font-medium">{{ $r->transaction_date ?? $r->created_at ?? '—' }}</div>
-                        <div class="text-slate-600">{{ $r->reference ?? '—' }} ┬╖ {{ \App\Services\Property\PropertyMoney::kes((float) ($r->amount ?? 0)) }}</div>
+                        <div class="text-slate-600">{{ $r->reference ?? '—' }}  -  {{ \App\Services\Property\PropertyMoney::kes((float) ($r->amount ?? 0)) }}</div>
                     </div>
                 @empty
                     <p class="text-sm text-slate-500">No imported/unmatched bank rows yet.</p>

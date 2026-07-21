@@ -51,7 +51,6 @@ final class PropertyWorkspaceTabs
         return [
             'property.properties.index',
             'property.tenants.index',
-            'property.revenue.index',
             'property.maintenance.index',
             'property.vendors.index',
             'property.listings.index',
@@ -99,11 +98,48 @@ final class PropertyWorkspaceTabs
     }
 
     /**
+     * Carry bound route parameters (e.g. {property}) into generated URLs when omitted.
+     *
+     * @param  array<string, mixed>  $routeParams
+     * @return array<string, mixed>
+     */
+    public static function routeParamsWithContext(array $routeParams, string $routeName): array
+    {
+        try {
+            $route = Route::getRoutes()->getByName($routeName);
+            if ($route === null) {
+                return $routeParams;
+            }
+
+            foreach ($route->parameterNames() as $name) {
+                if (array_key_exists($name, $routeParams) && $routeParams[$name] !== null && $routeParams[$name] !== '') {
+                    continue;
+                }
+
+                $bound = request()->route($name);
+                if ($bound === null) {
+                    continue;
+                }
+
+                $routeParams[$name] = is_object($bound) && method_exists($bound, 'getKey')
+                    ? $bound->getKey()
+                    : $bound;
+            }
+        } catch (\Throwable) {
+            // Best-effort only — caller may still fail with UrlGenerationException.
+        }
+
+        return $routeParams;
+    }
+
+    /**
      * @param  array{route: string, route_params?: array<string, mixed>, query?: array<string, mixed>}  $tab
      */
     public static function tabUrl(array $tab): string
     {
-        $url = route((string) $tab['route'], $tab['route_params'] ?? []);
+        $routeName = (string) $tab['route'];
+        $routeParams = self::routeParamsWithContext($tab['route_params'] ?? [], $routeName);
+        $url = route($routeName, $routeParams);
         $query = $tab['query'] ?? [];
         if ($query !== []) {
             $url .= (str_contains($url, '?') ? '&' : '?').http_build_query($query);
@@ -167,7 +203,12 @@ final class PropertyWorkspaceTabs
             'property.accounting.audit_trail.show',
             'property.accounting.payroll.show',
             'property.listings.applications.show',
+            'property.properties.offboarding',
         ];
+
+        if (str_contains($routeName, '.offboarding')) {
+            return false;
+        }
 
         return ! in_array($routeName, $hiddenRoutes, true);
     }
@@ -187,7 +228,7 @@ final class PropertyWorkspaceTabs
     {
         return match ($workspaceKey) {
             'portfolio' => [
-                ['key' => 'properties', 'label' => 'Properties', 'route' => 'property.properties.list', 'active' => ['property.properties.list', 'property.properties.store', 'property.properties.store_json', 'property.properties.update', 'property.properties.destroy']],
+                ['key' => 'properties', 'label' => 'Properties', 'route' => 'property.properties.list', 'active' => ['property.properties.list', 'property.properties.store', 'property.properties.store_json', 'property.properties.update', 'property.properties.destroy', 'property.properties.offboarding', 'property.properties.offboarding.*']],
                 ['key' => 'units', 'label' => 'Units', 'route' => 'property.properties.units', 'active' => ['property.properties.units', 'property.units.*']],
                 ['key' => 'occupancy', 'label' => 'Occupancy', 'route' => 'property.properties.occupancy', 'active' => ['property.properties.occupancy', 'property.properties.occupancy.*']],
                 ['key' => 'landlords', 'label' => 'Landlords', 'route' => 'property.landlords.index', 'active' => ['property.landlords.*']],
@@ -198,12 +239,11 @@ final class PropertyWorkspaceTabs
                 ['key' => 'directory', 'label' => 'Directory', 'route' => 'property.tenants.directory', 'active' => ['property.tenants.directory', 'property.tenants.directory.*', 'property.tenants.store', 'property.tenants.store_json', 'property.tenants.update', 'property.tenants.destroy']],
                 ['key' => 'leases', 'label' => 'Leases', 'route' => 'property.tenants.leases', 'active' => ['property.tenants.leases', 'property.leases.*'], 'query_exclude' => ['tab' => 'expiry']],
                 ['key' => 'notices', 'label' => 'Notices', 'route' => 'property.tenants.notices', 'active' => ['property.tenants.notices', 'property.tenants.notices.*']],
-                ['key' => 'expiry', 'label' => 'Expiry', 'route' => 'property.tenants.leases', 'active' => ['property.tenants.expiry', 'property.tenants.leases'], 'query' => ['tab' => 'expiry']],
                 ['key' => 'movements', 'label' => 'Move-ins/out', 'route' => 'property.tenants.movements', 'active' => ['property.tenants.movements', 'property.tenants.movements.*']],
                 ['key' => 'compliance', 'label' => 'Compliance', 'route' => 'property.tenants.profiles', 'active' => ['property.tenants.profiles', 'property.tenants.import', 'property.tenants.import.*']],
             ],
             'collections' => [
-                ['key' => 'overview', 'label' => 'Overview', 'route' => 'property.revenue.index', 'active' => ['property.revenue.index']],
+                ['key' => 'overview', 'label' => 'Overview', 'route' => 'property.revenue.overview', 'active' => ['property.revenue.overview', 'property.revenue.index']],
                 ['key' => 'rent_roll', 'label' => 'Rent roll', 'route' => 'property.revenue.rent_roll', 'active' => ['property.revenue.rent_roll']],
                 ['key' => 'arrears', 'label' => 'Arrears', 'route' => 'property.revenue.arrears', 'active' => ['property.revenue.arrears', 'property.revenue.arrears.*']],
                 ['key' => 'invoices', 'label' => 'Invoices', 'route' => 'property.revenue.invoices', 'active' => ['property.revenue.invoices', 'property.revenue.invoices.*', 'property.invoices.*']],
@@ -240,8 +280,10 @@ final class PropertyWorkspaceTabs
                 ['key' => 'hub', 'label' => 'Hub', 'route' => 'property.communications.index', 'active' => ['property.communications.index']],
                 ['key' => 'notifications', 'label' => 'Notifications', 'route' => 'property.notifications', 'active' => ['property.notifications', 'property.notifications.*']],
                 ['key' => 'messages', 'label' => 'SMS / email', 'route' => 'property.communications.messages', 'active' => ['property.communications.messages', 'property.communications.messages.*']],
+                ['key' => 'provider_sms', 'label' => 'Provider SMS', 'route' => 'property.communications.sms_provider', 'active' => ['property.communications.sms_provider']],
                 ['key' => 'bulk', 'label' => 'Bulk messaging', 'route' => 'property.communications.bulk', 'active' => ['property.communications.bulk', 'property.communications.bulk.*', 'property.communications.recipients']],
                 ['key' => 'templates', 'label' => 'Templates', 'route' => 'property.communications.templates', 'active' => ['property.communications.templates', 'property.communications.templates.*']],
+                ['key' => 'rent_templates', 'label' => 'Rent templates', 'route' => 'property.communications.rent_templates', 'active' => ['property.communications.rent_templates', 'property.communications.rent_templates.*']],
                 ['key' => 'conversations', 'label' => 'Conversations', 'route' => 'property.communications.conversations', 'active' => ['property.communications.conversations', 'property.communications.conversations.*']],
             ],
             'financials' => [
@@ -365,7 +407,7 @@ final class PropertyWorkspaceTabs
                 'label' => 'Leases',
                 'tabs' => [
                     ['key' => 'leases', 'label' => 'All leases', 'route' => 'property.tenants.leases', 'active' => ['property.leases.*', 'property.tenants.leases'], 'query_exclude' => ['tab' => 'expiry']],
-                    ['key' => 'expiry', 'label' => 'Expiring soon', 'route' => 'property.tenants.leases', 'query' => ['tab' => 'expiry'], 'active' => ['property.tenants.expiry', 'property.tenants.leases']],
+                    ['key' => 'expiry', 'label' => 'Expiring soon', 'route' => 'property.tenants.leases', 'query' => ['tab' => 'expiry'], 'active' => ['property.tenants.leases']],
                 ],
             ],
         ];

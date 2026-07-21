@@ -32,11 +32,14 @@ class PmTenantCreditController extends Controller
 
         $balances = $query->paginate(30)->withQueryString();
         $totalUnapplied = (float) PmTenantCreditBalance::query()->sum('balance');
+        $creditService = app(TenantCreditService::class);
 
         return property_view('property.agent.revenue.tenant_credits_report', [
             'balances' => $balances,
             'totalUnapplied' => $totalUnapplied,
             'filters' => ['q' => $q],
+            'tenantsForAdvance' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
+            'advanceCreditsEnabled' => $creditService->isEnabled(),
         ]);
     }
 

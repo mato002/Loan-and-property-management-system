@@ -66,7 +66,8 @@
                             id="payment-tenant-select"
                             name="pm_tenant_id"
                             :required="true"
-                            :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id') === (string) $t->id])->all()"
+                            :searchable="true"
+                            :options="\App\Support\Property\PmTenantSelectOptions::fromCollection($tenants, old('pm_tenant_id'))"
                             :create="[
                                 'mode' => 'ajax',
                                 'title' => 'Create tenant',
@@ -99,7 +100,7 @@
                             @foreach ($openInvoices as $inv)
                                 @php $open = max(0, (float) $inv->amount - (float) $inv->amount_paid); @endphp
                                 <option value="{{ $inv->id }}" data-tenant-id="{{ $inv->pm_tenant_id }}" @selected(old('pm_invoice_id') == $inv->id)>
-                                    {{ $inv->invoice_no }} ┬╖ {{ $inv->tenant->name }} ┬╖ bal {{ number_format($open, 2) }}
+                                    {{ $inv->invoice_no }}  -  {{ $inv->tenant->name }}  -  bal {{ number_format($open, 2) }}
                                 </option>
                             @endforeach
                         </select>
@@ -127,27 +128,6 @@
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save payment</button>
             </form>
         </details>
-
-        <div id="payment-reversal-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
-            <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
-                <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <h3 id="payment-reversal-modal-title" class="text-base font-semibold text-slate-900">Payment reversal action</h3>
-                        <p id="payment-reversal-modal-subtitle" class="mt-1 text-xs text-slate-600">Provide a reason to continue.</p>
-                    </div>
-                    <button type="button" id="payment-reversal-modal-close" class="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50">Close</button>
-                </div>
-                <div class="mt-4">
-                    <label for="payment-reversal-modal-reason" class="block text-xs font-medium text-slate-700">Reason</label>
-                    <textarea id="payment-reversal-modal-reason" rows="4" maxlength="500" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Enter reason..."></textarea>
-                    <p id="payment-reversal-modal-hint" class="mt-1 text-xs text-slate-500"></p>
-                </div>
-                <div class="mt-4 flex items-center justify-end gap-2">
-                    <button type="button" id="payment-reversal-modal-cancel" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
-                    <button type="button" id="payment-reversal-modal-submit" class="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700">Continue</button>
-                </div>
-            </div>
-        </div>
 
         <script>
             (function () {
@@ -183,88 +163,6 @@
 
                 tenantSelect.addEventListener('change', filterInvoices);
                 filterInvoices(); // initial load (old input)
-            })();
-
-            (function () {
-                const requestForms = document.querySelectorAll('.js-reversal-request-form');
-                const approveForms = document.querySelectorAll('.js-reversal-approve-form');
-                const modal = document.getElementById('payment-reversal-modal');
-                const modalTitle = document.getElementById('payment-reversal-modal-title');
-                const modalSubtitle = document.getElementById('payment-reversal-modal-subtitle');
-                const modalReason = document.getElementById('payment-reversal-modal-reason');
-                const modalHint = document.getElementById('payment-reversal-modal-hint');
-                const modalClose = document.getElementById('payment-reversal-modal-close');
-                const modalCancel = document.getElementById('payment-reversal-modal-cancel');
-                const modalSubmit = document.getElementById('payment-reversal-modal-submit');
-                let activeForm = null;
-                let activeMode = null;
-
-                if (!modal || !modalTitle || !modalSubtitle || !modalReason || !modalHint || !modalClose || !modalCancel || !modalSubmit) {
-                    return;
-                }
-
-                function showModal(form, mode) {
-                    activeForm = form;
-                    activeMode = mode;
-                    const ref = form.getAttribute('data-payment-ref') || 'payment';
-                    modalReason.value = '';
-                    if (mode === 'request') {
-                        modalTitle.textContent = `Request reversal for ${ref}`;
-                        modalSubtitle.textContent = 'A clear reason is required for maker submission.';
-                        modalHint.textContent = 'Minimum 5 characters.';
-                    } else {
-                        modalTitle.textContent = `Approve reversal for ${ref}`;
-                        modalSubtitle.textContent = 'Checker note is optional but recommended.';
-                        modalHint.textContent = 'Up to 500 characters.';
-                    }
-                    modal.classList.remove('hidden');
-                    modal.classList.add('flex');
-                    setTimeout(() => modalReason.focus(), 0);
-                }
-
-                function closeModal() {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                    activeForm = null;
-                    activeMode = null;
-                }
-
-                requestForms.forEach((form) => {
-                    form.addEventListener('submit', function (e) {
-                        e.preventDefault();
-                        showModal(this, 'request');
-                    });
-                });
-
-                approveForms.forEach((form) => {
-                    form.addEventListener('submit', function (e) {
-                        e.preventDefault();
-                        showModal(this, 'approve');
-                    });
-                });
-
-                modalSubmit.addEventListener('click', function () {
-                    if (!activeForm) return;
-                    const reason = modalReason.value.trim();
-                    if (activeMode === 'request' && reason.length < 5) {
-                        window.alert('Please enter a clearer reason (at least 5 characters).');
-                        modalReason.focus();
-                        return;
-                    }
-                    const input = activeForm.querySelector('input[name="reason"]');
-                    if (input) {
-                        input.value = reason;
-                    }
-                    const formToSubmit = activeForm;
-                    closeModal();
-                    formToSubmit.submit();
-                });
-
-                modalClose.addEventListener('click', closeModal);
-                modalCancel.addEventListener('click', closeModal);
-                modal.addEventListener('click', function (e) {
-                    if (e.target === modal) closeModal();
-                });
             })();
         </script>
     </x-slot>

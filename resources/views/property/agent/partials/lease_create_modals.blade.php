@@ -8,8 +8,9 @@
     show="showOptionalFieldsModal"
     close="showOptionalFieldsModal = false"
     name="lease-create-optional-fields"
-    title="Utilities, deposits &amp; terms"
+    title="Utilities, deposits & terms"
     max-width="3xl"
+    :lease-submodal="true"
 >
     <fieldset form="{{ $formId }}" data-lease-optional-panel class="min-w-0 border-0 p-0 m-0 space-y-3">
         <div class="grid gap-3 sm:grid-cols-2">
@@ -45,10 +46,10 @@
                         <div id="additional-deposits-rows" class="mt-2 space-y-2">
                             @foreach ($additionalDeposits as $idx => $row)
                                 <div class="grid gap-2 grid-cols-[2fr_1fr_2fr_auto] additional-deposit-row">
-                                    <select name="additional_deposits[{{ $idx }}][label]" class="additional-deposit-label rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 w-full">
+                                    <select form="{{ $formId }}" name="additional_deposits[{{ $idx }}][label]" class="additional-deposit-label rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 w-full">
                                         <option value="{{ $row['label'] ?? '' }}" selected>{{ $row['label'] ?? 'Select deposit type' }}</option>
                                     </select>
-                                    <input type="number" name="additional_deposits[{{ $idx }}][amount]" value="{{ $row['amount'] ?? '' }}" step="0.01" min="0" placeholder="Amount" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 w-full" />
+                                    <input form="{{ $formId }}" type="number" name="additional_deposits[{{ $idx }}][amount]" value="{{ $row['amount'] ?? '' }}" step="0.01" min="0" placeholder="Amount" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 w-full" />
                                     <div class="deposit-line-meta rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">—</div>
                                     <button type="button" class="remove-deposit-row min-h-[44px] rounded-lg border border-red-200 px-2.5 py-2 text-xs font-medium text-red-700 hover:bg-red-50">Remove</button>
                                 </div>
@@ -62,7 +63,7 @@
             </div>
             <div class="sm:col-span-2">
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Terms summary</label>
-                <textarea name="terms_summary" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('terms_summary', $leaseTemplate ?? '') }}</textarea>
+                <textarea form="{{ $formId }}" name="terms_summary" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('terms_summary', $leaseTemplate ?? '') }}</textarea>
                 @error('terms_summary')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
         </div>
@@ -78,6 +79,7 @@
     name="lease-create-opening-arrears"
     title="Carry-forward details"
     max-width="3xl"
+    :lease-submodal="true"
 >
     <fieldset form="{{ $formId }}" data-lease-arrears-panel class="min-w-0 border-0 p-0 m-0">
         <div id="opening-arrears-create-wrap" class="space-y-3">
@@ -107,7 +109,7 @@
                         @foreach ($openingArrearsRows as $idx => $row)
                             <tr class="opening-arrears-row border-t border-amber-100">
                                 <td class="px-3 py-2">
-                                    <select name="opening_arrears[{{ $idx }}][charge_type]" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                    <select form="{{ $formId }}" name="opening_arrears[{{ $idx }}][charge_type]" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                                         <option value="water" @selected(($row['charge_type'] ?? '') === 'water')>Water</option>
                                         <option value="electricity" @selected(($row['charge_type'] ?? '') === 'electricity')>Electricity</option>
                                         <option value="service" @selected(($row['charge_type'] ?? '') === 'service')>Service</option>
@@ -116,13 +118,13 @@
                                     </select>
                                 </td>
                                 <td class="px-3 py-2">
-                                    <input type="text" name="opening_arrears[{{ $idx }}][specific_charge]" value="{{ $row['specific_charge'] ?? '' }}" placeholder="e.g. Water meter bill" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                                    <input form="{{ $formId }}" type="text" name="opening_arrears[{{ $idx }}][specific_charge]" value="{{ $row['specific_charge'] ?? '' }}" placeholder="e.g. Water meter bill" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                                 </td>
                                 <td class="px-3 py-2">
-                                    <input type="month" name="opening_arrears[{{ $idx }}][period]" value="{{ $row['period'] ?? '' }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                                    <input form="{{ $formId }}" type="month" name="opening_arrears[{{ $idx }}][period]" value="{{ $row['period'] ?? '' }}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                                 </td>
                                 <td class="px-3 py-2">
-                                    <input type="number" name="opening_arrears[{{ $idx }}][amount]" value="{{ $row['amount'] ?? '' }}" step="0.01" min="0" placeholder="0.00" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                                    <input form="{{ $formId }}" type="number" name="opening_arrears[{{ $idx }}][amount]" value="{{ $row['amount'] ?? '' }}" step="0.01" min="0" placeholder="0.00" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                                 </td>
                                 <td class="px-3 py-2">
                                     <button type="button" class="remove-opening-arrears-row min-h-[44px] rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100">Remove</button>
@@ -135,17 +137,17 @@
             <div class="grid gap-2 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Carry-forward rent (KES)</label>
-                    <input type="number" step="0.01" min="0" name="opening_rent_arrears" value="{{ old('opening_rent_arrears') }}" placeholder="0.00" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input form="{{ $formId }}" type="number" step="0.01" min="0" name="opening_rent_arrears" value="{{ old('opening_rent_arrears') }}" placeholder="0.00" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('opening_rent_arrears')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Carry-forward rent period</label>
-                    <input type="month" name="opening_rent_arrears_period" value="{{ old('opening_rent_arrears_period') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input form="{{ $formId }}" type="month" name="opening_rent_arrears_period" value="{{ old('opening_rent_arrears_period') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('opening_rent_arrears_period')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Carry-forward rent details</label>
-                    <input type="text" name="opening_rent_arrears_details" value="{{ old('opening_rent_arrears_details') }}" placeholder="e.g. Jan-Mar unpaid rent balance" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input form="{{ $formId }}" type="text" name="opening_rent_arrears_details" value="{{ old('opening_rent_arrears_details') }}" placeholder="e.g. Jan-Mar unpaid rent balance" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('opening_rent_arrears_details')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
             </div>
@@ -168,21 +170,21 @@
             <div class="grid gap-2 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Manual total override (optional)</label>
-                    <input type="number" step="0.01" min="0" name="opening_arrears_manual_total" value="{{ old('opening_arrears_manual_total') }}" placeholder="Auto-sums charge lines if left blank" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input form="{{ $formId }}" type="number" step="0.01" min="0" name="opening_arrears_manual_total" value="{{ old('opening_arrears_manual_total') }}" placeholder="Auto-sums charge lines if left blank" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">As of date</label>
-                    <input type="date" name="opening_arrears_as_of_date" value="{{ old('opening_arrears_as_of_date') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <input form="{{ $formId }}" type="date" name="opening_arrears_as_of_date" value="{{ old('opening_arrears_as_of_date') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Carry-forward note (optional)</label>
-                <input type="text" name="opening_arrears_note" value="{{ old('opening_arrears_note') }}" placeholder="Source / reason for brought-forward debt" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input form="{{ $formId }}" type="text" name="opening_arrears_note" value="{{ old('opening_arrears_note') }}" placeholder="Source / reason for brought-forward debt" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
             </div>
         </div>
     </fieldset>
     <x-slot name="footer">
-        <button type="button" class="w-full min-h-[44px] rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50" @click="markLeaseCarryForwardTouched('{{ $formId }}'); showOpeningArrearsModal = false">Done</button>
+        <button type="button" class="w-full min-h-[44px] rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50" @click="window.markLeaseCarryForwardTouched?.('{{ $formId }}'); showOpeningArrearsModal = false">Done</button>
     </x-slot>
 </x-property.modal>
 
@@ -193,6 +195,7 @@
     title="Add charge line"
     max-width="lg"
     :z-index="7110"
+    :lease-submodal="true"
 >
     <div class="grid gap-3 sm:grid-cols-2">
         <div>

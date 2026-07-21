@@ -1,4 +1,13 @@
 <x-loan-layout>
+    @php
+        $selectedLoan = ($selectedLoanId ?? '') !== ''
+            ? $loans->firstWhere('id', (int) $selectedLoanId)
+            : null;
+        $defaultAmount = old('amount');
+        if ($defaultAmount === null && $selectedLoan) {
+            $defaultAmount = number_format((float) $selectedLoan->principal, 2, '.', '');
+        }
+    @endphp
     <x-loan.page :title="$title" :subtitle="$subtitle">
         <x-slot name="actions">
             <a href="{{ route('loan.book.disbursements.index') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition-colors">Back</a>
@@ -20,14 +29,31 @@
                     <select id="loan_book_loan_id" name="loan_book_loan_id" required class="w-full rounded-lg border-slate-200 text-sm">
                         <option value="">Select…</option>
                         @foreach ($loans as $l)
-                            <option value="{{ $l->id }}" @selected((string) old('loan_book_loan_id', request()->query('loan_book_loan_id', '')) === (string) $l->id)>{{ $l->loan_number }} · {{ $l->loanClient?->full_name ?? '—' }}</option>
+                            <option value="{{ $l->id }}" @selected((string) old('loan_book_loan_id', $selectedLoanId ?? '') === (string) $l->id)>{{ $l->loan_number }} · {{ $l->loanClient?->full_name ?? '—' }} · Principal {{ number_format((float) $l->principal, 2) }}</option>
                         @endforeach
                     </select>
                     @error('loan_book_loan_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label for="amount" class="block text-xs font-semibold text-slate-600 mb-1">Amount</label>
-                    <input id="amount" name="amount" type="number" step="0.01" min="0.01" value="{{ old('amount') }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
+                    <label for="amount" class="block text-xs font-semibold text-slate-600 mb-1">Payout amount (cash to borrower)</label>
+                    <input
+                        id="amount"
+                        name="amount"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        value="{{ $defaultAmount }}"
+                        required
+                        class="w-full rounded-lg border-slate-200 text-sm tabular-nums"
+                        data-disbursement-amount
+                    />
+                    <p id="amount_hint" class="mt-1 text-xs text-slate-500">
+                        @if ($selectedLoan)
+                            Auto-filled from loan principal: <span class="font-semibold tabular-nums">{{ number_format((float) $selectedLoan->principal, 2) }}</span>. Do not add interest or fees — those are collected on repayment.
+                        @else
+                            Select a loan to auto-fill the principal amount paid out to the client.
+                        @endif
+                    </p>
                     @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -74,13 +100,15 @@
 
 @php
     $loanAutofillData = $loans->mapWithKeys(function ($loan) {
+        $principal = round(max(0.0, (float) ($loan->principal ?? 0)), 2);
+
         return [
             (string) $loan->id => [
                 'id' => (int) $loan->id,
                 'loan_number' => (string) $loan->loan_number,
                 'client_name' => (string) ($loan->loanClient?->full_name ?? ''),
-                'balance' => (float) ($loan->balance ?? 0),
-                'principal' => (float) ($loan->principal ?? 0),
+                'principal' => $principal,
+                'suggested_amount' => $principal,
             ],
         ];
     });
@@ -94,6 +122,7 @@
 
         const loanSelect = form.querySelector('#loan_book_loan_id');
         const amountInput = form.querySelector('#amount');
+        const amountHint = form.querySelector('#amount_hint');
         const referenceInput = form.querySelector('#reference');
         const notesInput = form.querySelector('#notes');
         const dateInput = form.querySelector('#disbursed_at');
@@ -144,9 +173,9 @@
             }
         };
 
-        const initialAmount = amountInput?.value ?? '';
         const initialReference = referenceInput?.value ?? '';
         const initialNotes = notesInput?.value ?? '';
+        let lastSuggestedAmount = amountInput?.value ?? '';
 
         const formatDateYmd = (rawDate) => {
             if (rawDate) return rawDate;
@@ -154,22 +183,40 @@
             return today.toISOString().slice(0, 10);
         };
 
+        const formatMoney = (value) => {
+            const n = Number(value);
+            if (!Number.isFinite(n)) {
+                return '0.00';
+            }
+
+            return n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+
         const applyLoanDefaults = () => {
             const selectedId = loanSelect?.value ? String(loanSelect.value) : '';
-            if (!selectedId || !loanData[selectedId]) return;
+            if (!selectedId || !loanData[selectedId]) {
+                if (amountHint) {
+                    amountHint.textContent = 'Select a loan to auto-fill the principal amount paid out to the client.';
+                }
+                return;
+            }
 
             const selectedLoan = loanData[selectedId];
-            const suggestedAmount = Number(selectedLoan.balance || 0) > 0
-                ? Number(selectedLoan.balance)
-                : Number(selectedLoan.principal || 0);
+            const suggestedAmount = Number(selectedLoan.suggested_amount ?? selectedLoan.principal ?? 0);
             const amountText = suggestedAmount > 0 ? suggestedAmount.toFixed(2) : '';
             const ymd = formatDateYmd(dateInput?.value);
             const compactDate = ymd.replace(/-/g, '');
             const generatedRef = `DISB-${selectedLoan.loan_number}-${compactDate}`;
 
-            if (amountInput && (amountInput.value === '' || amountInput.value === initialAmount)) {
+            if (amountInput && (amountInput.value === '' || amountInput.value === lastSuggestedAmount)) {
                 amountInput.value = amountText;
+                lastSuggestedAmount = amountText;
             }
+
+            if (amountHint && suggestedAmount > 0) {
+                amountHint.innerHTML = `Auto-filled from loan principal: <span class="font-semibold tabular-nums">${formatMoney(suggestedAmount)}</span>. Do not add interest or fees — those are collected on repayment.`;
+            }
+
             if (referenceInput && (referenceInput.value === '' || referenceInput.value === initialReference)) {
                 referenceInput.value = generatedRef;
             }

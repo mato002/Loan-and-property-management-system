@@ -16,28 +16,33 @@ class PmMessageLog extends Model
         'channel',
         'to_address',
         'subject',
+        'internal_stage',
+        'display_stage',
+        'template_category',
         'body',
         'delivery_status',
         'delivery_error',
         'sent_at',
+        'superseded_at',
+        'superseded_by_log_id',
     ];
 
     protected function casts(): array
     {
         return [
             'sent_at' => 'datetime',
+            'superseded_at' => 'datetime',
         ];
     }
 
     /**
-     * Agent isolation: an agent only sees logs they generated. Logs with
-     * a NULL user_id come from system actions (cron, super admin, system
-     * notifications) and stay visible to super admin only.
+     * Agent isolation: own sends plus system/cron SMS & email to the agent's tenants.
+     * Super admins bypass this scope and see the full log.
      */
     protected static function booted(): void
     {
         static::addGlobalScope('agent_workspace', function (Builder $query) {
-            AgentWorkspaceScope::applyByCreator($query, 'pm_message_logs', 'user_id');
+            AgentWorkspaceScope::applyByMessageLog($query, 'pm_message_logs');
         });
     }
 

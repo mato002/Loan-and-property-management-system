@@ -22,6 +22,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Default rent due day (calendar day of month)
+    |--------------------------------------------------------------------------
+    |
+    | Used when a lease and its property have no rent_due_day override.
+    | Overridable in System setup → Workflow adjustments (portal setting).
+    | Env: DEFAULT_RENT_DUE_DAY
+    |
+    */
+    'rent_due_day_default' => (int) env('DEFAULT_RENT_DUE_DAY', 5),
+
+    /*
+    |--------------------------------------------------------------------------
     | Property portal UI version
     |--------------------------------------------------------------------------
     |
@@ -47,5 +59,18 @@ return [
     |--------------------------------------------------------------------------
     */
     'navigation' => require __DIR__.'/property_navigation.php',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Staff login page branding source
+    |--------------------------------------------------------------------------
+    |
+    | Unauthenticated staff pages (login, forgot password) use global platform
+    | branding when set. When global rows are empty, this agent user id supplies
+    | company name, logo, and favicon. When null, the sole agent with a saved
+    | company name is used automatically; otherwise APP_NAME is shown.
+    |
+    */
+    'login_branding_agent_user_id' => env('PROPERTY_LOGIN_BRANDING_AGENT_ID'),
 
 ];

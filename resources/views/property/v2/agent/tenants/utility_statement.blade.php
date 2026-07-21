@@ -37,42 +37,8 @@
             @endif
         </div>
 
-        <div class="md:hidden space-y-2 print-hide">
-            @forelse ($ledger['rows'] as $row)
-                <article class="utility-invoice-panel">
-                    <div class="flex items-start justify-between gap-2">
-                        <div class="min-w-0">
-                            <p class="text-xs text-slate-500">{{ $row['date'] }}</p>
-                            <p class="font-semibold text-slate-900 truncate">{{ $row['reference'] }}</p>
-                            @include('property.agent.partials.utility_ledger_type_badge', ['entryType' => $row['entry_type'], 'label' => $row['type_label']])
-                        </div>
-                        <p class="text-sm font-bold tabular-nums text-slate-900 shrink-0">{{ $row['balance_display'] }}</p>
-                    </div>
-                    <p class="mt-2 text-xs text-slate-600">{{ $row['description'] }}</p>
-                    <div class="mt-2 grid grid-cols-2 gap-2 text-xs tabular-nums">
-                        <div class="rounded-lg bg-amber-50 px-2 py-1.5">
-                            <span class="text-amber-800 block text-[10px]">Debit</span>
-                            <span class="font-semibold text-amber-900">{{ $row['debit_display'] ?: '—' }}</span>
-                        </div>
-                        <div class="rounded-lg bg-emerald-50 px-2 py-1.5 text-right">
-                            <span class="text-emerald-800 block text-[10px]">Credit</span>
-                            <span class="font-semibold text-emerald-900">{{ $row['credit_display'] ?: '—' }}</span>
-                        </div>
-                    </div>
-                    <div class="mt-2">
-                        @include('property.agent.partials.utility_ledger_drilldown', [
-                            'drilldown' => $row['drilldown'] ?? [],
-                            'tenantId' => $tenant->id,
-                        ])
-                    </div>
-                </article>
-            @empty
-                <p class="text-sm text-slate-500 py-8 text-center">No utility ledger entries in this period.</p>
-            @endforelse
-        </div>
-
-        <x-property.responsive.table-wrapper minWidth="980" class="hidden md:block">
-            <table class="min-w-full text-sm utility-ledger-table">
+        <x-property.responsive.table-wrapper minWidth="980">
+            <table class="property-erp-table min-w-full text-sm utility-ledger-table">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <tr>
                         <th class="px-4 py-3">Date</th>

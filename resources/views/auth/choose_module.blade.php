@@ -1,43 +1,73 @@
-<x-guest-layout :title="__('Choose module').' — '.config('app.name')">
-    <div class="mt-2 mb-6">
-        <h1 class="text-3xl font-bold tracking-tight text-slate-900">{{ __('Choose module') }}</h1>
+@extends('layouts.guest')
+
+@section('content')
+    @php
+        $badgeClass = 'inline-flex items-center rounded-full bg-[#6a9f97]/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#386f66] ring-1 ring-[#6a9f97]/35';
+    @endphp
+
+    <div class="text-center mb-7">
+        <p class="{{ $badgeClass }}">{{ __('Operations') }}</p>
+        <h1 class="mt-4 text-2xl font-bold tracking-tight text-slate-900">{{ __('Choose module') }}</h1>
         <p class="mt-2 text-sm leading-relaxed text-slate-500">
-            {{ __('Select the portal you want to enter. If a button is disabled, your account is not approved for that module.') }}
+            {{ __('Pick Property or Loan to open. Switch modules anytime from the header after sign-in.') }}
         </p>
     </div>
 
-    <div class="space-y-4">
-        <form method="POST" action="{{ route('choose_module.activate', ['module' => 'property']) }}">
-            @csrf
-            <button
-                type="submit"
-                class="w-full rounded-2xl border px-5 py-4 text-left font-bold transition
-                    {{ $propertyApproved ? 'border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100' : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' }}"
-                @disabled(! $propertyApproved)
-            >
-                <span class="block text-sm uppercase tracking-[0.14em] opacity-80">Property module</span>
-                <span class="block text-xl mt-1">Login for Property Management</span>
-            </button>
-        </form>
-
-        <form method="POST" action="{{ route('choose_module.activate', ['module' => 'loan']) }}">
-            @csrf
-            <button
-                type="submit"
-                class="w-full rounded-2xl border px-5 py-4 text-left font-bold transition
-                    {{ $loanApproved ? 'border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100' : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed' }}"
-                @disabled(! $loanApproved)
-            >
-                <span class="block text-sm uppercase tracking-[0.14em] opacity-80">Loan module</span>
-                <span class="block text-xl mt-1">Login for Loan Management</span>
-            </button>
-        </form>
-    </div>
-
     @if ($errors->any())
-        <div class="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div class="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 text-left" role="alert">
             {{ $errors->first('module') }}
         </div>
     @endif
-</x-guest-layout>
 
+    @if ($propertyApproved)
+        <link rel="prefetch" href="{{ route('module.switch', ['module' => 'property']) }}" as="document">
+    @endif
+    @if ($loanApproved)
+        <link rel="prefetch" href="{{ route('module.switch', ['module' => 'loan']) }}" as="document">
+    @endif
+
+    <div class="space-y-3">
+        @if ($propertyApproved)
+            <a
+                href="{{ route('module.switch', ['module' => 'property']) }}"
+                data-choose-module-enter="property"
+                data-turbo-frame="_top"
+                class="flex w-full flex-col rounded-xl border border-[#6a9f97]/35 bg-[#6a9f97]/10 px-5 py-4 text-left transition hover:bg-[#6a9f97]/20"
+            >
+                <span class="text-xs font-semibold uppercase tracking-wide text-[#386f66]">{{ __('Property module') }}</span>
+                <span class="mt-1 text-lg font-bold text-[#2f4f4f]">{{ __('Property Management') }}</span>
+            </a>
+        @else
+            <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-400">
+                <span class="text-xs font-semibold uppercase tracking-wide">{{ __('Property module') }}</span>
+                <span class="mt-1 block text-lg font-bold">{{ __('Not approved') }}</span>
+            </div>
+        @endif
+
+        @if ($loanApproved)
+            <a
+                href="{{ route('module.switch', ['module' => 'loan']) }}"
+                data-choose-module-enter="loan"
+                data-turbo-frame="_top"
+                class="flex w-full flex-col rounded-xl border border-[#4d8d82]/35 bg-[#4d8d82]/10 px-5 py-4 text-left transition hover:bg-[#4d8d82]/20"
+            >
+                <span class="text-xs font-semibold uppercase tracking-wide text-[#386f66]">{{ __('Loan module') }}</span>
+                <span class="mt-1 text-lg font-bold text-[#2f4f4f]">{{ __('Loan Management') }}</span>
+            </a>
+        @else
+            <div class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 text-slate-400">
+                <span class="text-xs font-semibold uppercase tracking-wide">{{ __('Loan module') }}</span>
+                <span class="mt-1 block text-lg font-bold">{{ __('Not approved') }}</span>
+            </div>
+        @endif
+    </div>
+
+    <div class="mt-8 text-center text-xs text-slate-500">
+        <form method="POST" action="{{ route('logout') }}">
+            @csrf
+            <button type="submit" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">
+                {{ __('Sign out') }}
+            </button>
+        </form>
+    </div>
+@endsection

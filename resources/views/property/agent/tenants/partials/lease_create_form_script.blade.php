@@ -31,18 +31,13 @@
             const additionalDepositsWrap = document.getElementById('additional-deposits-rows');
             const rentDepositInput = document.getElementById('lease-rent-deposit');
             const rentDepositMeta = document.getElementById('rent-deposit-meta');
-            const optionalFieldsCreateModal = document.getElementById('optional-fields-create-modal');
+            const leaseFormId = 'lease-form-wrapper';
             const openOptionalFieldsCreateModalButton = document.getElementById('open-optional-fields-create-modal');
-            const closeOptionalFieldsCreateModalButton = document.getElementById('close-optional-fields-create-modal');
             const utilityDefaultsTbody = document.getElementById('utility-defaults-tbody');
             const utilityDefaultsEmptyHint = document.getElementById('utility-defaults-empty');
-            const openingArrearsCreateModal = document.getElementById('opening-arrears-create-modal');
             const openingArrearsCreateWrap = document.getElementById('opening-arrears-create-wrap');
-            const closeOpeningArrearsCreateModalButton = document.getElementById('close-opening-arrears-create-modal');
             const openingArrearsCreateRows = document.getElementById('opening-arrears-create-rows');
             const openArrearsLineModalCreateButton = document.getElementById('open-arrears-line-modal-create');
-            const arrearsLineModalCreate = document.getElementById('arrears-line-modal-create');
-            const closeArrearsLineModalCreateButton = document.getElementById('close-arrears-line-modal-create');
             const cancelArrearsLineModalCreateButton = document.getElementById('cancel-arrears-line-modal-create');
             const saveArrearsLineModalCreateButton = document.getElementById('save-arrears-line-modal-create');
             const arrearsLineCreateChargeType = document.getElementById('arrears-line-create-charge-type');
@@ -55,6 +50,8 @@
             if (!propertySelect || !unitSelect || !monthlyRentInput) {
                 return;
             }
+
+            const EMPTY_CELL = '\u2014';
 
             const fetchLeaseFormJson = async (url) => {
                 const response = await fetch(url, {
@@ -272,7 +269,7 @@
                 });
             };
             const renderDepositMeta = (def) => {
-                if (!def) return 'â€”';
+                if (!def) return EMPTY_CELL;
                 const mode = String(def.amount_mode || 'fixed');
                 const value = Number(def.amount_value || 0);
                 const formula = mode === 'percent_rent' ? `${value}% of rent` : `Fixed ${toMoney(value)}`;
@@ -394,21 +391,21 @@
                     const fixedDisabled = tpl.inputMode === 'rate_only';
                     const ratePost = rateDisabled ? '' : rateVal;
                     const fixedPost = fixedDisabled ? '' : fixedVal;
-                    const rateShow = rateDisabled ? 'â€”' : (rateVal !== '' ? rateVal : 'â€”');
-                    const fixedShow = fixedDisabled ? 'â€”' : (fixedVal !== '' ? fixedVal : 'â€”');
+                    const rateShow = rateDisabled ? EMPTY_CELL : (rateVal !== '' ? rateVal : EMPTY_CELL);
+                    const fixedShow = fixedDisabled ? EMPTY_CELL : (fixedVal !== '' ? fixedVal : EMPTY_CELL);
                     const escAttr = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
                     const tr = document.createElement('tr');
                     tr.className = 'border-t border-slate-100 dark:border-slate-700';
                     tr.innerHTML = `
                         <td class="px-3 py-2 font-medium text-slate-800 dark:text-slate-200">${tpl.label.replace(/</g, '&lt;')}</td>
                         <td class="px-3 py-2">
-                            <input type="hidden" name="utility_expenses[${idx}][type]" value="${escAttr(tpl.value)}" />
-                            <input type="hidden" name="utility_expenses[${idx}][rate_per_unit]" value="${escAttr(ratePost)}" />
-                            <span class="text-sm tabular-nums text-slate-700 dark:text-slate-200">${rateShow === 'â€”' ? 'â€”' : escAttr(rateShow)}</span>
+                            <input form="${leaseFormId}" type="hidden" name="utility_expenses[${idx}][type]" value="${escAttr(tpl.value)}" />
+                            <input form="${leaseFormId}" type="hidden" name="utility_expenses[${idx}][rate_per_unit]" value="${escAttr(ratePost)}" />
+                            <span class="text-sm tabular-nums text-slate-700 dark:text-slate-200">${rateShow === EMPTY_CELL ? EMPTY_CELL : escAttr(rateShow)}</span>
                         </td>
                         <td class="px-3 py-2">
-                            <input type="hidden" name="utility_expenses[${idx}][fixed_charge]" value="${escAttr(fixedPost)}" />
-                            <span class="text-sm tabular-nums text-slate-700 dark:text-slate-200">${fixedShow === 'â€”' ? 'â€”' : escAttr(fixedShow)}</span>
+                            <input form="${leaseFormId}" type="hidden" name="utility_expenses[${idx}][fixed_charge]" value="${escAttr(fixedPost)}" />
+                            <span class="text-sm tabular-nums text-slate-700 dark:text-slate-200">${fixedShow === EMPTY_CELL ? EMPTY_CELL : escAttr(fixedShow)}</span>
                         </td>
                     `;
                     utilityDefaultsTbody.appendChild(tr);
@@ -465,7 +462,7 @@
                     tr.innerHTML = `
                         <td class="px-3 py-2 text-slate-700">${escapeHtml(row.label)}</td>
                         <td class="px-3 py-2">
-                            <input type="number" name="opening_deposit_arrears[${escapeHtml(row.key)}]" value="${escapeHtml(currentValue)}" step="0.01" min="0" placeholder="0.00" class="w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
+                            <input form="${leaseFormId}" type="number" name="opening_deposit_arrears[${escapeHtml(row.key)}]" value="${escapeHtml(currentValue)}" step="0.01" min="0" placeholder="0.00" class="w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
                         </td>
                     `;
                     openingDepositArrearsCreateRows.appendChild(tr);
@@ -514,11 +511,11 @@
                 const row = document.createElement('div');
                 row.className = 'grid gap-2 grid-cols-[2fr_1fr_2fr_auto] additional-deposit-row';
                 row.innerHTML = `
-                    <select name="additional_deposits[${index}][label]" class="additional-deposit-label rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                    <select form="${leaseFormId}" name="additional_deposits[${index}][label]" class="additional-deposit-label rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         ${additionalLabelOptionsHtml(defs, label)}
                     </select>
-                    <input type="number" name="additional_deposits[${index}][amount]" value="${amount}" step="0.01" min="0" placeholder="Amount" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                    <div class="deposit-line-meta rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">â€”</div>
+                    <input form="${leaseFormId}" type="number" name="additional_deposits[${index}][amount]" value="${amount}" step="0.01" min="0" placeholder="Amount" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <div class="deposit-line-meta rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">${EMPTY_CELL}</div>
                     <button type="button" class="remove-deposit-row rounded-lg border border-red-200 px-2.5 py-2 text-xs font-medium text-red-700 hover:bg-red-50" ${locked ? 'disabled' : ''}>Remove</button>
                 `;
                 if (locked && !canCustomDepositOverride) {
@@ -595,21 +592,18 @@
                 });
             }
 
+            if (leaseForm.dataset.leaseSubmitBound !== '1') {
+                leaseForm.dataset.leaseSubmitBound = '1';
+                leaseForm.addEventListener('submit', () => {
+                    window.syncLeaseCarryForwardToForm?.(leaseFormId);
+                });
+            }
+
             openOptionalFieldsCreateModalButton?.addEventListener('click', () => {
                 if (openOptionalFieldsCreateModalButton.disabled) return;
-                optionalFieldsCreateModal?.classList.remove('hidden');
-                optionalFieldsCreateModal?.classList.add('flex');
+                window.openLeaseSubmodal?.(leaseFormId, 'optional');
                 renderUtilityDefaultsTable();
                 syncDepositRules();
-            });
-            closeOptionalFieldsCreateModalButton?.addEventListener('click', () => {
-                optionalFieldsCreateModal?.classList.add('hidden');
-                optionalFieldsCreateModal?.classList.remove('flex');
-            });
-            optionalFieldsCreateModal?.addEventListener('click', (event) => {
-                if (event.target !== optionalFieldsCreateModal) return;
-                optionalFieldsCreateModal.classList.add('hidden');
-                optionalFieldsCreateModal.classList.remove('flex');
             });
             additionalDepositsWrap?.addEventListener('click', (event) => {
                 const target = event.target;
@@ -620,30 +614,15 @@
                 reindexDepositRows();
             });
             toggleOpeningArrearsCreateButton?.addEventListener('click', () => {
-                if (!openingArrearsCreateModal) return;
-                openingArrearsCreateModal.classList.remove('hidden');
-                openingArrearsCreateModal.classList.add('flex');
+                window.openLeaseSubmodal?.(leaseFormId, 'arrears');
                 refreshOpeningArrearsChargeTypes();
                 renderOpeningDepositArrearsRows();
             });
-            closeOpeningArrearsCreateModalButton?.addEventListener('click', () => {
-                openingArrearsCreateModal?.classList.add('hidden');
-                openingArrearsCreateModal?.classList.remove('flex');
-            });
-            openingArrearsCreateModal?.addEventListener('click', (event) => {
-                if (event.target !== openingArrearsCreateModal) return;
-                openingArrearsCreateModal.classList.add('hidden');
-                openingArrearsCreateModal.classList.remove('flex');
-            });
             const openArrearsLineModalCreate = () => {
-                if (!arrearsLineModalCreate) return;
-                arrearsLineModalCreate.classList.remove('hidden');
-                arrearsLineModalCreate.classList.add('flex');
+                window.openLeaseSubmodal?.(leaseFormId, 'arrearsLine');
             };
             const closeArrearsLineModalCreate = () => {
-                if (!arrearsLineModalCreate) return;
-                arrearsLineModalCreate.classList.add('hidden');
-                arrearsLineModalCreate.classList.remove('flex');
+                window.closeLeaseSubmodal?.(leaseFormId, 'arrearsLine');
             };
             const appendOpeningArrearsCreateRow = (chargeType = 'water', specificCharge = '', period = '', amount = '') => {
                 if (!openingArrearsCreateRows) return;
@@ -659,18 +638,18 @@
                 row.className = 'opening-arrears-row border-t border-amber-100';
                 row.innerHTML = `
                     <td class="px-3 py-2">
-                        <select name="opening_arrears[${index}][charge_type]" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <select form="${leaseFormId}" name="opening_arrears[${index}][charge_type]" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                             ${buildArrearsChargeTypeOptionsHtml(templateRows)}
                         </select>
                     </td>
                     <td class="px-3 py-2">
-                        <input type="text" name="opening_arrears[${index}][specific_charge]" value="${specificCharge}" placeholder="e.g. Water meter bill" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        <input form="${leaseFormId}" type="text" name="opening_arrears[${index}][specific_charge]" value="${specificCharge}" placeholder="e.g. Water meter bill" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     </td>
                     <td class="px-3 py-2">
-                        <input type="month" name="opening_arrears[${index}][period]" value="${period}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        <input form="${leaseFormId}" type="month" name="opening_arrears[${index}][period]" value="${period}" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     </td>
                     <td class="px-3 py-2">
-                        <input type="number" name="opening_arrears[${index}][amount]" value="${amount}" step="0.01" min="0" placeholder="0.00" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        <input form="${leaseFormId}" type="number" name="opening_arrears[${index}][amount]" value="${amount}" step="0.01" min="0" placeholder="0.00" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     </td>
                     <td class="px-3 py-2">
                         <button type="button" class="remove-opening-arrears-row rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100">Remove</button>
@@ -685,7 +664,6 @@
                 openingArrearsCreateRows.appendChild(row);
             };
             openArrearsLineModalCreateButton?.addEventListener('click', openArrearsLineModalCreate);
-            closeArrearsLineModalCreateButton?.addEventListener('click', closeArrearsLineModalCreate);
             cancelArrearsLineModalCreateButton?.addEventListener('click', closeArrearsLineModalCreate);
             saveArrearsLineModalCreateButton?.addEventListener('click', () => {
                 appendOpeningArrearsCreateRow(
@@ -733,10 +711,6 @@
             };
 
             bindLeaseFormLogic();
-
-            if (window.Alpine?.initTree) {
-                window.Alpine.initTree(leaseForm);
-            }
         };
 
         if (!window.__leaseFormLogicBound) {

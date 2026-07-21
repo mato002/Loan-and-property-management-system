@@ -24,7 +24,7 @@ class ExpireLoanTemporaryAccessCommand extends Command
             ->where('expires_at', '<=', now())
             ->update(['status' => LoanTemporaryAccessRequest::STATUS_EXPIRED]);
 
-        $this->info("Expired {$affected} temporary access request(s).");
+        $this->info("Loan temporary access expired: count={$affected}.");
 
         return self::SUCCESS;
     }

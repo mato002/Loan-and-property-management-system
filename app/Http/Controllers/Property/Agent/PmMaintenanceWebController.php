@@ -8,6 +8,7 @@ use App\Models\PmLease;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmMessageLog;
 use App\Models\PmVendor;
+use App\Models\Property;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Support\CsvExport;
@@ -155,6 +156,9 @@ class PmMaintenanceWebController extends Controller
         ]);
 
         $pmTenantId = $this->resolveTenantIdForMaintenanceUnit((int) $data['property_unit_id']);
+
+        $property = Property::query()->findOrFail((int) $data['property_id']);
+        app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanCreateMaintenance($property);
 
         PmMaintenanceRequest::query()->create([
             'property_unit_id' => (int) $data['property_unit_id'],

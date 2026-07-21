@@ -13,15 +13,22 @@ class SendRentReminderJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $tries = 2;
+
+    public int $timeout = 600;
+
+    /** @var list<int> */
+    public array $backoff = [300, 600];
+
     public function __construct(public string $date, public bool $force = false)
     {
+        $this->onQueue('low');
     }
 
     public function handle(): void
     {
         Artisan::call('rent:send-reminders', [
             '--date' => $this->date,
-            '--force' => $this->force,
         ]);
     }
 }

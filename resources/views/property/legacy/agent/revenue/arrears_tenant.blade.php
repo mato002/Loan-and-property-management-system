@@ -15,7 +15,7 @@
 @endphp
 
 <x-property.workspace
-    title="Arrears ┬╖ {{ $tenant->name }}"
+    title="Arrears for {{ $tenant->name }}"
     subtitle="All overdue invoices for this tenant. Send targeted reminders or escalate."
     back-route="property.revenue.arrears"
     :columns="$columns"
@@ -81,17 +81,10 @@
                 <p class="text-xs uppercase tracking-wide text-slate-500">Tenant</p>
                 <p class="text-base font-semibold text-slate-800 dark:text-slate-100">{{ $tenant->name }}</p>
                 <div class="mt-1 flex flex-wrap gap-3 text-xs text-slate-600 dark:text-slate-400">
-                    @if ($tenantPhoneE164 !== '')
-                        <a href="tel:{{ $tenantPhoneE164 }}" class="text-indigo-600 hover:text-indigo-700">≡ƒô₧ {{ $tenant->phone }}</a>
-                    @else
-                        <span>≡ƒô₧ —</span>
-                    @endif
-                    @if (! empty($tenant->email))
-                        <a href="mailto:{{ $tenant->email }}" class="text-indigo-600 hover:text-indigo-700">Γ£ë {{ $tenant->email }}</a>
-                    @endif
-                    @if (! empty($tenant->account_number))
-                        <span>Acct: {{ $tenant->account_number }}</span>
-                    @endif
+                    @include('property.agent.partials.tenant_contact_inline', [
+                        'tenant' => $tenant,
+                        'phoneE164' => $tenantPhoneE164,
+                    ])
                 </div>
             </div>
             <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-gray-800">
@@ -102,7 +95,7 @@
             <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-gray-800">
                 <p class="text-xs uppercase tracking-wide text-slate-500">Oldest due</p>
                 <p class="text-base font-semibold text-slate-800 dark:text-slate-100">{{ $summary['oldest_due'] ?? '—' }}</p>
-                <p class="text-xs text-slate-500 mt-1">{{ $summary['days_late'] ?? 0 }} days ┬╖ {{ $summary['workflow'] ?? 'Reminder' }}</p>
+                <p class="text-xs text-slate-500 mt-1">{{ $summary['days_late'] ?? 0 }} days late, {{ $summary['workflow'] ?? 'Reminder' }}</p>
             </div>
             <div class="rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-gray-800">
                 <p class="text-xs uppercase tracking-wide text-slate-500">Last contact</p>

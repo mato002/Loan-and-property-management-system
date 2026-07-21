@@ -2,13 +2,18 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         @php
-            $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name');
-            $companyLogoUrl = trim((string) \App\Models\PropertyPortalSetting::getValue('company_logo_url', ''));
-            $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');
+            $companyName = \App\Support\Property\PropertyWorkspaceBranding::forGuestPage('company_name') ?: config('app.name');
+            $companyLogoUrl = trim((string) (\App\Support\Property\PropertyWorkspaceBranding::forGuestPage('company_logo_url', '') ?? ''));
+            $siteFaviconUrl = \App\Support\Property\PropertyWorkspaceBranding::forGuestPage('site_favicon_url', '') ?? '';
             $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
             $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
             $resolvedTitle = str_replace(config('app.name'), $companyName, $title);
             $heroImage = 'https://images.unsplash.com/photo-1460317442991-0ec209397118?auto=format&fit=crop&w=1800&q=80';
+            $heroTitle = $heroTitle ?? __('Welcome back to your operations workspace.');
+            $heroSubtitle = $heroSubtitle ?? __('Track properties, finances, tenants, and reports from one secure portal with role-based access control.');
+            $heroCardLabel = $heroCardLabel ?? __('Secure Access');
+            $heroCardTitle = $heroCardTitle ?? __('Sign in to continue');
+            $heroCardBody = $heroCardBody ?? __('Use your staff credentials to access property and loan modules.');
         @endphp
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -51,17 +56,17 @@
                     <div>
                         <p class="text-[11px] lg:text-sm font-semibold uppercase tracking-[0.18em] lg:tracking-[0.2em] text-white/75">{{ $companyName }}</p>
                         <h2 class="mt-2 lg:mt-6 max-w-md text-lg lg:text-4xl font-extrabold leading-tight">
-                            {{ __('Welcome back to your operations workspace.') }}
+                            {{ $heroTitle }}
                         </h2>
                         <p class="mt-1.5 lg:mt-4 max-w-md text-xs lg:text-sm leading-relaxed text-white/85">
-                            {{ __('Track properties, finances, tenants, and reports from one secure portal with role-based access control.') }}
+                            {{ $heroSubtitle }}
                         </p>
                     </div>
 
                     <div class="hidden lg:block rounded-3xl border border-white/25 bg-white/10 p-5 backdrop-blur-sm">
-                        <p class="text-xs font-semibold uppercase tracking-wide text-white/70">{{ __('Secure Access') }}</p>
-                        <p class="mt-2 text-lg font-semibold">{{ __('Sign in to continue') }}</p>
-                        <p class="mt-1 text-sm text-white/80">{{ __('Use your staff credentials to access property and loan modules.') }}</p>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-white/70">{{ $heroCardLabel }}</p>
+                        <p class="mt-2 text-lg font-semibold">{{ $heroCardTitle }}</p>
+                        <p class="mt-1 text-sm text-white/80">{{ $heroCardBody }}</p>
                     </div>
                 </div>
                 </aside>
@@ -79,7 +84,11 @@
                             @endif
                         </div>
                         <div class="px-7 py-8 sm:px-9 sm:py-10">
-                            {{ $slot }}
+                            @hasSection('content')
+                                @yield('content')
+                            @else
+                                {{ $slot }}
+                            @endif
                         </div>
                     </div>
                 </div>

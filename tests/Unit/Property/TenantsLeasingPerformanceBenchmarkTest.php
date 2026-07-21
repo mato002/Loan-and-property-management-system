@@ -139,7 +139,7 @@ class TenantsLeasingPerformanceBenchmarkTest extends TestCase
                 fn (string $q): bool => str_contains($q, 'json_extract') && str_contains($q, 'opening_arrears')
             ),
             'lease_form_context_endpoints' => substr_count($body, 'leaseFormEndpoints'),
-            'action_menu_shells' => substr_count($body, 'data-property-dropdown-root'),
+            'action_menu_shells' => substr_count($body, 'absolute right-0 z-[100]'),
         ];
     }
 

@@ -11,7 +11,7 @@
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-sm font-semibold text-slate-900">{{ $conversation->topic ?: 'Untitled conversation' }}</p>
-                            <p class="text-xs text-slate-500">{{ $conversation->tenant?->name ?: 'Unknown tenant' }} ┬╖ {{ str_replace('_', ' ', (string) $conversation->category) }}</p>
+                            <p class="text-xs text-slate-500">{{ $conversation->tenant?->name ?: 'Unknown tenant' }}  -  {{ str_replace('_', ' ', (string) $conversation->category) }}</p>
                         </div>
                         <span class="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold uppercase text-slate-700">{{ $conversation->status }}</span>
                     </div>
@@ -19,8 +19,8 @@
                         @forelse($conversation->messages as $message)
                             <div class="rounded-md bg-white p-2 text-xs">
                                 <p class="font-semibold text-slate-700">
-                                    {{ strtoupper((string) $message->direction) }} ┬╖ {{ strtoupper((string) $message->channel) }}
-                                    <span class="font-normal text-slate-500">┬╖ {{ optional($message->sent_at)->format('Y-m-d H:i') }}</span>
+                                    {{ strtoupper((string) $message->direction) }}  -  {{ strtoupper((string) $message->channel) }}
+                                    <span class="font-normal text-slate-500"> -  {{ optional($message->sent_at)->format('Y-m-d H:i') }}</span>
                                 </p>
                                 <p class="mt-1 text-slate-700">{{ \Illuminate\Support\Str::limit((string) $message->body, 180) }}</p>
                             </div>

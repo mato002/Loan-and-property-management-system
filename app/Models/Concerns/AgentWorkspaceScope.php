@@ -106,6 +106,90 @@ final class AgentWorkspaceScope
     }
 
     /**
+     * Communications log visibility for agents: own sends plus system/cron
+     * SMS/email to tenants in the agent workspace (matched by phone or email).
+     */
+    public static function applyByMessageLog(Builder $query, string $tableName = 'pm_message_logs'): void
+    {
+        if (! self::shouldApply()) {
+            return;
+        }
+
+        $userId = (int) Auth::id();
+        $toColumn = $tableName.'.to_address';
+
+        $query->where(function (Builder $scope) use ($tableName, $userId, $toColumn) {
+            $scope->where($tableName.'.user_id', $userId)
+                ->orWhere(function (Builder $system) use ($tableName, $userId, $toColumn) {
+                    $system->whereNull($tableName.'.user_id')
+                        ->whereExists(function ($sub) use ($userId, $toColumn) {
+                            $sub->selectRaw('1')
+                                ->from('pm_tenants as t')
+                                ->where(function ($tenantScope) use ($userId) {
+                                    self::constrainAgentTenantAlias($tenantScope, 't', $userId);
+                                })
+                                ->where(function ($contact) use ($toColumn) {
+                                    $contact->where(function ($email) use ($toColumn) {
+                                        $email->whereNotNull('t.email')
+                                            ->where('t.email', '!=', '')
+                                            ->whereColumn('t.email', $toColumn);
+                                    });
+
+                                    if (Schema::hasColumn('pm_tenants', 'phone')) {
+                                        $contact->orWhere(function ($phone) use ($toColumn) {
+                                            $phone->whereNotNull('t.phone')
+                                                ->where('t.phone', '!=', '')
+                                                ->whereRaw(self::phoneDigitsMatchSql('t.phone', $toColumn));
+                                        });
+                                    }
+                                });
+                        });
+                });
+        });
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder|\Illuminate\Database\Query\Builder  $query
+     */
+    public static function constrainAgentTenantAlias($query, string $alias, int $agentUserId): void
+    {
+        if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+            $query->where($alias.'.agent_user_id', $agentUserId);
+
+            return;
+        }
+
+        $query->where(function ($tenantQuery) use ($alias, $agentUserId) {
+            $tenantQuery->whereExists(function ($sub) use ($alias, $agentUserId) {
+                $sub->selectRaw('1')
+                    ->from('pm_invoices as i')
+                    ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                    ->join('properties as p', 'p.id', '=', 'pu.property_id')
+                    ->whereColumn('i.pm_tenant_id', $alias.'.id')
+                    ->where('p.agent_user_id', $agentUserId);
+            })->orWhereExists(function ($sub) use ($alias, $agentUserId) {
+                $sub->selectRaw('1')
+                    ->from('pm_leases as l')
+                    ->join('pm_lease_unit as lu', 'lu.pm_lease_id', '=', 'l.id')
+                    ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
+                    ->join('properties as p', 'p.id', '=', 'pu.property_id')
+                    ->whereColumn('l.pm_tenant_id', $alias.'.id')
+                    ->where('p.agent_user_id', $agentUserId);
+            });
+        });
+    }
+
+    private static function phoneDigitsMatchSql(string $leftColumn, string $rightColumn): string
+    {
+        $normalize = static fn (string $column): string => "RIGHT(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE({$column}, ' ', ''), '+', ''), '-', ''), '(', ''), ')', ''), '.', ''), '/', ''), 9)";
+
+        $left = $normalize($leftColumn);
+        $right = $normalize($rightColumn);
+
+        return "{$left} <> '' AND {$left} = {$right}";
+    }
+
+    /**
      * Restrict a query to rows whose parent `pm_messages` row was created
      * by the current agent. Used for message recipients, deliveries, and
      * attachments, which inherit ownership from their parent envelope.

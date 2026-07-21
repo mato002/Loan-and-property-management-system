@@ -63,7 +63,7 @@
                             :options="collect($vacantUnits)->map(function($u) {
                                 $suffix = $u->public_listing_published
                                     ? ' (featured)'
-                                    : ($u->publicImages->isNotEmpty() ? ' (photos ┬╖ '.$u->publicImages->count().')' : ' (on Discover ┬╖ no photos yet)');
+                                    : ($u->publicImages->isNotEmpty() ? ' (photos  -  '.$u->publicImages->count().')' : ' (on Discover  -  no photos yet)');
                                 return [
                                     'value' => $u->id,
                                     'label' => $u->property->name.' — '.$u->label.$suffix,

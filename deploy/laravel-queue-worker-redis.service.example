@@ -1,0 +1,32 @@
+# Laravel queue worker — systemd unit (Redis driver, Phase 9).
+# Copy to /etc/systemd/system/laravel-queue-worker.service and adjust paths/user.
+#
+# Prerequisites: php artisan ops:redis-check passes; .env has QUEUE_CONNECTION=redis
+#
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable laravel-queue-worker
+#   sudo systemctl start laravel-queue-worker
+#
+# After deploy:
+#   cd /path/to/project && php artisan queue:restart && sudo systemctl restart laravel-queue-worker
+#
+# Full setup guide: docs/QUEUE-WORKER-SETUP.md (Redis section)
+# Cutover runbook: docs/REDIS-CUTOVER.md
+
+[Unit]
+Description=Laravel queue worker (redis)
+After=network.target redis.service mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+Restart=always
+RestartSec=5
+WorkingDirectory=/path/to/project
+ExecStart=/usr/bin/php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --queue=high,default,low
+StandardOutput=append:/path/to/project/storage/logs/worker.log
+StandardError=append:/path/to/project/storage/logs/worker.log
+
+[Install]
+WantedBy=multi-user.target

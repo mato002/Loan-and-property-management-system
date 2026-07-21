@@ -6,9 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\PmConversation;
 use App\Models\PmConversationMessage;
 use App\Models\PmTenant;
+use App\Services\BulkSmsService;
+use App\Services\Property\PradytecBulkSmsWebhookService;
 use App\Services\Property\PropertyCommunicationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Log;
 
 class PropertyCommunicationWebhookController extends Controller
 {
@@ -21,6 +24,48 @@ class PropertyCommunicationWebhookController extends Controller
         }
 
         $service->markProviderCallback('bulksms', $providerId, $payload);
+
+        return response(['ok' => true]);
+    }
+
+    public function pradytec(
+        Request $request,
+        BulkSmsService $bulkSms,
+        PradytecBulkSmsWebhookService $handler,
+    ): Response {
+        $raw = $request->getContent();
+        $signature = $request->header('X-Webhook-Signature');
+
+        if (! $bulkSms->verifyWebhookSignature($raw, is_string($signature) ? $signature : null)) {
+            return response(['ok' => false, 'error' => 'Invalid webhook signature'], 401);
+        }
+
+        $payload = json_decode($raw, true);
+        if (! is_array($payload)) {
+            return response(['ok' => false, 'error' => 'Invalid JSON payload'], 422);
+        }
+
+        $event = trim((string) ($request->header('X-Webhook-Event') ?? $payload['event'] ?? ''));
+        if ($event === '') {
+            return response(['ok' => false, 'error' => 'Missing event'], 422);
+        }
+
+        $expectedClient = trim((string) config('bulksms.provider.client_id', ''));
+        $payloadClient = trim((string) ($payload['client_id'] ?? ''));
+        if ($expectedClient !== '' && $payloadClient !== '' && $expectedClient !== $payloadClient) {
+            return response(['ok' => false, 'error' => 'Client mismatch'], 403);
+        }
+
+        try {
+            $handler->handle($event, $payload);
+        } catch (\Throwable $e) {
+            Log::error('Pradytec webhook processing failed', [
+                'event' => $event,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response(['ok' => false, 'error' => 'Processing failed'], 500);
+        }
 
         return response(['ok' => true]);
     }

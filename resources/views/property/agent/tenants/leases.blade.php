@@ -1,4 +1,6 @@
 ﻿<x-property.workspace
+    :legacy-toolbar="false"
+    :show-search="false"
     :title="($activeTab ?? 'leases') === 'expiry' ? 'Lease expiry tracking' : 'Lease agreements'"
     :subtitle="($activeTab ?? 'leases') === 'expiry'
         ? 'Active leases ending within the next 90 days. Use the window filter to focus renewals.'
@@ -14,134 +16,10 @@
         : 'Create a lease and select vacant units; active leases mark units occupied.'"
 >
     <x-slot name="above">
-        <div class="flex flex-wrap gap-2">
-            <a
-                href="{{ route('property.tenants.leases', absolute: false) }}"
-                data-turbo-frame="property-main"
-                class="inline-flex items-center rounded-xl px-3 py-2 text-sm font-medium {{ ($activeTab ?? 'leases') === 'leases' ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50' }}"
-            >
-                All leases
-            </a>
-            <a
-                href="{{ route('property.tenants.leases', ['tab' => 'expiry'], false) }}"
-                data-turbo-frame="property-main"
-                class="inline-flex items-center rounded-xl px-3 py-2 text-sm font-medium {{ ($activeTab ?? 'leases') === 'expiry' ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50' }}"
-            >
-                Expiring soon
-            </a>
-        </div>
-
-        @if (($activeTab ?? 'leases') === 'leases')
-        <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm">
-            <p class="text-lg font-semibold text-slate-900">Rent flow (Step 1 of 3): Allocate a unit</p>
-            <p class="mt-1 text-sm text-slate-600">Create an <span class="font-semibold">Active</span> lease and select the vacant unit(s). The unit becomes <span class="font-semibold">Occupied</span> automatically.</p>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    <span class="text-slate-500">Next:</span> Create rent bill
-                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
-                </a>
-                <a href="{{ route('property.revenue.payments', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    <span class="text-slate-500">Then:</span> Collect payment
-                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
-                </a>
-            </div>
-        </div>
-
-
-        <div
-            id="lease-create-overlay"
-            class="fixed inset-0 z-[110] hidden items-start justify-center bg-slate-900/40 px-2 pb-2 pt-16 sm:px-4 sm:pb-4 sm:pt-20"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="lease-create-title"
-        >
-            <div class="w-full max-w-3xl">
-                <turbo-frame
-                    id="lease-create-modal"
-                    data-create-url="{{ route('property.leases.create_form', absolute: false) }}"
-                ></turbo-frame>
-            </div>
-        </div>
-        <script>
-            window.initLeaseCreateModalShell = window.initLeaseCreateModalShell || function () {
-                const overlay = document.getElementById('lease-create-overlay');
-                const frame = document.getElementById('lease-create-modal');
-                const openButton = document.getElementById('open-lease-create-modal');
-                if (!overlay || !frame) {
-                    return;
-                }
-
-                const createUrl = frame.dataset.createUrl || '';
-                const closeModal = () => {
-                    overlay.classList.add('hidden');
-                    overlay.classList.remove('flex');
-                    frame.removeAttribute('src');
-                    frame.innerHTML = '';
-                    delete frame.dataset.loaded;
-                };
-                const openModal = () => {
-                    if (!createUrl) {
-                        return;
-                    }
-                    overlay.classList.remove('hidden');
-                    overlay.classList.add('flex');
-                    frame.src = createUrl;
-                    frame.dataset.loaded = '1';
-                };
-
-                window.closeLeaseCreateModal = closeModal;
-
-                if (overlay.dataset.shellBound !== '1') {
-                    overlay.dataset.shellBound = '1';
-                    openButton?.addEventListener('click', openModal);
-                    overlay.addEventListener('click', (event) => {
-                        const target = event.target;
-                        if (!(target instanceof Element)) {
-                            return;
-                        }
-                        if (target.closest('[data-lease-create-close]')) {
-                            closeModal();
-                        }
-                    });
-                    document.addEventListener('keydown', (event) => {
-                        if (event.key === 'Escape' && !overlay.classList.contains('hidden')) {
-                            closeModal();
-                        }
-                    });
-                }
-
-                if (@json((bool) ($openLeaseCreateModal ?? false))) {
-                    openModal();
-                }
-            };
-
-            if (!window.__leaseCreateModalShellBound) {
-                window.__leaseCreateModalShellBound = true;
-                document.addEventListener('DOMContentLoaded', window.initLeaseCreateModalShell);
-                document.addEventListener('turbo:load', window.initLeaseCreateModalShell);
-                document.addEventListener('turbo:frame-load', (event) => {
-                    const frame = event.target;
-                    if (frame && frame.id === 'property-main') {
-                        window.initLeaseCreateModalShell();
-                    }
-                });
-            }
-        </script>
-        @endif
+        @include('property.agent.tenants.partials.leases_workspace_above')
     </x-slot>
 
-    @if (($activeTab ?? 'leases') === 'leases')
-    <x-slot name="actions">
-        <button
-            type="button"
-            id="open-lease-create-modal"
-            class="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 w-full sm:w-auto"
-        >
-            <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
-            Create lease
-        </button>
-    </x-slot>
-    @elseif (($activeTab ?? 'leases') === 'expiry')
+    @if (($activeTab ?? 'leases') === 'expiry')
     <x-slot name="actions">
         <a
             href="{{ route('property.workspace.form.show', 'tenants-renewal-email') }}"
@@ -151,23 +29,39 @@
     @endif
 
     <x-slot name="toolbar">
-        @if (($activeTab ?? 'leases') === 'expiry')
-        <select data-table-filter="parent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
-            <option value="">Window: All (90d)</option>
-            <option value="within30">≤ 30 days</option>
-            <option value="within60">≤ 60 days</option>
-            <option value="within90">≤ 90 days</option>
-        </select>
-        @else
-        <select data-table-filter="parent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 min-w-0 w-full sm:w-auto">
-            <option value="">Status: All</option>
-            <option value="draft">Draft</option>
-            <option value="active">Active</option>
-            <option value="expired">Expired</option>
-            <option value="terminated">Terminated</option>
-        </select>
+        @include('property.agent.partials.filter_toolbars.leases', [
+            'activeTab' => $activeTab ?? 'leases',
+            'filters' => $filters ?? [],
+            'filterOptions' => $filterOptions ?? ['tenants' => [], 'properties' => []],
+        ])
+    </x-slot>
+
+    <x-slot name="table_actions">
+        @if (($activeTab ?? 'leases') === 'leases' && count($tableRows ?? []) > 0)
+            <x-property.bulk-action-bar
+                form-id="property-leases-bulk-form"
+                :action="route('property.leases.bulk', absolute: false)"
+                confirm="Apply this bulk action to all selected leases?"
+                :actions="[
+                    ['value' => 'activate', 'label' => 'Activate (allocate unit)'],
+                    ['value' => 'terminate', 'label' => 'Terminate'],
+                    ['value' => 'restore', 'label' => 'Restore to active'],
+                    ['value' => 'delete', 'label' => 'Delete draft only'],
+                ]"
+            />
         @endif
     </x-slot>
+
+    @if (($activeTab ?? 'leases') === 'leases' && is_array(session('bulk_lease_errors')) && count(session('bulk_lease_errors')) > 0)
+        <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p class="font-semibold">Some leases were skipped</p>
+            <ul class="mt-2 list-disc pl-5 space-y-1">
+                @foreach (session('bulk_lease_errors') as $err)
+                    <li>{{ $err }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
 
     @if (($activeTab ?? 'leases') === 'leases')
         @include('property.agent.partials.lease_list_row_action_form')

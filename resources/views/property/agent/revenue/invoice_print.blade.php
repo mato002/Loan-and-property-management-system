@@ -48,7 +48,7 @@
                 @endif
                 <div class="company-name accent">{{ $branding['company_name'] ?? 'Property Manager' }}</div>
                 <div class="small">{{ $branding['address'] ?? '' }}</div>
-                <div class="small">{{ $branding['phone'] ?? '' }} @if (!empty($branding['email'])) ┬╖ {{ $branding['email'] }} @endif</div>
+                <div class="small">{{ $branding['phone'] ?? '' }} @if (!empty($branding['email']))  -  {{ $branding['email'] }} @endif</div>
             </td>
             <td class="meta">
                 <h1>{{ $invoice->isCreditNote() ? 'CREDIT NOTE' : 'INVOICE' }}</h1>
@@ -153,7 +153,7 @@
 <div class="footer">
     {{ $branding['footer_note'] ?? 'Thank you for your business.' }}
     <br>
-    <span class="small">Invoice {{ $invoice->invoice_no }} ┬╖ Generated {{ now()->format('Y-m-d H:i') }}</span>
+    <span class="small">Invoice {{ $invoice->invoice_no }}  -  Generated {{ now()->format('Y-m-d H:i') }}</span>
 </div>
 </body>
 </html>

@@ -5,6 +5,7 @@ namespace App\Services\Property;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
+use App\Models\PmAccountingAuditLog;
 use App\Models\PmTenant;
 use Illuminate\Support\Facades\DB;
 
@@ -87,9 +88,7 @@ class PropertyPaymentAllocationRepairService
                 ->delete();
 
             foreach ($invoices as $invoice) {
-                $invoice->amount_paid = 0;
-                $invoice->saveQuietly();
-                $invoice->refreshComputedStatus();
+                $invoice->syncAmountPaidFromAllocations();
             }
 
             foreach ($payments as $payment) {
@@ -115,6 +114,23 @@ class PropertyPaymentAllocationRepairService
 
             $afterMap = $this->paymentAllocationMap($tenantId);
             $allocationsMoved = $this->countPaymentsRemapped($beforeMap, $afterMap);
+
+            if ($allocationsMoved > 0 || $invoicesSynced > 0) {
+                PmAccountingAuditLog::record(
+                    PmAccountingAuditLog::ACTION_ALLOCATION_REPAIR_REVIEW,
+                    'pm_tenant',
+                    $tenantId,
+                    [
+                        'pm_tenant_id' => $tenantId,
+                        'summary' => 'Allocation repair requires accounting reconciliation review (tenant #'.$tenantId.')',
+                        'payload' => [
+                            'tenant_id' => $tenantId,
+                            'invoices_synced' => $invoicesSynced,
+                            'allocations_moved' => $allocationsMoved,
+                        ],
+                    ]
+                );
+            }
 
             return [
                 'invoices_synced' => $invoicesSynced,

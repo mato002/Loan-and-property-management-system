@@ -10,10 +10,16 @@ use App\Models\PmPenaltyRule;
 use App\Models\PmTenant;
 use App\Models\PmTenantNotice;
 use App\Services\BulkSmsService;
+use App\Services\Property\FinanceBalanceSnapshotService;
+use App\Services\Property\PenaltyEngineService;
+use App\Services\Property\FinancialReportingFormulaService;
+use App\Services\Property\PropertyAgentContactResolver;
+use App\Services\Property\PropertyCommunicationTemplateService;
 use App\Services\Property\PropertyDashboardStats;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\RentInvoiceGenerator;
 use App\Services\Property\RentRollQuery;
+use App\Services\Property\TenantCommunicationStageService;
 use App\Models\PropertyPortalSetting;
 use App\Support\TabularExport;
 use Carbon\Carbon;
@@ -28,6 +34,49 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RevenueController extends Controller
 {
+    public function collectionsOverview(): View
+    {
+        $stats = [
+            [
+                'label' => 'Billed (MTD)',
+                'value' => PropertyMoney::kes(PropertyDashboardStats::mtdBilled()),
+                'hint' => 'Issued billable invoices',
+            ],
+            [
+                'label' => 'Collections (MTD)',
+                'value' => PropertyMoney::kes(PropertyDashboardStats::mtdCollected()),
+                'hint' => 'Completed payment allocations',
+            ],
+            [
+                'label' => 'Tenant arrears',
+                'value' => PropertyMoney::kes(PropertyDashboardStats::outstandingBalance()),
+                'hint' => 'Open billable balances',
+            ],
+            [
+                'label' => 'Collection rate',
+                'value' => $this->formatCollectionRateLabel(PropertyDashboardStats::collectionRateMtd()),
+                'hint' => 'MTD collected vs billed',
+            ],
+        ];
+
+        return property_view('property.agent.revenue.collections_overview', [
+            'stats' => $stats,
+        ]);
+    }
+
+    /**
+     * @param  array{target: float, actual: float|null, gap_kes: float}  $rate
+     */
+    private function formatCollectionRateLabel(array $rate): string
+    {
+        $actual = $rate['actual'];
+        if ($actual === null) {
+            return '—';
+        }
+
+        return number_format($actual, 1).'%';
+    }
+
     public function rentRoll(Request $request): View|StreamedResponse
     {
         $rows = RentRollQuery::tableRows();
@@ -76,9 +125,9 @@ class RevenueController extends Controller
         $pageRows = $paginator->getCollection()->all();
 
         $stats = [
-            ['label' => 'Billed (MTD)', 'value' => PropertyMoney::kes((float) PmInvoice::query()->whereMonth('issue_date', now()->month)->sum('amount')), 'hint' => 'Issued'],
-            ['label' => 'Collected (MTD)', 'value' => PropertyMoney::kes(PropertyDashboardStats::mtdCollected()), 'hint' => 'Payments'],
-            ['label' => 'Outstanding', 'value' => PropertyMoney::kes(PropertyDashboardStats::outstandingBalance()), 'hint' => 'Open'],
+            ['label' => 'Billed (MTD)', 'value' => PropertyMoney::kes(app(FinancialReportingFormulaService::class)->billedMtd()), 'hint' => 'Billable issued'],
+            ['label' => 'Collections (MTD)', 'value' => PropertyMoney::kes(PropertyDashboardStats::mtdCollected()), 'hint' => 'Completed allocation sums'],
+            ['label' => 'Tenant arrears', 'value' => PropertyMoney::kes(PropertyDashboardStats::outstandingBalance()), 'hint' => 'Billable open balances'],
             ['label' => 'Units on roll', 'value' => (string) count($rows), 'hint' => 'Filtered total'],
         ];
 
@@ -392,6 +441,7 @@ class RevenueController extends Controller
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
         $today = now()->startOfDay();
+        $balanceSnapshot = app(FinanceBalanceSnapshotService::class);
         $baseFilters = array_merge($filters, ['aging' => '', 'workflow' => '']);
         $allInvoices = $this->buildArrearsInvoices($baseFilters)->limit(5000)->get();
         $invoices = $allInvoices->filter(
@@ -401,11 +451,11 @@ class RevenueController extends Controller
         $aggregated = $invoices
             ->filter(fn (PmInvoice $i) => (int) ($i->pm_tenant_id ?? 0) > 0)
             ->groupBy('pm_tenant_id')
-            ->map(function ($group) use ($today) {
+            ->map(function ($group) use ($today, $balanceSnapshot) {
                 /** @var \Illuminate\Support\Collection<int,PmInvoice> $group */
                 $first = $group->first();
                 $tenant = $first->tenant;
-                $totalBalance = (float) $group->sum(fn (PmInvoice $i) => max(0.0, (float) $i->amount - (float) $i->amount_paid));
+                $totalBalance = (float) $group->sum(fn (PmInvoice $i) => $balanceSnapshot->invoiceBalance($i));
                 $oldestDue = $group->pluck('due_date')->filter()->min();
                 $maxDaysOverdue = (int) $group->max(fn (PmInvoice $i) => $this->arrearsDaysOverdue($i->due_date, $today));
                 $daysLate = $maxDaysOverdue > 0
@@ -521,11 +571,11 @@ class RevenueController extends Controller
             'over_90' => 0.0,
         ];
         foreach ($summaryInvoices as $i) {
-            $balance = max(0.0, (float) $i->amount - (float) $i->amount_paid);
-            $this->addToArrearsBuckets($i->due_date, $today, $balance, $summaryBuckets);
+            $balance = $balanceSnapshot->invoiceBalance($i);
+            $balanceSnapshot->addBalanceToAgingBuckets($i->due_date, $balance, $summaryBuckets, $today);
         }
 
-        $summaryTotal = (float) $summaryInvoices->sum(fn (PmInvoice $i) => max(0.0, (float) $i->amount - (float) $i->amount_paid));
+        $summaryTotal = (float) $summaryInvoices->sum(fn (PmInvoice $i) => $balanceSnapshot->invoiceBalance($i));
         $summaryOverdue = $summaryBuckets['0_30'] + $summaryBuckets['31_60'] + $summaryBuckets['61_90'] + $summaryBuckets['over_90'];
         $summaryInvoiceCount = $summaryInvoices->count();
         $summaryTenantCount = $summaryInvoices
@@ -545,9 +595,9 @@ class RevenueController extends Controller
 
         $statsPrimary = [
             [
-                'label' => 'Total arrears',
+                'label' => 'Total tenant arrears',
                 'value' => PropertyMoney::kes($summaryTotal),
-                'hint' => $dueRangeLabel.' · open balances',
+                'hint' => $dueRangeLabel.' · billable open balances',
                 'emphasis' => true,
             ],
             [
@@ -747,12 +797,13 @@ class RevenueController extends Controller
             ->get();
 
         $today = now()->startOfDay();
+        $balanceSnapshot = app(FinanceBalanceSnapshotService::class);
         $totalBalance = 0.0;
         $totalAmount = 0.0;
         $totalPaid = 0.0;
 
-        $rows = $invoices->map(function (PmInvoice $i) use ($today, &$totalBalance, &$totalAmount, &$totalPaid) {
-            $bal = max(0.0, (float) $i->amount - (float) $i->amount_paid);
+        $rows = $invoices->map(function (PmInvoice $i) use ($today, &$totalBalance, &$totalAmount, &$totalPaid, $balanceSnapshot) {
+            $bal = $balanceSnapshot->invoiceBalance($i);
             $totalBalance += $bal;
             $totalAmount += (float) $i->amount;
             $totalPaid += (float) $i->amount_paid;
@@ -794,9 +845,9 @@ class RevenueController extends Controller
             return TabularExport::stream(
                 'arrears-tenant-'.($tenant->name ? \Illuminate\Support\Str::slug($tenant->name) : (string) $tenant->id).'-'.now()->format('Ymd_His'),
                 ['Invoice', 'Unit', 'Type', 'Issued', 'Due', 'Aging', 'Amount', 'Paid', 'Balance', 'Last update', 'Workflow'],
-                function () use ($exportInvoices, $today) {
+                function () use ($exportInvoices, $today, $balanceSnapshot) {
                     foreach ($exportInvoices as $i) {
-                        $bal = max(0.0, (float) $i->amount - (float) $i->amount_paid);
+                        $bal = $balanceSnapshot->invoiceBalance($i);
                         $daysOverdue = $this->arrearsDaysOverdue($i->due_date, $today);
                         $workflow = $this->arrearsWorkflowForDaysOverdue($daysOverdue);
                         yield [
@@ -940,8 +991,13 @@ class RevenueController extends Controller
         return $query->orderBy('due_date')->orderBy('id');
     }
 
-    public function sendArrearsReminders(Request $request, BulkSmsService $sms): RedirectResponse
-    {
+    public function sendArrearsReminders(
+        Request $request,
+        BulkSmsService $sms,
+        TenantCommunicationStageService $stageService,
+        PropertyCommunicationTemplateService $templateService,
+        PropertyAgentContactResolver $agentContacts,
+    ): RedirectResponse {
         $data = $request->validate([
             'channel' => ['required', 'in:sms,email,both'],
             'template_key' => ['required', 'in:friendly,firm,final'],
@@ -951,13 +1007,6 @@ class RevenueController extends Controller
             'selected_invoice_ids.*' => ['integer', 'exists:pm_invoices,id'],
             'selected_invoice_ids_raw' => ['nullable', 'string'],
         ]);
-
-        $templates = [
-            'friendly' => 'Dear {tenant}, this is a reminder that your rent invoice {invoice_no} for {property_unit} is overdue by {days_overdue} day(s). Amount due: KES {balance_due}. Please make payment as soon as possible. If already paid, kindly share your receipt.',
-            'firm' => 'Dear {tenant}, your rent invoice {invoice_no} for {property_unit} is now {days_overdue} day(s) overdue. Outstanding amount: KES {balance_due}. Please clear this balance immediately to avoid penalties or restrictions.',
-            'final' => 'FINAL NOTICE: {tenant}, invoice {invoice_no} for {property_unit} remains unpaid ({days_overdue} day(s) overdue). Amount due: KES {balance_due}. Kindly settle urgently or contact management today.',
-        ];
-        $template = $templates[$data['template_key']] ?? $templates['friendly'];
 
         $targetMode = (string) ($data['target_mode'] ?? 'all');
         $singleInvoiceId = (int) ($data['single_invoice_id'] ?? 0);
@@ -1035,16 +1084,55 @@ class RevenueController extends Controller
 
             $daysOverdue = $this->arrearsDaysOverdue($inv->due_date, now()->startOfDay());
             $propertyUnit = trim((string) (($inv->unit?->property?->name ?? '—').'/'.($inv->unit?->label ?? '—')), '/');
-            $subject = '[ARREARS] '.$inv->invoice_no.' D+'.(string) $daysOverdue;
-            $tenantEmail = strtolower(trim((string) ($tenant->email ?? '')));
-            $message = strtr($template, [
-                '{tenant}' => (string) $tenant->name,
-                '{invoice_no}' => (string) $inv->invoice_no,
-                '{property_unit}' => $propertyUnit,
-                '{due_date}' => $dueDate,
-                '{days_overdue}' => (string) $daysOverdue,
-                '{balance_due}' => number_format($balance, 2),
+            $stage = $stageService->resolveFromDueDate(
+                $inv->due_date?->copy()->startOfDay() ?? now()->startOfDay(),
+                now()->startOfDay()
+            );
+            if ($stage === null && $daysOverdue > 0) {
+                $bucket = $stageService->bucketStageKeyForDaysOverdue($daysOverdue);
+                $def = $stageService->stageDefinition($bucket) ?? [];
+                $stage = [
+                    'stage_key' => $bucket,
+                    'internal_stage' => 'D+'.$daysOverdue,
+                    'display_label' => (string) ($def['display_label'] ?? $bucket),
+                    'sms_header' => (string) ($def['sms_header'] ?? 'RENT OVERDUE'),
+                    'email_subject' => (string) ($def['email_subject'] ?? 'Rent overdue'),
+                    'stage_message' => (string) ($def['stage_message'] ?? ''),
+                    'days_overdue' => $daysOverdue,
+                ];
+            }
+            if ($stage === null) {
+                $addSkippedReason('no communication stage for due date');
+
+                continue;
+            }
+            if ($data['template_key'] === 'final' && $daysOverdue >= 14) {
+                $finalDef = $stageService->stageDefinition('FINAL_DEMAND') ?? [];
+                $stage['stage_key'] = 'FINAL_DEMAND';
+                $stage['display_label'] = (string) ($finalDef['display_label'] ?? $stage['display_label']);
+                $stage['sms_header'] = (string) ($finalDef['sms_header'] ?? $stage['sms_header']);
+                $stage['email_subject'] = (string) ($finalDef['email_subject'] ?? $stage['email_subject']);
+                $stage['stage_message'] = (string) ($finalDef['stage_message'] ?? $stage['stage_message']);
+            } elseif ($data['template_key'] === 'firm') {
+                $stage['stage_message'] = trim((string) $stage['stage_message']).' Please treat this as urgent.';
+            }
+
+            $messageContext = $agentContacts->mergeIntoContext([
+                'tenant_name' => (string) $tenant->name,
+                'invoice_no' => (string) $inv->invoice_no,
+                'unit_name' => $propertyUnit !== '' ? $propertyUnit : '—',
+                'balance' => number_format($balance, 2),
+                'due_date' => $dueDate,
+                'stage' => $stage,
+            ], $inv);
+            $staffSubject = $stageService->staffSubjectLine([
+                'internal_stage' => $stage['internal_stage'],
+                'display_label' => $stage['display_label'],
+                'invoice_no' => $inv->invoice_no,
             ]);
+            $emailPack = $templateService->buildRentReminderEmail($messageContext);
+            $smsBody = $templateService->resolveRentReminderSms($messageContext);
+            $tenantEmail = strtolower(trim((string) ($tenant->email ?? '')));
             $noticeCreated = false;
 
             if (in_array($data['channel'], ['email', 'both'], true)) {
@@ -1055,28 +1143,31 @@ class RevenueController extends Controller
                 } else {
                     $alreadyEmailed = PmMessageLog::query()
                         ->where('channel', 'email')
-                        ->where('subject', $subject)
+                        ->where('subject', $staffSubject)
                         ->where('to_address', $tenantEmail)
                         ->whereDate('created_at', $today)
                         ->exists();
 
                     if (! $alreadyEmailed) {
                         try {
-                            Mail::raw($message, function ($m) use ($tenantEmail, $subject) {
-                                $m->to($tenantEmail)->subject($subject);
+                            Mail::raw($emailPack['body'], function ($m) use ($tenantEmail, $emailPack) {
+                                $m->to($tenantEmail)->subject((string) $emailPack['subject']);
                             });
                             PmMessageLog::query()->create([
                                 'user_id' => $request->user()?->id,
                                 'channel' => 'email',
                                 'to_address' => $tenantEmail,
-                                'subject' => $subject,
-                                'body' => $message,
+                                'subject' => $staffSubject,
+                                'internal_stage' => $stage['internal_stage'],
+                                'display_stage' => $stage['display_label'],
+                                'template_category' => 'rent_reminder',
+                                'body' => $emailPack['body'],
                                 'delivery_status' => 'sent',
                                 'sent_at' => now(),
                             ]);
                             $sentEmail++;
                             if (! $noticeCreated) {
-                                $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $message, $request->user()?->id);
+                                $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $emailPack['body'], $request->user()?->id, $stage);
                             }
                         } catch (\Throwable $e) {
                             $failed++;
@@ -1085,8 +1176,11 @@ class RevenueController extends Controller
                                 'user_id' => $request->user()?->id,
                                 'channel' => 'email',
                                 'to_address' => $tenantEmail,
-                                'subject' => $subject,
-                                'body' => $message,
+                                'subject' => $staffSubject,
+                                'internal_stage' => $stage['internal_stage'],
+                                'display_stage' => $stage['display_label'],
+                                'template_category' => 'rent_reminder',
+                                'body' => $emailPack['body'],
                                 'delivery_status' => 'failed',
                                 'delivery_error' => 'Email failed: '.$e->getMessage(),
                                 'sent_at' => null,
@@ -1114,26 +1208,29 @@ class RevenueController extends Controller
                         $smsTo = implode(',', $phones);
                         $alreadySms = PmMessageLog::query()
                             ->where('channel', 'sms')
-                            ->where('subject', $subject)
+                            ->where('subject', $staffSubject)
                             ->where('to_address', $smsTo)
                             ->whereDate('created_at', $today)
                             ->exists();
 
                         if (! $alreadySms) {
-                            $result = $sms->sendNow($message, $phones, $request->user()?->id, null, 'property');
+                            $result = $sms->sendNow($smsBody, $phones, $request->user()?->id, null, 'property');
                             if (($result['ok'] ?? false) === true) {
                                 PmMessageLog::query()->create([
                                     'user_id' => $request->user()?->id,
                                     'channel' => 'sms',
                                     'to_address' => $smsTo,
-                                    'subject' => $subject,
-                                    'body' => $message,
+                                    'subject' => $staffSubject,
+                                    'internal_stage' => $stage['internal_stage'],
+                                    'display_stage' => $stage['display_label'],
+                                    'template_category' => 'rent_reminder',
+                                    'body' => $smsBody,
                                     'delivery_status' => 'sent',
                                     'sent_at' => now(),
                                 ]);
                                 $sentSms++;
                                 if (! $noticeCreated) {
-                                    $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $message, $request->user()?->id);
+                                    $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $smsBody, $request->user()?->id, $stage);
                                 }
                             } else {
                                 $failed++;
@@ -1167,7 +1264,7 @@ class RevenueController extends Controller
         return back()->with('success', $message);
     }
 
-    private function createArrearsNoticeIfMissing(PmInvoice $invoice, string $message, ?int $userId): bool
+    private function createArrearsNoticeIfMissing(PmInvoice $invoice, string $message, ?int $userId, ?array $stage = null): bool
     {
         $invoiceNo = (string) ($invoice->invoice_no ?? '');
         if ($invoiceNo === '') {
@@ -1186,13 +1283,19 @@ class RevenueController extends Controller
             return false;
         }
 
+        $stageLines = '';
+        if (is_array($stage)) {
+            $stageLines = 'Internal stage: '.($stage['internal_stage'] ?? '—')."\n".
+                'Display label: '.($stage['display_label'] ?? '—')."\n";
+        }
+
         PmTenantNotice::query()->create([
             'pm_tenant_id' => (int) $invoice->pm_tenant_id,
             'property_unit_id' => (int) $invoice->property_unit_id,
             'notice_type' => 'arrears_reminder',
             'status' => 'sent',
             'due_on' => $today,
-            'notes' => "Auto arrears reminder\nInvoice: {$invoiceNo}\n\n{$message}",
+            'notes' => "Auto arrears reminder\n{$stageLines}Invoice: {$invoiceNo}\n\n{$message}",
             'created_by_user_id' => $userId,
         ]);
 
@@ -1311,7 +1414,7 @@ class RevenueController extends Controller
         $active = $rules->getCollection()->where('is_active', true);
 
         $rows = $rules->getCollection()->map(function (PmPenaltyRule $r) {
-            $parts = [$r->formula];
+            $parts = [$r->formula, str_replace('_', ' ', (string) ($r->compounding_mode ?? 'simple'))];
             if ($r->percent !== null) {
                 $parts[] = (string) $r->percent.'%';
             }
@@ -1324,7 +1427,8 @@ class RevenueController extends Controller
                 $r->scope,
                 $r->trigger_event.' (grace '.$r->grace_days.'d)',
                 implode(' · ', array_filter($parts)),
-                $r->cap !== null ? PropertyMoney::kes((float) $r->cap) : '—',
+                ($r->cap !== null ? PropertyMoney::kes((float) $r->cap) : '—')
+                    .($r->cumulative_cap !== null ? ' / cum '.PropertyMoney::kes((float) $r->cumulative_cap) : ''),
                 $r->effective_from?->format('Y-m-d') ?? '—',
                 $r->is_active ? 'Active' : 'Off',
             ];
@@ -1359,19 +1463,27 @@ class RevenueController extends Controller
             'trigger_event' => ['required', 'string', 'max:64'],
             'grace_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'formula' => ['required', 'string', 'max:64'],
+            'compounding_mode' => ['required', 'in:simple,daily_compound,one_shot'],
             'amount' => ['nullable', 'numeric', 'min:0'],
             'percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'cap' => ['nullable', 'numeric', 'min:0'],
+            'cumulative_cap' => ['nullable', 'numeric', 'min:0'],
             'effective_from' => ['nullable', 'date'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
-        PmPenaltyRule::query()->create([
+        $rule = PmPenaltyRule::query()->create([
             ...$data,
             'is_active' => $request->boolean('is_active', true),
         ]);
 
-        return back()->with('success', __('Penalty rule saved.'));
+        $warnings = app(PenaltyEngineService::class)->ruleOperatorWarnings($rule);
+        $message = __('Penalty rule saved.');
+        if ($warnings !== []) {
+            $message .= ' Warning: '.implode(' ', $warnings);
+        }
+
+        return back()->with('success', $message);
     }
 
     public function destroyPenaltyRule(PmPenaltyRule $penalty_rule): RedirectResponse
@@ -1550,14 +1662,12 @@ class RevenueController extends Controller
             return '—';
         }
 
-        $due = \Carbon\Carbon::parse($dueDate)->startOfDay();
-        if ($due->gte($today)) {
-            $daysUntil = (int) $today->diffInDays($due, true);
+        $stage = app(TenantCommunicationStageService::class)->resolveFromDueDate(
+            \Carbon\Carbon::parse($dueDate)->startOfDay(),
+            $today->copy()->startOfDay()
+        );
 
-            return $daysUntil === 0 ? 'Due today' : 'Due in '.$daysUntil.'d';
-        }
-
-        return (string) (int) $due->diffInDays($today, true);
+        return $stage['display_label'] ?? '—';
     }
 
     private function arrearsWorkflowForDaysOverdue(int $daysOverdue): string

@@ -280,6 +280,11 @@
                 0% { background-position: 100% 0; }
                 100% { background-position: -100% 0; }
             }
+            .property-skeleton-line,
+            .property-skeleton-block {
+                background: rgb(226 232 240 / 0.92);
+                border-radius: 0.375rem;
+            }
         </style>
     </head>
     <body
@@ -387,89 +392,13 @@
             </a>
         @endif
 
-        <script>
-            (function () {
-                const SEARCH_DEBOUNCE_MS = 1100;
-
-                function formFilterControls(form) {
-                    const controls = form?.elements ? Array.from(form.elements) : [];
-
-                    return controls.filter((el) => el instanceof HTMLElement && !el.matches('[data-auto-submit="off"]'));
-                }
-
-                function wireAutoFilterForms(scopeRoot) {
-                    const root = scopeRoot || document;
-                    const forms = Array.from(root.querySelectorAll('form[method="get"]:not([data-auto-submit="off"])'));
-
-                    forms.forEach((form) => {
-                        if (form.dataset.autoSubmitBound === '1') {
-                            return;
-                        }
-                        form.dataset.autoSubmitBound = '1';
-
-                        const searchInputs = formFilterControls(form).filter((input) =>
-                            input.matches('input[name="q"], input[type="search"], input[data-auto-search="true"]')
-                        );
-                        searchInputs.forEach((input) => {
-                            input.addEventListener('input', () => {
-                                window.clearTimeout(input._autoSearchTimer);
-                                input._autoSearchTimer = window.setTimeout(() => form.requestSubmit(), SEARCH_DEBOUNCE_MS);
-                            });
-                        });
-
-                        const autoControls = formFilterControls(form).filter((control) =>
-                            control.matches('select, input[type="date"], input[type="month"], input[type="number"], input[type="checkbox"], input[type="radio"]')
-                        );
-                        autoControls.forEach((control) => {
-                            control.addEventListener('change', () => form.requestSubmit());
-                        });
-                    });
-                }
-
-                function syncPropertyFilterDesktopForms() {
-                    const isMobile = window.matchMedia('(max-width: 767px)').matches;
-                    document.querySelectorAll('[data-property-filter-form-desktop]').forEach((form) => {
-                        if (!(form instanceof HTMLFormElement)) {
-                            return;
-                        }
-                        Array.from(form.elements).forEach((el) => {
-                            if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement || el instanceof HTMLButtonElement)) {
-                                return;
-                            }
-                            if (isMobile) {
-                                el.setAttribute('disabled', 'disabled');
-                            } else {
-                                el.removeAttribute('disabled');
-                            }
-                        });
-                    });
-                }
-
-                document.addEventListener('DOMContentLoaded', () => {
-                    wireAutoFilterForms(document);
-                    syncPropertyFilterDesktopForms();
-                });
-                document.addEventListener('turbo:load', () => {
-                    wireAutoFilterForms(document);
-                    syncPropertyFilterDesktopForms();
-                });
-                document.addEventListener('turbo:frame-load', (event) => {
-                    wireAutoFilterForms(event.target);
-                    syncPropertyFilterDesktopForms();
-                });
-                document.addEventListener('livewire:navigated', () => {
-                    wireAutoFilterForms(document);
-                    syncPropertyFilterDesktopForms();
-                });
-                document.addEventListener('alpine:navigated', () => {
-                    wireAutoFilterForms(document);
-                    syncPropertyFilterDesktopForms();
-                });
-                window.addEventListener('resize', syncPropertyFilterDesktopForms, { passive: true });
-
-            })();
-        </script>
+        {{-- Phase 2C: property-auto-filter.js (search-only debounce + Apply for other controls) --}}
         @stack('scripts')
+
+        <template id="property-frame-skeleton-template">
+            <x-property.frame-skeleton />
+        </template>
+
         <x-public.pwa-install-prompt context="portal" position="left" />
     </body>
 </html>

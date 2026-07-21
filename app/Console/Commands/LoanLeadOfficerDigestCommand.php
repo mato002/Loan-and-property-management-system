@@ -24,11 +24,14 @@ class LoanLeadOfficerDigestCommand extends Command
             ->distinct()
             ->pluck('assigned_officer_id');
 
+        $officerCount = 0;
         foreach ($officerIds as $uid) {
             $user = User::query()->find($uid);
             if (! $user) {
                 continue;
             }
+
+            $officerCount++;
 
             $base = ClientLead::query()->where('assigned_officer_id', $uid);
             $mtd = (clone $base)->where('created_at', '>=', now()->startOfMonth())->count();
@@ -51,7 +54,7 @@ class LoanLeadOfficerDigestCommand extends Command
             $this->line($line);
         }
 
-        $this->info('Digest complete.');
+        $this->info("Lead digest for {$day}: officers={$officerCount}.");
 
         return self::SUCCESS;
     }

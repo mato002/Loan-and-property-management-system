@@ -224,10 +224,10 @@
                     async createLandlord() {
                         const name = (document.getElementById('new-landlord-name')?.value || '').trim();
                         const email = (document.getElementById('new-landlord-email')?.value || '').trim();
-                        const password = (document.getElementById('new-landlord-password')?.value || '').trim();
-                        if (!name || !email || !password) {
-                            if (window.Swal) Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name, email and password are required.' });
-                            else window.Swal?.fire?.({ icon: 'warning', title: 'Missing fields', text: 'Name, email and password are required.' }) || alert('Name, email and password are required.');
+                        const phone = (document.getElementById('new-landlord-phone')?.value || '').trim();
+                        if (!name || (!email && !phone)) {
+                            if (window.Swal) Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' });
+                            else window.Swal?.fire?.({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' }) || alert('Name and at least one of email or phone are required.');
                             return;
                         }
                         this.creating = true;
@@ -240,7 +240,7 @@
                                     'Accept': 'application/json',
                                     'X-CSRF-TOKEN': token || ''
                                 },
-                                body: JSON.stringify({ name, email, password })
+                                body: JSON.stringify({ name, email: email || null, phone: phone || null })
                             });
                             const data = await res.json().catch(() => ({}));
                             if (!res.ok || !data.ok) {
@@ -319,8 +319,8 @@
                             'endpoint' => route('property.landlords.onboard_json'),
                             'fields' => [
                                 ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Jane Landlord'],
-                                ['name' => 'email', 'label' => 'Email', 'type' => 'email', 'required' => true, 'span' => '2', 'placeholder' => 'name@example.com'],
-                                ['name' => 'password', 'label' => 'Temporary password', 'required' => true, 'span' => '2', 'placeholder' => 'At least 8 characters'],
+                                ['name' => 'email', 'label' => 'Email (optional if phone provided)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
+                                ['name' => 'phone', 'label' => 'Phone (optional if email provided)', 'required' => false, 'span' => '2', 'placeholder' => 'e.g. 0712345678'],
                             ],
                         ]"
                     />

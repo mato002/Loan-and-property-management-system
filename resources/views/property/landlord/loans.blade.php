@@ -1,10 +1,8 @@
 <x-property-layout>
     <x-slot name="header">Loans</x-slot>
 
-    <x-property.page
-        title="Loan services"
-        subtitle="Submit your loan request directly from landlord portal."
-    >
+    <x-property.page title="Loan services">
+        <p class="mb-3 text-sm"><a href="{{ route('property.landlord.settings.index') }}" data-turbo-frame="property-main" class="text-emerald-700 hover:underline">← Account</a></p>
         @if (session('success'))
             <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                 {{ session('success') }}
@@ -16,32 +14,20 @@
             </div>
         @endif
 
-        <div class="grid gap-4 md:grid-cols-2 mb-4">
-            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4">
-                <p class="text-xs uppercase tracking-wide text-slate-500">Portal role</p>
-                <p class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">Landlord</p>
-            </div>
-            <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4">
-                <p class="text-xs uppercase tracking-wide text-slate-500">Loan request path</p>
-                <p class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">Direct application</p>
-            </div>
-        </div>
-
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5">
-            <h3 class="text-base font-semibold text-slate-900 dark:text-white">Your active loans</h3>
-            <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Track repayment deadline countdown, outstanding return amount, and submit repayment.</p>
+            <h3 class="text-base font-semibold text-slate-900 dark:text-white">Active loans</h3>
             @if(($portalLoans ?? collect())->isEmpty())
                 <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                    No active loans found yet. Once approved/disbursed, they will appear here.
+                    No active loans.
                 </div>
             @else
-                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                <div class="mt-4 grid grid-cols-2 gap-2 sm:gap-4">
                     @foreach($portalLoans as $loan)
                         @php
                             $maturity = $loan->maturity_date;
                             $daysLeft = $maturity ? now()->startOfDay()->diffInDays($maturity, false) : null;
                             $countdownLabel = is_null($daysLeft)
-                                ? 'No maturity date set'
+                                ? 'No maturity date'
                                 : ($daysLeft >= 0 ? $daysLeft.' day(s) remaining' : abs($daysLeft).' day(s) overdue');
                         @endphp
                         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900/40 p-4">
@@ -53,7 +39,7 @@
                                 <div class="flex items-center justify-between"><span class="text-slate-500">Maturity date</span><span class="font-semibold {{ !is_null($daysLeft) && $daysLeft < 0 ? 'text-red-600' : 'text-slate-900 dark:text-white' }}">{{ $maturity ? $maturity->format('M d, Y') : '—' }}</span></div>
                                 <div class="flex items-center justify-between"><span class="text-slate-500">Countdown</span><span class="font-semibold {{ !is_null($daysLeft) && $daysLeft < 0 ? 'text-red-600' : 'text-emerald-700 dark:text-emerald-400' }}">{{ $countdownLabel }}</span></div>
                             </div>
-                            <form method="post" action="{{ route('property.landlord.loans.repay') }}" class="mt-4 grid gap-2 sm:grid-cols-2" data-swal-confirm="Submit this loan repayment request?">
+                            <form method="post" action="{{ route('property.landlord.loans.repay') }}" class="mt-4 grid grid-cols-2 gap-2" data-swal-confirm="Submit this loan repayment request?">
                                 @csrf
                                 <input type="hidden" name="loan_id" value="{{ $loan->id }}">
                                 <div>
@@ -84,11 +70,8 @@
 
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5">
             <h3 class="text-base font-semibold text-slate-900 dark:text-white">Apply for a loan</h3>
-            <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                Submit your application here and it will appear in the loan module applications queue for review.
-            </p>
 
-            <form method="post" action="{{ route('property.landlord.loans.apply') }}" class="mt-4 grid gap-4 sm:grid-cols-2" data-swal-confirm="Submit this loan application?">
+            <form method="post" action="{{ route('property.landlord.loans.apply') }}" class="mt-4 grid grid-cols-2 gap-3 sm:gap-4" data-swal-confirm="Submit this loan application?">
                 @csrf
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Loan product</label>

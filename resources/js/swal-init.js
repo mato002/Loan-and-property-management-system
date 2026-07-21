@@ -60,6 +60,37 @@ function cleanupRecoverableOverlays(reason = 'manual') {
     }
 }
 
+function isPropertyPortalShell() {
+    return Boolean(
+        document.getElementById('property-main') || document.body?.dataset?.propertyNavMode,
+    );
+}
+
+function hasActiveUserOverlays() {
+    if (window.PropertyModalManager?.getStack?.()?.length > 0) {
+        return true;
+    }
+    const swalPopup = document.querySelector('.swal2-popup.swal2-show');
+    if (swalPopup && isVisible(swalPopup)) {
+        return true;
+    }
+
+    return false;
+}
+
+function safeCleanupRecoverableOverlays(reason = 'manual') {
+    if (hasActiveUserOverlays()) {
+        debugLog('skip overlay cleanup — active overlay', reason);
+
+        return;
+    }
+    cleanupRecoverableOverlays(reason);
+}
+
+function isPropertyMainFrameEvent(event) {
+    return event?.target instanceof HTMLElement && event.target.id === 'property-main';
+}
+
 function elevateSwalContainer(popup) {
     const container = popup?.closest?.('.swal2-container')
         ?? document.querySelector('.swal2-container.swal2-backdrop-show, .swal2-container.swal2-noanimation');
@@ -100,7 +131,9 @@ function safeSwalFire(opts, source = 'unknown') {
         })
         .finally(() => {
             window.clearTimeout(watchdog);
-            cleanupSwalBackdrop(`finally:${source}`);
+            if (!document.querySelector('.swal2-popup.swal2-show')) {
+                cleanupSwalBackdrop(`finally:${source}`);
+            }
             debugLog('SweetAlert close', source);
         });
 }
@@ -219,35 +252,46 @@ function scheduleRunFlashAfterTurboDom(scope) {
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        cleanupRecoverableOverlays('dom_ready');
-        runFlash();
+        safeCleanupRecoverableOverlays('dom_ready');
+        if (!isPropertyPortalShell()) {
+            runFlash();
+        }
     });
 } else {
-    cleanupRecoverableOverlays('immediate');
-    runFlash();
+    safeCleanupRecoverableOverlays('immediate');
+    if (!isPropertyPortalShell()) {
+        runFlash();
+    }
 }
 
-// Turbo (Hotwire) navigations do not trigger DOMContentLoaded, so also re-run
-// flashes on Turbo events across the whole app (loan + public + auth pages too).
+// Turbo navigations: loan/public pages use global handlers; property portal uses property-flash-lifecycle.js.
 document.addEventListener('turbo:load', () => {
-    cleanupRecoverableOverlays('turbo:load');
-    scheduleRunFlashAfterTurboDom(document.getElementById('property-main') || document);
-});
-document.addEventListener('turbo:render', () => {
-    cleanupRecoverableOverlays('turbo:render');
-    scheduleRunFlashAfterTurboDom(document.getElementById('property-main') || document);
-});
-document.addEventListener('turbo:frame-load', (event) => {
-    cleanupRecoverableOverlays('turbo:frame-load');
-    const frame = event.target instanceof Element ? event.target : document.getElementById('property-main');
-    scheduleRunFlashAfterTurboDom(frame || document);
-});
-document.addEventListener('turbo:submit-end', (event) => {
-    if (!event.detail?.success) {
+    if (isPropertyPortalShell()) {
         return;
     }
-    const frame = document.getElementById('property-main');
-    scheduleRunFlashAfterTurboDom(frame || document);
+    safeCleanupRecoverableOverlays('turbo:load');
+    scheduleRunFlashAfterTurboDom(document);
+});
+document.addEventListener('turbo:render', () => {
+    if (isPropertyPortalShell()) {
+        return;
+    }
+    safeCleanupRecoverableOverlays('turbo:render');
+    scheduleRunFlashAfterTurboDom(document);
+});
+document.addEventListener('turbo:frame-load', (event) => {
+    if (isPropertyMainFrameEvent(event)) {
+        return;
+    }
+    safeCleanupRecoverableOverlays('turbo:frame-load');
+    const frame = event.target instanceof Element ? event.target : document;
+    scheduleRunFlashAfterTurboDom(frame);
+});
+document.addEventListener('turbo:submit-end', (event) => {
+    if (!event.detail?.success || isPropertyPortalShell()) {
+        return;
+    }
+    scheduleRunFlashAfterTurboDom(document);
 });
 
 document.addEventListener(

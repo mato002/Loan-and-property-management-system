@@ -1,12 +1,11 @@
 <x-property.workspace
     title="Expense reports"
-    subtitle="Maintenance, management fees, utilities, and capex — allocated per property."
     back-route="property.landlord.reports.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
     empty-title="No expenses in period"
-    empty-hint="Pull from approved vendor bills and management fee invoices."
+    empty-hint=""
 >
     <x-slot name="actions">
         <a

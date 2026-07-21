@@ -14,8 +14,11 @@ use App\Models\PmTenant;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Services\BulkSmsService;
+use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyPaymentSettlementService;
+use App\Services\Property\PropertyReversalFinalizeService;
 use App\Services\Property\UtilityPeriodGuardService;
 use App\Exceptions\Property\UtilityPeriodClosedException;
 use App\Services\Property\TenantCreditService;
@@ -164,7 +167,7 @@ class PmInvoiceController extends Controller
 
             // Accounting parity: keep the GL in sync with edits.
             if ($newStatus === PmInvoice::STATUS_CANCELLED && $previousStatus !== PmInvoice::STATUS_CANCELLED) {
-                PropertyAccountingPostingService::reverseInvoiceIssued($invoice, $request->user(), 'Edit: status moved to cancelled');
+                app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), 'Edit: status moved to cancelled');
                 PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_CANCELLED, $request->user()?->id, $data['cancelled_reason'] ?? null);
             } elseif ($previousStatus === PmInvoice::STATUS_CANCELLED && $newStatus !== PmInvoice::STATUS_CANCELLED) {
                 PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
@@ -206,7 +209,7 @@ class PmInvoiceController extends Controller
         DB::transaction(function () use ($invoice, $request) {
             // Reverse any open journal entries so the GL doesn't ghost-credit
             // an income line for an invoice that no longer exists.
-            PropertyAccountingPostingService::reverseInvoiceIssued($invoice, $request->user(), 'Invoice deleted');
+            app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), 'Invoice deleted');
 
             PmInvoiceEvent::record(
                 (int) $invoice->id,
@@ -257,7 +260,7 @@ class PmInvoiceController extends Controller
             $invoice->update($payload);
 
             if ($target === PmInvoice::STATUS_CANCELLED && $previous !== PmInvoice::STATUS_CANCELLED) {
-                PropertyAccountingPostingService::reverseInvoiceIssued($invoice, $request->user(), 'Status: cancelled');
+                app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), 'Status: cancelled');
                 PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_CANCELLED, $request->user()?->id, $data['cancelled_reason'] ?? null);
             } elseif ($previous === PmInvoice::STATUS_CANCELLED && $target !== PmInvoice::STATUS_CANCELLED) {
                 PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
@@ -320,6 +323,11 @@ class PmInvoiceController extends Controller
         $unit = PropertyUnit::query()->find($data['property_unit_id']);
         if (! $unit) {
             return back()->withErrors(['property_unit_id' => 'Unit not found.'])->withInput();
+        }
+
+        if ($unit->property) {
+            app(\App\Services\Property\PropertyManagementGuardService::class)
+                ->assertCanCreateInvoice($unit->property);
         }
 
         if (! empty($data['pm_lease_id'])) {
@@ -393,7 +401,7 @@ class PmInvoiceController extends Controller
             Cache::put('pm_invoice_idem:'.$request->user()?->id.':'.$idemKey, $invoice->id, now()->addMinutes(10));
         }
 
-        $invoice->refreshComputedStatus();
+        $invoice->syncAmountPaidFromAllocations();
         $invoice->loadMissing('unit.property');
 
         // Only post to GL once the invoice is "sent" — drafts stay off-ledger.
@@ -403,7 +411,6 @@ class PmInvoiceController extends Controller
                 app(TenantCreditService::class)->autoApplyForTenant(
                     (int) $invoice->pm_tenant_id,
                     $request->user(),
-                    (int) $invoice->id,
                 );
             }
         }
@@ -423,8 +430,6 @@ class PmInvoiceController extends Controller
 
     public function invoices(Request $request): View|StreamedResponse
     {
-        PmInvoice::refreshStaleStatuses(1000);
-
         [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $billingRangeLabel] = $this->resolveInvoiceBillingRange($request);
 
         $filters = [
@@ -547,20 +552,20 @@ class PmInvoiceController extends Controller
                 'hint' => $billingRangeLabel,
             ],
             [
-                'label' => 'Collected',
+                'label' => 'Collections',
                 'value' => PropertyMoney::kes((float) ($summary->total_collected ?? 0)),
-                'hint' => 'Payments allocated in period',
+                'hint' => 'Allocated on period invoices',
             ],
             [
-                'label' => 'Outstanding',
+                'label' => 'Tenant arrears',
                 'value' => PropertyMoney::kes((float) ($summary->total_outstanding ?? 0)),
-                'hint' => 'Open balance on period invoices',
+                'hint' => 'Billable open balance on period invoices',
             ],
         ];
 
         $rows = $invoices->getCollection()->map(function (PmInvoice $i) {
             $showAction = route('property.revenue.invoices.show', $i, false);
-            $balance = max(0, (float) $i->amount - (float) $i->amount_paid);
+            $balance = app(FinanceBalanceSnapshotService::class)->invoiceBalance($i);
 
             $actions = new HtmlString(view('property.agent.partials.invoice_row_actions', ['invoice' => $i])->render());
 
@@ -622,7 +627,7 @@ class PmInvoiceController extends Controller
                 'cancelled_by_user_id' => null,
                 'cancelled_reason' => null,
             ]);
-            $invoice->refreshComputedStatus();
+            $invoice->syncAmountPaidFromAllocations();
 
             PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
             PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_SENT, $request->user()?->id);
@@ -666,7 +671,7 @@ class PmInvoiceController extends Controller
                 'cancelled_by_user_id' => $request->user()?->id,
                 'cancelled_reason' => $data['cancelled_reason'] ?? null,
             ]);
-            PropertyAccountingPostingService::reverseInvoiceIssued($invoice, $request->user(), $data['cancelled_reason'] ?? 'Invoice cancelled');
+            app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), $data['cancelled_reason'] ?? 'Invoice cancelled');
             PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_CANCELLED, $request->user()?->id, $data['cancelled_reason'] ?? null);
         });
 
@@ -686,7 +691,7 @@ class PmInvoiceController extends Controller
                 'cancelled_by_user_id' => null,
                 'cancelled_reason' => null,
             ]);
-            $invoice->refreshComputedStatus();
+            $invoice->syncAmountPaidFromAllocations();
             PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
             PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_REOPENED, $request->user()?->id);
         });
@@ -719,52 +724,37 @@ class PmInvoiceController extends Controller
             return back()->withErrors(['external_ref' => 'Reference is required for non-cash payments.'])->withInput();
         }
 
-        DB::transaction(function () use ($invoice, $data, $request) {
-            $payment = PmPayment::query()->create([
-                'pm_tenant_id' => $invoice->pm_tenant_id,
-                'channel' => $data['channel'],
-                'amount' => $data['amount'],
-                'external_ref' => $data['external_ref'] ?? null,
-                'paid_at' => $data['paid_at'] ?? now(),
-                'status' => PmPayment::STATUS_COMPLETED,
-                'meta' => null,
-            ]);
-            if (Schema::hasColumn('pm_payments', 'agent_user_id')) {
-                $agentUserId = (int) ($invoice->agent_user_id ?? 0);
-                if ($agentUserId <= 0) {
-                    $invoice->loadMissing('unit.property');
-                    $agentUserId = (int) ($invoice->unit?->property?->agent_user_id ?? 0);
-                }
-                if ($agentUserId > 0) {
-                    $payment->update(['agent_user_id' => $agentUserId]);
-                }
+        $agentUserId = null;
+        if (Schema::hasColumn('pm_payments', 'agent_user_id')) {
+            $agentUserId = (int) ($invoice->agent_user_id ?? 0);
+            if ($agentUserId <= 0) {
+                $invoice->loadMissing('unit.property');
+                $agentUserId = (int) ($invoice->unit?->property?->agent_user_id ?? 0);
             }
+        }
 
-            PmPaymentAllocation::query()->create([
-                'pm_payment_id' => $payment->id,
-                'pm_invoice_id' => $invoice->id,
-                'amount' => $data['amount'],
-            ]);
+        $payment = app(PropertyPaymentSettlementService::class)->recordPaymentToInvoice(
+            $invoice,
+            (float) $data['amount'],
+            (string) $data['channel'],
+            $data['external_ref'] ?? null,
+            $data['paid_at'] ?? now(),
+            $request->user(),
+            null,
+            $agentUserId > 0 ? $agentUserId : null,
+        );
 
-            $invoice->amount_paid = (float) $invoice->amount_paid + (float) $data['amount'];
-            $invoice->save();
-            $invoice->refreshComputedStatus();
-
-            $payment->load('allocations.invoice.unit');
-            PropertyAccountingPostingService::postPaymentReceived($payment, $request->user());
-
-            PmInvoiceEvent::record(
-                (int) $invoice->id,
-                PmInvoiceEvent::EVENT_PARTIALLY_PAID,
-                $request->user()?->id,
-                'Payment recorded: KES '.number_format((float) $data['amount'], 2).' via '.$data['channel'],
-                [
-                    'payment_id' => (int) $payment->id,
-                    'amount' => (float) $data['amount'],
-                    'channel' => $data['channel'],
-                ]
-            );
-        });
+        PmInvoiceEvent::record(
+            (int) $invoice->id,
+            PmInvoiceEvent::EVENT_PARTIALLY_PAID,
+            $request->user()?->id,
+            'Payment recorded: KES '.number_format((float) $data['amount'], 2).' via '.$data['channel'],
+            [
+                'payment_id' => (int) $payment->id,
+                'amount' => (float) $data['amount'],
+                'channel' => $data['channel'],
+            ]
+        );
 
         return back()->with('success', 'Payment recorded for invoice '.$invoice->invoice_no.'.');
     }
@@ -857,19 +847,24 @@ class PmInvoiceController extends Controller
             if ($phone === '') {
                 $errors[] = 'Tenant has no phone on file.';
             } else {
-                $result = $sms->sendNow($body, [$phone], $request->user()?->id, null, 'property');
-                if (($result['ok'] ?? false) === true) {
-                    PmMessageLog::query()->create([
-                        'user_id' => $request->user()?->id,
-                        'channel' => 'sms',
-                        'to_address' => $phone,
-                        'body' => $body,
-                        'status' => 'sent',
-                    ]);
-                    PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_SMS_SENT, $request->user()?->id, 'SMS sent to '.$phone);
-                    $smsedCount++;
+                $phones = $sms->normalizeRecipientList($phone);
+                if ($phones === []) {
+                    $errors[] = 'Invalid tenant phone number.';
                 } else {
-                    $errors[] = 'SMS failed: '.($result['error'] ?? 'unknown');
+                    $result = $sms->sendNow($body, $phones, $request->user()?->id, null, 'property');
+                    if (($result['ok'] ?? false) === true) {
+                        PmMessageLog::query()->create([
+                            'user_id' => $request->user()?->id,
+                            'channel' => 'sms',
+                            'to_address' => implode(',', $phones),
+                            'body' => $body,
+                            'status' => 'sent',
+                        ]);
+                        PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_SMS_SENT, $request->user()?->id, 'SMS sent to '.implode(',', $phones));
+                        $smsedCount++;
+                    } else {
+                        $errors[] = 'SMS failed: '.($result['error'] ?? 'unknown');
+                    }
                 }
             }
         }
@@ -901,8 +896,7 @@ class PmInvoiceController extends Controller
 
     /**
      * Issue a credit note that offsets a (paid or partially-paid) invoice.
-     * Creates a linked invoice row with kind=credit_note and a negative-like
-     * journal posting handled by reverseInvoiceIssued on the original.
+     * Creates a linked invoice row with kind=credit_note and posts a credit_memo_issued journal.
      */
     public function createCreditNote(Request $request, PmInvoice $invoice): RedirectResponse
     {
@@ -961,6 +955,8 @@ class PmInvoiceController extends Controller
 
             return $cn;
         });
+
+        app(PropertyReversalFinalizeService::class)->issueCreditMemo($creditNote, $request->user());
 
         return redirect()
             ->route('property.revenue.invoices.show', $creditNote)
@@ -1160,12 +1156,13 @@ class PmInvoiceController extends Controller
             });
         }
         $status = strtolower(trim((string) ($filters['status'] ?? '')));
-        if ($status !== '' && in_array($status, [
+        if ($status === PmInvoice::STATUS_OVERDUE) {
+            $query->pastDueOpen();
+        } elseif ($status !== '' && in_array($status, [
             PmInvoice::STATUS_DRAFT,
             PmInvoice::STATUS_SENT,
             PmInvoice::STATUS_PARTIAL,
             PmInvoice::STATUS_PAID,
-            PmInvoice::STATUS_OVERDUE,
             PmInvoice::STATUS_CANCELLED,
         ], true)) {
             $query->where('status', $status);
@@ -1236,24 +1233,25 @@ class PmInvoiceController extends Controller
     {
         $paid = PmInvoice::STATUS_PAID;
         $draft = PmInvoice::STATUS_DRAFT;
-        $sent = PmInvoice::STATUS_SENT;
-        $partial = PmInvoice::STATUS_PARTIAL;
-        $overdue = PmInvoice::STATUS_OVERDUE;
         $cancelled = PmInvoice::STATUS_CANCELLED;
+        $balanceSnapshot = app(FinanceBalanceSnapshotService::class);
 
-        return (clone $query)
-            ->where('status', '!=', $cancelled)
+        $summary = (clone $query)
             ->selectRaw(
                 'COUNT(*) as invoice_count,
                 COUNT(DISTINCT pm_tenant_id) as tenant_count,
                 COALESCE(SUM(amount), 0) as total_billed,
                 COALESCE(SUM(amount_paid), 0) as total_collected,
-                COALESCE(SUM(GREATEST(0, amount - amount_paid)), 0) as total_outstanding,
                 SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as paid_count,
-                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as draft_count,
-                SUM(CASE WHEN status IN (?, ?, ?) THEN 1 ELSE 0 END) as open_count',
-                [$paid, $draft, $sent, $partial, $overdue]
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as draft_count',
+                [$paid, $draft]
             )
             ->first() ?? (object) [];
+
+        $billableQuery = $balanceSnapshot->billableArQuery(clone $query);
+        $summary->total_outstanding = $balanceSnapshot->outstandingSum($billableQuery);
+        $summary->open_count = (int) $balanceSnapshot->withPositiveBalance(clone $billableQuery)->count();
+
+        return $summary;
     }
 }

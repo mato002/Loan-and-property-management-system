@@ -54,6 +54,33 @@ class LoanBookLoanUpdateService
     }
 
     /**
+     * When the last disbursement is removed (after journal reversal), reset the loan to pre-payout state.
+     */
+    public function onLastDisbursementRemoved(LoanBookLoan $loan): void
+    {
+        DB::transaction(function () use ($loan) {
+            /** @var LoanBookLoan $locked */
+            $locked = LoanBookLoan::query()->lockForUpdate()->findOrFail($loan->id);
+
+            if ($locked->disbursements()->exists()) {
+                return;
+            }
+
+            if ($locked->payments()->processedQueue()->exists()) {
+                return;
+            }
+
+            $locked->status = LoanBookLoan::STATUS_PENDING_DISBURSEMENT;
+            $locked->disbursed_at = null;
+            $locked->principal_outstanding = max(0.0, (float) $locked->principal);
+            $locked->interest_outstanding = 0.0;
+            $locked->fees_outstanding = 0.0;
+            $locked->balance = 0.0;
+            $locked->save();
+        });
+    }
+
+    /**
      * Apply a processed payment effect to the loan record by reducing outstanding balance.
      * Note: This system currently tracks a single outstanding "balance" number, not split principal/interest.
      */

@@ -1,4 +1,5 @@
 <x-property.workspace
+    :legacy-toolbar="false"
     title="Property list"
     subtitle="Portfolio hierarchy: buildings, metadata, and landlord portal access."
     back-route="property.properties.index"
@@ -224,10 +225,10 @@
                     async createLandlord() {
                         const name = (document.getElementById('new-landlord-name')?.value || '').trim();
                         const email = (document.getElementById('new-landlord-email')?.value || '').trim();
-                        const password = (document.getElementById('new-landlord-password')?.value || '').trim();
-                        if (!name || !email || !password) {
-                            if (window.Swal) Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name, email and password are required.' });
-                            else window.Swal?.fire?.({ icon: 'warning', title: 'Missing fields', text: 'Name, email and password are required.' }) || alert('Name, email and password are required.');
+                        const phone = (document.getElementById('new-landlord-phone')?.value || '').trim();
+                        if (!name || (!email && !phone)) {
+                            if (window.Swal) Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' });
+                            else window.Swal?.fire?.({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' }) || alert('Name and at least one of email or phone are required.');
                             return;
                         }
                         this.creating = true;
@@ -240,7 +241,7 @@
                                     'Accept': 'application/json',
                                     'X-CSRF-TOKEN': token || ''
                                 },
-                                body: JSON.stringify({ name, email, password })
+                                body: JSON.stringify({ name, email: email || null, phone: phone || null })
                             });
                             const data = await res.json().catch(() => ({}));
                             if (!res.ok || !data.ok) {
@@ -254,7 +255,7 @@
                             if (sel && u && u.id) {
                                 const opt = document.createElement('option');
                                 opt.value = String(u.id);
-                                opt.textContent = `${u.name} (${u.email})`;
+                                opt.textContent = u.label || `${u.name} (${u.email || u.phone || u.id})`;
                                 sel.appendChild(opt);
                                 sel.value = String(u.id);
                             }
@@ -312,15 +313,15 @@
                         name="user_id"
                         :required="true"
                         select-id="landlord-user-select"
-                        :options="collect($landlordUsers)->map(fn($u) => ['value' => $u->id, 'label' => $u->name.' ('.$u->email.')', 'selected' => (string) old('user_id') === (string) $u->id])->all()"
+                        :options="collect($landlordUsers)->map(fn($u) => ['value' => $u->id, 'label' => $u->name.' ('.($u->email ?: ($u->phone ?: 'no contact')).')', 'selected' => (string) old('user_id') === (string) $u->id])->all()"
                         :create="[
                             'mode' => 'ajax',
                             'title' => 'Create landlord',
                             'endpoint' => route('property.landlords.onboard_json'),
                             'fields' => [
                                 ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Jane Landlord'],
-                                ['name' => 'email', 'label' => 'Email', 'type' => 'email', 'required' => true, 'span' => '2', 'placeholder' => 'name@example.com'],
-                                ['name' => 'password', 'label' => 'Temporary password', 'required' => true, 'span' => '2', 'placeholder' => 'At least 8 characters'],
+                                ['name' => 'email', 'label' => 'Email (optional if phone provided)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
+                                ['name' => 'phone', 'label' => 'Phone (optional if email provided)', 'required' => false, 'span' => '2', 'placeholder' => 'e.g. 0712345678'],
                             ],
                         ]"
                     />
@@ -408,46 +409,10 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.properties.list') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-7 items-end">
-            <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search name, code, city..." class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 lg:col-span-2" />
-            <select name="city" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="">All cities</option>
-                @foreach (($cities ?? []) as $city)
-                    <option value="{{ $city }}" @selected(($filters['city'] ?? '') === $city)>{{ $city }}</option>
-                @endforeach
-            </select>
-            <select name="landlord" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="">Landlord: All</option>
-                <option value="linked" @selected(($filters['landlord'] ?? '') === 'linked')>Linked only</option>
-                <option value="unlinked" @selected(($filters['landlord'] ?? '') === 'unlinked')>Unlinked only</option>
-            </select>
-            <select name="sort" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="name" @selected(($filters['sort'] ?? 'name') === 'name')>Sort: Name</option>
-                <option value="city" @selected(($filters['sort'] ?? '') === 'city')>Sort: City</option>
-                <option value="units_count" @selected(($filters['sort'] ?? '') === 'units_count')>Sort: Units</option>
-                <option value="created_at" @selected(($filters['sort'] ?? '') === 'created_at')>Sort: Newest</option>
-            </select>
-            <div class="flex items-center gap-2">
-                <label class="text-xs text-slate-500 dark:text-slate-400">Per page</label>
-                <select name="per_page" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-2 py-2">
-                    @foreach ([10, 30, 50, 100, 200] as $size)
-                        <option value="{{ $size }}" @selected((int) ($filters['per_page'] ?? 30) === $size)>{{ $size }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="flex items-center gap-2">
-                <input type="hidden" name="dir" value="{{ ($filters['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc' }}" />
-                <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
-                <a href="{{ route('property.properties.list', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
-            </div>
-            <div class="flex items-center">
-                @include('property.agent.partials.export_dropdown', [
-                    'csvUrl' => route('property.properties.list.export', array_merge(request()->query(), ['format' => 'csv']), false),
-                    'xlsUrl' => route('property.properties.list.export', array_merge(request()->query(), ['format' => 'xls']), false),
-                    'pdfUrl' => route('property.properties.list.export', array_merge(request()->query(), ['format' => 'pdf']), false),
-                ])
-            </div>
-        </form>
+        @include('property.agent.partials.filter_toolbars.properties_list', [
+            'filters' => $filters,
+            'cities' => $cities ?? [],
+        ])
     </x-slot>
     <x-slot name="footer">
         @isset($properties)

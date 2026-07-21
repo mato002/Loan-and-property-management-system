@@ -1,6 +1,6 @@
 <x-property.workspace
     :title="'Property: '.$property->name"
-    :subtitle="'Full property intelligence view ┬╖ '.$periodLabel"
+    :subtitle="'Full property intelligence view  -  '.$periodLabel"
     back-route="property.properties.list"
     :stats="$stats"
     :columns="[]"
@@ -10,18 +10,18 @@
     @endphp
 
     <x-slot name="actions">
-        <a href="{{ route('property.properties.edit', ['property' => $property->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit property</a>
-        <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Units</a>
+        <a href="{{ route('property.properties.edit', ['property' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit property</a>
+        <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Units</a>
         @if (count($units ?? []) === 0)
-            <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Add units</a>
+            <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Add units</a>
         @endif
-        <a href="{{ route('property.tenants.leases', ['property_id' => $property->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Add lease</a>
+        <a href="{{ route('property.tenants.leases', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Add lease</a>
         @if ($firstVacantUnit)
-            <a href="{{ route('property.tenants.leases', ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id], false) }}" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Assign tenant</a>
-            <a href="{{ route('property.listings.create', ['selected_unit' => $firstVacantUnit->id], false) }}#listing-publish" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">Publish vacant unit</a>
+            <a href="{{ route('property.tenants.leases', ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Assign tenant</a>
+            <a href="{{ route('property.listings.create', ['selected_unit' => $firstVacantUnit->id], false) }}#listing-publish" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">Publish vacant unit</a>
         @endif
         @if (($property->landlords?->count() ?? 0) === 0)
-            <a href="{{ route('property.properties.list', ['property_id' => $property->id], false) }}#link-landlord-form" data-turbo-frame="_top" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Link landlord</a>
+            <a href="{{ route('property.properties.list', ['property_id' => $property->id], false) }}#link-landlord-form" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Link landlord</a>
         @endif
     </x-slot>
 
@@ -67,7 +67,7 @@
                 </select>
             </div>
             <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply period</button>
-            <a href="{{ route('property.properties.show', ['property' => $property->id], false) }}" data-turbo-frame="_top" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
+            <a href="{{ route('property.properties.show', ['property' => $property->id], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
             <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
             <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export PDF</a>
             <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export Word</a>
@@ -79,7 +79,7 @@
         <div class="mt-1 mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center justify-between gap-2">
             <p class="text-sm text-slate-700">
                 <span class="font-semibold">Units:</span> {{ count($units ?? []) }}
-                <span class="text-slate-500">┬╖ Manage additions/demolitions from here.</span>
+                <span class="text-slate-500"> -  Manage additions/demolitions from here.</span>
             </p>
             <button
                 type="button"
@@ -509,6 +509,8 @@
                 <tr>
                     <th class="px-4 py-3">Unit</th>
                     <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Tenant</th>
+                    <th class="px-4 py-3">Phone</th>
                     <th class="px-4 py-3">Listed rent</th>
                     <th class="px-4 py-3">Arrears</th>
                     @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
@@ -521,6 +523,8 @@
                     <tr class="border-t border-slate-100 hover:bg-slate-50/70">
                         <td class="px-4 py-3 font-medium text-slate-900">{{ $u->label }}</td>
                         <td class="px-4 py-3 capitalize text-slate-700">{{ $u->status }}</td>
+                        <td class="px-4 py-3 text-slate-700">{{ $u->tenant_name ?: '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap">{{ $u->tenant_phone ?: '—' }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->rent_amount) }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
                         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
@@ -541,7 +545,7 @@
                         @endif
                     </tr>
                 @empty
-                    <tr><td colspan="{{ auth()->check() && auth()->user()?->hasPmPermission('properties.manage') ? 5 : 4 }}" class="px-4 py-10 text-center text-slate-500">No units yet for this property.</td></tr>
+                    <tr><td colspan="{{ auth()->check() && auth()->user()?->hasPmPermission('properties.manage') ? 7 : 6 }}" class="px-4 py-10 text-center text-slate-500">No units yet for this property.</td></tr>
                 @endforelse
             </tbody>
         </table>

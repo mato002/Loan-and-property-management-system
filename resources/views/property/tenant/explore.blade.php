@@ -29,7 +29,7 @@
                             @endif
                         </div>
                         <div class="p-4 flex-1 flex flex-col min-w-0">
-                            <p class="text-sm font-semibold text-slate-900 dark:text-white truncate">{{ $unit->property->name }} ┬╖ {{ $unit->label }}</p>
+                            <p class="text-sm font-semibold text-slate-900 dark:text-white truncate">{{ $unit->property->name }}  -  {{ $unit->label }}</p>
                             <p class="text-xs text-slate-500 mt-1">{{ $unit->property->city ?? $unit->property->address_line ?? '' }}</p>
                             <p class="mt-2 text-lg font-semibold text-slate-900 dark:text-white tabular-nums">
                                 {{ \App\Services\Property\PropertyMoney::kes((float) $unit->rent_amount) }}

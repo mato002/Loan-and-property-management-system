@@ -22,6 +22,8 @@ class PmMessage extends Model
         'severity',
         'status',
         'subject',
+        'internal_stage',
+        'display_stage',
         'body',
         'template_id',
         'template_version',

@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\Services\Property\CarryForwardConsolidationService;
+use App\Services\Property\FinanceFirebreakService;
+use App\Services\Property\InvoiceStateIntegrityService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +17,12 @@ use Illuminate\Support\Str;
 class PmInvoice extends Model
 {
     use SoftDeletes;
+
+    /** Only syncAmountPaidFromAllocations() may write amount_paid on existing rows. */
+    public static bool $allowDirectAmountPaidWrite = false;
+
+    /** @var array<int, float> */
+    private static array $allocatedAmountMemo = [];
 
     protected $table = 'pm_invoices';
 
@@ -57,6 +66,7 @@ class PmInvoice extends Model
         'tax_amount',
         'total_amount',
         'status',
+        'is_past_due',
         'sent_at',
         'sent_by_user_id',
         'cancelled_at',
@@ -67,6 +77,7 @@ class PmInvoice extends Model
         'original_invoice_id',
         'billing_period',
         'description',
+        'carry_forward_origin',
         'notes',
         'share_token',
     ];
@@ -78,10 +89,13 @@ class PmInvoice extends Model
             'due_date' => 'date',
             'amount' => 'decimal:2',
             'amount_paid' => 'decimal:2',
+            'balance_due' => 'decimal:2',
             'subtotal_amount' => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'total_amount' => 'decimal:2',
+            'is_past_due' => 'boolean',
+            'carry_forward_origin' => 'array',
             'sent_at' => 'datetime',
             'cancelled_at' => 'datetime',
         ];
@@ -89,6 +103,48 @@ class PmInvoice extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (self $invoice) {
+            $invoice->syncDerivedBalanceDue();
+
+            if (! $invoice->exists || ! $invoice->isDirty('amount_paid') || static::$allowDirectAmountPaidWrite) {
+                return;
+            }
+
+            $attempted = round((float) $invoice->amount_paid, 2);
+            $derived = min($invoice->allocatedAmount(), round((float) $invoice->amount, 2));
+
+            if (abs($attempted - $derived) > 0.009) {
+                PmFinanceAuditLog::record(
+                    PmFinanceAuditLog::ACTION_AMOUNT_PAID_MANUAL_WRITE,
+                    'pm_invoice',
+                    (int) $invoice->id,
+                    [
+                        'pm_invoice_id' => (int) $invoice->id,
+                        'pm_tenant_id' => (int) ($invoice->pm_tenant_id ?? 0),
+                        'pm_lease_id' => (int) ($invoice->pm_lease_id ?? 0),
+                        'summary' => sprintf(
+                            'Blocked direct amount_paid write on %s: attempted KES %s, derived KES %s',
+                            (string) ($invoice->invoice_no ?? '#'.$invoice->id),
+                            number_format($attempted, 2),
+                            number_format($derived, 2),
+                        ),
+                        'payload' => [
+                            'attempted' => $attempted,
+                            'derived' => $derived,
+                            'allocated_sum' => $invoice->allocatedAmount(),
+                        ],
+                    ]
+                );
+            }
+
+            FinanceFirebreakService::$skipAmountPaidAudit = true;
+            try {
+                $invoice->amount_paid = $derived;
+            } finally {
+                FinanceFirebreakService::$skipAmountPaidAudit = false;
+            }
+        });
+
         static::addGlobalScope('agent_workspace', function (Builder $query) {
             $user = Auth::user();
             if (! $user || $user->is_super_admin || $user->property_portal_role !== 'agent') {
@@ -154,35 +210,136 @@ class PmInvoice extends Model
 
     public function balanceDue(): string
     {
-        $b = (float) $this->amount - (float) $this->amount_paid;
-
-        return number_format(max(0, $b), 2);
+        return number_format($this->balanceFloat(), 2);
     }
 
     public function balanceFloat(): float
     {
-        return round(max(0, (float) $this->amount - (float) $this->amount_paid), 2);
+        if ($this->balance_due !== null) {
+            return round((float) $this->balance_due, 2);
+        }
+
+        return self::computeBalanceDue((float) $this->amount, (float) ($this->amount_paid ?? 0));
+    }
+
+    public static function computeBalanceDue(float $amount, float $amountPaid): float
+    {
+        return max(0.0, round($amount - $amountPaid, 2));
+    }
+
+    public function syncDerivedBalanceDue(): self
+    {
+        $this->balance_due = self::computeBalanceDue(
+            (float) $this->amount,
+            (float) ($this->amount_paid ?? 0)
+        );
+
+        return $this;
     }
 
     public function allocatedAmount(): float
     {
-        return round((float) $this->allocations()
+        $id = (int) ($this->id ?? 0);
+        if ($id > 0 && array_key_exists($id, self::$allocatedAmountMemo)) {
+            return self::$allocatedAmountMemo[$id];
+        }
+
+        $sum = round((float) $this->allocations()
             ->where(function (Builder $q) {
                 $q->where('is_reversed', false)->orWhereNull('is_reversed');
             })
             ->sum('amount'), 2);
+
+        if ($id > 0) {
+            self::$allocatedAmountMemo[$id] = $sum;
+        }
+
+        return $sum;
+    }
+
+    public static function flushAllocatedAmountMemo(?int $invoiceId = null): void
+    {
+        if ($invoiceId === null) {
+            self::$allocatedAmountMemo = [];
+
+            return;
+        }
+
+        unset(self::$allocatedAmountMemo[$invoiceId]);
     }
 
     /**
-     * Set amount_paid from non-reversed payment allocations (source of truth).
+     * Set amount_paid from non-reversed payment allocations (source of truth),
+     * then derive payment status and is_past_due.
      */
     public function syncAmountPaidFromAllocations(): self
     {
-        $allocated = min($this->allocatedAmount(), round((float) $this->amount, 2));
-        $this->amount_paid = $allocated;
-        $this->refreshComputedStatus();
+        self::flushAllocatedAmountMemo((int) ($this->id ?? 0));
+
+        static::$allowDirectAmountPaidWrite = true;
+        FinanceFirebreakService::$skipAmountPaidAudit = true;
+        try {
+            $allocated = min($this->allocatedAmount(), round((float) $this->amount, 2));
+            if ($this->allocations()->exists()) {
+                $this->amount_paid = $allocated;
+            } elseif ($allocated > 0.009) {
+                $this->amount_paid = $allocated;
+            }
+            $this->syncDerivedBalanceDue();
+            $this->applyComputedStatusFromAmounts();
+        } finally {
+            static::$allowDirectAmountPaidWrite = false;
+            FinanceFirebreakService::$skipAmountPaidAudit = false;
+        }
 
         return $this;
+    }
+
+    /**
+     * @deprecated Use syncAmountPaidFromAllocations().
+     */
+    public function refreshComputedStatus(): void
+    {
+        $this->syncAmountPaidFromAllocations();
+    }
+
+    public function recomputeInvoiceState(): self
+    {
+        return $this->syncAmountPaidFromAllocations();
+    }
+
+    /**
+     * Billable open invoices past due date with a positive balance.
+     */
+    public function scopePastDueOpen(Builder $query): Builder
+    {
+        return $query
+            ->billableAr()
+            ->where('is_past_due', true)
+            ->where('balance_due', '>', 0);
+    }
+
+    /**
+     * Billable invoices with an open balance (uses indexed balance_due).
+     */
+    public function scopeOpenBillable(Builder $query): Builder
+    {
+        return $query->billableAr()->where('balance_due', '>', 0);
+    }
+
+    public function isEffectivelyOverdue(): bool
+    {
+        return (bool) $this->is_past_due && $this->balanceFloat() > 0.009;
+    }
+
+    public static function countPastDueOpen(): int
+    {
+        return app(InvoiceStateIntegrityService::class)->countPastDueInvoices();
+    }
+
+    public static function countPastDueTenants(): int
+    {
+        return app(InvoiceStateIntegrityService::class)->countPastDueTenants();
     }
 
     /**
@@ -190,12 +347,19 @@ class PmInvoice extends Model
      */
     public function scopeWithOutstandingBalance(Builder $query): Builder
     {
+        return $query->openBillable();
+    }
+
+    /**
+     * Billable accounts receivable: excludes draft and cancelled invoices.
+     */
+    public function scopeBillableAr(Builder $query): Builder
+    {
+        $table = $query->getModel()->getTable();
+
         return $query
             ->liveBalances()
-            ->where(function (Builder $inner) {
-                $inner->whereColumn('amount_paid', '<', 'amount')
-                    ->orWhereRaw('(amount - COALESCE(amount_paid, 0)) > 0');
-            });
+            ->where("{$table}.status", '!=', self::STATUS_DRAFT);
     }
 
     /**
@@ -221,6 +385,18 @@ class PmInvoice extends Model
             ->where($prefix.'status', '!=', self::STATUS_CANCELLED);
     }
 
+    /**
+     * Apply billable AR constraints to raw query-builder joins on pm_invoices.
+     *
+     * @param  \Illuminate\Database\Query\Builder|\Illuminate\Database\Eloquent\Builder  $query
+     */
+    public static function applyBillableArConstraints($query, string $alias = ''): void
+    {
+        self::applyLiveBalanceConstraints($query, $alias);
+        $prefix = $alias !== '' ? $alias.'.' : '';
+        $query->where($prefix.'status', '!=', self::STATUS_DRAFT);
+    }
+
     public function isCreditNote(): bool
     {
         return (string) ($this->invoice_kind ?? self::KIND_INVOICE) === self::KIND_CREDIT_NOTE;
@@ -228,43 +404,55 @@ class PmInvoice extends Model
 
     public function isOpen(): bool
     {
-        return in_array((string) $this->status, [
-            self::STATUS_DRAFT,
-            self::STATUS_SENT,
-            self::STATUS_PARTIAL,
-            self::STATUS_OVERDUE,
-        ], true);
+        if ((string) $this->status === self::STATUS_DRAFT) {
+            return true;
+        }
+
+        return $this->balanceFloat() > 0.009
+            && ! in_array((string) $this->status, [self::STATUS_PAID, self::STATUS_CANCELLED], true);
     }
 
-    public function refreshComputedStatus(): void
+    protected function applyComputedStatusFromAmounts(): void
     {
-        $due = (float) $this->amount;
-        $paid = (float) $this->amount_paid;
         $previous = (string) $this->status;
+        $previousPastDue = (bool) $this->is_past_due;
 
-        if ($paid >= $due) {
-            $this->status = self::STATUS_PAID;
-        } elseif ($paid > 0) {
-            $this->status = self::STATUS_PARTIAL;
-        } elseif ($previous === self::STATUS_DRAFT) {
+        if ((string) $this->status === self::STATUS_CANCELLED) {
+            $this->is_past_due = false;
             $this->saveQuietly();
 
             return;
-        } elseif ($this->due_date && $this->due_date->copy()->endOfDay()->isPast()) {
-            $this->status = self::STATUS_OVERDUE;
+        }
+
+        if ((string) $this->status === self::STATUS_DRAFT) {
+            $this->is_past_due = false;
+            $this->saveQuietly();
+
+            return;
+        }
+
+        $amount = round((float) $this->amount, 2);
+        $paid = round((float) $this->amount_paid, 2);
+        $balance = self::computeBalanceDue($amount, $paid);
+        $this->balance_due = $balance;
+
+        if ($balance <= 0.009) {
+            $this->status = self::STATUS_PAID;
+            $this->is_past_due = false;
+        } elseif ($paid > 0.009) {
+            $this->status = self::STATUS_PARTIAL;
+            $this->is_past_due = app(InvoiceStateIntegrityService::class)->expectedPastDue($this, $balance);
         } else {
             $this->status = self::STATUS_SENT;
+            $this->is_past_due = app(InvoiceStateIntegrityService::class)->expectedPastDue($this, $balance);
         }
+
         $this->saveQuietly();
 
-        // Surface status transitions in the event log so the activity panel
-        // has a complete trail. We only log when the status actually changed
-        // to avoid log spam from idempotent refreshes.
         if ($previous !== (string) $this->status) {
             $eventName = match ((string) $this->status) {
                 self::STATUS_PAID => PmInvoiceEvent::EVENT_PAID,
                 self::STATUS_PARTIAL => PmInvoiceEvent::EVENT_PARTIALLY_PAID,
-                self::STATUS_OVERDUE => PmInvoiceEvent::EVENT_OVERDUE,
                 default => null,
             };
             if ($eventName) {
@@ -275,13 +463,25 @@ class PmInvoice extends Model
                     'Status: '.ucfirst((string) $this->status)
                 );
             }
+
+            if ((string) $this->status === self::STATUS_PAID
+                && str_starts_with((string) $this->description, FinanceFirebreakService::CARRY_FORWARD_PREFIX)) {
+                app(CarryForwardConsolidationService::class)->markLineSettledForInvoice($this);
+            }
+        }
+
+        if (! $previousPastDue && (bool) $this->is_past_due) {
+            PmInvoiceEvent::record(
+                (int) $this->id,
+                PmInvoiceEvent::EVENT_OVERDUE,
+                null,
+                'Invoice past due with open balance'
+            );
         }
     }
 
     /**
-     * Recompute status for open invoices whose stored status may be stale
-     * (e.g. still "sent" after the due date has passed). Returns how many
-     * rows changed status.
+     * Recompute status for open invoices whose stored status or is_past_due may be stale.
      */
     public static function refreshStaleStatuses(int $limit = 500): int
     {
@@ -291,16 +491,23 @@ class PmInvoice extends Model
         static::query()
             ->whereNotIn('status', [self::STATUS_DRAFT, self::STATUS_CANCELLED])
             ->where(function ($q) use ($today) {
-                $q->whereColumn('amount_paid', '<', 'amount')
-                    ->orWhereDate('due_date', '<', $today);
+                $q->where('balance_due', '>', 0)
+                    ->orWhereDate('due_date', '<', $today)
+                    ->orWhere('status', self::STATUS_OVERDUE)
+                    ->orWhere(function (Builder $pastDue) {
+                        $pastDue->where('is_past_due', false)
+                            ->where('balance_due', '>', 0)
+                            ->whereDate('due_date', '<', now()->toDateString());
+                    });
             })
             ->orderBy('id')
             ->limit($limit)
             ->get()
             ->each(function (self $invoice) use (&$changed) {
-                $before = (string) $invoice->status;
-                $invoice->refreshComputedStatus();
-                if ($before !== (string) $invoice->status) {
+                $beforeStatus = (string) $invoice->status;
+                $beforePastDue = (bool) $invoice->is_past_due;
+                $invoice->syncAmountPaidFromAllocations();
+                if ($beforeStatus !== (string) $invoice->status || $beforePastDue !== (bool) $invoice->is_past_due) {
                     $changed++;
                 }
             });

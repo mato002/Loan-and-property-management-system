@@ -11,7 +11,7 @@ return array (
       0 => 
       array (
         'label' => 'Dashboard',
-        'sublabel' => 'Alerts ┬╖ risks ┬╖ KPIs',
+        'sublabel' => 'Alerts  -  risks  -  KPIs',
         'route' => 'property.dashboard',
         'active' => 
         array (
@@ -25,7 +25,7 @@ return array (
   array (
     'heading' => 'Properties',
     'icon' => 'fa-building',
-    'kicker' => 'Clean ┬╖ structural ΓÇö no financials',
+    'kicker' => 'Clean  -  structural  -  no financials',
     'items' => 
     array (
       0 => 
@@ -159,7 +159,7 @@ return array (
   array (
     'heading' => 'Tenants',
     'icon' => 'fa-users',
-    'kicker' => 'People-focused ┬╖ leases live here',
+    'kicker' => 'People-focused  -  leases live here',
     'items' => 
     array (
       0 => 
@@ -236,7 +236,7 @@ return array (
   array (
     'heading' => 'Revenue',
     'icon' => 'fa-sack-dollar',
-    'kicker' => 'Most used ΓÇö keep high',
+    'kicker' => 'Most used  -  keep high',
     'items' => 
     array (
       0 => 
@@ -551,7 +551,7 @@ return array (
   array (
     'heading' => 'Analytics',
     'icon' => 'fa-chart-line',
-    'kicker' => 'Not daily ops ΓÇö avoid clutter',
+    'kicker' => 'Not daily ops  -  avoid clutter',
     'items' => 
     array (
       0 => 

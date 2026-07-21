@@ -6,16 +6,38 @@ use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
 use App\Services\EquityBankService;
 use App\Services\PaymentMatchingService;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
-class FetchEquityTransactionsJob implements ShouldQueue
+class FetchEquityTransactionsJob implements ShouldBeUnique, ShouldQueue
 {
+    use Dispatchable;
+    use InteractsWithQueue;
     use Queueable;
 
-    public function __construct(private readonly bool $manual = false) {}
+    public int $tries = 2;
+
+    public int $timeout = 240;
+
+    /** @var list<int> */
+    public array $backoff = [60, 180];
+
+    public int $uniqueFor = 600;
+
+    public function __construct(private readonly bool $manual = false)
+    {
+        $this->onQueue('low');
+    }
+
+    public function uniqueId(): string
+    {
+        return 'equity-sync';
+    }
 
     public function handle(
         EquityBankService $equityBankService,
@@ -50,6 +72,7 @@ class FetchEquityTransactionsJob implements ShouldQueue
             if (! ($result['ok'] ?? false)) {
                 $stats['errors']++;
                 $payments->completeSyncRun($run, $stats, 'failed', (string) ($result['message'] ?? 'Fetch failed'));
+                $this->logFinished('failed', $stats, (string) ($result['message'] ?? 'Fetch failed'));
 
                 return;
             }
@@ -104,13 +127,32 @@ class FetchEquityTransactionsJob implements ShouldQueue
             }
 
             $payments->completeSyncRun($run, $stats, 'success');
+            $this->logFinished('success', $stats);
         } catch (\Throwable $e) {
             $stats['errors']++;
             Log::error('Equity sync job failed', ['message' => $e->getMessage()]);
             $payments->completeSyncRun($run, $stats, 'failed', $e->getMessage());
+            $this->logFinished('failed', $stats, $e->getMessage());
         } finally {
             optional($lock)->release();
         }
+    }
+
+    /**
+     * @param  array{fetched: int, matched: int, unmatched: int, duplicates: int, errors: int}  $stats
+     */
+    private function logFinished(string $status, array $stats, ?string $message = null): void
+    {
+        Log::info('Equity sync job finished', [
+            'status' => $status,
+            'manual' => $this->manual,
+            'fetched' => $stats['fetched'],
+            'matched' => $stats['matched'],
+            'unmatched' => $stats['unmatched'],
+            'duplicates' => $stats['duplicates'],
+            'errors' => $stats['errors'],
+            'message' => $message,
+        ]);
     }
 }
 

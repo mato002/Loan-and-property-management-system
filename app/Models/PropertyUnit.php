@@ -93,6 +93,21 @@ class PropertyUnit extends Model
             ->where('public_listing_published', true);
     }
 
+    /**
+     * Units belonging to properties still under active management (excludes archived / ended).
+     *
+     * @param  Builder<PropertyUnit>  $query
+     * @return Builder<PropertyUnit>
+     */
+    public function scopeForOperationalProperty(Builder $query): Builder
+    {
+        if (! Schema::hasColumn('properties', 'management_status')) {
+            return $query;
+        }
+
+        return $query->whereHas('property', fn (Builder $propertyQuery) => $propertyQuery->operational());
+    }
+
     public function property(): BelongsTo
     {
         return $this->belongsTo(Property::class);

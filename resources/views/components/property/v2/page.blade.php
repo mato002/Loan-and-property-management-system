@@ -17,17 +17,17 @@
         && PropertyWorkspaceTabs::shouldShow($routeName);
 @endphp
 
-<div {{ $attributes->merge(['class' => ($currentPortalRole === 'tenant' ? 'property-erp-page w-full space-y-3 md:space-y-5' : 'property-erp-page max-w-[1600px] mx-auto w-full space-y-3 md:space-y-5')]) }}>
+<div {{ $attributes->merge(['class' => ($currentPortalRole === 'tenant' ? 'property-erp-page w-full space-y-3 md:space-y-5' : 'property-erp-page max-w-[1600px] mx-auto w-full space-y-2 md:space-y-3')]) }}>
     @if ($renderWorkspaceTabs)
         <x-property.workspace-tabs :workspace="$resolvedWorkspaceKey" />
     @endif
 
-    <header class="property-erp-header space-y-3 sm:space-y-4">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+    <header class="property-erp-header space-y-2 sm:space-y-3">
+        <div class="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-3">
             <div class="min-w-0 flex-1">
-                <h1 class="text-xl sm:text-2xl lg:text-[1.65rem] font-semibold text-slate-900 dark:text-slate-100 tracking-tight leading-tight">{{ $title }}</h1>
+                <h1 class="text-lg sm:text-xl font-semibold text-slate-900 dark:text-slate-100 tracking-tight leading-tight">{{ $title }}</h1>
                 @if ($subtitle)
-                    <p class="text-sm text-slate-600 dark:text-slate-400 mt-1.5 sm:mt-2 leading-relaxed max-w-3xl">{{ $subtitle }}</p>
+                    <p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-snug max-w-3xl">{{ $subtitle }}</p>
                 @endif
             </div>
             @isset($actions)

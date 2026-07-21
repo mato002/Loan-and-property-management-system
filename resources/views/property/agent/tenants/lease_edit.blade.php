@@ -377,15 +377,13 @@
             </div>
         </div>
     </div>
-    @php
-        $_leaseUtilityRowsForJs = old('utility_expenses');
-        if (! is_array($_leaseUtilityRowsForJs) || $_leaseUtilityRowsForJs === []) {
-            $_leaseUtilityRowsForJs = $lease->utility_expenses ?? [];
-        }
-    @endphp
     <script>
         (function () {
-            const leaseUtilityExpenseFormOld = @json(collect($_leaseUtilityRowsForJs)->values()->all());
+            const leaseUtilityExpenseFormOld = @json(collect(
+                is_array(old('utility_expenses')) && old('utility_expenses') !== []
+                    ? old('utility_expenses')
+                    : ($lease->utility_expenses ?? [])
+            )->values()->all());
             const openingDepositArrearsOld = @json((array) ($openingDepositArrearsRows ?? []));
             const utilityTemplatesByProperty = @json($utilityChargeTemplatesByProperty ?? []);
             const depositDefinitionsByProperty = @json($depositDefinitionsByProperty ?? []);

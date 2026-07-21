@@ -443,7 +443,7 @@ class PropertySearchController extends Controller
     {
         $catalog = [
             ['title' => 'Dashboard', 'subtitle' => 'Portfolio snapshot and quick actions', 'route' => 'property.dashboard', 'keywords' => 'home summary overview'],
-            ['title' => 'Revenue', 'subtitle' => 'Rent roll, arrears, invoices and payments', 'route' => 'property.revenue.index', 'keywords' => 'revenue collections billing receipts income rent'],
+            ['title' => 'Collections overview', 'subtitle' => 'Rent roll, arrears, invoices and payments', 'route' => 'property.revenue.overview', 'keywords' => 'revenue collections billing receipts income rent overview'],
             ['title' => 'Properties', 'subtitle' => 'Manage properties list', 'route' => 'property.properties.list', 'keywords' => 'buildings real estate assets'],
             ['title' => 'Units', 'subtitle' => 'Manage property units', 'route' => 'property.properties.units', 'keywords' => 'rooms apartments occupancy'],
             ['title' => 'Tenants', 'subtitle' => 'Tenant directory and profiles', 'route' => 'property.tenants.directory', 'keywords' => 'clients renters occupants'],
@@ -457,7 +457,7 @@ class PropertySearchController extends Controller
             ['title' => 'Utilities Charges', 'subtitle' => 'Water and utility recoveries', 'route' => 'property.revenue.utilities', 'keywords' => 'utilities water charges billing'],
             ['title' => 'Maintenance', 'subtitle' => 'Requests, jobs, and costs', 'route' => 'property.maintenance.requests', 'keywords' => 'repairs tickets jobs'],
             ['title' => 'Vendors', 'subtitle' => 'Vendor directory and work records', 'route' => 'property.vendors.directory', 'keywords' => 'contractors suppliers quotes'],
-            ['title' => 'Listings', 'subtitle' => 'Vacant units, leads, applications', 'route' => 'property.listings.index', 'keywords' => 'ads public vacant'],
+            ['title' => 'Listings', 'subtitle' => 'Vacant units, leads, applications', 'route' => 'property.listings.create', 'keywords' => 'ads public vacant'],
             ['title' => 'Financials', 'subtitle' => 'Income/expense and owner balances', 'route' => 'property.financials.index', 'keywords' => 'cashflow commission'],
             ['title' => 'Accounting', 'subtitle' => 'Entries, reports, trial balance', 'route' => 'property.accounting.index', 'keywords' => 'ledger journal books trial'],
             ['title' => 'Trial Balance', 'subtitle' => 'Accounting report', 'route' => 'property.accounting.reports.trial_balance', 'keywords' => 'debit credit balance'],

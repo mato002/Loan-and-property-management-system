@@ -4,11 +4,8 @@
             if (typeof window.closeLeaseCreateModal === 'function') {
                 window.closeLeaseCreateModal();
             } else {
-                const overlay = document.getElementById('lease-create-overlay');
-                if (overlay) {
-                    overlay.classList.add('hidden');
-                    overlay.classList.remove('flex');
-                }
+                const panel = document.getElementById('lease-create-panel');
+                panel?.classList.add('hidden');
                 const frame = document.getElementById('lease-create-modal');
                 if (frame) {
                     frame.removeAttribute('src');

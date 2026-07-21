@@ -78,6 +78,30 @@ class PropertyWorkspaceSubTabsTest extends TestCase
         $this->assertSame('Cash', $group['label']);
     }
 
+    public function test_collections_overview_tab_active_on_overview_and_index_routes(): void
+    {
+        Route::get('/test-collections-overview', fn () => 'ok')->name('property.revenue.overview');
+        Route::get('/test-collections-index', fn () => 'ok')->name('property.revenue.index');
+
+        $overviewTab = collect(PropertyWorkspaceTabs::tabsFor('collections'))
+            ->firstWhere('key', 'overview');
+
+        $this->assertNotNull($overviewTab);
+        $this->assertSame('property.revenue.overview', $overviewTab['route']);
+
+        $this->app->instance('request', Request::create('/test-collections-overview', 'GET'));
+        $this->assertTrue(PropertyWorkspaceTabs::tabIsActive($overviewTab, 'property.revenue.overview'));
+
+        $this->app->instance('request', Request::create('/test-collections-index', 'GET'));
+        $this->assertTrue(PropertyWorkspaceTabs::tabIsActive($overviewTab, 'property.revenue.index'));
+    }
+
+    public function test_revenue_index_is_not_a_hub_shell_redirect_route(): void
+    {
+        $this->assertFalse(PropertyWorkspaceTabs::isHubShellRoute('property.revenue.index'));
+        $this->assertFalse(PropertyWorkspaceTabs::isHubShellRoute('property.revenue.overview'));
+    }
+
     public function test_leases_tab_is_active_on_tenant_leases_route(): void
     {
         Route::get('/test-leases', fn () => 'ok')->name('property.tenants.leases');
@@ -100,5 +124,44 @@ class PropertyWorkspaceSubTabsTest extends TestCase
             ->firstWhere('key', 'leases');
 
         $this->assertFalse(PropertyWorkspaceTabs::tabIsActive($leasesTab, 'property.tenants.leases'));
+    }
+
+    public function test_tenants_workspace_has_no_primary_expiry_tab(): void
+    {
+        $keys = array_column(PropertyWorkspaceTabs::tabsFor('tenants'), 'key');
+
+        $this->assertContains('leases', $keys);
+        $this->assertNotContains('expiry', $keys);
+    }
+
+    public function test_only_leases_primary_tab_active_on_default_leases_route(): void
+    {
+        Route::get('/test-leases-only', fn () => 'ok')->name('property.tenants.leases');
+
+        $this->app->instance('request', Request::create('/test-leases-only', 'GET'));
+
+        $tabs = collect(PropertyWorkspaceTabs::tabsFor('tenants'));
+        $activePrimary = $tabs->filter(
+            fn (array $tab): bool => PropertyWorkspaceTabs::tabIsActive($tab, 'property.tenants.leases')
+        )->pluck('key')->all();
+
+        $this->assertSame(['leases'], $activePrimary);
+    }
+
+    public function test_expiring_soon_subtab_active_with_tab_query(): void
+    {
+        Route::get('/test-leases-exp-sub', fn () => 'ok')->name('property.tenants.leases');
+
+        $this->app->instance('request', Request::create('/test-leases-exp-sub?tab=expiry', 'GET'));
+
+        $group = PropertyWorkspaceTabs::resolveActiveSubTabGroup('property.tenants.leases');
+        $this->assertNotNull($group);
+        $this->assertSame('Leases', $group['label']);
+
+        $expirySub = collect($group['tabs'])->firstWhere('key', 'expiry');
+        $leasesSub = collect($group['tabs'])->firstWhere('key', 'leases');
+
+        $this->assertTrue(PropertyWorkspaceTabs::tabIsActive($expirySub, 'property.tenants.leases'));
+        $this->assertFalse(PropertyWorkspaceTabs::tabIsActive($leasesSub, 'property.tenants.leases'));
     }
 }

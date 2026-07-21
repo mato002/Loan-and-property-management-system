@@ -10,6 +10,7 @@ use App\Models\PmTenant;
 use App\Models\UnassignedPayment;
 use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
+use App\Jobs\FetchEquityTransactionsJob;
 use App\Services\EquityBankService;
 use App\Services\PaymentMatchingService;
 use App\Support\MpesaSmsForwarderParser;
@@ -19,7 +20,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
@@ -161,9 +161,9 @@ class EquitySyncController extends Controller
             ]);
         }
 
-        Artisan::call('fetch:equity-transactions', ['--manual' => true]);
+        FetchEquityTransactionsJob::dispatch(manual: true);
 
-        return back()->with('success', 'Equity sync executed.');
+        return back()->with('success', 'Equity sync queued. Refresh the sync status page in a moment to see results.');
     }
 
     public function unmatchedPayments(Request $request): View

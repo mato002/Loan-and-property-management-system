@@ -23,6 +23,10 @@ use App\Models\PmPayment;
 use App\Models\Property;
 use App\Models\UnassignedPayment;
 use App\Models\PropertyPortalSetting;
+use App\Services\Property\AccountingPeriodService;
+use App\Services\Property\FinanceBalanceSnapshotService;
+use App\Services\Property\FinanceIntegrityService;
+use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use Carbon\Carbon;
@@ -56,14 +60,9 @@ class PropertyAccountingController extends Controller
             ->selectRaw("COALESCE(SUM(CASE WHEN entry_type = ? THEN amount ELSE 0 END),0) - COALESCE(SUM(CASE WHEN entry_type = ? THEN amount ELSE 0 END),0) as bal", [PmAccountingEntry::TYPE_DEBIT, PmAccountingEntry::TYPE_CREDIT])
             ->value('bal');
 
-        $accountsReceivable = (float) PmInvoice::query()
-            ->liveBalances()
-            ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as bal')
-            ->value('bal');
-
-        $landlordPayable = max(0.0, (float) PmLandlordLedgerEntry::query()
-            ->selectRaw("COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount ELSE 0 END),0) - COALESCE(SUM(CASE WHEN direction = 'debit' THEN amount ELSE 0 END),0) as bal")
-            ->value('bal'));
+        $formulas = app(FinancialReportingFormulaService::class);
+        $accountsReceivable = $formulas->outstandingGlobal();
+        $landlordPayable = $formulas->landlordPayableGlobal();
 
         $accountsPayable = (float) PmAccountingEntry::query()
             ->where('account_name', 'like', '%payable%')
@@ -102,19 +101,23 @@ class PropertyAccountingController extends Controller
             ->whereMonth('issue_date', now()->month)
             ->sum('amount_paid');
 
+        $integritySummary = app(FinanceIntegrityService::class)->dashboard(null, 50)['summary'] ?? [];
+
         $alerts = [
-            'overdue_tenants' => (int) PmInvoice::query()->where('status', PmInvoice::STATUS_OVERDUE)->count(),
+            'overdue_tenants' => PmInvoice::countPastDueTenants(),
             'unreconciled_bank' => Schema::hasTable('unassigned_payments') ? (int) UnassignedPayment::query()->count() : 0,
             'pending_payouts' => Schema::hasTable('pm_landlord_payouts') ? (int) PmLandlordPayout::query()->whereIn('status', ['draft', 'approved'])->count() : 0,
             'failed_messages' => Schema::hasTable('pm_message_deliveries') ? (int) PmMessageDelivery::query()->where('status', 'failed')->count() : 0,
             'negative_cash' => $cashBalance < 0 ? 1 : 0,
+            'finance_drift_critical' => (int) ($integritySummary['critical'] ?? 0),
+            'finance_drift_total' => (int) ($integritySummary['total_issues'] ?? 0),
         ];
 
         return property_view('property.agent.accounting.index', [
             'stats' => [
                 ['label' => 'Cash Balance', 'value' => PropertyMoney::kes($cashBalance), 'hint' => 'Cash & bank'],
-                ['label' => 'Accounts Receivable', 'value' => PropertyMoney::kes($accountsReceivable), 'hint' => 'Open tenant balances'],
-                ['label' => 'Landlord Payable', 'value' => PropertyMoney::kes($landlordPayable), 'hint' => 'Net owed to landlords'],
+                ['label' => 'Tenant arrears', 'value' => PropertyMoney::kes($accountsReceivable), 'hint' => 'Billable open invoice balances'],
+                ['label' => 'Landlord payable', 'value' => PropertyMoney::kes($landlordPayable), 'hint' => 'Net owed to landlords'],
                 ['label' => 'Accounts Payable', 'value' => PropertyMoney::kes($accountsPayable), 'hint' => 'Supplier and other payables'],
                 ['label' => 'Revenue (This Month)', 'value' => PropertyMoney::kes($income), 'hint' => 'Income credits'],
                 ['label' => 'Expenses (This Month)', 'value' => PropertyMoney::kes($expenses), 'hint' => 'Expense debits'],
@@ -2576,8 +2579,9 @@ class PropertyAccountingController extends Controller
         $maxBalance = is_numeric($maxBalanceRaw) ? (float) $maxBalanceRaw : null;
 
         $rows = PmInvoice::query()
+            ->billableAr()
             ->with(['tenant', 'unit.property'])
-            ->whereColumn('amount_paid', '<', 'amount')
+            ->where('balance_due', '>', 0)
             ->when($propertyId > 0, fn ($q) => $q->whereHas('unit.property', fn ($sq) => $sq->where('id', $propertyId)))
             ->when($tenantId > 0, fn ($q) => $q->where('pm_tenant_id', $tenantId))
             ->when($overdue === 'overdue', fn ($q) => $q->where('due_date', '<', now()->toDateString()))
@@ -2588,7 +2592,7 @@ class PropertyAccountingController extends Controller
 
         if ($minBalance > 0 || $maxBalance !== null) {
             $rows->setCollection($rows->getCollection()->filter(function (PmInvoice $inv) use ($minBalance, $maxBalance) {
-                $bal = max(0.0, (float) $inv->amount - (float) $inv->amount_paid);
+                $bal = (float) $inv->balance_due;
                 if ($bal < $minBalance) {
                     return false;
                 }
@@ -2609,13 +2613,29 @@ class PropertyAccountingController extends Controller
 
     public function tenantStatements(Request $request): View
     {
+        $formulas = app(FinancialReportingFormulaService::class);
+
         $tenants = PmTenant::query()
             ->withCount('invoices')
             ->orderBy('name')
             ->paginate(50)
             ->withQueryString();
 
-        return property_view('property.agent.accounting.receivables_tenant_statements', ['tenants' => $tenants]);
+        $statementRows = $tenants->getCollection()->map(function (PmTenant $tenant) use ($formulas) {
+            return [
+                'name' => (string) $tenant->name,
+                'opening_balance' => 0.0,
+                'invoice_count' => (int) ($tenant->invoices_count ?? 0),
+                'collections' => $formulas->tenantCollectionsTotal((int) $tenant->id),
+                'closing_balance' => $formulas->tenantStatementClosingBalance((int) $tenant->id),
+                'tenant_id' => (int) $tenant->id,
+            ];
+        })->all();
+
+        return property_view('property.agent.accounting.receivables_tenant_statements', [
+            'tenants' => $tenants,
+            'statementRows' => $statementRows,
+        ]);
     }
 
     public function landlordPayables(Request $request): View
@@ -2712,12 +2732,12 @@ class PropertyAccountingController extends Controller
 
     public function agedReceivables(Request $request): View
     {
-        $rows = PmInvoice::query()
-            ->with(['tenant', 'unit.property'])
-            ->whereColumn('amount_paid', '<', 'amount')
+        $balanceSnapshot = app(FinanceBalanceSnapshotService::class);
+        $rows = $balanceSnapshot
+            ->withPositiveBalance($balanceSnapshot->billableArQuery()->with(['tenant', 'unit.property']))
             ->get()
-            ->map(function (PmInvoice $inv) {
-                $balance = max(0.0, (float) $inv->amount - (float) $inv->amount_paid);
+            ->map(function (PmInvoice $inv) use ($balanceSnapshot) {
+                $balance = $balanceSnapshot->invoiceBalance($inv);
                 $days = $inv->due_date ? max(0, $inv->due_date->diffInDays(now(), false) * -1) : 0;
                 return ['invoice' => $inv, 'balance' => $balance, 'days' => $days];
             });
@@ -2769,14 +2789,38 @@ class PropertyAccountingController extends Controller
     {
         $rows = AccountingPeriod::query()->orderByDesc('start_date')->paginate(50)->withQueryString();
 
-        return property_view('property.agent.accounting.controls.periods', ['rows' => $rows]);
+        return property_view('property.agent.accounting.controls.periods', [
+            'rows' => $rows,
+            'currentMonthLabel' => now()->format('F Y'),
+        ]);
+    }
+
+    public function initializePeriods(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'months' => ['nullable', 'integer', 'min:1', 'max:24'],
+        ]);
+
+        $months = (int) ($data['months'] ?? 1);
+        $created = app(AccountingPeriodService::class)->openTrailingMonths($months);
+
+        if ($created === 0) {
+            return back()->with('info', 'Accounting periods already exist for the selected range.');
+        }
+
+        return back()->with('success', $created === 1
+            ? 'Opened 1 accounting period.'
+            : "Opened {$created} accounting periods.");
     }
 
     public function updatePeriodStatus(Request $request, AccountingPeriod $period): RedirectResponse
     {
         $data = $request->validate(['status' => ['required', 'in:open,closed,locked']]);
         $period->status = $data['status'];
-        if ($data['status'] !== 'open') {
+        if ($data['status'] === AccountingPeriod::STATUS_OPEN) {
+            $period->closed_by = null;
+            $period->closed_at = null;
+        } else {
             $period->closed_by = $request->user()->id;
             $period->closed_at = now();
         }

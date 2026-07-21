@@ -93,35 +93,8 @@
             </div>
         </div>
 
-        <div class="md:hidden space-y-2">
-            @forelse (array_slice($data['aging_rows'], 0, 50) as $row)
-                <article class="utility-invoice-panel">
-                    <div class="flex items-start justify-between gap-2">
-                        <div>
-                            <a href="{{ route('property.revenue.invoices.show', $row['invoice_id'], false) }}" class="font-semibold text-indigo-600 hover:underline">{{ $row['invoice_no'] }}</a>
-                            <p class="text-xs text-slate-600 mt-0.5">{{ $row['tenant'] }}</p>
-                            <p class="text-[11px] text-slate-500">{{ $row['property'] }} / {{ $row['unit'] }}</p>
-                        </div>
-                        <span class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold shrink-0
-                            @if($row['bucket_key'] === 'current') bg-emerald-100 text-emerald-800
-                            @elseif($row['bucket_key'] === '90_plus') bg-red-100 text-red-800
-                            @else bg-amber-100 text-amber-800 @endif">
-                            {{ $row['bucket'] }}
-                        </span>
-                    </div>
-                    <div class="mt-2 flex items-center justify-between text-xs">
-                        <span class="text-slate-500">Due {{ $row['due_date'] }}</span>
-                        <span class="font-bold text-slate-900 tabular-nums">{{ $row['balance_display'] }}</span>
-                    </div>
-                    <a href="{{ route('property.tenants.utility.statement', $row['tenant_id'], false) }}" class="mt-2 inline-flex text-xs font-semibold text-indigo-600 hover:underline min-h-[44px] items-center">Tenant statement</a>
-                </article>
-            @empty
-                <p class="text-sm text-slate-500 py-8 text-center">No open utility invoices.</p>
-            @endforelse
-        </div>
-
-        <x-property.responsive.table-wrapper minWidth="960" class="hidden md:block">
-            <table class="min-w-full text-sm">
+        <x-property.responsive.table-wrapper minWidth="960">
+            <table class="property-erp-table min-w-full text-sm">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <tr>
                         <th class="px-4 py-3">Invoice</th>

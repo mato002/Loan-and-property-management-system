@@ -20,9 +20,19 @@ class DispatchScheduledBulkSms extends Command
             ->orderBy('scheduled_at')
             ->get();
 
+        $dueCount = $due->count();
+        $sent = 0;
+        $failed = 0;
+
         foreach ($due as $schedule) {
-            $bulkSms->dispatchSchedule($schedule);
+            if ($bulkSms->dispatchSchedule($schedule)) {
+                $sent++;
+            } else {
+                $failed++;
+            }
         }
+
+        $this->info("Bulk SMS schedules: due={$dueCount}, sent={$sent}, failed={$failed}.");
 
         return self::SUCCESS;
     }

@@ -20,6 +20,12 @@
             @endif
         </div>
 
+        @if ($isSuperAdmin && ! empty($brandingEditorAgentUserId ?? null))
+            <p class="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
+                {{ __('You are editing the branding used on the login page and agent workspace for this deployment.') }}
+            </p>
+        @endif
+
         @if (session('success'))
             <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
         @endif

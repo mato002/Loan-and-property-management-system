@@ -3,10 +3,14 @@
     'items' => [],
 ])
 
+@php
+    use App\Support\Property\PropertyNavigation;
+@endphp
+
 <div {{ $attributes->merge(['class' => 'hub-grid']) }}>
     @foreach ($items as $item)
         <a
-            href="{{ route($item['route'], absolute: false) }}"
+            href="{{ PropertyNavigation::workspaceHref($item) }}"
             data-turbo-frame="property-main"
             data-property-nav="{{ $item['route'] }}"
             class="hub-card group"

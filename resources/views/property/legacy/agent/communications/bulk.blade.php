@@ -68,21 +68,37 @@
             <span class="group-open:hidden">Send bulk message</span>
             <span class="hidden group-open:inline">Hide bulk form</span>
         </summary>
-        <form method="post" action="{{ route('property.communications.bulk.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+        <form method="post" action="{{ route('property.communications.bulk.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl" x-data="{
+            channel: @js(old('channel', 'sms')),
+            bodyText: @js(old('message', '')),
+            subjectText: @js(old('subject', '')),
+            templateId: @js(old('message_template_id', '')),
+            templates: @js($composeTemplates ?? []),
+            templatesForChannel() {
+                return this.templates.filter(t => t.channel === this.channel);
+            },
+            applyTemplate() {
+                const t = this.templates.find(x => String(x.id) === String(this.templateId));
+                if (!t) return;
+                this.bodyText = t.body || '';
+                if (t.subject) this.subjectText = t.subject;
+            }
+        }">
             @csrf
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Send bulk communication</h3>
-                    <p class="text-xs text-slate-500 mt-1">Wallet (SMS): {{ $walletBalance ?? '0' }} {{ $currency ?? 'KES' }} ┬╖ Cost/SMS: {{ number_format((float) ($costPerSms ?? 0.5), 2) }} {{ $currency ?? 'KES' }}</p>
+                    <p class="text-xs text-slate-500 mt-1">Wallet (SMS): {{ $walletBalance ?? '0' }} {{ $currency ?? 'KES' }}  -  Cost/SMS: {{ number_format((float) ($costPerSms ?? 0.5), 2) }} {{ $currency ?? 'KES' }}</p>
                 </div>
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Channel</label>
-                <select id="pm-bulk-channel" name="channel" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <select id="pm-bulk-channel" name="channel" x-model="channel" @change="templateId = ''" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                     <option value="sms" @selected(old('channel', 'sms') === 'sms')>SMS</option>
                     <option value="email" @selected(old('channel') === 'email')>Email</option>
                 </select>
             </div>
+            <x-communications.send-template-picker />
             <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-gray-900/40 p-3">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="text-xs text-slate-600 dark:text-slate-400 mr-1">Load recipients:</span>
@@ -138,12 +154,12 @@
             </div>
             <div id="pm-email-subject-wrap" class="@if(old('channel', 'sms') !== 'email') hidden @endif">
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Email subject</label>
-                <input type="text" name="subject" value="{{ old('subject') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional subject for bulk email" />
+                <input type="text" name="subject" x-model="subjectText" value="{{ old('subject') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional subject for bulk email" />
                 @error('subject')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Message body</label>
-                <textarea name="message" rows="4" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('message') }}</textarea>
+                <textarea name="message" x-model="bodyText" rows="4" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('message') }}</textarea>
                 @error('message')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>

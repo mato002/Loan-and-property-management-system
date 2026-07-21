@@ -24,7 +24,7 @@
     @if ($title)
         <p class="text-sm font-medium text-slate-800 dark:text-slate-200">{{ $title }}</p>
     @endif
-    <p class="mt-1 text-xs text-slate-500">{{ $xLabel }} ┬╖ {{ $yLabel }}</p>
+    <p class="mt-1 text-xs text-slate-500">{{ $xLabel }}  -  {{ $yLabel }}</p>
     <div class="mt-4 w-full overflow-x-auto">
         @if (count($points) > 0)
             <svg viewBox="0 0 {{ $w }} {{ $h }}" class="w-full h-auto min-h-[{{ $h }}px]" role="img" aria-label="{{ $title ?? 'Scatter chart' }}">

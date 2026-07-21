@@ -173,6 +173,21 @@ class LoanBookLoan extends Model
         return $this->hasMany(LoanBookDisbursement::class);
     }
 
+    /**
+     * Loans that can receive a new disbursement (none on file, or only reversed-journal lines).
+     */
+    public function scopeEligibleForNewDisbursement(Builder $query): void
+    {
+        $query->whereDoesntHave('disbursements', function (Builder $disbursement) {
+            $disbursement->where(function (Builder $inner) {
+                $inner->whereNull('accounting_journal_entry_id')
+                    ->orWhereHas('accountingJournalEntry', function (Builder $journal) {
+                        $journal->where('status', '!=', AccountingJournalEntry::STATUS_REVERSED);
+                    });
+            });
+        });
+    }
+
     public function collectionEntries(): HasMany
     {
         return $this->hasMany(LoanBookCollectionEntry::class);

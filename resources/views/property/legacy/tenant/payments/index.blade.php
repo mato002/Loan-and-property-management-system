@@ -201,7 +201,7 @@
                     </svg>
                 </div>
                 <div>
-                    <p class="text-sm font-medium text-orange-900">≡ƒÆí Quick Tip</p>
+                    <p class="text-sm font-medium text-orange-900">Quick tip</p>
                     <p class="text-xs text-orange-700 mt-0.5">Pay your rent 3 days before due date to ensure timely processing and avoid late fees.</p>
                 </div>
             </div>

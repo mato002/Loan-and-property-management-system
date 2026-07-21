@@ -63,6 +63,7 @@
         <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50 shadow-sm">
             <h3 class="text-sm font-semibold text-amber-900">Alerts</h3>
             <ul class="mt-3 space-y-2 text-sm">
+                <li><a href="{{ route('property.accounting.finance_integrity') }}" class="{{ ((int) ($alerts['finance_drift_critical'] ?? 0)) > 0 ? 'text-rose-800 font-semibold hover:underline' : 'text-amber-900 hover:underline' }}">⚠ Finance drift: {{ (int) ($alerts['finance_drift_total'] ?? 0) }} ({{ (int) ($alerts['finance_drift_critical'] ?? 0) }} critical)</a></li>
                 <li><a href="{{ route('property.revenue.arrears') }}" class="text-amber-900 hover:underline">⚠ Overdue tenant balances: {{ (int) ($alerts['overdue_tenants'] ?? 0) }}</a></li>
                 <li><a href="{{ route('property.accounting.cash_bank.reconciliation') }}" class="text-amber-900 hover:underline">⚠ Unreconciled bank transactions: {{ (int) ($alerts['unreconciled_bank'] ?? 0) }}</a></li>
                 <li><a href="{{ route('property.accounting.payables.landlord_payouts') }}" class="text-amber-900 hover:underline">⚠ Pending landlord payouts: {{ (int) ($alerts['pending_payouts'] ?? 0) }}</a></li>
@@ -77,6 +78,10 @@
                 <a href="{{ route('property.accounting.gl.journal_batches') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Journal batches</a>
                 <a href="{{ route('property.accounting.reports.balance_sheet') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Balance sheet</a>
                 <a href="{{ route('property.accounting.controls.reversals') }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Reversals</a>
+                <a href="{{ route('property.accounting.finance_integrity') }}" data-turbo-frame="property-main" class="quick-action-btn border border-rose-400 bg-rose-50 text-rose-900 hover:bg-rose-100">Finance integrity</a>
+                <a href="{{ route('property.accounting.finance_diagnostics') }}" data-turbo-frame="property-main" class="quick-action-btn border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100">Finance diagnostics</a>
+                <a href="{{ route('property.accounting.reconciliation') }}" data-turbo-frame="property-main" class="quick-action-btn border border-rose-300 bg-rose-50 text-rose-900 hover:bg-rose-100">Accounting reconciliation</a>
+                <a href="{{ route('property.accounting.financial_reconciliation') }}" data-turbo-frame="property-main" class="quick-action-btn border border-indigo-300 bg-indigo-50 text-indigo-900 hover:bg-indigo-100">Financial reconciliation</a>
             </x-property.responsive.quick-action-grid>
         </div>
     </x-property.responsive.compact-card-grid>

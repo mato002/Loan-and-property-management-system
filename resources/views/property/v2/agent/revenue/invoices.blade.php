@@ -48,18 +48,44 @@
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Lease (optional)</label>
-                    <select id="invoice-lease" name="pm_lease_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">—</option>
-                        @foreach ($leases as $l)
-                            @php
-                                $unitIds = $l->units->pluck('id')->implode(',');
-                                $rent = (float) ($l->monthly_rent ?? 0);
-                                $leaseTenantId = $l->pmTenant?->id;
-                                $leaseTenantName = $l->pmTenant?->name ?? 'Unknown tenant';
-                            @endphp
-                            <option value="{{ $l->id }}" data-tenant-id="{{ $leaseTenantId }}" data-unit-ids="{{ $unitIds }}" data-rent="{{ $rent }}" @selected(old('pm_lease_id') == $l->id)>#{{ $l->id }} · {{ $leaseTenantName }}</option>
-                        @endforeach
-                    </select>
+                    @php
+                        $leaseSelectOptions = collect($leases)->map(function ($l) {
+                            $unitIds = $l->units->pluck('id')->implode(',');
+                            $rent = (float) ($l->monthly_rent ?? 0);
+                            $leaseTenantId = $l->pmTenant?->id;
+                            $leaseTenantName = $l->pmTenant?->name ?? 'Unknown tenant';
+                            $unitSummary = $l->units
+                                ->map(fn ($u) => trim(($u->property?->name ?? '').' / '.$u->label, ' /'))
+                                ->filter()
+                                ->implode(', ');
+                            $contact = trim((string) ($l->pmTenant?->phone ?? ''));
+                            if ($contact === '') {
+                                $contact = trim((string) ($l->pmTenant?->email ?? ''));
+                            }
+
+                            return [
+                                'value' => $l->id,
+                                'label' => $unitSummary !== ''
+                                    ? "{$leaseTenantName} · {$unitSummary}"
+                                    : $leaseTenantName,
+                                'search' => mb_strtolower(trim("{$leaseTenantName} {$unitSummary} {$contact}")),
+                                'selected' => (string) old('pm_lease_id') === (string) $l->id,
+                                'attrs' => [
+                                    'data-tenant-id' => (string) ($leaseTenantId ?? ''),
+                                    'data-unit-ids' => $unitIds,
+                                    'data-rent' => (string) $rent,
+                                ],
+                            ];
+                        })->all();
+                    @endphp
+                    <x-property.quick-create-select
+                        selectId="invoice-lease"
+                        name="pm_lease_id"
+                        placeholder="—"
+                        :searchable="true"
+                        :options="$leaseSelectOptions"
+                        :create="['mode' => 'none']"
+                    />
                     @error('pm_lease_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
@@ -86,10 +112,11 @@
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Tenant</label>
                     <x-property.quick-create-select
-                        id="invoice-tenant"
+                        selectId="invoice-tenant"
                         name="pm_tenant_id"
                         :required="true"
-                        :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id') === (string) $t->id])->all()"
+                        :searchable="true"
+                        :options="\App\Support\Property\PmTenantSelectOptions::fromCollection($tenants, old('pm_tenant_id'))"
                         :create="[
                             'mode' => 'ajax',
                             'title' => 'Create tenant',
@@ -333,6 +360,7 @@
                     const o = leaseSel.options[i];
                     if ((o.getAttribute('data-tenant-id') || '') === tid) {
                         leaseSel.selectedIndex = i;
+                        leaseSel.dispatchEvent(new Event('change', { bubbles: true }));
                         chosen = true;
                         break;
                     }

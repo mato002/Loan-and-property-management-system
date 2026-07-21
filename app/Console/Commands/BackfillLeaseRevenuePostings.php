@@ -2,16 +2,14 @@
 
 namespace App\Console\Commands;
 
-use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmUnitUtilityCharge;
+use App\Services\Property\CarryForwardConsolidationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
 class BackfillLeaseRevenuePostings extends Command
 {
-    private const AUTO_ARREARS_PREFIX = '[Lease Opening Arrears]';
-
     private const AUTO_UTILITY_PREFIX = '[Lease Utility Expense]';
 
     protected $signature = 'leases:backfill-revenue-postings
@@ -20,7 +18,7 @@ class BackfillLeaseRevenuePostings extends Command
 
     protected $description = 'Backfill lease carry-forward arrears and utility expenses into arrears/utilities revenue modules.';
 
-    public function handle(): int
+    public function handle(CarryForwardConsolidationService $consolidation): int
     {
         $leaseId = (int) ($this->option('lease-id') ?? 0);
         $dryRun = (bool) $this->option('dry-run');
@@ -66,74 +64,21 @@ class BackfillLeaseRevenuePostings extends Command
             if ($dryRun) {
                 $invoiceCreated += $openingArrears->count();
                 $utilityCreated += $utilityExpenses->count();
-                $this->line("Lease #{$lease->id}: would create {$openingArrears->count()} arrears invoice(s), {$utilityExpenses->count()} utility charge(s).");
+                $this->line("Lease #{$lease->id}: would reconcile {$openingArrears->count()} carry-forward row(s), {$utilityExpenses->count()} utility charge(s).");
                 continue;
             }
 
-            DB::transaction(function () use ($lease, $unit, $openingArrears, $utilityExpenses, &$invoiceCreated, &$utilityCreated): void {
+            DB::transaction(function () use ($lease, $unit, $utilityExpenses, $consolidation, &$invoiceCreated, &$utilityCreated): void {
                 $unitId = (int) $unit->id;
-                $tenantId = (int) $lease->pm_tenant_id;
                 $billingMonth = ($lease->start_date?->format('Y-m')) ?: now()->format('Y-m');
 
-                PmInvoice::query()
-                    ->withoutGlobalScopes()
-                    ->where('pm_lease_id', $lease->id)
-                    ->where('description', 'like', self::AUTO_ARREARS_PREFIX.'%')
-                    ->delete();
+                $result = $consolidation->syncLease($lease);
+                $invoiceCreated += (int) ($result['invoices_created'] ?? 0);
+
                 PmUnitUtilityCharge::query()
                     ->where('property_unit_id', $unitId)
                     ->where('notes', 'like', self::AUTO_UTILITY_PREFIX.' lease #'.$lease->id.'%')
                     ->delete();
-
-                foreach ($openingArrears as $row) {
-                    $chargeType = mb_strtolower(trim((string) ($row['charge_type'] ?? 'other')));
-                    $specific = trim((string) ($row['specific_charge'] ?? ''));
-                    $period = trim((string) ($row['period'] ?? ''));
-                    $amount = (float) ($row['amount'] ?? 0);
-                    if ($amount <= 0) {
-                        continue;
-                    }
-
-                    $baseDate = $lease->opening_arrears_as_of_date
-                        ? $lease->opening_arrears_as_of_date->toDateString()
-                        : ($lease->start_date?->toDateString() ?? now()->toDateString());
-                    if (preg_match('/^\d{4}\-\d{2}$/', $period) === 1) {
-                        $baseDate = $period.'-01';
-                    }
-                    $issueDate = $baseDate;
-                    $dueDate = $baseDate;
-                    if ($dueDate >= now()->toDateString()) {
-                        $dueDate = now()->subDay()->toDateString();
-                        $issueDate = $dueDate;
-                    }
-
-                    $descParts = array_filter([
-                        self::AUTO_ARREARS_PREFIX,
-                        ucfirst($chargeType),
-                        $specific !== '' ? $specific : null,
-                        $period !== '' ? "Period {$period}" : null,
-                        $lease->opening_arrears_note ? 'Note: '.$lease->opening_arrears_note : null,
-                    ]);
-
-                    $agentUserId = optional($unit->property)->agent_user_id;
-
-                    PmInvoice::query()->create([
-                        'pm_lease_id' => $lease->id,
-                        'property_unit_id' => $unitId,
-                        'pm_tenant_id' => $tenantId,
-                        'agent_user_id' => $agentUserId,
-                        'invoice_no' => PmInvoice::nextInvoiceNumber(),
-                        'issue_date' => $issueDate,
-                        'due_date' => $dueDate,
-                        'amount' => $amount,
-                        'amount_paid' => 0,
-                        'status' => PmInvoice::STATUS_OVERDUE,
-                        'invoice_type' => $chargeType === PmInvoice::TYPE_WATER ? PmInvoice::TYPE_WATER : PmInvoice::TYPE_MIXED,
-                        'billing_period' => $period !== '' ? $period : $billingMonth,
-                        'description' => implode(' | ', $descParts),
-                    ]);
-                    $invoiceCreated++;
-                }
 
                 foreach ($utilityExpenses as $row) {
                     $typeRaw = mb_strtolower(trim((string) ($row['type'] ?? 'other')));
@@ -169,4 +114,3 @@ class BackfillLeaseRevenuePostings extends Command
         return self::SUCCESS;
     }
 }
-

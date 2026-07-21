@@ -3,10 +3,9 @@
 namespace App\Services\Property;
 
 use App\Models\AccountingJournalBatch;
+use App\Models\PmFinanceAuditLog;
 use App\Models\PmInvoice;
-use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmPayment;
-use App\Models\PmPaymentAllocation;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -19,19 +18,26 @@ class PropertyTransactionReversalService
             $actor = $actorId ? \App\Models\User::query()->find($actorId) : null;
             app(UtilityPeriodGuardService::class)->assertPaymentReversalMutable($payment, $actor, $utilityOverrideRequestId);
 
-            $journalBatch = AccountingJournalBatch::query()
+            $hasPostedBatch = AccountingJournalBatch::query()
                 ->where('source_type', 'pm_payment')
-                ->where('source_id', $payment->id)
-                ->where('event_type', 'payment_received')
-                ->first();
+                ->where('source_id', (int) $payment->id)
+                ->whereIn('event_type', ['payment_received', 'payment_unmatched_suspense'])
+                ->where('status', AccountingJournalBatch::STATUS_POSTED)
+                ->exists();
 
-            if (! $journalBatch) {
+            if (! $hasPostedBatch) {
                 throw new RuntimeException('No posted payment journal batch found for reversal.');
             }
 
-            app(PropertyJournalService::class)->reverseBatch($journalBatch, $actorId, $reason);
-            $this->reversePaymentAllocations($payment, $actorId, $reason);
-            $this->reverseLandlordLedger($payment, $actorId, $reason);
+            app(PropertyAccountingFinalizeService::class)->reversePayment($payment, $actorId, $reason);
+            app(PropertyPaymentSettlementService::class)->reversePaymentAllocations($payment, $actorId, $reason);
+
+            foreach ($payment->allocations->pluck('pm_invoice_id')->filter()->unique() as $invoiceId) {
+                $invoice = PmInvoice::query()->find($invoiceId);
+                if ($invoice) {
+                    app(InvoiceStateIntegrityService::class)->assertHealthy($invoice);
+                }
+            }
 
             $meta = is_array($payment->meta) ? $payment->meta : [];
             $meta['reversal'] = [
@@ -43,64 +49,23 @@ class PropertyTransactionReversalService
             $payment->meta = $meta;
             $payment->status = PmPayment::STATUS_FAILED;
             $payment->save();
+
+            PmFinanceAuditLog::record(
+                PmFinanceAuditLog::ACTION_PAYMENT_REVERSAL,
+                'pm_payment',
+                (int) $payment->id,
+                [
+                    'pm_tenant_id' => (int) ($payment->pm_tenant_id ?? 0),
+                    'actor_user_id' => $actorId,
+                    'summary' => 'Payment #'.$payment->id.' reversed',
+                    'payload' => [
+                        'payment_id' => (int) $payment->id,
+                        'amount' => round((float) $payment->amount, 2),
+                        'reason' => $reason,
+                        'allocation_count' => $payment->allocations->count(),
+                    ],
+                ]
+            );
         });
     }
-
-    private function reversePaymentAllocations(PmPayment $payment, ?int $actorId, ?string $reason): void
-    {
-        $allocations = PmPaymentAllocation::query()
-            ->where('pm_payment_id', $payment->id)
-            ->where(function ($q) {
-                $q->whereNull('is_reversed')->orWhere('is_reversed', false);
-            })
-            ->get();
-
-        foreach ($allocations as $allocation) {
-            $invoice = PmInvoice::query()->find($allocation->pm_invoice_id);
-            if ($invoice) {
-                $invoice->amount_paid = max(0, (float) $invoice->amount_paid - (float) $allocation->amount);
-                $invoice->save();
-                $invoice->refreshComputedStatus();
-            }
-
-            $allocation->is_reversed = true;
-            $allocation->reversed_by = $actorId;
-            $allocation->reversed_at = now();
-            $allocation->reversal_reason = $reason;
-            $allocation->save();
-        }
-    }
-
-    private function reverseLandlordLedger(PmPayment $payment, ?int $actorId, ?string $reason): void
-    {
-        $entries = PmLandlordLedgerEntry::query()
-            ->where('reference_type', 'pm_payment')
-            ->where('reference_id', $payment->id)
-            ->whereNull('reversal_of_id')
-            ->get();
-
-        foreach ($entries as $entry) {
-            $reversalDirection = $entry->direction === PmLandlordLedgerEntry::DIRECTION_CREDIT
-                ? PmLandlordLedgerEntry::DIRECTION_DEBIT
-                : PmLandlordLedgerEntry::DIRECTION_CREDIT;
-
-            $new = LandlordLedger::post(
-                $entry->user,
-                $reversalDirection,
-                (float) $entry->amount,
-                'Reversal of landlord ledger entry #'.$entry->id.($reason ? ' - '.$reason : ''),
-                $entry->property,
-                'pm_payment_reversal',
-                (int) $payment->id,
-                now()
-            );
-
-            $new->reversal_of_id = $entry->id;
-            $new->reversed_by = $actorId;
-            $new->reversed_at = now();
-            $new->agent_user_id = $entry->agent_user_id;
-            $new->save();
-        }
-    }
 }
-

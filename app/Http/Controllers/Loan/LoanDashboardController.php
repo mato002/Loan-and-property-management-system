@@ -22,15 +22,17 @@ use App\Models\MpesaPlatformTransaction;
 use App\Models\PropertyPortalSetting;
 use App\Models\StaffLeave;
 use App\Services\BulkSmsService;
-use App\Services\Integrations\MpesaDarajaService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
+use Throwable;
 
 class LoanDashboardController extends Controller
 {
@@ -92,6 +94,7 @@ class LoanDashboardController extends Controller
         $performanceIndicators = $bookReady ? $this->buildPerformanceIndicators() : collect();
         $profileCard = $this->buildProfileCard();
         $summaryStrip = $this->buildSummaryStrip($bookReady, $clientsReady);
+        $smsTopup = $this->smsTopupContext(request());
 
         $currencyCode = 'KES';
         if (Schema::hasTable('property_portal_settings')) {
@@ -115,81 +118,160 @@ class LoanDashboardController extends Controller
             'profileCard' => $profileCard,
             'summaryStrip' => $summaryStrip,
             'canAccessAccounting' => $canAccessAccounting,
+            'smsTopup' => $smsTopup,
         ]);
     }
 
-    public function smsWalletTopupFromDashboard(Request $request, MpesaDarajaService $daraja): RedirectResponse
+    public function smsWalletTopupFromDashboard(Request $request): RedirectResponse|JsonResponse
     {
-        $validated = $request->validate([
-            'amount' => ['required', 'numeric', 'min:0.01', 'max:999999.99'],
+        /** @var BulkSmsService $bulk */
+        $bulk = app(BulkSmsService::class);
+        $min = $bulk->minTopupAmount();
+        $max = $bulk->maxTopupAmount();
+
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:'.$min, 'max:'.$max],
             'phone' => ['required', 'string', 'max:32'],
-            'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $missingDarajaConfig = $daraja->missingConfigKeys();
-        if ($missingDarajaConfig !== []) {
+        $result = $bulk->initiateProviderTopup((float) $data['amount'], (string) $data['phone']);
+        if (! ($result['ok'] ?? false)) {
+            $error = (string) ($result['error'] ?? 'Could not initiate M-Pesa top-up.');
+            if ($request->expectsJson()) {
+                return response()->json(['ok' => false, 'error' => $error], 422);
+            }
+
             return redirect()
                 ->route('loan.dashboard')
                 ->withInput()
-                ->withErrors([
-                    'sms_topup' => 'M-PESA STK is not configured: missing '.implode(', ', $missingDarajaConfig).'.',
-                ]);
+                ->withErrors(['sms_topup' => $error]);
         }
 
-        $amount = round((float) $validated['amount'], 2);
-        $normalizedPhone = $daraja->normalizeMsisdn((string) $validated['phone']);
-        if (! preg_match('/^254[17]\d{8}$/', $normalizedPhone)) {
-            return redirect()
-                ->route('loan.dashboard')
-                ->withInput()
-                ->withErrors(['phone' => 'Enter a valid Safaricom phone number (e.g. 07XXXXXXXX).']);
+        $this->recordProviderSmsTopupTransaction($request, $data, $result, 'Pradytec SMS wallet top-up initiated from loan dashboard.');
+
+        $message = (string) ($result['message'] ?? 'M-Pesa prompt sent. Complete payment on your phone; SMS balance updates at Pradytec after confirmation.');
+        $transactionId = (string) ($result['transaction_id'] ?? '');
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'message' => $message,
+                'transaction_id' => $transactionId,
+            ]);
         }
-
-        $stk = $daraja->stkPush([
-            'PartyA' => $normalizedPhone,
-            'PhoneNumber' => $normalizedPhone,
-            'Amount' => max(1, (int) ceil($amount)),
-            'AccountReference' => 'SMSWALLET',
-            'TransactionDesc' => 'SMS wallet topup',
-        ]);
-
-        if (! ($stk['ok'] ?? false)) {
-            $message = trim((string) ($stk['message'] ?? 'Could not initiate M-PESA payment.'));
-            return redirect()
-                ->route('loan.dashboard')
-                ->withInput()
-                ->withErrors(['sms_topup' => $message !== '' ? $message : 'Could not initiate M-PESA payment.']);
-        }
-
-        $body = is_array($stk['body'] ?? null) ? $stk['body'] : [];
-        $checkoutRequestId = (string) ($body['CheckoutRequestID'] ?? '');
-        $merchantRequestId = (string) ($body['MerchantRequestID'] ?? '');
-
-        MpesaPlatformTransaction::query()->create([
-            'reference' => 'SMSWALLET-'.strtoupper(substr(sha1(uniqid((string) mt_rand(), true)), 0, 8)),
-            'amount' => $amount,
-            'channel' => 'stk_push',
-            'status' => 'pending',
-            'notes' => 'SMS wallet topup initiated from loan dashboard.',
-            'meta' => [
-                'purpose' => 'sms_wallet_topup',
-                'requested_by_user_id' => $request->user()?->id,
-                'requested_phone' => $normalizedPhone,
-                'requested_amount' => $amount,
-                'notes' => $validated['notes'] ?? null,
-                'daraja' => [
-                    'checkout_request_id' => $checkoutRequestId,
-                    'merchant_request_id' => $merchantRequestId,
-                    'initiation_message' => $stk['message'] ?? null,
-                    'initiation_status' => $stk['status'] ?? null,
-                    'response' => $body,
-                ],
-            ],
-        ]);
 
         return redirect()
             ->route('loan.dashboard')
-            ->with('status', 'M-PESA prompt sent. Complete payment on your phone to top up SMS wallet.');
+            ->with('status', $message)
+            ->with('sms_topup_pending_id', $transactionId);
+    }
+
+    public function smsTopupStatusJson(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'transaction_id' => ['required', 'string', 'max:128'],
+        ]);
+
+        /** @var BulkSmsService $bulk */
+        $bulk = app(BulkSmsService::class);
+        $result = $bulk->providerTopupStatus((string) $data['transaction_id']);
+        if (! ($result['ok'] ?? false)) {
+            return response()->json([
+                'ok' => false,
+                'error' => (string) ($result['error'] ?? 'Could not load top-up status.'),
+            ], 422);
+        }
+
+        $transaction = (array) ($result['transaction'] ?? []);
+        $status = strtolower((string) ($transaction['status'] ?? 'unknown'));
+
+        $walletBalance = null;
+        try {
+            $walletBalance = (float) $bulk->dashboardBalance();
+        } catch (Throwable) {
+            $walletBalance = null;
+        }
+
+        return response()->json([
+            'ok' => true,
+            'status' => $status,
+            'transaction' => $transaction,
+            'wallet_balance' => $walletBalance,
+        ]);
+    }
+
+    /**
+     * @param  array{amount: mixed, phone: string}  $data
+     * @param  array<string, mixed>  $result
+     */
+    private function recordProviderSmsTopupTransaction(Request $request, array $data, array $result, string $notes): void
+    {
+        if (! Schema::hasTable('mpesa_platform_transactions')) {
+            return;
+        }
+
+        try {
+            MpesaPlatformTransaction::query()->create([
+                'reference' => 'PRADYSMS-'.strtoupper(substr(sha1(uniqid((string) mt_rand(), true)), 0, 8)),
+                'amount' => (float) ($result['amount'] ?? $data['amount']),
+                'channel' => 'stk_push',
+                'status' => 'pending',
+                'notes' => $notes,
+                'transaction_id' => (string) ($result['transaction_id'] ?? ''),
+                'meta' => [
+                    'purpose' => 'provider_sms_topup',
+                    'module' => 'loan',
+                    'requested_by_user_id' => (int) $request->user()->id,
+                    'requested_phone' => (string) ($result['phone_number'] ?? ''),
+                    'provider' => [
+                        'transaction_id' => (string) ($result['transaction_id'] ?? ''),
+                        'checkout_request_id' => (string) ($result['checkout_request_id'] ?? ''),
+                        'status' => (string) ($result['status'] ?? 'pending'),
+                        'message' => (string) ($result['message'] ?? ''),
+                    ],
+                ],
+            ]);
+        } catch (Throwable $e) {
+            Log::warning('Failed to persist provider SMS top-up audit row', [
+                'user_id' => (int) $request->user()?->id,
+                'transaction_id' => (string) ($result['transaction_id'] ?? ''),
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function smsTopupContext(Request $request): array
+    {
+        /** @var BulkSmsService $bulk */
+        $bulk = app(BulkSmsService::class);
+        $config = $bulk->topupUiConfig();
+
+        return [
+            'config' => $config,
+            'can_topup' => (bool) ($config['enabled'] ?? false),
+            'recent' => $bulk->recentProviderTopups(6),
+            'default_phone' => $this->defaultTopupPhone($request),
+        ];
+    }
+
+    private function defaultTopupPhone(Request $request): string
+    {
+        $user = $request->user();
+        if (! $user) {
+            return '';
+        }
+
+        foreach ([$user->phone ?? null, $user->mobile ?? null] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ($candidate !== '') {
+                return $candidate;
+            }
+        }
+
+        return '';
     }
 
     private function buildProfileCard(): array

@@ -140,4 +140,12 @@
         <x-property.filter-field type="date" name="from" :label="$activeTab === 'expiry' ? 'End from' : 'From'" :value="$filters['from'] ?? ''" />
         <x-property.filter-field type="date" name="to" :label="$activeTab === 'expiry' ? 'End to' : 'To'" :value="$filters['to'] ?? ''" />
     </x-slot>
+
+    <x-slot name="export">
+        @include('property.agent.partials.export_dropdown', [
+            'csvUrl' => route('property.tenants.leases', array_merge(request()->query(), ['export' => 'csv']), false),
+            'xlsUrl' => route('property.tenants.leases', array_merge(request()->query(), ['export' => 'xls']), false),
+            'pdfUrl' => route('property.tenants.leases', array_merge(request()->query(), ['export' => 'pdf']), false),
+        ])
+    </x-slot>
 </x-property.filter-toolbar>

@@ -2,104 +2,45 @@
     'name',
     'label' => null,
     'required' => false,
-    /** @var array<int,array{value:string|int,label:string,selected?:bool,disabled?:bool}> */
+    /** @var array<int,array{value:string|int,label:string,selected?:bool,disabled?:bool,search?:string}> */
     'options' => [],
     'placeholder' => 'Select…',
     'error' => null,
-    /**
-     * create config:
-     * - mode: 'ajax'|'link'|'none'
-     * - title: string
-     * - endpoint: string (ajax)
-     * - link: string (link)
-     * - fields: list<array{name:string,label:string,type?:string,placeholder?:string,required?:bool}>
-     */
     'create' => ['mode' => 'none'],
     'selectId' => null,
+    'searchable' => false,
+    'searchMinOptions' => 8,
 ])
 
 @php
     $id = $selectId ?: ('qcs-'.preg_replace('/[^a-zA-Z0-9\-_]/', '-', (string) $name).'-'.substr(md5((string) $name), 0, 6));
     $createMode = (string) ($create['mode'] ?? 'none');
+    $useSearch = $searchable || count($options) >= $searchMinOptions;
+    $qcsConfig = [
+        'selectId' => $id,
+        'placeholder' => $placeholder,
+        'options' => $options,
+        'useSearch' => $useSearch,
+        'createMode' => $createMode,
+        'createEndpoint' => (string) ($create['endpoint'] ?? ''),
+        'createFields' => (array) ($create['fields'] ?? []),
+    ];
 @endphp
 
-<div x-data="{
-        open: false,
-        creating: false,
-        async submit() {
-            const mode = {{ \Illuminate\Support\Js::from($createMode) }};
-            if (mode !== 'ajax') return;
-            const endpoint = {{ \Illuminate\Support\Js::from((string) ($create['endpoint'] ?? '')) }};
-            const fields = {{ \Illuminate\Support\Js::from((array) ($create['fields'] ?? [])) }};
-            const payload = {};
-            for (const f of fields) {
-                const el = document.getElementById({{ \Illuminate\Support\Js::from($id) }} + '-f-' + f.name);
-                payload[f.name] = (el && el.value !== undefined) ? String(el.value).trim() : '';
-                if (f.required && !payload[f.name]) {
-                    if (window.Swal) Swal.fire({ icon: 'warning', title: 'Missing field', text: (f.label || f.name) + ' is required.' });
-                    else alert((f.label || f.name) + ' is required.');
-                    return;
-                }
-            }
-            this.creating = true;
-            try {
-                const token = document.querySelector('input[name=_token]')?.value || '';
-                const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': token
-                    },
-                    body: JSON.stringify(payload)
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data.ok) {
-                    const msg = (data && (data.message || data.error)) ? (data.message || data.error) : 'Could not create record.';
-                    if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: msg });
-                    else alert(msg);
-                    return;
-                }
-                const item = data.item || data.user || data.record;
-                const sel = document.getElementById({{ \Illuminate\Support\Js::from($id) }});
-                if (sel && item && item.id) {
-                    const opt = document.createElement('option');
-                    opt.value = String(item.id);
-                    opt.textContent = item.label ? String(item.label) : (item.name ? String(item.name) : String(item.id));
-                    sel.appendChild(opt);
-                    sel.value = String(item.id);
-                }
-                if (window.Swal) Swal.fire({ icon: 'success', title: 'Created', text: data.message || 'Created.', timer: 1500, showConfirmButton: false });
-                this.open = false;
-            } catch (e) {
-                if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: 'Network/server error while creating.' });
-                else alert('Network/server error while creating.');
-            } finally {
-                this.creating = false;
-            }
-        }
-    }"
->
+<div x-data="propertyQuickCreateSelect({{ \Illuminate\Support\Js::from($qcsConfig) }})">
     @if ($label)
         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">{{ $label }}</label>
     @endif
 
     <div class="mt-1 flex items-stretch gap-2">
-        <select
-            id="{{ $id }}"
-            name="{{ $name }}"
-            @if($required) required @endif
-            class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
-        >
-            <option value="">{{ $placeholder }}</option>
-            @foreach ($options as $opt)
-                <option
-                    value="{{ $opt['value'] }}"
-                    @if(!empty($opt['selected'])) selected @endif
-                    @if(!empty($opt['disabled'])) disabled @endif
-                >{{ $opt['label'] }}</option>
-            @endforeach
-        </select>
+        @include('components.property.partials.quick-create-select-control', [
+            'useSearch' => $useSearch,
+            'id' => $id,
+            'name' => $name,
+            'required' => $required,
+            'placeholder' => $placeholder,
+            'options' => $options,
+        ])
 
         @if ($createMode === 'ajax')
             <button type="button" @click="open = true" class="shrink-0 inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800" title="Create">
@@ -165,4 +106,3 @@
         </x-property.modal>
     @endif
 </div>
-

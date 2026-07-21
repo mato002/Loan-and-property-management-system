@@ -35,6 +35,14 @@
         <template x-if="!penaltyLoading && !penaltyError && penaltyRows.length === 0">
             <p class="text-sm text-emerald-700 py-4">No water penalties would be applied today.</p>
         </template>
+        <template x-if="!penaltyLoading && penaltyWarnings.length > 0">
+            <div class="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 space-y-1">
+                <p class="font-semibold">Operator warnings</p>
+                <template x-for="(warning, wIdx) in penaltyWarnings" :key="wIdx">
+                    <p x-text="warning"></p>
+                </template>
+            </div>
+        </template>
         <template x-if="!penaltyLoading && penaltyRows.length > 0">
             <div class="space-y-2">
                 <template x-for="(row, idx) in penaltyRows" :key="idx">
@@ -46,6 +54,8 @@
                         <p class="text-xs text-slate-600 mt-1">
                             Base AR <span x-text="row.base_display || row.base"></span>
                             · Rule: <span x-text="row.rule"></span>
+                            · Mode: <span x-text="row.compounding_label || row.compounding_mode || 'simple'"></span>
+                            · Days overdue: <span x-text="row.days_overdue ?? '—'"></span>
                         </p>
                     </div>
                 </template>

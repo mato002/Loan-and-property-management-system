@@ -1,10 +1,11 @@
 @props([
     'title',
     'subtitle' => null,
-    'showQuickLinks' => true,
+    'workspace' => null,
+    'showWorkspaceTabs' => false,
 ])
 
-<div {{ $attributes->merge(['class' => 'max-w-[1600px] mx-auto w-full space-y-6']) }}>
+<div {{ $attributes->merge(['class' => 'max-w-[1600px] mx-auto w-full space-y-4']) }}>
     <header class="space-y-4">
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
             <div class="min-w-0 flex-1">
@@ -21,9 +22,6 @@
                 @endif
             @endisset
         </div>
-        @if ($showQuickLinks)
-            @include('loan.partials.quick-links-strip')
-        @endif
         @isset($banner)
             <div class="w-full">
                 {{ $banner }}

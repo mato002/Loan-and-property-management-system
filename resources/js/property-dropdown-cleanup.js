@@ -4,6 +4,7 @@
  */
 
 const MENU_Z_INDEX = '9999';
+const PROPERTY_MAIN_FRAME_ID = 'property-main';
 
 const PROPERTY_DROPDOWN_ROOT_SELECTOR = [
     'details[data-property-dropdown-root]',
@@ -42,7 +43,42 @@ function menuForRoot(details) {
     return details?.querySelector(PROPERTY_DROPDOWN_MENU_SELECTOR) || null;
 }
 
-function placeTeleportedMenu(details, menu, summary) {
+function dropdownBridgeForMenu(menu) {
+    return menu?._propertyDropdownBridge instanceof HTMLElement ? menu._propertyDropdownBridge : null;
+}
+
+function removeDropdownBridge(menu) {
+    const bridge = dropdownBridgeForMenu(menu);
+    if (bridge) {
+        bridge.remove();
+    }
+    if (menu) {
+        delete menu._propertyDropdownBridge;
+    }
+}
+
+function isInsideOpenDropdown(target, details, menu) {
+    if (!(target instanceof Node)) {
+        return false;
+    }
+
+    if (details?.contains(target)) {
+        return true;
+    }
+
+    if (menu?.contains(target)) {
+        return true;
+    }
+
+    const bridge = dropdownBridgeForMenu(menu);
+    if (bridge?.contains(target)) {
+        return true;
+    }
+
+    return false;
+}
+
+function placeTeleportedMenu(details, menu, summary, attempt = 0) {
     const rect = summary.getBoundingClientRect();
     const gap = 4;
     const pad = 12;
@@ -50,16 +86,29 @@ function placeTeleportedMenu(details, menu, summary) {
     const footerH = footerEl ? footerEl.getBoundingClientRect().height : 0;
     const viewportBottom = window.innerHeight - footerH - pad;
 
+    if (rect.width < 1 && rect.height < 1 && attempt < 5) {
+        requestAnimationFrame(() => {
+            if (!details.open) {
+                return;
+            }
+            placeTeleportedMenu(details, menu, summary, attempt + 1);
+        });
+
+        return;
+    }
+
     menu.style.position = 'fixed';
-    menu.style.left = 'auto';
-    menu.style.right = `${Math.round(window.innerWidth - rect.right)}px`;
+    menu.style.right = 'auto';
     menu.style.zIndex = MENU_Z_INDEX;
     menu.style.maxHeight = '';
     menu.style.overflowY = '';
-    menu.style.minWidth = `${Math.max(176, Math.round(rect.width))}px`;
+    menu.style.minWidth = `${Math.max(176, Math.round(Math.max(rect.width, 120)))}px`;
 
     const menuH = menu.offsetHeight || 0;
     const openBelow = rect.bottom + gap + menuH <= viewportBottom;
+    const maxLeft = Math.max(pad, window.innerWidth - pad - 176);
+
+    menu.style.left = `${Math.round(Math.min(Math.max(pad, rect.left), maxLeft))}px`;
 
     if (openBelow) {
         menu.style.top = `${Math.round(rect.bottom + gap)}px`;
@@ -73,12 +122,66 @@ function placeTeleportedMenu(details, menu, summary) {
         menu.style.maxHeight = `${Math.round(maxH)}px`;
         menu.style.overflowY = 'auto';
     }
+
+    syncDropdownBridge(details, menu, summary);
+}
+
+function syncDropdownBridge(details, menu, summary) {
+    removeDropdownBridge(menu);
+
+    const summaryRect = summary.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+
+    const top = Math.min(summaryRect.top, menuRect.top);
+    const bottom = Math.max(summaryRect.bottom, menuRect.bottom);
+    const left = Math.min(summaryRect.left, menuRect.left);
+    const right = Math.max(summaryRect.right, menuRect.right);
+    const width = right - left;
+    const height = bottom - top;
+
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    const bridge = document.createElement('div');
+    bridge.setAttribute('data-property-dropdown-bridge', '');
+    bridge.style.position = 'fixed';
+    bridge.style.top = `${Math.round(top)}px`;
+    bridge.style.left = `${Math.round(left)}px`;
+    bridge.style.width = `${Math.round(width)}px`;
+    bridge.style.height = `${Math.round(height)}px`;
+    bridge.style.zIndex = String(parseInt(MENU_Z_INDEX, 10) - 1);
+    bridge.style.pointerEvents = 'auto';
+    bridge.style.background = 'transparent';
+    bridge._propertyDropdownOwner = details;
+    bridge._propertyDropdownMenu = menu;
+
+    document.body.appendChild(bridge);
+    menu._propertyDropdownBridge = bridge;
+}
+
+function repositionOpenPropertyDropdowns() {
+    document.querySelectorAll(PROPERTY_DROPDOWN_OPEN_SELECTOR).forEach((details) => {
+        if (!(details instanceof HTMLDetailsElement)) {
+            return;
+        }
+
+        const summary = details.querySelector('summary');
+        const menu = menuForRoot(details);
+        if (!summary || !menu || menu.parentElement !== document.body) {
+            return;
+        }
+
+        placeTeleportedMenu(details, menu, summary);
+    });
 }
 
 export function restoreDropdownMenu(menu) {
     if (!menu?.nodeType) {
         return;
     }
+
+    removeDropdownBridge(menu);
 
     menu.style.position = '';
     menu.style.top = '';
@@ -127,6 +230,10 @@ export function closeAllPropertyDropdowns() {
         restoreDropdownMenu(menu);
     });
 
+    document.querySelectorAll('[data-property-dropdown-bridge]').forEach((bridge) => {
+        bridge.remove();
+    });
+
     document.querySelectorAll(`body > ${PROPERTY_DROPDOWN_MENU_SELECTOR}`).forEach((menu) => {
         menu.remove();
     });
@@ -154,8 +261,7 @@ function handleOutsideClick(event) {
     document.querySelectorAll(`${PROPERTY_DROPDOWN_ROOT_SELECTOR}[open]`).forEach((details) => {
         const summary = details.querySelector('summary');
         const menu = menuForRoot(details);
-        const inside = details.contains(target) || menu?.contains(target);
-        if (!inside) {
+        if (!isInsideOpenDropdown(target, details, menu)) {
             details.open = false;
             summary?.setAttribute('aria-expanded', 'false');
             if (menu) {
@@ -165,10 +271,25 @@ function handleOutsideClick(event) {
     });
 
     document.querySelectorAll(`body > ${PROPERTY_DROPDOWN_MENU_SELECTOR}`).forEach((menu) => {
-        if (!menu.contains(target)) {
-            restoreDropdownMenu(menu);
+        const owner = menu._propertyDropdownOwner instanceof HTMLElement ? menu._propertyDropdownOwner : null;
+        if (isInsideOpenDropdown(target, owner, menu)) {
+            return;
         }
+        restoreDropdownMenu(menu);
     });
+}
+
+function shouldCloseDropdownsForTurboEvent(event) {
+    if (event.type === 'turbo:before-visit' || event.type === 'turbo:before-render' || event.type === 'turbo:before-cache') {
+        return true;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    return target.id === PROPERTY_MAIN_FRAME_ID;
 }
 
 function bindGlobalDropdownListeners() {
@@ -182,8 +303,16 @@ function bindGlobalDropdownListeners() {
     document.addEventListener('turbo:before-visit', close);
     document.addEventListener('turbo:before-render', close);
     document.addEventListener('turbo:before-cache', close);
-    document.addEventListener('turbo:before-frame-render', close);
-    document.addEventListener('turbo:frame-request-started', close);
+    document.addEventListener('turbo:before-frame-render', (event) => {
+        if (shouldCloseDropdownsForTurboEvent(event)) {
+            close();
+        }
+    });
+    document.addEventListener('turbo:frame-request-started', (event) => {
+        if (shouldCloseDropdownsForTurboEvent(event)) {
+            close();
+        }
+    });
     document.addEventListener('livewire:navigating', close);
     document.addEventListener('alpine:navigated', close);
 
@@ -208,8 +337,22 @@ function bindGlobalDropdownListeners() {
         }
     }, true);
 
-    window.addEventListener('scroll', close, { passive: true, capture: true });
-    window.addEventListener('resize', close, { passive: true });
+    const workspaceMain = document.getElementById('property-workspace-main');
+    if (workspaceMain instanceof HTMLElement) {
+        workspaceMain.addEventListener('scroll', () => {
+            if (!document.querySelector(PROPERTY_DROPDOWN_OPEN_SELECTOR)) {
+                return;
+            }
+
+            repositionOpenPropertyDropdowns();
+        }, { passive: true, capture: true });
+    }
+
+    window.addEventListener('resize', () => {
+        if (document.querySelector(PROPERTY_DROPDOWN_OPEN_SELECTOR)) {
+            repositionOpenPropertyDropdowns();
+        }
+    }, { passive: true });
 }
 
 export function setupPropertyActionMenus(scopeRoot) {
@@ -269,7 +412,15 @@ export function setupPropertyActionMenus(scopeRoot) {
 
             document.body.appendChild(activeMenu);
             activeMenu._propertyDropdownOwner = details;
-            placeTeleportedMenu(details, activeMenu, summary);
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (!details.open) {
+                        return;
+                    }
+                    placeTeleportedMenu(details, activeMenu, summary);
+                });
+            });
         });
     });
 }

@@ -64,11 +64,10 @@ Sidebar and header stay below modals and filter drawers so filters and dialogs r
 
 Standard row/header action dropdown. Markup:
 
-- `details[data-property-dropdown-root]`
-- `summary[data-property-dropdown-trigger]`
-- `div[data-property-dropdown-menu]` (teleported to `document.body` when open)
+- `details.group` with menu panel `absolute right-0` under the trigger (inline in the cell — same pattern as property list)
+- Wrapper uses `data-row-ignore-click` so workspace row navigation does not steal clicks
 
-`property-dropdown-cleanup.js` binds only marked roots. Cleanup on: Turbo visit/render/cache/frame, Escape, outside click, scroll, resize.
+Legacy teleported menus (`data-property-dropdown-root`) are deprecated; `property-dropdown-cleanup.js` still cleans up any remaining teleported nodes on Turbo navigation.
 
 Migrated: units list, invoices, payments, chart of accounts; property show uses `unit_row_actions` partial.
 

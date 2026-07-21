@@ -72,7 +72,7 @@
 @endphp
 
 <x-loan-layout>
-    <x-loan.page :title="$title" :subtitle="$subtitle" :show-quick-links="false">
+    <x-loan.page :title="$title" :subtitle="$subtitle" :show-quick-links="false" :show-workspace-tabs="false">
         <x-slot name="actions">
             <div
                 class="flex flex-wrap items-center gap-2 text-xs text-slate-600"
@@ -401,6 +401,7 @@
                     <a href="{{ route('loan.book.collection_sheet.index', ['from' => now()->addDay()->toDateString(), 'to' => now()->addDays(7)->toDateString()]) }}" class="mt-3 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Open Upcoming Collections →</a>
                 </div>
             </section>
+            </template>
 
             <section x-show="activeTab === 'missed_pending'" x-cloak class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h3 class="text-lg font-semibold text-[#0f3d3e]">Missed / Pending Collections</h3>
@@ -433,7 +434,7 @@
                 <h3 class="text-lg font-semibold text-[#0f3d3e]">Agents Performance</h3>
                 <p class="mt-1 text-sm text-slate-600">Collections productivity and outcomes by field agent.</p>
                 <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                    <p class="text-sm text-slate-700">Top agent today: <span class="font-semibold">{{ $agentPerformanceSummary['top_agent'] }}</span> with <span class="font-semibold">{{ $fmtKes($agentPerformanceSummary['top_agent_collected']) }}</span>. Unposted pay-ins in scope: <span class="font-semibold">{{ (int) ($agentPerformanceSummary['pending_collections'] ?? 0) }}</span>.</p>
+                    <p class="text-sm text-slate-700">Top agent today: <span class="font-semibold">{{ $agentPerformanceSummary['top_agent'] ?? '—' }}</span> with <span class="font-semibold">{{ $fmtKes((float) ($agentPerformanceSummary['top_agent_collected'] ?? 0)) }}</span>. Unposted pay-ins in scope: <span class="font-semibold">{{ (int) ($agentPerformanceSummary['pending_collections'] ?? 0) }}</span>.</p>
                     <a href="{{ route('loan.book.collection_agents.index') }}" class="mt-3 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Open Agents Performance →</a>
                 </div>
             </section>

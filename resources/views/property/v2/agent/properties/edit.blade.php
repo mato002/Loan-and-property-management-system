@@ -9,6 +9,14 @@
     :columns="[]"
 >
     <x-slot name="above">
+        @if (auth()->user()?->hasPmPermission('properties.manage'))
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <span>End management for this property? Use the offboarding wizard — no financial records are deleted.</span>
+                <a href="{{ route('property.properties.offboarding', $property, false) }}" data-turbo-frame="property-main" class="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">
+                    {{ $property->isManagementActive() ? 'Start offboarding' : 'Open offboarding' }}
+                </a>
+            </div>
+        @endif
         <div class="grid gap-4 lg:grid-cols-2">
             <form method="post" action="{{ route('property.properties.update', $property) }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
                 @csrf
@@ -51,6 +59,12 @@
                     />
                     <datalist id="ke-address-suggestions"></datalist>
                     @error('address_line')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent due day (property default)</label>
+                    <input type="number" name="rent_due_day" value="{{ old('rent_due_day', $property->rent_due_day) }}" min="1" max="31" class="mt-1 w-full sm:max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Blank = system default" />
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">If blank, uses system default ({{ app(\App\Services\Property\RentDueDayResolver::class)->systemDefaultDueDay() }}). Individual leases may override.</p>
+                    @error('rent_due_day')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Commission %</label>

@@ -16,6 +16,8 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmMessageLog;
+use App\Services\Property\SmsHealthService;
+use Carbon\Carbon;
 use App\Models\PmPayment;
 use App\Models\PmPortalAction;
 use App\Models\PmTenant;
@@ -1188,7 +1190,7 @@ class PropertyReportsController extends Controller
             'stats' => [
                 ['label' => 'Messages', 'value' => (string) $logs->count(), 'hint' => 'Recent'],
                 ['label' => 'Delivered', 'value' => (string) $logs->where('delivery_status', 'delivered')->count(), 'hint' => 'Success'],
-                ['label' => 'Failed', 'value' => (string) $logs->where('delivery_status', 'failed')->count(), 'hint' => 'Errors'],
+                ['label' => 'Failed (needs action)', 'value' => (string) $this->unresolvedCommunicationLogCountForReport(), 'hint' => 'Unresolved SMS + failed email in range'],
             ],
             'columns' => ['Sent', 'Channel', 'To', 'Subject', 'Status'],
             'tableRows' => $logs->map(fn (PmMessageLog $log) => [
@@ -1300,6 +1302,20 @@ class PropertyReportsController extends Controller
                 $this->money((float) ($row->balance ?? 0)),
             ])->all(),
         ];
+    }
+
+    private function unresolvedCommunicationLogCountForReport(): int
+    {
+        $from = $this->filterDateFrom();
+        $to = $this->filterDateTo();
+        $fromCarbon = $from !== null && $from !== '' ? Carbon::parse($from) : null;
+        $toCarbon = $to !== null && $to !== '' ? Carbon::parse($to) : null;
+
+        return app(SmsHealthService::class)->unresolvedCommunicationCount(
+            $fromCarbon,
+            $toCarbon,
+            dateColumn: 'sent_at',
+        );
     }
 
 	// Shared helpers (money/date/dateTime/filterDateFrom/filterDateTo/applyDateRange) provided by ReportFilters trait

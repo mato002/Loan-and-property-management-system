@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
-use App\Mail\LandlordPortalCredentialsMail;
 use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\DepositDefinition;
 use App\Models\ExpenseDefinition;
@@ -15,8 +14,14 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Support\CsvExport;
+use App\Support\Property\LandlordWorkspaceScope;
+use App\Support\Property\ResponsiveTableColumns;
 use App\Support\TabularExport;
+use App\Services\LoanClientIdentifierNormalizer;
+use App\Services\Property\FinancialReportingFormulaService;
+use App\Services\Property\LandlordPortalOnboardingService;
 use App\Services\Property\PropertyMoney;
+use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use Illuminate\Support\HtmlString;
 use Illuminate\Http\RedirectResponse;
@@ -24,7 +29,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -109,7 +113,8 @@ class PropertyPortfolioController extends Controller
 
     public function propertyList(Request $request): View
     {
-        $filters = $request->only(['q', 'city', 'landlord', 'sort', 'dir']);
+        $filters = $request->only(['q', 'city', 'landlord', 'sort', 'dir', 'management_status']);
+        $includeArchived = $request->boolean('include_archived');
         $q = Property::query()
             ->with(['landlords' => fn ($q) => $q->orderBy('name')])
             ->withCount('units')
@@ -140,6 +145,13 @@ class PropertyPortfolioController extends Controller
             $q->doesntHave('landlords');
         }
 
+        $mgmtFilter = trim((string) ($filters['management_status'] ?? ''));
+        if ($mgmtFilter !== '' && $mgmtFilter !== 'all') {
+            $q->managementStatus($mgmtFilter);
+        } elseif (! $includeArchived) {
+            $q->operational();
+        }
+
         $sort = (string) ($filters['sort'] ?? 'name');
         $dir = strtolower((string) ($filters['dir'] ?? 'asc')) === 'desc' ? 'desc' : 'asc';
         $allowedSort = ['name', 'code', 'city', 'units_count', 'created_at'];
@@ -152,10 +164,16 @@ class PropertyPortfolioController extends Controller
         $portfolio = $q->paginate($perPage)->withQueryString();
 
         $stats = [
-            ['label' => 'Properties', 'value' => (string) $portfolio->total(), 'hint' => 'In portfolio'],
-            ['label' => 'Total units', 'value' => (string) PropertyUnit::query()->count(), 'hint' => 'Across all'],
-            ['label' => 'Occupied', 'value' => (string) PropertyUnit::query()->where('status', PropertyUnit::STATUS_OCCUPIED)->count(), 'hint' => 'Units'],
-            ['label' => 'Vacant', 'value' => (string) PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)->count(), 'hint' => 'Units'],
+            ['label' => 'Properties', 'value' => (string) $portfolio->total(), 'hint' => $includeArchived ? 'Including archived' : 'Active portfolio'],
+            ['label' => 'Total units', 'value' => (string) PropertyUnit::query()
+                ->when(! $includeArchived, fn ($uq) => $uq->whereIn('property_id', Property::query()->operational()->select('id')))
+                ->count(), 'hint' => 'Across portfolio'],
+            ['label' => 'Occupied', 'value' => (string) PropertyUnit::query()
+                ->when(! $includeArchived, fn ($uq) => $uq->whereIn('property_id', Property::query()->operational()->select('id')))
+                ->where('status', PropertyUnit::STATUS_OCCUPIED)->count(), 'hint' => 'Units'],
+            ['label' => 'Vacant', 'value' => (string) PropertyUnit::query()
+                ->when(! $includeArchived, fn ($uq) => $uq->whereIn('property_id', Property::query()->operational()->select('id')))
+                ->where('status', PropertyUnit::STATUS_VACANT)->count(), 'hint' => 'Units'],
         ];
 
         $propertyChargeTemplatesByPropertyId = $this->allPropertyChargeTemplates();
@@ -172,6 +190,18 @@ class PropertyPortfolioController extends Controller
             $status = $p->units_count === 0
                 ? 'No units'
                 : ($p->vacant_units_count > 0 ? 'Has vacancy' : 'Fully occupied');
+            $mgmtStatus = $p->managementStatus();
+            $mgmtPillClass = match ($mgmtStatus) {
+                Property::MANAGEMENT_OFFBOARDING => 'bg-amber-100 text-amber-800',
+                Property::MANAGEMENT_ARCHIVED => 'bg-slate-200 text-slate-700',
+                Property::MANAGEMENT_ENDED => 'bg-slate-200 text-slate-600',
+                default => 'bg-emerald-100 text-emerald-800',
+            };
+            $mgmtCell = new HtmlString(
+                '<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold '.$mgmtPillClass.'">'.
+                e($p->managementStatusLabel()).
+                '</span>'
+            );
             $chargeTemplates = (array) ($propertyChargeTemplatesByPropertyId[(string) $p->id] ?? []);
             $chargeBreakdownCell = count($chargeTemplates) === 0
                 ? '—'
@@ -182,21 +212,31 @@ class PropertyPortfolioController extends Controller
                     })->implode('').
                     '</div>'
                 );
+            $actionHtml =
+                '<a href="'.route('property.properties.units', ['property_id' => $p->id], absolute: false).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Units</a>'.
+                '<a href="'.route('property.properties.list', ['property_id' => $p->id], absolute: false).'#link-landlord-form" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Link landlord</a>';
+            if ($mgmtStatus === Property::MANAGEMENT_ACTIVE && $this->userCanAccessOffboarding()) {
+                $actionHtml .= '<a href="'.route('property.properties.offboarding', $p).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-amber-700 hover:bg-amber-50">Start offboarding</a>';
+            }
+            if (in_array($mgmtStatus, [Property::MANAGEMENT_OFFBOARDING, Property::MANAGEMENT_ARCHIVED, Property::MANAGEMENT_ENDED], true) && $this->userCanAccessOffboarding()) {
+                $actionHtml .= '<a href="'.route('property.properties.offboarding', $p).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View offboarding</a>';
+            }
+            if (! $p->isManagementReadOnly() && auth()->user()?->hasPmPermission('properties.manage')) {
+                $actionHtml .= '<form method="POST" action="'.route('property.properties.destroy', $p).'" data-swal-title="Delete property?" data-swal-confirm="This will permanently delete this property if it has no units." data-swal-confirm-text="Yes, delete">'.
+                csrf_field().method_field('DELETE').
+                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
+                '</form>';
+            }
             $action = new HtmlString(
                 '<div class="relative inline-block text-left">'.
                 '<details class="group">'.
                 '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">'.
                 'Actions <span class="text-slate-400">▼</span>'.
                 '</summary>'.
-                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
-                '<a href="'.route('property.properties.show', $p).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View</a>'.
-                '<a href="'.route('property.properties.edit', $p).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
-                '<a href="'.route('property.properties.units', ['property_id' => $p->id], absolute: false).'" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Units</a>'.
-                '<a href="'.route('property.properties.list', ['property_id' => $p->id], absolute: false).'#link-landlord-form" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">Link landlord</a>'.
-                '<form method="POST" action="'.route('property.properties.destroy', $p).'" data-swal-title="Delete property?" data-swal-confirm="This will permanently delete this property if it has no units." data-swal-confirm-text="Yes, delete">'.
-                csrf_field().method_field('DELETE').
-                '<button type="submit" class="block w-full px-3 py-2 text-left text-xs text-rose-700 hover:bg-rose-50">Delete</button>'.
-                '</form>'.
+                '<div class="absolute right-0 z-30 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<a href="'.route('property.properties.show', $p).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">View</a>'.
+                '<a href="'.route('property.properties.edit', $p).'" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit</a>'.
+                $actionHtml.
                 '</div>'.
                 '</details>'.
                 '</div>'
@@ -221,6 +261,7 @@ class PropertyPortfolioController extends Controller
                 (string) $p->units_count,
                 $chargeBreakdownCell,
                 $landlordCell,
+                $mgmtCell,
                 $status,
                 $action,
             ];
@@ -255,14 +296,14 @@ class PropertyPortfolioController extends Controller
 
         return view('property.agent.properties.list', [
             'stats' => $stats,
-            'columns' => ['Name / Code', 'Address / City', 'Units', 'Utility charges', 'Landlord(s)', 'Status', 'Actions'],
+            'columns' => ['Name / Code', 'Address / City', 'Units', 'Utility charges', 'Landlord(s)', 'Management', 'Occupancy', 'Actions'],
             'tableRows' => $rows,
             'propertyOnboardingFields' => $this->propertyOnboardingFieldConfig(),
             'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
             'properties' => $portfolio,
             'linkableProperties' => $linkableProperties,
             'landlordLinks' => $landlordLinks,
-            'filters' => array_merge($filters, ['per_page' => (string) $perPage]),
+            'filters' => array_merge($filters, ['per_page' => (string) $perPage, 'include_archived' => $includeArchived ? '1' : '0']),
             'perPage' => $perPage,
             'cities' => Property::query()->whereNotNull('city')->where('city', '!=', '')->distinct()->orderBy('city')->pluck('city'),
         ]);
@@ -377,7 +418,7 @@ class PropertyPortfolioController extends Controller
             ->with([
                 'leases' => function ($q) {
                     $q->where('pm_leases.status', PmLease::STATUS_ACTIVE)
-                        ->with('pmTenant:id,name')
+                        ->with('pmTenant:id,name,phone')
                         ->orderByDesc('pm_leases.start_date')
                         ->orderByDesc('pm_leases.id');
                 },
@@ -403,25 +444,12 @@ class PropertyPortfolioController extends Controller
         $availableCollectionChannels = [];
 
         if ($unitIds !== []) {
-            $invoiced = (float) DB::table('pm_invoices')
-                ->whereIn('property_unit_id', $unitIds)
-                ->whereBetween('issue_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-                ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q))
-                ->sum('amount');
+            $formulas = app(FinancialReportingFormulaService::class);
+            $invoiced = $formulas->billedForPeriod($periodStart, $periodEnd, null, $unitIds);
 
-            $collected = (float) DB::table('pm_payment_allocations as a')
-                ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
-                ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
-                ->whereIn('i.property_unit_id', $unitIds)
-                ->where('pay.status', PmPayment::STATUS_COMPLETED)
-                ->whereBetween('pay.paid_at', [$periodStart, $periodEnd])
-                ->sum('a.amount');
+            $collected = $formulas->collectionsForPeriod($periodStart, $periodEnd, null, null, $unitIds);
 
-            $arrears = (float) DB::table('pm_invoices')
-                ->whereIn('property_unit_id', $unitIds)
-                ->whereDate('issue_date', '<=', $periodEnd->toDateString())
-                ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q))
-                ->sum(DB::raw('GREATEST(amount - amount_paid, 0)'));
+            $arrears = $formulas->unitOutstanding($unitIds, $periodEnd);
 
             $activeLeaseRows = DB::table('pm_lease_unit as lu')
                 ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
@@ -478,18 +506,24 @@ class PropertyPortfolioController extends Controller
                 ->pluck('pay.channel')
                 ->all();
 
+            $unitArrearsMap = $formulas->unitOutstandingMap($unitIds);
+
+            $unitsById = $units->keyBy('id');
             $unitSnapshots = DB::table('property_units as u')
-                ->leftJoin('pm_invoices as i', function ($join) {
-                    $join->on('i.property_unit_id', '=', 'u.id')
-                        ->whereNull('i.deleted_at')
-                        ->where('i.status', '!=', PmInvoice::STATUS_CANCELLED);
-                })
-                ->selectRaw('u.id, u.label, u.status, u.rent_amount, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as arrears')
+                ->selectRaw('u.id, u.label, u.status, u.rent_amount')
                 ->where('u.property_id', $property->id)
                 ->when($unitStatus !== '', fn ($q) => $q->where('u.status', $unitStatus))
-                ->groupBy('u.id', 'u.label', 'u.status', 'u.rent_amount')
                 ->orderBy('u.label')
-                ->get();
+                ->get()
+                ->map(function ($u) use ($unitArrearsMap, $unitsById) {
+                    $u->arrears = (float) ($unitArrearsMap[(int) $u->id] ?? 0);
+                    $unitModel = $unitsById->get((int) $u->id);
+                    $tenant = $unitModel?->leases->first()?->pmTenant;
+                    $u->tenant_name = $tenant?->name;
+                    $u->tenant_phone = $tenant?->phone;
+
+                    return $u;
+                });
         }
 
         $commissionDefaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
@@ -530,7 +564,7 @@ class PropertyPortfolioController extends Controller
             if ($exportReport === 'units') {
                 return TabularExport::stream(
                     'property-'.$property->id.'-units',
-                    ['Property', 'Period', 'Unit', 'Status', 'Listed Rent', 'Arrears'],
+                    ['Property', 'Period', 'Unit', 'Status', 'Tenant', 'Phone', 'Listed Rent', 'Arrears'],
                     function () use ($property, $periodLabel, $unitSnapshots) {
                         return $unitSnapshots->map(function ($u) use ($property, $periodLabel) {
                             return [
@@ -538,6 +572,8 @@ class PropertyPortfolioController extends Controller
                                 (string) $periodLabel,
                                 (string) ($u->label ?? ''),
                                 (string) ucfirst((string) ($u->status ?? '')),
+                                (string) ($u->tenant_name ?? '—'),
+                                (string) ($u->tenant_phone ?? '—'),
                                 number_format((float) ($u->rent_amount ?? 0), 2, '.', ''),
                                 number_format((float) ($u->arrears ?? 0), 2, '.', ''),
                             ];
@@ -665,8 +701,8 @@ class PropertyPortfolioController extends Controller
                 ['label' => 'Vacant / Notice', 'value' => $vacantUnits.' / '.$noticeUnits, 'hint' => 'Current'],
                 ['label' => 'Rent roll', 'value' => PropertyMoney::kes($rentRoll), 'hint' => 'Listed unit rents'],
                 ['label' => 'Invoiced ('.$periodLabel.')', 'value' => PropertyMoney::kes($invoiced), 'hint' => 'Issued invoices'],
-                ['label' => 'Collected ('.$periodLabel.')', 'value' => PropertyMoney::kes($collected), 'hint' => 'Completed payments'],
-                ['label' => 'Arrears', 'value' => PropertyMoney::kes($arrears), 'hint' => 'Outstanding invoices'],
+                ['label' => 'Collections ('.$periodLabel.')', 'value' => PropertyMoney::kes($collected), 'hint' => 'Completed payment allocations'],
+                ['label' => 'Tenant arrears', 'value' => PropertyMoney::kes($arrears), 'hint' => 'Billable open invoice balances'],
                 ['label' => 'Your earnings', 'value' => PropertyMoney::kes($agentEarning), 'hint' => 'At '.number_format($propertyCommissionPct, 2).'%'],
             ],
             'activeLeasesCount' => $activeLeasesCount,
@@ -691,6 +727,8 @@ class PropertyPortfolioController extends Controller
             'propertyExpenseDefinitions' => $this->propertyExpenseDefinitions((int) $property->id),
             'propertyDepositDefinitions' => $this->propertyDepositDefinitions((int) $property->id),
             'unitFields' => $this->unitFieldConfig(),
+            'isManagementReadOnly' => $property->isManagementReadOnly(),
+            'managementStatusLabel' => $property->managementStatusLabel(),
         ]);
     }
 
@@ -709,12 +747,15 @@ class PropertyPortfolioController extends Controller
 
     public function updateProperty(Request $request, Property $property): RedirectResponse
     {
+        app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanMutatePropertySettings($property);
+
         $propertyFields = $this->propertyOnboardingFieldConfig();
         $data = $request->validate([
             'name' => [Rule::requiredIf($this->isFieldRequired($propertyFields, 'name')), 'nullable', 'string', 'max:255'],
             'code' => ['nullable', 'string', 'max:64', 'unique:properties,code,'.$property->id],
             'address_line' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:128'],
+            'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'charge_templates' => ['nullable', 'array', 'max:50'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
@@ -752,6 +793,11 @@ class PropertyPortfolioController extends Controller
         $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
         $expenseDefinitions = $this->normalizePropertyExpenseDefinitions((int) $property->id, (array) ($data['expense_definitions'] ?? []));
         $depositDefinitions = $this->normalizePropertyDepositDefinitions((int) $property->id, (array) ($data['deposit_definitions'] ?? []));
+        if (array_key_exists('rent_due_day', $data) && ($data['rent_due_day'] === null || $data['rent_due_day'] === '')) {
+            $data['rent_due_day'] = null;
+        } elseif (isset($data['rent_due_day'])) {
+            $data['rent_due_day'] = \App\Services\Property\RentDueDayResolver::normalizeDueDay((int) $data['rent_due_day']);
+        }
         unset($data['commission_percent']);
         unset($data['charge_templates']);
         unset($data['expense_definitions']);
@@ -794,10 +840,29 @@ class PropertyPortfolioController extends Controller
         $data = $request->validate([
             'property_id' => ['required', 'exists:properties,id'],
             'user_id' => ['required', 'exists:users,id'],
+            'admin_override' => ['sometimes', 'boolean'],
         ]);
 
         $property = Property::query()->findOrFail($data['property_id']);
+        $override = (bool) ($data['admin_override'] ?? false)
+            && ($request->user()?->hasPmPermission('property.archive.override') ?? false);
+
+        if ($property->isOffboarding() || $property->isManagementReadOnly()) {
+            $offboarding = app(\App\Services\Property\PropertyOffboardingService::class);
+            $gate = $offboarding->canDetachLandlord($property, $override);
+            if (! $gate['allowed']) {
+                return redirect()
+                    ->route('property.properties.offboarding', ['property' => $property->id, 'step' => 4])
+                    ->withErrors(['landlord' => implode(' ', $gate['reasons'])]);
+            }
+        }
+
         $property->landlords()->detach($data['user_id']);
+
+        if ($property->isOffboarding()) {
+            app(\App\Services\Property\PropertyOffboardingService::class)
+                ->logLandlordDetached($property, (int) $data['user_id']);
+        }
 
         return redirect()
             ->route('property.properties.edit', $property->id)
@@ -868,7 +933,8 @@ class PropertyPortfolioController extends Controller
             $trendFilter = 'below_ask';
         }
 
-        $baseQuery = PropertyUnit::query()
+        $includeArchived = $request->boolean('include_archived');
+        $baseQuery = $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)
             ->with([
                 'property',
                 'leases' => fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE)->with('pmTenant'),
@@ -1035,8 +1101,8 @@ class PropertyPortfolioController extends Controller
                 'property_id' => $propertyId > 0 ? (string) $propertyId : '',
                 'q' => $search,
             ],
-            'propertyOptions' => Property::query()
-                ->whereIn('id', PropertyUnit::query()->select('property_id')->distinct())
+            'propertyOptions' => $this->operationalPropertiesQuery($includeArchived)
+                ->whereIn('id', $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)->select('property_id')->distinct())
                 ->orderBy('name')
                 ->get(['id', 'name']),
             'trendBreakdown' => $trendBreakdown,
@@ -1101,13 +1167,8 @@ class PropertyPortfolioController extends Controller
             ->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount),0) as total')
             ->pluck('total', 'property_id');
 
-        $pendingByProperty = DB::table('pm_invoices as i')
-            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
-            ->whereDate('i.issue_date', '<=', $periodEnd->toDateString())
-            ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
-            ->groupBy('pu.property_id')
-            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as total')
-            ->pluck('total', 'property_id');
+        $pendingByProperty = app(FinancialReportingFormulaService::class)
+            ->outstandingByPropertyId($periodEnd);
 
         $lastPaidByProperty = DB::table('pm_payment_allocations as a')
             ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
@@ -1144,7 +1205,7 @@ class PropertyPortfolioController extends Controller
             $pct = ((float) $link->ownership_percent) / 100;
             $baseCollected = ((float) ($collectedByProperty[$pid] ?? 0)) * $pct;
             $basePending = ((float) ($pendingByProperty[$pid] ?? 0)) * $pct;
-            $commissionPct = $commissionOverrides[$pid] ?? $commissionDefaultPct;
+            $commissionPct = $this->propertyCommissionPercent($pid);
             $commission = $baseCollected * ($commissionPct / 100);
 
             if (! isset($statsByLandlord[$uid])) {
@@ -1249,6 +1310,7 @@ class PropertyPortfolioController extends Controller
         return view('property.agent.landlords.index', [
             'stats' => $stats,
             'landlords' => $landlords,
+            ...$this->buildLandlordIndexTableData($landlords, $month, $fy),
             'landlordFields' => $this->landlordFieldConfig(),
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'periodLabel' => $periodLabel,
@@ -1256,7 +1318,98 @@ class PropertyPortfolioController extends Controller
             'fyValue' => $fy,
             'filters' => $filters,
             'commissionPct' => $commissionDefaultPct,
+            'commissionDefaultPct' => $commissionDefaultPct,
         ]);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, User>|\Illuminate\Database\Eloquent\Collection<int, User>  $landlords
+     * @return array{
+     *   columns: list<string>,
+     *   tableRows: list<list<HtmlString|string>>,
+     *   tableRowFilters: list<string>,
+     *   columnConfig: list<array<string, mixed>>
+     * }
+     */
+    private function buildLandlordIndexTableData($landlords, string $monthValue, int $fyValue): array
+    {
+        $columns = ['Landlord', 'Links', 'Shares (KES)', 'Last collection', 'Buildings', 'Actions'];
+        $tableRows = [];
+        $tableRowFilters = [];
+
+        foreach ($landlords as $u) {
+            $props = $u->landlordProperties;
+            $namesLine = $props->pluck('name')->join(', ');
+            $buildingPreview = $props->pluck('name')->take(2)->implode(', ');
+            $remainingBuildings = max(0, $props->count() - 2);
+            $filterText = mb_strtolower(implode(' ', array_filter([
+                $u->name,
+                $u->email,
+                $u->phone,
+                $namesLine,
+            ])));
+
+            $showUrl = route('property.landlords.show', [
+                'landlord' => $u->id,
+                'month' => $monthValue,
+                'fy' => $fyValue,
+            ], false);
+
+            $contact = trim((string) ($u->email ?? '')) ?: trim((string) ($u->phone ?? '')) ?: '—';
+            $landlordCell = new HtmlString(
+                '<a href="'.e($showUrl).'" data-turbo-frame="property-main" class="font-medium text-slate-900 dark:text-white hover:text-blue-700 dark:hover:text-blue-400 break-words">'.
+                e((string) $u->name).
+                '</a>'.
+                '<div class="text-xs text-slate-500 dark:text-slate-400 break-words mt-0.5">'.e($contact).'</div>'
+            );
+
+            $linksCell = new HtmlString(
+                '<div>'.(int) ($u->linked_count ?? $props->count()).' properties</div>'.
+                '<div class="text-xs text-slate-500 dark:text-slate-400">'.number_format((float) ($u->ownership_sum ?? 0), 2).'% ownership</div>'
+            );
+
+            $sharesCell = new HtmlString(
+                '<div class="text-xs">Owner: '.e(PropertyMoney::kes((float) ($u->available_share ?? 0))).'</div>'.
+                '<div class="text-xs">Pending: '.e(PropertyMoney::kes((float) ($u->pending_share ?? 0))).'</div>'.
+                '<div class="text-xs font-semibold text-slate-900 dark:text-white">My: '.e(PropertyMoney::kes((float) ($u->agent_earning ?? 0))).'</div>'
+            );
+
+            $buildingsCell = $props->isEmpty()
+                ? new HtmlString('<span class="text-slate-400 dark:text-slate-500 text-xs">Not linked yet</span>')
+                : new HtmlString(
+                    '<span class="leading-relaxed break-words text-xs sm:text-sm">'.
+                    e($buildingPreview).
+                    ($remainingBuildings > 0 ? ', +'.$remainingBuildings.' more' : '').
+                    '</span>'
+                );
+
+            $lastPaid = ! empty($u->last_paid_at)
+                ? Carbon::parse((string) $u->last_paid_at)->format('Y-m-d')
+                : '—';
+
+            $action = new HtmlString(view('property.agent.landlords.partials.row_actions', [
+                'u' => $u,
+                'monthValue' => $monthValue,
+                'fyValue' => $fyValue,
+            ])->render());
+
+            $tableRows[] = [
+                $landlordCell,
+                $linksCell,
+                $sharesCell,
+                $lastPaid,
+                $buildingsCell,
+                $action,
+            ];
+            $tableRowFilters[] = $filterText;
+        }
+
+        return [
+            'columns' => $columns,
+            'tableRows' => $tableRows,
+            'tableRowFilters' => $tableRowFilters,
+            'columnConfig' => ResponsiveTableColumns::landlords(),
+        ];
     }
 
     /**
@@ -1318,14 +1471,8 @@ class PropertyPortfolioController extends Controller
                 ->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount),0) as total')
                 ->pluck('total', 'property_id');
 
-            $pendingByProperty = DB::table('pm_invoices as i')
-                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
-                ->whereIn('pu.property_id', $propertyIds)
-                ->whereDate('i.issue_date', '<=', $periodEnd->toDateString())
-                ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
-                ->groupBy('pu.property_id')
-                ->selectRaw('pu.property_id as property_id, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as total')
-                ->pluck('total', 'property_id');
+            $pendingByProperty = app(FinancialReportingFormulaService::class)
+                ->outstandingByPropertyId($periodEnd, $propertyIds);
 
             $lastPaidByProperty = DB::table('pm_payment_allocations as a')
                 ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
@@ -1357,15 +1504,44 @@ class PropertyPortfolioController extends Controller
             }
         }
 
-        $propertyBreakdown = $propertyLinks->map(function ($link) use ($collectedByProperty, $pendingByProperty, $lastPaidByProperty, $commissionDefaultPct, $commissionOverrides) {
+        $unitStatsByProperty = collect();
+        $tenantCountByProperty = collect();
+        if ($propertyIds !== []) {
+            $unitStatsByProperty = PropertyUnit::query()
+                ->whereIn('property_id', $propertyIds)
+                ->selectRaw('property_id')
+                ->selectRaw('COUNT(*) as units_total')
+                ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as units_occupied', [PropertyUnit::STATUS_OCCUPIED])
+                ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as units_vacant', [PropertyUnit::STATUS_VACANT])
+                ->groupBy('property_id')
+                ->get()
+                ->keyBy('property_id')
+                ->map(fn ($row) => [
+                    'units_total' => (int) $row->units_total,
+                    'units_occupied' => (int) $row->units_occupied,
+                    'units_vacant' => (int) $row->units_vacant,
+                ]);
+
+            $tenantCountByProperty = DB::table('pm_lease_unit as lu')
+                ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+                ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
+                ->whereIn('pu.property_id', $propertyIds)
+                ->where('l.status', PmLease::STATUS_ACTIVE)
+                ->groupBy('pu.property_id')
+                ->selectRaw('pu.property_id as property_id, COUNT(DISTINCT l.pm_tenant_id) as tenant_count')
+                ->pluck('tenant_count', 'property_id');
+        }
+
+        $propertyBreakdown = $propertyLinks->map(function ($link) use ($collectedByProperty, $pendingByProperty, $lastPaidByProperty, $unitStatsByProperty, $tenantCountByProperty) {
             $pid = (int) $link->property_id;
             $pct = ((float) $link->ownership_percent) / 100;
             $grossCollected = (float) ($collectedByProperty[$pid] ?? 0);
             $grossPending = (float) ($pendingByProperty[$pid] ?? 0);
             $ownerShare = $grossCollected * $pct;
             $pendingShare = $grossPending * $pct;
-            $commissionPct = $commissionOverrides[$pid] ?? $commissionDefaultPct;
+            $commissionPct = $this->propertyCommissionPercent($pid);
             $agentEarning = $ownerShare * ($commissionPct / 100);
+            $unitStats = $unitStatsByProperty[$pid] ?? ['units_total' => 0, 'units_occupied' => 0, 'units_vacant' => 0];
 
             return [
                 'property_id' => $pid,
@@ -1374,7 +1550,12 @@ class PropertyPortfolioController extends Controller
                 'owner_share' => $ownerShare,
                 'pending_share' => $pendingShare,
                 'agent_earning' => $agentEarning,
+                'commission_percent' => $commissionPct,
                 'last_paid_at' => $lastPaidByProperty[$pid] ?? null,
+                'units_total' => (int) ($unitStats['units_total'] ?? 0),
+                'units_occupied' => (int) ($unitStats['units_occupied'] ?? 0),
+                'units_vacant' => (int) ($unitStats['units_vacant'] ?? 0),
+                'active_tenants' => (int) ($tenantCountByProperty[$pid] ?? 0),
             ];
         })->values();
 
@@ -1407,16 +1588,37 @@ class PropertyPortfolioController extends Controller
             'owner_share' => (float) $propertyBreakdown->sum('owner_share'),
             'pending_share' => (float) $propertyBreakdown->sum('pending_share'),
             'agent_earning' => (float) $propertyBreakdown->sum('agent_earning'),
+            'units_total' => (int) $propertyBreakdown->sum('units_total'),
+            'units_occupied' => (int) $propertyBreakdown->sum('units_occupied'),
+            'active_tenants' => (int) $propertyBreakdown->sum('active_tenants'),
+        ];
+
+        $formulas = app(FinancialReportingFormulaService::class);
+        $ledgerPayable = $formulas->landlordPayableForUser((int) $landlord->id);
+
+        $portalAccess = [
+            'has_portal_role' => (string) ($landlord->property_portal_role ?? '') === 'landlord',
+            'login_url' => route('property.landlord.login'),
+            'login_identifier' => trim((string) ($landlord->email ?? '')) ?: trim((string) ($landlord->phone ?? '')),
+            'email_verified' => $landlord->email_verified_at !== null,
+            'account_created_at' => $landlord->created_at,
+            'ledger_payable' => $ledgerPayable,
         ];
 
         return [
             'periodLabel' => $periodLabel,
             'monthValue' => $month,
             'fyValue' => $fy,
-            'commissionPct' => $commissionDefaultPct,
+            'commissionPct' => $this->displayCommissionPercent(
+                $propertyBreakdown,
+                (float) $totals['owner_share'],
+                (float) $totals['agent_earning'],
+                $commissionDefaultPct
+            ),
             'totals' => $totals,
             'propertyBreakdown' => $propertyBreakdown,
             'recentCollections' => $recentCollections,
+            'portalAccess' => $portalAccess,
         ];
     }
 
@@ -1456,6 +1658,7 @@ class PropertyPortfolioController extends Controller
 
         return view('property.agent.landlords.show', [
             'landlord' => $landlord,
+            'portalCredentials' => $this->resolveLandlordPortalCredentialsForShow($landlord),
             ...$snapshot,
         ]);
     }
@@ -1474,31 +1677,136 @@ class PropertyPortfolioController extends Controller
         ]);
     }
 
+    public function resendLandlordPortalLogin(Request $request, User $landlord): RedirectResponse
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+
+        if ((string) ($landlord->property_portal_role ?? '') !== 'landlord') {
+            return back()->withErrors([
+                'landlord' => 'This user is not registered as a landlord portal account.',
+            ]);
+        }
+
+        $onboarding = app(LandlordPortalOnboardingService::class);
+        $channels = $onboarding->resolveContactChannels($landlord);
+        if ($channels['email'] === null && $channels['phone'] === null) {
+            return back()->withErrors([
+                'landlord' => 'Add an email address or phone number before sending portal credentials.',
+            ]);
+        }
+
+        $plainPassword = Str::password(12, symbols: false);
+        $landlord->update([
+            'password' => Hash::make($plainPassword),
+        ]);
+
+        $agentUserId = LandlordWorkspaceScope::creatingAgentUserId($request->user());
+        if ($agentUserId) {
+            $onboarding->stampAgentOwnership($landlord, $agentUserId);
+        }
+        $delivery = $onboarding->deliverCredentials($landlord->fresh(), $plainPassword, $agentUserId);
+        $credentials = $this->stashLandlordPortalCredentials($landlord->fresh(), $plainPassword, $delivery);
+
+        return redirect()
+            ->route('property.landlords.show', $landlord)
+            ->withFragment('landlord-portal-credentials')
+            ->with('success', 'New portal password generated. '.$delivery['summary'])
+            ->with('landlord_portal_credentials', $credentials);
+    }
+
+    public function editLandlord(Request $request, User $landlord): View
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+
+        return view('property.agent.landlords.edit', [
+            'landlord' => $landlord,
+            'landlordFields' => $this->landlordFieldConfig(),
+        ]);
+    }
+
+    public function updateLandlord(Request $request, User $landlord): RedirectResponse
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+
+        $landlordFields = $this->landlordFieldConfig();
+        $normalizer = app(LoanClientIdentifierNormalizer::class);
+
+        $emailRaw = trim((string) $request->input('email', ''));
+        $phoneRaw = trim((string) $request->input('phone', ''));
+        $request->merge([
+            'email' => $emailRaw !== '' ? strtolower($emailRaw) : null,
+            'phone' => $phoneRaw !== '' ? $normalizer->normalizePhone($phoneRaw) : null,
+        ]);
+
+        $data = $request->validate([
+            'name' => [Rule::requiredIf($this->isFieldRequired($landlordFields, 'name')), 'nullable', 'string', 'max:255'],
+            'email' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'email') && ! $this->isFieldRequired($landlordFields, 'phone')),
+                'nullable',
+                'email',
+                'max:255',
+                Rule::unique('users', 'email')->ignore($landlord->id),
+            ],
+            'phone' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'phone') && ! $this->isFieldRequired($landlordFields, 'email')),
+                'nullable',
+                'string',
+                'max:32',
+                Rule::unique('users', 'phone')->ignore($landlord->id),
+            ],
+        ]);
+
+        $email = $data['email'] ?? null;
+        $phone = $data['phone'] ?? null;
+
+        if ($email === null && $phone === null) {
+            throw ValidationException::withMessages([
+                'email' => __('Provide an email address or phone number.'),
+                'phone' => __('Provide an email address or phone number.'),
+            ]);
+        }
+
+        $updates = [
+            'name' => (string) $data['name'],
+            'email' => $email,
+            'phone' => $phone,
+        ];
+
+        if ($email !== null && $email !== (string) ($landlord->email ?? '')) {
+            $updates['email_verified_at'] = now();
+        } elseif ($email === null) {
+            $updates['email_verified_at'] = null;
+        }
+
+        $landlord->update($updates);
+
+        return redirect()
+            ->route('property.landlords.show', $landlord)
+            ->with('success', 'Landlord profile updated.');
+    }
+
     public function onboardLandlord(Request $request): RedirectResponse
     {
         $landlordFields = $this->landlordFieldConfig();
-        $data = $request->validate([
-            'name' => [Rule::requiredIf($this->isFieldRequired($landlordFields, 'name')), 'nullable', 'string', 'max:255'],
-            'email' => [Rule::requiredIf($this->isFieldRequired($landlordFields, 'email')), 'nullable', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8', 'max:255'],
+        $onboarding = app(LandlordPortalOnboardingService::class);
+        $data = $onboarding->validateOnboardPayload(
+            $request,
+            $landlordFields,
+            fn (string $field) => $this->isFieldRequired($landlordFields, $field),
+        );
+
+        $extra = $request->validate([
             'property_id' => ['nullable', 'exists:properties,id'],
             'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         $plainPassword = $data['password'];
-        $landlord = User::query()->create([
-            'name' => $data['name'],
-            'email' => $data['email'],
-            'password' => Hash::make($plainPassword),
-            'property_portal_role' => 'landlord',
-        ]);
-        if ($this->isAgentActor($request->user()) && Schema::hasColumn('users', 'agent_user_id')) {
-            $landlord->forceFill(['agent_user_id' => (int) $request->user()->id])->save();
-        }
+        $agentUserId = LandlordWorkspaceScope::creatingAgentUserId($request->user());
+        $landlord = $onboarding->createLandlordUser($data, $agentUserId);
 
-        if (! empty($data['property_id'])) {
-            $property = Property::query()->findOrFail((int) $data['property_id']);
-            $pct = (float) ($data['ownership_percent'] ?? 100);
+        if (! empty($extra['property_id'])) {
+            $property = Property::query()->findOrFail((int) $extra['property_id']);
+            $pct = (float) ($extra['ownership_percent'] ?? 100);
 
             $currentSum = (float) $property->landlords()->sum('property_landlord.ownership_percent');
             if ($currentSum + $pct > 100.0001) {
@@ -1512,22 +1820,8 @@ class PropertyPortfolioController extends Controller
             $property->landlords()->attach($landlord->id, ['ownership_percent' => $pct]);
         }
 
-        $mailWarning = null;
-        try {
-            Mail::to($landlord->email)->send(new LandlordPortalCredentialsMail(
-                landlordName: $landlord->name,
-                email: $landlord->email,
-                plainPassword: $plainPassword,
-                loginUrl: route('login'),
-                landlordHomeUrl: route('property.landlord.portfolio'),
-            ));
-        } catch (Throwable) {
-            $mailWarning = ' Landlord account created, but credential email was not sent (check mail settings).';
-        }
-
-        $message = $mailWarning === null
-            ? 'Landlord onboarded successfully. Credentials email sent.'
-            : 'Landlord onboarded successfully.'.$mailWarning;
+        $delivery = $onboarding->deliverCredentials($landlord, $plainPassword, $agentUserId);
+        $message = 'Landlord onboarded successfully. '.$delivery['summary'];
 
         $nextSteps = [
             'title' => 'Landlord onboarded',
@@ -1536,6 +1830,7 @@ class PropertyPortfolioController extends Controller
                 'id' => $landlord->id,
                 'name' => $landlord->name,
                 'email' => $landlord->email,
+                'phone' => $landlord->phone,
             ],
             'actions' => [
                 [
@@ -1557,42 +1852,27 @@ class PropertyPortfolioController extends Controller
 
         return back()
             ->with('success', $message)
-            ->with('next_steps', $nextSteps);
+            ->with('next_steps', $nextSteps)
+            ->with('landlord_portal_credentials', $this->stashLandlordPortalCredentials($landlord, $plainPassword, $delivery));
     }
 
     public function onboardLandlordJson(Request $request)
     {
         $landlordFields = $this->landlordFieldConfig();
-        $data = $request->validate([
-            'name' => [Rule::requiredIf($this->isFieldRequired($landlordFields, 'name')), 'nullable', 'string', 'max:255'],
-            'email' => [Rule::requiredIf($this->isFieldRequired($landlordFields, 'email')), 'nullable', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8', 'max:255'],
-        ]);
+        $onboarding = app(LandlordPortalOnboardingService::class);
+        $data = $onboarding->validateOnboardPayload(
+            $request,
+            $landlordFields,
+            fn (string $field) => $this->isFieldRequired($landlordFields, $field),
+        );
 
-        $plainPassword = (string) $data['password'];
-        $landlord = User::query()->create([
-            'name' => (string) $data['name'],
-            'email' => (string) $data['email'],
-            'password' => Hash::make($plainPassword),
-            'property_portal_role' => 'landlord',
-        ]);
-        if ($this->isAgentActor($request->user()) && Schema::hasColumn('users', 'agent_user_id')) {
-            $landlord->forceFill(['agent_user_id' => (int) $request->user()->id])->save();
-        }
+        $plainPassword = $data['password'];
+        $agentUserId = LandlordWorkspaceScope::creatingAgentUserId($request->user());
+        $landlord = $onboarding->createLandlordUser($data, $agentUserId);
+        $delivery = $onboarding->deliverCredentials($landlord, $plainPassword, $agentUserId);
 
-        // Email sending is best-effort; UI will still proceed even if mail isn't configured.
-        $mailOk = true;
-        try {
-            Mail::to($landlord->email)->send(new LandlordPortalCredentialsMail(
-                landlordName: $landlord->name,
-                email: $landlord->email,
-                plainPassword: $plainPassword,
-                loginUrl: route('login'),
-                landlordHomeUrl: route('property.landlord.portfolio'),
-            ));
-        } catch (Throwable) {
-            $mailOk = false;
-        }
+        $contactLabel = $landlord->email
+            ?: ($landlord->phone ?: 'landlord');
 
         return response()->json([
             'ok' => true,
@@ -1600,10 +1880,10 @@ class PropertyPortfolioController extends Controller
                 'id' => $landlord->id,
                 'name' => $landlord->name,
                 'email' => $landlord->email,
+                'phone' => $landlord->phone,
+                'label' => $landlord->name.' ('.$contactLabel.')',
             ],
-            'message' => $mailOk
-                ? 'Landlord created. Credentials email sent.'
-                : 'Landlord created. Email not sent (check mail settings).',
+            'message' => $delivery['summary'],
         ]);
     }
 
@@ -1615,6 +1895,7 @@ class PropertyPortfolioController extends Controller
             'code' => ['nullable', 'string', 'max:64', 'unique:properties,code'],
             'address_line' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:128'],
+            'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'charge_templates' => ['nullable', 'array', 'max:50'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
@@ -1626,6 +1907,11 @@ class PropertyPortfolioController extends Controller
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
         $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
+        if (array_key_exists('rent_due_day', $data) && ($data['rent_due_day'] === null || $data['rent_due_day'] === '')) {
+            $data['rent_due_day'] = null;
+        } elseif (isset($data['rent_due_day'])) {
+            $data['rent_due_day'] = \App\Services\Property\RentDueDayResolver::normalizeDueDay((int) $data['rent_due_day']);
+        }
         unset($data['commission_percent']);
         unset($data['charge_templates']);
 
@@ -1678,6 +1964,7 @@ class PropertyPortfolioController extends Controller
             'code' => ['nullable', 'string', 'max:64', 'unique:properties,code'],
             'address_line' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:128'],
+            'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'charge_templates' => ['nullable', 'array', 'max:50'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
@@ -1689,6 +1976,11 @@ class PropertyPortfolioController extends Controller
         ]);
         $commissionPercent = isset($data['commission_percent']) ? (float) $data['commission_percent'] : null;
         $chargeTemplates = $this->normalizePropertyChargeTemplates((array) ($data['charge_templates'] ?? []));
+        if (array_key_exists('rent_due_day', $data) && ($data['rent_due_day'] === null || $data['rent_due_day'] === '')) {
+            $data['rent_due_day'] = null;
+        } elseif (isset($data['rent_due_day'])) {
+            $data['rent_due_day'] = \App\Services\Property\RentDueDayResolver::normalizeDueDay((int) $data['rent_due_day']);
+        }
         unset($data['commission_percent']);
         unset($data['charge_templates']);
 
@@ -1714,10 +2006,11 @@ class PropertyPortfolioController extends Controller
 
     public function unitList(Request $request): View
     {
+        $includeArchived = $request->boolean('include_archived');
         $filters = $request->only([
             'q', 'property_id', 'status', 'unit_type', 'beds_min', 'beds_max', 'rent_min', 'rent_max', 'sort', 'dir',
         ]);
-        $query = PropertyUnit::query()->with([
+        $query = $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)->with([
             'property',
             'leases' => function ($q) {
                 $q->where('pm_leases.status', \App\Models\PmLease::STATUS_ACTIVE)
@@ -1815,14 +2108,14 @@ class PropertyPortfolioController extends Controller
             'unitFields' => $this->unitFieldConfig(),
             'paginator' => $units,
             'perPage' => $perPage,
-            'properties' => Property::query()
+            'properties' => $this->operationalPropertiesQuery($includeArchived)
                 ->whereDoesntHave('units')
                 ->orderBy('name')
                 ->get(),
-            'allProperties' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'allProperties' => $this->operationalPropertiesQuery($includeArchived)->orderBy('name')->get(['id', 'name']),
             'unitTypes' => $this->propertyUnitTypeOptions(),
             'bedroomOptionsByType' => $this->propertyBedroomOptionsByType(),
-            'filters' => $filters,
+            'filters' => array_merge($filters, ['include_archived' => $includeArchived ? '1' : '0']),
         ]);
     }
 
@@ -1841,6 +2134,29 @@ class PropertyPortfolioController extends Controller
         }
 
         return max(0.0, (float) $value);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $propertyBreakdown
+     */
+    private function displayCommissionPercent($propertyBreakdown, float $ownerShare, float $agentEarning, float $defaultPct): float
+    {
+        if ($ownerShare > 0) {
+            return round(max(0.0, ($agentEarning / $ownerShare) * 100), 2);
+        }
+
+        $rates = $propertyBreakdown
+            ->pluck('commission_percent')
+            ->filter(static fn ($rate) => is_numeric($rate))
+            ->map(static fn ($rate) => round((float) $rate, 2))
+            ->unique()
+            ->values();
+
+        if ($rates->count() === 1) {
+            return (float) $rates->first();
+        }
+
+        return max(0.0, $defaultPct);
     }
 
     private function setPropertyCommissionOverride(int $propertyId, ?float $percent): void
@@ -2188,6 +2504,29 @@ class PropertyPortfolioController extends Controller
             : $prefix.' ('.implode(' | ', $parts).')';
     }
 
+    private function userCanAccessOffboarding(): bool
+    {
+        $user = Auth::user();
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasPmPermission('property.archive.view')
+            || $user->hasPmPermission('property.offboarding.start')
+            || $user->hasPmPermission('properties.manage');
+    }
+
+    private function userCanStartOffboarding(): bool
+    {
+        $user = Auth::user();
+        if (! $user) {
+            return false;
+        }
+
+        return $user->hasPmPermission('property.offboarding.start')
+            || $user->hasPmPermission('properties.manage');
+    }
+
     private function isAgentActor(?User $user): bool
     {
         if (! $user) {
@@ -2200,55 +2539,89 @@ class PropertyPortfolioController extends Controller
 
     private function landlordUsersQueryForActor(?User $actor)
     {
-        $query = User::query()->where('property_portal_role', 'landlord');
-        if (! $this->isAgentActor($actor)) {
-            return $query;
+        return LandlordWorkspaceScope::applyToLandlordUsersQuery(
+            User::query()->where('property_portal_role', 'landlord'),
+            $actor,
+        );
+    }
+
+    /**
+     * @param  array{email_sent: bool, sms_sent: bool, summary: string}  $delivery
+     * @return array{
+     *   landlord_id: int,
+     *   name: string,
+     *   email: ?string,
+     *   phone: ?string,
+     *   temporary_password: string,
+     *   login_url: string,
+     *   delivery_summary: string
+     * }
+     */
+    private function landlordPortalCredentialsSession(User $landlord, string $plainPassword, array $delivery): array
+    {
+        return [
+            'landlord_id' => (int) $landlord->id,
+            'name' => (string) $landlord->name,
+            'email' => $landlord->email,
+            'phone' => $landlord->phone,
+            'temporary_password' => $plainPassword,
+            'login_url' => route('property.landlord.login'),
+            'delivery_summary' => (string) ($delivery['summary'] ?? ''),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function stashLandlordPortalCredentials(User $landlord, string $plainPassword, array $delivery): array
+    {
+        $credentials = $this->landlordPortalCredentialsSession($landlord, $plainPassword, $delivery);
+        session()->put('landlord_portal_credentials_pending_'.$landlord->id, $credentials);
+
+        return $credentials;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function resolveLandlordPortalCredentialsForShow(User $landlord): ?array
+    {
+        $landlordId = (int) $landlord->id;
+        $candidates = [
+            session('landlord_portal_credentials'),
+            session('landlord_portal_credentials_pending_'.$landlordId),
+        ];
+
+        foreach ($candidates as $creds) {
+            if (! is_array($creds)) {
+                continue;
+            }
+            if ((int) ($creds['landlord_id'] ?? 0) !== $landlordId) {
+                continue;
+            }
+            if (trim((string) ($creds['temporary_password'] ?? '')) === '') {
+                continue;
+            }
+
+            return $creds;
         }
 
-        $agentId = (int) $actor->id;
-        if (Schema::hasColumn('users', 'agent_user_id')) {
-            return $query->where('agent_user_id', $agentId);
-        }
-
-        return $query->whereExists(function ($sub) use ($agentId) {
-            $sub->selectRaw('1')
-                ->from('property_landlord as pl')
-                ->join('properties as p', 'p.id', '=', 'pl.property_id')
-                ->whereColumn('pl.user_id', 'users.id')
-                ->where('p.agent_user_id', $agentId);
-        });
+        return null;
     }
 
     private function ensureLandlordVisibleForActor(?User $actor, User $landlord): void
     {
-        if ((string) $landlord->property_portal_role !== 'landlord') {
-            abort(404);
-        }
-        if (! $this->isAgentActor($actor)) {
-            return;
-        }
-
-        $agentId = (int) $actor->id;
-        if (Schema::hasColumn('users', 'agent_user_id')) {
-            abort_unless((int) ($landlord->agent_user_id ?? 0) === $agentId, 404);
-            return;
-        }
-
-        $visible = DB::table('property_landlord as pl')
-            ->join('properties as p', 'p.id', '=', 'pl.property_id')
-            ->where('pl.user_id', $landlord->id)
-            ->where('p.agent_user_id', $agentId)
-            ->exists();
-        abort_unless($visible, 404);
+        abort_unless(LandlordWorkspaceScope::landlordVisibleToActor($landlord, $actor), 404);
     }
 
     public function unitListExport(Request $request)
     {
+        $includeArchived = $request->boolean('include_archived');
         $filters = $request->only([
             'q', 'property_id', 'status', 'unit_type', 'beds_min', 'beds_max', 'rent_min', 'rent_max',
         ]);
 
-        $query = PropertyUnit::query()->with([
+        $query = $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)->with([
             'property',
             'leases' => function ($q) {
                 $q->where('pm_leases.status', \App\Models\PmLease::STATUS_ACTIVE)
@@ -2342,6 +2715,9 @@ class PropertyPortfolioController extends Controller
             ],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
+
+        $property = Property::query()->findOrFail((int) $data['property_id']);
+        app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanAddUnit($property);
 
         $data['unit_type'] = $this->normalizeUnitTypeValue((string) ($data['unit_type'] ?? PropertyUnit::TYPE_APARTMENT));
 
@@ -2707,12 +3083,12 @@ class PropertyPortfolioController extends Controller
     {
         $defaults = [
             'name' => ['enabled' => true, 'required' => true],
-            'email' => ['enabled' => true, 'required' => true],
+            'email' => ['enabled' => true, 'required' => false],
             'phone' => ['enabled' => true, 'required' => false],
             'id_number' => ['enabled' => true, 'required' => false],
         ];
 
-        return $this->configuredFieldMap('system_setup_landlord_fields_json', $defaults, ['name', 'email']);
+        return $this->configuredFieldMap('system_setup_landlord_fields_json', $defaults, ['name']);
     }
 
     /**
@@ -2777,10 +3153,42 @@ class PropertyPortfolioController extends Controller
         return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
     }
 
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<PropertyUnit>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<PropertyUnit>
+     */
+    private function applyOperationalUnitScope($query, bool $includeArchived)
+    {
+        if ($includeArchived) {
+            return $query;
+        }
+
+        return $query->forOperationalProperty();
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Builder<Property>
+     */
+    private function operationalPropertiesQuery(bool $includeArchived)
+    {
+        $query = Property::query();
+
+        if (! $includeArchived) {
+            $query->operational();
+        }
+
+        return $query;
+    }
+
     public function destroyUnit(PropertyUnit $unit): RedirectResponse
     {
+        $property = $unit->property;
+        if ($property) {
+            app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanDestroyUnit($property);
+        }
+
         if ($unit->leases()->exists()) {
-            return back()->withErrors(['unit' => 'Cannot delete unit with lease history.']);
+            return back()->withErrors(['unit' => 'Cannot delete unit with lease history. Archived properties keep units for audit — no manual delete needed.']);
         }
         if ($unit->invoices()->exists()) {
             return back()->withErrors(['unit' => 'Cannot delete unit with invoices.']);
@@ -2818,6 +3226,8 @@ class PropertyPortfolioController extends Controller
         ]);
 
         $propertyId = (int) $data['property_id'];
+        $property = Property::query()->findOrFail($propertyId);
+        app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanAddUnit($property);
         $groups = (array) $data['unit_groups'];
         $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
 
@@ -3088,7 +3498,8 @@ class PropertyPortfolioController extends Controller
         $d60 = $today->copy()->subDays(60)->toDateString();
         $d90 = $today->copy()->subDays(90)->toDateString();
 
-        $baseQuery = PropertyUnit::query()
+        $includeArchived = $request->boolean('include_archived');
+        $baseQuery = $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)
             ->with([
                 'property',
                 'leases' => fn ($q) => $q->where('status', PmLease::STATUS_ACTIVE)->with('pmTenant'),
@@ -3252,8 +3663,8 @@ class PropertyPortfolioController extends Controller
                 'property_id' => $propertyId > 0 ? (string) $propertyId : '',
                 'q' => $search,
             ],
-            'propertyOptions' => Property::query()
-                ->whereIn('id', PropertyUnit::query()->select('property_id')->distinct())
+            'propertyOptions' => $this->operationalPropertiesQuery($includeArchived)
+                ->whereIn('id', $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)->select('property_id')->distinct())
                 ->orderBy('name')
                 ->get(['id', 'name']),
             'vacancyAging' => $vacancyAging,

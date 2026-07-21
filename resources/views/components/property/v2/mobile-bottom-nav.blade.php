@@ -14,7 +14,7 @@
     @foreach ($primaryNav as $item)
         @php $active = PropertyNavigation::routeIsActive($currentRoute, $item['patterns']); @endphp
         <a
-            href="{{ route($item['route'], [], false) }}"
+            href="{{ PropertyNavigation::workspaceHref($item) }}"
             data-turbo-frame="property-main"
             data-property-nav="{{ implode('|', $item['patterns']) }}"
             @if ($active) aria-current="page" @endif

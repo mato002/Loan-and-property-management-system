@@ -5,13 +5,14 @@
     :stats="[
         ['label' => 'Risk', 'value' => ucfirst($tenant->risk_level), 'hint' => 'Current'],
         ['label' => 'Leases', 'value' => (string) ($tenant->leases_count ?? 0), 'hint' => 'Linked'],
-        ['label' => 'Invoices', 'value' => (string) ($invoiceTotals['count'] ?? $tenant->invoices_count ?? 0), 'hint' => 'All periods'],
-        ['label' => 'Outstanding', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($invoiceTotals['due'] ?? 0)), 'hint' => 'Invoices + carry-forward'],
+        ['label' => 'Invoice AR', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($totalDue['invoice_ar'] ?? 0)), 'hint' => 'Billable open balances'],
+        ['label' => 'Total due', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($totalDue['total_due'] ?? 0)), 'hint' => 'AR + uninvoiced CF − credit'],
     ]"
     :columns="[]"
 >
     @php
         $leaseCarryForward = $leaseCarryForward ?? ['total' => 0.0, 'lines' => [], 'invoiced' => false];
+        $totalDue = $totalDue ?? ['invoice_ar' => 0.0, 'uninvoiced_cf' => 0.0, 'tenant_credit' => 0.0, 'total_due' => 0.0];
     @endphp
     <x-slot name="actions">
         <a href="{{ route('property.tenants.edit', $tenant, false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit tenant</a>
@@ -25,11 +26,34 @@
     </x-slot>
 
     <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mb-4">
-        <h3 class="text-sm font-semibold text-slate-900">Financial summary</h3>
-        <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <h3 class="text-sm font-semibold text-slate-900">Total due (canonical)</h3>
+        <p class="mt-1 text-xs text-slate-500">Invoice AR + uninvoiced carry-forward − tenant credit</p>
+        <div class="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
             <div class="rounded-xl bg-rose-50 border border-rose-100 p-3">
-                <p class="text-xs text-rose-700 uppercase font-semibold">Outstanding</p>
-                <p class="mt-1 text-lg font-bold text-rose-900">{{ \App\Services\Property\PropertyMoney::kes((float) ($invoiceTotals['due'] ?? 0)) }}</p>
+                <p class="text-xs text-rose-700 uppercase font-semibold">Invoice AR</p>
+                <p class="mt-1 text-lg font-bold text-rose-900">{{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['invoice_ar'] ?? 0)) }}</p>
+            </div>
+            <div class="rounded-xl bg-amber-50 border border-amber-100 p-3">
+                <p class="text-xs text-amber-700 uppercase font-semibold">Uninvoiced CF</p>
+                <p class="mt-1 text-lg font-bold text-amber-900">{{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['uninvoiced_cf'] ?? 0)) }}</p>
+            </div>
+            <div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3">
+                <p class="text-xs text-emerald-700 uppercase font-semibold">Tenant credit</p>
+                <p class="mt-1 text-lg font-bold text-emerald-900">− {{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['tenant_credit'] ?? 0)) }}</p>
+            </div>
+            <div class="rounded-xl bg-indigo-50 border border-indigo-100 p-3 md:col-span-2">
+                <p class="text-xs text-indigo-700 uppercase font-semibold">Total due</p>
+                <p class="mt-1 text-2xl font-bold text-indigo-900">{{ \App\Services\Property\PropertyMoney::kes((float) ($totalDue['total_due'] ?? 0)) }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm mb-4">
+        <h3 class="text-sm font-semibold text-slate-900">Activity</h3>
+        <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div class="rounded-xl bg-slate-50 border border-slate-100 p-3">
+                <p class="text-xs text-slate-600 uppercase font-semibold">Billable invoices</p>
+                <p class="mt-1 text-lg font-bold text-slate-900">{{ (string) ($invoiceTotals['count'] ?? 0) }}</p>
             </div>
             <div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3">
                 <p class="text-xs text-emerald-700 uppercase font-semibold">Credit balance</p>
@@ -39,7 +63,7 @@
                 <p class="text-xs text-blue-700 uppercase font-semibold">Last payment</p>
                 <p class="mt-1 font-semibold text-blue-900">
                     @if ($lastPayment ?? null)
-                        {{ \App\Services\Property\PropertyMoney::kes((float) $lastPayment->amount) }}
+                        {{ \App\Services\Property\PropertyMoney::kes((float) ($lastPaymentAmount ?? $lastPayment->allocations->sum('amount'))) }}
                         <span class="block text-xs font-normal text-blue-700">{{ $lastPayment->paid_at?->format('Y-m-d') ?? '—' }}</span>
                     @else
                         —

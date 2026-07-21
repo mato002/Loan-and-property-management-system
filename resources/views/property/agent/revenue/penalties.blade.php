@@ -58,8 +58,22 @@
                     <input type="number" name="amount" value="{{ old('amount') }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 </div>
                 <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Compounding mode</label>
+                    <select name="compounding_mode" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="simple" @selected(old('compounding_mode', 'simple') === 'simple')>Simple (single period)</option>
+                        <option value="daily_compound" @selected(old('compounding_mode') === 'daily_compound')>Daily compound</option>
+                        <option value="one_shot" @selected(old('compounding_mode') === 'one_shot')>One-shot (once per invoice)</option>
+                    </select>
+                    <p class="mt-1 text-[11px] text-amber-700 dark:text-amber-400">Daily compounding grows penalty exponentially with overdue days.</p>
+                </div>
+                <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Cap (KES)</label>
                     <input type="number" name="cap" value="{{ old('cap') }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Cumulative cap (KES)</label>
+                    <input type="number" name="cumulative_cap" value="{{ old('cumulative_cap') }}" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                    <p class="mt-1 text-[11px] text-slate-500">Optional lifetime cap per invoice for this rule.</p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Effective from</label>

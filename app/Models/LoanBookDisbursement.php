@@ -51,4 +51,74 @@ class LoanBookDisbursement extends Model
     {
         return $this->belongsTo(AccountingJournalEntry::class, 'accounting_journal_entry_id');
     }
+
+    public function isJournalReversed(): bool
+    {
+        $this->loadMissing('accountingJournalEntry');
+
+        return ($this->accountingJournalEntry?->status ?? '') === AccountingJournalEntry::STATUS_REVERSED;
+    }
+
+    /**
+     * Payout status for UI — journal reversal overrides stored payout_status.
+     */
+    public function effectivePayoutStatus(): string
+    {
+        if ($this->isJournalReversed()) {
+            return 'reversed';
+        }
+
+        return strtolower((string) ($this->payout_status ?? 'completed'));
+    }
+
+    /**
+     * @return array{label: string, class: string}
+     */
+    public function payoutStatusBadge(): array
+    {
+        return match ($this->effectivePayoutStatus()) {
+            'reversed' => ['label' => 'Reversed', 'class' => 'bg-violet-100 text-violet-800'],
+            'failed' => ['label' => 'Failed', 'class' => 'bg-red-100 text-red-700'],
+            'pending', 'queued', 'processing' => ['label' => 'Pending', 'class' => 'bg-amber-100 text-amber-700'],
+            'completed' => ['label' => 'Completed', 'class' => 'bg-emerald-100 text-emerald-700'],
+            default => ['label' => ucfirst($this->effectivePayoutStatus()), 'class' => 'bg-slate-100 text-slate-700'],
+        };
+    }
+
+    /**
+     * True when no live disbursement blocks recording a new payout on this loan.
+     */
+    public function blocksNewDisbursement(): bool
+    {
+        if (! $this->accounting_journal_entry_id) {
+            return true;
+        }
+
+        return ! $this->isJournalReversed();
+    }
+
+    public function canBeRemoved(): bool
+    {
+        if (! $this->accounting_journal_entry_id) {
+            return true;
+        }
+
+        $this->loadMissing('accountingJournalEntry');
+        $entry = $this->accountingJournalEntry;
+
+        return $entry !== null && ($entry->status ?? '') === AccountingJournalEntry::STATUS_REVERSED;
+    }
+
+    public function removalBlockReason(): ?string
+    {
+        if ($this->canBeRemoved()) {
+            return null;
+        }
+
+        if ($this->accounting_journal_entry_id) {
+            return 'This disbursement is linked to a posted journal entry. Open the journal under Accounting and reverse it first, then remove this line and record the correct amount again.';
+        }
+
+        return 'This disbursement cannot be removed.';
+    }
 }

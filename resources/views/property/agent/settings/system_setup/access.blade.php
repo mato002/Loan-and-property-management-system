@@ -1,5 +1,5 @@
 <x-property-layout>
-    <x-slot name="header">System setup ┬╖ Access control</x-slot>
+    <x-slot name="header">System setup  -  Access control</x-slot>
 
     <x-property.page
         title="Access control"

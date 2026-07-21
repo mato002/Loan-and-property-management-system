@@ -87,8 +87,8 @@ final class LandlordPortalNotifications
         }
 
         $overdue = PmInvoice::query()
+            ->pastDueOpen()
             ->whereIn('property_unit_id', $unitIds)
-            ->where('status', PmInvoice::STATUS_OVERDUE)
             ->with(['unit.property', 'tenant'])
             ->orderBy('due_date')
             ->limit(10)

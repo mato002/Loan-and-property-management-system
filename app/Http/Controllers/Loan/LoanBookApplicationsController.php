@@ -11,12 +11,12 @@ use App\Models\LoanBranch;
 use App\Models\LoanClient;
 use App\Models\LoanFormFieldDefinition;
 use App\Models\LoanProduct;
-use App\Models\PmInvoice;
 use App\Models\User;
 use App\Services\LoanBook\BorrowerClassificationService;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\LoanClientPortalMatchService;
 use App\Services\LoanSettingsApplicationFormConfigService;
+use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -1814,13 +1814,7 @@ class LoanBookApplicationsController extends Controller
             return false;
         }
 
-        $arrears = (float) (PmInvoice::query()
-            ->where('pm_tenant_id', $tenant->id)
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->selectRaw('COALESCE(SUM(amount - amount_paid), 0) as arrears')
-            ->value('arrears') ?? 0.0);
-
-        return $arrears > 0;
+        return app(FinanceBalanceSnapshotService::class)->tenantHasOutstanding((int) $tenant->id);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Services\Property;
 
 use App\Models\Concerns\AgentWorkspaceScope;
+use App\Support\Property\LandlordWorkspaceScope;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmMaintenanceJob;
@@ -15,13 +16,13 @@ use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\UnassignedPayment;
 use App\Models\User;
+use App\Services\BulkSmsService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use App\Services\BulkSmsService;
 
 final class PropertyDashboardOverview
 {
@@ -48,11 +49,10 @@ final class PropertyDashboardOverview
     {
         $landlordsQuery = User::query()->where('property_portal_role', 'landlord');
         if ($applyAgentFilter && $agentUserId) {
-            if (Schema::hasColumn('users', 'agent_user_id')) {
-                $landlordsQuery->where('agent_user_id', $agentUserId);
-            } else {
-                $landlordsQuery->whereHas('landlordProperties', fn ($q) => $q->where('properties.agent_user_id', $agentUserId));
-            }
+            $landlordsQuery = LandlordWorkspaceScope::applyToLandlordUsersQuery(
+                $landlordsQuery,
+                User::query()->find($agentUserId),
+            );
         }
 
         $landlordUsers = (int) (clone $landlordsQuery)->count();
@@ -78,26 +78,31 @@ final class PropertyDashboardOverview
     {
         $year = (int) now()->year;
 
-        $properties = Property::query()->count();
-        $unitsTotal = PropertyUnit::query()->count();
-        $unitsOccupied = PropertyUnit::query()->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
-        $unitsVacant = PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)->count();
+        $properties = Property::query()->operational()->count();
+        $operationalPropertyIds = Property::query()->operational()->select('id');
+        $unitsTotal = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->count();
+        $unitsOccupied = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
+        $unitsVacant = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_VACANT)->count();
         $tenants = PmTenant::query()->count();
-        $leasesActive = PmLease::query()->where('status', PmLease::STATUS_ACTIVE)->count();
+        $leasesActive = PmLease::query()
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->whereHas('units', fn ($q) => $q->whereIn('property_id', $operationalPropertyIds))
+            ->count();
         $leasesExpiring = PmLease::query()
             ->where('status', PmLease::STATUS_ACTIVE)
+            ->whereHas('units', fn ($q) => $q->whereIn('property_id', $operationalPropertyIds))
             ->whereBetween('end_date', [now()->toDateString(), now()->addDays(60)->toDateString()])
             ->count();
 
-        $openInvoiceBalance = (float) (PmInvoice::query()
-            ->liveBalances()
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->selectRaw('COALESCE(SUM(amount - amount_paid), 0) as t')
-            ->value('t') ?? 0);
+        $formulas = app(FinancialReportingFormulaService::class);
+        $openInvoiceBalance = $formulas->outstandingGlobal();
 
-        $overdueCount = PmInvoice::query()->where('status', PmInvoice::STATUS_OVERDUE)->count();
+        $overdueCount = PmInvoice::countPastDueOpen();
         $mtdCollected = PropertyDashboardStats::mtdCollected();
-        $billedYtd = (float) PmInvoice::query()->whereYear('issue_date', $year)->sum('amount');
+        $billedYtd = $formulas->billedForPeriod(
+            Carbon::create($year, 1, 1)->startOfYear(),
+            Carbon::create($year, 12, 31)->endOfYear(),
+        );
 
         $maintOpen = PmMaintenanceRequest::query()->where('status', 'open')->count();
         $maintInProgress = PmMaintenanceRequest::query()->where('status', 'in_progress')->count();
@@ -170,7 +175,7 @@ final class PropertyDashboardOverview
                 'bar' => 'bg-orange-500',
             ],
             [
-                'label' => 'Collected (MTD)',
+                'label' => 'Collections (MTD)',
                 'value' => PropertyMoney::kes($mtdCollected),
                 'icon' => 'fa-sack-dollar',
                 'route' => 'property.revenue.payments',
@@ -184,7 +189,7 @@ final class PropertyDashboardOverview
                 'bar' => 'bg-teal-500',
             ],
             [
-                'label' => 'Outstanding AR',
+                'label' => 'Tenant arrears',
                 'value' => PropertyMoney::kes($openInvoiceBalance),
                 'icon' => 'fa-scale-unbalanced',
                 'route' => 'property.revenue.arrears',
@@ -308,17 +313,24 @@ final class PropertyDashboardOverview
                 ->all();
         }
 
-        $arrearsToday = PmMessageLog::query()
-            ->whereDate('created_at', now()->toDateString())
-            ->whereIn('channel', ['email', 'sms'])
-            ->where('subject', 'like', '[ARREARS]%');
-        $remindersSentToday = (clone $arrearsToday)->where('delivery_status', 'sent')->count();
-        $remindersFailedToday = (clone $arrearsToday)->where('delivery_status', 'failed')->count();
+        $smsHealth = app(SmsHealthService::class);
+        $today = now();
+        $reminderTable = (new PmMessageLog)->getTable();
+        $remindersTodayBase = PmMessageLog::query()
+            ->whereDate("{$reminderTable}.created_at", $today->toDateString())
+            ->whereIn("{$reminderTable}.channel", ['email', 'sms']);
+        $smsHealth->applyRentReminderLogScope($remindersTodayBase, $reminderTable);
+        $remindersSentToday = (clone $remindersTodayBase)
+            ->whereIn("{$reminderTable}.delivery_status", ['sent', 'delivered'])
+            ->count();
+        $remindersFailedToday = $smsHealth->rentReminderFailuresNeedingActionToday();
 
+        $recentReminderTable = (new PmMessageLog)->getTable();
         $recentArrearsReminders = PmMessageLog::query()
-            ->whereIn('channel', ['email', 'sms'])
-            ->where('subject', 'like', '[ARREARS]%')
-            ->orderByDesc('id')
+            ->whereIn("{$recentReminderTable}.channel", ['email', 'sms']);
+        $smsHealth->applyRentReminderLogScope($recentArrearsReminders, $recentReminderTable);
+        $recentArrearsReminders = $recentArrearsReminders
+            ->orderByDesc("{$recentReminderTable}.id")
             ->limit(6)
             ->get(['channel', 'to_address', 'delivery_status', 'delivery_error', 'created_at', 'subject'])
             ->map(function (PmMessageLog $m) {
@@ -378,18 +390,23 @@ final class PropertyDashboardOverview
         $mailFrom = (string) (config('mail.from.address') ?? config('mail.from') ?? env('MAIL_FROM_ADDRESS', ''));
         $smtpHost = (string) (config('mail.mailers.smtp.host') ?? env('MAIL_HOST', ''));
         $mailConfigured = $mailFrom !== '' && $smtpHost !== '';
-        $lastArrearsError = PmMessageLog::query()
-            ->where('delivery_status', 'failed')
-            ->where('subject', 'like', '[ARREARS]%')
-            ->orderByDesc('id')
-            ->value('delivery_error') ?? '';
+        $lastArrearsError = $smsHealth->lastUnresolvedRentReminderSmsError();
         $bulk = app(BulkSmsService::class);
-        $smsWalletBalance = $bulk->walletBalance();
-        $provider = Cache::remember(
-            PropertyDashboardCache::smsProviderBalanceKey(),
-            300,
-            static fn () => $bulk->providerBalance(),
-        );
+        $smsWalletBalance = $bulk->walletBalanceForDisplay();
+        $provider = $bulk->providerBalanceForDisplay();
+        $authUser = auth()->user();
+        $canManageCommunications = $authUser && $authUser->hasPmPermission('communications.manage');
+        $topupConfig = $bulk->topupUiConfig();
+        $defaultTopupPhone = '';
+        if ($authUser) {
+            foreach ([$authUser->phone ?? null, $authUser->mobile ?? null] as $candidate) {
+                $candidate = trim((string) $candidate);
+                if ($candidate !== '') {
+                    $defaultTopupPhone = $candidate;
+                    break;
+                }
+            }
+        }
 
         $recentLandlordLinksQuery = DB::table('property_landlord as pl')
             ->join('properties as p', 'p.id', '=', 'pl.property_id')
@@ -449,6 +466,15 @@ final class PropertyDashboardOverview
                 'balance' => isset($provider['balance']) ? (float) $provider['balance'] : null,
                 'error' => (string) ($provider['error'] ?? ''),
             ],
+            'smsWallet' => $bulk->walletStatusForDisplay(),
+            'smsTopup' => [
+                'config' => $topupConfig,
+                'can_topup' => $canManageCommunications && ($topupConfig['enabled'] ?? false),
+                // Recent top-ups are loaded on Communications → Provider SMS (avoids provider HTTP here).
+                'recent' => [],
+                'default_phone' => $defaultTopupPhone,
+            ],
+            'canManageCommunications' => $canManageCommunications,
         ];
     }
 }

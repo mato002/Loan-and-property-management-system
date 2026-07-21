@@ -9,6 +9,7 @@ use App\Models\LoanBookPayment;
 use App\Models\LoanClient;
 use App\Models\PmInvoice;
 use App\Models\PmLandlordLedgerEntry;
+use App\Models\PmLandlordRemittanceRequest;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmPayment;
@@ -18,8 +19,12 @@ use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\LoanClientPortalMatchService;
+use App\Services\Property\FinanceBalanceSnapshotService;
+use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\LandlordLedger;
 use App\Services\Property\LandlordPortalNotifications;
+use App\Services\Property\LandlordPortalRemittanceService;
+use App\Services\Property\LandlordPortalSnapshotService;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Http\RedirectResponse;
@@ -71,21 +76,21 @@ class LandlordPortalController extends Controller
 
         $collectionRate = $gross > 0 ? round(($mtdCollected / $gross) * 100, 1) : null;
 
+        $formulas = app(FinancialReportingFormulaService::class);
+        $unitIdList = $unitIds->all();
+
         $arrears = $unitIds->isNotEmpty()
-            ? (float) PmInvoice::query()->liveBalances()->whereIn('property_unit_id', $unitIds)
-                ->whereColumn('amount_paid', '<', 'amount')
-                ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
-                ->value('t')
+            ? $formulas->unitOutstanding($unitIdList)
             : 0.0;
 
+        $balanceSnapshot = app(FinanceBalanceSnapshotService::class);
+
         $dueNext30Days = $unitIds->isNotEmpty()
-            ? (float) PmInvoice::query()
-                ->liveBalances()
-                ->whereIn('property_unit_id', $unitIds)
-                ->whereBetween('due_date', [now()->startOfDay(), now()->copy()->addDays(30)->endOfDay()])
-                ->whereColumn('amount_paid', '<', 'amount')
-                ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
-                ->value('t')
+            ? $balanceSnapshot->outstandingSum(
+                $balanceSnapshot->billableArQuery()
+                    ->whereIn('property_unit_id', $unitIdList)
+                    ->whereBetween('due_date', [now()->startOfDay(), now()->copy()->addDays(30)->endOfDay()])
+            )
             : 0.0;
 
         $openMaintenanceCount = $unitIds->isNotEmpty()
@@ -104,33 +109,32 @@ class LandlordPortalController extends Controller
                 ->get()
             : collect();
 
-        $propertyBreakdown = $properties->map(function ($property) {
+        $propertyBreakdown = $properties->map(function ($property) use ($balanceSnapshot, $formulas) {
             $pUnits = $property->units;
-            $pUnitIds = $pUnits->pluck('id');
+            $pUnitIds = $pUnits->pluck('id')->all();
 
-            $pArrears = $pUnitIds->isNotEmpty()
-                ? (float) PmInvoice::query()
-                    ->liveBalances()
-                    ->whereIn('property_unit_id', $pUnitIds)
-                    ->whereColumn('amount_paid', '<', 'amount')
-                    ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
-                    ->value('t')
+            $pArrears = $pUnitIds !== []
+                ? $formulas->unitOutstanding($pUnitIds)
                 : 0.0;
 
-            $pMtdBilled = $pUnitIds->isNotEmpty()
-                ? (float) PmInvoice::query()
-                    ->whereIn('property_unit_id', $pUnitIds)
-                    ->whereYear('due_date', now()->year)
-                    ->whereMonth('due_date', now()->month)
-                    ->sum('amount')
+            $pMtdBilled = $pUnitIds !== []
+                ? app(FinancialReportingFormulaService::class)->billedForPeriod(
+                    now()->startOfMonth(),
+                    now()->endOfMonth(),
+                    null,
+                    $pUnitIds,
+                )
                 : 0.0;
 
             $pOcc = $pUnits->count() > 0
                 ? round(($pUnits->where('status', PropertyUnit::STATUS_OCCUPIED)->count() / $pUnits->count()) * 100, 1)
                 : null;
 
+            $ownershipPct = (float) ($property->pivot->ownership_percent ?? 100);
+
             return [
                 'name' => $property->name,
+                'ownership' => $ownershipPct,
                 'units' => $pUnits->count(),
                 'occupancy' => $pOcc,
                 'mtd_billed' => $pMtdBilled,
@@ -179,6 +183,12 @@ class LandlordPortalController extends Controller
             return ['name' => $p->name, 'rate' => $rate];
         })->sortByDesc('rate')->take(8)->values();
 
+        $remittance = app(LandlordPortalRemittanceService::class);
+        $pendingRemittanceCount = PmLandlordRemittanceRequest::query()
+            ->where('user_id', $user->id)
+            ->where('status', PmLandlordRemittanceRequest::STATUS_PENDING)
+            ->count();
+
         return property_view('property.landlord.portfolio', [
             'incomeMonth' => PropertyMoney::kes($gross),
             'incomeCollectedMonth' => PropertyMoney::kes($mtdCollected),
@@ -196,6 +206,8 @@ class LandlordPortalController extends Controller
             'propertyBreakdown' => $propertyBreakdown,
             'recentInvoices' => $recentInvoices,
             'digestCount' => count($digest),
+            'pendingRemittanceCount' => $pendingRemittanceCount,
+            'availableBalance' => PropertyMoney::kes($remittance->availableForRequest($user)),
             'chartMonths' => $months,
             'chartBilled' => $billedSeries,
             'chartCollected' => $collectedSeries,
@@ -206,33 +218,33 @@ class LandlordPortalController extends Controller
     public function earnings(Request $request): View
     {
         $user = $request->user();
-        $bal = LandlordLedger::balance($user);
+        $remittance = app(LandlordPortalRemittanceService::class);
         $propIds = $user->landlordProperties()->pluck('properties.id');
         $unitIds = PropertyUnit::query()->whereIn('property_id', $propIds)->pluck('id');
-        $pending = $unitIds->isNotEmpty()
-            ? (float) PmInvoice::query()
-                ->liveBalances()
-                ->whereIn('property_unit_id', $unitIds)
-                ->whereColumn('amount_paid', '<', 'amount')
-                ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
-                ->value('t')
+        $tenantAr = $unitIds->isNotEmpty()
+            ? app(FinancialReportingFormulaService::class)->unitOutstanding($unitIds->all())
             : 0.0;
 
         $payoutPrefs = $this->latestActionContext($user, 'landlord_payout_preferences');
 
         return property_view('property.landlord.earnings.index', [
-            'available' => PropertyMoney::kes($bal),
-            'pending' => PropertyMoney::kes($pending),
+            'ledgerBalance' => PropertyMoney::kes($remittance->ledgerBalance($user)),
+            'available' => PropertyMoney::kes($remittance->availableForRequest($user)),
+            'pendingRemittances' => PropertyMoney::kes($remittance->pendingRemittanceTotal($user)),
+            'tenantAr' => PropertyMoney::kes($tenantAr),
             'payoutPrefs' => $payoutPrefs,
         ]);
     }
 
     public function withdraw(Request $request): View
     {
-        $prefs = $this->latestActionContext($request->user(), 'landlord_payout_preferences');
+        $user = $request->user();
+        $remittance = app(LandlordPortalRemittanceService::class);
+        $prefs = $this->latestActionContext($user, 'landlord_payout_preferences');
 
         return property_view('property.landlord.earnings.withdraw', [
-            'available' => PropertyMoney::kes(LandlordLedger::balance($request->user())),
+            'ledgerBalance' => PropertyMoney::kes($remittance->ledgerBalance($user)),
+            'available' => PropertyMoney::kes($remittance->availableForRequest($user)),
             'payoutPrefs' => $prefs,
         ]);
     }
@@ -246,10 +258,7 @@ class LandlordPortalController extends Controller
             'reference_note' => ['nullable', 'string', 'max:120'],
         ]);
         $user = $request->user();
-        $bal = LandlordLedger::balance($user);
-        if ((float) $data['amount'] > $bal) {
-            return back()->withErrors(['amount' => 'Amount exceeds available balance.'])->withInput();
-        }
+        $remittance = app(LandlordPortalRemittanceService::class);
 
         $dest = $data['payout_destination'];
         $detail = trim((string) $data['destination_detail']);
@@ -259,29 +268,34 @@ class LandlordPortalController extends Controller
             return back()->withErrors(['destination_detail' => 'Enter a valid M-Pesa phone number.'])->withInput();
         }
 
-        LandlordLedger::post(
-            $user,
-            PmLandlordLedgerEntry::DIRECTION_DEBIT,
-            (float) $data['amount'],
-            'Withdrawal ('.$dest.' - '.$detail.')'.($refNote !== '' ? ' ref: '.$refNote : '').' — manual ledger',
-        );
+        try {
+            $instruction = $remittance->createRequest(
+                $user,
+                (float) $data['amount'],
+                $dest,
+                $detail,
+                $refNote !== '' ? $refNote : null,
+            );
+        } catch (\InvalidArgumentException $e) {
+            return back()->withErrors(['amount' => $e->getMessage()])->withInput();
+        }
 
-        $this->recordLandlordAction($request, 'landlord_withdrawal_request', 'Withdrawal request submitted', [
+        $this->recordLandlordAction($request, 'landlord_withdrawal_request', 'Remittance instruction submitted', [
+            'remittance_id' => (int) $instruction->id,
             'amount' => (float) $data['amount'],
             'destination' => $dest,
             'destination_detail' => $detail,
             'reference_note' => $refNote !== '' ? $refNote : null,
-            'status' => 'submitted',
+            'status' => PmLandlordRemittanceRequest::STATUS_PENDING,
         ]);
 
-        return redirect()->route('property.landlord.earnings.index')->with('success', 'Withdrawal posted to ledger.');
+        return redirect()->route('property.landlord.earnings.remittances')
+            ->with('success', 'Remittance instruction submitted. Your agency will process payment manually.');
     }
 
-    public function payoutSettings(Request $request): View
+    public function payoutSettings(Request $request): RedirectResponse
     {
-        return property_view('property.landlord.earnings.settings', [
-            'payoutPrefs' => $this->latestActionContext($request->user(), 'landlord_payout_preferences'),
-        ]);
+        return redirect()->route('property.landlord.settings.index', ['section' => 'payout']);
     }
 
     public function savePayoutSettings(Request $request): RedirectResponse
@@ -304,7 +318,9 @@ class LandlordPortalController extends Controller
 
         $this->recordLandlordAction($request, 'landlord_payout_preferences', 'Updated payout preferences', $context);
 
-        return back()->with('success', 'Payout settings saved.');
+        return redirect()
+            ->route('property.landlord.settings.index', ['section' => 'payout'])
+            ->with('success', 'Payout settings saved.');
     }
 
     public function history(Request $request): View
@@ -325,16 +341,25 @@ class LandlordPortalController extends Controller
         $creditMtd = (float) (clone $mtdBase)->where('direction', PmLandlordLedgerEntry::DIRECTION_CREDIT)->sum('amount');
         $debitMtd = (float) (clone $mtdBase)->where('direction', PmLandlordLedgerEntry::DIRECTION_DEBIT)->sum('amount');
 
-        $rows = $entries->map(fn (PmLandlordLedgerEntry $e) => [
-            $e->occurred_at->format('Y-m-d H:i'),
-            ucfirst($e->direction),
-            $e->description,
-            $e->property?->name ?? '—',
-            $e->direction === PmLandlordLedgerEntry::DIRECTION_DEBIT ? number_format((float) $e->amount, 2) : '—',
-            $e->direction === PmLandlordLedgerEntry::DIRECTION_CREDIT ? number_format((float) $e->amount, 2) : '—',
-            number_format((float) $e->balance_after, 2),
-            '—',
-        ])->all();
+        $snapshot = app(LandlordPortalSnapshotService::class);
+        $rows = $entries->map(function (PmLandlordLedgerEntry $e) use ($snapshot) {
+            $doc = $snapshot->ledgerDocumentLink($e);
+            $docCell = '—';
+            if ($doc !== null) {
+                $docCell = new HtmlString('<a href="'.route($doc['route'], $doc['params']).'" class="text-emerald-700 hover:underline text-xs">'.$doc['label'].'</a>');
+            }
+
+            return [
+                $e->occurred_at->format('Y-m-d H:i'),
+                ucfirst($e->direction),
+                $e->description,
+                $e->property?->name ?? '—',
+                $e->direction === PmLandlordLedgerEntry::DIRECTION_DEBIT ? number_format((float) $e->amount, 2) : '—',
+                $e->direction === PmLandlordLedgerEntry::DIRECTION_CREDIT ? number_format((float) $e->amount, 2) : '—',
+                number_format((float) $e->balance_after, 2),
+                $docCell,
+            ];
+        })->all();
 
         return property_view('property.landlord.earnings.history', [
             'stats' => [
@@ -499,6 +524,24 @@ class LandlordPortalController extends Controller
     public function properties(Request $request): View
     {
         $user = $request->user();
+        $view = (string) $request->query('view', 'list');
+
+        if ($view === 'vacancies') {
+            $units = app(LandlordPortalSnapshotService::class)->vacantUnits($user);
+            $properties = $user->landlordProperties()->withCount('units')->get();
+
+            return property_view('property.landlord.properties', [
+                'activeView' => 'vacancies',
+                'vacancyUnits' => $units,
+                'stats' => [
+                    ['label' => 'Vacant / notice', 'value' => (string) count($units), 'hint' => ''],
+                    ['label' => 'Properties', 'value' => (string) $properties->count(), 'hint' => ''],
+                ],
+                'columns' => [],
+                'tableRows' => [],
+            ]);
+        }
+
         $properties = $user->landlordProperties()->with('units')->withCount('units')->orderBy('name')->get();
         $rows = $properties->map(function ($p) {
             $units = $p->units;
@@ -540,8 +583,8 @@ class LandlordPortalController extends Controller
             $unitSummary = new HtmlString($unitLines);
             $actionLinks = new HtmlString(
                 '<div class="flex flex-wrap gap-2">'.
-                    '<a href="'.route('property.landlord.reports.income', ['property_id' => $p->id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Income</a>'.
-                    '<a href="'.route('property.landlord.reports.statement', ['property_id' => $p->id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Statement</a>'.
+                    '<a href="'.route('property.landlord.reports.index', ['panel' => 'income', 'property_id' => $p->id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Income</a>'.
+                    '<a href="'.route('property.landlord.reports.index', ['panel' => 'statement', 'property_id' => $p->id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Ledger</a>'.
                     '<a href="'.route('property.landlord.maintenance', ['property_id' => $p->id]).'" data-turbo-frame="property-main" class="inline-flex rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Maintenance</a>'.
                 '</div>'
             );
@@ -559,6 +602,7 @@ class LandlordPortalController extends Controller
         })->all();
 
         return property_view('property.landlord.properties', [
+            'activeView' => 'list',
             'stats' => [
                 ['label' => 'Properties', 'value' => (string) $properties->count(), 'hint' => ''],
                 ['label' => 'Units', 'value' => (string) $properties->sum('units_count'), 'hint' => ''],
@@ -600,7 +644,6 @@ class LandlordPortalController extends Controller
 
         return property_view('property.landlord.notifications', [
             'notifications' => $items,
-            'notificationPrefs' => $prefs,
         ]);
     }
 
@@ -614,7 +657,9 @@ class LandlordPortalController extends Controller
         ];
         $this->recordLandlordAction($request, 'landlord_notification_preferences', 'Updated notification preferences', $context);
 
-        return back()->with('success', 'Notification preferences saved.');
+        return redirect()
+            ->route('property.landlord.settings.index', ['section' => 'alerts'])
+            ->with('success', 'Notification preferences saved.');
     }
 
     public function maintenance(Request $request): View
@@ -652,6 +697,9 @@ class LandlordPortalController extends Controller
             'approvalThreshold' => $threshold,
             'pendingOnly' => $pendingOnly,
             'selectedPropertyId' => $selectedPropertyId > 0 ? $selectedPropertyId : null,
+            'units' => $unitIds->isNotEmpty()
+                ? PropertyUnit::query()->with('property')->whereIn('id', $unitIds)->orderBy('property_id')->orderBy('label')->get()
+                : collect(),
         ]);
     }
 
@@ -711,8 +759,12 @@ class LandlordPortalController extends Controller
         ])->with('success', 'Approval threshold updated.');
     }
 
-    public function reportIncome(Request $request): View
+    public function reportIncome(Request $request, bool $forHub = false): View|RedirectResponse
     {
+        if (! $forHub) {
+            return $this->redirectToReportsHub('income', $request);
+        }
+
         $user = $request->user();
         $month = $request->string('month')->toString() ?: now()->format('Y-m');
         [$year, $monthNum] = array_pad(explode('-', $month), 2, null);
@@ -773,8 +825,12 @@ class LandlordPortalController extends Controller
         ]);
     }
 
-    public function reportExpenses(Request $request): View
+    public function reportExpenses(Request $request, bool $forHub = false): View|RedirectResponse
     {
+        if (! $forHub) {
+            return $this->redirectToReportsHub('expenses', $request);
+        }
+
         $user = $request->user();
         $month = $request->string('month')->toString() ?: now()->format('Y-m');
         [$year, $monthNum] = array_pad(explode('-', $month), 2, null);
@@ -826,8 +882,12 @@ class LandlordPortalController extends Controller
         ]);
     }
 
-    public function reportCashFlow(Request $request): View
+    public function reportCashFlow(Request $request, bool $forHub = false): View|RedirectResponse
     {
+        if (! $forHub) {
+            return $this->redirectToReportsHub('cash_flow', $request);
+        }
+
         $user = $request->user();
         $month = $request->string('month')->toString() ?: now()->format('Y-m');
         [$year, $monthNum] = array_pad(explode('-', $month), 2, null);
@@ -891,8 +951,12 @@ class LandlordPortalController extends Controller
         ]);
     }
 
-    public function statement(Request $request): View
+    public function statement(Request $request, bool $forHub = false): View|RedirectResponse
     {
+        if (! $forHub) {
+            return $this->redirectToReportsHub('statement', $request);
+        }
+
         $user = $request->user();
         $month = $request->string('month')->toString() ?: now()->format('Y-m');
         [$year, $monthNum] = array_pad(explode('-', $month), 2, null);
@@ -1040,8 +1104,12 @@ class LandlordPortalController extends Controller
         ], $rows);
     }
 
-    public function documents(Request $request): View
+    public function documents(Request $request, bool $forHub = false): View|RedirectResponse
     {
+        if (! $forHub) {
+            return $this->redirectToReportsHub('documents', $request);
+        }
+
         $user = $request->user();
         $propIds = $this->landlordPropertyIds($user);
         $unitIds = PropertyUnit::query()->whereIn('property_id', $propIds)->pluck('id');
@@ -1315,6 +1383,14 @@ class LandlordPortalController extends Controller
 
             return $loan;
         });
+    }
+
+    private function redirectToReportsHub(string $panel, Request $request): RedirectResponse
+    {
+        return redirect()->route('property.landlord.reports.index', array_merge(
+            ['panel' => $panel],
+            $request->query()
+        ));
     }
 
     private function landlordPropertyIds(User $user): Collection

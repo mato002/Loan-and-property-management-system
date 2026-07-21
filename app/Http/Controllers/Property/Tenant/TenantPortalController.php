@@ -19,6 +19,7 @@ use App\Models\PropertyUnit;
 use App\Services\Integrations\MpesaDarajaService;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\LoanClientPortalMatchService;
+use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentSettlementService;
 use App\Services\Property\TenantCreditService;
@@ -128,16 +129,14 @@ class TenantPortalController extends Controller
         $creditBalance = 0.0;
         if ($tenant) {
             $creditBalance = app(TenantCreditService::class)->balanceForTenant((int) $tenant->id);
-            $balance = (float) PmInvoice::query()
-                ->liveBalances()
-                ->where('pm_tenant_id', $tenant->id)
-                ->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')
-                ->value('t');
-            $rentBalance = $this->openBalanceForTenant((int) $tenant->id, PmInvoice::TYPE_RENT);
-            $waterBalance = $this->openBalanceForTenant((int) $tenant->id, PmInvoice::TYPE_WATER);
+            $formulas = app(FinancialReportingFormulaService::class);
+            $balance = $formulas->outstandingForTenant((int) $tenant->id);
+            $rentBalance = $formulas->outstandingForTenant((int) $tenant->id, PmInvoice::TYPE_RENT);
+            $waterBalance = $formulas->outstandingForTenant((int) $tenant->id, PmInvoice::TYPE_WATER);
             $due = PmInvoice::query()
+                ->billableAr()
                 ->where('pm_tenant_id', $tenant->id)
-                ->whereColumn('amount_paid', '<', 'amount')
+                ->where('balance_due', '>', 0)
                 ->orderBy('due_date')
                 ->first()?->due_date;
 
@@ -874,11 +873,13 @@ class TenantPortalController extends Controller
             ]);
 
             if (! $isPending) {
+                $settlement = app(PropertyPaymentSettlementService::class);
                 if ($targetInvoice) {
-                    $this->allocatePaymentToSpecificInvoice($payment, $targetInvoice);
+                    $settlement->allocatePaymentToSpecificInvoice($payment, $targetInvoice);
                 } else {
-                    $this->allocatePaymentToOpenInvoices($payment, $invoiceType);
+                    $settlement->allocatePaymentToOpenInvoices($payment, $invoiceType);
                 }
+                $settlement->repairTenantIfDriftDetected((int) $tenant->id);
             }
 
             return $payment;
@@ -953,15 +954,7 @@ class TenantPortalController extends Controller
             return 0.0;
         }
 
-        $query = PmInvoice::query()
-            ->liveBalances()
-            ->where('pm_tenant_id', $tenantId)
-            ->whereColumn('amount_paid', '<', 'amount');
-        if ($invoiceType !== null) {
-            $query->where('invoice_type', $invoiceType);
-        }
-
-        return (float) $query->selectRaw('COALESCE(SUM(amount - amount_paid),0) as t')->value('t');
+        return app(FinancialReportingFormulaService::class)->outstandingForTenant($tenantId, $invoiceType);
     }
 
     /**
@@ -1052,110 +1045,6 @@ class TenantPortalController extends Controller
                 'ok' => false,
                 'message' => 'Gateway request failed: '.$e->getMessage(),
             ];
-        }
-    }
-
-    private function allocatePaymentToOpenInvoices(PmPayment $payment, ?string $invoiceType = null): void
-    {
-        $remaining = (float) $payment->amount;
-        if ($remaining <= 0) {
-            return;
-        }
-
-        $openInvoices = PmInvoice::query()
-            ->where('pm_tenant_id', $payment->pm_tenant_id)
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->when($invoiceType !== null, fn ($q) => $q->where('invoice_type', $invoiceType))
-            ->orderBy('due_date')
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get();
-
-        foreach ($openInvoices as $invoice) {
-            if ($remaining <= 0) {
-                break;
-            }
-
-            $invoiceRemaining = max(0.0, (float) $invoice->amount - (float) $invoice->amount_paid);
-            if ($invoiceRemaining <= 0) {
-                continue;
-            }
-
-            $allocation = min($remaining, $invoiceRemaining);
-            if ($allocation <= 0) {
-                continue;
-            }
-
-            PmPaymentAllocation::query()->create([
-                'pm_payment_id' => $payment->id,
-                'pm_invoice_id' => $invoice->id,
-                'amount' => $allocation,
-            ]);
-
-            $invoice->amount_paid = (float) $invoice->amount_paid + $allocation;
-            $invoice->save();
-            $invoice->refreshComputedStatus();
-
-            $remaining -= $allocation;
-        }
-    }
-
-    /**
-     * Allocate a payment to one specific invoice (used by "Pay this invoice").
-     * Any overpay spills onto the tenant's other open invoices, oldest first.
-     */
-    private function allocatePaymentToSpecificInvoice(PmPayment $payment, PmInvoice $invoice): void
-    {
-        $remaining = (float) $payment->amount;
-        if ($remaining <= 0) {
-            return;
-        }
-        $invoice->refresh();
-        $invoiceRemaining = max(0.0, (float) ($invoice->total_amount ?? $invoice->amount) - (float) $invoice->amount_paid);
-        if ($invoiceRemaining > 0) {
-            $allocation = min($remaining, $invoiceRemaining);
-            PmPaymentAllocation::query()->create([
-                'pm_payment_id' => $payment->id,
-                'pm_invoice_id' => $invoice->id,
-                'amount' => $allocation,
-            ]);
-            $invoice->amount_paid = (float) $invoice->amount_paid + $allocation;
-            $invoice->save();
-            $invoice->refreshComputedStatus();
-            $remaining -= $allocation;
-        }
-
-        if ($remaining <= 0) {
-            return;
-        }
-
-        // Overpay spills onto the tenant's wider open ledger (oldest-first).
-        $openInvoices = PmInvoice::query()
-            ->where('pm_tenant_id', $payment->pm_tenant_id)
-            ->where('id', '!=', $invoice->id)
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->orderBy('due_date')
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get();
-        foreach ($openInvoices as $other) {
-            if ($remaining <= 0) {
-                break;
-            }
-            $otherRemaining = max(0.0, (float) $other->amount - (float) $other->amount_paid);
-            if ($otherRemaining <= 0) {
-                continue;
-            }
-            $allocation = min($remaining, $otherRemaining);
-            PmPaymentAllocation::query()->create([
-                'pm_payment_id' => $payment->id,
-                'pm_invoice_id' => $other->id,
-                'amount' => $allocation,
-            ]);
-            $other->amount_paid = (float) $other->amount_paid + $allocation;
-            $other->save();
-            $other->refreshComputedStatus();
-            $remaining -= $allocation;
         }
     }
 
@@ -1460,20 +1349,7 @@ class TenantPortalController extends Controller
             return 0.0;
         }
 
-        $invoiceArrears = (float) (PmInvoice::query()
-            ->liveBalances()
-            ->where('pm_tenant_id', $tenant->id)
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->selectRaw('COALESCE(SUM(amount - amount_paid), 0) as arrears')
-            ->value('arrears') ?? 0.0);
-
-        $openingArrears = (float) ($tenant->opening_arrears_amount ?? 0);
-        $completedPayments = (float) PmPayment::query()
-            ->where('pm_tenant_id', $tenant->id)
-            ->where('status', PmPayment::STATUS_COMPLETED)
-            ->sum('amount');
-
-        return max(0.0, ($invoiceArrears + $openingArrears) - $completedPayments);
+        return app(FinancialReportingFormulaService::class)->outstandingForTenant((int) $tenant->id);
     }
 
     private function portalLoansFor($user)

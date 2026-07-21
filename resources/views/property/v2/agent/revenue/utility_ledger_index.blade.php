@@ -28,30 +28,8 @@
     </x-slot>
 
     <div class="space-y-4 w-full min-w-0">
-        <div class="md:hidden space-y-2">
-            @forelse ($summaries as $row)
-                <article class="utility-reading-card border-slate-200">
-                    <div class="flex items-start justify-between gap-2">
-                        <div class="min-w-0">
-                            <p class="text-sm font-semibold text-slate-900 truncate">{{ $row['name'] }}</p>
-                            <p class="text-xs text-slate-500">{{ $row['phone'] ?: 'No phone' }}</p>
-                        </div>
-                        <p class="text-sm font-bold tabular-nums shrink-0 {{ $row['utility_balance'] > 0 ? 'text-amber-800' : 'text-emerald-700' }}">
-                            {{ $row['utility_balance_display'] }}
-                        </p>
-                    </div>
-                    <div class="mt-2 flex items-center justify-between gap-2 text-xs">
-                        <span class="text-slate-600">{{ $row['open_invoices'] }} open invoice(s)</span>
-                        <a href="{{ route('property.tenants.utility.statement', $row['tenant_id'], false) }}" class="font-semibold text-indigo-600 hover:underline min-h-[44px] inline-flex items-center">Statement</a>
-                    </div>
-                </article>
-            @empty
-                <p class="text-sm text-slate-500 py-8 text-center">No tenants with utility billing history match your filters.</p>
-            @endforelse
-        </div>
-
-        <x-property.responsive.table-wrapper class="hidden md:block">
-            <table class="min-w-full text-sm">
+        <x-property.responsive.table-wrapper>
+            <table class="property-erp-table min-w-full text-sm">
                 <thead class="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <tr>
                         <th class="px-4 py-3">Tenant</th>

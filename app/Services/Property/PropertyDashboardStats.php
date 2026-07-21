@@ -2,10 +2,7 @@
 
 namespace App\Services\Property;
 
-use App\Models\PmInvoice;
 use App\Models\PmMaintenanceJob;
-use App\Models\PmPayment;
-use App\Models\PmTenant;
 use App\Models\PropertyUnit;
 use Carbon\Carbon;
 
@@ -13,20 +10,12 @@ final class PropertyDashboardStats
 {
     public static function mtdCollected(): float
     {
-        return (float) PmPayment::query()
-            ->where('status', PmPayment::STATUS_COMPLETED)
-            ->whereBetween('paid_at', [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()])
-            ->sum('amount');
+        return app(FinancialReportingFormulaService::class)->collectionsMtd();
     }
 
     public static function mtdBilled(): float
     {
-        return (float) PmInvoice::query()
-            ->whereBetween('issue_date', [
-                Carbon::now()->startOfMonth()->toDateString(),
-                Carbon::now()->endOfMonth()->toDateString(),
-            ])
-            ->sum('amount');
+        return app(FinancialReportingFormulaService::class)->billedMtd();
     }
 
     /**
@@ -34,33 +23,12 @@ final class PropertyDashboardStats
      */
     public static function collectionRateMtd(float $targetPercent = 95.0): array
     {
-        $collected = self::mtdCollected();
-        $billed = self::mtdBilled();
-        $actual = $billed > 0 ? round(min(100.0, 100.0 * $collected / $billed), 1) : null;
-        $gapKes = max(0.0, $billed - $collected);
-
-        return [
-            'target' => $targetPercent,
-            'actual' => $actual,
-            'gap_kes' => $gapKes,
-        ];
+        return app(FinancialReportingFormulaService::class)->collectionRateMtd($targetPercent);
     }
 
     public static function outstandingBalance(): float
     {
-        $invoiceOutstanding = (float) PmInvoice::query()
-            ->liveBalances()
-            ->whereIn('status', [
-                PmInvoice::STATUS_SENT,
-                PmInvoice::STATUS_PARTIAL,
-                PmInvoice::STATUS_OVERDUE,
-            ])
-            ->selectRaw('SUM(amount - amount_paid) as t')
-            ->value('t') ?? 0;
-
-        $openingArrears = (float) PmTenant::query()->sum('opening_arrears_amount');
-
-        return $invoiceOutstanding + $openingArrears;
+        return app(FinancialReportingFormulaService::class)->outstandingGlobal();
     }
 
     public static function occupancyRate(): ?float
@@ -84,16 +52,6 @@ final class PropertyDashboardStats
 
     public static function arrearsBucket(int $minDays, ?int $maxDays = null): float
     {
-        $q = PmInvoice::query()
-            ->liveBalances()
-            ->whereIn('status', [PmInvoice::STATUS_OVERDUE, PmInvoice::STATUS_PARTIAL, PmInvoice::STATUS_SENT])
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->where('due_date', '<=', now()->subDays($minDays));
-
-        if ($maxDays !== null) {
-            $q->where('due_date', '>', now()->subDays($maxDays));
-        }
-
-        return (float) $q->clone()->selectRaw('SUM(amount - amount_paid) as t')->value('t') ?? 0;
+        return app(FinancialReportingFormulaService::class)->agingBucket($minDays, $maxDays);
     }
 }

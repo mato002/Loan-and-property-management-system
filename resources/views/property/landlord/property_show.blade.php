@@ -1,11 +1,10 @@
 <x-property.workspace
     :title="$property->name"
-    subtitle="Units under this property"
     back-route="property.landlord.properties"
     :columns="$columns"
     :table-rows="$tableRows"
-    empty-title="No units yet"
-    empty-hint="Units linked to this property will be listed here with their status."
+    empty-title="No units"
+    empty-hint=""
 >
     <x-slot name="actions">
         <a

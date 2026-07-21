@@ -382,6 +382,10 @@
                     @endforeach
                 </select>
             </div>
+            <label class="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+                <input type="checkbox" name="include_archived" value="1" class="rounded border-slate-300" @checked(($filters['include_archived'] ?? '0') === '1') />
+                Include archived
+            </label>
             <div class="flex items-center gap-2">
                 <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
                 <a href="{{ route('property.properties.units', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>

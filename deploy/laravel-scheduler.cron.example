@@ -2,10 +2,15 @@
 # Replace /path/to/your/project with the real project directory and use the same
 # `php` binary as your web stack if they differ.
 #
-#   * * * * * cd /path/to/your/project && php artisan schedule:run >> /dev/null 2>&1
+#   * * * * * cd /path/to/project && php artisan schedule:run >> /dev/null 2>&1
 #
 # This runs every minute; Laravel then dispatches the jobs defined in routes/console.php
 # at their configured times (rent invoices, reminders, water invoices, etc.).
 #
+# Full setup guide (health checklist, overlap/timezone risks, command list):
+#   docs/SCHEDULER-SETUP.md
+#
 # Verify automation is allowed to run:
 #   php artisan property:workflow-automation-status
+#   php artisan schedule:list
+#   tail storage/logs/scheduler.log

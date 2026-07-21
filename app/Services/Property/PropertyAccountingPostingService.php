@@ -27,6 +27,7 @@ class PropertyAccountingPostingService
     private const ACC_WATER_REVENUE = '4310';
     private const ACC_PENALTY_INCOME = '4400';
     private const ACC_UTILITY_PENALTY_INCOME = '4410';
+    private const ACC_OPENING_BALANCE_EQUITY = '3900';
     private const ACC_MAINTENANCE_EXPENSE = '5101';
 
     /**
@@ -221,6 +222,12 @@ class PropertyAccountingPostingService
 
     public static function receivableAccountCodeForInvoice(PmInvoice $invoice): string
     {
+        if (self::isCarryForwardInvoice($invoice)) {
+            return (string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT) === PmInvoice::TYPE_WATER
+                ? self::resolveAccountCode(self::ACC_UTILITY_AR, self::ACC_AR)
+                : self::ACC_AR;
+        }
+
         $type = (string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT);
 
         return match ($type) {
@@ -232,6 +239,13 @@ class PropertyAccountingPostingService
 
     public static function incomeAccountCodeForInvoice(PmInvoice $invoice): string
     {
+        if (self::isCarryForwardInvoice($invoice)) {
+            return self::resolveAccountCode(
+                self::ACC_OPENING_BALANCE_EQUITY,
+                self::ACC_RENTAL_INCOME
+            );
+        }
+
         $type = (string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT);
 
         return match ($type) {
@@ -243,6 +257,10 @@ class PropertyAccountingPostingService
 
     private static function incomeAccountMapKey(PmInvoice $invoice): string
     {
+        if (self::isCarryForwardInvoice($invoice)) {
+            return 'opening_balance_equity';
+        }
+
         return match ((string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT)) {
             PmInvoice::TYPE_WATER => 'water_revenue',
             PmInvoice::TYPE_MIXED => 'utility_recovery_income',
@@ -252,6 +270,10 @@ class PropertyAccountingPostingService
 
     private static function incomeAccountLabel(PmInvoice $invoice): string
     {
+        if (self::isCarryForwardInvoice($invoice)) {
+            return 'Opening Balance Equity';
+        }
+
         return match ((string) ($invoice->invoice_type ?? PmInvoice::TYPE_RENT)) {
             PmInvoice::TYPE_WATER => 'Water Revenue',
             PmInvoice::TYPE_MIXED => 'Utility Recovery Income',
@@ -269,6 +291,11 @@ class PropertyAccountingPostingService
         }
 
         return $fallback;
+    }
+
+    public static function isCarryForwardInvoice(PmInvoice $invoice): bool
+    {
+        return str_starts_with((string) $invoice->description, FinanceFirebreakService::CARRY_FORWARD_PREFIX);
     }
 
     /**
@@ -327,6 +354,251 @@ class PropertyAccountingPostingService
             'description' => 'Invoice reversed',
             'source_key' => 'invoice_reversed',
         ]);
+    }
+
+    /**
+     * Reverse every posted forward invoice issuance batch (invoice_issued and
+     * invoice_issued_rev_*). Used on cancellation/deletion so AR and revenue
+     * are fully unwound.
+     */
+    public static function reverseAllInvoiceIssuanceBatches(PmInvoice $invoice, ?User $actor = null, ?string $reason = null): void
+    {
+        $batches = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_invoice')
+            ->where('source_id', (int) $invoice->id)
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->orderBy('id')
+            ->get()
+            ->filter(function (AccountingJournalBatch $batch) {
+                $type = (string) $batch->event_type;
+
+                return $type === 'invoice_issued'
+                    || str_starts_with($type, 'invoice_issued_rev_');
+            });
+
+        if ($batches->isEmpty()) {
+            return;
+        }
+
+        $journal = app(PropertyJournalService::class);
+        foreach ($batches as $batch) {
+            $journal->reverseBatch($batch, $actor?->id, $reason ?: 'Invoice '.$invoice->invoice_no.' reversed');
+        }
+
+        self::mirrorInvoiceIssuanceReversalEntries($invoice, $actor);
+    }
+
+    /**
+     * Post a credit memo journal for a credit note (DR revenue / CR AR).
+     * Idempotent on credit_memo_issued batches.
+     */
+    public static function postCreditMemoIssued(PmInvoice $creditNote, ?User $actor = null): void
+    {
+        if (! $creditNote->isCreditNote()) {
+            return;
+        }
+
+        $amount = round(abs((float) $creditNote->amount), 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $existing = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_invoice')
+            ->where('source_id', (int) $creditNote->id)
+            ->where('event_type', 'credit_memo_issued')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->exists();
+        if ($existing) {
+            return;
+        }
+
+        $creditNote->loadMissing('unit.property', 'originalInvoice');
+        $accountSource = $creditNote->originalInvoice ?? $creditNote;
+        $propertyId = optional($creditNote->unit)->property_id;
+        $agentUserId = (int) ($creditNote->agent_user_id
+            ?? optional(optional($creditNote->unit)->property)->agent_user_id
+            ?? 0) ?: null;
+        $date = $creditNote->issue_date?->toDateString() ?? now()->toDateString();
+        $receivableCode = self::receivableAccountCodeForInvoice($accountSource);
+        $incomeCode = self::incomeAccountCodeForInvoice($accountSource);
+
+        $journal = app(PropertyJournalService::class);
+        $lines = [
+            [
+                'account_id' => $journal->accountIdByCode($incomeCode),
+                'debit' => $amount,
+                'credit' => 0,
+                'reference' => $creditNote->invoice_no,
+                'property_id' => $propertyId,
+                'tenant_id' => $creditNote->pm_tenant_id,
+                'unit_id' => $creditNote->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode($receivableCode),
+                'debit' => 0,
+                'credit' => $amount,
+                'reference' => $creditNote->invoice_no,
+                'property_id' => $propertyId,
+                'tenant_id' => $creditNote->pm_tenant_id,
+                'unit_id' => $creditNote->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ],
+        ];
+
+        $landlordNet = self::creditMemoLandlordNetAmount($creditNote, $accountSource, $amount);
+        if ($landlordNet > 0) {
+            $lines[] = [
+                'account_id' => $journal->accountIdByCode(self::ACC_LANDLORD_PAYABLE),
+                'debit' => $landlordNet,
+                'credit' => 0,
+                'reference' => $creditNote->invoice_no,
+                'property_id' => $propertyId,
+                'tenant_id' => $creditNote->pm_tenant_id,
+                'unit_id' => $creditNote->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ];
+            $lines[] = [
+                'account_id' => $journal->accountIdByCode(self::ACC_LANDLORD_CLEARING),
+                'debit' => 0,
+                'credit' => $landlordNet,
+                'reference' => $creditNote->invoice_no,
+                'property_id' => $propertyId,
+                'tenant_id' => $creditNote->pm_tenant_id,
+                'unit_id' => $creditNote->property_unit_id,
+                'agent_user_id' => $agentUserId,
+            ];
+        }
+
+        $journal->postBatch([
+            'date' => $date,
+            'description' => 'Credit memo '.$creditNote->invoice_no,
+            'source_type' => 'pm_invoice',
+            'source_id' => (int) $creditNote->id,
+            'event_type' => 'credit_memo_issued',
+            'source_key' => 'pm_invoice:'.$creditNote->id.':credit_memo',
+            'agent_user_id' => $agentUserId,
+            'created_by' => $actor?->id,
+            'posted_by' => $actor?->id,
+        ], $lines);
+    }
+
+    /**
+     * Reverse a posted credit memo batch (e.g. credit note voided).
+     */
+    public static function reverseCreditMemoIssued(PmInvoice $creditNote, ?User $actor = null, ?string $reason = null): void
+    {
+        if (! $creditNote->isCreditNote()) {
+            return;
+        }
+
+        $batch = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_invoice')
+            ->where('source_id', (int) $creditNote->id)
+            ->where('event_type', 'credit_memo_issued')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->first();
+
+        if (! $batch) {
+            return;
+        }
+
+        app(PropertyJournalService::class)->reverseBatch(
+            $batch,
+            $actor?->id,
+            $reason ?: 'Credit memo '.$creditNote->invoice_no.' reversed'
+        );
+    }
+
+    public static function reverseTenantCreditApplied(int $creditTransactionId, ?User $actor = null, ?string $reason = null): void
+    {
+        if ($creditTransactionId <= 0) {
+            return;
+        }
+
+        $batch = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_tenant_credit_transaction')
+            ->where('source_id', $creditTransactionId)
+            ->where('event_type', 'tenant_credit_applied')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->first();
+
+        if ($batch) {
+            app(PropertyJournalService::class)->reverseBatch(
+                $batch,
+                $actor?->id,
+                $reason ?: 'Tenant credit application reversed'
+            );
+        }
+    }
+
+    private static function mirrorInvoiceIssuanceReversalEntries(PmInvoice $invoice, ?User $actor = null): void
+    {
+        $invoice->loadMissing('unit.property');
+        $propertyId = optional($invoice->unit)->property_id;
+        $date = now()->toDateString();
+        $ref = $invoice->invoice_no.' (reversed)';
+
+        self::firstOrCreateEntry([
+            'entry_date' => $date,
+            'property_id' => $propertyId,
+            'recorded_by_user_id' => $actor?->id,
+            'account_name' => self::accountName(
+                self::receivableAccountCodeForInvoice($invoice) === self::ACC_UTILITY_AR ? 'utility_accounts_receivable' : 'accounts_receivable',
+                self::receivableAccountCodeForInvoice($invoice) === self::ACC_UTILITY_AR ? 'Utility Accounts Receivable' : 'Accounts Receivable'
+            ),
+            'category' => PmAccountingEntry::CATEGORY_ASSET,
+            'entry_type' => PmAccountingEntry::TYPE_CREDIT,
+            'amount' => (float) $invoice->amount,
+            'reference' => $ref,
+            'description' => 'Invoice reversed',
+            'source_key' => 'invoice_reversed',
+        ]);
+        self::firstOrCreateEntry([
+            'entry_date' => $date,
+            'property_id' => $propertyId,
+            'recorded_by_user_id' => $actor?->id,
+            'account_name' => self::accountName(self::incomeAccountMapKey($invoice), self::incomeAccountLabel($invoice)),
+            'category' => PmAccountingEntry::CATEGORY_INCOME,
+            'entry_type' => PmAccountingEntry::TYPE_DEBIT,
+            'amount' => (float) $invoice->amount,
+            'reference' => $ref,
+            'description' => 'Invoice reversed',
+            'source_key' => 'invoice_reversed',
+        ]);
+    }
+
+    private static function creditMemoLandlordNetAmount(PmInvoice $creditNote, PmInvoice $accountSource, float $creditAmount): float
+    {
+        if ($creditAmount <= 0 || (float) $accountSource->amount <= 0) {
+            return 0.0;
+        }
+
+        $creditNote->loadMissing('originalInvoice.unit.property');
+        $propertyId = (int) optional(optional($accountSource->unit)->property)->id;
+        if ($propertyId <= 0) {
+            return 0.0;
+        }
+
+        $hasOwners = \Illuminate\Support\Facades\DB::table('property_landlord')
+            ->where('property_id', $propertyId)
+            ->where('ownership_percent', '>', 0)
+            ->exists();
+        if (! $hasOwners) {
+            return 0.0;
+        }
+
+        $defaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
+        $commissionPct = is_numeric($defaultRaw) ? (float) $defaultRaw : 10.0;
+        $propertyPct = PropertyPortalSetting::getValue('commission_percent_property_'.$propertyId);
+        if ($propertyPct !== null && is_numeric($propertyPct)) {
+            $commissionPct = (float) $propertyPct;
+        }
+
+        $proportion = min(1.0, $creditAmount / abs((float) $accountSource->amount));
+
+        return round(max(0.0, $creditAmount * $proportion * (1 - ($commissionPct / 100))), 2);
     }
 
     /**
@@ -411,6 +683,25 @@ class PropertyAccountingPostingService
             return;
         }
 
+        $existing = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_payment')
+            ->where('source_id', (int) $payment->id)
+            ->where('event_type', 'payment_received')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->exists();
+        if ($existing) {
+            return;
+        }
+
+        if (AccountingJournalBatch::query()
+            ->where('source_type', 'pm_payment')
+            ->where('source_id', (int) $payment->id)
+            ->where('event_type', 'payment_unmatched_suspense')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->exists()) {
+            return;
+        }
+
         $payment->loadMissing('allocations.invoice.unit.property');
         $firstInvoice = optional($payment->allocations->first())->invoice;
         $propertyId = optional($firstInvoice?->unit)->property_id;
@@ -418,7 +709,9 @@ class PropertyAccountingPostingService
         $reference = $payment->external_ref ?: ('PAY-'.$payment->id);
         $entryDate = $payment->paid_at?->toDateString() ?? now()->toDateString();
 
-        $allocatedTotal = round((float) $payment->allocations->sum('amount'), 2);
+        $allocatedTotal = round((float) $payment->allocations
+            ->filter(fn ($allocation) => ! $allocation->is_reversed)
+            ->sum('amount'), 2);
         $gross = round((float) $payment->amount, 2);
         $creditToLiability = round(max(0.0, $gross - $allocatedTotal), 2);
         $arSettled = round(min($allocatedTotal, $gross), 2);
@@ -443,6 +736,9 @@ class PropertyAccountingPostingService
         if ($arSettled > 0) {
             $arByAccount = [];
             foreach ($payment->allocations as $allocation) {
+                if ($allocation->is_reversed) {
+                    continue;
+                }
                 $invoice = $allocation->invoice;
                 if (! $invoice) {
                     continue;
@@ -746,6 +1042,25 @@ class PropertyAccountingPostingService
             return null;
         }
 
+        $existing = AccountingJournalBatch::query()
+            ->where('source_type', 'pm_payment')
+            ->where('source_id', (int) $payment->id)
+            ->where('event_type', 'payment_unmatched_suspense')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->exists();
+        if ($existing) {
+            return null;
+        }
+
+        if (AccountingJournalBatch::query()
+            ->where('source_type', 'pm_payment')
+            ->where('source_id', (int) $payment->id)
+            ->where('event_type', 'payment_received')
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->exists()) {
+            return null;
+        }
+
         $entryDate = $payment->paid_at?->toDateString() ?? now()->toDateString();
         $reference = $payment->external_ref ?: ('PAY-'.$payment->id);
         $journal = app(PropertyJournalService::class);
@@ -806,6 +1121,7 @@ class PropertyAccountingPostingService
             'cash_bank' => 'Cash / Bank',
             'maintenance_expense' => 'Maintenance Expense',
             'accounts_payable' => 'Accounts Payable',
+            'opening_balance_equity' => 'Opening Balance Equity',
         ];
 
         $raw = PropertyPortalSetting::query()->where('key', 'property_accounting_account_map')->value('value');

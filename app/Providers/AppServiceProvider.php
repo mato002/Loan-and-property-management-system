@@ -14,7 +14,9 @@ use App\Models\LoanBookLoan;
 use App\Models\DepositDefinition;
 use App\Models\ExpenseDefinition;
 use App\Models\PmInvoice;
+use App\Models\PmInvoicePenaltyApplication;
 use App\Models\PmLease;
+use App\Models\PmPaymentAllocation;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMaintenanceRequest;
 use App\Models\PmPayment;
@@ -71,6 +73,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->loadGroupedMigrationPaths();
         $this->guardAgainstDestructiveLocalCommands();
 
         LoanBookApplication::observe(LoanBookApplicationClientLeadObserver::class);
@@ -80,6 +83,8 @@ class AppServiceProvider extends ServiceProvider
         foreach ([
             PmInvoice::class,
             PmPayment::class,
+            PmPaymentAllocation::class,
+            PmInvoicePenaltyApplication::class,
             PmLease::class,
             PmTenant::class,
             Property::class,
@@ -104,6 +109,16 @@ class AppServiceProvider extends ServiceProvider
         ], function ($view) use ($allowDestructiveDbCommands) {
             $view->with('allowDestructiveDbCommands', $allowDestructiveDbCommands);
         });
+    }
+
+    private function loadGroupedMigrationPaths(): void
+    {
+        foreach (['core', 'loan', 'property', 'shared'] as $group) {
+            $path = database_path('migrations/'.$group);
+            if (is_dir($path)) {
+                $this->loadMigrationsFrom($path);
+            }
+        }
     }
 
     private function guardAgainstDestructiveLocalCommands(): void

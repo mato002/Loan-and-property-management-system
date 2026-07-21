@@ -14,6 +14,7 @@ use App\Models\PropertyUnit;
 use App\Support\Property\UtilityWorkspaceViewData;
 use App\Exceptions\Property\UtilityPeriodClosedException;
 use App\Jobs\RefreshUtilityIntelligenceCacheJob;
+use App\Services\Property\AttachedUtilityChargeService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\UtilityIntelligenceService;
 use App\Services\Property\UtilityPeriodGuardService;
@@ -365,12 +366,19 @@ class PropertyUtilityChargeController extends Controller
         $data['rate_per_unit'] = $ratePerUnit > 0 ? $ratePerUnit : null;
         $data['fixed_charge'] = ($fixedCharge > 0 || $calculatedAmount > 0) ? $fixedCharge : null;
         $data['amount'] = round($finalAmount, 2);
+
+        $property = app(\App\Services\Property\PropertyManagementGuardService::class)
+            ->propertyForUnitId((int) $data['property_unit_id']);
+        if ($property) {
+            app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanSetupUtility($property);
+        }
+
         PmUnitUtilityCharge::query()->create($data);
 
         return back()->with('success', __('Utility charge saved.'));
     }
 
-    public function generateUtilityInvoices(Request $request): RedirectResponse
+    public function generateUtilityInvoices(Request $request, AttachedUtilityChargeService $attachedCharges): RedirectResponse
     {
         $data = $request->validate([
             'billing_month' => ['required', 'date_format:Y-m'],
@@ -386,6 +394,17 @@ class PropertyUtilityChargeController extends Controller
                 $billingMonth,
                 UtilityPeriodGuardService::ACTION_GENERATE_INVOICE,
                 $request->user(),
+                $overrideId,
+            );
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['billing_month' => $e->getMessage()])->withInput();
+        }
+
+        try {
+            $materialized = $attachedCharges->materializeForMonth(
+                $billingMonth,
+                $request->user(),
+                null,
                 $overrideId,
             );
         } catch (UtilityPeriodClosedException $e) {
@@ -458,8 +477,49 @@ class PropertyUtilityChargeController extends Controller
         });
 
         $msg = $created.' utility invoice(s) generated for '.$billingMonth.'.';
+        if (($materialized['created'] ?? 0) > 0) {
+            $msg .= ' '.$materialized['created'].' charge line(s) auto-created from property expense rules.';
+        }
         if ($skippedNoLease > 0) {
             $msg .= ' '.$skippedNoLease.' charge line(s) skipped (no active lease on unit).';
+        }
+
+        return back()->with('success', $msg);
+    }
+
+    public function materializeAttachedCharges(Request $request, AttachedUtilityChargeService $attachedCharges): RedirectResponse
+    {
+        $data = $request->validate([
+            'billing_month' => ['required', 'date_format:Y-m'],
+        ]);
+
+        $billingMonth = (string) $data['billing_month'];
+        $overrideId = (int) $request->input('utility_override_request_id', 0) ?: null;
+
+        try {
+            $stats = $attachedCharges->materializeForMonth(
+                $billingMonth,
+                $request->user(),
+                null,
+                $overrideId,
+            );
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['billing_month' => $e->getMessage()])->withInput();
+        }
+
+        $msg = sprintf(
+            '%d charge line(s) created for %s from property expense rules.',
+            (int) $stats['created'],
+            $billingMonth,
+        );
+        if ($stats['skipped_duplicate'] > 0) {
+            $msg .= ' '.$stats['skipped_duplicate'].' already existed.';
+        }
+        if ($stats['skipped_no_lease'] > 0) {
+            $msg .= ' '.$stats['skipped_no_lease'].' skipped (no active lease).';
+        }
+        if ($stats['skipped_rate_only'] > 0) {
+            $msg .= ' '.$stats['skipped_rate_only'].' rate-only rule(s) need manual usage entry.';
         }
 
         return back()->with('success', $msg);
@@ -665,16 +725,19 @@ class PropertyUtilityChargeController extends Controller
 
     public function previewWaterPenalties(WaterPenaltyService $penalties): JsonResponse
     {
-        $rows = $penalties->preview(now()->toDateString())->map(fn (array $row) => [
+        $simulation = $penalties->simulate(now()->toDateString());
+        $rows = $simulation['rows']->map(fn (array $row) => [
             ...$row,
             'base_display' => PropertyMoney::kes((float) ($row['base'] ?? 0)),
             'penalty_display' => PropertyMoney::kes((float) ($row['penalty'] ?? 0)),
+            'compounding_label' => str_replace('_', ' ', (string) ($row['compounding_mode'] ?? 'simple')),
         ])->values();
 
         return response()->json([
             'rows' => $rows,
-            'total_penalty' => round($rows->sum('penalty'), 2),
-            'total_penalty_display' => PropertyMoney::kes((float) $rows->sum('penalty')),
+            'warnings' => $simulation['warnings'],
+            'total_penalty' => $simulation['total_penalty'],
+            'total_penalty_display' => PropertyMoney::kes((float) $simulation['total_penalty']),
         ]);
     }
 

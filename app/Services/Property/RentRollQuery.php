@@ -34,10 +34,11 @@ final class RentRollQuery
         $balanceByUnit = collect();
         $paidByUnit = collect();
         if ($unitIds !== []) {
-            $balanceByUnit = PmInvoice::query()
-                ->liveBalances()
+            $balanceSnapshot = app(FinanceBalanceSnapshotService::class);
+            $balanceByUnit = $balanceSnapshot
+                ->billableArQuery()
                 ->whereIn('property_unit_id', $unitIds)
-                ->selectRaw('property_unit_id, COALESCE(SUM(amount - amount_paid), 0) as balance')
+                ->selectRaw('property_unit_id, '.FinanceBalanceSnapshotService::OUTSTANDING_SUM_SQL.' as balance')
                 ->groupBy('property_unit_id')
                 ->pluck('balance', 'property_unit_id');
 

@@ -7,6 +7,12 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Operations command reference
+
+Server-side runbook for deploy, landlord/agent scoping, finance repairs, billing, SMS, and diagnostics:
+
+**[docs/OPS-COMMAND-REFERENCE.md](docs/OPS-COMMAND-REFERENCE.md)**
+
 ## Property STK Webhook Testing
 
 The property STK callback endpoint is:

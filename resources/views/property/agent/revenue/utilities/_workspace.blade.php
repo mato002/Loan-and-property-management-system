@@ -4,6 +4,7 @@
                 penaltyModalOpen: false,
                 penaltyLoading: false,
                 penaltyRows: [],
+                penaltyWarnings: [],
                 penaltyTotal: 0,
                 penaltyTotalDisplay: '',
                 penaltyError: null,
@@ -213,6 +214,7 @@
                     this.penaltyLoading = true;
                     this.penaltyError = null;
                     this.penaltyRows = [];
+                    this.penaltyWarnings = [];
                     this.penaltyTotal = 0;
                     try {
                         const res = await fetch(this.penaltyPreviewUrl, {
@@ -222,6 +224,7 @@
                         if (!res.ok) throw new Error('Preview failed');
                         const data = await res.json();
                         this.penaltyRows = data.rows || [];
+                        this.penaltyWarnings = data.warnings || [];
                         this.penaltyTotal = Number(data.total_penalty || 0);
                         this.penaltyTotalDisplay = String(data.total_penalty_display || '');
                     } catch (e) {
@@ -407,7 +410,13 @@
             <div x-show="activeTab === 'billing'" x-cloak>
     <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Billing actions</h3>
-        <div class="grid gap-3 lg:grid-cols-3">
+        <p class="text-xs text-slate-500">Garbage, service charge, and other fixed property expenses are billed via charge lines, then invoiced. Water uses meter readings separately.</p>
+        <div class="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+            <form method="post" action="{{ route('property.revenue.utilities.attached.materialize') }}" class="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 p-3">
+                @csrf
+                <div><label class="block text-xs text-slate-500">Billing month</label><input type="month" name="billing_month" required class="mt-1 rounded-lg border border-slate-200 text-sm px-3 py-2" /></div>
+                <button type="submit" class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white hover:bg-slate-900">Create charge lines</button>
+            </form>
             <form method="post" action="{{ route('property.revenue.utilities.water_invoices.generate') }}" class="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 p-3">
                 @csrf
                 <div><label class="block text-xs text-slate-500">Billing month</label><input type="month" name="billing_month" required class="mt-1 rounded-lg border border-slate-200 text-sm px-3 py-2" /></div>
@@ -418,7 +427,7 @@
                 @csrf
                 <div><label class="block text-xs text-slate-500">Billing month</label><input type="month" name="billing_month" required class="mt-1 rounded-lg border border-slate-200 text-sm px-3 py-2" /></div>
                 <div><label class="block text-xs text-slate-500">Due date</label><input type="date" name="due_date" required class="mt-1 rounded-lg border border-slate-200 text-sm px-3 py-2" /></div>
-                <button type="submit" class="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700">Generate utility invoices</button>
+                <button type="submit" class="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-700">Generate other utility invoices</button>
             </form>
             <form method="post" action="{{ route('property.revenue.utilities.water_penalties.apply') }}" class="flex items-end rounded-xl border border-slate-200 p-3">
                 @csrf

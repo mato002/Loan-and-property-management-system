@@ -18,6 +18,27 @@
         ], static fn ($value) => $value !== null && $value !== '');
     @endphp
 
+    @if ($property->isManagementReadOnly())
+        <div class="mb-4 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-800">
+            <span class="font-semibold">{{ $managementStatusLabel ?? $property->managementStatusLabel() }}</span>
+            — This property is read-only. Operational actions are disabled; history, statements, and accounting remain available.
+            @if (auth()->user()?->hasPmPermission('properties.manage') || auth()->user()?->hasPmPermission('property.archive.view'))
+                <a href="{{ route('property.properties.offboarding', $property, false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-indigo-700 hover:underline">View offboarding</a>
+            @endif
+        </div>
+    @elseif ($property->isOffboarding())
+        <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <span class="font-semibold">Offboarding in progress</span>
+            — New leases, tenants, and utility setup are blocked. Settle balances then archive when ready.
+            <a href="{{ route('property.properties.offboarding', $property, false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-amber-800 hover:underline">Continue offboarding</a>
+        </div>
+    @elseif ($property->isManagementActive() && auth()->user()?->hasPmPermission('properties.manage'))
+        <div class="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 flex flex-wrap items-center justify-between gap-2">
+            <span>Landlord quit or stopping management? Use offboarding to wind down without deleting financial history.</span>
+            <a href="{{ route('property.properties.offboarding', $property, false) }}" class="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">Start offboarding</a>
+        </div>
+    @endif
+
     <x-slot name="above">
         <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-end gap-2">
             <div>
@@ -78,7 +99,7 @@
     />
 
     <div x-data="{ addUnitOpen: false }">
-    @if ($activeTab === 'units' && auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+    @if ($activeTab === 'units' && auth()->check() && auth()->user()?->hasPmPermission('properties.manage') && ! ($isManagementReadOnly ?? false))
         <div class="mt-1 mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center justify-between gap-2">
             <p class="text-sm text-slate-700">
                 <span class="font-semibold">Units:</span> {{ count($units ?? []) }}
@@ -591,6 +612,8 @@
                 <tr>
                     <th class="px-4 py-3">Unit</th>
                     <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Tenant</th>
+                    <th class="px-4 py-3">Phone</th>
                     <th class="px-4 py-3">Listed rent</th>
                     <th class="px-4 py-3">Arrears</th>
                     @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
@@ -615,6 +638,8 @@
                             @endif
                         </td>
                         <td class="px-4 py-3 capitalize text-slate-700">{{ $u->status }}</td>
+                        <td class="px-4 py-3 text-slate-700">{{ $u->tenant_name ?: '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap">{{ $u->tenant_phone ?: '—' }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->rent_amount) }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
                         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
@@ -632,7 +657,7 @@
                         @endif
                     </tr>
                 @empty
-                    <tr><td colspan="{{ auth()->check() && auth()->user()?->hasPmPermission('properties.manage') ? 5 : 4 }}" class="px-4 py-10 text-center text-slate-500">No units yet for this property.</td></tr>
+                    <tr><td colspan="{{ auth()->check() && auth()->user()?->hasPmPermission('properties.manage') ? 7 : 6 }}" class="px-4 py-10 text-center text-slate-500">No units yet for this property.</td></tr>
                 @endforelse
             </tbody>
         </table>
@@ -1003,6 +1028,19 @@
                 @endforelse
             </tbody>
         </table>
+    </div>
+    @endif
+
+    @if ($activeTab === 'offboarding')
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 class="text-sm font-semibold text-slate-900">Property offboarding</h3>
+        <p class="mt-2 text-sm text-slate-600">Safely wind down management without deleting invoices, payments, leases, or accounting history.</p>
+        <p class="mt-1 text-sm text-slate-600">Current status: <span class="font-semibold">{{ $managementStatusLabel ?? $property->managementStatusLabel() }}</span></p>
+        @if (auth()->user()?->hasPmPermission('properties.manage') || auth()->user()?->hasPmPermission('property.archive.view'))
+            <a href="{{ route('property.properties.offboarding', $property, false) }}" class="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                Open offboarding wizard
+            </a>
+        @endif
     </div>
     @endif
     </div>

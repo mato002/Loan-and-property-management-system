@@ -1,34 +1,43 @@
 <x-guest-property-portal-layout :portal="$portalRole">
     @php
-        $emailErr = $errors->first('email');
+        $allowPhoneLogin = (bool) ($allowPhoneLogin ?? false);
+        $loginErr = $errors->first('login') ?: $errors->first('email');
         $passErr = $errors->first('password');
+        $loginFieldName = $allowPhoneLogin ? 'login' : 'email';
+        $loginLabel = $allowPhoneLogin ? __('Email or phone') : __('Email');
+        $loginPlaceholder = $allowPhoneLogin ? 'name@example.com or 0712345678' : 'name@example.com';
+        $loginInputType = $allowPhoneLogin ? 'text' : 'email';
+        $loginOldValue = old('login', old('email'));
     @endphp
 
     <form method="POST" action="{{ $postRoute }}" class="space-y-5" x-data="{ showPassword: false }">
         @csrf
 
         <div class="space-y-1">
-            <label for="email" class="text-xs font-semibold uppercase tracking-wide text-slate-600">{{ __('Email') }}</label>
-            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $emailErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}">
+            <label for="{{ $loginFieldName }}" class="text-xs font-semibold uppercase tracking-wide text-slate-600">{{ $loginLabel }}</label>
+            <div class="flex items-center gap-3 border-b pb-2.5 transition-colors {{ $loginErr ? 'border-red-400' : 'border-slate-200 focus-within:border-[#4d8d82]' }}">
                 <span class="text-slate-400" aria-hidden="true">
                     <svg class="h-5 w-5 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
                     </svg>
                 </span>
                 <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value="{{ old('email') }}"
+                    id="{{ $loginFieldName }}"
+                    name="{{ $loginFieldName }}"
+                    type="{{ $loginInputType }}"
+                    value="{{ $loginOldValue }}"
                     required
                     autofocus
                     autocomplete="username"
-                    placeholder="name@example.com"
+                    placeholder="{{ $loginPlaceholder }}"
                     class="min-w-0 flex-1 border-0 bg-transparent p-0 text-base text-slate-900 placeholder:text-slate-400 focus:ring-0"
                 />
             </div>
-            @if ($emailErr)
-                <p class="text-xs text-red-600">{{ $emailErr }}</p>
+            @if ($allowPhoneLogin)
+                <p class="text-xs text-slate-500">{{ __('Use the email or phone number your property manager registered for you.') }}</p>
+            @endif
+            @if ($loginErr)
+                <p class="text-xs text-red-600">{{ $loginErr }}</p>
             @endif
         </div>
 

@@ -6,18 +6,27 @@ use App\Models\PmInvoice;
 use App\Models\PmTenantNotice;
 use App\Models\PropertyPortalSetting;
 use App\Services\BulkSmsService;
+use App\Services\Property\PropertyAgentContactResolver;
 use App\Services\Property\PropertyCommunicationService;
+use App\Services\Property\PropertyCommunicationTemplateService;
+use App\Services\Property\RentReminderEligibilityService;
+use App\Services\Property\TenantCommunicationStageService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 
 class SendRentReminders extends Command
 {
-    protected $signature = 'rent:send-reminders {--date= : Run as-of date (YYYY-MM-DD)} {--force : Send even when not the 1st of the month}';
+    protected $signature = 'rent:send-reminders {--date= : Run as-of date (YYYY-MM-DD)}';
 
-    protected $description = 'On the 1st of each month (unless --force), email + SMS tenants about open rent invoices for the current month and any arrears.';
+    protected $description = 'Daily rent reminder emails/SMS for unpaid rent invoices when today matches a communication stage (D-3, D-1, due today, overdue buckets).';
 
-    public function handle(PropertyCommunicationService $communication): int
-    {
+    public function handle(
+        PropertyCommunicationService $communication,
+        TenantCommunicationStageService $stageService,
+        PropertyCommunicationTemplateService $templates,
+        PropertyAgentContactResolver $agentContacts,
+        RentReminderEligibilityService $eligibility,
+    ): int {
         $enabled = PropertyPortalSetting::isRentReminderAutomationEnabled();
         if (! $enabled) {
             $this->info('Rent reminder automation is off (workflow toggles or PROPERTY_WORKFLOW_AUTOMATION_ENABLED). Skipping reminders.');
@@ -34,118 +43,144 @@ class SendRentReminders extends Command
 
         $todayCarbon = Carbon::parse($today, (string) config('app.timezone'))->startOfDay();
 
-        if (! $this->option('force') && (int) $todayCarbon->format('j') !== 1) {
-            $this->info('Rent reminders are sent on the 1st of each month only. Pass --force to run on other days.');
-
-            return self::SUCCESS;
-        }
-
-        $monthStart = $todayCarbon->copy()->startOfMonth()->toDateString();
-        $monthEnd = $todayCarbon->copy()->endOfMonth()->toDateString();
-
-        $invoices = PmInvoice::query()
+        $invoices = $eligibility->reminderInvoiceQuery($todayCarbon)
             ->with(['tenant:id,name,email,phone', 'unit:id,label,property_id', 'unit.property:id,name'])
-            ->where('status', '!=', PmInvoice::STATUS_DRAFT)
-            ->whereColumn('amount_paid', '<', 'amount')
-            ->where(function ($q) use ($monthStart, $monthEnd) {
-                $q->where('due_date', '<', $monthStart)
-                    ->orWhereBetween('issue_date', [$monthStart, $monthEnd])
-                    ->orWhereBetween('due_date', [$monthStart, $monthEnd]);
-            })
-            ->where(function ($q) {
-                $q->whereNull('invoice_type')
-                    ->orWhereIn('invoice_type', [PmInvoice::TYPE_RENT, PmInvoice::TYPE_MIXED]);
-            })
             ->orderBy('due_date')
             ->orderBy('id')
             ->limit(500)
             ->get();
 
         $sent = 0;
-        foreach ($invoices as $inv) {
-            $inv->refreshComputedStatus();
-            if ((float) $inv->amount_paid >= (float) $inv->amount) {
-                continue;
-            }
+        $skipped = [
+            RentReminderEligibilityService::REASON_NO_OPEN_BALANCE => 0,
+            RentReminderEligibilityService::REASON_PAID => 0,
+            RentReminderEligibilityService::REASON_INACTIVE => 0,
+            RentReminderEligibilityService::REASON_NO_STAGE => 0,
+            RentReminderEligibilityService::REASON_TENANT_OPTED_OUT => 0,
+            RentReminderEligibilityService::REASON_NO_TENANT => 0,
+        ];
+        $scanned = $invoices->count();
 
+        foreach ($invoices as $inv) {
             $dueC = $inv->due_date?->copy()->startOfDay();
             if (! $dueC) {
                 continue;
             }
 
-            if ($dueC->isAfter($todayCarbon)) {
-                $stage = 'MONTHLY '.$todayCarbon->format('Y-m');
-            } else {
-                $daysPastDue = (int) $dueC->diffInDays($todayCarbon);
-                $stage = $daysPastDue <= 4 ? "REMINDER D+{$daysPastDue}" : "ESCALATION D+{$daysPastDue}";
+            $stage = $stageService->resolveFromDueDate($dueC, $todayCarbon);
+            $decision = $eligibility->evaluate($inv, $stage, $todayCarbon);
+
+            if (! $decision['eligible']) {
+                $reason = (string) ($decision['reason'] ?? RentReminderEligibilityService::REASON_NO_OPEN_BALANCE);
+                $skipped[$reason] = (int) ($skipped[$reason] ?? 0) + 1;
+
+                continue;
             }
 
             $tenant = $inv->tenant;
-            $place = $inv->unit?->property?->name.'/'.$inv->unit?->label;
-            $balance = number_format(max(0, (float) $inv->amount - (float) $inv->amount_paid), 2);
+            $tenantId = (int) ($inv->pm_tenant_id ?? 0);
+            $unitName = trim((string) (($inv->unit?->property?->name ?? '').'/'.($inv->unit?->label ?? '')), '/');
+            $balance = number_format((float) $decision['balance'], 2);
             $due = $dueC->toDateString();
+            $internalStage = (string) $stage['internal_stage'];
+            $invoiceNo = (string) $inv->invoice_no;
 
-            $subject = "[RENT] {$inv->invoice_no} {$stage}";
-            $body = "Rent payment reminder\n\n".
-                "Invoice: {$inv->invoice_no}\n".
-                "Unit: {$place}\n".
-                "Due date: {$due}\n".
-                "Balance due: {$balance}\n\n".
-                'If you have already paid, please ignore this message.';
+            $messageContext = $agentContacts->mergeIntoContext([
+                'tenant_name' => (string) ($tenant?->name ?? 'Tenant'),
+                'invoice_no' => (string) $inv->invoice_no,
+                'unit_name' => $unitName !== '' ? $unitName : '—',
+                'balance' => $balance,
+                'due_date' => $due,
+                'stage' => $stage,
+            ], $inv);
+
+            $staffSubject = $stageService->staffSubjectLine([
+                'internal_stage' => $internalStage,
+                'display_label' => $stage['display_label'],
+                'invoice_no' => $inv->invoice_no,
+            ]);
+            $emailPack = $templates->buildRentReminderEmail($messageContext);
+            $smsBody = $templates->resolveRentReminderSms($messageContext);
+            $asOfDate = $todayCarbon->toDateString();
             $noticeCreated = false;
 
-            if ($tenant && ! empty($tenant->email)) {
+            $inv->syncAmountPaidFromAllocations();
+            if ($inv->balanceFloat() <= 0.009) {
+                $skipped[RentReminderEligibilityService::REASON_NO_OPEN_BALANCE]++;
+
+                continue;
+            }
+
+            if (
+                $tenant
+                && ! empty($tenant->email)
+                && $eligibility->tenantAllowsChannel($tenantId, 'email')
+                && ! $eligibility->channelStageAlreadySent((int) $inv->id, 'email', $stage, $todayCarbon)
+            ) {
                 $message = $communication->sendNow([
                     'created_by_user_id' => null,
                     'channel' => 'email',
                     'category' => 'rent_reminder',
                     'purpose' => 'arrears_reminder',
-                    'subject' => $subject,
-                    'body' => $body,
-                    'idempotency_key' => 'rent:email:'.$inv->id.':'.$stage.':'.$todayCarbon->format('Y-m'),
+                    'subject' => $staffSubject,
+                    'body' => $emailPack['body'],
+                    'internal_stage' => $internalStage,
+                    'display_stage' => $stage['display_label'],
+                    'idempotency_key' => $eligibility->idempotencyKeyForStage((int) $inv->id, 'email', $stage, $todayCarbon),
                     'recipient_type' => 'tenant',
-                    'recipient_id' => (int) $tenant->id,
+                    'recipient_id' => $tenantId,
                 ], [(string) $tenant->email]);
 
-                if ($message->wasRecentlyCreated) {
+                if ($eligibility->channelStageDeliverySucceeded($message)) {
                     $sent++;
                     if (! $noticeCreated) {
                         $noticeCreated = $this->createArrearsNoticeIfMissing(
                             $inv,
-                            $body,
-                            $todayCarbon->year,
-                            $todayCarbon->month,
-                            $today
+                            $emailPack['body'],
+                            $today,
+                            $internalStage,
+                            $stage['display_label']
                         );
                     }
                 }
             }
 
-            if ($tenant && ! empty($tenant->phone)) {
-                $smsMsg = "{$subject}\nUnit: {$place}\nDue: {$due}\nBal: {$balance}";
+            if (
+                $tenant
+                && ! empty($tenant->phone)
+                && $eligibility->tenantAllowsChannel($tenantId, 'sms')
+                && ! $eligibility->channelStageAlreadySent((int) $inv->id, 'sms', $stage, $todayCarbon)
+            ) {
                 $phones = app(BulkSmsService::class)->normalizeRecipientList((string) $tenant->phone);
                 if ($phones !== []) {
+                    $smsTo = implode(',', $phones);
+                    if ($eligibility->logShowsRentReminderSentToday($smsTo, $invoiceNo, $todayCarbon)) {
+                        continue;
+                    }
+
                     $message = $communication->sendNow([
                         'created_by_user_id' => null,
                         'channel' => 'sms',
                         'category' => 'rent_reminder',
                         'purpose' => 'arrears_reminder',
-                        'subject' => $subject,
-                        'body' => $smsMsg,
-                        'idempotency_key' => 'rent:sms:'.$inv->id.':'.$stage.':'.$todayCarbon->format('Y-m'),
+                        'subject' => $staffSubject,
+                        'body' => $smsBody,
+                        'internal_stage' => $internalStage,
+                        'display_stage' => $stage['display_label'],
+                        'idempotency_key' => $eligibility->idempotencyKeyForStage((int) $inv->id, 'sms', $stage, $todayCarbon),
                         'recipient_type' => 'tenant',
-                        'recipient_id' => (int) $tenant->id,
+                        'recipient_id' => $tenantId,
                     ], $phones);
 
-                    if ($message->wasRecentlyCreated) {
+                    if ($eligibility->channelStageDeliverySucceeded($message)) {
                         $sent++;
                         if (! $noticeCreated) {
                             $noticeCreated = $this->createArrearsNoticeIfMissing(
                                 $inv,
-                                $smsMsg,
-                                $todayCarbon->year,
-                                $todayCarbon->month,
-                                $today
+                                $smsBody,
+                                $today,
+                                $internalStage,
+                                $stage['display_label']
                             );
                         }
                     }
@@ -153,25 +188,36 @@ class SendRentReminders extends Command
             }
         }
 
-        $this->info("Rent reminders processed (monthly batch). Sent={$sent}.");
+        $skipSummary = collect($skipped)
+            ->filter(fn (int $count) => $count > 0)
+            ->map(fn (int $count, string $reason) => "{$reason}={$count}")
+            ->implode(', ');
+
+        $this->info("Rent reminders for {$today}: invoices={$scanned}, sent={$sent}".($skipSummary !== '' ? ", skipped: {$skipSummary}" : '').'.');
 
         return self::SUCCESS;
     }
 
-    private function createArrearsNoticeIfMissing(PmInvoice $invoice, string $message, int $year, int $month, string $dueOn): bool
-    {
+    private function createArrearsNoticeIfMissing(
+        PmInvoice $invoice,
+        string $message,
+        string $dueOn,
+        string $internalStage,
+        string $displayLabel
+    ): bool {
         $invoiceNo = (string) ($invoice->invoice_no ?? '');
         if ($invoiceNo === '') {
             return false;
         }
         $needle = 'Invoice: '.$invoiceNo;
+        $stageNeedle = 'Internal stage: '.$internalStage;
         $exists = PmTenantNotice::query()
             ->where('pm_tenant_id', (int) $invoice->pm_tenant_id)
             ->where('property_unit_id', (int) $invoice->property_unit_id)
             ->where('notice_type', 'arrears_reminder')
-            ->whereYear('due_on', $year)
-            ->whereMonth('due_on', $month)
+            ->whereDate('due_on', $dueOn)
             ->where('notes', 'like', '%'.$needle.'%')
+            ->where('notes', 'like', '%'.$stageNeedle.'%')
             ->exists();
         if ($exists) {
             return false;
@@ -183,7 +229,7 @@ class SendRentReminders extends Command
             'notice_type' => 'arrears_reminder',
             'status' => 'sent',
             'due_on' => $dueOn,
-            'notes' => "Auto arrears reminder\nInvoice: {$invoiceNo}\n\n{$message}",
+            'notes' => "Auto arrears reminder\nInternal stage: {$internalStage}\nDisplay label: {$displayLabel}\nInvoice: {$invoiceNo}\n\n{$message}",
             'created_by_user_id' => null,
         ]);
 

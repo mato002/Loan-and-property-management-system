@@ -42,7 +42,7 @@
                             : 'border-slate-200 bg-white text-slate-800';
                     @endphp
                     <a
-                        href="{{ route($item['route'], [], false) }}"
+                        href="{{ PropertyNavigation::workspaceHref($item) }}"
                         data-turbo-frame="property-main"
                         data-property-nav="{{ implode('|', $item['patterns']) }}"
                         data-property-mobile-more-link

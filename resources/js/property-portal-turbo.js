@@ -1,18 +1,112 @@
 import * as Turbo from '@hotwired/turbo';
 import { closeAllPropertyDropdowns } from './property-dropdown-cleanup';
 import { recoverPropertyScrollState } from './property-modal-manager';
-import { setupPropertyWorkspaceTabs } from './property-workspace-tabs';
-
-const PROPERTY_MAIN_FRAME_ID = 'property-main';
+import { wireAutoFilterForms } from './property-auto-filter';
+import { resetPropertyFlashDedupe, schedulePropertyFlash } from './property-flash-lifecycle';
+import {
+    notePendingWorkspaceNavigation,
+    reconcilePropertyFrameWithBrowserUrl as runPropertyFrameReconciliation,
+    resetPropertyFrameReconcileToken,
+    scheduleDeferredPropertyFrameReconciliation,
+} from './property-frame-reconciliation';
+import {
+    bumpPropertyHydrationGeneration,
+    PROPERTY_MAIN_FRAME_ID,
+    resetPropertyHydrationGuard,
+    schedulePropertyWorkspaceHydration,
+} from './property-workspace-hydration';
 
 /** Guard flag so frame redirects do not recurse through turbo:before-visit. */
 let routingViaMainFrame = false;
+
+/** Avoid reload loops when the shell is already being restored. */
+let propertyPortalShellRecoveryInFlight = false;
 
 /** Delay before showing the loading bar (avoids flash on fast navigations). */
 const FRAME_LOADING_DELAY_MS = 160;
 const WORKSPACE_LOADING_DELAY_MS = 120;
 let frameLoadingTimer = null;
 let workspaceLoadingTimer = null;
+
+function isBypassTurboUrl(url) {
+    const path = url.pathname.toLowerCase();
+    const params = url.searchParams;
+
+    if (params.has('export') || params.has('download') || params.has('print')) {
+        return true;
+    }
+
+    const format = (params.get('format') || '').toLowerCase();
+    if (['csv', 'xls', 'xlsx', 'pdf', 'word', 'doc'].includes(format)) {
+        return true;
+    }
+
+    if (path.includes('/export') || path.includes('/print') || path.includes('/download')) {
+        return true;
+    }
+
+    return /\.(csv|xls|xlsx|pdf|doc|docx)$/i.test(path);
+}
+
+function isBypassTurboLink(element) {
+    if (!(element instanceof HTMLAnchorElement)) {
+        return false;
+    }
+
+    if (element.dataset.turbo === 'false') {
+        return true;
+    }
+
+    if (element.hasAttribute('download') || element.target === '_blank') {
+        return true;
+    }
+
+    const href = element.getAttribute('href');
+    if (! href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:')) {
+        return false;
+    }
+
+    try {
+        return isBypassTurboUrl(new URL(href, window.location.href));
+    } catch {
+        return false;
+    }
+}
+
+function wirePropertyBypassLinks(root = document) {
+    const scope = root instanceof Document ? root : root;
+
+    scope.querySelectorAll('a[href]').forEach((link) => {
+        if (!(link instanceof HTMLAnchorElement) || ! isBypassTurboLink(link)) {
+            return;
+        }
+
+        link.setAttribute('data-turbo', 'false');
+        link.removeAttribute('data-turbo-frame');
+    });
+}
+
+function showPropertyFrameSkeleton(frame) {
+    if (!(frame instanceof HTMLElement) || frame.id !== PROPERTY_MAIN_FRAME_ID) {
+        return;
+    }
+
+    hidePropertyFrameSkeleton(frame);
+
+    const template = document.getElementById('property-frame-skeleton-template');
+    const skeleton = template?.content?.firstElementChild?.cloneNode(true);
+    if (skeleton instanceof HTMLElement) {
+        frame.appendChild(skeleton);
+    }
+}
+
+function hidePropertyFrameSkeleton(frame) {
+    if (!(frame instanceof HTMLElement)) {
+        return;
+    }
+
+    frame.querySelector('[data-property-frame-skeleton]')?.remove();
+}
 
 function getPropertyMainFrame() {
     const frame = document.getElementById(PROPERTY_MAIN_FRAME_ID);
@@ -34,7 +128,11 @@ function getWorkspaceErrorEl() {
 function clearPropertyFrameLoading() {
     window.clearTimeout(frameLoadingTimer);
     frameLoadingTimer = null;
-    getPropertyMainFrame()?.removeAttribute('data-property-loading');
+    const frame = getPropertyMainFrame();
+    frame?.removeAttribute('data-property-loading');
+    if (frame) {
+        hidePropertyFrameSkeleton(frame);
+    }
 }
 
 function schedulePropertyFrameLoading(frame) {
@@ -45,6 +143,7 @@ function schedulePropertyFrameLoading(frame) {
     frame.removeAttribute('data-property-loading');
     frameLoadingTimer = window.setTimeout(() => {
         frame.setAttribute('data-property-loading', '');
+        showPropertyFrameSkeleton(frame);
     }, FRAME_LOADING_DELAY_MS);
 }
 
@@ -130,6 +229,11 @@ function syncPropertyPortalNav(frame) {
     syncPropertyHeaderTitle(pageTitle);
 
     document.querySelectorAll('a[data-property-nav]').forEach((a) => {
+        // Workspace tabs use server-side tabIsActive (route + query); JS pattern match would double-highlight (e.g. Leases + Expiry).
+        if (a.classList.contains('property-workspace-tab') || a.classList.contains('property-workspace-subtab')) {
+            return;
+        }
+
         const raw = a.getAttribute('data-property-nav') || '';
         const patterns = raw.split('|').map((s) => s.trim()).filter(Boolean);
         const active = Boolean(routeName && patterns.some((p) => routeNameMatches(routeName, p)));
@@ -171,6 +275,65 @@ function isPropertyShellUrl(url) {
     return path.startsWith('/property/') || path.startsWith('/profile');
 }
 
+/** Full portal layout (head assets + sidebar/header + #property-main) must be present. */
+function hasPropertyPortalShell() {
+    return document.documentElement?.getAttribute('data-pwa-context') === 'portal'
+        && document.getElementById('property-shell-header') instanceof HTMLElement
+        && document.getElementById(PROPERTY_MAIN_FRAME_ID) instanceof HTMLElement;
+}
+
+/** Tailwind is bundled in app.css — when it drops, sidebar stays width:0 and the page looks "unstyled". */
+function isPortalStylesheetActive() {
+    const probe = document.createElement('div');
+    probe.className = 'hidden';
+    probe.style.position = 'absolute';
+    probe.style.pointerEvents = 'none';
+    document.documentElement.appendChild(probe);
+    const active = window.getComputedStyle(probe).display === 'none';
+    probe.remove();
+
+    return active;
+}
+
+function recoverPropertyPortalDocument(url = window.location.href) {
+    if (propertyPortalShellRecoveryInFlight) {
+        return;
+    }
+    propertyPortalShellRecoveryInFlight = true;
+    window.location.assign(url);
+}
+
+function ensurePropertyPortalShell(url = window.location.href) {
+    if (!isPropertyShellUrl(new URL(url, window.location.href))) {
+        return true;
+    }
+    if (!hasPropertyPortalShell() || !isPortalStylesheetActive()) {
+        recoverPropertyPortalDocument(url);
+
+        return false;
+    }
+
+    return true;
+}
+
+/** Hub shell paths redirect server-side — Turbo frame visits need the concrete tab URL. */
+function resolvePropertyNavUrl(href) {
+    try {
+        const url = new URL(href, window.location.href);
+        const path = url.pathname.replace(/\/+$/, '');
+
+        if (path.endsWith('/property/listings')) {
+            url.pathname = `${path}/create`;
+
+            return url.toString();
+        }
+    } catch {
+        // ignore malformed URLs
+    }
+
+    return href;
+}
+
 function shouldUseMainFrame(element) {
     if (!(element instanceof HTMLElement)) {
         return false;
@@ -190,10 +353,14 @@ function shouldUseMainFrame(element) {
  * Navigate only the #property-main frame — sidebar/header/footer stay mounted.
  */
 function visitPropertyMainFrame(url) {
+    if (!ensurePropertyPortalShell(url)) {
+        return;
+    }
+
     routingViaMainFrame = true;
     hideWorkspaceError();
     try {
-        Turbo.visit(url, { frame: PROPERTY_MAIN_FRAME_ID });
+        Turbo.visit(resolvePropertyNavUrl(url), { frame: PROPERTY_MAIN_FRAME_ID });
     } finally {
         routingViaMainFrame = false;
     }
@@ -225,11 +392,13 @@ function wirePropertyFrameNavigation(root = document) {
 
     const scope = root instanceof Document ? root : root;
 
+    wirePropertyBypassLinks(scope);
+
     scope.querySelectorAll('a[href]').forEach((link) => {
         if (!(link instanceof HTMLAnchorElement)) {
             return;
         }
-        if (!shouldUseMainFrame(link) || link.target === '_blank' || link.hasAttribute('download')) {
+        if (isBypassTurboLink(link) || ! shouldUseMainFrame(link) || link.target === '_blank' || link.hasAttribute('download')) {
             return;
         }
         if (link.hasAttribute('data-turbo-frame')) {
@@ -290,89 +459,30 @@ function ensurePropertyFormUsesMainFrame(form) {
     form.setAttribute('data-turbo-frame', PROPERTY_MAIN_FRAME_ID);
 }
 
-let propertyFrameReconcileToken = null;
-
-/**
- * If the browser URL and turbo-frame route metadata disagree (stale frame after a tab click),
- * re-fetch the frame once so workspace tabs like Leases render the correct page.
- */
-function reconcilePropertyFrameWithBrowserUrl(frame) {
-    if (!(frame instanceof HTMLElement) || frame.id !== PROPERTY_MAIN_FRAME_ID) {
-        return;
-    }
-
-    const frameRoute = frame.querySelector('#property-main-route')?.dataset?.routeName ?? '';
-    if (frameRoute === '') {
-        return;
-    }
-
-    let browserPath;
-    try {
-        browserPath = new URL(window.location.href).pathname.replace(/\/+$/, '');
-    } catch {
-        return;
-    }
-
-    const mismatches = [
-        {
-            pathSuffix: '/tenants/leases',
-            expectedRoutes: ['property.tenants.leases', 'property.tenants.expiry'],
-            staleRoutes: ['property.tenants.directory'],
-        },
-        {
-            pathSuffix: '/tenants/directory',
-            expectedRoutes: ['property.tenants.directory'],
-            staleRoutes: ['property.tenants.leases'],
-        },
-    ];
-
-    for (const rule of mismatches) {
-        if (!browserPath.endsWith(rule.pathSuffix)) {
-            continue;
-        }
-        if (rule.expectedRoutes.includes(frameRoute)) {
-            propertyFrameReconcileToken = null;
-
-            return;
-        }
-        if (!rule.staleRoutes.includes(frameRoute)) {
-            return;
-        }
-
-        const retryKey = `${browserPath}:${frameRoute}`;
-        if (propertyFrameReconcileToken === retryKey) {
-            return;
-        }
-        propertyFrameReconcileToken = retryKey;
-        visitPropertyMainFrame(window.location.href);
-
-        return;
-    }
+/** Re-fetch #property-main when browser URL and frame route metadata disagree (Phase 2B). */
+function reconcilePropertyFrameWithBrowserUrl(frame, options = {}) {
+    runPropertyFrameReconciliation(frame, visitPropertyMainFrame, options);
 }
 
-function afterMainFrameSwap(frame) {
-    closeAllPropertyDropdowns();
-    clearPropertyFrameLoading();
-    hideWorkspaceLoading();
-    hideWorkspaceError();
-    clearAllStuckPropertySubmitButtons();
-    recoverPropertyScrollState('turbo:frame-load');
-    syncPropertyPortalNav(frame);
-    reconcilePropertyFrameWithBrowserUrl(frame);
-    setupPropertyWorkspaceTabs(frame);
-    scrollPropertyMainToTop(frame);
-    wirePropertyFrameNavigation(frame);
-    wirePropertyFrameNavigation(document);
-    if (window.Alpine?.initTree) {
-        window.Alpine.initTree(frame);
-    }
-    if (typeof window.__runSwalFlash === 'function') {
-        queueMicrotask(() => {
-            window.setTimeout(() => {
-                window.__runSwalFlash(frame);
-            }, 0);
-        });
-    }
+const workspaceHydrationHooks = {
+    clearPropertyFrameLoading,
+    hideWorkspaceLoading,
+    hideWorkspaceError,
+    clearAllStuckPropertySubmitButtons,
+    syncPropertyPortalNav,
+    reconcilePropertyFrameWithBrowserUrl,
+    scrollPropertyMainToTop,
+    wirePropertyFrameNavigation,
+    onHydrationComplete: (frame) => {
+        wireAutoFilterForms(frame);
+        if (frame instanceof HTMLElement && frame.querySelector('[data-swal-flash]')) {
+            schedulePropertyFlash(frame, 'hydration:complete', { force: true });
+        }
+    },
+};
+
+function afterMainFrameSwap(frame, source) {
+    schedulePropertyWorkspaceHydration(frame, source, workspaceHydrationHooks);
 }
 
 document.addEventListener('turbo:before-fetch-request', () => {
@@ -402,6 +512,15 @@ document.addEventListener('turbo:before-frame-render', (event) => {
         return;
     }
     hideWorkspaceError();
+    bumpPropertyHydrationGeneration(event.target);
+});
+
+document.addEventListener('turbo:frame-render', (event) => {
+    if (!(event.target instanceof HTMLElement) || event.target.id !== PROPERTY_MAIN_FRAME_ID) {
+        return;
+    }
+    hideWorkspaceLoading();
+    clearPropertyFrameLoading();
 });
 
 function markPropertyFormSubmitting(form) {
@@ -455,16 +574,22 @@ document.addEventListener('turbo:submit-start', (event) => {
 
 document.addEventListener('turbo:submit-end', (event) => {
     const form = event.target;
-    if (form instanceof HTMLFormElement) {
-        clearPropertyFormSubmitting(form);
+    if (!(form instanceof HTMLFormElement)) {
+        return;
     }
-    if (event.detail?.success && typeof window.__runSwalFlash === 'function') {
-        const frame = document.getElementById(PROPERTY_MAIN_FRAME_ID);
-        queueMicrotask(() => {
-            window.setTimeout(() => {
-                window.__runSwalFlash(frame || document);
-            }, 0);
-        });
+
+    clearPropertyFormSubmitting(form);
+
+    if (!form.closest(`#${PROPERTY_MAIN_FRAME_ID}`)) {
+        return;
+    }
+
+    hideWorkspaceLoading();
+    clearPropertyFrameLoading();
+    recoverPropertyScrollState('turbo:submit-end');
+
+    if (event.detail?.success) {
+        resetPropertyFlashDedupe('turbo:submit-end');
     }
 });
 
@@ -496,7 +621,7 @@ document.addEventListener('turbo:click', (event) => {
     if (!(link instanceof HTMLAnchorElement)) {
         return;
     }
-    if (!shouldUseMainFrame(link) || link.target === '_blank' || link.hasAttribute('download')) {
+    if (isBypassTurboLink(link) || ! shouldUseMainFrame(link) || link.target === '_blank' || link.hasAttribute('download')) {
         return;
     }
 
@@ -510,9 +635,13 @@ document.addEventListener('turbo:click', (event) => {
         return;
     }
 
+    if (link.classList.contains('property-workspace-tab') || link.classList.contains('property-workspace-subtab')) {
+        notePendingWorkspaceNavigation(url.toString());
+    }
+
     closeAllPropertyDropdowns();
     event.preventDefault();
-    visitPropertyMainFrame(url.toString());
+    visitPropertyMainFrame(resolvePropertyNavUrl(url.toString()));
 });
 
 document.addEventListener('turbo:frame-missing', (event) => {
@@ -522,7 +651,12 @@ document.addEventListener('turbo:frame-missing', (event) => {
     }
 
     event.preventDefault();
-    const responseUrl = event.detail?.response?.url;
+    const responseUrl = event.detail?.response?.url || window.location.href;
+    if (!hasPropertyPortalShell()) {
+        recoverPropertyPortalDocument(responseUrl);
+
+        return;
+    }
     if (responseUrl) {
         visitPropertyMainFrame(responseUrl);
         return;
@@ -535,7 +669,7 @@ document.addEventListener('turbo:frame-load', (event) => {
     if (!(frame instanceof HTMLElement) || frame.id !== PROPERTY_MAIN_FRAME_ID) {
         return;
     }
-    afterMainFrameSwap(frame);
+    afterMainFrameSwap(frame, 'turbo:frame-load');
 });
 
 /**
@@ -568,7 +702,7 @@ document.addEventListener('turbo:load', () => {
     wirePropertyFrameNavigation();
     const frame = document.getElementById(PROPERTY_MAIN_FRAME_ID);
     if (frame instanceof HTMLElement) {
-        afterMainFrameSwap(frame);
+        afterMainFrameSwap(frame, 'turbo:load');
     }
 });
 
@@ -612,16 +746,53 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.scrollTop = 0;
     window.scrollTo(0, 0);
     wirePropertyFrameNavigation();
+    const frame = getPropertyMainFrame();
+    if (frame) {
+        afterMainFrameSwap(frame, 'dom:ready');
+    }
+});
+
+window.addEventListener('popstate', () => {
+    resetPropertyFlashDedupe('popstate');
+    resetPropertyHydrationGuard('popstate');
+    const frame = getPropertyMainFrame();
+    if (frame) {
+        resetPropertyFrameReconcileToken('popstate');
+        reconcilePropertyFrameWithBrowserUrl(frame, { force: true });
+    }
 });
 
 window.addEventListener('pageshow', (event) => {
     if (event.persisted) {
+        resetPropertyHydrationGuard('pageshow:bfcache');
+        resetPropertyFrameReconcileToken('pageshow:bfcache');
+        resetPropertyFlashDedupe('pageshow:bfcache');
         recoverPropertyScrollState('pageshow:bfcache');
+
+        if (!ensurePropertyPortalShell()) {
+            return;
+        }
+
+        const frame = getPropertyMainFrame();
+        if (frame) {
+            reconcilePropertyFrameWithBrowserUrl(frame, { force: true });
+            afterMainFrameSwap(frame, 'pageshow:bfcache');
+        }
     }
 });
 
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        recoverPropertyScrollState('visibility:visible');
+    if (document.visibilityState !== 'visible') {
+        return;
+    }
+
+    recoverPropertyScrollState('visibility:visible');
+
+    try {
+        if (isPropertyShellUrl(new URL(window.location.href, window.location.href))) {
+            ensurePropertyPortalShell();
+        }
+    } catch {
+        // ignore malformed URLs
     }
 });

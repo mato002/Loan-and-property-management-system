@@ -19,10 +19,18 @@ class SendPayrollPayslipEmailJob implements ShouldQueue
     use Queueable;
     use SerializesModels;
 
+    public int $tries = 3;
+
+    public int $timeout = 90;
+
+    /** @var list<int> */
+    public array $backoff = [30, 60, 120];
+
     public function __construct(
         public int $payrollPeriodId,
         public int $payrollLineId
     ) {
+        $this->onQueue('default');
     }
 
     public function handle(): void

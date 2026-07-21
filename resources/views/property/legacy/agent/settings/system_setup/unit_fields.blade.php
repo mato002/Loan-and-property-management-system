@@ -1,5 +1,5 @@
 <x-property-layout>
-    <x-slot name="header">System setup ┬╖ Unit fields</x-slot>
+    <x-slot name="header">System setup  -  Unit fields</x-slot>
 
     <x-property.page
         title="Unit fields"

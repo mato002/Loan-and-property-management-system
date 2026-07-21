@@ -9,11 +9,15 @@
     'maxWidth' => 'lg',
     /** Bottom sheet on mobile (< md) */
     'mobileSheet' => true,
+    /** Teleport to document.body (disable for lease create submodals — keeps Alpine scope) */
+    'teleport' => true,
     /** z-index for overlay root (default: modal tier 7010) */
     'zIndex' => 7010,
     'closeOnBackdrop' => true,
     'closeOnEscape' => true,
     'ariaLabel' => 'Dialog',
+    /** Lease create inline submodal — excluded from Turbo orphan purge */
+    'leaseSubmodal' => false,
 ])
 
 @php
@@ -36,15 +40,20 @@
     $sheetEnd = $mobileSheet
         ? 'max-md:translate-y-0 md:scale-100 md:opacity-100'
         : 'scale-100 opacity-100';
+    // Lease submodals must stay in the form DOM tree so fieldset form= / Alpine scope work.
+    $shouldTeleport = $teleport && ! $leaseSubmodal;
 @endphp
 
+@if ($shouldTeleport)
 <template x-teleport="body">
+@endif
     <div
         x-show="{{ $show }}"
         x-cloak
         data-property-modal
         data-property-modal-id="{{ $modalId }}"
         data-overlay-recoverable
+        @if ($leaseSubmodal) data-lease-submodal @endif
         @if ($closeOnEscape)
             @keydown.escape.window="{{ $closeExpr }}"
         @endif
@@ -75,7 +84,7 @@
             x-transition:leave="transition-opacity ease-in duration-150"
             x-transition:leave-start="opacity-100"
             x-transition:leave-end="opacity-0"
-            class="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px]"
+            class="absolute inset-0 z-0 bg-slate-950/50 backdrop-blur-[1px]"
             @if ($closeOnBackdrop)
                 @click="{{ $closeExpr }}"
             @endif
@@ -93,7 +102,7 @@
             x-transition:leave-end="{{ $sheetEnter }}"
             data-property-modal-panel
             @click.stop
-            class="relative flex w-full flex-col {{ $maxWidthClass }} max-h-[90vh] overflow-hidden
+            class="relative z-10 flex w-full flex-col {{ $maxWidthClass }} max-h-[90vh] overflow-hidden
                 {{ $mobileSheet ? 'max-md:max-h-[90vh] max-md:rounded-t-2xl max-md:rounded-b-none rounded-2xl' : 'rounded-2xl' }}
                 border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 shadow-2xl"
         >
@@ -126,4 +135,6 @@
             @endisset
         </div>
     </div>
+@if ($shouldTeleport)
 </template>
+@endif

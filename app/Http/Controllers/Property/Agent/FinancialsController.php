@@ -11,8 +11,10 @@ use App\Models\PmUnitUtilityCharge;
 use App\Models\PropertyPortalSetting;
 use App\Support\CsvExport;
 use App\Support\TabularExport;
+use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Facades\DB;
@@ -25,9 +27,8 @@ class FinancialsController extends Controller
     {
         [$monthValue, $fyValue, $start, $end, $periodLabel] = $this->resolvePeriod($request);
 
-        $income = (float) PmInvoice::query()
-            ->whereBetween('issue_date', [$start->toDateString(), $end->toDateString()])
-            ->sum('amount');
+        $income = app(FinancialReportingFormulaService::class)
+            ->billedForPeriod($start, $end);
         $maint = (float) PmMaintenanceJob::query()
             ->whereNotNull('quote_amount')
             ->whereBetween('created_at', [$start, $end])
@@ -82,15 +83,14 @@ class FinancialsController extends Controller
     {
         [$monthValue, $fyValue, $start, $end, $periodLabel] = $this->resolvePeriod($request);
 
-        $inAll = (float) PmPayment::query()->where('status', PmPayment::STATUS_COMPLETED)->sum('amount');
+        $formulas = app(FinancialReportingFormulaService::class);
+
+        $inAll = $formulas->collectionsForPeriod(Carbon::parse('2000-01-01'), now());
         $outAll = (float) PmMaintenanceJob::query()
             ->whereNotNull('completed_at')
             ->sum('quote_amount');
 
-        $inMtd = (float) PmPayment::query()
-            ->where('status', PmPayment::STATUS_COMPLETED)
-            ->whereBetween('paid_at', [$start, $end])
-            ->sum('amount');
+        $inMtd = $formulas->collectionsForPeriod($start, $end);
         $outMtd = (float) PmMaintenanceJob::query()
             ->whereNotNull('completed_at')
             ->whereBetween('completed_at', [$start, $end])
@@ -108,7 +108,8 @@ class FinancialsController extends Controller
         $running = 0.0;
         $balanceAfter = [];
         foreach ($chron as $p) {
-            $running += (float) $p->amount;
+            $allocAmount = (float) $p->allocations->sum('amount');
+            $running += $allocAmount;
             $balanceAfter[$p->id] = $running;
         }
 
@@ -116,14 +117,15 @@ class FinancialsController extends Controller
         foreach ($payments as $p) {
             $inv = $p->allocations->first()?->invoice;
             $prop = $inv?->unit?->property?->name ?? '—';
+            $allocAmount = (float) $p->allocations->sum('amount');
             $rows[] = [
                 $p->paid_at?->format('Y-m-d') ?? '—',
                 'Collection',
                 $p->tenant?->name ?? 'Tenant',
                 $prop,
-                PropertyMoney::kes((float) $p->amount),
+                PropertyMoney::kes($allocAmount),
                 '—',
-                PropertyMoney::kes($balanceAfter[$p->id] ?? (float) $p->amount),
+                PropertyMoney::kes($balanceAfter[$p->id] ?? $allocAmount),
             ];
         }
 
@@ -197,13 +199,8 @@ class FinancialsController extends Controller
             ->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount),0) as total')
             ->pluck('total', 'property_id');
 
-        $pendingByProperty = DB::table('pm_invoices as i')
-            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
-            ->whereDate('i.issue_date', '<=', $end->toDateString())
-            ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
-            ->groupBy('pu.property_id')
-            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(GREATEST(i.amount - i.amount_paid, 0)),0) as total')
-            ->pluck('total', 'property_id');
+        $pendingByProperty = app(FinancialReportingFormulaService::class)
+            ->outstandingByPropertyId($end);
 
         $lastRemitByProperty = DB::table('pm_payment_allocations as a')
             ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
@@ -265,8 +262,8 @@ class FinancialsController extends Controller
 
         return property_view('property.agent.financials.owner_balances', [
             'stats' => [
-                ['label' => 'Held in trust', 'value' => PropertyMoney::kes($held), 'hint' => 'All owners'],
-                ['label' => 'Pending remit', 'value' => PropertyMoney::kes($pending), 'hint' => 'Based on receivables'],
+                ['label' => 'Held in trust', 'value' => PropertyMoney::kes($held), 'hint' => 'Collections · all owners'],
+                ['label' => 'Tenant arrears (pending remit)', 'value' => PropertyMoney::kes($pending), 'hint' => 'Billable AR owed by tenants'],
                 ['label' => 'Owners', 'value' => (string) $links->pluck('user_id')->unique()->count(), 'hint' => 'Linked'],
             ],
             'columns' => ['Owner', 'Property', 'Available', 'Pending', 'Last remittance', 'Next run', 'Statement'],

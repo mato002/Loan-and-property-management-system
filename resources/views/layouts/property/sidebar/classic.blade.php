@@ -1,4 +1,6 @@
 @php
+    use App\Support\Property\PropertyNavigation;
+
     $companyLogoUrl = \App\Models\PropertyPortalSetting::getValue('company_logo_url', '');
     $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '');
     $navActive = function ($patterns): bool {
@@ -137,7 +139,7 @@
                 [
                     'label' => 'Listings workspace',
                     'sublabel' => 'Create · vacant · published · leads · applications',
-                    'route' => 'property.listings.index',
+                    'route' => 'property.listings.create',
                     'active' => [
                         'property.listings.index',
                         'property.listings.create',
@@ -1052,7 +1054,7 @@
                 @php $item = $section['items'][0]; $active = $navActive($item['active']); @endphp
                 <div class="{{ $si > 0 ? 'mt-2 pt-2 border-t border-[#406866]/40' : '' }}">
                     <a
-                        href="{{ route($item['route']) }}"
+                        href="{{ PropertyNavigation::workspaceHref($item) }}"
                         data-turbo-frame="property-main"
                         data-property-nav="{{ implode('|', $item['active']) }}"
                         @if ($active) aria-current="page" @endif
@@ -1174,7 +1176,7 @@
                                         @foreach ($item['children'] as $child)
                                             @php $childActiveState = $navActive($child['active'] ?? []); @endphp
                                             <a
-                                                href="{{ route($child['route'], $child['route_params'] ?? []) }}"
+                                                href="{{ PropertyNavigation::workspaceHref($child) }}"
                                                 data-turbo-frame="property-main"
                                                 data-property-nav="{{ implode('|', (array) ($child['active'] ?? [])) }}"
                                                 @if ($childActiveState) aria-current="page" @endif
@@ -1191,7 +1193,7 @@
                                 </div>
                             @else
                                 <a
-                                    href="{{ route($item['route'], $item['route_params'] ?? []) }}"
+                                    href="{{ PropertyNavigation::workspaceHref($item) }}"
                                     data-turbo-frame="property-main"
                                     data-property-nav="{{ implode('|', (array) ($item['active'] ?? [])) }}"
                                     @if ($active) aria-current="page" @endif

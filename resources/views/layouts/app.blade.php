@@ -2,7 +2,7 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
     <head>
         @php
-            $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Application');
+            $companyName = config('app.name', 'Application');
             $displayName = strtolower($companyName) === 'laravel' ? 'Property Management System' : $companyName;
         @endphp
         <meta charset="utf-8">

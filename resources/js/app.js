@@ -1,6 +1,8 @@
 import './bootstrap';
 import './swal-init';
 import './superadmin-auto-filter';
+import './property-auto-filter';
+import './property-flash-lifecycle';
 import './property-portal-ui';
 import './property-modal-manager';
 import './property-lease-row-actions';
@@ -11,9 +13,14 @@ import './property-workspace-tabs';
 import './property-bulk-actions';
 import './lease-form-modals';
 import './property-portal-turbo';
+import './loan-portal-turbo';
+import './staff-module-switch';
+import './property-quick-create-select';
+import './property-payment-reversal';
 import './property-dashboard';
 import './utility-analytics';
 import './utility-operations';
+import { registerLoanWorkspaceAlpine } from './loan-workspace';
 
 import Alpine from 'alpinejs';
 import { Chart, registerables } from 'chart.js';
@@ -55,5 +62,6 @@ function persistedSidebarAccordion(storageKey) {
 Alpine.data('loanSidebarGroup', persistedSidebarAccordion('loan.sidebar.openGroups'));
 Alpine.data('propertySidebarGroup', persistedSidebarAccordion('property.sidebar.openGroups'));
 Alpine.data('propertyModalState', propertyModalState);
+registerLoanWorkspaceAlpine(Alpine);
 
 Alpine.start();

@@ -147,7 +147,7 @@
                                 @foreach ($flyoutLinks as $link)
                                     @php $linkActive = $navActive($link['active']); @endphp
                                     <a
-                                        href="{{ route($link['route']) }}"
+                                        href="{{ PropertyNavigation::workspaceHref($link) }}"
                                         data-turbo-frame="property-main"
                                         data-property-nav="{{ implode('|', $link['active']) }}"
                                         @if ($linkActive) aria-current="page" @endif

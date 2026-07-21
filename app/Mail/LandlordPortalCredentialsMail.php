@@ -14,7 +14,8 @@ class LandlordPortalCredentialsMail extends Mailable
 
     public function __construct(
         public string $landlordName,
-        public string $email,
+        public ?string $email,
+        public ?string $phone,
         public string $plainPassword,
         public string $loginUrl,
         public string $landlordHomeUrl,

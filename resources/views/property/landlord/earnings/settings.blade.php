@@ -1,13 +1,10 @@
 <x-property-layout>
     <x-slot name="header">Payout settings</x-slot>
 
-    <x-property.page
-        title="Payout settings"
-        subtitle="Configure your preferred destination and optional automatic payout schedule."
-    >
+    <x-property.page title="Payout settings">
         <form method="post" action="{{ route('property.landlord.earnings.settings.store') }}" class="w-full space-y-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm" data-swal-confirm="Save payout settings changes?">
             @csrf
-            <div class="grid gap-4 sm:grid-cols-2">
+            <div class="grid grid-cols-2 gap-3 sm:gap-4">
                 <div>
                     <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Default destination</label>
                     <select name="default_destination" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
@@ -30,7 +27,7 @@
             </div>
             <label class="flex items-start gap-3 text-sm text-slate-700 dark:text-slate-300">
                 <input type="checkbox" name="auto_withdraw_enabled" value="1" class="mt-1 rounded border-slate-300" @checked(old('auto_withdraw_enabled', $payoutPrefs['auto_withdraw_enabled'] ?? false)) />
-                <span>Enable auto-withdraw schedule (records your instruction; treasury integration executes payouts when connected).</span>
+                <span>Enable auto-withdraw schedule</span>
             </label>
             <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">Save settings</button>
         </form>

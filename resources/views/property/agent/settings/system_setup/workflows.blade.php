@@ -1,5 +1,5 @@
 <x-property-layout>
-    <x-slot name="header">System setup ┬╖ Workflows</x-slot>
+    <x-slot name="header">System setup  -  Workflows</x-slot>
 
     <x-property.page
         title="Workflow adjustments"
@@ -45,6 +45,7 @@
             <input type="hidden" name="workflow_auto_water_invoices" value="0" />
             <input type="hidden" name="workflow_auto_rent_reminders" value="0" />
             <input type="hidden" name="workflow_auto_water_penalties" value="0" />
+            <input type="hidden" name="workflow_auto_attached_utility_charges" value="0" />
 
             <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input type="checkbox" name="workflow_auto_assign_tickets" value="1" @checked(old('workflow_auto_assign_tickets', $autoAssignTickets ? '1' : '0') === '1') />
@@ -68,18 +69,33 @@
                 </label>
                 <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                     <input type="checkbox" name="workflow_auto_rent_reminders" value="1" @checked(old('workflow_auto_rent_reminders', $rentRemindersAuto ? '1' : '0') === '1') />
-                    Rent reminder emails/SMS (<code class="text-xs">rent:send-reminders</code>)
+                    Rent reminder emails/SMS — daily stage check (<code class="text-xs">rent:send-reminders</code>)
                 </label>
                 <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                     <input type="checkbox" name="workflow_auto_water_penalties" value="1" @checked(old('workflow_auto_water_penalties', $waterPenaltiesAuto ? '1' : '0') === '1') />
                     Overdue water penalties (<code class="text-xs">water:apply-penalties</code>)
                 </label>
+                <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                    <input type="checkbox" name="workflow_auto_attached_utility_charges" value="1" @checked(old('workflow_auto_attached_utility_charges', $attachedUtilityChargesAuto ? '1' : '0') === '1') />
+                    Monthly attached expense charge lines — garbage, service charge, etc. (<code class="text-xs">utility:materialize-attached-charges</code>)
+                </label>
             </div>
 
             <div>
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Reminder lead days</label>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">System default rent due day</label>
+                <input type="number" name="property_rent_due_day_default" min="1" max="31" value="{{ old('property_rent_due_day_default', $rentDueDayDefault) }}" class="mt-1 w-full sm:max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Calendar day of month when recurring rent is due (issue date remains the 1st). Arrears start the day after due date.
+                    Env fallback: <code class="rounded bg-white px-1 py-0.5 dark:bg-slate-800">DEFAULT_RENT_DUE_DAY={{ $rentDueDayEnvDefault }}</code>.
+                    If blank here, the system uses the property default on each building; if property default is blank, it uses this system default.
+                </p>
+                @error('property_rent_due_day_default')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Reminder lead days (legacy)</label>
                 <input type="number" name="workflow_reminder_lead_days" min="0" max="60" value="{{ old('workflow_reminder_lead_days', $reminderLeadDays) }}" class="mt-1 w-full sm:max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Used when auto-reminders are enabled and no due date is provided.</p>
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Rent reminders use invoice <code class="text-xs">due_date</code> stages (D-3, D-1, due today, overdue). This field is retained for notice templates only.</p>
                 @error('workflow_reminder_lead_days')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
 

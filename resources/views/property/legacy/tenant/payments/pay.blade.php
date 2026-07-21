@@ -69,7 +69,7 @@
                         @if ($focusInvoice)
                             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                                 <p class="font-semibold">Paying invoice {{ $focusInvoice->invoice_no }}</p>
-                                <p class="text-xs">{{ ucfirst((string) $focusInvoice->invoice_type) }} ┬╖ {{ $focusInvoice->billing_period ?: optional($focusInvoice->issue_date)->format('Y-m') }} ┬╖ Balance: KES {{ number_format((float) ($focusAmount ?? 0), 2) }}</p>
+                                <p class="text-xs">{{ ucfirst((string) $focusInvoice->invoice_type) }}  -  {{ $focusInvoice->billing_period ?: optional($focusInvoice->issue_date)->format('Y-m') }}  -  Balance: KES {{ number_format((float) ($focusAmount ?? 0), 2) }}</p>
                             </div>
                         @endif
                     @endisset

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DepositDefinition;
 use App\Models\ExpenseDefinition;
 use App\Models\LeaseDepositLine;
+use App\Models\PmFinanceAuditLog;
 use App\Models\PmInvoice;
 use App\Models\PmLease;
 use App\Models\PmTenant;
@@ -15,14 +16,18 @@ use App\Models\Property;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use Illuminate\Database\Eloquent\Builder;
+use App\Services\Property\CarryForwardConsolidationService;
+use App\Services\Property\FinanceFirebreakService;
 use App\Services\Property\PropertyDashboardCache;
 use App\Services\Property\PropertyMoney;
+use App\Support\TabularExport;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -309,6 +314,20 @@ SQL;
         ];
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function leaseFormPageContext(Request $request): array
+    {
+        $selectedUnitId = max(0, (int) $request->query('unit_id', 0));
+
+        return array_merge($this->leaseFormStaticContext(), [
+            'leaseFormEndpoints' => $this->leaseFormEndpointUrls(),
+            'leaseFormSelectedTenantId' => max(0, (int) $request->query('pm_tenant_id', 0)),
+            'leaseFormSelectedUnitId' => $selectedUnitId,
+        ]);
+    }
+
     public function formTenants(Request $request): JsonResponse
     {
         $search = trim((string) $request->query('q', ''));
@@ -580,6 +599,72 @@ SQL;
                 'label' => (string) $tenant->name,
             ])
             ->all();
+    }
+
+    /**
+     * @return array{tenants: array<int, array{value: string, label: string}>, properties: array<int, array{value: string, label: string}>}
+     */
+    private function leaseListFilterOptions(): array
+    {
+        return [
+            'tenants' => $this->leaseFilterTenantOptions(),
+            'properties' => $this->leaseFilterPropertyOptions(),
+        ];
+    }
+
+    /**
+     * @return list<string|int|float|null>
+     */
+    private function mapLeaseExportRow(PmLease $lease): array
+    {
+        $units = $lease->units
+            ->map(fn ($unit) => ($unit->property->name ?? 'Property').'/'.($unit->label ?? $unit->id))
+            ->implode(', ');
+
+        return [
+            (string) $lease->id,
+            (string) ($lease->pmTenant?->name ?? ''),
+            $units !== '' ? $units : '—',
+            $lease->start_date?->format('Y-m-d') ?? '',
+            $lease->end_date?->format('Y-m-d') ?? 'Open-ended',
+            number_format((float) $lease->monthly_rent, 2, '.', ''),
+            number_format((float) $lease->deposit_amount, 2, '.', ''),
+            ucfirst((string) $lease->status),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function leaseListExportResponse(string $activeTab, array $filters, string $export): StreamedResponse
+    {
+        $leaseQuery = PmLease::query()->with(['pmTenant', 'units.property']);
+
+        if ($activeTab === 'expiry') {
+            $leaseQuery
+                ->where('pm_leases.status', PmLease::STATUS_ACTIVE)
+                ->whereDate('pm_leases.end_date', '>=', now()->toDateString())
+                ->whereDate('pm_leases.end_date', '<=', now()->addDays(90)->toDateString());
+            $this->applyLeaseListFilters($leaseQuery, $filters, applyStatus: false, filterEndDate: true);
+        } else {
+            $this->applyLeaseListFilters($leaseQuery, $filters, applyStatus: true, filterEndDate: false);
+        }
+
+        $this->applyLeaseCarryForwardFilter($leaseQuery, $filters);
+        $this->applyLeaseListSort($leaseQuery, $filters);
+
+        $filename = $activeTab === 'expiry' ? 'lease-expiry' : 'leases';
+
+        return TabularExport::stream(
+            $filename.'-'.now()->format('Ymd_His'),
+            ['Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent (KES)', 'Deposit (KES)', 'Status'],
+            function () use ($leaseQuery): \Generator {
+                foreach ($leaseQuery->limit(5000)->cursor() as $lease) {
+                    yield $this->mapLeaseExportRow($lease);
+                }
+            },
+            $export
+        );
     }
 
     /**
@@ -1086,6 +1171,18 @@ SQL;
         return false;
     }
 
+    private function applyRentDueDayToPayload(array &$payload, array $data): void
+    {
+        if (! Schema::hasColumn('pm_leases', 'rent_due_day') || ! array_key_exists('rent_due_day', $data)) {
+            return;
+        }
+
+        $raw = $data['rent_due_day'];
+        $payload['rent_due_day'] = ($raw === null || $raw === '')
+            ? null
+            : \App\Services\Property\RentDueDayResolver::normalizeDueDay((int) $raw);
+    }
+
     private function applyOpeningArrearsToPayload(array &$payload, Request $request, array $data, ?PmLease $lease, array $unitIds): void
     {
         if (! Schema::hasColumn('pm_leases', 'opening_arrears')) {
@@ -1297,12 +1394,14 @@ SQL;
         $billingMonth = ($lease->start_date?->format('Y-m')) ?: now()->format('Y-m');
         $unitCount = $units->count();
 
-        // Reset previous auto-generated rows for idempotent updates (include legacy rows hidden from agent scope).
-        PmInvoice::query()
-            ->withoutGlobalScopes()
-            ->where('pm_lease_id', $lease->id)
-            ->where('description', 'like', self::AUTO_ARREARS_PREFIX.'%')
-            ->delete();
+        $firebreak = app(FinanceFirebreakService::class);
+        $consolidation = app(CarryForwardConsolidationService::class);
+
+        foreach ($firebreak->carryForwardWarnings($lease) as $warning) {
+            $firebreak->logCarryForwardWarning($warning);
+        }
+
+        $consolidation->syncLease($lease);
 
         foreach ($units as $u) {
             PmUnitUtilityCharge::query()
@@ -1317,67 +1416,7 @@ SQL;
             ->where('description', 'like', self::AUTO_DEPOSIT_PREFIX.'%')
             ->delete();
 
-        $openingArrears = collect($lease->opening_arrears ?? [])
-            ->filter(fn ($row) => is_array($row) && (float) ($row['amount'] ?? 0) > 0)
-            ->values();
-
-        foreach ($openingArrears as $row) {
-            $chargeType = mb_strtolower(trim((string) ($row['charge_type'] ?? 'other')));
-            $specific = trim((string) ($row['specific_charge'] ?? ''));
-            $period = trim((string) ($row['period'] ?? ''));
-            $amount = (float) ($row['amount'] ?? 0);
-            if ($amount <= 0) {
-                continue;
-            }
-
-            $baseDate = $lease->opening_arrears_as_of_date
-                ? $lease->opening_arrears_as_of_date->toDateString()
-                : ($lease->start_date?->toDateString() ?? now()->toDateString());
-
-            if (preg_match('/^\d{4}\-\d{2}$/', $period) === 1) {
-                $baseDate = $period.'-01';
-            }
-
-            $issueDate = $baseDate;
-            $dueDate = $baseDate;
-            if ($dueDate >= now()->toDateString()) {
-                $dueDate = now()->subDay()->toDateString();
-                $issueDate = $dueDate;
-            }
-
-            $descParts = array_filter([
-                self::AUTO_ARREARS_PREFIX,
-                ucfirst($chargeType),
-                $specific !== '' ? $specific : null,
-                $period !== '' ? "Period {$period}" : null,
-                $lease->opening_arrears_note ? 'Note: '.$lease->opening_arrears_note : null,
-            ]);
-
-            $amountParts = $this->splitMoneyAcrossParts($amount, $unitCount);
-            foreach ($units->values() as $idx => $unit) {
-                $partAmount = (float) ($amountParts[$idx] ?? 0.0);
-                if ($partAmount <= 0) {
-                    continue;
-                }
-                $agentUserId = optional($unit->property)->agent_user_id ?? auth()->id();
-                PmInvoice::query()->create([
-                    'pm_lease_id' => $lease->id,
-                    'property_unit_id' => (int) $unit->id,
-                    'pm_tenant_id' => $tenantId,
-                    'agent_user_id' => $agentUserId,
-                    'created_by_user_id' => auth()->id(),
-                    'invoice_no' => PmInvoice::nextInvoiceNumber(),
-                    'issue_date' => $issueDate,
-                    'due_date' => $dueDate,
-                    'amount' => $partAmount,
-                    'amount_paid' => 0,
-                    'status' => PmInvoice::STATUS_OVERDUE,
-                    'invoice_type' => $chargeType === PmInvoice::TYPE_WATER ? PmInvoice::TYPE_WATER : PmInvoice::TYPE_MIXED,
-                    'billing_period' => $period !== '' ? $period : $billingMonth,
-                    'description' => implode(' | ', $descParts),
-                ]);
-            }
-        }
+        // Carry-forward invoices are delta-synced via CarryForwardConsolidationService (no delete/recreate).
 
         // Intentionally no auto-utility posting from lease save.
 
@@ -1400,11 +1439,8 @@ SQL;
                     }
                     $partPaid = (float) ($paidParts[$idx] ?? 0.0);
                     $partBalance = $partExpected - $partPaid;
-                    $status = $partBalance <= 0.00001
-                        ? PmInvoice::STATUS_PAID
-                        : ($partPaid > 0 ? PmInvoice::STATUS_PARTIAL : PmInvoice::STATUS_SENT);
                     $agentUserId = optional($unit->property)->agent_user_id ?? auth()->id();
-                    PmInvoice::query()->create([
+                    $invoice = PmInvoice::query()->create([
                         'pm_lease_id' => $lease->id,
                         'property_unit_id' => (int) $unit->id,
                         'pm_tenant_id' => $tenantId,
@@ -1415,20 +1451,27 @@ SQL;
                         'due_date' => $lease->start_date?->toDateString() ?? now()->toDateString(),
                         'amount' => $partExpected,
                         'amount_paid' => $partPaid,
-                        'status' => $status,
+                        'status' => PmInvoice::STATUS_SENT,
                         'invoice_type' => PmInvoice::TYPE_MIXED,
                         'billing_period' => $billingMonth,
                         'description' => self::AUTO_DEPOSIT_PREFIX.' '.$line->label,
                     ]);
+                    $invoice->syncAmountPaidFromAllocations();
                 }
             }
         }
     }
 
-    public function leases(Request $request): View
+    public function leases(Request $request): View|StreamedResponse
     {
         $activeTab = $request->string('tab')->toString() === 'expiry' ? 'expiry' : 'leases';
         $filters = $this->leaseListFiltersFromRequest($request);
+        $filterOptions = $this->leaseListFilterOptions();
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            return $this->leaseListExportResponse($activeTab, $filters, $export);
+        }
 
         if ($activeTab === 'expiry') {
             $expiryPayload = $this->expiryTablePayload($filters);
@@ -1440,6 +1483,7 @@ SQL;
                 'tableRows' => $expiryPayload['tableRows'],
                 'expiryFilterTexts' => $expiryPayload['expiryFilterTexts'],
                 'filters' => $filters,
+                'filterOptions' => $filterOptions,
             ]);
         }
 
@@ -1452,16 +1496,17 @@ SQL;
             ->map(fn (PmLease $l) => $this->mapLeaseListRow($l, true))
             ->all();
 
-        return property_view('property.agent.tenants.leases', [
+        return property_view('property.agent.tenants.leases', array_merge([
             'activeTab' => $activeTab,
             'stats' => $stats,
             'columns' => ['', 'Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent', 'Deposit held', 'Expense paid', 'Status', 'Actions'],
             'tableRows' => $rows,
             'expiryFilterTexts' => [],
             'filters' => $filters,
+            'filterOptions' => $filterOptions,
             'leasePager' => $leasePager,
             'openLeaseCreateModal' => $request->boolean('open_create'),
-        ]);
+        ], $this->leaseFormPageContext($request)));
     }
 
     public function createForm(Request $request): View
@@ -1533,6 +1578,7 @@ SQL;
         $data = $request->validate([
             'pm_tenant_id' => [Rule::requiredIf($this->isFieldRequired($cfg, 'tenant_id')), 'nullable', 'exists:pm_tenants,id'],
             'start_date' => [Rule::requiredIf($this->isFieldRequired($cfg, 'start_date')), 'nullable', 'date'],
+            'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'monthly_rent' => [Rule::requiredIf($this->isFieldRequired($cfg, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
             'deposit_amount' => [Rule::requiredIf($this->isFieldRequired($cfg, 'deposit_amount')), 'nullable', 'numeric', 'min:0'],
@@ -1569,6 +1615,10 @@ SQL;
 
         $data['status'] = (string) ($data['status'] ?? PmLease::STATUS_ACTIVE);
         $unitIds = $this->normalizeSingleUnitSelection((array) ($data['property_unit_ids'] ?? []));
+        $property = app(\App\Services\Property\PropertyManagementGuardService::class)->propertyForUnitIds($unitIds);
+        if ($property) {
+            app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanCreateLease($property);
+        }
         $depositLines = $this->prepareLeaseDepositLines($data, $unitIds);
         $utilityExpenses = $this->normalizeUtilityExpenses((array) ($data['utility_expenses'] ?? []));
         $legacyType = trim((string) ($data['utility_expense_type'] ?? ''));
@@ -1600,6 +1650,7 @@ SQL;
                     ? $data['terms_summary']
                     : PropertyPortalSetting::getValue('template_lease_text', null),
             ];
+            $this->applyRentDueDayToPayload($payload, $data);
 
             if (Schema::hasColumn('pm_leases', 'additional_deposits')) {
                 $payload['additional_deposits'] = $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []));
@@ -1820,6 +1871,7 @@ SQL;
         $data = $request->validate([
             'pm_tenant_id' => ['required', 'exists:pm_tenants,id'],
             'start_date' => ['required', 'date'],
+            'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'monthly_rent' => ['required', 'numeric', 'min:0'],
             'deposit_amount' => ['nullable', 'numeric', 'min:0'],
@@ -1888,6 +1940,7 @@ SQL;
                     ? $data['terms_summary']
                     : PropertyPortalSetting::getValue('template_lease_text', null),
             ];
+            $this->applyRentDueDayToPayload($payload, $data);
             if (Schema::hasColumn('pm_leases', 'additional_deposits')) {
                 $payload['additional_deposits'] = $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []));
             }
@@ -2041,6 +2094,11 @@ SQL;
         $lease->loadMissing(['units:id', 'pmTenant']);
         $unitIds = $lease->units->pluck('id')->map(fn ($v) => (int) $v)->all();
 
+        $property = app(\App\Services\Property\PropertyManagementGuardService::class)->propertyForUnitIds($unitIds);
+        if ($property) {
+            app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanCreateLease($property);
+        }
+
         DB::transaction(function () use ($lease, $unitIds): void {
             $this->assertActiveLeaseRules((int) $lease->pm_tenant_id, $unitIds, (int) $lease->id);
 
@@ -2079,6 +2137,12 @@ SQL;
                 $this->vacateUnitsIfNotInAnotherActiveLease($unitIds, excludeLeaseId: $lease->id);
                 $this->ensureMovementLogged($lease, $unitIds, 'move_out', $today);
             }
+
+            $property = app(\App\Services\Property\PropertyManagementGuardService::class)->propertyForUnitIds($unitIds);
+            if ($property && $property->isOffboarding()) {
+                app(\App\Services\Property\PropertyOffboardingService::class)
+                    ->logLeaseTerminatedDuringOffboarding($lease, $property);
+            }
         });
     }
 
@@ -2092,6 +2156,11 @@ SQL;
 
         $lease->loadMissing(['units:id', 'pmTenant']);
         $unitIds = $lease->units->pluck('id')->map(fn ($v) => (int) $v)->all();
+
+        $property = app(\App\Services\Property\PropertyManagementGuardService::class)->propertyForUnitIds($unitIds);
+        if ($property) {
+            app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanCreateLease($property);
+        }
 
         DB::transaction(function () use ($lease, $unitIds): void {
             $this->assertActiveLeaseRules((int) $lease->pm_tenant_id, $unitIds, (int) $lease->id);
@@ -2129,6 +2198,8 @@ SQL;
             if ($unitIds !== []) {
                 $this->vacateUnitsIfNotInAnotherActiveLease($unitIds, excludeLeaseId: $lease->id);
             }
+
+            app(CarryForwardConsolidationService::class)->purgeLeaseOnDelete($lease);
 
             $lease->delete();
         });

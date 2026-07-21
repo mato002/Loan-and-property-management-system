@@ -15,6 +15,9 @@ class PmInvoicePenaltyApplication extends Model
         'threshold_date',
         'amount',
         'applied_at',
+        'base_amount',
+        'compounding_mode',
+        'days_overdue',
         'reversed_at',
         'reversed_by',
         'reversal_reason',
@@ -27,6 +30,8 @@ class PmInvoicePenaltyApplication extends Model
             'applied_at' => 'datetime',
             'reversed_at' => 'datetime',
             'amount' => 'decimal:2',
+            'base_amount' => 'decimal:2',
+            'days_overdue' => 'integer',
         ];
     }
 

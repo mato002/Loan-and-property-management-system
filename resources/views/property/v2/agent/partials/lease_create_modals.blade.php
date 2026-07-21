@@ -10,6 +10,7 @@
     name="lease-create-optional-fields"
     title="Utilities, deposits &amp; terms"
     max-width="3xl"
+    :lease-submodal="true"
 >
     <fieldset form="{{ $formId }}" data-lease-optional-panel class="min-w-0 border-0 p-0 m-0 space-y-3">
         <div class="grid gap-3 sm:grid-cols-2">
@@ -45,10 +46,10 @@
                         <div id="additional-deposits-rows" class="mt-2 space-y-2">
                             @foreach ($additionalDeposits as $idx => $row)
                                 <div class="grid gap-2 grid-cols-[2fr_1fr_2fr_auto] additional-deposit-row">
-                                    <select name="additional_deposits[{{ $idx }}][label]" class="additional-deposit-label rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 w-full">
+                                    <select form="{{ $formId }}" name="additional_deposits[{{ $idx }}][label]" class="additional-deposit-label rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 w-full">
                                         <option value="{{ $row['label'] ?? '' }}" selected>{{ $row['label'] ?? 'Select deposit type' }}</option>
                                     </select>
-                                    <input type="number" name="additional_deposits[{{ $idx }}][amount]" value="{{ $row['amount'] ?? '' }}" step="0.01" min="0" placeholder="Amount" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 w-full" />
+                                    <input form="{{ $formId }}" type="number" name="additional_deposits[{{ $idx }}][amount]" value="{{ $row['amount'] ?? '' }}" step="0.01" min="0" placeholder="Amount" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2 w-full" />
                                     <div class="deposit-line-meta rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">—</div>
                                     <button type="button" class="remove-deposit-row min-h-[44px] rounded-lg border border-red-200 px-2.5 py-2 text-xs font-medium text-red-700 hover:bg-red-50">Remove</button>
                                 </div>
@@ -62,7 +63,7 @@
             </div>
             <div class="sm:col-span-2">
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Terms summary</label>
-                <textarea name="terms_summary" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('terms_summary', $leaseTemplate ?? '') }}</textarea>
+                <textarea form="{{ $formId }}" name="terms_summary" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('terms_summary', $leaseTemplate ?? '') }}</textarea>
                 @error('terms_summary')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
         </div>
@@ -78,6 +79,7 @@
     name="lease-create-opening-arrears"
     title="Carry-forward details"
     max-width="3xl"
+    :lease-submodal="true"
 >
     <fieldset form="{{ $formId }}" data-lease-arrears-panel class="min-w-0 border-0 p-0 m-0">
         <div id="opening-arrears-create-wrap" class="space-y-3">
@@ -193,6 +195,7 @@
     title="Add charge line"
     max-width="lg"
     :z-index="7110"
+    :lease-submodal="true"
 >
     <div class="grid gap-3 sm:grid-cols-2">
         <div>

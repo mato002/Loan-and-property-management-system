@@ -415,6 +415,17 @@ class User extends Authenticatable
             'bulksms.view' => ['bulksms.view'],
             'my_account.view' => ['my_account.view'],
             'system.help.view' => ['system.help.view'],
+            'loanbook.view' => [
+                'loan_applications.view',
+                'loans.view',
+                'disbursements.view',
+                'collections.view',
+            ],
+            'financial.view' => [
+                'accounting.view',
+                'payments.view',
+                'wallets.view',
+            ],
         ];
 
         if (isset($map[$permissionKey])) {

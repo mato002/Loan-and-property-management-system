@@ -14,8 +14,16 @@ class SendBulkCommunicationJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public int $tries = 3;
+
+    public int $timeout = 180;
+
+    /** @var list<int> */
+    public array $backoff = [60, 120, 300];
+
     public function __construct(public int $messageId)
     {
+        $this->onQueue('default');
     }
 
     public function handle(PropertyCommunicationService $service): void

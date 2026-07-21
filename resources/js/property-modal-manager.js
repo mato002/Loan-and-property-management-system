@@ -117,16 +117,13 @@ export function recoverPropertyScrollState(reason = 'manual') {
         debugLog('scroll recovery', { reason });
     }
 
-    if (usesPropertyWorkspaceShell()) {
+    if (usesPropertyWorkspaceShell() && hadLock) {
         document.body.classList.remove('property-modal-scroll-lock');
         document.body.style.removeProperty('top');
         document.body.style.removeProperty('position');
         document.body.style.removeProperty('width');
         document.body.style.removeProperty('padding-right');
         document.documentElement.classList.remove('property-modal-scroll-lock');
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
-        window.scrollTo(0, 0);
     }
 
     document.documentElement.classList.remove('overflow-hidden');
@@ -223,6 +220,70 @@ export function closeAllPropertyModals(reason = 'manual') {
 }
 
 /**
+ * After #property-main frame swap — clear stack without Alpine x-show teardown (avoids flicker).
+ */
+export function resetPropertyModalStackSilently(reason = 'manual') {
+    if (modalStack.length === 0) {
+        return;
+    }
+
+    debugLog('silent stack reset', { reason, ids: modalStack.map((m) => m.id) });
+    modalStack = [];
+    scrollLockDepth = 0;
+    releaseScrollLock();
+}
+
+/**
+ * Alpine x-teleport leaves modals on document.body when #property-main swaps.
+ * Remove stale dialogs so they do not reappear (e.g. payment reversal "Reason" on Payments load).
+ */
+function isLeaseCreateFormOpen() {
+    const root = document.querySelector('#property-main [data-lease-form-root]');
+    if (root instanceof HTMLElement && root.dataset.leaseFormOpen === '1') {
+        return true;
+    }
+
+    try {
+        return sessionStorage.getItem('property.leases.createFormOpen') === '1';
+    } catch {
+        return false;
+    }
+}
+
+export function purgeOrphanedTeleportedPropertyModals(reason = 'manual') {
+    const frame = document.getElementById('property-main');
+    let removed = 0;
+
+    document.querySelectorAll('[data-property-modal]').forEach((modal) => {
+        if (!(modal instanceof HTMLElement)) {
+            return;
+        }
+        if (modal.hasAttribute('data-lease-submodal')) {
+            if (! isLeaseCreateFormOpen()) {
+                modal.remove();
+                removed += 1;
+            }
+
+            return;
+        }
+        if (frame?.contains(modal)) {
+            return;
+        }
+        if (isLeaseCreateFormOpen() && frame?.querySelector('[data-lease-form-root]')) {
+            return;
+        }
+        modal.remove();
+        removed += 1;
+    });
+
+    if (removed > 0) {
+        debugLog('purged teleported modals', { reason, removed });
+        window.dispatchEvent(new CustomEvent('property-modal:purge-orphans'));
+        recoverPropertyScrollState('modal:purge-orphans');
+    }
+}
+
+/**
  * Alpine helper — sync open state with modal manager.
  * Usage: x-data="propertyModalState('my-modal-id', false)"
  * Pair with x-model-like: :open / @close from x-property.modal
@@ -296,6 +357,21 @@ export function inspectPropertyModals() {
     return report;
 }
 
+function shouldDismissModalsForTurboEvent(event) {
+    if (event.type === 'turbo:before-visit' || event.type === 'turbo:before-render') {
+        return true;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+        return false;
+    }
+
+    // Only workspace navigation should close modals — not frames loading inside a modal
+    // (e.g. lease-create-modal fetching its form partial).
+    return target.id === 'property-main';
+}
+
 function bindTurboModalLifecycle() {
     if (turboListenersBound) {
         return;
@@ -303,14 +379,32 @@ function bindTurboModalLifecycle() {
     turboListenersBound = true;
 
     const dismiss = (event) => {
+        if (!shouldDismissModalsForTurboEvent(event)) {
+            return;
+        }
         debugLog('turbo dismiss', event.type);
         closeAllPropertyModals(event.type);
     };
 
     document.addEventListener('turbo:before-visit', dismiss);
     document.addEventListener('turbo:before-render', dismiss);
-    document.addEventListener('turbo:before-frame-render', dismiss);
-    document.addEventListener('turbo:frame-request-started', dismiss);
+
+    document.addEventListener('turbo:before-frame-render', (event) => {
+        if (!(event.target instanceof HTMLElement) || event.target.id !== 'property-main') {
+            return;
+        }
+        purgeOrphanedTeleportedPropertyModals('turbo:before-frame-render');
+    });
+
+    document.addEventListener('turbo:frame-load', (event) => {
+        if (!(event.target instanceof HTMLElement) || event.target.id !== 'property-main') {
+            return;
+        }
+        purgeOrphanedTeleportedPropertyModals('turbo:frame-load');
+        requestAnimationFrame(() => {
+            resetPropertyModalStackSilently('turbo:frame-load');
+        });
+    });
 }
 
 function bindEscapeHandler() {
@@ -344,6 +438,8 @@ window.PropertyModalManager = {
     unregister: unregisterPropertyModal,
     closeTop: closeTopPropertyModal,
     closeAll: closeAllPropertyModals,
+    resetStackSilently: resetPropertyModalStackSilently,
+    purgeOrphaned: purgeOrphanedTeleportedPropertyModals,
     getStack: getPropertyModalStack,
     isTop: isTopPropertyModal,
     lockScroll: lockPropertyModalScroll,

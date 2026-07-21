@@ -79,7 +79,7 @@
             x-transition:leave="transition-opacity ease-in duration-150"
             x-transition:leave-start="opacity-100"
             x-transition:leave-end="opacity-0"
-            class="absolute inset-0 bg-slate-950/50 backdrop-blur-[1px]"
+            class="absolute inset-0 z-0 bg-slate-950/50 backdrop-blur-[1px]"
             @if ($closeOnBackdrop)
                 @click="{{ $closeExpr }}"
             @endif
@@ -97,7 +97,7 @@
             x-transition:leave-end="{{ $sheetEnter }}"
             data-property-modal-panel
             @click.stop
-            class="relative flex w-full flex-col {{ $maxWidthClass }} max-h-[90vh] overflow-hidden
+            class="relative z-10 flex w-full flex-col {{ $maxWidthClass }} max-h-[90vh] overflow-hidden
                 {{ $mobileSheet ? 'max-md:max-h-[90vh] max-md:rounded-t-2xl max-md:rounded-b-none rounded-2xl' : 'rounded-2xl' }}
                 border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 shadow-2xl"
         >

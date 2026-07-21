@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Services\LoanSecurityPolicyService;
 use App\Services\Property\LoginActivityLogger;
+use App\Support\Auth\StaffModuleRedirect;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -56,14 +57,11 @@ class AuthenticatedSessionController extends Controller
             ]
         );
 
-        // Super admins should still choose which module (Property / Loan) to enter.
-        // They can access the Super Admin console from the navigation.
-        $approvedModules = (($user->is_super_admin ?? false) === true)
-            ? ['property', 'loan']
-            : ($user?->approvedModules() ?? []);
+        // Super admins can enter either module; remember last choice via cookie.
+        $approvedModules = StaffModuleRedirect::approvedModules($user);
 
-        // Ensure users don't keep a previous module selection or stale intended redirects.
-        $request->session()->forget(['active_system', 'url.intended']);
+        // Ensure users don't keep a stale intended redirect from a prior session.
+        $request->session()->forget('url.intended');
 
         if (count($approvedModules) === 0) {
             app(LoginActivityLogger::class)->log(
@@ -107,19 +105,18 @@ class AuthenticatedSessionController extends Controller
                 ->withInput($request->only('email'));
         }
 
-        // Auto-redirect if only one module is approved.
-        if (count($approvedModules) === 1) {
-            $request->session()->put('active_system', $approvedModules[0]);
-            $request->session()->regenerate();
+        $request->session()->regenerate();
+        $request->session()->forget('active_system');
 
-            // Don't use intended here; it may point to a route in the other (unapproved) module.
-            return redirect()->route('dashboard');
+        if (count($approvedModules) === 1) {
+            StaffModuleRedirect::rememberModule($request, $approvedModules[0]);
+
+            return redirect()->route(StaffModuleRedirect::destinationRouteName($user, $approvedModules[0]));
         }
 
-        // If both modules are approved, ask which module to enter next.
-        $request->session()->regenerate();
-
-        return redirect()->route('choose_module');
+        return redirect()
+            ->route('choose_module')
+            ->withCookie(cookie()->forget(StaffModuleRedirect::PREFERRED_MODULE_COOKIE));
     }
 
     /**
@@ -149,6 +146,8 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerateToken();
 
-        return redirect()->route('login');
+        return redirect()
+            ->route('login')
+            ->withCookie(cookie()->forget(StaffModuleRedirect::PREFERRED_MODULE_COOKIE));
     }
 }

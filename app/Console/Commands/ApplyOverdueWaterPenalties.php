@@ -29,24 +29,33 @@ class ApplyOverdueWaterPenalties extends Command
         }
 
         if ($this->option('preview')) {
-            $rows = $penalties->preview($today);
+            $simulation = $penalties->simulate($today);
+            $rows = $simulation['rows'];
             if ($rows->isEmpty()) {
                 $this->info('No penalties would be applied.');
 
                 return self::SUCCESS;
             }
-            $this->table(['Invoice', 'Base', 'Penalty', 'Rule'], $rows->map(fn ($r) => [
+            if ($simulation['warnings'] !== []) {
+                $this->warn('Operator warnings:');
+                foreach ($simulation['warnings'] as $warning) {
+                    $this->line(' - '.$warning);
+                }
+            }
+            $this->table(['Invoice', 'Base', 'Penalty', 'Rule', 'Mode', 'Days'], $rows->map(fn ($r) => [
                 $r['invoice_no'],
                 number_format($r['base'], 2),
                 number_format($r['penalty'], 2),
                 $r['rule'],
+                str_replace('_', ' ', (string) ($r['compounding_mode'] ?? 'simple')),
+                (string) ($r['days_overdue'] ?? '0'),
             ])->all());
 
             return self::SUCCESS;
         }
 
         $stats = $penalties->apply($today, null, 'water:apply-penalties');
-        $this->info("Water penalties applied to {$stats['applied']} invoice(s). Skipped={$stats['skipped']}.");
+        $this->info("Water penalties for {$today}: applied={$stats['applied']}, skipped={$stats['skipped']}.");
 
         return self::SUCCESS;
     }

@@ -11,6 +11,8 @@
         'q' => 'Search',
         'city' => 'City',
         'landlord' => 'Landlord',
+        'management_status' => 'Management',
+        'include_archived' => 'Include archived',
     ]"
 >
     <x-slot name="primary">
@@ -32,6 +34,23 @@
             ]"
             :value="$filters['landlord'] ?? ''"
         />
+        <x-property.filter-field type="select"
+            name="management_status"
+            label="Management"
+            empty-option="Active portfolio"
+            :options="[
+                ['value' => 'all', 'label' => 'All statuses'],
+                ['value' => 'active', 'label' => 'Active'],
+                ['value' => 'offboarding', 'label' => 'Offboarding'],
+                ['value' => 'archived', 'label' => 'Archived'],
+                ['value' => 'ended_management', 'label' => 'Ended management'],
+            ]"
+            :value="$filters['management_status'] ?? ''"
+        />
+        <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+            <input type="checkbox" name="include_archived" value="1" class="rounded border-slate-300" @checked(($filters['include_archived'] ?? '0') === '1') />
+            Include archived
+        </label>
         <x-property.filter-field type="select"
             name="sort"
             label="Sort"

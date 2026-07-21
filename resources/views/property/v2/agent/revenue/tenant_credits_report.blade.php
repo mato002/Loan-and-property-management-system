@@ -7,6 +7,25 @@
         ['label' => 'Tenants with credit', 'value' => (string) $balances->total(), 'hint' => 'This page'],
     ]"
 >
+    @if (session('success'))
+        <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            {{ session('success') }}
+        </div>
+    @endif
+
+    <div class="mb-6">
+        <h2 class="text-sm font-semibold text-slate-900 mb-2">Record advance payment</h2>
+        <p class="text-xs text-slate-600 mb-3">
+            Use this when a tenant pays cash upfront with <span class="font-medium">no open invoice</span>. Credit auto-applies when invoices are raised.
+        </p>
+        @include('property.agent.revenue.partials.advance_payment_form', [
+            'tenantsForAdvance' => $tenantsForAdvance ?? collect(),
+            'advanceCreditsEnabled' => $advanceCreditsEnabled ?? false,
+            'returnTo' => 'tenant_credits',
+            'alwaysOpen' => true,
+        ])
+    </div>
+
     <form method="get" class="mb-4 flex flex-wrap gap-2 items-end" data-turbo-frame="property-main">
         <div>
             <label class="text-xs text-slate-500">Search tenant</label>

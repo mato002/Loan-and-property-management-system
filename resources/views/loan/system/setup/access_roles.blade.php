@@ -6,15 +6,18 @@
             $matrixActions = ['view', 'create', 'update', 'delete', 'approve', 'export', 'reverse', 'configure'];
             $matrixModules = [];
             foreach (($permissionCatalog ?? []) as $permKey => $permLabel) {
-                if (!str_contains((string) $permLabel, '·') || !str_contains((string) $permKey, '.')) {
+                if (! is_string($permKey) || ! str_contains($permKey, '.')) {
                     continue;
                 }
-                [$moduleLabel, $actionLabel] = array_map('trim', explode('·', (string) $permLabel, 2));
-                $actionKey = strtolower((string) $actionLabel);
-                if (!in_array($actionKey, $matrixActions, true)) {
+                if (! preg_match('/^(.+?)\s*[·•|]\s*(.+)$/u', (string) $permLabel, $matches)) {
                     continue;
                 }
-                if (!isset($matrixModules[$moduleLabel])) {
+                $moduleLabel = trim((string) $matches[1]);
+                $actionKey = strtolower(trim((string) $matches[2]));
+                if (! in_array($actionKey, $matrixActions, true)) {
+                    continue;
+                }
+                if (! isset($matrixModules[$moduleLabel])) {
                     $matrixModules[$moduleLabel] = ['module' => $moduleLabel, 'permissions' => []];
                 }
                 $matrixModules[$moduleLabel]['permissions'][$actionKey] = (string) $permKey;
@@ -22,18 +25,22 @@
             $matrixTemplateRows = array_values($matrixModules);
             $extraPermissionCatalog = [];
             foreach (($permissionCatalog ?? []) as $permKey => $permLabel) {
-                if (!str_contains((string) $permLabel, '·') || !str_contains((string) $permKey, '.')) {
+                if (! is_string($permKey) || ! str_contains($permKey, '.')) {
                     continue;
                 }
-                [$moduleLabel, $actionLabel] = array_map('trim', explode('·', (string) $permLabel, 2));
-                $actionKey = strtolower((string) $actionLabel);
+                if (! preg_match('/^(.+?)\s*[·•|]\s*(.+)$/u', (string) $permLabel, $matches)) {
+                    continue;
+                }
+                $moduleLabel = trim((string) $matches[1]);
+                $actionLabel = trim((string) $matches[2]);
+                $actionKey = strtolower($actionLabel);
                 if (in_array($actionKey, $matrixActions, true)) {
                     continue;
                 }
                 $extraPermissionCatalog[(string) $permKey] = [
                     'label' => (string) $permLabel,
-                    'module' => (string) $moduleLabel,
-                    'action' => (string) $actionLabel,
+                    'module' => $moduleLabel,
+                    'action' => $actionLabel,
                 ];
             }
 
@@ -50,6 +57,9 @@
                     'description' => (string) ($role->description ?? ''),
                     'is_active' => (bool) $role->is_active,
                     'permissions' => array_values(array_unique(array_filter(array_map(fn ($p) => trim((string) $p), is_array($permissions) ? $permissions : [])))),
+                    'user_ids' => $role->relationLoaded('users')
+                        ? $role->users->pluck('id')->map(fn ($id) => (string) $id)->values()->all()
+                        : [],
                 ];
             }
             $initialRoleId = (string) (array_key_first($rolesSnapshot) ?? '');
@@ -58,22 +68,36 @@
             $assignedUserCount = (int) (($roles ?? collect())->sum('users_count'));
         @endphp
 
+        <script type="application/json" id="loan-access-matrix-template">@json($matrixTemplateRows)</script>
+        <script type="application/json" id="loan-access-roles-snapshot">@json($rolesSnapshot)</script>
+
         <div
             class="rounded-xl border border-slate-200 bg-[#f7f9fb] p-4 sm:p-5 lg:p-6"
             x-data="{
                 activeTab: 'roles',
                 selectedRoleId: @js($initialRoleId),
                 createRoleOpen: @js(old('form_context') === 'create_role'),
-                roles: @js($rolesSnapshot),
-                matrixTemplateRows: @js($matrixTemplateRows),
+                roles: JSON.parse(document.getElementById('loan-access-roles-snapshot')?.textContent || '{}'),
+                users: @js(($users ?? collect())->map(fn ($u) => ['id' => (string) $u->id, 'name' => (string) $u->name, 'email' => (string) $u->email])->values()),
+                selectedUserIds: [],
+                matrixTemplateRows: [],
                 matrixActionOrder: @js($matrixActions),
                 extraPermissionCatalog: @js($extraPermissionCatalog),
                 selectedExtraPermissions: [],
                 matrixRows: [],
                 activeStates: ['allow', 'deny', 'not_set'],
                 bulkAction: '',
+                canConfigure: @js((bool) ($canConfigureAccessRoles ?? false)),
+                editorLoanRoleId: @js($editorLoanRoleId ? (string) $editorLoanRoleId : ''),
+                isSuperAdmin: @js((bool) (auth()->user()?->is_super_admin ?? false)),
                 selectedRole() {
                     return this.roles[this.selectedRoleId] || null;
+                },
+                isOwnRole() {
+                    return this.editorLoanRoleId !== '' && this.selectedRoleId === this.editorLoanRoleId;
+                },
+                canEditMatrix() {
+                    return this.canConfigure && (this.isSuperAdmin || ! this.isOwnRole());
                 },
                 loadRoleMatrix(roleId) {
                     const role = this.roles[roleId] || null;
@@ -95,6 +119,11 @@
                     this.selectedRoleId = roleId;
                     this.bulkAction = '';
                     this.loadRoleMatrix(roleId);
+                    this.loadRoleUsers(roleId);
+                },
+                loadRoleUsers(roleId) {
+                    const role = this.roles[roleId] || null;
+                    this.selectedUserIds = role ? [...(role.user_ids || [])] : [];
                 },
                 resetMatrix() {
                     if (!this.selectedRoleId) return;
@@ -108,12 +137,19 @@
                     return 'text-slate-400';
                 },
                 cycleState(rowIndex, colIndex) {
-                    const current = this.matrixRows[rowIndex].states[colIndex];
+                    if (! this.canEditMatrix()) return;
+                    const row = this.matrixRows[rowIndex];
+                    if (! row || ! Array.isArray(row.states)) return;
+                    const current = row.states[colIndex];
                     if (current === 'na') return;
                     const nextIndex = (this.activeStates.indexOf(current) + 1) % this.activeStates.length;
-                    this.matrixRows[rowIndex].states[colIndex] = this.activeStates[nextIndex];
+                    row.states[colIndex] = this.activeStates[nextIndex];
+                    this.matrixRows = this.matrixRows.map((item, index) => (
+                        index === rowIndex ? { ...item, states: [...item.states] } : item
+                    ));
                 },
                 applyBulk() {
+                    if (! this.canEditMatrix()) return;
                     if (this.bulkAction === '') return;
                     const allowed = ['allow', 'deny', 'not_set'];
                     if (!allowed.includes(this.bulkAction)) return;
@@ -164,9 +200,25 @@
                     return '<svg class=\'h-4 w-4\' viewBox=\'0 0 20 20\' fill=\'none\'><path d=\'M6 10h8\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\'/></svg>';
                 },
                 toastOpen: false,
-                toastMessage: ''
+                toastMessage: '',
+                initAccessMatrix() {
+                    const templateEl = document.getElementById('loan-access-matrix-template');
+                    const rolesEl = document.getElementById('loan-access-roles-snapshot');
+                    try {
+                        this.matrixTemplateRows = JSON.parse(templateEl?.textContent || '[]');
+                    } catch (e) {
+                        this.matrixTemplateRows = [];
+                    }
+                    try {
+                        this.roles = JSON.parse(rolesEl?.textContent || '{}');
+                    } catch (e) {
+                        this.roles = {};
+                    }
+                    this.loadRoleMatrix(this.selectedRoleId);
+                    this.loadRoleUsers(this.selectedRoleId);
+                },
             }"
-            x-init="loadRoleMatrix(selectedRoleId)"
+            x-init="initAccessMatrix()"
         >
             @if (!($rbacReady ?? false))
                 <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -191,7 +243,7 @@
                 <div class="mt-4 border-b border-slate-200">
                     <nav class="-mb-px flex flex-wrap gap-2 text-sm">
                         <button type="button" @click="activeTab = 'roles'" :class="activeTab === 'roles' ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500'" class="px-2 pb-2 font-medium">Roles</button>
-                        <button type="button" @click="activeTab = 'permission_matrix'" :class="activeTab === 'permission_matrix' ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500'" class="px-2 pb-2 font-medium">Permission Matrix</button>
+                        <button type="button" @click="activeTab = 'permission_matrix'; loadRoleMatrix(selectedRoleId)" :class="activeTab === 'permission_matrix' ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500'" class="px-2 pb-2 font-medium">Permission Matrix</button>
                         <button type="button" @click="activeTab = 'data_scope'" :class="activeTab === 'data_scope' ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500'" class="px-2 pb-2 font-medium">Data Scope</button>
                         <button type="button" @click="activeTab = 'maker_checker'" :class="activeTab === 'maker_checker' ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500'" class="px-2 pb-2 font-medium">Maker-Checker Rules</button>
                         <button type="button" @click="activeTab = 'access_policies'" :class="activeTab === 'access_policies' ? 'border-b-2 border-teal-700 text-teal-700' : 'text-slate-500'" class="px-2 pb-2 font-medium">Access Policies</button>
@@ -200,14 +252,16 @@
                 </div>
             </div>
 
-            <div class="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start" x-show="activeTab === 'roles' || activeTab === 'permission_matrix'">
+            <div class="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start" x-show="activeTab === 'roles' || activeTab === 'permission_matrix'" x-cloak>
                 <div class="min-w-0 flex-1 space-y-4">
+                    {{-- Shared role picker --}}
                     <div class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                         <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
                             <div>
-                                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Select Role to Edit</h2>
+                                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Select role to edit</h2>
+                                <p class="mt-1 text-xs text-slate-500" x-show="activeTab === 'permission_matrix'">Choose a role, then toggle module permissions in the matrix below.</p>
                             </div>
-                            <div class="flex flex-wrap items-center gap-2">
+                            <div class="flex flex-wrap items-center gap-2" x-show="activeTab === 'roles'">
                                 <form method="post" action="{{ route('loan.system.setup.access_roles.clone', ($roles->first() ?? 0)) }}" class="flex items-center gap-2" x-data="{ cloneRoleId: '{{ (string) ($roles->first()->id ?? 0) }}' }" :action="'{{ url('/loan/system-help/setup/access-roles') }}/' + cloneRoleId + '/clone'">
                                     @csrf
                                     <select x-model="cloneRoleId" class="rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs text-slate-700">
@@ -231,11 +285,26 @@
                             </div>
                         </div>
 
-                        <div class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                        <div class="mb-3 flex flex-wrap items-center gap-3">
+                            <label class="text-xs font-semibold uppercase tracking-wide text-slate-500" for="access-role-select">Role</label>
+                            <select
+                                id="access-role-select"
+                                x-model="selectedRoleId"
+                                @change="selectRole(selectedRoleId)"
+                                class="min-w-[220px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                            >
+                                <template x-for="role in Object.values(roles)" :key="role.id">
+                                    <option :value="role.id" x-text="role.name + ' (' + role.base_role + ')'"></option>
+                                </template>
+                            </select>
+                            <span class="text-xs text-slate-500" x-show="selectedRole()" x-text="(selectedRole().permissions || []).length + ' permissions assigned'"></span>
+                        </div>
+
+                        <div class="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" x-show="activeTab === 'roles'">
                             Permissions are role-based and follow the principle of least privilege. Changes are logged for audit and require authorized approval.
                         </div>
 
-                        <div class="flex gap-3 overflow-x-auto pb-2">
+                        <div class="flex gap-3 overflow-x-auto pb-2" x-show="activeTab === 'roles'">
                             @foreach (($roles ?? collect()) as $roleCard)
                                 <button
                                     type="button"
@@ -250,11 +319,14 @@
                         </div>
                     </div>
 
-                    <div class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+                    <div class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" x-show="activeTab === 'permission_matrix'" x-cloak>
                         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <h3 class="text-base font-semibold text-slate-900">Permission Matrix</h3>
-                                <p class="text-xs text-slate-500">Toggle permissions for the selected role across all modules.</p>
+                                <p class="text-xs text-slate-500">
+                                    Toggle permissions for the selected role across all modules.
+                                    <span class="font-medium text-slate-600">({{ count($matrixTemplateRows) }} modules)</span>
+                                </p>
                             </div>
                             <div class="flex flex-wrap items-center gap-2 text-xs">
                                 <span class="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">
@@ -275,8 +347,15 @@
                                     <option value="deny">Set all Deny</option>
                                     <option value="not_set">Set all Not Set</option>
                                 </select>
-                                <button type="button" @click="applyBulk()" class="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-50">Apply</button>
+                                <button type="button" @click="applyBulk()" class="rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-50" :disabled="!canEditMatrix()">Apply</button>
                             </div>
+                        </div>
+
+                        <div x-show="isOwnRole() && !isSuperAdmin" x-cloak class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            This is your own assigned role. Permission changes are read-only here. Ask another administrator or super admin to adjust your access.
+                        </div>
+                        <div x-show="!canConfigure" x-cloak class="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                            You can review this matrix, but only users with <span class="font-semibold">access_roles.configure</span> can save changes.
                         </div>
 
                         <div class="overflow-x-auto rounded-xl border border-slate-200">
@@ -295,24 +374,35 @@
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-100">
-                                    <template x-for="(row, rowIndex) in matrixRows" :key="row.module">
-                                        <tr class="hover:bg-slate-50/70">
-                                            <td class="sticky left-0 bg-white px-3 py-2 text-slate-700" x-text="row.module"></td>
-                                            <template x-for="(state, colIndex) in row.states" :key="colIndex">
-                                                <td class="px-3 py-2 text-center">
-                                                    <button
-                                                        type="button"
-                                                        @click="cycleState(rowIndex, colIndex)"
-                                                        :class="roleStateClass(state)"
-                                                        class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-transparent hover:border-slate-200 disabled:cursor-not-allowed disabled:hover:border-transparent"
-                                                        x-html="iconMarkup(state)"
-                                                        :disabled="state === 'na'"
-                                                        :title="state === 'na' ? 'Not applicable for this module' : 'Click to change permission state'"
-                                                    ></button>
-                                                </td>
-                                            </template>
+                                    @if (count($matrixTemplateRows) === 0)
+                                        <tr>
+                                            <td colspan="9" class="px-4 py-10 text-center text-sm text-slate-500">
+                                                No permission modules loaded.
+                                                <span class="mt-1 block text-xs text-amber-700">Permission catalog could not be parsed for the matrix view.</span>
+                                            </td>
                                         </tr>
-                                    </template>
+                                    @else
+                                        @foreach ($matrixTemplateRows as $rowIndex => $moduleRow)
+                                            <tr class="hover:bg-slate-50/70">
+                                                <td class="sticky left-0 bg-white px-3 py-2 font-medium text-slate-800">
+                                                    {{ $moduleRow['module'] }}
+                                                </td>
+                                                @foreach ($matrixActions as $colIndex => $action)
+                                                    <td class="px-3 py-2 text-center">
+                                                        <button
+                                                            type="button"
+                                                            @click="cycleState({{ $rowIndex }}, {{ $colIndex }})"
+                                                            :class="roleStateClass((matrixRows[{{ $rowIndex }}]?.states || [])[{{ $colIndex }}] || 'na')"
+                                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-transparent hover:border-slate-200 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-transparent"
+                                                            x-html="iconMarkup((matrixRows[{{ $rowIndex }}]?.states || [])[{{ $colIndex }}] || 'na')"
+                                                            :disabled="!canEditMatrix() || ((matrixRows[{{ $rowIndex }}]?.states || [])[{{ $colIndex }}] || 'na') === 'na'"
+                                                            :title="((matrixRows[{{ $rowIndex }}]?.states || [])[{{ $colIndex }}] || 'na') === 'na' ? 'Not applicable for this module' : 'Click to change permission state'"
+                                                        ></button>
+                                                    </td>
+                                                @endforeach
+                                            </tr>
+                                        @endforeach
+                                    @endif
                                 </tbody>
                             </table>
                         </div>
@@ -326,7 +416,7 @@
                             <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                                 <template x-for="(item, key) in extraPermissionCatalog" :key="key">
                                     <label class="inline-flex items-center gap-2 rounded border border-slate-200 px-2 py-1.5 text-xs text-slate-700">
-                                        <input type="checkbox" :value="key" x-model="selectedExtraPermissions" class="rounded border-slate-300">
+                                        <input type="checkbox" :value="key" x-model="selectedExtraPermissions" class="rounded border-slate-300" :disabled="!canEditMatrix()">
                                         <span x-text="item.label"></span>
                                     </label>
                                 </template>
@@ -362,14 +452,60 @@
                             <button
                                 type="submit"
                                 class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
-                                :disabled="!selectedRoleId || !hasUnsavedChanges()"
+                                :disabled="!canEditMatrix() || !selectedRoleId || !hasUnsavedChanges()"
                             >
                                 Save selected role permissions
                             </button>
                         </form>
                     </div>
 
-                    <div class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+                    <div class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" x-show="activeTab === 'roles'" x-cloak>
+                        <div class="mb-3 flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                                <h3 class="text-base font-semibold text-slate-900">Assign users to role</h3>
+                                <p class="text-xs text-slate-500">Each user can hold one loan access role. Assigning here replaces their previous role.</p>
+                            </div>
+                            <span class="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600" x-text="selectedRole() ? selectedRole().name : 'No role selected'"></span>
+                        </div>
+
+                        <form
+                            method="post"
+                            :action="'{{ url('/loan/system-help/setup/access-roles') }}/' + selectedRoleId + '/assign'"
+                            class="space-y-3"
+                        >
+                            @csrf
+                            <div class="max-h-64 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-3">
+                                <template x-for="user in users" :key="user.id">
+                                    <label class="flex items-start gap-2 rounded-lg border border-transparent px-2 py-1.5 text-sm text-slate-700 hover:border-slate-200 hover:bg-slate-50">
+                                        <input
+                                            type="checkbox"
+                                            name="user_ids[]"
+                                            :value="user.id"
+                                            x-model="selectedUserIds"
+                                            class="mt-0.5 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                                            :disabled="!selectedRoleId"
+                                        >
+                                        <span>
+                                            <span class="block font-medium text-slate-900" x-text="user.name"></span>
+                                            <span class="block text-xs text-slate-500" x-text="user.email"></span>
+                                        </span>
+                                    </label>
+                                </template>
+                                <p x-show="users.length === 0" class="text-xs text-slate-500">No staff users found.</p>
+                            </div>
+                            <div class="flex justify-end">
+                                <button
+                                    type="submit"
+                                    class="rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
+                                    :disabled="!selectedRoleId"
+                                >
+                                    Save user assignments
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5" x-show="activeTab === 'roles'" x-cloak>
                         <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-600">Access Policies Summary</h3>
                         <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
                             <div class="rounded-xl border border-slate-200 bg-white p-3">

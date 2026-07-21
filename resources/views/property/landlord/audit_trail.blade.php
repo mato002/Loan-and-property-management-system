@@ -1,19 +1,13 @@
 <x-property-layout>
     <x-slot name="header">Audit trail</x-slot>
 
-    <x-property.page
-        title="Audit trail"
-        subtitle="Timeline of landlord actions captured in the portal (approvals, payout settings, withdrawals, and preferences)."
-    >
-        <div class="grid gap-3 sm:grid-cols-3 mb-4">
+    <x-property.page title="Audit trail">
+        <p class="mb-3 text-sm"><a href="{{ route('property.landlord.settings.index') }}" data-turbo-frame="property-main" class="text-emerald-700 hover:underline">← Account</a></p>
+        <x-property.landlord.kpi-grid cols="3" class="mb-4">
             @foreach (($stats ?? []) as $s)
-                <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
-                    <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{{ $s['label'] }}</p>
-                    <p class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ $s['value'] }}</p>
-                    <p class="mt-1 text-xs text-slate-500">{{ $s['hint'] }}</p>
-                </div>
+                <x-property.landlord.kpi-card :label="$s['label']" :value="$s['value']" />
             @endforeach
-        </div>
+        </x-property.landlord.kpi-grid>
 
         <form method="get" class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 p-4 flex flex-wrap items-end gap-3">
             <div>
@@ -41,7 +35,7 @@
 
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/70 overflow-hidden shadow-sm">
             @if (($actions->total() ?? 0) === 0)
-                <p class="p-5 text-sm text-slate-500">No actions recorded yet.</p>
+                <p class="p-5 text-sm text-slate-500">No actions recorded.</p>
             @else
                 <div class="overflow-x-auto">
                     <table class="min-w-full table-auto text-sm">

@@ -156,66 +156,12 @@
         @endforeach
     </div>
 
-    <div id="coa-create-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
-        <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5">
-            <div class="flex items-center justify-between">
-                <h3 class="text-base font-semibold">Add account</h3>
-                <button type="button" id="coa-create-close" class="text-slate-600">Close</button>
-            </div>
-            <form method="post" action="{{ route('property.accounting.gl.chart_accounts.store') }}" class="mt-4 grid gap-3 sm:grid-cols-2">
-                @csrf
-                <div><label class="text-xs">Account code</label><input required name="code" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></div>
-                <div><label class="text-xs">Account name</label><input required name="name" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></div>
-                <div><label class="text-xs">Account type</label><select id="coa-type" name="type" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">@foreach (($typeOptions ?? []) as $t)<option value="{{ $t }}">{{ ucfirst($t) }}</option>@endforeach</select></div>
-                <div><label class="text-xs">Parent account</label><select name="parent_id" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"><option value="">—</option>@foreach (($parentOptions ?? []) as $p)<option value="{{ $p['id'] }}">{{ $p['label'] }}</option>@endforeach</select></div>
-                <div><label class="text-xs">Normal balance</label><select name="normal_balance" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"><option value="debit">Debit</option><option value="credit">Credit</option></select></div>
-                <div><label class="text-xs">Default usage mapping</label><select name="default_usage" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"><option value="">—</option>@foreach (($usageOptions ?? []) as $u)<option value="{{ $u }}">{{ ucfirst($u) }}</option>@endforeach</select></div>
-                <div><label class="inline-flex items-center gap-2 text-xs"><input type="checkbox" name="is_control_account" value="1"> Is control account</label></div>
-                <div><label class="text-xs">Status</label><select name="status" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"><option value="active">Active</option><option value="disabled">Disabled</option></select></div>
-                <div class="sm:col-span-2 text-xs text-slate-500">Suggested code ranges: 1000-1999 Assets, 2000-2999 Liabilities, 3000-3999 Equity, 4000-4999 Income, 5000-5999 Expenses.</div>
-                <div class="sm:col-span-2"><button class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" type="submit">Create account</button></div>
-            </form>
-        </div>
+    <div id="coa-page-modals-root">
+        @include('property.agent.partials.chart_accounts_modals', [
+            'typeOptions' => $typeOptions ?? [],
+            'parentOptions' => $parentOptions ?? [],
+            'usageOptions' => $usageOptions ?? [],
+        ])
     </div>
-
-    <div id="coa-disable-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 p-4">
-        <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5">
-            <h3 class="text-base font-semibold">Disable account</h3>
-            <p class="mt-2 text-sm text-slate-600" id="coa-disable-details"></p>
-            <form id="coa-disable-form" method="post" class="mt-4">
-                @csrf
-                <input type="hidden" name="confirm" value="yes" />
-                <button type="submit" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700">Disable account</button>
-                <button type="button" onclick="closeDisableModal()" class="ml-2 rounded-xl border border-slate-300 px-4 py-2 text-sm">Cancel</button>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        (function () {
-            const createModal = document.getElementById('coa-create-modal');
-            const openCreate = document.getElementById('coa-open-create');
-            const closeCreate = document.getElementById('coa-create-close');
-            if (openCreate && createModal && closeCreate) {
-                openCreate.addEventListener('click', () => { createModal.classList.remove('hidden'); createModal.classList.add('flex'); });
-                closeCreate.addEventListener('click', () => { createModal.classList.add('hidden'); createModal.classList.remove('flex'); });
-            }
-        })();
-        function openDisableModal(id, code, name, balance, txCount, mappingUsed, isProtected) {
-            if (isProtected) return;
-            const modal = document.getElementById('coa-disable-modal');
-            const form = document.getElementById('coa-disable-form');
-            const details = document.getElementById('coa-disable-details');
-            form.action = "{{ route('property.accounting.gl.chart_accounts.disable', ['account' => '__ID__']) }}".replace('__ID__', id);
-            details.textContent = `${code} ${name} | Balance: ${balance} | Transactions: ${txCount} | Used in mappings: ${mappingUsed ? 'Yes' : 'No'}.`;
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-        function closeDisableModal() {
-            const modal = document.getElementById('coa-disable-modal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
-    </script>
 </x-property.workspace>
 

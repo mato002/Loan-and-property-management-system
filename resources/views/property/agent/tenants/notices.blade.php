@@ -144,7 +144,7 @@
                         <details class="rounded-xl border border-slate-200 p-3">
                             <summary class="cursor-pointer list-none flex flex-wrap items-center justify-between gap-2">
                                 <span class="text-sm font-medium text-slate-800">
-                                    #{{ $notice->id }} ┬╖ {{ $notice->tenant?->name ?? 'Unknown tenant' }} ┬╖ {{ ucfirst(str_replace('_',' ', (string) $notice->status)) }}
+                                    #{{ $notice->id }}  -  {{ $notice->tenant?->name ?? 'Unknown tenant' }}  -  {{ ucfirst(str_replace('_',' ', (string) $notice->status)) }}
                                 </span>
                                 <span class="text-xs text-slate-500">{{ optional($notice->created_at)->format('Y-m-d H:i') }}</span>
                             </summary>
@@ -171,7 +171,7 @@
                                                     <p class="text-[11px] font-semibold text-slate-700">
                                                         {{ ucfirst(str_replace('_',' ', (string) $event->event_type)) }}
                                                         @if(!empty($event->from_status) || !empty($event->to_status))
-                                                            ┬╖ {{ ucfirst(str_replace('_',' ', (string) ($event->from_status ?? '—'))) }} → {{ ucfirst(str_replace('_',' ', (string) ($event->to_status ?? '—'))) }}
+                                                             -  {{ ucfirst(str_replace('_',' ', (string) ($event->from_status ?? '—'))) }} → {{ ucfirst(str_replace('_',' ', (string) ($event->to_status ?? '—'))) }}
                                                         @endif
                                                     </p>
                                                     <p class="text-[11px] text-slate-500">

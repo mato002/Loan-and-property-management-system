@@ -1,5 +1,5 @@
 @php
-    $c = 'w-8 h-8';
+    $c = $class ?? 'w-8 h-8';
     $name = $name ?? 'default';
 @endphp
 @switch($name)

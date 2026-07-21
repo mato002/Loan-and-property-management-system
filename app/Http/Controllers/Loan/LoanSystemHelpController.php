@@ -1216,10 +1216,12 @@ class LoanSystemHelpController extends Controller
             'title' => 'Loan roles & permissions',
             'subtitle' => 'Create custom access roles, choose permissions, and assign to users.',
             'rbacReady' => $rbacReady,
-            'roles' => $rbacReady ? LoanRole::query()->withCount('users')->orderByDesc('is_active')->orderBy('name')->get() : collect(),
+            'roles' => $rbacReady ? LoanRole::query()->with(['users:id,name,email'])->withCount('users')->orderByDesc('is_active')->orderBy('name')->get() : collect(),
             'users' => $rbacReady ? User::query()->orderBy('name')->get(['id', 'name', 'email']) : collect(),
             'permissionCatalog' => $this->loanPermissionCatalog(),
             'defaultPermissionsByBaseRole' => $this->defaultPermissionsByBaseRole(),
+            'canConfigureAccessRoles' => $this->userCanConfigureAccessRoles(auth()->user()),
+            'editorLoanRoleId' => auth()->user()?->activeLoanAccessRole()?->id,
             'temporaryAccessRequests' => Schema::hasTable('loan_temporary_access_requests')
                 ? LoanTemporaryAccessRequest::query()
                     ->with(['requester:id,name,email', 'approver:id,name,email'])
@@ -1525,6 +1527,31 @@ class LoanSystemHelpController extends Controller
             ? array_values(array_unique($validated['permissions'] ?? []))
             : ($this->defaultPermissionsByBaseRole()[$validated['base_role']] ?? []);
 
+        $editor = $request->user();
+        if (! ($editor?->is_super_admin ?? false)) {
+            if ((int) ($editor?->activeLoanAccessRole()?->id ?? 0) === (int) $loan_role->id) {
+                return redirect()->route('loan.system.setup.access_roles')
+                    ->with('error', 'You cannot change permissions on a role assigned to your own account.');
+            }
+
+            $currentPermissions = is_array($loan_role->permissions)
+                ? $loan_role->permissions
+                : (is_string($loan_role->permissions) ? (json_decode($loan_role->permissions, true) ?: []) : []);
+            $currentPermissions = array_values(array_unique(array_filter(array_map(
+                fn ($key) => strtolower(trim((string) $key)),
+                is_array($currentPermissions) ? $currentPermissions : []
+            ))));
+            $addedPermissions = array_values(array_diff($permissions, $currentPermissions));
+            if ($addedPermissions !== []) {
+                foreach ($addedPermissions as $permissionKey) {
+                    if (! $editor->hasLoanPermission($permissionKey)) {
+                        return redirect()->route('loan.system.setup.access_roles')
+                            ->with('error', 'You cannot grant permissions that your account does not hold.');
+                    }
+                }
+            }
+        }
+
         $loan_role->update([
             'base_role' => $validated['base_role'],
             'permissions' => $permissions,
@@ -1651,6 +1678,19 @@ class LoanSystemHelpController extends Controller
 
         return redirect()->route('loan.system.setup.access_roles')
             ->with('status', "Sync complete. {$created} role(s) prepared, {$assigned} user assignment(s) imported.");
+    }
+
+    private function userCanConfigureAccessRoles(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if (($user->is_super_admin ?? false) === true) {
+            return true;
+        }
+
+        return $user->hasLoanPermission('access_roles.configure');
     }
 
     /**
@@ -1830,7 +1870,7 @@ class LoanSystemHelpController extends Controller
             'device_governance.master_key' => 'Device Governance · Master Key Override',
 
             // Legacy coarse keys retained for backward compatibility.
-            'loanbook.view' => 'LoanBook',
+            'loanbook.view' => 'LoanBook · View',
             'financial.view' => 'Financial · View (Legacy)',
         ];
     }

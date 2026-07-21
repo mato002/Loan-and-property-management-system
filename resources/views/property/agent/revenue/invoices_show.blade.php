@@ -63,8 +63,8 @@
                         @endif
                         @if ($invoice->tenant)
                             <p class="text-xs mt-1">
-                                <a href="{{ route('property.tenants.show', $invoice->tenant) }}" class="text-blue-700 hover:underline">View tenant profile</a> ┬╖
-                                <a href="{{ route('property.tenants.statement', $invoice->tenant) }}" class="text-blue-700 hover:underline">Statement</a> ┬╖
+                                <a href="{{ route('property.tenants.show', $invoice->tenant) }}" class="text-blue-700 hover:underline">View tenant profile</a>  - 
+                                <a href="{{ route('property.tenants.statement', $invoice->tenant) }}" class="text-blue-700 hover:underline">Statement</a>  - 
                                 <a href="{{ route('property.revenue.arrears.tenant', $invoice->tenant) }}" class="text-blue-700 hover:underline">Arrears</a>
                             </p>
                         @endif
@@ -214,7 +214,7 @@
                             <li class="ml-4">
                                 <div class="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full bg-slate-300"></div>
                                 <p class="text-slate-800"><span class="font-semibold">{{ ucfirst(str_replace('_',' ', $ev->event)) }}</span>@if ($ev->summary) — {{ $ev->summary }}@endif</p>
-                                <p class="text-xs text-slate-500">{{ optional($ev->occurred_at)->format('Y-m-d H:i') }}@if ($ev->user) ┬╖ by {{ $ev->user->name }}@endif</p>
+                                <p class="text-xs text-slate-500">{{ optional($ev->occurred_at)->format('Y-m-d H:i') }}@if ($ev->user)  -  by {{ $ev->user->name }}@endif</p>
                             </li>
                         @endforeach
                     </ol>

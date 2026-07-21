@@ -38,7 +38,7 @@
 
     <x-property.page
         title="Employee payslip"
-        subtitle="Reference {{ $reference }} ┬╖ {{ $entryDate }}"
+        subtitle="Reference {{ $reference }}  -  {{ $entryDate }}"
     >
         <div class="flex flex-wrap gap-2 payslip-no-print">
             <a href="{{ route('property.accounting.payroll.payslips') }}" class="inline-flex rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Back to payslips</a>

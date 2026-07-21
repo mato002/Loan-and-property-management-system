@@ -129,6 +129,12 @@
                 <p class="mt-1 text-xs text-slate-500">Optional for open-ended leases.</p>
             </div>
             <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent due day override</label>
+                <input type="number" name="rent_due_day" value="{{ old('rent_due_day', $lease->rent_due_day) }}" min="1" max="31" class="mt-1 w-full sm:max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Blank = property / system default" />
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">If blank, the system uses the property default. If property default is blank, it uses system default ({{ app(\App\Services\Property\RentDueDayResolver::class)->systemDefaultDueDay() }}). Move-in date does not set rent due day.</p>
+                @error('rent_due_day')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Monthly rent</label>
                 <input id="lease-monthly-rent" type="number" name="monthly_rent" value="{{ old('monthly_rent', $lease->monthly_rent) }}" step="0.01" min="0" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 <p class="mt-1 text-xs text-slate-500">Auto-fills from selected unit rent.</p>
@@ -220,15 +226,13 @@
             <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Back</a>
         </div>
     </form>
-    @php
-        $_leaseUtilityRowsForJs = old('utility_expenses');
-        if (! is_array($_leaseUtilityRowsForJs) || $_leaseUtilityRowsForJs === []) {
-            $_leaseUtilityRowsForJs = $lease->utility_expenses ?? [];
-        }
-    @endphp
     <script>
         (function () {
-            const leaseUtilityExpenseFormOld = @json(collect($_leaseUtilityRowsForJs)->values()->all());
+            const leaseUtilityExpenseFormOld = @json(collect(
+                is_array(old('utility_expenses')) && old('utility_expenses') !== []
+                    ? old('utility_expenses')
+                    : ($lease->utility_expenses ?? [])
+            )->values()->all());
             const openingDepositArrearsOld = @json((array) ($openingDepositArrearsRows ?? []));
             const utilityTemplatesByProperty = @json($utilityChargeTemplatesByProperty ?? []);
             const depositDefinitionsByProperty = @json($depositDefinitionsByProperty ?? []);

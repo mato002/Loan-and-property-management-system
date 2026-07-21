@@ -1,12 +1,11 @@
 <x-property.workspace
     title="Cash flow"
-    subtitle="Ledger credits and debits — monthly trend and running detail."
     back-route="property.landlord.reports.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
     empty-title="No cash rows"
-    empty-hint="Ledger entries will appear here as credits and debits are posted."
+    empty-hint=""
 >
     <x-slot name="toolbar">
         <form method="get" class="flex flex-wrap items-end gap-2">
@@ -22,7 +21,7 @@
             <button type="submit" class="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Apply</button>
         </form>
     </x-slot>
-    <div class="grid gap-4 lg:grid-cols-2 w-full min-w-0">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4 w-full min-w-0">
         <x-property.chart-line-dual
             title="Cash in vs out by month"
             label-a="Credits (in)"

@@ -1,0 +1,22 @@
+# Laravel queue worker — Supervisor program (database driver).
+# Copy to /etc/supervisor/conf.d/laravel-worker.conf and adjust paths/user.
+#
+#   sudo supervisorctl reread && sudo supervisorctl update && sudo supervisorctl start laravel-worker:*
+#
+# After deploy:
+#   cd /path/to/project && php artisan queue:restart
+#
+# Full setup guide: docs/QUEUE-WORKER-SETUP.md
+
+[program:laravel-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=php /path/to/project/artisan queue:work database --sleep=3 --tries=3 --max-time=3600 --queue=high,default,low
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=www-data
+numprocs=1
+redirect_stderr=true
+stdout_logfile=/path/to/project/storage/logs/worker.log
+stopwaitsecs=3600

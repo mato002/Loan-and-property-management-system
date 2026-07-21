@@ -8,6 +8,8 @@ use App\Models\PmMaintenanceJob;
 use App\Models\PmPayment;
 use App\Models\Property;
 use App\Models\PropertyUnit;
+use App\Services\Property\FinancialReportingFormulaService;
+use Carbon\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PropertyDataExportController extends Controller
@@ -58,9 +60,10 @@ class PropertyDataExportController extends Controller
 
     public function incomeExpensesSummary(): StreamedResponse
     {
-        $income = (float) PmInvoice::query()->sum('amount');
+        $formulas = app(FinancialReportingFormulaService::class);
+        $income = $formulas->billedForPeriod(Carbon::parse('2000-01-01'), now());
         $maint = (float) PmMaintenanceJob::query()->whereNotNull('quote_amount')->sum('quote_amount');
-        $paymentsIn = (float) PmPayment::query()->where('status', PmPayment::STATUS_COMPLETED)->sum('amount');
+        $paymentsIn = $formulas->collectionsForPeriod(Carbon::parse('2000-01-01'), now());
 
         $rows = [
             ['Billed (invoices, all time)', 'Income', number_format($income, 2, '.', '')],

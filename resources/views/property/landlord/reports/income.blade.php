@@ -1,12 +1,11 @@
 <x-property.workspace
     title="Income statements"
-    subtitle="Downloadable period views — gross rent, vacancies, fees, and net to landlord."
     back-route="property.landlord.reports.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
-    empty-title="No invoices on your properties"
-    empty-hint="Invoices raised against units on your linked properties appear here."
+    empty-title="No invoices"
+    empty-hint=""
 >
     <x-slot name="actions">
         <a
