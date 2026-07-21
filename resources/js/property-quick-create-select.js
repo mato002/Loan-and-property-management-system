@@ -33,6 +33,15 @@ function propertyQuickCreateSelect(config) {
         createEndpoint: cfg.createEndpoint || '',
         createFields: Array.isArray(cfg.createFields) ? cfg.createFields : [],
 
+        closeCreateModal() {
+            this.open = false;
+        },
+
+        openCreateModal() {
+            this.closePicker();
+            this.open = true;
+        },
+
         init() {
             const selected = this.options.find((o) => o.selected);
             this.selectedValue = selected ? String(selected.value) : '';
@@ -122,7 +131,11 @@ function propertyQuickCreateSelect(config) {
             const payload = {};
             for (const f of this.createFields) {
                 const el = document.getElementById(`${this.selectId}-f-${f.name}`);
-                payload[f.name] = el && el.value !== undefined ? String(el.value).trim() : '';
+                if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement || el instanceof HTMLSelectElement) {
+                    payload[f.name] = el.value !== undefined ? String(el.value).trim() : '';
+                } else {
+                    payload[f.name] = '';
+                }
                 if (f.required && !payload[f.name]) {
                     const msg = `${f.label || f.name} is required.`;
                     if (window.Swal) {

@@ -47,27 +47,7 @@
                     name="pm_tenant_id"
                     :required="true"
                     :options="$tenantSelectOptions"
-                    :create="[
-                        'mode' => 'ajax',
-                        'title' => 'Create tenant',
-                        'endpoint' => route('property.tenants.store_json'),
-                        'fields' => [
-                            ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. John Tenant'],
-                            ['name' => 'phone', 'label' => 'Phone', 'required' => false, 'span' => '2', 'placeholder' => '+2547…'],
-                            ['name' => 'email', 'label' => 'Email (optional)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
-                            ['name' => 'national_id', 'label' => 'National ID / reference', 'required' => false, 'span' => '2', 'placeholder' => 'e.g. 12345678'],
-                            ['name' => 'risk_level', 'label' => 'Risk level', 'type' => 'select', 'required' => false, 'options' => [
-                                ['value' => 'normal', 'label' => 'Normal'],
-                                ['value' => 'medium', 'label' => 'Medium'],
-                                ['value' => 'high', 'label' => 'High'],
-                            ]],
-                            ['name' => 'create_portal_login', 'label' => 'Create portal login', 'type' => 'select', 'required' => false, 'options' => [
-                                ['value' => '0', 'label' => 'No'],
-                                ['value' => '1', 'label' => 'Yes'],
-                            ]],
-                            ['name' => 'notes', 'label' => 'Notes', 'required' => false, 'span' => '2', 'placeholder' => 'Optional notes'],
-                        ],
-                    ]"
+                    :create="\App\Support\Property\PmTenantQuickCreateFields::quickCreateConfig()"
                 />
                 @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>

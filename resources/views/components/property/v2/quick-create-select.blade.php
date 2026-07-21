@@ -16,6 +16,7 @@
     $id = $selectId ?: ('qcs-'.preg_replace('/[^a-zA-Z0-9\-_]/', '-', (string) $name).'-'.substr(md5((string) $name), 0, 6));
     $createMode = (string) ($create['mode'] ?? 'none');
     $useSearch = $searchable || count($options) >= $searchMinOptions;
+    $createModalMaxWidth = (string) ($create['modalMaxWidth'] ?? 'lg');
     $qcsConfig = [
         'selectId' => $id,
         'placeholder' => $placeholder,
@@ -43,7 +44,7 @@
         ])
 
         @if ($createMode === 'ajax')
-            <button type="button" @click="open = true" class="shrink-0 inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800" title="Create">
+            <button type="button" @click="openCreateModal()" class="shrink-0 inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800" title="Create">
                 +
             </button>
         @elseif ($createMode === 'link')
@@ -58,7 +59,14 @@
     @endif
 
     @if ($createMode === 'ajax')
-        <x-property.modal show="open" close="open = false" :name="'qcs-' . $id" :title="(string) ($create['title'] ?? 'Create')" max-width="lg">
+        <x-property.modal
+            show="open"
+            close="closeCreateModal()"
+            :teleport="false"
+            :name="'qcs-' . $id"
+            :title="(string) ($create['title'] ?? 'Create')"
+            :max-width="$createModalMaxWidth"
+        >
             @if (!empty($create['subtitle']))
                 <p class="mb-3 text-xs text-slate-500 dark:text-slate-400">{{ $create['subtitle'] }}</p>
             @endif
@@ -79,6 +87,15 @@
                                     <option value="{{ (string) ($opt['value'] ?? '') }}">{{ (string) ($opt['label'] ?? ($opt['value'] ?? '')) }}</option>
                                 @endforeach
                             </select>
+                        @elseif (($f['type'] ?? 'text') === 'textarea')
+                            <textarea
+                                id="{{ $id }}-f-{{ $f['name'] }}"
+                                rows="3"
+                                @if(!empty($f['required'])) x-bind:required="open" @endif
+                                x-bind:disabled="!open"
+                                class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-950 text-sm px-3 py-2"
+                                placeholder="{{ $f['placeholder'] ?? '' }}"
+                            ></textarea>
                         @else
                             <input
                                 id="{{ $id }}-f-{{ $f['name'] }}"
@@ -95,7 +112,7 @@
 
             <x-slot name="footer">
                 <div class="flex flex-col sm:flex-row gap-2 justify-end">
-                    <button type="button" @click="open = false" class="min-h-[44px] rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
+                    <button type="button" @click="closeCreateModal()" class="min-h-[44px] rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
                         Cancel
                     </button>
                     <button type="button" :disabled="creating" @click="submit()" class="min-h-[44px] rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed">

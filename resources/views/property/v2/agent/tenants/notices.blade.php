@@ -80,16 +80,7 @@
                         select-id="notice-tenant-select"
                         :required="true"
                         :options="collect($tenants)->map(fn($t) => ['value' => $t->id, 'label' => $t->name, 'selected' => (string) old('pm_tenant_id') === (string) $t->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create tenant',
-                            'endpoint' => route('property.tenants.store_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. John Tenant'],
-                                ['name' => 'phone', 'label' => 'Phone', 'required' => false, 'span' => '2', 'placeholder' => '+2547…'],
-                                ['name' => 'email', 'label' => 'Email (optional)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
-                            ],
-                        ]"
+                        :create="\App\Support\Property\PmTenantQuickCreateFields::quickCreateConfig()"
                     />
                     @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
