@@ -16,6 +16,7 @@ use App\Models\PropertyUnit;
 use App\Services\BulkSmsService;
 use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Services\Property\PropertyAccountingPostingService;
+use App\Services\Property\RentInvoiceGenerator;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentSettlementService;
 use App\Services\Property\PropertyReversalFinalizeService;
@@ -343,6 +344,48 @@ class PmInvoiceController extends Controller
             }
         }
 
+        $invoiceType = $data['invoice_type'] ?? PmInvoice::TYPE_RENT;
+        if ($invoiceType === PmInvoice::TYPE_RENT) {
+            if (empty($data['pm_lease_id'])) {
+                return back()->withErrors([
+                    'pm_lease_id' => 'Select the lease for rent invoices so billing matches automated rent generation.',
+                ])->withInput();
+            }
+
+            if (empty($data['billing_period'])) {
+                $data['billing_period'] = Carbon::parse($data['issue_date'])->format('Y-m');
+            }
+
+            $billingYm = (string) $data['billing_period'];
+            $leaseForRent = PmLease::query()->with('units:id')->find($data['pm_lease_id']);
+            $expectedPerUnit = 0.0;
+            if ($leaseForRent) {
+                $unitCount = max(1, $leaseForRent->units->count());
+                $expectedPerUnit = round((float) $leaseForRent->monthly_rent / $unitCount, 2);
+            }
+
+            if (app(RentInvoiceGenerator::class)->isFullyInvoicedForLeaseUnitBillingMonth(
+                (int) $data['pm_lease_id'],
+                (int) $data['property_unit_id'],
+                $billingYm,
+                $expectedPerUnit,
+            )) {
+                return back()->withErrors([
+                    'issue_date' => 'Rent for this lease and unit is already fully invoiced for billing month '.$billingYm.'. Use Uninvoiced leases → Rent increase due to bill the difference, or edit the existing invoice.',
+                ])->withInput();
+            }
+
+            if (app(RentInvoiceGenerator::class)->invoicedRentTotalForLeaseUnitBillingMonth(
+                (int) $data['pm_lease_id'],
+                (int) $data['property_unit_id'],
+                $billingYm,
+            ) > 0.009) {
+                return back()->withErrors([
+                    'issue_date' => 'A rent invoice already exists for this lease and unit in billing month '.$billingYm.'. Bill the increase from Revenue → Uninvoiced leases (Rent increase due).',
+                ])->withInput();
+            }
+        }
+
         // C2: idempotency. If the caller provided an idempotency_key OR if we
         // already have a recent invoice (within ~10 seconds) with identical
         // tenant + unit + amount + type, return that one rather than
@@ -361,17 +404,18 @@ class PmInvoiceController extends Controller
         $recent = PmInvoice::query()
             ->where('pm_tenant_id', $data['pm_tenant_id'])
             ->where('property_unit_id', $data['property_unit_id'])
+            ->where('issue_date', $data['issue_date'])
+            ->where('due_date', $data['due_date'])
             ->where('amount', $data['amount'])
-            ->where('invoice_type', $data['invoice_type'] ?? PmInvoice::TYPE_RENT)
+            ->where('invoice_type', $invoiceType)
             ->where('created_at', '>=', now()->subSeconds(10))
             ->first();
         if ($recent) {
             return back()->with('success', 'Invoice '.$recent->invoice_no.' already created.');
         }
 
-        $invoice = DB::transaction(function () use ($data, $request, $unit) {
+        $invoice = DB::transaction(function () use ($data, $request, $unit, $invoiceType) {
             $invoiceNo = PmInvoice::nextInvoiceNumber();
-            $invoiceType = $data['invoice_type'] ?? PmInvoice::TYPE_RENT;
             $amount = (float) $data['amount'];
 
             return PmInvoice::query()->create([

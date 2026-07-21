@@ -17,7 +17,7 @@
     $fieldId = $name ? 'filter-field-'.preg_replace('/[^a-z0-9_-]+/i', '-', (string) $name) : null;
     $resolvedValue = $value ?? request()->query($name);
     $inputClass = 'property-filter-field__control w-full min-h-[44px] md:min-h-[38px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 text-slate-900 dark:text-slate-100';
-    $wrapClass = 'property-filter-field min-w-0 '.($wide ? 'sm:min-w-[12rem] flex-1' : 'sm:w-auto');
+    $wrapClass = 'property-filter-field min-w-0 shrink-0 '.($wide ? 'w-full sm:min-w-[12rem] sm:max-w-md sm:flex-1' : 'w-full sm:w-auto');
     $normalizedOptions = collect($options)->map(function ($opt, $key) {
         if (is_array($opt)) {
             return [

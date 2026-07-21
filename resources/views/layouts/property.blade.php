@@ -246,7 +246,19 @@
                 display: none;
             }
             #property-workspace-error[data-active] {
-                display: block;
+                display: flex;
+                align-items: flex-start;
+                justify-content: center;
+                position: absolute;
+                inset: 0;
+                z-index: 50;
+                padding: 1rem 1.25rem;
+                background: rgb(232 236 241 / 0.92);
+                backdrop-filter: blur(2px);
+                pointer-events: auto;
+            }
+            #property-workspace-main[data-workspace-error-active] turbo-frame#property-main {
+                visibility: hidden;
             }
             /* Turbo frame loading — progress bar + stable containment */
             turbo-frame#property-main {
@@ -351,7 +363,7 @@
                     <div id="property-workspace-loading" aria-hidden="true">
                         <x-property.workspace-loading />
                     </div>
-                    <div id="property-workspace-error" class="absolute inset-x-0 top-0 z-30 p-4 sm:p-6" aria-live="polite"></div>
+                    <div id="property-workspace-error" class="absolute inset-0 z-50 pointer-events-none p-4 sm:p-6" aria-live="polite"></div>
                     <div class="p-3 sm:p-4 lg:p-8 w-full max-w-full min-w-0 property-mobile-safe-bottom">
                         <turbo-frame id="property-main" data-turbo-action="advance" data-turbo-cache="false">
                             <div id="property-main-route" data-route-name="{{ Route::currentRouteName() ?? '' }}" data-page-title="{{ trim((string) ($header ?? '')) }}" hidden></div>

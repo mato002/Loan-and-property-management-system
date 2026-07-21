@@ -150,7 +150,7 @@ class RevenueController extends Controller
         $generator = app(RentInvoiceGenerator::class);
         $month = trim((string) $request->query('month', now()->format('Y-m')));
         $filter = strtolower(trim((string) $request->query('filter', 'missing')));
-        if (! in_array($filter, ['missing', 'all', 'blocked', 'invoiced'], true)) {
+        if (! in_array($filter, ['missing', 'all', 'blocked', 'invoiced', 'underbilled'], true)) {
             $filter = 'missing';
         }
         $q = trim((string) $request->query('q', ''));
@@ -160,6 +160,7 @@ class RevenueController extends Controller
         $counts = [
             'missing' => 0,
             'already' => 0,
+            'underbilled' => 0,
             'no_unit' => 0,
             'zero_rent' => 0,
         ];
@@ -167,6 +168,7 @@ class RevenueController extends Controller
             match ($row['reason']) {
                 RentInvoiceGenerator::REASON_MISSING => $counts['missing']++,
                 RentInvoiceGenerator::REASON_ALREADY => $counts['already']++,
+                RentInvoiceGenerator::REASON_UNDERBILLED => $counts['underbilled']++,
                 RentInvoiceGenerator::REASON_NO_UNIT => $counts['no_unit']++,
                 RentInvoiceGenerator::REASON_ZERO_RENT => $counts['zero_rent']++,
                 default => null,
@@ -176,6 +178,7 @@ class RevenueController extends Controller
         $rows = collect($allRows)->filter(function (array $row) use ($filter) {
             return match ($filter) {
                 'missing' => $row['reason'] === RentInvoiceGenerator::REASON_MISSING,
+                'underbilled' => $row['reason'] === RentInvoiceGenerator::REASON_UNDERBILLED,
                 'blocked' => in_array($row['reason'], [
                     RentInvoiceGenerator::REASON_NO_UNIT,
                     RentInvoiceGenerator::REASON_ZERO_RENT,
@@ -204,13 +207,15 @@ class RevenueController extends Controller
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
             return TabularExport::stream(
                 'uninvoiced-leases-'.$month.'-'.now()->format('Ymd_His'),
-                ['Tenant', 'Property', 'Unit', 'Bill amount', 'Due date', 'Status', 'Lease'],
+                ['Tenant', 'Property', 'Unit', 'Lease rent (unit share)', 'Invoiced', 'To bill', 'Due date', 'Status', 'Lease'],
                 function () use ($rows) {
                     foreach ($rows as $row) {
                         yield [
                             $row['tenant_name'],
                             $row['property_name'],
                             $row['unit_label'],
+                            number_format((float) ($row['expected_amount'] ?? $row['bill_amount']), 2, '.', ''),
+                            number_format((float) ($row['invoiced_amount'] ?? 0), 2, '.', ''),
                             number_format((float) $row['bill_amount'], 2, '.', ''),
                             $row['due_date'],
                             $row['reason_label'],
@@ -233,6 +238,7 @@ class RevenueController extends Controller
 
             $reasonClass = match ($row['reason']) {
                 RentInvoiceGenerator::REASON_MISSING => 'bg-amber-100 text-amber-800',
+                RentInvoiceGenerator::REASON_UNDERBILLED => 'bg-violet-100 text-violet-900',
                 RentInvoiceGenerator::REASON_ALREADY => 'bg-emerald-100 text-emerald-800',
                 RentInvoiceGenerator::REASON_NO_UNIT, RentInvoiceGenerator::REASON_ZERO_RENT => 'bg-slate-100 text-slate-700',
                 default => 'bg-slate-100 text-slate-700',
@@ -251,23 +257,37 @@ class RevenueController extends Controller
                     .'<button type="submit" class="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700">Generate</button>'
                     .'</form>'
                 );
+            } elseif (($row['can_generate_supplement'] ?? false) && $canGenerate) {
+                $actionCell = new HtmlString(
+                    '<form method="post" action="'.route('property.revenue.uninvoiced_leases.generate_supplements', absolute: false).'" data-turbo-frame="property-main" class="inline">'
+                    .csrf_field()
+                    .'<input type="hidden" name="month" value="'.e($month).'" />'
+                    .'<input type="hidden" name="keys[]" value="'.e($row['key']).'" />'
+                    .'<button type="submit" class="rounded-lg bg-violet-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-700">Bill increase</button>'
+                    .'</form>'
+                );
             } elseif ($row['reason'] === RentInvoiceGenerator::REASON_NO_UNIT) {
                 $actionCell = new HtmlString(
                     '<a href="'.route('property.leases.edit', $row['lease_id'], false).'" data-turbo-frame="property-main" class="text-xs font-medium text-indigo-700 hover:underline">Fix lease</a>'
                 );
             }
 
-            $selectCell = $row['can_generate']
+            $selectCell = ($row['can_generate'] || ($row['can_generate_supplement'] ?? false))
                 ? new HtmlString(
                     '<input type="checkbox" name="keys[]" value="'.e($row['key']).'" form="uninvoiced-selected-form" class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />'
                 )
                 : '';
+
+            $invoicedCell = PropertyMoney::kes((float) ($row['invoiced_amount'] ?? 0));
+            $expectedCell = PropertyMoney::kes((float) ($row['expected_amount'] ?? $row['bill_amount']));
 
             return [
                 $selectCell,
                 $tenantCell,
                 e($row['property_name']),
                 e($row['unit_label']),
+                $expectedCell,
+                $invoicedCell,
                 PropertyMoney::kes((float) $row['bill_amount']),
                 $row['due_date'],
                 $statusCell,
@@ -282,11 +302,12 @@ class RevenueController extends Controller
         return property_view('property.agent.revenue.uninvoiced_leases', [
             'stats' => [
                 ['label' => 'Not invoiced', 'value' => (string) $counts['missing'], 'hint' => $month],
+                ['label' => 'Rent increase due', 'value' => (string) $counts['underbilled'], 'hint' => 'Bill supplement'],
                 ['label' => 'Already invoiced', 'value' => (string) $counts['already'], 'hint' => 'This month'],
                 ['label' => 'No unit', 'value' => (string) $counts['no_unit'], 'hint' => 'Fix lease'],
                 ['label' => 'Zero rent', 'value' => (string) $counts['zero_rent'], 'hint' => 'Cannot bill'],
             ],
-            'columns' => ['', 'Tenant', 'Property', 'Unit', 'Bill amount', 'Due date', 'Status', 'Action'],
+            'columns' => ['', 'Tenant', 'Property', 'Unit', 'Lease rent', 'Invoiced', 'To bill', 'Due date', 'Status', 'Action'],
             'tableRows' => $tableRows,
             'paginator' => $paginator,
             'month' => $month,
@@ -299,7 +320,48 @@ class RevenueController extends Controller
                 'per_page' => (string) $perPage,
             ],
             'missingCount' => $counts['missing'],
+            'underbilledCount' => $counts['underbilled'],
         ]);
+    }
+
+    public function generateRentSupplements(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'month' => ['required', 'date_format:Y-m'],
+            'keys' => ['nullable', 'array'],
+            'keys.*' => ['string', 'max:64'],
+            'generate_all' => ['nullable', 'boolean'],
+        ]);
+
+        $month = $data['month'];
+        $generateAll = $request->boolean('generate_all');
+        $keys = $generateAll
+            ? null
+            : collect($data['keys'] ?? [])->filter()->values()->all();
+
+        if (! $generateAll && $keys === []) {
+            return back()->withErrors(['keys' => 'Select at least one row, or use Bill all increases.'])->withInput();
+        }
+
+        $result = app(RentInvoiceGenerator::class)->generateRentSupplements(
+            $month,
+            $keys,
+            $request->user(),
+        );
+
+        $message = "Issued {$result['created']} rent supplement invoice(s) for {$month}.";
+        if ($result['skipped'] > 0) {
+            $message .= " Skipped {$result['skipped']}.";
+        }
+        if ($result['errors'] !== []) {
+            return back()
+                ->with('warning', $message)
+                ->with('bulk_invoice_errors', array_slice($result['errors'], 0, 8));
+        }
+
+        return redirect()
+            ->route('property.revenue.uninvoiced_leases', ['month' => $month, 'filter' => 'underbilled'])
+            ->with('success', $message);
     }
 
     public function generateUninvoicedInvoices(Request $request): RedirectResponse

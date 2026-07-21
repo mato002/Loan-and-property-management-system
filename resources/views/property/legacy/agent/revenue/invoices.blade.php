@@ -40,7 +40,7 @@
             <p class="property-attention-hint dark:text-slate-300">Generate the rent bill for tenant + unit; payment status will auto-update after collection.</p>
             <div class="grid gap-3 sm:grid-cols-2">
                 <div class="sm:col-span-2">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Lease (optional)</label>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Lease (required for rent)</label>
                     @php
                         $leaseSelectOptions = collect($leases)->map(function ($l) {
                             $unitIds = $l->units->pluck('id')->implode(',');

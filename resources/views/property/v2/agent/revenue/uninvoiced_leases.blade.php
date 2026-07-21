@@ -17,6 +17,7 @@
                 This report compares <span class="font-medium">active leases</span> to rent invoices issued in
                 <span class="font-medium">{{ $month }}</span>.
                 Rows marked <span class="font-medium">Not invoiced</span> can be billed from here.
+                After a lease rent increase, use filter <span class="font-medium">Rent increase due</span> to issue supplement invoices for the difference.
             </p>
             @if (! ($automationOn ?? false))
                 <p class="mt-2 text-xs text-amber-800 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2">
@@ -50,6 +51,23 @@
                     @disabled(($missingCount ?? 0) === 0)
                 >
                     Generate all missing ({{ $missingCount ?? 0 }})
+                </button>
+            </form>
+            <form
+                method="post"
+                action="{{ route('property.revenue.uninvoiced_leases.generate_supplements', absolute: false) }}"
+                data-turbo-frame="property-main"
+                class="flex flex-wrap items-center gap-2"
+            >
+                @csrf
+                <input type="hidden" name="month" value="{{ $month }}" />
+                <input type="hidden" name="generate_all" value="1" />
+                <button
+                    type="submit"
+                    class="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+                    @disabled(($underbilledCount ?? 0) === 0)
+                >
+                    Bill all increases ({{ $underbilledCount ?? 0 }})
                 </button>
             </form>
         @endif

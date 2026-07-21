@@ -46,17 +46,12 @@
             </div>
         </div>
     @else
-        <details class="property-filter-toolbar__more relative shrink-0">
-            <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 min-h-[38px]">
-                <span>More filters</span>
-                <i class="fa-solid fa-chevron-down text-xs text-slate-400" aria-hidden="true"></i>
-            </summary>
-            <div class="absolute left-0 top-full z-30 mt-1 min-w-[min(100%,22rem)] max-w-xl rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 p-3 shadow-lg">
-                <div class="flex flex-wrap items-end gap-2">
-                    {{ $secondary }}
-                </div>
-            </div>
-        </details>
+        <div
+            class="flex flex-row flex-wrap items-end gap-2 w-full min-w-0 shrink-0"
+            data-filter-secondary
+        >
+            {{ $secondary }}
+        </div>
     @endif
 @endif
 

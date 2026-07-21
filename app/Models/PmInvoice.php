@@ -48,6 +48,8 @@ class PmInvoice extends Model
 
     public const KIND_CREDIT_NOTE = 'credit_note';
 
+    public const KIND_RENT_SUPPLEMENT = 'rent_supplement';
+
     public const LEASE_OPENING_ARREARS_PREFIX = '[Lease Opening Arrears]';
 
     protected $fillable = [

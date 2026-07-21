@@ -21,6 +21,7 @@
             label="Show"
             :options="[
                 ['value' => 'missing', 'label' => 'Not invoiced only'],
+                ['value' => 'underbilled', 'label' => 'Rent increase due'],
                 ['value' => 'all', 'label' => 'All active'],
                 ['value' => 'blocked', 'label' => 'Blocked (no unit / zero rent)'],
                 ['value' => 'invoiced', 'label' => 'Already invoiced'],

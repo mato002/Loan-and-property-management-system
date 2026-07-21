@@ -164,6 +164,8 @@ function hideWorkspaceLoading() {
 
 function hideWorkspaceError() {
     const el = getWorkspaceErrorEl();
+    const main = document.getElementById('property-workspace-main');
+    main?.removeAttribute('data-workspace-error-active');
     if (!el) {
         return;
     }
@@ -171,22 +173,37 @@ function hideWorkspaceError() {
     el.innerHTML = '';
 }
 
+function isIgnorableFrameFetchError(detail) {
+    const error = detail?.error;
+    if (error?.name === 'AbortError') {
+        return true;
+    }
+    const message = String(error?.message || '').toLowerCase();
+    if (message.includes('abort') || message.includes('cancel')) {
+        return true;
+    }
+
+    return false;
+}
+
 function showWorkspaceError(message, retryUrl = null) {
     hideWorkspaceLoading();
     clearPropertyFrameLoading();
     const el = getWorkspaceErrorEl();
+    const main = document.getElementById('property-workspace-main');
     if (!el) {
         return;
     }
     const safeMessage = message || 'This page could not be loaded.';
     el.innerHTML = `
-        <div class="rounded-2xl border border-rose-200 bg-white p-5 shadow-sm max-w-lg">
+        <div class="pointer-events-auto rounded-2xl border border-rose-200 bg-white p-5 shadow-lg max-w-lg w-full">
             <p class="text-sm font-semibold text-rose-800">Could not load workspace</p>
             <p class="mt-1 text-sm text-slate-600">${safeMessage}</p>
             ${retryUrl ? `<button type="button" class="mt-4 inline-flex items-center rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700" data-property-retry-url="${retryUrl}">Try again</button>` : ''}
         </div>
     `;
     el.setAttribute('data-active', '');
+    main?.setAttribute('data-workspace-error-active', '');
     el.querySelector('[data-property-retry-url]')?.addEventListener('click', () => {
         hideWorkspaceError();
         visitPropertyMainFrame(retryUrl);
@@ -504,6 +521,11 @@ document.addEventListener('turbo:frame-request-finished', (event) => {
     if (frame instanceof HTMLElement && frame.id === PROPERTY_MAIN_FRAME_ID) {
         clearPropertyFrameLoading();
         hideWorkspaceLoading();
+        const fetchResponse = event.detail?.fetchResponse;
+        const status = fetchResponse?.response?.status;
+        if (!fetchResponse || (typeof status === 'number' && status >= 200 && status < 400)) {
+            hideWorkspaceError();
+        }
     }
 });
 
@@ -612,6 +634,9 @@ document.addEventListener('turbo:fetch-request-error', (event) => {
     if (frame instanceof HTMLElement && frame.id === PROPERTY_MAIN_FRAME_ID) {
         hideWorkspaceLoading();
         clearPropertyFrameLoading();
+        if (isIgnorableFrameFetchError(event.detail)) {
+            return;
+        }
         showWorkspaceError('Network error while loading this page.', window.location.href);
     }
 });

@@ -1737,15 +1737,17 @@
 
     .property-filter-toolbar__form > [data-filter-date-range],
     .property-filter-toolbar__form > [data-filter-primary],
+    .property-filter-toolbar__form > [data-filter-secondary],
     .property-filter-toolbar__static > [data-filter-date-range],
-    .property-filter-toolbar__static > [data-filter-primary] {
-      width: auto;
-      max-width: none;
+    .property-filter-toolbar__static > [data-filter-primary],
+    .property-filter-toolbar__static > [data-filter-secondary] {
+      width: 100%;
+      max-width: 100%;
+      flex: 1 1 100%;
     }
 
     .property-filter-toolbar__form > [data-filter-primary],
     .property-filter-toolbar__static > [data-filter-primary] {
-      flex: 1 1 16rem;
       min-width: 0;
     }
 

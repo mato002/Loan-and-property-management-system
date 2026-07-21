@@ -8,6 +8,7 @@ use App\Models\PmLease;
 use App\Models\PropertyPortalSetting;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\RentDueDayResolver;
+use App\Services\Property\RentInvoiceGenerator;
 use App\Services\Property\TenantCreditService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +19,7 @@ class GenerateMonthlyRentInvoices extends Command
 
     protected $description = 'Generate monthly rent invoices for active leases (per unit), due on configured rent due day (default 5th).';
 
-    public function handle(RentDueDayResolver $dueDays): int
+    public function handle(RentDueDayResolver $dueDays, RentInvoiceGenerator $rentInvoices): int
     {
         $enabled = PropertyPortalSetting::isRentInvoiceAutomationEnabled();
         if (! $enabled) {
@@ -79,12 +80,12 @@ class GenerateMonthlyRentInvoices extends Command
             }
 
             foreach ($units as $unit) {
-                $exists = PmInvoice::query()
-                    ->where('pm_lease_id', $lease->id)
-                    ->where('property_unit_id', $unit->id)
-                    ->whereBetween('issue_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-                    ->exists();
-                if ($exists) {
+                $invoicedTotal = $rentInvoices->invoicedRentTotalForLeaseUnitBillingMonth(
+                    (int) $lease->id,
+                    (int) $unit->id,
+                    $ym,
+                );
+                if ($invoicedTotal > 0.009) {
                     $skipped++;
 
                     continue;

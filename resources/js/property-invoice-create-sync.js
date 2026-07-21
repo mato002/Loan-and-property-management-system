@@ -22,6 +22,8 @@ function bindInvoiceCreateForm(form) {
     const amountInput = byId('invoice-amount') || byName('amount');
     const issueInput = byId('invoice-issue-date') || byName('issue_date');
     const descInput = byId('invoice-description') || byName('description');
+    const billingPeriodInput = byName('billing_period');
+    const invoiceTypeSel = byName('invoice_type');
 
     if (!leaseSel) {
         return;
@@ -88,6 +90,29 @@ function bindInvoiceCreateForm(form) {
         }
     };
 
+    const maybeSetBillingPeriod = () => {
+        if (!billingPeriodInput || (billingPeriodInput.value || '').trim() !== '') {
+            return;
+        }
+        const type = (invoiceTypeSel?.value || 'rent').toLowerCase();
+        if (type !== 'rent') {
+            return;
+        }
+        const m = monthLabel();
+        if (m) {
+            billingPeriodInput.value = m;
+        }
+    };
+
+    const syncLeaseRequired = () => {
+        const leaseEl = byName('pm_lease_id') || leaseSel;
+        if (!leaseEl) {
+            return;
+        }
+        const type = (invoiceTypeSel?.value || 'rent').toLowerCase();
+        leaseEl.required = type === 'rent';
+    };
+
     const applyLease = () => {
         if (quietSync) {
             return;
@@ -130,6 +155,7 @@ function bindInvoiceCreateForm(form) {
                         }
                     }
                     maybeSetDescription();
+                    maybeSetBillingPeriod();
                 } finally {
                     quietSync = false;
                 }
@@ -183,8 +209,15 @@ function bindInvoiceCreateForm(form) {
         unitSel.addEventListener('change', maybeSetDescription);
     }
     if (issueInput) {
-        issueInput.addEventListener('change', maybeSetDescription);
+        issueInput.addEventListener('change', () => {
+            maybeSetDescription();
+            maybeSetBillingPeriod();
+        });
     }
+    if (invoiceTypeSel) {
+        invoiceTypeSel.addEventListener('change', syncLeaseRequired);
+    }
+    syncLeaseRequired();
 
     const initialLease = (leaseSel.value || '').toString();
     const initialTenant = form.getAttribute('data-initial-tenant-id') || '';

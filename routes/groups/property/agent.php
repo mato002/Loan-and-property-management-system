@@ -63,6 +63,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/revenue/uninvoiced-leases/generate', [RevenueController::class, 'generateUninvoicedInvoices'])
         ->middleware('property.permission:invoices.manage')
         ->name('revenue.uninvoiced_leases.generate');
+    Route::post('/revenue/uninvoiced-leases/generate-supplements', [RevenueController::class, 'generateRentSupplements'])
+        ->middleware('property.permission:invoices.manage')
+        ->name('revenue.uninvoiced_leases.generate_supplements');
     Route::get('/revenue/arrears', [RevenueController::class, 'arrears'])->name('revenue.arrears');
     Route::get('/revenue/arrears/tenant/{tenant}', [RevenueController::class, 'arrearsTenant'])
         ->whereNumber('tenant')
