@@ -100,7 +100,11 @@ function propertyQuickCreateSelect(config) {
             if (!(sel instanceof HTMLSelectElement)) {
                 return;
             }
-            sel.value = this.selectedValue;
+            const next = this.selectedValue;
+            if (sel.value === next) {
+                return;
+            }
+            sel.value = next;
             sel.dispatchEvent(new Event('change', { bubbles: true }));
         },
 

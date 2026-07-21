@@ -180,6 +180,7 @@ document.addEventListener('turbo:frame-load', (e) => initKenyaAddressAutocomplet
         if (!el) return false;
         const v = String(value);
         if (el.tagName && el.tagName.toLowerCase() === 'select') {
+            const before = el.value;
             el.value = v;
             if (el.value !== v) {
                 // Option not present yet (virtualized or async); append a temporary option
@@ -189,18 +190,26 @@ document.addEventListener('turbo:frame-load', (e) => initKenyaAddressAutocomplet
                 el.appendChild(opt);
                 el.value = v;
             }
-            dispatchAll(el);
+            if (el.value !== before) {
+                dispatchAll(el);
+            }
             return true;
         }
         // Try inner input for custom components
         const inner = el.querySelector?.('input, select') || null;
         if (inner) {
+            const before = inner.value;
             inner.value = v;
-            dispatchAll(inner);
+            if (inner.value !== before) {
+                dispatchAll(inner);
+            }
             return true;
         }
+        const before = el.value;
         el.value = v;
-        dispatchAll(el);
+        if (el.value !== before) {
+            dispatchAll(el);
+        }
         return true;
     };
 })();
