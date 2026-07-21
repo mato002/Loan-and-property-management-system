@@ -175,39 +175,66 @@ document.addEventListener('turbo:frame-load', (e) => initKenyaAddressAutocomplet
         try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
         try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
     }
-    window.pmSetFieldValue = function pmSetFieldValue(nameOrEl, value, root) {
+
+    function syncAlpineQuickSelect(selectEl, value) {
+        const root = selectEl?.closest?.('[x-data]');
+        const alpine = window.Alpine;
+        if (!root || !alpine || typeof alpine.$data !== 'function') {
+            return;
+        }
+        const data = alpine.$data(root);
+        if (!data || !Object.prototype.hasOwnProperty.call(data, 'selectedValue')) {
+            return;
+        }
+        const next = String(value);
+        if (String(data.selectedValue) !== next) {
+            data.selectedValue = next;
+        }
+    }
+
+    function applySelectValue(selectEl, value, { silent }) {
+        const v = String(value);
+        const before = selectEl.value;
+        selectEl.value = v;
+        if (selectEl.value !== v) {
+            const opt = document.createElement('option');
+            opt.value = v;
+            opt.textContent = v;
+            selectEl.appendChild(opt);
+            selectEl.value = v;
+        }
+        syncAlpineQuickSelect(selectEl, selectEl.value);
+        if (!silent && selectEl.value !== before) {
+            dispatchAll(selectEl);
+        }
+
+        return true;
+    }
+
+    window.pmSetFieldValue = function pmSetFieldValue(nameOrEl, value, root, opts) {
+        const options = opts && typeof opts === 'object' ? opts : {};
+        const silent = Boolean(options.silent);
         const el = resolveElement(nameOrEl, root);
         if (!el) return false;
         const v = String(value);
         if (el.tagName && el.tagName.toLowerCase() === 'select') {
-            const before = el.value;
-            el.value = v;
-            if (el.value !== v) {
-                // Option not present yet (virtualized or async); append a temporary option
-                const opt = document.createElement('option');
-                opt.value = v;
-                opt.textContent = v;
-                el.appendChild(opt);
-                el.value = v;
-            }
-            if (el.value !== before) {
-                dispatchAll(el);
-            }
-            return true;
+            return applySelectValue(el, v, { silent });
         }
-        // Try inner input for custom components
-        const inner = el.querySelector?.('input, select') || null;
+        const inner = el.querySelector?.('select') || el.querySelector?.('input') || null;
+        if (inner instanceof HTMLSelectElement) {
+            return applySelectValue(inner, v, { silent });
+        }
         if (inner) {
             const before = inner.value;
             inner.value = v;
-            if (inner.value !== before) {
+            if (!silent && inner.value !== before) {
                 dispatchAll(inner);
             }
             return true;
         }
         const before = el.value;
         el.value = v;
-        if (el.value !== before) {
+        if (!silent && el.value !== before) {
             dispatchAll(el);
         }
         return true;

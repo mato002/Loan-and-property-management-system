@@ -28,22 +28,17 @@ function bindInvoiceCreateForm(form) {
     }
 
     let leaseFetchToken = 0;
+    let quietSync = false;
 
-    const setFieldValue = (name, value) => {
+    const setFieldValueSilent = (name, value) => {
         if (window.pmSetFieldValue) {
-            return window.pmSetFieldValue(name, value, form);
+            return window.pmSetFieldValue(name, value, form, { silent: true });
         }
         const el = byName(name);
         if (!el) {
             return false;
         }
-        const before = el.value;
         el.value = String(value);
-        if (el.value !== before) {
-            try {
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-            } catch (_) {}
-        }
 
         return true;
     };
@@ -79,19 +74,6 @@ function bindInvoiceCreateForm(form) {
         }
     };
 
-    const maybeSetAmount = (rentFromLease) => {
-        if (amountInput && (!amountInput.value || parseFloat(amountInput.value) <= 0)) {
-            const { rent } = getSelectedUnitMeta();
-            const use =
-                Number.isFinite(rentFromLease) && rentFromLease > 0
-                    ? rentFromLease
-                    : Number.isFinite(rent) ? rent : null;
-            if (use !== null) {
-                amountInput.value = String(use);
-            }
-        }
-    };
-
     const maybeSetDescription = () => {
         if (!descInput) {
             return;
@@ -107,6 +89,10 @@ function bindInvoiceCreateForm(form) {
     };
 
     const applyLease = () => {
+        if (quietSync) {
+            return;
+        }
+
         const leaseId = (leaseSel.value || '').toString();
         if (!leaseId) {
             return;
@@ -124,28 +110,38 @@ function bindInvoiceCreateForm(form) {
                 if (!data || !data.ok) {
                     return;
                 }
-                if (data.tenant && data.tenant.id) {
-                    setFieldValue('pm_tenant_id', data.tenant.id);
-                }
-                const firstUnitId =
-                    data.unit && data.unit.id
-                        ? data.unit.id
-                        : (data.unit_ids || [])[0] || null;
-                if (firstUnitId) {
-                    setFieldValue('property_unit_id', firstUnitId);
-                }
-                if (amountInput && (!amountInput.value || parseFloat(amountInput.value) <= 0)) {
-                    const rent = parseFloat(String(data.monthly_rent || '0')) || 0;
-                    if (rent > 0) {
-                        amountInput.value = String(rent);
+
+                quietSync = true;
+                try {
+                    if (data.tenant && data.tenant.id) {
+                        setFieldValueSilent('pm_tenant_id', data.tenant.id);
                     }
+                    const firstUnitId =
+                        data.unit && data.unit.id
+                            ? data.unit.id
+                            : (data.unit_ids || [])[0] || null;
+                    if (firstUnitId) {
+                        setFieldValueSilent('property_unit_id', firstUnitId);
+                    }
+                    if (amountInput && (!amountInput.value || parseFloat(amountInput.value) <= 0)) {
+                        const rent = parseFloat(String(data.monthly_rent || '0')) || 0;
+                        if (rent > 0) {
+                            amountInput.value = String(rent);
+                        }
+                    }
+                    maybeSetDescription();
+                } finally {
+                    quietSync = false;
                 }
-                maybeSetDescription();
             })
             .catch(() => {});
     };
 
     const onTenantChange = () => {
+        if (quietSync) {
+            return;
+        }
+
         const tenantEl = byName('pm_tenant_id') || tenantSel;
         const tid = (tenantEl?.value || '').toString();
         if (!tid) {
@@ -160,22 +156,31 @@ function bindInvoiceCreateForm(form) {
             }
             const newLeaseId = (o.value || '').toString();
             if (newLeaseId && newLeaseId !== prevLeaseId) {
-                leaseSel.selectedIndex = i;
-                leaseSel.dispatchEvent(new Event('change', { bubbles: true }));
+                quietSync = true;
+                try {
+                    setFieldValueSilent('pm_lease_id', newLeaseId);
+                } finally {
+                    quietSync = false;
+                }
+                applyLease();
             }
             break;
         }
     };
 
+    const onLeaseChange = () => {
+        if (quietSync) {
+            return;
+        }
+        applyLease();
+    };
+
     if (tenantSel) {
         tenantSel.addEventListener('change', onTenantChange);
     }
-    leaseSel.addEventListener('change', applyLease);
+    leaseSel.addEventListener('change', onLeaseChange);
     if (unitSel) {
-        unitSel.addEventListener('change', () => {
-            maybeSetAmount(null);
-            maybeSetDescription();
-        });
+        unitSel.addEventListener('change', maybeSetDescription);
     }
     if (issueInput) {
         issueInput.addEventListener('change', maybeSetDescription);

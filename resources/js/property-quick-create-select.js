@@ -45,11 +45,16 @@ function propertyQuickCreateSelect(config) {
         init() {
             const selected = this.options.find((o) => o.selected);
             this.selectedValue = selected ? String(selected.value) : '';
-            this.syncHiddenSelect();
             const native = this.$refs.nativeSelect;
             if (native instanceof HTMLSelectElement) {
+                if (native.value !== this.selectedValue) {
+                    native.value = this.selectedValue;
+                }
                 native.addEventListener('change', () => {
-                    this.selectedValue = native.value;
+                    const next = native.value;
+                    if (String(this.selectedValue) !== String(next)) {
+                        this.selectedValue = next;
+                    }
                 });
             }
         },
