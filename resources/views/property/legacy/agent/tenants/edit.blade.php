@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Edit tenant"
     subtitle="Update tenant profile details used in leases, billing, and tenant operations."
     back-route="property.tenants.directory"

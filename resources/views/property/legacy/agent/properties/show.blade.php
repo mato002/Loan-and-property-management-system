@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     :title="'Property: '.$property->name"
     :subtitle="'Full property intelligence view  -  '.$periodLabel"
     back-route="property.properties.list"

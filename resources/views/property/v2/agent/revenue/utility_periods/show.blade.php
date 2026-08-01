@@ -3,7 +3,7 @@
     $suspenseNeedsAck = $period->isOpen() && $suspenseCheck && ! ($suspenseCheck['passed'] ?? false);
 @endphp
 
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     :title="'Utility period — '.$billingMonth"
     subtitle="Reconciliation checklist, period close, and supervisor override workflow."
     back-route="property.revenue.utilities.periods"

@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Edit lease"
     subtitle="Update term dates, rent, linked units, and status for an existing lease."
     back-route="property.tenants.leases"

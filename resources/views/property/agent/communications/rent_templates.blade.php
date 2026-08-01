@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Rent reminder templates"
     subtitle="Standardized rent communication for SMS, email, WhatsApp, and portal notices. Internal workflow codes (D+0, D+7) stay in staff logs only."
     back-route="property.communications.index"

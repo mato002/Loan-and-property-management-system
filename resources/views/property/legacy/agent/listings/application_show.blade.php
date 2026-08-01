@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Application #{{ $application->id }}"
     back-route="property.listings.applications"
     :stats="[

@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Import tenants"
     subtitle="Upload a CSV to bulk add or update tenants (matched by email when provided)."
     back-route="property.tenants.directory"

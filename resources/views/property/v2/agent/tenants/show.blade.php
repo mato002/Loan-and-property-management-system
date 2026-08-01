@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     :title="'Tenant: '.$tenant->name"
     subtitle="Operational tenant hub — leases, billing, notices, and utilities in one place."
     back-route="property.tenants.directory"

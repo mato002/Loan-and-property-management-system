@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     :title="'Tenant: '.$tenant->name"
     subtitle="Tenant profile, leases, and billing snapshot."
     back-route="property.tenants.directory"

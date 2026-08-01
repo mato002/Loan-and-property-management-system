@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Edit property"
     subtitle="Update property details and manage linked landlords for this building."
     back-route="property.properties.list"

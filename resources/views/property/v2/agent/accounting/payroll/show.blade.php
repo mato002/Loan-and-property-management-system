@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Payroll Run #{{ $period->id }}"
     subtitle="{{ $period->label }} | Status: {{ ucfirst($period->status) }}"
     back-route="property.accounting.payroll"

@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Bulk messaging"
     subtitle="Send bulk SMS or bulk email. SMS uses the same provider + wallet as the Loan Bulk SMS module."
     back-route="property.communications.index"

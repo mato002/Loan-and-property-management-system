@@ -27,7 +27,7 @@
     'workspace' => null,
     'showWorkspaceTabs' => true,
     /** Table-first layout: filters → compact KPIs → table; actions in page header */
-    'compactList' => false,
+    'compactList' => true,
 ])
 
 @php
@@ -74,10 +74,11 @@
         \App\Models\PropertyPortalSetting::getValue('contact_address', ''),
         \App\Models\PropertyPortalSetting::getValue('contact_reg_no', ''),
     ])->filter(static fn ($value) => ! is_null($value) && trim((string) $value) !== '');
-    $compactList = (bool) ($compactList ?? false);
+    $compactList = (bool) ($compactList ?? true);
     $hasBanner = isset($banner) && ! $banner->isEmpty();
     $hasSecondary = isset($secondary) && ! $secondary->isEmpty();
     $hasPageActions = isset($actions) && ! $actions->isEmpty();
+    $deferAbove = $compactList && $hasTable && isset($above) && ! $above->isEmpty();
 @endphp
 
 <x-property-layout>
@@ -123,16 +124,13 @@
         @endif
 
         @isset($above)
-            @if (! $above->isEmpty())
-                @if ($compactList)
-                    <div class="hidden" aria-hidden="true" data-workspace-modals>
-                        {{ $above }}
-                    </div>
-                @else
-                    <div class="mb-4 space-y-4 w-full min-w-0" data-workspace-above>
-                        {{ $above }}
-                    </div>
-                @endif
+            @if (! $above->isEmpty() && ! $deferAbove)
+                <div @class([
+                    'w-full min-w-0',
+                    $compactList ? 'mb-2 space-y-2' : 'mb-4 space-y-4',
+                ]) data-workspace-above>
+                    {{ $above }}
+                </div>
             @endif
         @endisset
 
@@ -334,6 +332,17 @@
             </div>
         @endif
 
+        @if ($deferAbove || ($compactList && $hasSecondary))
+            <div class="mt-3 space-y-3 w-full min-w-0 print-hide" data-workspace-secondary>
+                @if ($deferAbove)
+                    {{ $above }}
+                @endif
+                @if ($compactList && $hasSecondary)
+                    {{ $secondary }}
+                @endif
+            </div>
+        @endif
+
         @isset($footer)
             @if (! $footer->isEmpty())
                 <div @class([
@@ -344,12 +353,6 @@
                 </div>
             @endif
         @endisset
-
-        @if ($compactList && $hasSecondary)
-            <div class="mt-4 w-full min-w-0" data-workspace-secondary>
-                {{ $secondary }}
-            </div>
-        @endif
 
         @if ($hasTable && $slotHasContent)
             <div class="w-full min-w-0 mt-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm p-4 sm:p-6 overflow-visible">

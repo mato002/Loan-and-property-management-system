@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Message #{{ $log->id }}"
     subtitle="Delivery details and full content."
     back-route="{{ $backRoute ?? 'property.communications.messages' }}"

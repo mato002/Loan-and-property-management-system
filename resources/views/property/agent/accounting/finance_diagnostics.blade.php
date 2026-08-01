@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Finance diagnostics"
     subtitle="Read-only firebreak visibility for allocation drift, carry-forward duplication, and stale balances."
     back-route="property.accounting.index"

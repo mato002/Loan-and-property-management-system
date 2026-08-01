@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     :title="'Offboarding: '.$property->name"
     subtitle="Safe property wind-down — no financial records are deleted."
     back-route="property.properties.show"

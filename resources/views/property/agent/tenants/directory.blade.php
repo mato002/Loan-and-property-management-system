@@ -6,7 +6,6 @@
     class="contents"
 >
 <x-property.workspace
-    compact-list
     :legacy-toolbar="false"
     :title="$pageTitle"
     :show-search="false"

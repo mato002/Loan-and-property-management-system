@@ -40,7 +40,7 @@
     }
 @endphp
 
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     :title="'Landlord: '.$landlord->name"
     :subtitle="'360° landlord hub — portal access, portfolio, collections, and owner position. Period: '.$periodLabel"
     back-route="property.landlords.index"

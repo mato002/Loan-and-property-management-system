@@ -10,7 +10,7 @@
     $currency = (string) (($smsWallet['currency'] ?? 'KES'));
 @endphp
 
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Provider SMS"
     subtitle="Live Pradytec Bulk SMS statistics and delivery history from the provider API."
     back-route="property.communications.index"

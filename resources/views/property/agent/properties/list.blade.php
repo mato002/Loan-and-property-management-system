@@ -22,7 +22,6 @@
     class="contents"
 >
 <x-property.workspace
-    compact-list
     :legacy-toolbar="false"
     title="Property list"
     back-route="property.properties.index"

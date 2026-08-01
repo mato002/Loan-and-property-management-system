@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     :title="'Unit: '.($unit->label ?? '—')"
     :subtitle="'Operational unit hub · '.($property->name ?? 'Property')"
     back-route="property.properties.show"

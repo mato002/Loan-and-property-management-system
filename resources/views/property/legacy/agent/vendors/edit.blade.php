@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Edit vendor"
     subtitle="Update supplier profile used across maintenance jobs, quotes, and performance."
     back-route="property.vendors.directory"

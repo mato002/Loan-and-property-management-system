@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     :title="$vendor->name"
     subtitle="Vendor profile, completed earnings, and allocation tracking."
     back-route="property.vendors.directory"

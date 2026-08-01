@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Setup a public listing"
     back-route="property.listings.index"
     :stats="$stats"

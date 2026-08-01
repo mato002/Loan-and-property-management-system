@@ -3,7 +3,7 @@
     'subtitle' => null,
     'workspace' => null,
     'showWorkspaceTabs' => true,
-    'compactList' => false,
+    'compactList' => true,
 ])
 
 @php

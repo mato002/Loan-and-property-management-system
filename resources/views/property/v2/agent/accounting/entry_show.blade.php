@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.workspace :compact-list="false"
     title="Journal entry details"
     subtitle="View posted lines and reversal linkage."
     back-route="property.accounting.entries"
