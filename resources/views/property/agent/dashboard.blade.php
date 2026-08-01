@@ -10,17 +10,14 @@
     >
         @include('property.agent.partials.dashboard_stats_light')
 
-        @if ($deferHeavyDashboardMetrics ?? false)
-            <turbo-frame
-                id="property-dashboard-heavy"
-                src="{{ route('property.dashboard.metrics', absolute: false) }}"
-                loading="eager"
-                data-turbo-action="replace"
-            >
-                @include('property.agent.partials.dashboard_heavy_skeleton')
-            </turbo-frame>
-        @else
-            @include('property.agent.partials.dashboard_stats_heavy')
-        @endif
+        <turbo-frame
+            id="property-dashboard-heavy"
+            src="{{ route('property.dashboard.metrics', absolute: false) }}"
+            loading="eager"
+            data-turbo-action="replace"
+            data-property-heavy-metrics
+        >
+            @include('property.agent.partials.dashboard_heavy_skeleton')
+        </turbo-frame>
     </x-property.page>
 </x-property-layout>

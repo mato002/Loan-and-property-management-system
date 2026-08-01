@@ -9,23 +9,14 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
+    /** @deprecated Heavy metrics are always lazy-loaded; kept for backwards compatibility. */
     public const DEFER_METRICS_SESSION_KEY = 'defer_property_dashboard_metrics';
 
     public function commandCenter(Request $request): View
     {
-        $deferHeavy = $request->header('Turbo-Frame') === 'property-main'
-            || $request->session()->pull(self::DEFER_METRICS_SESSION_KEY, false);
+        $request->session()->forget(self::DEFER_METRICS_SESSION_KEY);
 
-        $data = PropertyDashboardOverview::lightForAgent();
-
-        if (! $deferHeavy) {
-            $data = array_merge($data, PropertyDashboardOverview::heavyForAgent());
-        }
-
-        return property_view('property.agent.dashboard', array_merge(
-            $data,
-            ['deferHeavyDashboardMetrics' => $deferHeavy],
-        ));
+        return property_view('property.agent.dashboard', PropertyDashboardOverview::lightForAgent());
     }
 
     public function metricsFrame(): View

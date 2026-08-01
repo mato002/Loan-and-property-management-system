@@ -61,6 +61,35 @@ function destroyChartOnCanvas(canvasId, root = document) {
     }
 }
 
+function findHeavyMetricsFrame(scope = document) {
+    const root = scope instanceof Document ? scope : scope;
+    return root.querySelector?.('#property-dashboard-heavy[data-property-heavy-metrics]')
+        ?? document.getElementById('property-dashboard-heavy');
+}
+
+/**
+ * Nested turbo-frames inside #property-main do not always fetch src after a frame swap.
+ * Force a reload so only the heavy section loads asynchronously.
+ */
+function bootHeavyDashboardMetrics(scope = document) {
+    const frame = findHeavyMetricsFrame(scope);
+    if (!(frame instanceof HTMLElement)) {
+        return;
+    }
+
+    const src = frame.getAttribute('src');
+    if (!src || frame.hasAttribute('complete')) {
+        return;
+    }
+
+    if (typeof frame.reload === 'function') {
+        frame.reload();
+        return;
+    }
+
+    frame.setAttribute('src', src);
+}
+
 function initPropertyDashboardCharts(root = document) {
     const holder = root.querySelector?.('#property-dashboard-charts') ?? document.getElementById('property-dashboard-charts');
     if (!holder) {
@@ -106,12 +135,30 @@ function initPropertyDashboardCharts(root = document) {
     }
 }
 
+function bootPropertyDashboard(scope = document) {
+    bootHeavyDashboardMetrics(scope);
+    initPropertyDashboardCharts(scope);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-    initPropertyDashboardCharts(document);
+    bootPropertyDashboard(document);
 });
 
 document.addEventListener('turbo:frame-load', (e) => {
-    if (e.target.id === 'property-main' || e.target.id === 'property-dashboard-heavy') {
+    if (!(e.target instanceof HTMLElement)) {
+        return;
+    }
+
+    if (e.target.id === 'property-main') {
+        bootPropertyDashboard(e.target);
+        return;
+    }
+
+    if (e.target.id === 'property-dashboard-heavy') {
         initPropertyDashboardCharts(e.target);
     }
+});
+
+document.addEventListener('turbo:load', () => {
+    bootPropertyDashboard(document);
 });

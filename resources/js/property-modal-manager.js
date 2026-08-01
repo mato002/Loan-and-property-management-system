@@ -448,7 +448,40 @@ function bindEscapeHandler() {
 }
 
 bindTurboModalLifecycle();
+function bindModalBackdropGuard() {
+    document.addEventListener(
+        'click',
+        (event) => {
+            if (modalStack.length === 0) {
+                return;
+            }
+
+            const target = event.target;
+            if (!(target instanceof Element)) {
+                return;
+            }
+
+            const modalRoot = target.closest('[data-property-modal]');
+            if (!modalRoot) {
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation();
+
+                return;
+            }
+
+            if (!target.closest('[data-property-modal-panel]')) {
+                event.preventDefault();
+                event.stopPropagation();
+                event.stopImmediatePropagation();
+            }
+        },
+        true,
+    );
+}
+
 bindEscapeHandler();
+bindModalBackdropGuard();
 
 window.PropertyModalManager = {
     MODAL_Z,

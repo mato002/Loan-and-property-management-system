@@ -213,6 +213,11 @@
   /* Property portal z-index reference (see property-modal-manager.js MODAL_Z) */
   [data-property-modal] {
     isolation: isolate;
+    pointer-events: auto;
+  }
+
+  [data-property-modal-backdrop] {
+    pointer-events: auto;
   }
 
   /* SweetAlert2 default z-index is 1060 — below property modals (7010–7110) */
@@ -1722,20 +1727,10 @@
       min-width: 0;
     }
 
-    .property-filter-toolbar__form [data-filter-main-row] > [data-filter-date-range],
-    .property-filter-toolbar__form [data-filter-main-row] > [data-filter-primary],
-    .property-filter-toolbar__form [data-filter-main-row] > [data-filter-secondary],
-    .property-filter-toolbar__static [data-filter-main-row] > [data-filter-date-range],
-    .property-filter-toolbar__static [data-filter-main-row] > [data-filter-primary],
-    .property-filter-toolbar__static [data-filter-main-row] > [data-filter-secondary] {
+    .property-filter-toolbar__form [data-filter-main-row] > .property-filter-field,
+    .property-filter-toolbar__static [data-filter-main-row] > .property-filter-field {
       width: auto;
-      max-width: none;
       flex: 0 1 auto;
-    }
-
-    .property-filter-toolbar__form [data-filter-primary] .property-filter-field,
-    .property-filter-toolbar__static [data-filter-primary] .property-filter-field {
-      width: auto;
     }
   }
 

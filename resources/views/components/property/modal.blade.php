@@ -71,11 +71,12 @@
         "
         class="fixed inset-0 flex {{ $mobileSheet ? 'max-md:items-end md:items-center' : 'items-center' }} justify-center p-4 max-md:p-0"
         style="z-index: {{ (int) $zIndex }};"
+        @click.self.stop.prevent
         role="dialog"
         aria-modal="true"
         @if ($title) aria-labelledby="{{ $modalId }}-title" @else aria-label="{{ $ariaLabel }}" @endif
     >
-        {{-- Backdrop — separate from panel; never use @click.outside on the panel --}}
+        {{-- Backdrop — absorb clicks; never close on outside tap --}}
         <div
             x-show="{{ $show }}"
             x-transition:enter="transition-opacity ease-out duration-200"
@@ -84,10 +85,8 @@
             x-transition:leave="transition-opacity ease-in duration-150"
             x-transition:leave-start="opacity-100"
             x-transition:leave-end="opacity-0"
-            class="absolute inset-0 z-0 bg-slate-950/50 backdrop-blur-[1px]"
-            @if ($closeOnBackdrop)
-                @click="{{ $closeExpr }}"
-            @endif
+            class="absolute inset-0 z-0 bg-slate-950/50 backdrop-blur-[1px] data-property-modal-backdrop"
+            @click.stop.prevent
             aria-hidden="true"
         ></div>
 
@@ -101,6 +100,7 @@
             x-transition:leave-start="{{ $sheetEnd }}"
             x-transition:leave-end="{{ $sheetEnter }}"
             data-property-modal-panel
+            data-overlay-dialog
             @click.stop
             class="relative z-10 flex w-full flex-col {{ $maxWidthClass }} max-h-[90vh] overflow-hidden
                 {{ $mobileSheet ? 'max-md:max-h-[90vh] max-md:rounded-t-2xl max-md:rounded-b-none rounded-2xl' : 'rounded-2xl' }}

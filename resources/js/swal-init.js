@@ -47,7 +47,12 @@ function cleanupRecoverableOverlays(reason = 'manual') {
     const recoverable = document.querySelectorAll('[data-overlay-recoverable]');
     let removedCount = 0;
     recoverable.forEach((overlay) => {
-        if (!isVisible(overlay)) return;
+        if (!isVisible(overlay)) {
+            return;
+        }
+        if (overlay.hasAttribute('data-property-modal')) {
+            return;
+        }
         const dialog = overlay.querySelector('[data-overlay-dialog], [role="dialog"], dialog');
         if (dialog && isVisible(dialog)) return;
         overlay.remove();

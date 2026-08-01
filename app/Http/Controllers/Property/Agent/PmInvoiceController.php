@@ -12,6 +12,7 @@ use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
 use App\Models\PropertyPortalSetting;
+use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Services\BulkSmsService;
 use App\Services\Property\FinanceBalanceSnapshotService;
@@ -487,6 +488,7 @@ class PmInvoiceController extends Controller
             'q' => trim((string) $request->query('q', '')),
             'status' => strtolower(trim((string) $request->query('status', ''))),
             'type' => strtolower(trim((string) $request->query('type', ''))),
+            'property_id' => (int) $request->query('property_id', 0),
             'tenant_id' => (int) $request->query('tenant_id', 0),
             'unit_id' => (int) $request->query('unit_id', 0),
             'period' => trim((string) $request->query('period', '')),
@@ -639,6 +641,12 @@ class PmInvoiceController extends Controller
             ];
         })->all();
 
+        $propertyId = (int) $filters['property_id'];
+        $unitsQuery = PropertyUnit::query()->with('property')->orderBy('property_id');
+        if ($propertyId > 0) {
+            $unitsQuery->where('property_id', $propertyId);
+        }
+
         return property_view('property.agent.revenue.invoices', [
             'stats' => $stats,
             'billingRangeLabel' => $billingRangeLabel,
@@ -652,7 +660,8 @@ class PmInvoiceController extends Controller
                 'per_page' => (string) $perPage,
             ],
             'leases' => PmLease::query()->with(['pmTenant', 'units'])->orderByDesc('start_date')->get(),
-            'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->get(),
+            'units' => $unitsQuery->get(),
+            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'tenants' => PmTenant::query()->orderBy('name')->get(),
             'tenantsForFilter' => $this->invoiceFilterTenants((int) $filters['tenant_id']),
         ]);
@@ -1225,6 +1234,9 @@ class PmInvoiceController extends Controller
         if ((int) ($filters['tenant_id'] ?? 0) > 0) {
             $query->where('pm_tenant_id', (int) $filters['tenant_id']);
         }
+        if ((int) ($filters['property_id'] ?? 0) > 0) {
+            $query->whereHas('unit', fn ($uq) => $uq->where('property_id', (int) $filters['property_id']));
+        }
         if ((int) ($filters['unit_id'] ?? 0) > 0) {
             $query->where('property_unit_id', (int) $filters['unit_id']);
         }
@@ -1237,10 +1249,12 @@ class PmInvoiceController extends Controller
         $to = (string) ($filters['to'] ?? '');
         $searchQ = trim((string) ($filters['q'] ?? ''));
         $tenantId = (int) ($filters['tenant_id'] ?? 0);
-        $scopedToTenant = $tenantId > 0 || $searchQ !== '';
+        $unitId = (int) ($filters['unit_id'] ?? 0);
+        $propertyId = (int) ($filters['property_id'] ?? 0);
+        $scopedToEntity = $tenantId > 0 || $unitId > 0 || $propertyId > 0 || $searchQ !== '';
 
         // Carry-forward invoices are issued on historical dates — hide them only during month browsing.
-        if ($from !== '' && $to !== '' && ! $scopedToTenant) {
+        if ($from !== '' && $to !== '' && ! $scopedToEntity) {
             $query->whereDate('issue_date', '>=', $from);
             $query->whereDate('issue_date', '<=', $to);
         }

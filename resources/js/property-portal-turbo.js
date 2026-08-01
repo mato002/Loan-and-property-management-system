@@ -783,6 +783,16 @@ document.addEventListener('turbo:fetch-request-error', (event) => {
 });
 
 document.addEventListener('turbo:click', (event) => {
+    if (window.PropertyModalManager?.getStack?.()?.length > 0) {
+        const target = event.target;
+        if (!(target instanceof Element) || !target.closest('[data-property-modal-panel]')) {
+            event.preventDefault();
+            event.stopPropagation();
+
+            return;
+        }
+    }
+
     const link = event.target?.closest?.('a[href]');
     if (!(link instanceof HTMLAnchorElement)) {
         return;

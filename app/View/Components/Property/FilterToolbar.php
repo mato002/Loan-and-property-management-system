@@ -26,6 +26,7 @@ class FilterToolbar extends Component
         public array $chipIgnoreValues = [
             'tenant_id' => ['0', 0],
             'unit_id' => ['0', 0],
+            'property_id' => ['0', 0],
         ],
         public string $drawerLabel = 'Filters',
         /** When set, adds data-revenue-date-filter on the GET form (invoices|payments). */

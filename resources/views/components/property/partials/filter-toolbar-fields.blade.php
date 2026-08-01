@@ -35,19 +35,19 @@
     @else
         <div class="flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0 flex-1" data-filter-main-row>
             @if ($hasDateRange)
-                <div class="flex flex-row flex-wrap items-end gap-2 shrink-0 min-w-0" data-filter-date-range>
+                <div class="contents" data-filter-date-range>
                     {{ $dateRange }}
                 </div>
             @endif
 
             @if ($hasPrimary)
-                <div class="flex flex-row flex-wrap items-end gap-2 min-w-0 flex-1" data-filter-primary>
+                <div class="contents" data-filter-primary>
                     {{ $primary }}
                 </div>
             @endif
 
             @if ($hasSecondary)
-                <div class="flex flex-row flex-wrap items-end gap-2 shrink-0 min-w-0" data-filter-secondary>
+                <div class="contents" data-filter-secondary>
                     {{ $secondary }}
                 </div>
             @endif

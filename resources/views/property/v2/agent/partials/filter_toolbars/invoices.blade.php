@@ -2,6 +2,10 @@
     $invoicesUrl = route('property.revenue.invoices', absolute: false);
     $drawerLabel = 'Invoice filters';
     $filterFormId = 'property-filter-form-'.substr(md5($invoicesUrl.$drawerLabel), 0, 8);
+    $propertyId = (int) ($filters['property_id'] ?? 0);
+    $unitLabel = fn ($u) => $propertyId > 0
+        ? $u->label
+        : ($u->property?->name ?? 'Unknown').'/'.$u->label;
 @endphp
 
 <x-property.filter-toolbar
@@ -11,10 +15,11 @@
     revenue-date-filter="invoices"
     :chip-labels="[
         'q' => 'Search',
+        'property_id' => 'Property',
+        'unit_id' => 'Unit',
+        'tenant_id' => 'Tenant',
         'status' => 'Status',
         'type' => 'Type',
-        'tenant_id' => 'Tenant',
-        'unit_id' => 'Unit',
         'period' => 'Bill month',
         'due_from' => 'Due from',
         'due_to' => 'Due to',
@@ -35,6 +40,30 @@
 
     <x-slot name="primary">
         <x-property.filter-field type="search" name="q" placeholder="Search invoice, tenant, unit…" :value="$filters['q'] ?? ''" wide />
+        <x-property.filter-field type="select"
+            name="property_id"
+            label="Property"
+            :options="collect([['value' => '0', 'label' => 'Property: All']])
+                ->merge(collect($properties ?? [])->map(fn ($p) => ['value' => (string) $p->id, 'label' => $p->name]))
+                ->all()"
+            :value="(string) ($filters['property_id'] ?? '0')"
+        />
+        <x-property.filter-field type="select"
+            name="unit_id"
+            label="Unit"
+            :options="collect([['value' => '0', 'label' => 'Unit: All']])
+                ->merge(collect($units)->map(fn ($u) => ['value' => (string) $u->id, 'label' => $unitLabel($u)]))
+                ->all()"
+            :value="(string) ($filters['unit_id'] ?? '0')"
+        />
+        <x-property.filter-field type="select"
+            name="tenant_id"
+            label="Tenant"
+            :options="collect([['value' => '0', 'label' => 'Tenant: All']])
+                ->merge(collect($tenantsForFilter ?? $tenants)->map(fn ($t) => ['value' => (string) $t->id, 'label' => $t->name]))
+                ->all()"
+            :value="(string) ($filters['tenant_id'] ?? '0')"
+        />
         <x-property.filter-field type="select"
             name="status"
             label="Status"
@@ -59,22 +88,6 @@
                 ['value' => 'mixed', 'label' => 'Mixed'],
             ]"
             :value="$filters['type'] ?? ''"
-        />
-        <x-property.filter-field type="select"
-            name="tenant_id"
-            label="Tenant"
-            :options="collect([['value' => '0', 'label' => 'Tenant: All']])
-                ->merge(collect($tenantsForFilter ?? $tenants)->map(fn ($t) => ['value' => (string) $t->id, 'label' => $t->name]))
-                ->all()"
-            :value="(string) ($filters['tenant_id'] ?? '0')"
-        />
-        <x-property.filter-field type="select"
-            name="unit_id"
-            label="Unit"
-            :options="collect([['value' => '0', 'label' => 'Unit: All']])
-                ->merge(collect($units)->map(fn ($u) => ['value' => (string) $u->id, 'label' => ($u->property?->name ?? 'Unknown').'/'.$u->label]))
-                ->all()"
-            :value="(string) ($filters['unit_id'] ?? '0')"
         />
         <x-property.filter-field type="select"
             name="sort"
