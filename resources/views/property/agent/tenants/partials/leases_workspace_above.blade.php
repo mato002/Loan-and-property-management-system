@@ -84,7 +84,7 @@
             <button
                 type="button"
                 class="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 sm:ml-auto"
-                @click="showLeaseCreateForm = true"
+                data-property-modal-open="showLeaseCreateForm" @click="showLeaseCreateForm = true"
             >
                 <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
                 <span>Create lease</span>

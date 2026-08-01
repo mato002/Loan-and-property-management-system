@@ -4,14 +4,6 @@
     $amenityLibraryFormHasErrors = $errors->hasAny(['name', 'category']);
     $amenityAttachFormHasErrors = $errors->hasAny(['pm_amenity_id', 'property_id']);
 @endphp
-<div
-    x-data="{
-        showAmenityLibraryForm: @js($amenityLibraryFormHasErrors),
-        showAmenityAttachForm: @js($amenityAttachFormHasErrors),
-    }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     :legacy-toolbar="false"
     title="Amenities"
@@ -24,11 +16,18 @@
     empty-title="No amenities in library"
     empty-hint="Add types below, then tag properties."
 >
+    <x-slot name="pageModalsAttributes"
+        x-data="{!! \Illuminate\Support\Js::from([
+            'showAmenityLibraryForm' => $amenityLibraryFormHasErrors,
+            'showAmenityAttachForm' => $amenityAttachFormHasErrors,
+        ]) !!}"
+    ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showAmenityLibraryForm = true"
+            data-property-modal-open="showAmenityLibraryForm" @click="showAmenityLibraryForm = true"
         >
             <i class="fa-solid fa-plus" aria-hidden="true"></i>
             <span>Add amenity</span>
@@ -36,7 +35,7 @@
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            @click="showAmenityAttachForm = true"
+            data-property-modal-open="showAmenityAttachForm" @click="showAmenityAttachForm = true"
         >
             <i class="fa-solid fa-link" aria-hidden="true"></i>
             <span>Tag property</span>
@@ -245,4 +244,3 @@
         </div>
     </x-slot>
 </x-property.workspace>
-</div>

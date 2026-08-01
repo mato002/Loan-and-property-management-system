@@ -1,13 +1,26 @@
 @props([
     'title',
     'subtitle' => null,
+    'workspace' => null,
+    'showWorkspaceTabs' => true,
+    'compactList' => true,
+    /** @var \Illuminate\View\ComponentAttributeBag|null $modalShellBag */
+    'modalShellBag' => null,
 ])
 
 @php
     $currentPortalRole = auth()->user()?->property_portal_role ?? 'agent';
+
+    $pageClasses = $currentPortalRole === 'tenant'
+        ? 'w-full space-y-6'
+        : 'max-w-[1600px] mx-auto w-full space-y-6';
+
+    $modalShellBag = $modalShellBag instanceof \Illuminate\View\ComponentAttributeBag
+        ? $modalShellBag
+        : new \Illuminate\View\ComponentAttributeBag();
 @endphp
 
-<div {{ $attributes->merge(['class' => ($currentPortalRole === 'tenant' ? 'w-full space-y-6' : 'max-w-[1600px] mx-auto w-full space-y-6')]) }}>
+<div {{ $modalShellBag->merge(['class' => $pageClasses]) }}>
     <header class="space-y-4">
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
             <div class="min-w-0 flex-1">

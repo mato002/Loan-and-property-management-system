@@ -1,11 +1,6 @@
 @php
     $showInvoiceFormByDefault = $errors->hasAny(['pm_lease_id','property_unit_id','pm_tenant_id','issue_date','due_date','amount','status','description']);
 @endphp
-<div
-    x-data="{ showInvoiceForm: @js($showInvoiceFormByDefault) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     title="Invoices & billing"
     subtitle="Rent and charges — draft or sent; allocations update status when payments post."
@@ -18,11 +13,13 @@
     empty-title="No invoices"
     empty-hint="Create an invoice for a unit and tenant; record payments from the Payments screen."
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showInvoiceForm' => $showInvoiceFormByDefault]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showInvoiceForm = true"
+            data-property-modal-open="showInvoiceForm" @click="showInvoiceForm = true"
         >
             <i class="fa-solid fa-file-invoice" aria-hidden="true"></i>
             <span>Create invoice</span>
@@ -240,4 +237,3 @@
         @endif
     </x-slot>
 </x-property.workspace>
-</div>

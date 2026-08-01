@@ -1,11 +1,6 @@
 @php
     $showMovementFormByDefault = $errors->hasAny(['property_unit_id', 'movement_type', 'status', 'scheduled_on', 'completed_on', 'notes']);
 @endphp
-<div
-    x-data="{ showMovementForm: @js($showMovementFormByDefault) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     :legacy-toolbar="false"
     title="Move-in / move-out"
@@ -18,11 +13,13 @@
     empty-title="No movement events"
     empty-hint="Log a planned move-in or move-out below."
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showMovementForm' => $showMovementFormByDefault]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showMovementForm = true"
+            data-property-modal-open="showMovementForm" @click="showMovementForm = true"
         >
             <i class="fa-solid fa-truck-moving" aria-hidden="true"></i>
             <span>Log movement</span>
@@ -250,4 +247,3 @@
         </div>
     </x-slot>
 </x-property.workspace>
-</div>

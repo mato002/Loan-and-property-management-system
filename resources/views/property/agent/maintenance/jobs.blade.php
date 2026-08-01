@@ -1,11 +1,6 @@
 @php
     $showJobFormByDefault = $errors->hasAny(['pm_maintenance_request_id', 'pm_vendor_id', 'quote_amount', 'status', 'notes']);
 @endphp
-<div
-    x-data="{ showJobForm: @js($showJobFormByDefault) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
@@ -18,11 +13,13 @@
     empty-title="No jobs"
     empty-hint="Create a job from an open request; mark done to stamp completion time."
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showJobForm' => $showJobFormByDefault]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showJobForm = true"
+            data-property-modal-open="showJobForm" @click="showJobForm = true"
         >
             <i class="fa-solid fa-briefcase" aria-hidden="true"></i>
             <span>Add maintenance job</span>
@@ -171,4 +168,3 @@
         </x-slot>
     @endif
 </x-property.workspace>
-</div>

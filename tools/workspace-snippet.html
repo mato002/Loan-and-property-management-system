@@ -1,0 +1,2692 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full overflow-hidden" data-pwa-context="portal">
+    <head>
+                <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="csrf-token" content="">
+
+        <title>Property Management System</title>
+
+        <!-- Fonts -->
+        <link rel="preconnect" href="https://fonts.bunny.net">
+        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+        <!-- Scripts -->
+                <link rel="preload" as="style" href="http://127.0.0.1:8000/build/assets/app-FG6-trUq.css" /><link rel="preload" as="style" href="http://127.0.0.1:8000/build/assets/swal-init-BSwJ7dgP.css" /><link rel="modulepreload" as="script" href="http://127.0.0.1:8000/build/assets/app-Ckv0XbjE.js" /><link rel="modulepreload" as="script" href="http://127.0.0.1:8000/build/assets/swal-init-Crct4RLc.js" /><link rel="modulepreload" as="script" href="http://127.0.0.1:8000/build/assets/module.esm-fn26o1IX.js" /><link rel="stylesheet" href="http://127.0.0.1:8000/build/assets/app-FG6-trUq.css" /><link rel="stylesheet" href="http://127.0.0.1:8000/build/assets/swal-init-BSwJ7dgP.css" /><script type="module" src="http://127.0.0.1:8000/build/assets/app-Ckv0XbjE.js"></script>        <link rel="icon" href="http://127.0.0.1:8000/favicon.ico?v=5e1a4d3be281" />
+        <link rel="shortcut icon" href="http://127.0.0.1:8000/favicon.ico?v=5e1a4d3be281" />
+        <link rel="apple-touch-icon" href="http://127.0.0.1:8000/favicon.ico?v=5e1a4d3be281" />
+        <link rel="manifest" href="http://127.0.0.1:8000/property/manifest.webmanifest" />
+        <meta name="theme-color" content="#059669" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="property" />
+        <script src="http://127.0.0.1:8000/js/pwa-install.js?v=2" defer></script>
+        
+        <style>
+            /* Portal shell — flush layout without body position:fixed (that + scroll-lock top offset clips the header) */
+            html[data-pwa-context='portal'] {
+                margin: 0 !important;
+                padding: 0 !important;
+                height: 100% !important;
+                overflow: hidden !important;
+                background: #047857;
+            }
+            html[data-pwa-context='portal'] body {
+                margin: 0 !important;
+                padding: 0 !important;
+                position: relative !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                min-height: 100dvh;
+                overflow: hidden !important;
+                background: #e8ecf1 !important;
+            }
+            html[data-pwa-context='portal'] .property-print-root {
+                display: flex !important;
+                flex-direction: row !important;
+                width: 100% !important;
+                height: 100% !important;
+                min-height: 100dvh;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            html[data-pwa-context='portal'] #property-shell-header {
+                display: flex;
+                flex-direction: column;
+                gap: 0;
+                overflow: visible !important;
+                flex-shrink: 0;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            html[data-pwa-context='portal'] #property-shell-header > .property-topbar {
+                margin: 0 !important;
+            }
+            @media (min-width: 1024px) {
+                html[data-pwa-context='portal'] #property-mobile-search-overlay {
+                    display: none !important;
+                }
+            }
+
+            [x-cloak] { display: none !important; }
+            .custom-scrollbar::-webkit-scrollbar {
+                width: 6px;
+                height: 6px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb {
+                background: #b8c2ce;
+                border-radius: 10px;
+            }
+            .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                background: #94a3b8;
+            }
+            /* Firefox */
+            .custom-scrollbar {
+                scrollbar-width: auto;
+                scrollbar-color: #b8c2ce transparent;
+                scrollbar-gutter: stable;
+            }
+            @media print {
+                @page { size: auto; margin: 12mm; }
+                html, body {
+                    background: #fff !important;
+                    color: #000 !important;
+                    height: auto !important;
+                    overflow: visible !important;
+                }
+                .property-print-hide,
+                .print-hide {
+                    display: none !important;
+                }
+                .property-print-only {
+                    display: block !important;
+                }
+                .property-print-root {
+                    display: block !important;
+                    width: 100% !important;
+                    min-height: auto !important;
+                }
+                .property-print-main {
+                    overflow: visible !important;
+                    padding: 0 !important;
+                    margin: 0 !important;
+                }
+                #property-main {
+                    display: block !important;
+                    width: 100% !important;
+                }
+                a {
+                    text-decoration: none !important;
+                    color: #000 !important;
+                }
+                .shadow-sm, .shadow, .shadow-lg, .rounded-2xl, .rounded-xl, .rounded-lg {
+                    box-shadow: none !important;
+                }
+            }
+            .property-print-only {
+                display: none;
+            }
+            /* Reusable high-attention blocks for first-time user guidance */
+            .property-attention-card {
+                border-width: 2px;
+                border-color: #bfdbfe;
+                background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+            }
+            .property-attention-title {
+                font-size: 1.125rem;
+                line-height: 1.5rem;
+                font-weight: 700;
+                color: #0f172a;
+                letter-spacing: -0.01em;
+            }
+            .property-attention-hint {
+                font-size: 0.8rem;
+                line-height: 1.15rem;
+                color: #475569;
+            }
+            /* Property module table grid lines (global) */
+            #property-main table {
+                border-collapse: collapse;
+            }
+            #property-main table th,
+            #property-main table td {
+                border: 1px solid #cbd5e1;
+            }
+            .dark #property-main table th,
+            .dark #property-main table td {
+                border-color: #334155;
+            }
+            /* Property workspace shell — fixed sidebar/header, scrollable workspace only */
+            .property-print-root {
+                isolation: isolate;
+                height: 100%;
+                min-height: 0;
+            }
+            #property-shell-sidebar {
+                position: relative;
+                z-index: 40;
+            }
+            #property-shell-header {
+                position: relative;
+                z-index: 50;
+            }
+            #property-workspace-main {
+                position: relative;
+                z-index: 0;
+                isolation: isolate;
+            }
+            #property-global-nav-progress {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                z-index: 45;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.15s ease;
+            }
+            #property-global-nav-progress[data-active] {
+                opacity: 1;
+            }
+            #property-global-nav-progress > span {
+                display: block;
+                height: 100%;
+                width: 35%;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, #059669 0%, #6ee7b7 45%, #059669 90%);
+                background-size: 200% 100%;
+                animation: property-frame-progress 0.9s ease-in-out infinite;
+            }
+            #property-workspace-loading {
+                position: absolute;
+                inset: 0;
+                z-index: 25;
+                display: none;
+                padding: 0.75rem;
+                background: rgb(232 236 241 / 0.72);
+                backdrop-filter: blur(1px);
+            }
+            #property-workspace-loading[data-active] {
+                display: block;
+                pointer-events: none;
+            }
+            #property-workspace-loading .property-workspace-loading {
+                pointer-events: none;
+            }
+            #property-workspace-error {
+                display: none;
+            }
+            #property-workspace-error[data-active] {
+                display: flex;
+                align-items: flex-start;
+                justify-content: center;
+                position: absolute;
+                inset: 0;
+                z-index: 50;
+                padding: 1rem 1.25rem;
+                background: rgb(232 236 241 / 0.92);
+                backdrop-filter: blur(2px);
+                pointer-events: auto;
+            }
+            #property-workspace-main[data-workspace-error-active] turbo-frame#property-main {
+                visibility: hidden;
+            }
+            /* Turbo frame loading — progress bar + stable containment */
+            turbo-frame#property-main {
+                display: block;
+                width: 100%;
+                max-width: 100%;
+                min-height: 12rem;
+                position: relative;
+                overflow: visible;
+            }
+            turbo-frame#property-main[data-property-loading] {
+                pointer-events: none;
+            }
+            turbo-frame#property-main[data-property-loading]::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                z-index: 30;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, #059669 0%, #6ee7b7 45%, #059669 90%);
+                background-size: 200% 100%;
+                animation: property-frame-progress 0.9s ease-in-out infinite;
+            }
+            turbo-frame#property-main > * {
+                max-width: 100%;
+            }
+            @keyframes property-frame-progress {
+                0% { background-position: 100% 0; }
+                100% { background-position: -100% 0; }
+            }
+            .property-skeleton-line,
+            .property-skeleton-block {
+                background: rgb(226 232 240 / 0.92);
+                border-radius: 0.375rem;
+            }
+        </style>
+    </head>
+    <body
+        class="font-sans antialiased h-full min-h-0 overflow-hidden text-slate-900 bg-[#e8ecf1] selection:bg-emerald-200/80 "
+        data-property-nav-mode="workspace"
+        x-data="{
+            sidebarOpen: false,
+            sidebarDesktopOpen: true,
+            init() {
+                const portal = 'agent';
+                const saved = window.localStorage.getItem(`property.sidebar.desktop.open.${portal}`);
+                if (saved !== null) {
+                    this.sidebarDesktopOpen = saved === '1';
+                }
+            },
+            toggleDesktopSidebar() {
+                this.sidebarDesktopOpen = !this.sidebarDesktopOpen;
+                const portal = 'agent';
+                window.localStorage.setItem(`property.sidebar.desktop.open.${portal}`, this.sidebarDesktopOpen ? '1' : '0');
+            },
+            expandDesktopSidebar() {
+                if (!this.sidebarDesktopOpen) {
+                    this.sidebarDesktopOpen = true;
+                    const portal = 'agent';
+                    window.localStorage.setItem(`property.sidebar.desktop.open.${portal}`, '1');
+                }
+            }
+        }"
+        @property-sidebar-expand.window="expandDesktopSidebar()"
+        x-effect="(() => { document.documentElement.classList.toggle('property-sidebar-collapsed', !sidebarDesktopOpen && window.matchMedia('(min-width: 1024px)').matches); document.documentElement.classList.toggle('overflow-hidden', sidebarOpen && window.innerWidth < 1024); })()"
+    >
+        <div class="flex h-full min-h-0 w-full property-print-root">
+            
+            <!-- Property Module Dedicated Sidebar (persists across Turbo navigations) -->
+            <div
+                id="property-shell-sidebar"
+                data-turbo-permanent
+                class="property-print-hide h-full w-0 min-w-0 max-w-0 overflow-hidden lg:flex-shrink-0 lg:w-[19rem] lg:max-w-[19rem] lg:min-w-[19rem] transition-all duration-300"
+                :class="sidebarDesktopOpen ? 'lg:w-[19rem] lg:max-w-[19rem] lg:min-w-[19rem] lg:opacity-100' : 'lg:w-[5.5rem] lg:max-w-[5.5rem] lg:min-w-[5.5rem] lg:opacity-100'"
+                :style="window.matchMedia('(min-width: 1024px)').matches
+                    ? (sidebarDesktopOpen
+                        ? 'width: 19rem; min-width: 19rem; max-width: 19rem;'
+                        : 'width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem;')
+                    : 'width: 0; min-width: 0; max-width: 0;'"
+            >
+                <style>
+    @media (min-width: 1024px) {
+        .property-sidebar[data-collapsed="1"] .property-collapse-text {
+            display: none !important;
+            width: 0 !important;
+            max-width: 0 !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-collapse-hide {
+            display: none !important;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-collapse-center {
+            justify-content: center !important;
+            gap: 0 !important;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-collapse-compact {
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+        }
+
+        .property-sidebar[data-collapsed="1"] nav.custom-scrollbar {
+            overflow-y: auto;
+            overflow-x: visible;
+            scrollbar-width: none;
+        }
+
+        .property-sidebar[data-collapsed="1"] nav.custom-scrollbar::-webkit-scrollbar {
+            display: none;
+            width: 0;
+            height: 0;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-sidebar-brand {
+            justify-content: center;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-sidebar-brand-logo {
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-sidebar-collapse-toggle-wrap {
+            justify-content: center;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-sidebar-footer-link {
+            justify-content: center;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-sidebar-footer-link .property-sidebar-avatar {
+            width: 2.25rem;
+            height: 2.25rem;
+            font-size: 0.875rem;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-sidebar-footer-link .property-collapse-icon-only {
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-db-safety-expanded {
+            display: none !important;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-db-safety-collapsed {
+            display: flex !important;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-nav-single-link {
+            justify-content: center;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-workspace-rail-item > a[aria-current="page"],
+        .property-sidebar[data-collapsed="1"] .property-workspace-rail-item[data-section-active] > a {
+            border-left-color: rgb(110 231 183) !important;
+            background-color: rgb(64 104 102 / 0.8) !important;
+            color: #fff !important;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-workspace-rail-item > a[aria-current="page"] .property-workspace-icon-wrap,
+        .property-sidebar[data-collapsed="1"] .property-workspace-rail-item[data-section-active] > a .property-workspace-icon-wrap {
+            background-color: rgb(64 104 102 / 0.85) !important;
+            box-shadow: 0 0 0 1px rgb(110 231 183 / 0.45);
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-workspace-icon-wrap {
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Collapsed rail flyout */
+        .property-workspace-flyout {
+            display: none;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-workspace-flyout {
+            position: absolute;
+            left: calc(100% + 0.35rem);
+            top: 0;
+            z-index: 5700;
+            min-width: 13.5rem;
+            max-width: 16rem;
+            border-radius: 0.75rem;
+            border: 1px solid rgb(64 104 102 / 0.85);
+            background: rgb(36 61 61 / 0.98);
+            box-shadow: 0 16px 40px rgb(0 0 0 / 0.35);
+            backdrop-filter: blur(8px);
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-workspace-rail-item:hover > .property-workspace-flyout,
+        .property-sidebar[data-collapsed="1"] .property-workspace-rail-item:focus-within > .property-workspace-flyout {
+            display: block;
+        }
+
+        .property-sidebar[data-collapsed="1"] .property-workspace-rail-item::before {
+            content: '';
+            position: absolute;
+            left: 100%;
+            top: 0;
+            width: 0.5rem;
+            height: 100%;
+            z-index: 5650;
+        }
+    }
+
+    .property-db-safety-collapsed {
+        display: none;
+    }
+
+    /* Expanded sidebar: hide flyout panels (main link is enough) */
+    .property-sidebar[data-collapsed="0"] .property-workspace-flyout {
+        display: none !important;
+    }
+</style>
+
+<div
+    x-show="sidebarOpen"
+    x-transition:enter="transition-opacity ease-linear duration-300"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition-opacity ease-linear duration-300"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    class="fixed inset-0 z-[5500] bg-slate-950/70 backdrop-blur-[2px] lg:hidden"
+    @click="sidebarOpen = false"
+    x-cloak>
+</div>
+
+<aside
+    class="property-sidebar fixed inset-y-0 left-0 z-[5600] lg:z-50 w-[min(100vw-2.5rem,300px)] sm:w-[312px] h-full bg-[#2f4f4f] border-r border-[#264040] text-[#d4e4e3] text-base transform transition-[transform,width] duration-300 ease-out lg:translate-x-0 lg:static lg:inset-0 flex flex-col min-h-0 shadow-xl shadow-black/20 lg:shadow-none overflow-x-hidden flex-shrink-0"
+    :class="[sidebarOpen ? 'translate-x-0' : '-translate-x-full max-lg:pointer-events-none', sidebarDesktopOpen ? 'lg:w-[19rem] lg:min-w-[19rem] lg:max-w-[19rem]' : 'lg:w-[5.5rem] lg:min-w-[5.5rem] lg:max-w-[5.5rem]']"
+    :style="window.matchMedia('(min-width: 1024px)').matches
+        ? (sidebarDesktopOpen
+            ? 'width: 19rem; min-width: 19rem; max-width: 19rem;'
+            : 'width: 5.5rem; min-width: 5.5rem; max-width: 5.5rem;')
+        : ''"
+    :data-collapsed="sidebarDesktopOpen ? '0' : '1'"
+    data-property-nav-mode="workspace"
+>
+    <div class="h-14 flex items-center justify-between px-4 border-b border-[#264040] bg-[#243d3d]/50 backdrop-blur-md lg:hidden shrink-0">
+        <span class="text-sm font-semibold uppercase tracking-wide text-[#8db1af]">Workspaces</span>
+        <button type="button" @click="sidebarOpen = false" class="p-2 rounded-lg text-[#8db1af] hover:text-white hover:bg-[#406866] transition-colors" aria-label="Close menu">
+            <i class="fa-solid fa-xmark text-lg" aria-hidden="true"></i>
+        </button>
+    </div>
+
+    <div class="shrink-0 px-3 py-3.5 border-b border-[#264040] bg-[#243d3d]/30">
+        <div class="property-sidebar-collapse-toggle-wrap mb-2 hidden lg:flex justify-end">
+            <button
+                type="button"
+                @click="toggleDesktopSidebar()"
+                class="inline-flex items-center justify-center rounded-lg p-2 text-[#8db1af] hover:text-white hover:bg-[#406866] transition-colors"
+                :title="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+                :aria-label="sidebarDesktopOpen ? 'Collapse sidebar' : 'Expand sidebar'"
+            >
+                <i class="fa-solid" :class="sidebarDesktopOpen ? 'fa-angles-left' : 'fa-angles-right'" aria-hidden="true"></i>
+            </button>
+        </div>
+        <a
+            href="http://127.0.0.1:8000/property/dashboard"
+            data-turbo-frame="property-main"
+            data-property-nav="property.dashboard"
+                        class="property-sidebar-brand flex items-center gap-3 min-w-0 group property-collapse-center"
+            :title="sidebarDesktopOpen ? '' : 'Dashboard'"
+            @click="if (window.innerWidth < 1024) sidebarOpen = false"
+        >
+            <span class="property-sidebar-brand-logo flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#406866]/60 ring-1 ring-[#5a8583]/50 shadow-inner">
+                                    <i class="fa-solid fa-building text-xl text-[#c5ebe8]" aria-hidden="true"></i>
+                            </span>
+            <span class="property-collapse-text flex flex-col min-w-0 leading-tight text-left">
+                <span class="text-base font-bold tracking-tight text-white truncate">Property ERP</span>
+            </span>
+        </a>
+                    <div class="property-db-safety-expanded property-collapse-text mt-2 rounded-lg border px-2.5 py-2 text-[11px] leading-4 border-emerald-300/40 bg-emerald-500/15 text-emerald-100">
+                <span class="font-semibold uppercase tracking-wide">DB safety</span>
+                <span class="ml-1">ON: destructive commands blocked</span>
+            </div>
+            <div
+                class="property-db-safety-collapsed mt-2 items-center justify-center rounded-lg border p-2 border-emerald-300/40 bg-emerald-500/15 text-emerald-100"
+                title="DB safety: destructive commands blocked"
+            >
+                <i class="fa-solid fa-shield-halved text-sm" aria-hidden="true"></i>
+            </div>
+            </div>
+
+    <nav class="flex-1 min-h-0 overflow-y-auto py-2 px-2 custom-scrollbar" aria-label="Property workspaces">
+        
+        <div class="space-y-1">
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.dashboard"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/dashboard"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.dashboard"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Dashboard'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-gauge-high text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Dashboard</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Alerts, KPIs, notifications</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Dashboard shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Dashboard</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Alerts, KPIs, notifications</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/dashboard"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.dashboard"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Command center
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/search"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.search|property.search.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Search
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/collection-rate"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.index"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Analytics hub
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/collection-rate"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.collection_rate"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Collection rate
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.properties.*|property.landlords.*|property.units.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/properties/list"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.properties.*|property.landlords.*|property.units.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Portfolio'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-building text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Portfolio</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Properties, units, landlords</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Portfolio shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Portfolio</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Properties, units, landlords</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/properties/list"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.properties.list|property.properties.show|property.properties.edit"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        All properties
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/properties/units"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.properties.units|property.units.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Units
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/landlords"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.landlords.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Landlords
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/properties/occupancy"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.properties.occupancy"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Occupancy
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.tenants.index|property.tenants.directory|property.tenants.directory.*|property.tenants.profiles|property.tenants.import|property.tenants.import.*|property.tenants.show|property.tenants.edit|property.tenants.update|property.tenants.destroy|property.tenants.store|property.tenants.store_json|property.tenants.statement|property.tenants.leases|property.tenants.expiry|property.tenants.movements|property.tenants.movements.*|property.tenants.notices|property.tenants.notices.*|property.leases.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/tenants/directory"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.tenants.index|property.tenants.directory|property.tenants.directory.*|property.tenants.profiles|property.tenants.import|property.tenants.import.*|property.tenants.show|property.tenants.edit|property.tenants.update|property.tenants.destroy|property.tenants.store|property.tenants.store_json|property.tenants.statement|property.tenants.leases|property.tenants.expiry|property.tenants.movements|property.tenants.movements.*|property.tenants.notices|property.tenants.notices.*|property.leases.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Tenants &amp; Leasing'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-users text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Tenants &amp; Leasing</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Directory, leases, notices</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Tenants &amp; Leasing shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Tenants &amp; Leasing</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Directory, leases, notices</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/tenants/directory"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.tenants.directory|property.tenants.profiles"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Tenant directory
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/tenants/leases"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.tenants.leases|property.leases.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Leases
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/tenants/movements"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.tenants.movements|property.tenants.movements.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Movements
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/tenants/notices"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.tenants.notices|property.tenants.notices.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Notices
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.revenue.*|property.equity.*|property.invoices.*|property.payments.*|property.tenants.credit.*|property.tenants.utility.statement"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/revenue/overview"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.revenue.*|property.equity.*|property.invoices.*|property.payments.*|property.tenants.credit.*|property.tenants.utility.statement"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Collections'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-sack-dollar text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Collections</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Rent, billing, payments, utilities</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Collections shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Collections</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Rent, billing, payments, utilities</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/revenue/rent-roll"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.revenue.rent_roll"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Rent roll
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/revenue/arrears"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.revenue.arrears|property.revenue.arrears.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Arrears
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/revenue/invoices"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.revenue.invoices|property.revenue.invoices.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Invoices
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/revenue/payments"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.revenue.payments|property.payments.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Payments
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/revenue/utilities-charges"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.revenue.utilities|property.revenue.utilities.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Utilities
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/communications/bulk"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.communications.bulk|property.communications.bulk.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Bulk messaging
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/revenue/equity/matched"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.equity.matched|property.equity.matched.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Matched payments
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/revenue/equity/unmatched"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.equity.unmatched|property.equity.unmatched.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Unmatched payments
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.maintenance.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/maintenance/requests"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.maintenance.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Maintenance'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-screwdriver-wrench text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Maintenance</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Requests, jobs, vendors</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Maintenance shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Maintenance</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Requests, jobs, vendors</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/maintenance/requests"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.maintenance.requests|property.maintenance.requests.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Requests
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/maintenance/jobs"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.maintenance.jobs|property.maintenance.jobs.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Jobs
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/maintenance/history"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.maintenance.history"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        History
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/maintenance/costs"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.maintenance.costs"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Costs
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/maintenance/frequency"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.maintenance.frequency"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Issue frequency
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/vendors/directory"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.vendors.directory|property.vendors.store|property.vendors.show|property.vendors.edit"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Vendor directory
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/vendors/bidding"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.vendors.bidding|property.vendors.bidding.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        RFQ &amp; bidding
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.listings.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/listings/create"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.listings.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Listings'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-sign-hanging text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Listings</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Vacancies, leads, applications</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Listings shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Listings</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Vacancies, leads, applications</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/listings/create"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.listings.create"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Listing setup
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/listings/vacant"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.listings.vacant|property.listings.vacant.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Vacant units
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/listings/ads"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.listings.ads"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Live ads
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/listings/leads"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.listings.leads|property.listings.leads.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Leads
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/listings/applications"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.listings.applications|property.listings.applications.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Applications
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.reports.*|property.exports.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/reports"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.reports.*|property.exports.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Reports'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-file-lines text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Reports</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Tenant, landlord, financials</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Reports shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Reports</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Tenant, landlord, financials</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/reports"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.reports.center"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Report center
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/reports/tenant"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.reports.tenant|property.reports.tenant.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Tenant reports
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/reports/landlord"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.reports.landlord|property.reports.landlord.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Landlord reports
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/financials"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.financials.index"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Financial summaries
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/financials/income-expenses"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.financials.income_expenses"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Income &amp; expenses
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/collection-rate"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.index"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Analytics hub
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/arrears-trends"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.arrears_trends"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Arrears trends
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.accounting.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/accounting"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.accounting.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Accounting'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-book text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Accounting</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Trust GL, payroll, controls</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Accounting shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Accounting</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Trust GL, payroll, controls</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/accounting"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.accounting.index"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Dashboard
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/accounting/entries"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.accounting.entries|property.accounting.entries.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Journal entries
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/accounting/chart-of-accounts"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.accounting.gl.chart_accounts|property.accounting.gl.chart_accounts.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Chart of accounts
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/accounting/payroll"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.accounting.payroll|property.accounting.payroll.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Payroll
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.settings.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/settings/roles"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.settings.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Settings'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-gear text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Settings</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Users, rules, system setup</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Settings shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Settings</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Users, rules, system setup</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/settings/roles"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.settings.index"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Settings hub
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/settings/roles"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.settings.roles"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Users &amp; roles
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/settings/permissions"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.settings.permissions"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Permissions
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/settings/commission"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.settings.commission|property.settings.commission.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Commission
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/settings/payments"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.settings.payments|property.settings.payments.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Payment config
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/settings/branding"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.settings.branding|property.settings.branding.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Branding
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/settings/rules"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.settings.rules|property.settings.rules.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Automation rules
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/settings/system-setup"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.settings.system_setup|property.settings.system_setup.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        System setup
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.vendors.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/vendors/directory"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.vendors.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Vendors'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-truck-field text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Vendors</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Directory, RFQ, quotes</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Vendors shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Vendors</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Directory, RFQ, quotes</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/vendors/directory"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.vendors.index"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Vendor hub
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/vendors/directory"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.vendors.directory|property.vendors.store|property.vendors.show|property.vendors.edit"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Vendor directory
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/vendors/bidding"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.vendors.bidding|property.vendors.bidding.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        RFQ &amp; bidding
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/vendors/quotes"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.vendors.quotes"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Quotes
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/vendors/work-records"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.vendors.work_records"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Work records
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/vendors/performance"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.vendors.performance"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Vendor performance
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.communications.*|property.notifications|property.notifications.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/notifications"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.communications.*|property.notifications|property.notifications.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Communications'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-comments text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Communications</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">SMS, email, templates</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Communications shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Communications</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">SMS, email, templates</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/notifications"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.communications.index"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Communications hub
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/notifications"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.notifications|property.notifications.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Notifications
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/communications/messages"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.communications.messages|property.communications.messages.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        SMS / email log
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/communications/bulk"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.communications.bulk|property.communications.bulk.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Bulk messaging
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/communications/templates"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.communications.templates|property.communications.templates.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Templates
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/communications/conversations"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.communications.conversations|property.communications.conversations.*"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Conversations
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.financials.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/financials"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.financials.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Financials'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-coins text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Financials</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Income, cash flow, balances</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Financials shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Financials</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Income, cash flow, balances</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/financials"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.financials.index"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Overview
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/financials/income-expenses"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.financials.income_expenses"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Income &amp; expenses
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/financials/cash-flow"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.financials.cash_flow"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Cash flow
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/financials/owner-balances"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.financials.owner_balances"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Owner balances
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/financials/commission"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.financials.commission"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Commission
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                                            <div
+                    class="property-workspace-rail-item relative"
+                    data-property-nav-aggregate="property.performance.*"
+                                    >
+                    <a
+                        href="http://127.0.0.1:8000/property/performance/collection-rate"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.performance.*"
+                                                @click="if (window.innerWidth < 1024) sidebarOpen = false"
+                        class="property-nav-single-link group flex items-center gap-2.5 rounded-xl border-l-[3px] px-3 py-3 text-left transition-all duration-150 border-transparent text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white aria-[current=page]:border-emerald-300 aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white property-collapse-center property-collapse-compact"
+                        :title="sidebarDesktopOpen ? '' : 'Analytics'"
+                    >
+                        <span class="property-workspace-icon-wrap flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#406866]/35 ring-1 ring-[#5a8583]/40 group-aria-[current=page]:bg-[#406866]/60">
+                            <i class="fa-solid fa-chart-line text-base text-[#c5ebe8] group-aria-[current=page]:text-white" aria-hidden="true"></i>
+                        </span>
+                        <span class="property-collapse-text flex flex-col gap-0.5 min-w-0 flex-1">
+                            <span class="text-base font-medium leading-snug text-[#d4e4e3] group-hover:text-white group-aria-[current=page]:text-white group-aria-[current=page]:font-semibold">Analytics</span>
+                                                            <span class="text-xs text-[#8db1af] group-hover:text-[#c5ebe8] group-aria-[current=page]:text-[#d4e4e3]">Collection, vacancy, trends</span>
+                                                    </span>
+                    </a>
+
+                                            <div class="property-workspace-flyout" role="menu" aria-label="Analytics shortcuts">
+                            <div class="px-3 py-2 border-b border-[#406866]/50">
+                                <p class="text-sm font-semibold text-white">Analytics</p>
+                                                                    <p class="text-[11px] text-[#8db1af] mt-0.5">Collection, vacancy, trends</p>
+                                                            </div>
+                            <div class="py-1">
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/collection-rate"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.index"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Analytics hub
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/collection-rate"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.collection_rate"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Collection rate
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/vacancy"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.vacancy"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Vacancy trends
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/arrears-trends"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.arrears_trends"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Arrears trends
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/maintenance-trends"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.maintenance_trends"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Maintenance trends
+                                    </a>
+                                                                                                        <a
+                                        href="http://127.0.0.1:8000/property/performance/tenant-reliability"
+                                        data-turbo-frame="property-main"
+                                        data-property-nav="property.performance.tenant_reliability"
+                                                                                class="block px-3 py-2 text-sm text-[#d4e4e3] hover:bg-[#406866]/60 hover:text-white aria-[current=page]:bg-[#406866]/80 aria-[current=page]:text-white aria-[current=page]:font-semibold"
+                                        role="menuitem"
+                                    >
+                                        Tenant reliability
+                                    </a>
+                                                            </div>
+                        </div>
+                                    </div>
+                    </div>
+
+        <div class="pt-4 mt-3 border-t border-[#406866]/40">
+            <form method="POST" action="http://127.0.0.1:8000/logout" data-turbo="false">
+                <input type="hidden" name="_token" value="" autocomplete="off">                <button type="submit" class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white border-l-[3px] border-transparent transition-all text-left group property-collapse-center property-collapse-compact" :title="sidebarDesktopOpen ? '' : 'Log out'">
+                    <i class="fa-solid fa-right-from-bracket w-5 shrink-0 text-center text-[#8db1af] group-hover:text-red-400 transition-colors" aria-hidden="true"></i>
+                    <span class="property-collapse-text">Log out</span>
+                </button>
+            </form>
+        </div>
+    </nav>
+
+    <div class="p-3 border-t border-[#264040] bg-[#243d3d]/40 shrink-0">
+        <a
+            href="http://127.0.0.1:8000/profile"
+            data-turbo-frame="property-main"
+            data-property-nav="profile.edit"
+            class="property-sidebar-footer-link flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#406866]/50 transition-colors property-collapse-center property-collapse-compact"
+            :title="sidebarDesktopOpen ? '' : 'Profile'"
+        >
+            <div class="property-sidebar-avatar w-11 h-11 rounded-full bg-emerald-500/25 border border-emerald-400/35 flex items-center justify-center text-emerald-200 font-semibold text-base shrink-0">
+                                    U
+                            </div>
+            <div class="property-collapse-text flex flex-col overflow-hidden min-w-0">
+                <span class="text-base font-medium text-white truncate">User</span>
+            </div>
+        </a>
+
+        <a
+            href="http://127.0.0.1:8000"
+            target="_blank"
+            rel="noopener"
+            class="property-sidebar-footer-link mt-2 flex items-center gap-3 p-2.5 rounded-xl border border-[#406866]/60 text-[#d4e4e3] hover:bg-[#406866]/50 hover:text-white transition-colors property-collapse-center property-collapse-compact"
+            :title="sidebarDesktopOpen ? '' : 'Open public website'"
+        >
+            <i class="property-collapse-icon-only fa-solid fa-globe w-5 text-center text-[#8db1af]" aria-hidden="true"></i>
+            <span class="property-collapse-text text-sm font-medium">Open public website</span>
+            <i class="property-collapse-text fa-solid fa-arrow-up-right-from-square ml-auto text-xs text-[#8db1af]" aria-hidden="true"></i>
+        </a>
+    </div>
+</aside>
+            </div>
+
+            <!-- Main view container (Header, Content, Footer) -->
+            <div class="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                
+                <!-- Dedicated Header (persists across Turbo navigations) -->
+                <div id="property-shell-header" data-turbo-permanent class="property-print-hide shrink-0 overflow-visible">
+                    <header class="property-topbar relative z-[5000] overflow-visible flex-shrink-0 shadow-md shadow-emerald-950/10">
+        <div class="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 text-white overflow-visible">
+        <div class="relative z-[120] flex items-center h-14 sm:h-[60px] lg:h-[64px] px-3 sm:px-5 lg:px-6 gap-2 sm:gap-3 min-w-0">
+            <div class="flex items-center gap-2 sm:gap-4 min-w-0 shrink">
+                <button
+                    type="button"
+                    @click="sidebarOpen = true"
+                    class="lg:hidden shrink-0 p-2 rounded-lg text-white/90 hover:bg-white/15 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                    aria-label="Open menu"
+                >
+                    <i class="fa-solid fa-bars text-xl" aria-hidden="true"></i>
+                </button>
+                <a
+                    href="http://127.0.0.1:8000/property/dashboard"
+                    data-turbo-frame="property-main"
+                    data-property-nav="property.dashboard"
+                    class="flex items-center gap-2.5 sm:gap-3 min-w-0 group shrink-0"
+                >
+                    <span class="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/25 shadow-inner">
+                                                                                    <i class="fa-solid fa-building text-lg sm:text-xl text-white" aria-hidden="true"></i>
+                                                                        </span>
+                    <span class="min-w-0 leading-tight hidden sm:block">
+                                                    <span class="block text-[15px] sm:text-lg font-bold tracking-tight text-white truncate">Agent workspace</span>
+                                            </span>
+                </a>
+
+                                    <div class="hidden md:flex items-center min-w-0 pl-3 sm:pl-4 ml-2 sm:ml-3 border-l border-white/25">
+                                                <span data-property-header-title class="text-xs sm:text-sm font-medium text-white/95 truncate max-w-[140px] sm:max-w-[200px] lg:max-w-[280px] xl:max-w-md">Unit status</span>
+                    </div>
+                            </div>
+
+                            <form
+                    id="property-global-search-form"
+                    method="get"
+                    action="http://127.0.0.1:8000/property/search"
+                    data-turbo-frame="property-main"
+                    class="hidden lg:flex items-center flex-1 min-w-0 basis-0 max-w-xs xl:max-w-sm 2xl:max-w-md mx-1 xl:mx-2"
+                >
+                    <label class="sr-only" for="property-global-search">Search</label>
+                    <div class="relative w-full z-[150]" id="property-global-search-wrap">
+                        <input
+                            id="property-global-search"
+                            name="q"
+                            value=""
+                            placeholder="Search…"
+                            autocomplete="off"
+                            title="Search tenants, units, invoices, payments"
+                            class="w-full min-w-0 rounded-xl bg-white text-slate-900 placeholder:text-slate-500 border border-white/70 px-3 xl:px-4 py-2.5 pr-11 text-sm font-medium shadow-inner focus:outline-none focus:ring-2 focus:ring-white/40 focus:border-white/40"
+                        />
+                        <button type="button" id="property-global-search-btn" class="absolute right-1.5 top-1.5 h-8 w-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700">
+                            <i class="fa-solid fa-magnifying-glass text-sm" aria-hidden="true"></i>
+                            <span class="sr-only">Search</span>
+                        </button>
+                        <div id="property-search-suggest" class="hidden absolute z-[99999] mt-2 w-full rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl overflow-hidden"></div>
+                    </div>
+                </form>
+            
+            <div class="flex items-center gap-0.5 sm:gap-2 shrink-0 ml-auto">
+                <div class="hidden xl:flex flex-col items-end justify-center shrink-0 text-right leading-tight pr-1">
+                    <span class="text-[10px] uppercase tracking-wider text-white/55 font-semibold">Today</span>
+                    <time class="text-xs font-semibold text-white/90 tabular-nums" datetime="2026-08-01">Sat, 1 Aug</time>
+                </div>
+                                    <button
+                        type="button"
+                        id="property-mobile-search-open"
+                        class="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg text-white/90 hover:bg-white/15 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                        aria-label="Open search"
+                    >
+                        <i class="fa-solid fa-magnifying-glass text-lg" aria-hidden="true"></i>
+                    </button>
+                
+                                    <a
+                        href="http://127.0.0.1:8000"
+                        target="_blank"
+                        rel="noopener"
+                        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50 text-xs font-semibold"
+                        title="Open public website"
+                    >
+                        <i class="fa-solid fa-globe" aria-hidden="true"></i>
+                        Website
+                    </a>
+                
+                <div class="hidden sm:block relative z-[60]" x-data="{ bellOpen: false }" @click.outside="bellOpen = false">
+                    <button
+                        type="button"
+                        @click="bellOpen = !bellOpen"
+                        class="relative p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                        title="Messages &amp; notifications"
+                        aria-label="Notifications"
+                    >
+                        <i class="fa-regular fa-bell text-lg sm:text-xl" aria-hidden="true"></i>
+                                            </button>
+
+                    <div
+                        x-show="bellOpen"
+                        x-transition:enter="transition ease-out duration-150"
+                        x-transition:enter-start="opacity-0 translate-y-1"
+                        x-transition:enter-end="opacity-100 translate-y-0"
+                        x-transition:leave="transition ease-in duration-100"
+                        x-transition:leave-start="opacity-100 translate-y-0"
+                        x-transition:leave-end="opacity-0 translate-y-1"
+                        class="absolute right-0 mt-2 w-[23rem] max-w-[90vw] rounded-xl bg-white text-slate-800 shadow-xl border border-slate-200/90 overflow-hidden"
+                        x-cloak
+                    >
+                        <div class="px-4 py-2.5 border-b border-slate-100 flex items-center justify-between">
+                            <p class="text-sm font-semibold text-slate-900">Alerts</p>
+                            <a href="http://127.0.0.1:8000/property/notifications" data-turbo-frame="property-main" data-property-nav="property.notifications" class="text-xs font-semibold text-emerald-700 hover:text-emerald-800">View all</a>
+                        </div>
+                        <div class="max-h-80 overflow-auto">
+                                                            <div class="px-4 py-6 text-sm text-slate-500">No alerts yet.</div>
+                                                    </div>
+                    </div>
+                </div>
+
+                <a
+                    href="http://127.0.0.1:8000/property/notifications"
+                    data-turbo-frame="property-main"
+                    data-property-nav="property.notifications"
+                    class="sm:hidden relative p-2 rounded-lg text-white/85 hover:text-white hover:bg-white/10 transition-colors aria-[current=page]:bg-white/20 aria-[current=page]:text-white"
+                    aria-label="Notifications"
+                >
+                    <i class="fa-regular fa-bell text-lg" aria-hidden="true"></i>
+                                    </a>
+
+                <div class="hidden sm:block w-px h-8 bg-white/20 mx-0.5" aria-hidden="true"></div>
+
+                
+                <div class="relative z-[60]" x-data="{ userMenuOpen: false }" @click.outside="userMenuOpen = false">
+                    <button
+                        type="button"
+                        @click="userMenuOpen = !userMenuOpen"
+                        class="flex items-center gap-2 sm:gap-3 pl-1 sm:pl-2 pr-1 sm:pr-2 py-1 rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                    >
+                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/20 ring-2 ring-white/35 flex items-center justify-center text-white font-semibold text-sm sm:text-base shadow-sm overflow-hidden">
+                                                            U
+                                                    </div>
+                        <span class="hidden md:block text-sm font-medium text-white truncate max-w-[160px] text-left leading-tight">
+                            User
+                        </span>
+                        <i class="fa-solid fa-chevron-down text-sm text-white/70 hidden md:block transition-transform duration-200 shrink-0" :class="{ 'rotate-180': userMenuOpen }" aria-hidden="true"></i>
+                    </button>
+
+                    <div
+                        x-show="userMenuOpen"
+                        x-transition:enter="transition ease-out duration-200"
+                        x-transition:enter-start="opacity-0 translate-y-1"
+                        x-transition:enter-end="opacity-100 translate-y-0"
+                        x-transition:leave="transition ease-in duration-150"
+                        x-transition:leave-start="opacity-100 translate-y-0"
+                        x-transition:leave-end="opacity-0 translate-y-1"
+                        class="absolute right-0 mt-2 w-56 rounded-xl bg-white text-slate-800 shadow-xl border border-slate-200/80 py-1.5 z-[100] overflow-hidden"
+                        x-cloak
+                    >
+                        <div class="px-4 py-2.5 border-b border-slate-100 bg-slate-50/80 md:hidden">
+                            <p class="text-sm font-semibold text-slate-900">User</p>
+                            <p class="text-xs text-slate-500 truncate"></p>
+                        </div>
+
+                        <a href="http://127.0.0.1:8000/profile" data-turbo-frame="property-main" class="flex items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 transition-colors">
+                            <i class="fa-regular fa-user w-4 text-center text-slate-400" aria-hidden="true"></i>
+                            Profile settings
+                        </a>
+
+                        
+                        <div class="border-t border-slate-100 my-1"></div>
+
+                        <form method="POST" action="http://127.0.0.1:8000/logout" data-turbo="false">
+                            <input type="hidden" name="_token" value="" autocomplete="off">                            <button type="submit" class="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors text-left">
+                                <i class="fa-solid fa-right-from-bracket w-4 text-center" aria-hidden="true"></i>
+                                Log out
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        
+        <div class="relative z-[20] border-t border-white/15 bg-emerald-800/40 backdrop-blur-sm  property-header-quick-workspace ">
+            <nav class="property-header-quick flex items-center gap-1 px-3 py-1.5 sm:px-4 sm:py-2 overflow-x-auto custom-scrollbar snap-x snap-mandatory" aria-label="Quick shortcuts">
+                                                        <a
+                        href="http://127.0.0.1:8000/property/dashboard"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.dashboard"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Dashboard
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/properties/list"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.properties.*|property.landlords.*|property.units.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Portfolio
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/tenants/directory"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.tenants.index|property.tenants.directory|property.tenants.directory.*|property.tenants.profiles|property.tenants.import|property.tenants.import.*|property.tenants.show|property.tenants.edit|property.tenants.update|property.tenants.destroy|property.tenants.store|property.tenants.store_json|property.tenants.statement|property.tenants.leases|property.tenants.expiry|property.tenants.movements|property.tenants.movements.*|property.tenants.notices|property.tenants.notices.*|property.leases.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Tenants &amp; Leasing
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/revenue/overview"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.revenue.*|property.equity.*|property.invoices.*|property.payments.*|property.tenants.credit.*|property.tenants.utility.statement"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Collections
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/maintenance/requests"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.maintenance.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Maintenance
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/listings/create"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.listings.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Listings
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/reports"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.reports.*|property.exports.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Reports
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/accounting"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.accounting.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Accounting
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/settings/roles"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.settings.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Settings
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/vendors/directory"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.vendors.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Vendors
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/notifications"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.communications.*|property.notifications|property.notifications.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Communications
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/financials"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.financials.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Financials
+                    </a>
+                                                        <a
+                        href="http://127.0.0.1:8000/property/performance/collection-rate"
+                        data-turbo-frame="property-main"
+                        data-property-nav="property.performance.*"
+                                                class="snap-start shrink-0 rounded-lg px-2.5 py-1.5 sm:px-3 text-[11px] sm:text-xs font-semibold transition-colors whitespace-nowrap text-white/90 hover:bg-white/10 aria-[current=page]:bg-white aria-[current=page]:text-emerald-800 aria-[current=page]:shadow-sm min-h-[36px] inline-flex items-center"
+                    >
+                        Analytics
+                    </a>
+                            </nav>
+        </div>
+    </div>
+</header>
+
+    
+    <div
+        id="property-mobile-search-overlay"
+        class="fixed inset-0 z-[7000] lg:hidden hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search"
+    >
+        <div id="property-mobile-search-backdrop" class="absolute inset-0 bg-slate-950/60 backdrop-blur-[1px]"></div>
+        <div class="relative mx-3 mt-3 sm:mx-4 sm:mt-4 rounded-2xl border border-white/20 bg-emerald-700 p-3 shadow-2xl">
+            <div class="flex items-center gap-2">
+                <form
+                    id="property-mobile-search-form"
+                    method="get"
+                    action="http://127.0.0.1:8000/property/search"
+                    data-turbo-frame="property-main"
+                    class="flex-1 min-w-0"
+                >
+                    <label class="sr-only" for="property-mobile-search-input">Search</label>
+                    <input
+                        id="property-mobile-search-input"
+                        name="q"
+                        value=""
+                        placeholder="Search tenants, units, invoices…"
+                        autocomplete="off"
+                        class="w-full rounded-xl bg-white text-slate-900 placeholder:text-slate-500 border border-white/70 px-4 py-3 text-sm font-medium shadow-inner focus:outline-none focus:ring-2 focus:ring-white/40"
+                    />
+                </form>
+                <button
+                    type="button"
+                    id="property-mobile-search-close"
+                    class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white/90 hover:bg-white/15"
+                    aria-label="Close search"
+                >
+                    <i class="fa-solid fa-xmark text-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div id="property-mobile-search-suggest" class="hidden mt-2 max-h-[60vh] overflow-y-auto rounded-xl border border-slate-200 bg-white text-slate-800 shadow-xl"></div>
+        </div>
+    </div>
+
+    <script>
+        function initPropertyMobileSearchOverlay() {
+            const openBtn = document.getElementById('property-mobile-search-open');
+            const overlay = document.getElementById('property-mobile-search-overlay');
+            const backdrop = document.getElementById('property-mobile-search-backdrop');
+            const closeBtn = document.getElementById('property-mobile-search-close');
+            const input = document.getElementById('property-mobile-search-input');
+            const form = document.getElementById('property-mobile-search-form');
+            const box = document.getElementById('property-mobile-search-suggest');
+            if (!openBtn || !overlay || !input || !form || !box) return;
+            if (openBtn.dataset.mobileSearchInit === '1') return;
+            openBtn.dataset.mobileSearchInit = '1';
+
+            const endpoint = "http:\/\/127.0.0.1:8000\/property\/search\/suggest";
+            let timer = null;
+            let ctrl = null;
+            let lastQ = '';
+            let firstUrl = '';
+
+            const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[ch]));
+            const highlight = (txt, q) => {
+                const t = String(txt ?? '');
+                const qq = String(q ?? '').trim();
+                if (!qq) return esc(t);
+                const safe = esc(t);
+                const re = new RegExp(qq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+                return safe.replace(re, (m) => `<mark class="bg-yellow-100 px-0.5 rounded">${m}</mark>`);
+            };
+            const labels = { pages: 'Pages', landlords: 'Landlords', tenants: 'Tenants', properties: 'Properties', units: 'Units', invoices: 'Invoices', payments: 'Payments' };
+
+            const closeOverlay = () => {
+                overlay.classList.add('hidden');
+                document.documentElement.classList.remove('overflow-hidden');
+                box.classList.add('hidden');
+                box.innerHTML = '';
+            };
+            const openOverlay = () => {
+                overlay.classList.remove('hidden');
+                document.documentElement.classList.add('overflow-hidden');
+                window.setTimeout(() => input.focus(), 50);
+            };
+            const render = (payload, q) => {
+                const groups = payload?.groups || {};
+                const keys = Object.keys(labels);
+                const hasAny = keys.some((k) => Array.isArray(groups[k]) && groups[k].length > 0);
+                if (!hasAny) {
+                    box.innerHTML = '<div class="px-4 py-3 text-sm text-slate-500">No results</div>';
+                    box.classList.remove('hidden');
+                    return;
+                }
+                const html = keys.map((k) => {
+                    const rows = Array.isArray(groups[k]) ? groups[k] : [];
+                    if (rows.length === 0) return '';
+                    const items = rows.slice(0, 5).map((r) => `
+                        <a href="${esc(r.url)}" data-turbo-frame="property-main" class="block px-4 py-3 hover:bg-slate-50">
+                            <div class="text-sm font-semibold text-slate-900">${highlight(r.title, q)}</div>
+                            <div class="text-xs text-slate-500">${highlight(r.subtitle, q)}</div>
+                        </a>
+                    `).join('');
+                    return `<div class="border-b border-slate-100 last:border-b-0"><div class="px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 bg-slate-50">${labels[k]}</div>${items}</div>`;
+                }).join('');
+                const firstGroup = keys.find((k) => Array.isArray(groups[k]) && groups[k].length > 0);
+                firstUrl = firstGroup ? (groups[firstGroup][0]?.url || '') : '';
+                box.innerHTML = html;
+                box.classList.remove('hidden');
+            };
+            const load = async () => {
+                const q = (input.value || '').trim();
+                if (q.length < 1) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+                if (q === lastQ) return;
+                lastQ = q;
+                if (ctrl) ctrl.abort();
+                ctrl = new AbortController();
+                try {
+                    const res = await fetch(`${endpoint}?q=${encodeURIComponent(q)}`, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+                    if (!res.ok) { box.classList.add('hidden'); return; }
+                    render(await res.json(), q);
+                } catch (_) { box.classList.add('hidden'); }
+            };
+
+            openBtn.addEventListener('click', openOverlay);
+            closeBtn?.addEventListener('click', closeOverlay);
+            backdrop?.addEventListener('click', closeOverlay);
+            input.addEventListener('input', () => { if (timer) clearTimeout(timer); timer = setTimeout(load, 220); });
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (!box.classList.contains('hidden') && firstUrl) { window.visitPropertyMain?.(firstUrl); closeOverlay(); return; }
+                load();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeOverlay();
+            });
+        }
+        document.addEventListener('DOMContentLoaded', initPropertyMobileSearchOverlay);
+        document.addEventListener('turbo:load', initPropertyMobileSearchOverlay);
+    </script>
+
+    <script>
+        function initPropertyHeaderLiveSearch() {
+            const input = document.getElementById('property-global-search');
+            const form = document.getElementById('property-global-search-form');
+            const btn = document.getElementById('property-global-search-btn');
+            const box = document.getElementById('property-search-suggest');
+            const wrap = document.getElementById('property-global-search-wrap');
+            if (!input || !box || !wrap || !form) return;
+            if (input.dataset.liveSearchInit === '1') return;
+            input.dataset.liveSearchInit = '1';
+            const endpoint = "http:\/\/127.0.0.1:8000\/property\/search\/suggest";
+            let timer = null;
+            let ctrl = null;
+            let lastQ = '';
+            let firstUrl = '';
+
+            const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[ch]));
+            const highlight = (txt, q) => {
+                const t = String(txt ?? '');
+                const qq = String(q ?? '').trim();
+                if (!qq) return esc(t);
+                const safe = esc(t);
+                const re = new RegExp(qq.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+                return safe.replace(re, (m) => `<mark class="bg-yellow-100 px-0.5 rounded">${m}</mark>`);
+            };
+            const labels = {
+                pages: 'Pages',
+                landlords: 'Landlords',
+                tenants: 'Tenants',
+                properties: 'Properties',
+                units: 'Units',
+                invoices: 'Invoices',
+                payments: 'Payments',
+            };
+
+            const closeBox = () => {
+                box.classList.add('hidden');
+                box.innerHTML = '';
+                firstUrl = '';
+            };
+            const render = (payload, q) => {
+                const groups = payload?.groups || {};
+                const keys = Object.keys(labels);
+                const hasAny = keys.some((k) => Array.isArray(groups[k]) && groups[k].length > 0);
+                if (!hasAny) {
+                    box.innerHTML = '<div class="px-4 py-3 text-sm text-slate-500">No results</div>';
+                    box.classList.remove('hidden');
+                    return;
+                }
+                const html = keys.map((k) => {
+                    const rows = Array.isArray(groups[k]) ? groups[k] : [];
+                    if (rows.length === 0) return '';
+                    const items = rows.slice(0, 5).map((r) => `
+                        <a href="${esc(r.url)}" data-turbo-frame="property-main" class="block px-4 py-2 hover:bg-slate-50">
+                            <div class="text-sm font-semibold text-slate-900">${highlight(r.title, q)}</div>
+                            <div class="text-xs text-slate-500">${highlight(r.subtitle, q)}</div>
+                        </a>
+                    `).join('');
+                    return `
+                        <div class="border-b border-slate-100 last:border-b-0">
+                            <div class="px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 bg-slate-50">${labels[k]}</div>
+                            ${items}
+                        </div>
+                    `;
+                }).join('');
+                const firstGroup = keys.find((k) => Array.isArray(groups[k]) && groups[k].length > 0);
+                firstUrl = firstGroup ? (groups[firstGroup][0]?.url || '') : '';
+                box.innerHTML = html;
+                box.classList.remove('hidden');
+            };
+
+            const load = async () => {
+                const q = (input.value || '').trim();
+                if (q.length < 1) {
+                    closeBox();
+                    return;
+                }
+                if (q === lastQ) return;
+                lastQ = q;
+                if (ctrl) ctrl.abort();
+                ctrl = new AbortController();
+                try {
+                    const res = await fetch(`${endpoint}?q=${encodeURIComponent(q)}`, {
+                        headers: { 'Accept': 'application/json' },
+                        signal: ctrl.signal,
+                    });
+                    if (!res.ok) {
+                        closeBox();
+                        return;
+                    }
+                    const payload = await res.json();
+                    render(payload, q);
+                } catch (_) {
+                    closeBox();
+                }
+            };
+
+            input.addEventListener('input', () => {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(load, 220);
+            });
+            input.addEventListener('focus', () => {
+                if ((input.value || '').trim().length >= 1) load();
+            });
+            if (btn) {
+                btn.addEventListener('click', () => {
+                    load();
+                });
+            }
+            // Do not redirect to full search page from header input.
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (!box.classList.contains('hidden') && firstUrl) {
+                    window.visitPropertyMain?.(firstUrl);
+                    return;
+                }
+                load();
+            });
+            document.addEventListener('click', (e) => {
+                if (!wrap.contains(e.target)) closeBox();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') closeBox();
+            });
+        }
+        document.addEventListener('DOMContentLoaded', initPropertyHeaderLiveSearch);
+        document.addEventListener('turbo:load', initPropertyHeaderLiveSearch);
+    </script>
+                </div>
+
+                <!-- Scrollable Content Area (Header/Footer remain constant) -->
+                <main
+                    id="property-workspace-main"
+                    class="property-print-main relative z-0 flex-1 min-h-0 overflow-x-hidden overflow-y-auto w-full custom-scrollbar"
+                    :class="{ 'overflow-hidden': sidebarOpen && window.innerWidth < 1024 }"
+                >
+                    <div id="property-global-nav-progress" aria-hidden="true"><span></span></div>
+                    <div id="property-workspace-loading" aria-hidden="true">
+                        <div class="property-workspace-loading pointer-events-none" aria-hidden="true">
+    <div class="animate-pulse space-y-4 p-1">
+        <div class="h-7 w-48 max-w-[70%] rounded-lg bg-slate-200/90"></div>
+        <div class="h-4 w-full max-w-xl rounded bg-slate-200/70"></div>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div class="h-20 rounded-xl bg-slate-200/80"></div>
+                            <div class="h-20 rounded-xl bg-slate-200/80"></div>
+                            <div class="h-20 rounded-xl bg-slate-200/80"></div>
+                            <div class="h-20 rounded-xl bg-slate-200/80"></div>
+                    </div>
+        <div class="rounded-2xl border border-slate-200/80 bg-white/70 p-4 space-y-3">
+                            <div class="flex items-center gap-3">
+                    <div class="h-4 w-4 rounded bg-slate-200/90 shrink-0"></div>
+                    <div class="h-4 flex-1 rounded bg-slate-200/70"></div>
+                    <div class="h-4 w-16 rounded bg-slate-200/60 shrink-0"></div>
+                </div>
+                            <div class="flex items-center gap-3">
+                    <div class="h-4 w-4 rounded bg-slate-200/90 shrink-0"></div>
+                    <div class="h-4 flex-1 rounded bg-slate-200/70"></div>
+                    <div class="h-4 w-16 rounded bg-slate-200/60 shrink-0"></div>
+                </div>
+                            <div class="flex items-center gap-3">
+                    <div class="h-4 w-4 rounded bg-slate-200/90 shrink-0"></div>
+                    <div class="h-4 flex-1 rounded bg-slate-200/70"></div>
+                    <div class="h-4 w-16 rounded bg-slate-200/60 shrink-0"></div>
+                </div>
+                            <div class="flex items-center gap-3">
+                    <div class="h-4 w-4 rounded bg-slate-200/90 shrink-0"></div>
+                    <div class="h-4 flex-1 rounded bg-slate-200/70"></div>
+                    <div class="h-4 w-16 rounded bg-slate-200/60 shrink-0"></div>
+                </div>
+                            <div class="flex items-center gap-3">
+                    <div class="h-4 w-4 rounded bg-slate-200/90 shrink-0"></div>
+                    <div class="h-4 flex-1 rounded bg-slate-200/70"></div>
+                    <div class="h-4 w-16 rounded bg-slate-200/60 shrink-0"></div>
+                </div>
+                    </div>
+    </div>
+</div>
+                    </div>
+                    <div id="property-workspace-error" class="absolute inset-0 z-50 pointer-events-none p-4 sm:p-6" aria-live="polite"></div>
+                    <div class="p-3 sm:p-4 lg:p-8 w-full max-w-full min-w-0 property-mobile-safe-bottom">
+                        <turbo-frame id="property-main" data-turbo-action="advance" data-turbo-cache="false">
+                            <div id="property-main-route" data-route-name="" data-page-title="Unit status" hidden></div>
+                                                                                                                                            <div class="max-w-[1600px] mx-auto w-full space-y-6" data-property-page-modals="data-property-page-modals" x-data="{ showUnitCreateForms: false }">
+    <header class="space-y-4">
+        <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div class="min-w-0 flex-1">
+                <h1 class="text-2xl sm:text-[1.65rem] font-semibold text-slate-900 dark:text-slate-100 tracking-tight leading-tight">Unit status</h1>
+                            </div>
+                                                <div class="print-hide flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full lg:w-auto min-w-0 shrink-0 lg:pt-1 [&>button]:w-full [&>button]:sm:w-auto">
+                        <button type="button" data-property-modal-open="showUnitCreateForms" @click="showUnitCreateForms = true">Add units</button>
+                    </div>
+                                    </div>
+    </header>
+
+    <div class="property-print-only mb-4 border-b border-slate-300 pb-3" style="display: none" aria-hidden="true">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <div class="text-lg font-semibold text-slate-900">property</div>
+                                    </div>
+                            </div>
+            <div class="mt-3 text-xl font-semibold text-slate-900">Unit status</div>
+                        <div class="mt-2 text-xs text-slate-600">
+                Generated on 01 Aug 2026, 07:57 PM
+                            </div>
+        </div>
+
+        
+                    <div data-workspace-modals>
+                <template x-teleport="body">
+    <div
+        x-show="showUnitCreateForms"
+        x-cloak
+        data-property-modal
+        data-property-modal-id="unit-create"
+        data-overlay-recoverable
+                        x-effect="
+            if (showUnitCreateForms) {
+                window.PropertyModalManager?.register({
+                    id: 'unit-create',
+                    element: $el,
+                    closeOnEscape: false,
+                    onClose: () => { showUnitCreateForms = false }
+                });
+            } else {
+                window.PropertyModalManager?.unregister('unit-create');
+            }
+        "
+        class="fixed inset-0 flex max-md:items-end md:items-center justify-center p-4 max-md:p-0"
+        style="z-index: 7010;"
+        @click.self.stop.prevent
+        role="dialog"
+        aria-modal="true"
+         aria-labelledby="unit-create-title"     >
+        
+        <div
+            x-show="showUnitCreateForms"
+            x-transition:enter="transition-opacity ease-out duration-200"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition-opacity ease-in duration-150"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            class="absolute inset-0 z-0 bg-slate-950/50 backdrop-blur-[1px] data-property-modal-backdrop"
+            @click.stop.prevent
+            aria-hidden="true"
+        ></div>
+
+        
+        <div
+            x-show="showUnitCreateForms"
+            x-transition:enter="transition ease-out duration-250"
+            x-transition:enter-start="max-md:translate-y-full md:scale-95 md:opacity-0"
+            x-transition:enter-end="max-md:translate-y-0 md:scale-100 md:opacity-100"
+            x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="max-md:translate-y-0 md:scale-100 md:opacity-100"
+            x-transition:leave-end="max-md:translate-y-full md:scale-95 md:opacity-0"
+            data-property-modal-panel
+            data-overlay-dialog
+            @click.stop
+            class="relative z-10 flex w-full flex-col max-w-lg max-h-[90vh] overflow-hidden
+                max-md:max-h-[90vh] max-md:rounded-t-2xl max-md:rounded-b-none rounded-2xl
+                border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 shadow-2xl"
+        >
+                            <div class="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 dark:border-slate-700 px-4 py-3 sm:px-5">
+                    <h2 id="unit-create-title" class="text-base font-semibold text-slate-900 dark:text-white">Add units</h2>
+                    <button
+                        type="button"
+                        class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        aria-label="Close"
+                        @click="showUnitCreateForms = false"
+                    >
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
+            
+            <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 [&_input]:min-h-[44px] [&_select]:min-h-[44px]">
+                <p>Form body</p>
+            </div>
+
+                    </div>
+    </div>
+</template>
+            </div>
+        
+        
+        
+        
+                    <div class="property-ws-wrap property-erp-surface w-full min-w-0 space-y-2.5 md:space-y-3">
+                                    <div class="print-hide w-full min-w-0 space-y-2">
+                                                    <input
+                                type="search"
+                                data-table-filter="parent"
+                                autocomplete="off"
+                                placeholder="Search…"
+                                class="w-full min-w-0 min-h-[44px] sm:max-w-md rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2.5"
+                            />
+                        
+                                            </div>
+                
+                
+                
+                                    <div class="w-full min-w-0 space-y-2.5">
+                    <div class="property-erp-panel rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm w-full min-w-0 overflow-visible">
+                        <div class="property-table-scroll -mx-3 px-3 sm:-mx-4 sm:px-4 md:mx-0 md:px-0 overflow-x-auto w-full min-w-0">
+    <div style="min-width: 720px;" class="w-full">
+        <table class="property-erp-table w-full table-auto border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_th]:dark:border-slate-700 [&_td]:border [&_td]:border-slate-200 [&_td]:dark:border-slate-700">
+                                <thead class="bg-slate-50 dark:bg-slate-900/60 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                                    <tr>
+                                                                                    <th class="px-2 sm:px-4 py-2 sm:py-3 whitespace-nowrap">A</th>
+                                                                            </tr>
+                                </thead>
+                                <tbody>
+                                                                            <tr>
+                                            <td
+                                                colspan="1"
+                                                class="px-3 sm:px-4 py-10 sm:py-14 text-center align-middle"
+                                            >
+                                                <p class="text-sm sm:text-base font-medium text-slate-700 dark:text-slate-200">No records yet</p>
+                                                <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">Data will load here once this module is connected to your database.</p>
+                                            </td>
+                                        </tr>
+                                                                    </tbody>
+                                                                                            </table>
+    </div>
+</div>
+                    </div>
+
+                                        </div>
+                            </div>
+</div>
+                        </turbo-frame>
+                    </div>
+                </main>
+
+                <!-- Dedicated Footer (persists across Turbo navigations) -->
+                <div id="property-shell-footer" data-turbo-permanent class="property-print-hide">
+                    <footer class="shrink-0 mt-auto border-t border-slate-200/90 bg-[#f0f3f7] py-3 px-4 sm:px-6 lg:px-8">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-slate-500">
+        <p class="text-center sm:text-left">
+            <a href="https://mathiasodhiambo.netlify.app/" target="_blank" rel="noopener noreferrer" data-turbo="false" class="text-emerald-700 hover:text-emerald-800 hover:underline font-medium">
+                &copy; 2026 property. All rights reserved.
+            </a>
+        </p>
+        <p class="text-center sm:text-right tabular-nums text-slate-400">
+            Version 2.0
+        </p>
+    </div>
+</footer>
+                </div>
+
+            </div>
+        </div>
+
+                    <div
+    id="property-form-modal-host"
+    data-turbo-permanent
+    x-data="propertyFormModalHost"
+    x-cloak
+>
+    <div
+        x-show="open"
+        x-cloak
+        data-property-modal
+        data-property-modal-id="property-form-modal"
+        data-overlay-recoverable
+                        x-effect="
+            if (open) {
+                window.PropertyModalManager?.register({
+                    id: 'property-form-modal',
+                    element: $el,
+                    closeOnEscape: false,
+                    onClose: () => { handleClose() }
+                });
+            } else {
+                window.PropertyModalManager?.unregister('property-form-modal');
+            }
+        "
+        class="fixed inset-0 flex max-md:items-end md:items-center justify-center p-4 max-md:p-0"
+        style="z-index: 7120;"
+        @click.self.stop.prevent
+        role="dialog"
+        aria-modal="true"
+         aria-label="Dialog"     >
+        
+        <div
+            x-show="open"
+            x-transition:enter="transition-opacity ease-out duration-200"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition-opacity ease-in duration-150"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            class="absolute inset-0 z-0 bg-slate-950/50 backdrop-blur-[1px] data-property-modal-backdrop"
+            @click.stop.prevent
+            aria-hidden="true"
+        ></div>
+
+        
+        <div
+            x-show="open"
+            x-transition:enter="transition ease-out duration-250"
+            x-transition:enter-start="max-md:translate-y-full md:scale-95 md:opacity-0"
+            x-transition:enter-end="max-md:translate-y-0 md:scale-100 md:opacity-100"
+            x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="max-md:translate-y-0 md:scale-100 md:opacity-100"
+            x-transition:leave-end="max-md:translate-y-full md:scale-95 md:opacity-0"
+            data-property-modal-panel
+            data-overlay-dialog
+            @click.stop
+            class="relative z-10 flex w-full flex-col max-w-4xl max-h-[90vh] overflow-hidden
+                max-md:max-h-[90vh] max-md:rounded-t-2xl max-md:rounded-b-none rounded-2xl
+                border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 shadow-2xl"
+        >
+                            <div class="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 dark:border-slate-700 px-4 py-3 sm:px-5">
+                    <div class="min-w-0 flex-1"><h2 class="text-base font-semibold text-slate-900 dark:text-white" x-text="title"></h2></div>
+                    <button
+                        type="button"
+                        class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        aria-label="Close"
+                        @click="handleClose()"
+                    >
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
+            
+            <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 [&_input]:min-h-[44px] [&_select]:min-h-[44px]">
+                <div class="space-y-3">
+            <p
+                x-show="loading"
+                class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+            >
+                Loading form…
+            </p>
+            <p
+                x-show="error"
+                x-text="error"
+                class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+            ></p>
+            <div x-ref="frameHost" class="property-form-modal-frame-host min-h-[2rem]"></div>
+        </div>
+            </div>
+
+                            <div class="shrink-0 border-t border-slate-200 dark:border-slate-700 px-4 py-3 sm:px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                    <button
+                type="button"
+                class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200"
+                @click="handleClose()"
+            >
+                Close
+            </button>
+                </div>
+                    </div>
+    </div>
+</div>
+            <a
+                href="http://127.0.0.1:8000/property/advisor"
+                data-turbo-frame="property-main"
+                class="property-print-hide fixed z-30 flex items-center justify-center gap-2 rounded-full bg-violet-600 text-sm font-semibold text-white shadow-lg shadow-violet-900/40 ring-2 ring-white/20 hover:bg-violet-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 transition-colors bottom-[max(4.5rem,calc(env(safe-area-inset-bottom)+3.5rem))] right-3 h-11 w-11 sm:bottom-5 sm:right-5 sm:h-auto sm:w-auto sm:px-4 sm:py-3"
+                title="AI advisor"
+                aria-label="Ask AI advisor"
+            >
+                <i class="fa-solid fa-robot text-base sm:text-lg" aria-hidden="true"></i>
+                <span class="hidden sm:inline">Ask</span>
+            </a>
+        
+        
+        
+        <template id="property-frame-skeleton-template">
+            <div class="property-frame-skeleton animate-pulse pointer-events-none" data-property-frame-skeleton aria-hidden="true">
+    <div class="property-erp-panel space-y-4 p-4 sm:p-5">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div class="space-y-2 flex-1">
+                <div class="property-skeleton-line h-7 w-48 max-w-[70%]"></div>
+                <div class="property-skeleton-line h-4 w-full max-w-xl"></div>
+            </div>
+            <div class="hidden sm:flex gap-2">
+                <div class="property-skeleton-line h-10 w-24 rounded-lg"></div>
+                <div class="property-skeleton-line h-10 w-28 rounded-lg"></div>
+            </div>
+        </div>
+        <div class="grid gap-3 grid-cols-2 lg:grid-cols-4">
+                            <div class="property-skeleton-block h-20 rounded-xl"></div>
+                            <div class="property-skeleton-block h-20 rounded-xl"></div>
+                            <div class="property-skeleton-block h-20 rounded-xl"></div>
+                            <div class="property-skeleton-block h-20 rounded-xl"></div>
+                    </div>
+        <div class="property-skeleton-block rounded-2xl border border-slate-200/70 p-4 space-y-3">
+            <div class="property-skeleton-line h-4 w-32"></div>
+                            <div class="flex items-center gap-3">
+                    <div class="property-skeleton-block h-4 w-4 rounded shrink-0"></div>
+                    <div class="property-skeleton-line h-4 flex-1"></div>
+                    <div class="property-skeleton-line h-4 w-16 shrink-0"></div>
+                </div>
+                            <div class="flex items-center gap-3">
+                    <div class="property-skeleton-block h-4 w-4 rounded shrink-0"></div>
+                    <div class="property-skeleton-line h-4 flex-1"></div>
+                    <div class="property-skeleton-line h-4 w-16 shrink-0"></div>
+                </div>
+                            <div class="flex items-center gap-3">
+                    <div class="property-skeleton-block h-4 w-4 rounded shrink-0"></div>
+                    <div class="property-skeleton-line h-4 flex-1"></div>
+                    <div class="property-skeleton-line h-4 w-16 shrink-0"></div>
+                </div>
+                            <div class="flex items-center gap-3">
+                    <div class="property-skeleton-block h-4 w-4 rounded shrink-0"></div>
+                    <div class="property-skeleton-line h-4 flex-1"></div>
+                    <div class="property-skeleton-line h-4 w-16 shrink-0"></div>
+                </div>
+                            <div class="flex items-center gap-3">
+                    <div class="property-skeleton-block h-4 w-4 rounded shrink-0"></div>
+                    <div class="property-skeleton-line h-4 flex-1"></div>
+                    <div class="property-skeleton-line h-4 w-16 shrink-0"></div>
+                </div>
+                            <div class="flex items-center gap-3">
+                    <div class="property-skeleton-block h-4 w-4 rounded shrink-0"></div>
+                    <div class="property-skeleton-line h-4 flex-1"></div>
+                    <div class="property-skeleton-line h-4 w-16 shrink-0"></div>
+                </div>
+                    </div>
+    </div>
+</div>
+        </template>
+
+        <div
+    id="pwa-install-fab"
+    class="hidden fixed bottom-6 left-4 sm:left-6 z-[60] flex flex-col items-end gap-2 max-w-[min(100vw-2rem,20rem)]"
+    aria-live="polite"
+>
+    <button
+        type="button"
+        id="pwa-install-dismiss"
+        class="self-end text-xs font-semibold text-gray-500 hover:text-gray-800 bg-white/90 backdrop-blur px-2 py-1 rounded-md shadow-sm border border-gray-200"
+        aria-label="Dismiss install hint"
+    >
+        Not now
+    </button>
+    <button
+        type="button"
+        id="pwa-install-btn"
+        class="group flex items-center gap-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white pl-4 pr-5 py-3 shadow-lg shadow-emerald-900/25 ring-2 ring-emerald-500/30 transition-all hover:scale-[1.02] active:scale-[0.98]"
+    >
+        <span class="flex h-10 w-10 items-center justify-center rounded-full bg-white/15">
+            <svg id="pwa-install-icon-mobile" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+            </svg>
+            <svg id="pwa-install-icon-desktop" class="hidden h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+            </svg>
+        </span>
+        <span class="text-left">
+            <span
+                id="pwa-install-title"
+                class="block text-sm font-bold leading-tight"
+                data-desktop-title="Install app"
+            >Install app</span>
+            <span
+                id="pwa-install-subtitle"
+                class="block text-xs text-emerald-100 font-medium"
+                data-desktop-subtitle="Install on this computer"
+            >Add to home screen</span>
+        </span>
+    </button>
+</div>
+
+<div
+    id="pwa-install-ios-panel"
+    class="hidden fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 bg-gray-900/50"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="pwa-ios-title"
+>
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <h2 id="pwa-ios-title" class="text-lg font-bold text-gray-900 mb-2">Install on iPhone / iPad</h2>
+        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 mb-6">
+            <li>Open this site in Safari</li>
+            <li>Tap the Share button</li>
+            <li>Choose “Add to Home Screen”</li>
+        </ol>
+        <button
+            type="button"
+            id="pwa-install-ios-close"
+            class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3"
+        >
+            Got it
+        </button>
+    </div>
+</div>
+
+<div
+    id="pwa-install-desktop-panel"
+    class="hidden fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-4 bg-gray-900/50"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="pwa-desktop-title"
+>
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+        <h2 id="pwa-desktop-title" class="text-lg font-bold text-gray-900 mb-2">Install on desktop</h2>
+        <div class="space-y-4 text-sm text-gray-600 mb-6">
+            <div>
+                <p class="font-semibold text-gray-800">Chrome or Edge</p>
+                <p class="mt-1">Click the install icon in the address bar, or use the Install app button again if your browser shows a prompt.</p>
+            </div>
+            <div>
+                <p class="font-semibold text-gray-800">Safari on Mac</p>
+                <p class="mt-1">Choose File → Add to Dock, or open the Share menu and choose Add to Dock.</p>
+            </div>
+        </div>
+        <button
+            type="button"
+            id="pwa-install-desktop-close"
+            class="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3"
+        >
+            Got it
+        </button>
+    </div>
+</div>
+    </body>
+</html>

@@ -1,4 +1,6 @@
 ﻿        @php
+            $leaseCfg = $leaseFields ?? [];
+            $leaseRequired = fn (string $k, bool $d = false) => (bool) (($leaseCfg[$k]['required'] ?? $d) && ($leaseCfg[$k]['enabled'] ?? true));
             $leaseCreateAlpineConfig = \App\Support\Property\LeaseCreateAlpineConfig::build($errors ?? null, $openingArrearsTypeOptions ?? []);
             $additionalDeposits = old('additional_deposits', []);
             $openingArrearsRows = old('opening_arrears', []);

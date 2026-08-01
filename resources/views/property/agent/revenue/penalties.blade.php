@@ -1,11 +1,6 @@
 @php
     $showPenaltyFormByDefault = $errors->hasAny(['name','scope','trigger_event','grace_days','formula','percent','amount','cap','effective_from','is_active']);
 @endphp
-<div
-    x-data="{ showPenaltyForm: @js($showPenaltyFormByDefault) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
@@ -18,11 +13,13 @@
     empty-title="No penalty rules"
     empty-hint="Add a rule below. Applied / waived counts stay at zero until billing automation uses this table."
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showPenaltyForm' => $showPenaltyFormByDefault]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showPenaltyForm = true"
+            data-property-modal-open="showPenaltyForm" @click="showPenaltyForm = true"
         >
             <i class="fa-solid fa-percent" aria-hidden="true"></i>
             <span>Add penalty rule</span>
@@ -134,4 +131,3 @@
         @endisset
     </x-slot>
 </x-property.workspace>
-</div>

@@ -4,6 +4,8 @@
     'workspace' => null,
     'showWorkspaceTabs' => true,
     'compactList' => true,
+    /** @var \Illuminate\View\ComponentAttributeBag|null $modalShellBag */
+    'modalShellBag' => null,
 ])
 
 @php
@@ -16,13 +18,19 @@
         && ($showWorkspaceTabs ?? true)
         && $resolvedWorkspaceKey
         && PropertyWorkspaceTabs::shouldShow($routeName);
-@endphp
 
-<div {{ $attributes->merge(['class' => ($currentPortalRole === 'tenant'
+    $pageClasses = $currentPortalRole === 'tenant'
         ? 'property-erp-page w-full space-y-3 md:space-y-5'
         : ($compactList
             ? 'property-erp-page property-erp-page--compact max-w-[1600px] mx-auto w-full space-y-1.5 md:space-y-2'
-            : 'property-erp-page max-w-[1600px] mx-auto w-full space-y-2 md:space-y-3'))]) }}>
+            : 'property-erp-page max-w-[1600px] mx-auto w-full space-y-2 md:space-y-3');
+
+    $modalShellBag = $modalShellBag instanceof \Illuminate\View\ComponentAttributeBag
+        ? $modalShellBag
+        : new \Illuminate\View\ComponentAttributeBag();
+@endphp
+
+<div {{ $modalShellBag->merge(['class' => $pageClasses]) }}>
     @if ($renderWorkspaceTabs)
         <x-property.workspace-tabs :workspace="$resolvedWorkspaceKey" />
     @endif

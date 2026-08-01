@@ -4,6 +4,7 @@ import './superadmin-auto-filter';
 import './property-auto-filter';
 import './property-flash-lifecycle';
 import './property-portal-ui';
+import './property-page-modals';
 import './property-modal-manager';
 import './property-form-modal';
 import './property-lease-row-actions';
@@ -22,6 +23,7 @@ import './property-payment-reversal';
 import './property-dashboard';
 import './utility-analytics';
 import './utility-operations';
+import './utility-revenue-page-modals';
 import { registerLoanWorkspaceAlpine } from './loan-workspace';
 
 import Alpine from 'alpinejs';

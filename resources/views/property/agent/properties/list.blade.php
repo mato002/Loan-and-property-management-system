@@ -9,19 +9,6 @@
         || $errors->has('user_id')
         || $errors->has('ownership_percent');
 @endphp
-<div
-    x-data="{
-        showPropertyForm: @js($propertyFormHasErrors),
-        showLinkLandlordForm: @js($linkLandlordFormHasErrors),
-        init() {
-            if (window.location.hash === '#link-landlord-form') {
-                this.showLinkLandlordForm = true;
-            }
-        },
-    }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     :legacy-toolbar="false"
     title="Property list"
@@ -33,11 +20,19 @@
     empty-title="No properties"
     empty-hint="Add a property below, then open Units to add doors and rents."
 >
+    <x-slot name="pageModalsAttributes"
+        x-data="{!! \Illuminate\Support\Js::from([
+            'showPropertyForm' => $propertyFormHasErrors,
+            'showLinkLandlordForm' => $linkLandlordFormHasErrors,
+        ]) !!}"
+        x-init="if (window.location.hash === '#link-landlord-form') { showLinkLandlordForm = true }"
+    ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showPropertyForm = true"
+            data-property-modal-open="showPropertyForm" @click="showPropertyForm = true"
         >
             <i class="fa-solid fa-building-circle-plus" aria-hidden="true"></i>
             <span>Add property</span>
@@ -45,7 +40,7 @@
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
-            @click="showLinkLandlordForm = true"
+            data-property-modal-open="showLinkLandlordForm" @click="showLinkLandlordForm = true"
         >
             <i class="fa-solid fa-link" aria-hidden="true"></i>
             <span>Link landlord</span>
@@ -449,4 +444,3 @@
         @endisset
     </x-slot>
 </x-property.workspace>
-</div>

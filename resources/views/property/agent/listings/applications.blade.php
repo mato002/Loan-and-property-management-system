@@ -3,11 +3,6 @@
     $applicationRequired = fn (string $k, bool $d = false) => (bool) (($applicationCfg[$k]['required'] ?? $d) && ($applicationCfg[$k]['enabled'] ?? true));
     $showApplicationFormByDefault = $errors->hasAny(['applicant_name','applicant_phone','applicant_email','status','property_unit_id','notes']);
 @endphp
-<div
-    x-data="{ showApplicationForm: @js($showApplicationFormByDefault) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     title="Applications"
     :show-search="false"
@@ -17,11 +12,13 @@
     :table-rows="$tableRows"
     empty-title="No applications"
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showApplicationForm' => $showApplicationFormByDefault]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showApplicationForm = true"
+            data-property-modal-open="showApplicationForm" @click="showApplicationForm = true"
         >
             <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
             <span>Add application</span>
@@ -167,4 +164,3 @@
         </x-slot>
     @endif
 </x-property.workspace>
-</div>

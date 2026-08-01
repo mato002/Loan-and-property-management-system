@@ -10,6 +10,8 @@ import { setupPropertyPaymentReversal } from './property-payment-reversal';
 import { setupPropertyWorkspaceTabs } from './property-workspace-tabs';
 import { setupPropertyWorkspaceUi } from './property-workspace-ui';
 
+import { ensurePropertyPageModalsInitialized } from './property-page-modals';
+
 export const PROPERTY_MAIN_FRAME_ID = 'property-main';
 const HYDRATION_GEN_ATTR = 'data-property-hydration-gen';
 
@@ -45,18 +47,8 @@ export function hydratePropertyMainAlpine(frame) {
         return;
     }
 
-    const initAlpineScopes = (root) => {
-        window.Alpine.initTree(root);
-        root.querySelectorAll('[data-workspace-modals]').forEach((host) => {
-            window.Alpine.initTree(host);
-        });
-    };
-
-    initAlpineScopes(frame);
-
-    // x-teleport templates and display:contents wrappers can miss the first pass after Turbo.
     requestAnimationFrame(() => {
-        initAlpineScopes(frame);
+        ensurePropertyPageModalsInitialized(frame);
     });
 }
 

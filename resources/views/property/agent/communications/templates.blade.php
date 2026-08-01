@@ -1,11 +1,6 @@
 @php
     $showTemplateFormByDefault = $errors->hasAny(['name','channel','subject','body']);
 @endphp
-<div
-    x-data="{ showTemplateForm: @js($showTemplateFormByDefault) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     title="Message templates"
     subtitle="Reusable SMS / email bodies. Merge placeholders are your convention until a linter is added."
@@ -16,11 +11,13 @@
     empty-title="No templates"
     empty-hint="Create templates below; delete only when unused."
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showTemplateForm' => $showTemplateFormByDefault]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showTemplateForm = true"
+            data-property-modal-open="showTemplateForm" @click="showTemplateForm = true"
         >
             <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
             <span>Add template</span>
@@ -81,4 +78,3 @@
         </ul>
     </div>
 </x-property.workspace>
-</div>

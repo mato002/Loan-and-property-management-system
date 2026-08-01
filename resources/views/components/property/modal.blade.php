@@ -21,8 +21,9 @@
 ])
 
 @php
-    $closeExpr = $close ?? "{$show} = false";
+    $showKey = $show;
     $modalId = $name ?: ('modal-' . substr(md5((string) $show . ($title ?? '')), 0, 8));
+    $closeExpr = $close ?? '$data[\''.$showKey.'\'] = false';
     $maxWidthClass = match ($maxWidth) {
         'sm' => 'max-w-sm',
         'md' => 'max-w-md',
@@ -48,7 +49,7 @@
 <template x-teleport="body">
 @endif
     <div
-        x-show="{{ $show }}"
+        x-show="$data['{{ $showKey }}']"
         x-cloak
         data-property-modal
         data-property-modal-id="{{ $modalId }}"
@@ -58,12 +59,13 @@
             @keydown.escape.window="{{ $closeExpr }}"
         @endif
         x-effect="
-            if ({{ $show }}) {
+            const open = Boolean($data['{{ $showKey }}']);
+            if (open) {
                 window.PropertyModalManager?.register({
                     id: @js($modalId),
                     element: $el,
                     closeOnEscape: @js((bool) $closeOnEscape),
-                    onClose: () => { {{ $closeExpr }} }
+                    onClose: () => { $data['{{ $showKey }}'] = false; }
                 });
             } else {
                 window.PropertyModalManager?.unregister(@js($modalId));
@@ -78,7 +80,7 @@
     >
         {{-- Backdrop — absorb clicks; never close on outside tap --}}
         <div
-            x-show="{{ $show }}"
+            x-show="$data['{{ $showKey }}']"
             x-transition:enter="transition-opacity ease-out duration-200"
             x-transition:enter-start="opacity-0"
             x-transition:enter-end="opacity-100"
@@ -92,7 +94,7 @@
 
         {{-- Panel — @click.stop prevents backdrop close; safe for native selects --}}
         <div
-            x-show="{{ $show }}"
+            x-show="$data['{{ $showKey }}']"
             x-transition:enter="transition ease-out duration-250"
             x-transition:enter-start="{{ $sheetEnter }}"
             x-transition:enter-end="{{ $sheetEnd }}"

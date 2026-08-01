@@ -6,26 +6,6 @@
         || $errors->has('advance')
         || (old('payment_form') === 'advance' && $errors->hasAny(['pm_tenant_id', 'channel', 'amount', 'paid_at', 'external_ref', 'notes']));
 @endphp
-<div
-    x-data="{
-        showInvoicePaymentForm: @js($showPaymentFormByDefault),
-        showAdvancePaymentForm: @js($showAdvanceFormByDefault),
-        init() {
-            window.addEventListener('property-payment-panel-open', (event) => {
-                const panel = event.detail?.panel;
-                if (panel === 'invoice-payment-panel') this.showInvoicePaymentForm = true;
-                if (panel === 'advance-payment-panel') this.showAdvancePaymentForm = true;
-            });
-            window.addEventListener('property-payment-panel-close', (event) => {
-                const panel = event.detail?.panel;
-                if (panel === 'invoice-payment-panel') this.showInvoicePaymentForm = false;
-                if (panel === 'advance-payment-panel') this.showAdvancePaymentForm = false;
-            });
-        },
-    }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     title="Payment tracking"
     subtitle="Manual receipt entry — allocates to an open invoice and updates balances."
@@ -38,11 +18,30 @@
     empty-title="No payment events"
     empty-hint="Record a payment for the paying tenant and choose an invoice with an open balance."
 >
+    <x-slot name="pageModalsAttributes"
+        x-data="{!! \Illuminate\Support\Js::from([
+            'showInvoicePaymentForm' => $showPaymentFormByDefault,
+            'showAdvancePaymentForm' => $showAdvanceFormByDefault,
+        ]) !!}"
+        x-init="
+            window.addEventListener('property-payment-panel-open', (event) => {
+                const panel = event.detail?.panel;
+                if (panel === 'invoice-payment-panel') showInvoicePaymentForm = true;
+                if (panel === 'advance-payment-panel') showAdvancePaymentForm = true;
+            });
+            window.addEventListener('property-payment-panel-close', (event) => {
+                const panel = event.detail?.panel;
+                if (panel === 'invoice-payment-panel') showInvoicePaymentForm = false;
+                if (panel === 'advance-payment-panel') showAdvancePaymentForm = false;
+            });
+        "
+    ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showInvoicePaymentForm = true"
+            data-property-modal-open="showInvoicePaymentForm" @click="showInvoicePaymentForm = true"
         >
             <i class="fa-solid fa-money-check-dollar" aria-hidden="true"></i>
             <span>Record payment</span>
@@ -50,7 +49,7 @@
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
-            @click="showAdvancePaymentForm = true"
+            data-property-modal-open="showAdvancePaymentForm" @click="showAdvancePaymentForm = true"
         >
             <i class="fa-solid fa-piggy-bank" aria-hidden="true"></i>
             <span>Record advance</span>
@@ -266,4 +265,3 @@
         @endif
     </x-slot>
 </x-property.workspace>
-</div>

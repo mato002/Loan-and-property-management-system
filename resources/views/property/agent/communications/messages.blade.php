@@ -2,13 +2,6 @@
     $canManage = (bool) ($canManageCommunications ?? false);
     $showMessageFormByDefault = $errors->hasAny(['channel', 'to_address', 'subject', 'body']);
 @endphp
-@if ($canManage)
-<div
-    x-data="{ showMessageForm: @js($showMessageFormByDefault) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
-@endif
 <x-property.workspace
     title="SMS / email"
     subtitle="Outbound SMS and email delivery log (tenant and staff sends). System alerts such as logins are on Notifications."
@@ -21,11 +14,15 @@
     empty-hint="Send a test SMS/email below to confirm provider and SMTP setup."
 >
     @if ($canManage)
+        <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showMessageForm' => $showMessageFormByDefault]) !!}" ></x-slot>
+    @endif
+
+    @if ($canManage)
         <x-slot name="actions">
             <button
                 type="button"
                 class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                @click="showMessageForm = true"
+                data-property-modal-open="showMessageForm" @click="showMessageForm = true"
             >
                 <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
                 <span>Send message</span>
@@ -243,6 +240,3 @@
         @endisset
     </x-slot>
 </x-property.workspace>
-@if ($canManage)
-</div>
-@endif

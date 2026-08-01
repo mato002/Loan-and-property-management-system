@@ -84,12 +84,18 @@
 
 <x-property-layout>
     <x-slot name="header">{{ $title }}</x-slot>
+    @php
+        $modalShellBag = isset($pageModalsAttributes)
+            ? $pageModalsAttributes->attributes->merge(['data-property-page-modals' => true])
+            : null;
+    @endphp
     <x-property.page
         :title="$title"
         :subtitle="$subtitle"
         :workspace="$resolvedWorkspaceKey"
         :show-workspace-tabs="$showWorkspaceTabs"
         :compact-list="$compactList"
+        :modal-shell-bag="$modalShellBag"
     >
         @if ($compactList && $hasPageActions)
             <x-slot name="actions">{{ $actions }}</x-slot>
@@ -125,7 +131,7 @@
         @endif
 
         @if ($hasModals)
-            <div class="hidden" aria-hidden="true" data-workspace-modals>
+            <div data-workspace-modals>
                 {{ $modals }}
             </div>
         @endif

@@ -17,11 +17,6 @@
         || $errors->has('lines')
         || collect($errors->keys())->contains(fn ($key) => is_string($key) && str_starts_with($key, 'lines.'));
 @endphp
-<div
-    x-data="{ showJournalForm: @js($journalFormHasErrors) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     title="Journal entry management"
     subtitle="Controlled double-entry posting with reversal-only correction."
@@ -32,11 +27,13 @@
     empty-title="No journal entries"
     empty-hint="Post your first balanced journal below."
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showJournalForm' => $journalFormHasErrors]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showJournalForm = true"
+            data-property-modal-open="showJournalForm" @click="showJournalForm = true"
         >
             <i class="fa-solid fa-book" aria-hidden="true"></i>
             <span>New journal entry</span>
@@ -422,4 +419,3 @@
         })();
     </script>
 </x-property.workspace>
-</div>

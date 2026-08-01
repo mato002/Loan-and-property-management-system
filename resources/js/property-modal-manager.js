@@ -5,6 +5,7 @@
  */
 
 import { PropertyFormModal as PropertyFormModalConfig } from './property-form-modal-config';
+import { resetPageModalFlagsBeforeFrameSwap } from './property-page-modals';
 
 const MODAL_DEBUG =
     import.meta.env.DEV ||
@@ -235,6 +236,27 @@ export function resetPropertyModalStackSilently(reason = 'manual') {
     releaseScrollLock();
 }
 
+/** Drop ghost stack entries when no modal is visible (prevents backdrop guard blocking clicks). */
+export function reconcilePropertyModalStackWithDom(reason = 'manual') {
+    if (modalStack.length === 0) {
+        return;
+    }
+
+    const hasVisibleModal = [...document.querySelectorAll('[data-property-modal]')].some((el) => {
+        if (!(el instanceof HTMLElement)) {
+            return false;
+        }
+
+        const style = window.getComputedStyle(el);
+
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+
+    if (!hasVisibleModal) {
+        resetPropertyModalStackSilently(`dom-reconcile:${reason}`);
+    }
+}
+
 /**
  * Alpine x-teleport leaves modals on document.body when #property-main swaps.
  * Remove stale dialogs so they do not reappear (e.g. payment reversal "Reason" on Payments load).
@@ -412,6 +434,7 @@ function bindTurboModalLifecycle() {
         }
         // Frame navigations do not fire turbo:before-visit; clear stack before purge so the
         // capture-phase backdrop guard cannot block clicks on the incoming page.
+        resetPageModalFlagsBeforeFrameSwap(event.target);
         resetPropertyModalStackSilently('turbo:before-frame-render');
         purgeOrphanedTeleportedPropertyModals('turbo:before-frame-render');
     });
@@ -424,6 +447,7 @@ function bindTurboModalLifecycle() {
         // and removes freshly teleported create/edit modals from the new page.
         requestAnimationFrame(() => {
             resetPropertyModalStackSilently('turbo:frame-load');
+            reconcilePropertyModalStackWithDom('turbo:frame-load');
         });
     });
 }
@@ -451,10 +475,30 @@ function bindEscapeHandler() {
 }
 
 bindTurboModalLifecycle();
+function hasVisiblePropertyModalInDom() {
+    return [...document.querySelectorAll('[data-property-modal]')].some((el) => {
+        if (!(el instanceof HTMLElement)) {
+            return false;
+        }
+
+        const style = window.getComputedStyle(el);
+
+        return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+}
+
 function bindModalBackdropGuard() {
     document.addEventListener(
         'click',
         (event) => {
+            if (!hasVisiblePropertyModalInDom()) {
+                if (modalStack.length > 0) {
+                    resetPropertyModalStackSilently('backdrop-guard-no-visible-modal');
+                }
+
+                return;
+            }
+
             if (modalStack.length === 0) {
                 return;
             }
@@ -493,6 +537,7 @@ window.PropertyModalManager = {
     closeTop: closeTopPropertyModal,
     closeAll: closeAllPropertyModals,
     resetStackSilently: resetPropertyModalStackSilently,
+    reconcileWithDom: reconcilePropertyModalStackWithDom,
     purgeOrphaned: purgeOrphanedTeleportedPropertyModals,
     getStack: getPropertyModalStack,
     isTop: isTopPropertyModal,

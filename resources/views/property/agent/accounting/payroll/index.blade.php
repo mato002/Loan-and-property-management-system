@@ -5,22 +5,19 @@
         || $errors->has('lines')
         || collect($errors->keys())->contains(fn ($key) => is_string($key) && str_starts_with($key, 'lines.'));
 @endphp
-<div
-    x-data="{ showRunPayrollForm: @js($payrollFormHasErrors) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     title="Payroll processing and control"
     subtitle="Run, approve, post, and reverse payroll with full accounting and audit controls."
     back-route="property.accounting.index"
     :stats="$stats"
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showRunPayrollForm' => $payrollFormHasErrors]) !!}"></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showRunPayrollForm = true"
+            data-property-modal-open="showRunPayrollForm" @click="showRunPayrollForm = true"
         >
             <i class="fa-solid fa-money-check-dollar" aria-hidden="true"></i>
             <span>Run payroll</span>
@@ -205,7 +202,6 @@
         </x-slot>
     @endisset
 </x-property.workspace>
-</div>
 
 <script>
 (() => {

@@ -1,11 +1,6 @@
 @php
     $showRequestFormByDefault = $errors->hasAny(['property_id', 'property_unit_id', 'category', 'urgency', 'description']);
 @endphp
-<div
-    x-data="{ showRequestForm: @js($showRequestFormByDefault) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
@@ -18,12 +13,14 @@
     empty-title="No maintenance requests"
     empty-hint="Log a request below; create a job from the Jobs screen once scoped."
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showRequestForm' => $showRequestFormByDefault]) !!}" ></x-slot>
+
     @if ($maintenanceEnabled)
         <x-slot name="actions">
             <button
                 type="button"
                 class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                @click="showRequestForm = true"
+                data-property-modal-open="showRequestForm" @click="showRequestForm = true"
             >
                 <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
                 <span>Add maintenance request</span>
@@ -157,4 +154,3 @@
         </x-slot>
     @endif
 </x-property.workspace>
-</div>

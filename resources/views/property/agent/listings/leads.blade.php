@@ -3,11 +3,6 @@
     $leadRequired = fn (string $k, bool $d = false) => (bool) (($leadCfg[$k]['required'] ?? $d) && ($leadCfg[$k]['enabled'] ?? true));
     $showLeadFormByDefault = $errors->hasAny(['name','phone','email','source','stage','property_unit_id','notes']);
 @endphp
-<div
-    x-data="{ showLeadForm: @js($showLeadFormByDefault) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     title="Lead tracking"
     back-route="property.listings.index"
@@ -16,11 +11,13 @@
     :table-rows="$tableRows"
     empty-title="No leads"
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showLeadForm' => $showLeadFormByDefault]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showLeadForm = true"
+            data-property-modal-open="showLeadForm" @click="showLeadForm = true"
         >
             <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
             <span>Add lead</span>
@@ -155,4 +152,3 @@
     </x-slot>
 
 </x-property.workspace>
-</div>

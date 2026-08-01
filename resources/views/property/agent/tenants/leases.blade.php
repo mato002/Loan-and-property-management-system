@@ -36,29 +36,6 @@
     $leaseFormOpen = $showLeaseFormByDefault || (bool) ($openLeaseCreateModal ?? false);
     $leaseCreateAlpineConfig = \App\Support\Property\LeaseCreateAlpineConfig::build($errors ?? null, $openingArrearsTypeOptions ?? []);
 @endphp
-<div
-    data-lease-form-root
-    x-data="Object.assign({ showLeaseCreateForm: @js($leaseFormOpen) }, leaseCreateFormAlpineState(@js($leaseCreateAlpineConfig)))"
-    :data-lease-form-open="showLeaseCreateForm ? '1' : '0'"
-    x-init="
-        const leaseFormStorageKey = 'property.leases.createFormOpen';
-        const bootLeaseCreatePanel = () => $nextTick(() => { window.initLeaseFormLogic?.(); });
-        try {
-            if (sessionStorage.getItem(leaseFormStorageKey) === '1') {
-                showLeaseCreateForm = true;
-            }
-        } catch (e) {}
-        if (showLeaseCreateForm) bootLeaseCreatePanel();
-        $watch('showLeaseCreateForm', (open) => {
-            try {
-                sessionStorage.setItem(leaseFormStorageKey, open ? '1' : '0');
-            } catch (e) {}
-            if (open) bootLeaseCreatePanel();
-        });
-    "
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
@@ -76,12 +53,34 @@
         ? 'When leases have end dates in the next 90 days, they appear here.'
         : 'Create a lease and select vacant units; active leases mark units occupied.'"
 >
+    <x-slot name="pageModalsAttributes"
+        data-lease-form-root
+        x-data="Object.assign({!! \Illuminate\Support\Js::from(['showLeaseCreateForm' => $leaseFormOpen]) !!}, leaseCreateFormAlpineState({!! \Illuminate\Support\Js::from($leaseCreateAlpineConfig) !!}))"
+        :data-lease-form-open="showLeaseCreateForm ? '1' : '0'"
+        x-init="
+            const leaseFormStorageKey = 'property.leases.createFormOpen';
+            const bootLeaseCreatePanel = () => $nextTick(() => { window.initLeaseFormLogic?.(); });
+            try {
+                if (sessionStorage.getItem(leaseFormStorageKey) === '1') {
+                    showLeaseCreateForm = true;
+                }
+            } catch (e) {}
+            if (showLeaseCreateForm) bootLeaseCreatePanel();
+            $watch('showLeaseCreateForm', (open) => {
+                try {
+                    sessionStorage.setItem(leaseFormStorageKey, open ? '1' : '0');
+                } catch (e) {}
+                if (open) bootLeaseCreatePanel();
+            });
+        "
+    ></x-slot>
+
     <x-slot name="actions">
         @if (($activeTab ?? 'leases') === 'leases')
             <button
                 type="button"
                 class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                @click="showLeaseCreateForm = true"
+                data-property-modal-open="showLeaseCreateForm" @click="showLeaseCreateForm = true"
             >
                 <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
                 <span>Create lease</span>
@@ -174,4 +173,3 @@
         </x-slot>
     @endif
 </x-property.workspace>
-</div>

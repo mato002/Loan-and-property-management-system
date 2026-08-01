@@ -14,11 +14,6 @@
             $unitEnabled = fn (string $k, bool $d = true) => (bool) (($unitFieldCfg[$k]['enabled'] ?? $d));
             $unitRequired = fn (string $k, bool $d = false) => (bool) (($unitFieldCfg[$k]['required'] ?? $d) && $unitEnabled($k, $d));
         @endphp
-<div
-    x-data="{ showUnitCreateForms: @js($unitCreateFormHasErrors) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     title="Unit status"
     subtitle="Occupied, vacant, notice — linked to leases and rent roll. Add listing description here, then manage photos, main image, and publish under Listings → Vacant units."
@@ -30,11 +25,13 @@
     empty-title="No units"
     empty-hint="Add units per property; vacant units can be attached when creating a lease."
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showUnitCreateForms' => $unitCreateFormHasErrors]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showUnitCreateForms = true"
+            data-property-modal-open="showUnitCreateForms" @click="showUnitCreateForms = true"
         >
             <i class="fa-solid fa-door-open" aria-hidden="true"></i>
             <span>Add units</span>
@@ -869,4 +866,3 @@
         }
     </script>
 </x-property.workspace>
-</div>

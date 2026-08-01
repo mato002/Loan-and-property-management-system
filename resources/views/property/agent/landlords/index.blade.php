@@ -13,11 +13,6 @@
         $onboardLandlord = \App\Models\User::query()->find((int) session('landlord_portal_credentials.landlord_id'));
     }
 @endphp
-<div
-    x-data="{ showLandlordCreateForm: @js($landlordCreateFormHasErrors) }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     title="Landlords"
     subtitle="Landlord intelligence desk: profile, ownership shares, collections, pending receivables, and your earnings in one place."
@@ -34,11 +29,13 @@
     empty-title="No landlord accounts yet"
     empty-hint="Register users with the landlord portal role, then attach them to properties from the property list."
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showLandlordCreateForm' => $landlordCreateFormHasErrors]) !!}" ></x-slot>
+
     <x-slot name="actions">
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showLandlordCreateForm = true"
+            data-property-modal-open="showLandlordCreateForm" @click="showLandlordCreateForm = true"
         >
             <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
             <span>Create landlord account</span>
@@ -202,4 +199,3 @@
         </x-slot>
     @endif
 </x-property.workspace>
-</div>

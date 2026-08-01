@@ -1,11 +1,3 @@
-<div
-    x-data="{
-        showTenantForm: @js($errors->any()),
-        showImportForm: @js((bool) ($openImportModal ?? false) || !empty($lastImportStats ?? null) || (is_array($lastImportErrors ?? null) && count($lastImportErrors) > 0)),
-    }"
-    class="w-full min-w-0"
-    data-property-page-modals
->
 <x-property.workspace
     :legacy-toolbar="false"
     :title="$pageTitle"
@@ -17,6 +9,12 @@
     empty-title="No tenants on file"
     empty-hint="Create tenants here, then add leases and invoices against them."
 >
+    <x-slot name="pageModalsAttributes"
+        x-data="{!! \Illuminate\Support\Js::from([
+            'showTenantForm' => $errors->any(),
+            'showImportForm' => (bool) ($openImportModal ?? false) || ! empty($lastImportStats ?? null) || (is_array($lastImportErrors ?? null) && count($lastImportErrors) > 0),
+        ]) !!}"
+    ></x-slot>
     <x-slot name="banner">
         <x-property.getting-started-banner
             :workflow-url="route('property.tenants.leases', absolute: false)"
@@ -28,7 +26,7 @@
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showTenantForm = true"
+            data-property-modal-open="showTenantForm" @click="showTenantForm = true"
         >
             <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
             <span>Add tenant</span>
@@ -36,7 +34,7 @@
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-gray-800 dark:text-slate-200 dark:hover:bg-slate-700/80"
-            @click="showImportForm = true"
+            data-property-modal-open="showImportForm" @click="showImportForm = true"
         >
             <i class="fa-solid fa-file-import" aria-hidden="true"></i>
             <span>Import CSV</span>
@@ -386,4 +384,3 @@
         </div>
     @endif
 </x-property.workspace>
-</div>
