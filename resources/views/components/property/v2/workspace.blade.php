@@ -207,13 +207,17 @@
                                 @endif
                                 @if ($hasToolbar)
                                     <x-slot name="desktop">
-                                        @php($__propertyToolbarViewport = 'desktop')
+                                        @php
+                                            $__propertyToolbarViewport = 'desktop';
+                                        @endphp
                                         <div class="flex flex-row flex-wrap items-end gap-2 w-full min-w-0 [&_form]:flex [&_form]:flex-row [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-2 [&_form]:w-full [&_form]:min-w-0">
                                             {{ $toolbar }}
                                         </div>
                                     </x-slot>
                                     <x-slot name="mobile">
-                                        @php($__propertyToolbarViewport = 'mobile')
+                                        @php
+                                            $__propertyToolbarViewport = 'mobile';
+                                        @endphp
                                         <div class="flex flex-col gap-3 w-full min-w-0 [&_form]:w-full [&_form]:space-y-3 [&_form_input]:w-full [&_form_input]:min-h-[44px] [&_form_select]:w-full [&_form_select]:min-h-[44px] [&_form_textarea]:w-full [&_form_button]:min-h-[44px] [&_form_a]:min-h-[44px]">
                                             {{ $toolbar }}
                                         </div>
