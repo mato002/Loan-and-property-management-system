@@ -13,7 +13,10 @@ class DashboardController extends Controller
 
     public function commandCenter(Request $request): View
     {
-        if ($request->session()->pull(self::DEFER_METRICS_SESSION_KEY, false)) {
+        $deferMetrics = $request->session()->pull(self::DEFER_METRICS_SESSION_KEY, false)
+            || $request->header('Turbo-Frame') === 'property-main';
+
+        if ($deferMetrics) {
             return property_view('property.agent.dashboard', [
                 'deferDashboardMetrics' => true,
             ]);

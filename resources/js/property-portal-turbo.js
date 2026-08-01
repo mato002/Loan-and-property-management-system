@@ -12,12 +12,10 @@ import {
 } from './property-frame-reconciliation';
 import {
     bumpPropertyHydrationGeneration,
-    hydratePropertyMainAlpine,
     PROPERTY_MAIN_FRAME_ID,
     resetPropertyHydrationGuard,
     schedulePropertyWorkspaceHydration,
 } from './property-workspace-hydration';
-import { ensurePropertyFormModalHost } from './property-form-modal';
 
 /** Guard flag so frame redirects do not recurse through turbo:before-visit. */
 let routingViaMainFrame = false;
@@ -25,11 +23,9 @@ let routingViaMainFrame = false;
 /** Avoid reload loops when the shell is already being restored. */
 let propertyPortalShellRecoveryInFlight = false;
 
-/** Delay before showing the loading bar (avoids flash on fast navigations). */
-const FRAME_LOADING_DELAY_MS = 160;
-const WORKSPACE_LOADING_DELAY_MS = 120;
+/** Delay before dimming the frame — keep high so fast Turbo swaps feel instant. */
+const FRAME_LOADING_DELAY_MS = 600;
 let frameLoadingTimer = null;
-let workspaceLoadingTimer = null;
 
 function isBypassTurboUrl(url) {
     const path = url.pathname.toLowerCase();
@@ -151,16 +147,10 @@ function schedulePropertyFrameLoading(frame) {
 }
 
 function showWorkspaceLoading() {
-    window.clearTimeout(workspaceLoadingTimer);
     getGlobalProgressEl()?.setAttribute('data-active', '');
-    workspaceLoadingTimer = window.setTimeout(() => {
-        getWorkspaceLoadingEl()?.setAttribute('data-active', '');
-    }, WORKSPACE_LOADING_DELAY_MS);
 }
 
 function hideWorkspaceLoading() {
-    window.clearTimeout(workspaceLoadingTimer);
-    workspaceLoadingTimer = null;
     getWorkspaceLoadingEl()?.removeAttribute('data-active');
     getGlobalProgressEl()?.removeAttribute('data-active');
 }
@@ -556,7 +546,7 @@ function wirePropertyFrameNavigation(root = document) {
 
     wirePropertyBypassLinks(scope);
 
-    scope.querySelectorAll('a[href]').forEach((link) => {
+    scope.querySelectorAll('a[href]:not([data-property-nav-wired])').forEach((link) => {
         if (!(link instanceof HTMLAnchorElement)) {
             return;
         }
@@ -564,6 +554,7 @@ function wirePropertyFrameNavigation(root = document) {
             return;
         }
         if (link.hasAttribute('data-turbo-frame')) {
+            link.setAttribute('data-property-nav-wired', '1');
             return;
         }
         const href = link.getAttribute('href');
@@ -578,9 +569,10 @@ function wirePropertyFrameNavigation(root = document) {
             return;
         }
         link.setAttribute('data-turbo-frame', PROPERTY_MAIN_FRAME_ID);
+        link.setAttribute('data-property-nav-wired', '1');
     });
 
-    scope.querySelectorAll('form[action]').forEach((form) => {
+    scope.querySelectorAll('form[action]:not([data-property-nav-wired])').forEach((form) => {
         if (!(form instanceof HTMLFormElement)) {
             return;
         }
@@ -588,6 +580,7 @@ function wirePropertyFrameNavigation(root = document) {
             return;
         }
         if (form.hasAttribute('data-turbo-frame')) {
+            form.setAttribute('data-property-nav-wired', '1');
             return;
         }
         try {
@@ -598,6 +591,7 @@ function wirePropertyFrameNavigation(root = document) {
             return;
         }
         form.setAttribute('data-turbo-frame', PROPERTY_MAIN_FRAME_ID);
+        form.setAttribute('data-property-nav-wired', '1');
     });
 }
 
@@ -679,6 +673,8 @@ document.addEventListener('turbo:before-frame-render', (event) => {
         return;
     }
     hideWorkspaceError();
+    hideWorkspaceLoading();
+    clearPropertyFrameLoading();
     bumpPropertyHydrationGeneration(event.target);
 });
 
@@ -814,6 +810,7 @@ document.addEventListener('turbo:click', (event) => {
     }
 
     closeAllPropertyDropdowns();
+    showWorkspaceLoading();
     event.preventDefault();
     visitPropertyMainFrame(resolvePropertyNavUrl(url.toString()));
 });
@@ -843,8 +840,6 @@ document.addEventListener('turbo:frame-load', (event) => {
     if (!(frame instanceof HTMLElement) || frame.id !== PROPERTY_MAIN_FRAME_ID) {
         return;
     }
-    hydratePropertyMainAlpine(frame);
-    ensurePropertyFormModalHost();
     afterMainFrameSwap(frame, 'turbo:frame-load');
 });
 

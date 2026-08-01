@@ -81,7 +81,9 @@ function bindPropertyFormModalHostEventsOnce() {
             return;
         }
         clearPendingPropertyFormModalOpens();
-        ensurePropertyFormModalHost();
+        if (!propertyFormModalHostApi?.handleOpen) {
+            ensurePropertyFormModalHost();
+        }
     });
 
     document.addEventListener('turbo:load', () => {

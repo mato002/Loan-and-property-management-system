@@ -35,8 +35,7 @@ export function isPropertyWorkspaceHydrating() {
 }
 
 /**
- * Bind Alpine on #property-main after Turbo swaps (inline modals, x-data CTAs, x-teleport dialogs).
- * Runs synchronously plus one rAF pass so teleported modals stay wired to their frame scope.
+ * Bind Alpine on #property-main after Turbo swaps (inline modals, x-data CTAs).
  */
 export function hydratePropertyMainAlpine(frame) {
     if (!(frame instanceof HTMLElement) || frame.id !== PROPERTY_MAIN_FRAME_ID) {
@@ -47,13 +46,6 @@ export function hydratePropertyMainAlpine(frame) {
     }
 
     window.Alpine.initTree(frame);
-
-    requestAnimationFrame(() => {
-        if (document.getElementById(PROPERTY_MAIN_FRAME_ID) !== frame) {
-            return;
-        }
-        window.Alpine.initTree(frame);
-    });
 }
 
 function syncHydratingWindowFlag() {
@@ -146,6 +138,42 @@ function shouldSkipHydration(frame, source, generation) {
     return false;
 }
 
+function runDeferredHydrationTasks(frame, hooks) {
+    const {
+        reconcilePropertyFrameWithBrowserUrl = () => {},
+        wirePropertyFrameNavigation = () => {},
+        setupPropertyWorkspaceTabs: setupTabs = () => {},
+        setupPropertyPaymentReversal: setupReversal = () => {},
+        onHydrationComplete = () => {},
+    } = hooks;
+
+    const navigationKey = propertyNavigationKey();
+    const isNewNavigation = navigationKey !== '' && navigationKey !== lastScrollResetNavigationKey;
+
+    if (isNewNavigation) {
+        setupTabs(frame);
+        lastScrollResetNavigationKey = navigationKey;
+    }
+
+    wirePropertyFrameNavigation(frame);
+    reconcilePropertyFrameWithBrowserUrl(frame, { force: false });
+    setupReversal(frame);
+    ensurePropertyFormModalHost();
+    onHydrationComplete(frame);
+}
+
+function scheduleDeferredHydrationTasks(frame, hooks) {
+    const run = () => runDeferredHydrationTasks(frame, hooks);
+
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 120 });
+
+        return;
+    }
+
+    window.setTimeout(run, 0);
+}
+
 /**
  * Workspace hydration body — callers must pass through schedulePropertyWorkspaceHydration.
  */
@@ -187,27 +215,24 @@ export function runPropertyWorkspaceHydration(frame, source, hooks = {}) {
         const isNewNavigation = navigationKey !== '' && navigationKey !== lastScrollResetNavigationKey;
 
         syncPropertyPortalNav(frame);
-        reconcilePropertyFrameWithBrowserUrl(frame, {
-            force: source === 'popstate' || source.startsWith('pageshow'),
-        });
-
         setupPropertyWorkspaceUi({ target: frame });
 
         if (isNewNavigation) {
-            setupPropertyWorkspaceTabs(frame);
             scrollPropertyMainToTop(frame);
-            lastScrollResetNavigationKey = navigationKey;
         }
-        wirePropertyFrameNavigation(frame);
-        wirePropertyFrameNavigation(document);
 
         hydratePropertyMainAlpine(frame);
-        setupPropertyPaymentReversal(frame);
-        ensurePropertyFormModalHost();
+
+        scheduleDeferredHydrationTasks(frame, {
+            reconcilePropertyFrameWithBrowserUrl,
+            wirePropertyFrameNavigation,
+            setupPropertyWorkspaceTabs,
+            setupPropertyPaymentReversal,
+            onHydrationComplete,
+        });
     } finally {
         workspaceHydrating = false;
         syncHydratingWindowFlag();
-        onHydrationComplete(frame);
     }
 }
 
