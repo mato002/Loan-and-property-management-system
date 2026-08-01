@@ -10,6 +10,16 @@
         >Go to Units</a>
     </div>
 @else
+    <div
+        id="listing-publish-slot"
+        class="mb-8 scroll-mt-24 min-h-0"
+        data-listings-create-url="{{ route('property.listings.create', absolute: false) }}"
+    >
+        @if ($selectedUnit)
+            @include('property.agent.listings.partials.publish_editor', ['selectedUnit' => $selectedUnit])
+        @endif
+    </div>
+
     <section id="vacant-roster" class="space-y-3">
         <div class="flex flex-wrap items-center gap-2">
             <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Vacant units</h2>
@@ -78,6 +88,7 @@
                                 'border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40',
                                 'bg-blue-50/80 dark:bg-blue-950/30 ring-1 ring-inset ring-blue-200/80 dark:ring-blue-800/60' => $isSelected,
                             ])
+                            data-listing-unit-id="{{ $u->id }}"
                             data-filter-text="{{ e($filterText) }}"
                         >
                             <td class="px-3 sm:px-4 py-3 text-slate-900 dark:text-white font-medium">{{ $u->label }}</td>
@@ -94,9 +105,9 @@
                             </td>
                             <td class="px-3 sm:px-4 py-3">
                                 <a
-                                    href="{{ route('property.listings.create', ['selected_unit' => $u->id], absolute: false) }}#listing-publish"
-                                    data-turbo-frame="property-main"
-                                    data-property-nav="property.listings.create"
+                                    href="{{ route('property.listings.publish-panel', $u, absolute: false) }}"
+                                    data-listing-publish
+                                    data-listing-unit-id="{{ $u->id }}"
                                     data-property-form-modal="off"
                                     class="text-blue-600 dark:text-blue-400 font-medium hover:underline"
                                 >Photos &amp; publish</a>
@@ -107,35 +118,4 @@
             </table>
         </div>
     </section>
-
-    @if ($selectedUnit)
-        <section id="listing-publish" class="mt-8 scroll-mt-24 space-y-4">
-            @include('property.agent.listings.partials.publish_editor', ['selectedUnit' => $selectedUnit])
-        </section>
-    @endif
-@endif
-
-@if ($selectedUnit)
-    <script>
-        (function scrollListingPublishEditor() {
-            const scrollToEditor = () => {
-                if (window.location.hash !== '#listing-publish') {
-                    return;
-                }
-                const editor = document.getElementById('listing-publish');
-                if (editor) {
-                    editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            };
-            document.addEventListener('turbo:load', scrollToEditor);
-            document.addEventListener('turbo:frame-load', (event) => {
-                if (event.target?.id === 'property-main') {
-                    scrollToEditor();
-                }
-            });
-            if (document.readyState !== 'loading') {
-                scrollToEditor();
-            }
-        })();
-    </script>
 @endif

@@ -469,6 +469,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/communications/conversations/{conversation}/reply', [PropertyCommunicationsWebController::class, 'replyConversation'])->middleware('property.permission:communications.manage')->name('communications.conversations.reply');
     Route::get('/communications', fn () => PropertyWorkspaceTabs::redirectToDefaultEntry('communications'))->name('communications.index');
 
+    Route::get('/listings/vacant/{property_unit}/publish-panel', [AgentPublicListingController::class, 'publishPanel'])->name('listings.publish-panel');
     Route::get('/listings/create', [AgentPublicListingController::class, 'create'])->name('listings.create');
     Route::post('/listings/start', [AgentPublicListingController::class, 'start'])->middleware('property.permission:listings.manage')->name('listings.start');
     Route::get('/listings/vacant', [AgentPublicListingController::class, 'index'])->name('listings.vacant');

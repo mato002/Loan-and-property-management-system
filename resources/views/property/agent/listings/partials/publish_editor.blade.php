@@ -2,7 +2,7 @@
     /** @var \App\Models\PropertyUnit $selectedUnit */
 @endphp
 
-<div class="rounded-2xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/40 dark:bg-blue-950/20 p-4 sm:p-5 space-y-4">
+<div id="listing-publish" class="rounded-2xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/40 dark:bg-blue-950/20 p-4 sm:p-5 space-y-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
             <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Publish editor</h2>
@@ -10,14 +10,13 @@
                 {{ $selectedUnit->property->name }} — <span class="font-medium text-slate-800 dark:text-slate-200">{{ $selectedUnit->label }}</span>
             </p>
         </div>
-        <a
-            href="{{ route('property.listings.create', absolute: false) }}"
-            data-turbo-frame="property-main"
-            data-property-nav="property.listings.create"
+        <button
+            type="button"
+            data-listing-publish-close
             class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
         >
             Back to roster
-        </a>
+        </button>
     </div>
 
     <div class="grid gap-6 lg:grid-cols-2">

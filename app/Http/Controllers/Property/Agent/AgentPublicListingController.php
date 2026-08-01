@@ -110,6 +110,17 @@ class AgentPublicListingController extends Controller
         ], $this->propertyFormModalViewData($request)));
     }
 
+    public function publishPanel(PropertyUnit $property_unit): View
+    {
+        abort_unless($property_unit->status === PropertyUnit::STATUS_VACANT, 404);
+
+        $property_unit->loadMissing(['property', 'publicImages']);
+
+        return view('property.agent.listings.partials.publish_editor', [
+            'selectedUnit' => $property_unit,
+        ]);
+    }
+
     public function start(Request $request): RedirectResponse
     {
         $data = $request->validate([

@@ -35,6 +35,27 @@ function propertyNavigationKey() {
     }
 }
 
+function focusListingPublishEditor(frame) {
+    if (!(frame instanceof HTMLElement)) {
+        return false;
+    }
+
+    const editor = frame.querySelector('#listing-publish-slot, #listing-publish');
+    if (!(editor instanceof HTMLElement)) {
+        return false;
+    }
+
+    if (editor.id === 'listing-publish-slot' && editor.childElementCount === 0) {
+        return false;
+    }
+
+    requestAnimationFrame(() => {
+        editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    return true;
+}
+
 export function isPropertyWorkspaceHydrating() {
     return workspaceHydrating || pendingHydrationGen !== null;
 }
@@ -228,7 +249,8 @@ export function runPropertyWorkspaceHydration(frame, source, hooks = {}) {
         syncPropertyPortalNav(frame);
         setupPropertyWorkspaceUi({ target: frame });
 
-        if (isNewNavigation) {
+        const hasListingPublishEditor = focusListingPublishEditor(frame);
+        if (isNewNavigation && !hasListingPublishEditor) {
             scrollPropertyMainToTop(frame);
         }
 

@@ -512,7 +512,19 @@ function visitPropertyMainFrame(url) {
     routingViaMainFrame = true;
     hideWorkspaceError();
     try {
-        Turbo.visit(resolvePropertyNavUrl(url), { frame: PROPERTY_MAIN_FRAME_ID });
+        let forceFresh = false;
+        try {
+            const parsed = new URL(url, window.location.href);
+            forceFresh = parsed.searchParams.has('selected_unit');
+        } catch {
+            // ignore malformed URLs
+        }
+
+        Turbo.visit(resolvePropertyNavUrl(url), {
+            frame: PROPERTY_MAIN_FRAME_ID,
+            action: 'advance',
+            ...(forceFresh ? { shouldCacheSnapshot: () => false } : {}),
+        });
     } finally {
         routingViaMainFrame = false;
     }
