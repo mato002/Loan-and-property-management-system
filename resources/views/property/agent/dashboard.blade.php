@@ -10,14 +10,12 @@
     >
         @include('property.agent.partials.dashboard_stats_light')
 
-        <turbo-frame
-            id="property-dashboard-heavy"
-            src="{{ route('property.dashboard.metrics', absolute: false) }}"
-            loading="eager"
-            data-turbo-action="replace"
+        <div
+            id="property-dashboard-heavy-host"
             data-property-heavy-metrics
+            data-metrics-url="{{ route('property.dashboard.metrics', absolute: false) }}"
         >
             @include('property.agent.partials.dashboard_heavy_skeleton')
-        </turbo-frame>
+        </div>
     </x-property.page>
 </x-property-layout>

@@ -28,6 +28,8 @@ final class PropertyDashboardOverview
 {
     private const CACHE_TTL_SECONDS = 60;
 
+    private const HEAVY_CACHE_TTL_SECONDS = 300;
+
     /**
      * @return array<string, mixed>
      */
@@ -61,7 +63,7 @@ final class PropertyDashboardOverview
         $scoped = AgentWorkspaceScope::shouldApply();
         $cacheKey = PropertyDashboardCache::heavyKey($userId, $scoped);
 
-        return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildHeavyForAgent());
+        return Cache::remember($cacheKey, self::HEAVY_CACHE_TTL_SECONDS, static fn () => self::buildHeavyForAgent());
     }
 
     /**

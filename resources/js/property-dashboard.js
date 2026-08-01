@@ -1,5 +1,9 @@
 import Chart from 'chart.js/auto';
 
+const HEAVY_METRICS_HEADER = 'X-Property-Dashboard-Metrics';
+
+let heavyMetricsAbort = null;
+
 function lineDataset(label, data, color) {
     return {
         label,
@@ -61,33 +65,69 @@ function destroyChartOnCanvas(canvasId, root = document) {
     }
 }
 
-function findHeavyMetricsFrame(scope = document) {
+function findHeavyMetricsHost(scope = document) {
     const root = scope instanceof Document ? scope : scope;
-    return root.querySelector?.('#property-dashboard-heavy[data-property-heavy-metrics]')
-        ?? document.getElementById('property-dashboard-heavy');
+    return root.querySelector?.('[data-property-heavy-metrics]')
+        ?? document.querySelector('[data-property-heavy-metrics]');
+}
+
+function cancelHeavyDashboardMetrics() {
+    heavyMetricsAbort?.abort();
+    heavyMetricsAbort = null;
 }
 
 /**
- * Nested turbo-frames inside #property-main do not always fetch src after a frame swap.
- * Force a reload so only the heavy section loads asynchronously.
+ * Fetch heavy dashboard HTML outside Turbo so navigation is never blocked.
  */
-function bootHeavyDashboardMetrics(scope = document) {
-    const frame = findHeavyMetricsFrame(scope);
-    if (!(frame instanceof HTMLElement)) {
+async function loadHeavyDashboardMetrics(host) {
+    if (!(host instanceof HTMLElement)) {
         return;
     }
 
-    const src = frame.getAttribute('src');
-    if (!src || frame.hasAttribute('complete')) {
+    const url = host.dataset.metricsUrl;
+    if (!url || host.dataset.loaded === '1' || host.dataset.loading === '1') {
         return;
     }
 
-    if (typeof frame.reload === 'function') {
-        frame.reload();
-        return;
-    }
+    host.dataset.loading = '1';
+    cancelHeavyDashboardMetrics();
+    heavyMetricsAbort = new AbortController();
 
-    frame.setAttribute('src', src);
+    try {
+        const response = await fetch(url, {
+            method: 'GET',
+            credentials: 'same-origin',
+            signal: heavyMetricsAbort.signal,
+            headers: {
+                [HEAVY_METRICS_HEADER]: '1',
+                Accept: 'text/html',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`Heavy metrics failed (${response.status})`);
+        }
+
+        const html = await response.text();
+        if (heavyMetricsAbort?.signal.aborted) {
+            return;
+        }
+
+        host.innerHTML = html;
+        host.dataset.loaded = '1';
+        initPropertyDashboardCharts(host);
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            return;
+        }
+        host.dataset.loaded = '0';
+    } finally {
+        host.dataset.loading = '0';
+        if (heavyMetricsAbort?.signal.aborted) {
+            heavyMetricsAbort = null;
+        }
+    }
 }
 
 function initPropertyDashboardCharts(root = document) {
@@ -136,12 +176,27 @@ function initPropertyDashboardCharts(root = document) {
 }
 
 function bootPropertyDashboard(scope = document) {
-    bootHeavyDashboardMetrics(scope);
+    const host = findHeavyMetricsHost(scope);
+    if (host instanceof HTMLElement) {
+        loadHeavyDashboardMetrics(host);
+    }
     initPropertyDashboardCharts(scope);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     bootPropertyDashboard(document);
+});
+
+document.addEventListener('turbo:load', () => {
+    bootPropertyDashboard(document);
+});
+
+document.addEventListener('turbo:click', () => {
+    cancelHeavyDashboardMetrics();
+}, true);
+
+document.addEventListener('turbo:before-visit', () => {
+    cancelHeavyDashboardMetrics();
 });
 
 document.addEventListener('turbo:frame-load', (e) => {
@@ -151,14 +206,5 @@ document.addEventListener('turbo:frame-load', (e) => {
 
     if (e.target.id === 'property-main') {
         bootPropertyDashboard(e.target);
-        return;
     }
-
-    if (e.target.id === 'property-dashboard-heavy') {
-        initPropertyDashboardCharts(e.target);
-    }
-});
-
-document.addEventListener('turbo:load', () => {
-    bootPropertyDashboard(document);
 });
