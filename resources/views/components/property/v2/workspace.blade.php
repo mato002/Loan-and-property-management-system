@@ -26,6 +26,8 @@
     'emptyHint' => 'Data will load here once this module is connected to your database.',
     'workspace' => null,
     'showWorkspaceTabs' => true,
+    /** Table-first layout: filters → compact KPIs → table; actions in page header */
+    'compactList' => false,
 ])
 
 @php
@@ -72,11 +74,24 @@
         \App\Models\PropertyPortalSetting::getValue('contact_address', ''),
         \App\Models\PropertyPortalSetting::getValue('contact_reg_no', ''),
     ])->filter(static fn ($value) => ! is_null($value) && trim((string) $value) !== '');
+    $compactList = (bool) ($compactList ?? false);
+    $hasBanner = isset($banner) && ! $banner->isEmpty();
+    $hasSecondary = isset($secondary) && ! $secondary->isEmpty();
+    $hasPageActions = isset($actions) && ! $actions->isEmpty();
 @endphp
 
 <x-property-layout>
     <x-slot name="header">{{ $title }}</x-slot>
-    <x-property.page :title="$title" :subtitle="$subtitle" :workspace="$resolvedWorkspaceKey" :show-workspace-tabs="$showWorkspaceTabs">
+    <x-property.page
+        :title="$title"
+        :subtitle="$subtitle"
+        :workspace="$resolvedWorkspaceKey"
+        :show-workspace-tabs="$showWorkspaceTabs"
+        :compact-list="$compactList"
+    >
+        @if ($compactList && $hasPageActions)
+            <x-slot name="actions">{{ $actions }}</x-slot>
+        @endif
         <div class="property-print-only mb-4 border-b border-slate-300 pb-3" style="display: none" aria-hidden="true">
             <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0">
@@ -103,14 +118,25 @@
             </div>
         </div>
 
+        @if ($compactList && $hasBanner)
+            {{ $banner }}
+        @endif
+
         @isset($above)
             @if (! $above->isEmpty())
-                <div class="mb-4 space-y-4 w-full min-w-0" data-workspace-above>
-                    {{ $above }}
-                </div>
+                @if ($compactList)
+                    <div class="hidden" aria-hidden="true" data-workspace-modals>
+                        {{ $above }}
+                    </div>
+                @else
+                    <div class="mb-4 space-y-4 w-full min-w-0" data-workspace-above>
+                        {{ $above }}
+                    </div>
+                @endif
             @endif
         @endisset
 
+        @if (! $compactList)
         <div class="print-hide flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between w-full min-w-0">
             <div class="print-hide flex flex-wrap items-center gap-3 min-w-0">
                 @if ($backRoute && ! $renderWorkspaceTabs)
@@ -131,6 +157,7 @@
 
         @if (count($stats) > 0)
             <x-property.responsive.stat-card-grid :stats="$stats" />
+        @endif
         @endif
 
         @if ($hasToolbar || $hasTable || ($slotHasContent && ! $hasTable))
@@ -176,6 +203,10 @@
                             </div>
                         @endif
                     </div>
+                @endif
+
+                @if ($compactList && count($stats) > 0)
+                    <x-property.compact-stat-strip :stats="$stats" class="print-hide" />
                 @endif
 
                 @if ($hasTableActions)
@@ -305,11 +336,20 @@
 
         @isset($footer)
             @if (! $footer->isEmpty())
-                <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/30 text-xs sm:text-sm text-slate-600 dark:text-slate-400 w-full min-w-0">
+                <div @class([
+                    'property-compact-panel rounded-xl sm:rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/30 text-xs sm:text-sm text-slate-600 dark:text-slate-400 w-full min-w-0',
+                    $compactList ? 'mt-2' : '',
+                ])>
                     {{ $footer }}
                 </div>
             @endif
         @endisset
+
+        @if ($compactList && $hasSecondary)
+            <div class="mt-4 w-full min-w-0" data-workspace-secondary>
+                {{ $secondary }}
+            </div>
+        @endif
 
         @if ($hasTable && $slotHasContent)
             <div class="w-full min-w-0 mt-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm p-4 sm:p-6 overflow-visible">

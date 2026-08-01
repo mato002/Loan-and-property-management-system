@@ -1,7 +1,30 @@
+@php
+    $propertyFormHasErrors = $errors->has('name')
+        || $errors->has('code')
+        || $errors->has('city')
+        || $errors->has('commission_percent')
+        || $errors->has('address_line')
+        || $errors->has('charge_templates');
+    $linkLandlordFormHasErrors = $errors->has('property_id')
+        || $errors->has('user_id')
+        || $errors->has('ownership_percent');
+@endphp
+<div
+    x-data="{
+        showPropertyForm: @js($propertyFormHasErrors),
+        showLinkLandlordForm: @js($linkLandlordFormHasErrors),
+        init() {
+            if (window.location.hash === '#link-landlord-form') {
+                this.showLinkLandlordForm = true;
+            }
+        },
+    }"
+    class="contents"
+>
 <x-property.workspace
+    compact-list
     :legacy-toolbar="false"
     title="Property list"
-    subtitle="Portfolio hierarchy: buildings, metadata, and landlord portal access."
     back-route="property.properties.index"
     :stats="$stats"
     :columns="$columns"
@@ -10,49 +33,27 @@
     empty-title="No properties"
     empty-hint="Add a property below, then open Units to add doors and rents."
 >
-    <x-slot name="above">
-        @php
-            $propertyFormHasErrors = $errors->has('name')
-                || $errors->has('code')
-                || $errors->has('city')
-                || $errors->has('commission_percent')
-                || $errors->has('address_line')
-                || $errors->has('charge_templates');
-            $linkLandlordFormHasErrors = $errors->has('property_id')
-                || $errors->has('user_id')
-                || $errors->has('ownership_percent');
-        @endphp
-        <div
-            x-data="{
-                showPropertyForm: @js($propertyFormHasErrors),
-                showLinkLandlordForm: @js($linkLandlordFormHasErrors),
-                init() {
-                    if (window.location.hash === '#link-landlord-form') {
-                        this.showLinkLandlordForm = true;
-                    }
-                },
-            }"
-            class="space-y-4"
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showPropertyForm = true"
         >
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <button
-                    type="button"
-                    class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
-                    @click="showPropertyForm = true"
-                >
-                    <i class="fa-solid fa-building-circle-plus text-lg" aria-hidden="true"></i>
-                    <span>Add property</span>
-                </button>
-                <button
-                    type="button"
-                    class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700 sm:w-auto"
-                    @click="showLinkLandlordForm = true"
-                >
-                    <i class="fa-solid fa-link text-lg" aria-hidden="true"></i>
-                    <span>Link landlord user</span>
-                </button>
-            </div>
+            <i class="fa-solid fa-building-circle-plus" aria-hidden="true"></i>
+            <span>Add property</span>
+        </button>
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+            @click="showLinkLandlordForm = true"
+        >
+            <i class="fa-solid fa-link" aria-hidden="true"></i>
+            <span>Link landlord</span>
+        </button>
+    </x-slot>
 
+    <x-slot name="above">
+        <div>
         <x-property.modal
             show="showPropertyForm"
             close="showPropertyForm = false"
@@ -356,9 +357,12 @@
 
             </form>
         </x-property.modal>
+        </div>
+    </x-slot>
 
-        @if (isset($landlordLinks) && $landlordLinks->isNotEmpty())
-            <div class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
+    @if (isset($landlordLinks) && $landlordLinks->isNotEmpty())
+        <x-slot name="secondary">
+            <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Landlord links</h3>
                 <p class="text-xs text-slate-500 dark:text-slate-400">Update ownership % or detach. New links are rejected if total ownership on a property would exceed 100%.</p>
                 <div class="overflow-x-auto overflow-y-auto max-h-80 pr-1">
@@ -423,9 +427,8 @@
                     </table>
                 </div>
             </div>
-        @endif
-        </div>
-    </x-slot>
+        </x-slot>
+    @endif
 
     <x-slot name="toolbar">
         @include('property.agent.partials.filter_toolbars.properties_list', [
@@ -446,3 +449,4 @@
         @endisset
     </x-slot>
 </x-property.workspace>
+</div>

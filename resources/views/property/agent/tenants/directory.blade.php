@@ -1,7 +1,14 @@
+<div
+    x-data="{
+        showTenantForm: @js($errors->any()),
+        showImportForm: @js((bool) ($openImportModal ?? false) || !empty($lastImportStats ?? null) || (is_array($lastImportErrors ?? null) && count($lastImportErrors) > 0)),
+    }"
+    class="contents"
+>
 <x-property.workspace
+    compact-list
     :legacy-toolbar="false"
     :title="$pageTitle"
-    :subtitle="$pageSubtitle"
     :show-search="false"
     back-route="property.tenants.index"
     :stats="$stats"
@@ -10,53 +17,38 @@
     empty-title="No tenants on file"
     empty-hint="Create tenants here, then add leases and invoices against them."
 >
+    <x-slot name="banner">
+        <x-property.getting-started-banner
+            :workflow-url="route('property.tenants.leases', absolute: false)"
+            storage-key="property.tenants.getting_started.dismissed"
+        />
+    </x-slot>
+
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showTenantForm = true"
+        >
+            <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+            <span>Add tenant</span>
+        </button>
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-gray-800 dark:text-slate-200 dark:hover:bg-slate-700/80"
+            @click="showImportForm = true"
+        >
+            <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+            <span>Import CSV</span>
+        </button>
+    </x-slot>
+
     @php
         $tenantCfg = $tenantFields ?? [];
         $tenantRequired = fn (string $k, bool $d = false) => (bool) (($tenantCfg[$k]['required'] ?? $d) && ($tenantCfg[$k]['enabled'] ?? true));
     @endphp
     <x-slot name="above">
-        <div
-            x-data="{ showTenantForm: @js($errors->any()), showImportForm: @js((bool) ($openImportModal ?? false) || !empty($lastImportStats ?? null) || (is_array($lastImportErrors ?? null) && count($lastImportErrors) > 0)) }"
-            class="space-y-4"
-        >
-        <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
-            <p class="text-lg font-semibold text-slate-900">Tenant onboarding flow</p>
-            <p class="mt-1 text-sm text-slate-600">Step 1: Add tenant → Step 2: Allocate unit (Lease) → Step 3: Create rent bill (Invoice) → Step 4: Collect payment.</p>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                    Allocate unit (Lease)
-                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
-                </a>
-                <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    Create rent bill
-                    <i class="fa-solid fa-file-invoice" aria-hidden="true"></i>
-                </a>
-                <a href="{{ route('property.revenue.payments', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    Collect payment
-                    <i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i>
-                </a>
-            </div>
-        </div>
-
-        <div class="max-w-3xl flex flex-wrap items-center gap-3">
-            <button
-                type="button"
-                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
-                @click="showTenantForm = true"
-            >
-                <i class="fa-solid fa-user-plus text-lg" aria-hidden="true"></i>
-                <span>Add tenant</span>
-            </button>
-            <button
-                type="button"
-                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-300 bg-white px-6 py-4 text-base font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:w-auto"
-                @click="showImportForm = true"
-            >
-                <i class="fa-solid fa-file-import text-lg" aria-hidden="true"></i>
-                Import tenants (CSV)
-            </button>
-        </div>
-
+        <div>
         <x-property.modal
             show="showTenantForm"
             close="showTenantForm = false"
@@ -394,3 +386,4 @@
         </div>
     @endif
 </x-property.workspace>
+</div>
