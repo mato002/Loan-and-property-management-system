@@ -97,6 +97,7 @@
                                     href="{{ route('property.listings.create', ['selected_unit' => $u->id], absolute: false) }}#listing-publish"
                                     data-turbo-frame="property-main"
                                     data-property-nav="property.listings.create"
+                                    data-property-form-modal="off"
                                     class="text-blue-600 dark:text-blue-400 font-medium hover:underline"
                                 >Photos &amp; publish</a>
                             </td>

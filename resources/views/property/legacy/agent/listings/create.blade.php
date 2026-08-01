@@ -11,7 +11,7 @@
     :stats="$stats"
     :columns="[]"
 >
-    <x-slot name="pageModalsAttributes" x-data="{ showNewListing: @json($showNewListingModal) }"></x-slot>
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showNewListing' => $showNewListingModal]) !!}"></x-slot>
 
     @if ($vacantUnits->isNotEmpty())
         <x-slot name="actions">

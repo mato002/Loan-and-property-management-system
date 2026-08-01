@@ -10,6 +10,9 @@ export const PropertyFormModal = {
         if (pathname.includes('/workspace/forms')) {
             return false;
         }
+        if (pathname.includes('/listings/create')) {
+            return false;
+        }
         return /\/(edit|create)\/?$/.test(pathname);
     },
 };
