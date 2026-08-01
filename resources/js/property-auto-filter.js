@@ -3,14 +3,18 @@
  */
 
 const PROPERTY_MAIN_FRAME_ID = 'property-main';
+const SEARCH_FOCUS_STORAGE_KEY = 'property.portal.searchFocus';
 
 function isPropertyWorkspaceHydrating() {
     return window.__propertyWorkspaceHydrating === true;
 }
-const SEARCH_DEBOUNCE_MS = 300;
+
+/** Long debounce so slow typers can finish before the frame reloads. */
+const SEARCH_DEBOUNCE_MS = 1100;
 const CONTROL_APPLY_DEBOUNCE_MS = 120;
 
 /** @typedef {{ inFlight: boolean, queuedSearch: boolean, activeSubmission: object|null }} FilterFormState */
+/** @typedef {{ name: string, formAction: string, selectionStart: number, selectionEnd: number }} SearchFocusMeta */
 
 /** @type {WeakMap<HTMLFormElement, FilterFormState>} */
 const filterFormState = new WeakMap();
@@ -20,6 +24,9 @@ const searchDebounceTimers = new WeakMap();
 
 /** @type {WeakMap<HTMLFormElement, number>} */
 const controlApplyDebounceTimers = new WeakMap();
+
+/** @type {SearchFocusMeta|null} */
+let pendingSearchFocusMeta = null;
 
 function getFilterFormState(form) {
     let state = filterFormState.get(form);
@@ -101,10 +108,129 @@ function abortActiveFilterSubmission(form) {
 }
 
 /**
+ * @param {HTMLInputElement} input
+ */
+function trackSearchFocus(input) {
+    if (!(input instanceof HTMLInputElement)) {
+        return;
+    }
+
+    const form = input.form;
+    pendingSearchFocusMeta = {
+        name: input.name || 'q',
+        formAction: form?.action || window.location.href,
+        selectionStart: input.selectionStart ?? input.value.length,
+        selectionEnd: input.selectionEnd ?? input.value.length,
+    };
+}
+
+/**
+ * @param {HTMLInputElement} input
+ */
+function persistSearchFocusForSubmit(input) {
+    trackSearchFocus(input);
+    if (!pendingSearchFocusMeta) {
+        return;
+    }
+
+    try {
+        sessionStorage.setItem(SEARCH_FOCUS_STORAGE_KEY, JSON.stringify(pendingSearchFocusMeta));
+    } catch {
+        // ignore quota / private mode
+    }
+}
+
+function readStoredSearchFocus() {
+    try {
+        const raw = sessionStorage.getItem(SEARCH_FOCUS_STORAGE_KEY);
+        if (!raw) {
+            return pendingSearchFocusMeta;
+        }
+
+        return JSON.parse(raw);
+    } catch {
+        return pendingSearchFocusMeta;
+    }
+}
+
+function clearStoredSearchFocus() {
+    pendingSearchFocusMeta = null;
+    try {
+        sessionStorage.removeItem(SEARCH_FOCUS_STORAGE_KEY);
+    } catch {
+        // ignore
+    }
+}
+
+function formActionMatches(form, expectedAction) {
+    if (!(form instanceof HTMLFormElement) || !expectedAction) {
+        return true;
+    }
+
+    try {
+        const expected = new URL(expectedAction, window.location.href);
+        const actual = new URL(form.action || window.location.href, window.location.href);
+
+        return expected.pathname === actual.pathname;
+    } catch {
+        return String(form.action || '') === String(expectedAction || '');
+    }
+}
+
+/**
+ * @param {HTMLElement|Document} scopeRoot
+ */
+export function restorePropertySearchFocus(scopeRoot) {
+    const meta = readStoredSearchFocus();
+    if (!meta?.name) {
+        return;
+    }
+
+    const root = scopeRoot instanceof HTMLElement ? scopeRoot : document;
+    const forms = root.querySelectorAll('form[method="get"]');
+    /** @type {HTMLInputElement[]} */
+    const matches = [];
+
+    forms.forEach((form) => {
+        if (!(form instanceof HTMLFormElement) || !formActionMatches(form, meta.formAction)) {
+            return;
+        }
+
+        form.querySelectorAll(`input[name="${meta.name}"]`).forEach((el) => {
+            if (el instanceof HTMLInputElement && isSearchInput(el) && !el.disabled) {
+                matches.push(el);
+            }
+        });
+    });
+
+    if (matches.length === 0) {
+        return;
+    }
+
+    const visible = matches.find((el) => {
+        return el.getClientRects().length > 0 && !el.closest('[hidden]');
+    }) || matches[0];
+
+    const length = visible.value.length;
+    const start = Math.min(meta.selectionStart ?? length, length);
+    const end = Math.min(meta.selectionEnd ?? length, length);
+
+    visible.focus({ preventScroll: true });
+    try {
+        visible.setSelectionRange(start, end);
+    } catch {
+        // ignore for unsupported input types
+    }
+
+    clearStoredSearchFocus();
+}
+
+/**
  * @param {HTMLFormElement} form
  * @param {'search'|'apply'} source
+ * @param {HTMLInputElement|null} searchInput
  */
-export function submitPropertyFilterForm(form, source = 'apply') {
+export function submitPropertyFilterForm(form, source = 'apply', searchInput = null) {
     if (!(form instanceof HTMLFormElement) || isPropertyWorkspaceHydrating()) {
         return;
     }
@@ -114,6 +240,10 @@ export function submitPropertyFilterForm(form, source = 'apply') {
 
     if (source === 'search' && nextQuery === form.dataset.lastFilterQuery) {
         return;
+    }
+
+    if (source === 'search' && searchInput instanceof HTMLInputElement) {
+        persistSearchFocusForSubmit(searchInput);
     }
 
     if (state.inFlight) {
@@ -130,6 +260,8 @@ export function submitPropertyFilterForm(form, source = 'apply') {
 }
 
 function scheduleSearchSubmit(form, input) {
+    trackSearchFocus(input);
+
     const existing = searchDebounceTimers.get(input);
     if (existing) {
         window.clearTimeout(existing);
@@ -137,7 +269,7 @@ function scheduleSearchSubmit(form, input) {
 
     const timer = window.setTimeout(() => {
         searchDebounceTimers.delete(input);
-        submitPropertyFilterForm(form, 'search');
+        submitPropertyFilterForm(form, 'search', input);
     }, SEARCH_DEBOUNCE_MS);
 
     searchDebounceTimers.set(input, timer);
@@ -180,6 +312,9 @@ export function wireAutoFilterForms(scopeRoot) {
                 input.addEventListener('input', () => {
                     scheduleSearchSubmit(form, input);
                 });
+                input.addEventListener('focus', () => {
+                    trackSearchFocus(input);
+                });
             });
 
         formFilterControls(form)
@@ -197,6 +332,10 @@ export function wireAutoFilterForms(scopeRoot) {
             },
             { capture: true },
         );
+    });
+
+    requestAnimationFrame(() => {
+        restorePropertySearchFocus(root);
     });
 }
 
@@ -262,7 +401,14 @@ function bindFilterFormTurboGuards() {
 
         if (state.queuedSearch) {
             state.queuedSearch = false;
-            queueMicrotask(() => submitPropertyFilterForm(form, 'search'));
+            const searchInput = form.querySelector('input[name="q"], input[type="search"], input[data-auto-search="true"]');
+            queueMicrotask(() => {
+                submitPropertyFilterForm(
+                    form,
+                    'search',
+                    searchInput instanceof HTMLInputElement ? searchInput : null,
+                );
+            });
         }
     });
 }
@@ -276,7 +422,8 @@ function bindFilterLifecycle() {
     document.addEventListener('DOMContentLoaded', () => run(document));
     document.addEventListener('turbo:load', () => run(document));
     document.addEventListener('turbo:frame-load', (event) => {
-        run(event.target instanceof HTMLElement ? event.target : document);
+        const frame = event.target instanceof HTMLElement ? event.target : document;
+        run(frame);
     });
     document.addEventListener('livewire:navigated', () => run(document));
     document.addEventListener('alpine:navigated', () => run(document));

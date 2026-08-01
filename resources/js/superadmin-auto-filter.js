@@ -26,7 +26,7 @@ function submitSaFilterForm(form) {
 function debouncedSubmitForForm(form) {
     let d = debouncedSubmitByForm.get(form);
     if (!d) {
-        d = debounce(() => submitSaFilterForm(form), 420);
+        d = debounce(() => submitSaFilterForm(form), 1100);
         debouncedSubmitByForm.set(form, d);
     }
     return d;

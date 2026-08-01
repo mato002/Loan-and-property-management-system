@@ -27,6 +27,20 @@
         :columns="$columns"
         {{ $attributes->except(['inPropertyFormModal', 'title', 'subtitle', 'backRoute', 'stats', 'columns']) }}
     >
+        @isset($actions)
+            <x-slot name="actions">{{ $actions }}</x-slot>
+        @endisset
+        @isset($modals)
+            <x-slot name="modals">{{ $modals }}</x-slot>
+        @endisset
+        @isset($pageModalsAttributes)
+            <x-slot name="pageModalsAttributes" :attributes="$pageModalsAttributes->attributes">
+                {{ $pageModalsAttributes }}
+            </x-slot>
+        @endisset
+        @isset($toolbar)
+            <x-slot name="toolbar">{{ $toolbar }}</x-slot>
+        @endisset
         {{ $slot }}
     </x-property.workspace>
 @endif
