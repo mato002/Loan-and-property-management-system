@@ -8,7 +8,7 @@
     :reset-url="$receiptsUrl"
     :drawer-label="$drawerLabel"
     data-filter-cascade="property-unit-tenant"
-    data-filter-cascade-catalog='@json($filterCascadeCatalog ?? ['units' => [], 'tenants' => []])'
+    data-filter-cascade-catalog="{!! \Illuminate\Support\Js::from($filterCascadeCatalog ?? ['units' => [], 'tenants' => []]) !!}"
     data-filter-cascade-auto-apply="true"
     :chip-labels="[
         'q' => 'Search',
