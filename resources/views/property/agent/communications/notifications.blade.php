@@ -8,7 +8,7 @@
     empty-title="No notifications yet"
     empty-hint="New alerts will appear here automatically."
 >
-    <x-slot name="above">
+    <x-slot name="tabs">
         @include('property.agent.communications.partials.communications_manage_bar', ['manageContext' => 'notifications'])
 
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">

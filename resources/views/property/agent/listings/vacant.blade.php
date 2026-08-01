@@ -4,7 +4,19 @@
     :stats="$stats"
     :columns="[]"
 >
-    <x-slot name="above">
+    <x-slot name="actions">
+        <a
+            href="{{ route('property.listings.create', absolute: false) }}"
+            data-turbo-frame="property-main"
+            data-property-nav="property.listings.create"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        >
+            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+            <span>Setup a listing</span>
+        </a>
+    </x-slot>
+
+    <x-slot name="secondary">
         <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
             <p class="text-lg font-semibold text-slate-900">Vacancy publishing flow</p>
             <div class="mt-3 flex flex-wrap gap-2">
@@ -21,14 +33,6 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <a
-            href="{{ route('property.listings.create', absolute: false) }}"
-            data-turbo-frame="property-main"
-            data-property-nav="property.listings.create"
-            class="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-            Setup a listing
-        </a>
         <input
             type="search"
             data-table-filter="parent"

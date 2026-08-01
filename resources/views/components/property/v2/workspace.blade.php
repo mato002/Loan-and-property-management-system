@@ -26,7 +26,7 @@
     'emptyHint' => 'Data will load here once this module is connected to your database.',
     'workspace' => null,
     'showWorkspaceTabs' => true,
-    /** Table-first layout: filters → compact KPIs → table; actions in page header */
+    /** Table-first layout: title + actions → filters → compact KPIs → table; actions in page header */
     'compactList' => true,
 ])
 

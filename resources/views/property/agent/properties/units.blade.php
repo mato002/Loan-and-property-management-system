@@ -1,16 +1,4 @@
-<x-property.workspace
-    title="Unit status"
-    subtitle="Occupied, vacant, notice — linked to leases and rent roll. Add listing description here, then manage photos, main image, and publish under Listings → Vacant units."
-    back-route="property.properties.index"
-    :stats="$stats"
-    :columns="$columns"
-    :table-rows="$tableRows"
-    :show-search="false"
-    empty-title="No units"
-    empty-hint="Add units per property; vacant units can be attached when creating a lease."
->
-    <x-slot name="above">
-        @php
+@php
             $unitCreateFormHasErrors = $errors->has('property_id')
                 || $errors->has('unit_count')
                 || $errors->has('label')
@@ -26,49 +14,43 @@
             $unitEnabled = fn (string $k, bool $d = true) => (bool) (($unitFieldCfg[$k]['enabled'] ?? $d));
             $unitRequired = fn (string $k, bool $d = false) => (bool) (($unitFieldCfg[$k]['required'] ?? $d) && $unitEnabled($k, $d));
         @endphp
-        <div x-data="{ showUnitCreateForms: @js($unitCreateFormHasErrors) }" class="space-y-4">
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
-            <div class="flex flex-wrap items-center gap-2">
-                <a href="{{ route('property.properties.units', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All units</a>
-                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'vacant']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Vacant</a>
-                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'occupied']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Occupied</a>
-                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'notice']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Notice</a>
-                <a href="{{ route('property.properties.units.export', request()->query(), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
-            </div>
-        </div>
+<div
+    x-data="{ showUnitCreateForms: @js($unitCreateFormHasErrors) }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
+<x-property.workspace
+    title="Unit status"
+    subtitle="Occupied, vacant, notice — linked to leases and rent roll. Add listing description here, then manage photos, main image, and publish under Listings → Vacant units."
+    back-route="property.properties.index"
+    :stats="$stats"
+    :columns="$columns"
+    :table-rows="$tableRows"
+    :show-search="false"
+    empty-title="No units"
+    empty-hint="Add units per property; vacant units can be attached when creating a lease."
+>
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showUnitCreateForms = true"
+        >
+            <i class="fa-solid fa-door-open" aria-hidden="true"></i>
+            <span>Add units</span>
+        </button>
+    </x-slot>
 
-        <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
-            <p class="text-lg font-semibold text-slate-900">Setup flow: Units → Tenants → Rent</p>
-            <p class="mt-1 text-sm text-slate-600">Add units (doors) here. Then allocate a vacant unit to a tenant using a Lease, then bill rent using an Invoice.</p>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <a href="{{ route('property.tenants.directory', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    Add tenant
-                    <i class="fa-solid fa-users" aria-hidden="true"></i>
-                </a>
-                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                    Allocate unit (Lease)
-                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
-                </a>
-                <a href="{{ route('property.listings.vacant', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    Publish vacancy
-                    <i class="fa-solid fa-bullhorn" aria-hidden="true"></i>
-                </a>
-            </div>
-        </div>
-
-        <div class="max-w-3xl">
-            <button
-                type="button"
-                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
-                @click="showUnitCreateForms = !showUnitCreateForms"
-            >
-                <i class="fa-solid fa-door-open text-lg" aria-hidden="true"></i>
-                <span x-text="showUnitCreateForms ? 'Hide unit creation forms' : 'Add units'"></span>
-            </button>
-        </div>
-
-        <div x-show="showUnitCreateForms" x-cloak class="grid gap-4 xl:grid-cols-2 items-start">
-        <form
+    <x-slot name="modals">
+        <x-property.modal
+            show="showUnitCreateForms"
+            close="showUnitCreateForms = false"
+            name="unit-create"
+            title="Add units"
+            max-width="4xl"
+        >
+            <div class="grid gap-4 xl:grid-cols-2 items-start">
+<form
             method="post"
             action="{{ route('property.units.store') }}"
             x-data="{ statusMode: '{{ old('status_mode', 'single') }}' }"
@@ -348,11 +330,44 @@
                 <button type="submit" class="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">Save all groups</button>
             </form>
         </div>
+            </div>
+        </x-property.modal>
+    </x-slot>
+
+    <x-slot name="secondary">
+        <div class="space-y-4">
+<div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
+            <div class="flex flex-wrap items-center gap-2">
+                <a href="{{ route('property.properties.units', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All units</a>
+                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'vacant']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Vacant</a>
+                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'occupied']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Occupied</a>
+                <a href="{{ route('property.properties.units', array_merge((array) ($filters ?? []), ['status' => 'notice']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Notice</a>
+                <a href="{{ route('property.properties.units.export', request()->query(), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
+            </div>
+        </div>
+
+        <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
+            <p class="text-lg font-semibold text-slate-900">Setup flow: Units → Tenants → Rent</p>
+            <p class="mt-1 text-sm text-slate-600">Add units (doors) here. Then allocate a vacant unit to a tenant using a Lease, then bill rent using an Invoice.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.tenants.directory', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Add tenant
+                    <i class="fa-solid fa-users" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                    Allocate unit (Lease)
+                    <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.listings.vacant', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    Publish vacancy
+                    <i class="fa-solid fa-bullhorn" aria-hidden="true"></i>
+                </a>
+            </div>
         </div>
         </div>
     </x-slot>
 
-    <x-slot name="toolbar">
+<x-slot name="toolbar">
         <form method="get" action="{{ route('property.properties.units') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-9">
             <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search unit, property, type..." class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 lg:col-span-2" />
             <select name="property_id" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
@@ -854,3 +869,4 @@
         }
     </script>
 </x-property.workspace>
+</div>

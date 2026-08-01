@@ -1,20 +1,4 @@
-<x-property.workspace
-    :legacy-toolbar="false"
-    :show-search="false"
-    title="Utility Charge Lines Ledger"
-    subtitle="Monthly-style charge lines per unit (water, service charge, etc.). Invoice integration can follow; rent stays on the rent roll."
-    back-route="property.revenue.index"
-    :stats="$stats"
-    :columns="[]"
-    empty-title="No utility charges"
-    empty-hint="Add a line below — amounts are stored separately from core rent."
->
-    <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.utilities', ['filters' => $filters])
-    </x-slot>
-
-    <x-slot name="above">
-        @php
+@php
             $utilityCreateFormHasErrors = $errors->has('charge_type')
                 || $errors->has('billing_month')
                 || $errors->has('property_id')
@@ -78,8 +62,8 @@
                 }
             }
         @endphp
-        <div
-            x-data="{
+<div
+    x-data="{
                 showAddChargeForm: @js($utilityCreateFormHasErrors),
                 showWaterReadingForm: @js($utilityCreateFormHasErrors),
                 allUnits: @js($unitOptions),
@@ -269,55 +253,53 @@
                     return ids.includes(Number(unitId));
                 },
             }"
-            x-init="if (!$store.utilityUi) { Alpine.store('utilityUi', { showBillingActions: false, showWaterReadingsTable: false, showReadiness: true }); } $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
-            class="space-y-4"
-        >
-        <div class="flex flex-wrap gap-3">
-            <button
-                type="button"
-                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
-                @click="showAddChargeForm = !showAddChargeForm"
-            >
-                <i class="fa-solid fa-bolt text-lg" aria-hidden="true"></i>
-                <span x-text="showAddChargeForm ? 'Hide add charge line' : 'Show add charge line'"></span>
-            </button>
-            <button
-                type="button"
-                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-cyan-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-cyan-200 transition hover:bg-cyan-700 sm:w-auto"
-                @click="showWaterReadingForm = !showWaterReadingForm"
-            >
-                <i class="fa-solid fa-droplet text-lg" aria-hidden="true"></i>
-                <span x-text="showWaterReadingForm ? 'Hide water meter reading' : 'Show water meter reading'"></span>
-            </button>
-            <button
-                type="button"
-                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-amber-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-amber-200 transition hover:bg-amber-700 sm:w-auto"
-                @click="$store.utilityUi.showReadiness = !$store.utilityUi.showReadiness"
-            >
-                <i class="fa-solid fa-list-check text-lg" aria-hidden="true"></i>
-                <span x-text="$store.utilityUi.showReadiness ? 'Hide billing readiness' : 'Show billing readiness'"></span>
-            </button>
-            <button
-                type="button"
-                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-violet-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700 sm:w-auto"
-                @click="$store.utilityUi.showBillingActions = !$store.utilityUi.showBillingActions"
-            >
-                <i class="fa-solid fa-file-invoice-dollar text-lg" aria-hidden="true"></i>
-                <span x-text="$store.utilityUi.showBillingActions ? 'Hide billing actions' : 'Show billing actions'"></span>
-            </button>
-            <button
-                type="button"
-                class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-slate-700 px-6 py-4 text-base font-bold text-white shadow-lg shadow-slate-300 transition hover:bg-slate-800 sm:w-auto"
-                @click="$store.utilityUi.showWaterReadingsTable = !$store.utilityUi.showWaterReadingsTable"
-            >
-                <i class="fa-solid fa-table text-lg" aria-hidden="true"></i>
-                <span x-text="$store.utilityUi.showWaterReadingsTable ? 'Hide water readings table' : 'Show water readings table'"></span>
-            </button>
-        </div>
+    x-init="if (!$store.utilityUi) { Alpine.store('utilityUi', { showBillingActions: false, showWaterReadingsTable: false, showReadiness: true }); } $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
+<x-property.workspace
+    :legacy-toolbar="false"
+    :show-search="false"
+    title="Utility Charge Lines Ledger"
+    subtitle="Monthly-style charge lines per unit (water, service charge, etc.). Invoice integration can follow; rent stays on the rent roll."
+    back-route="property.revenue.index"
+    :stats="$stats"
+    :columns="[]"
+    empty-title="No utility charges"
+    empty-hint="Add a line below — amounts are stored separately from core rent."
+>
+    <x-slot name="toolbar">
+        @include('property.agent.partials.filter_toolbars.utilities', ['filters' => $filters])
+    </x-slot>
 
-        <div class="grid gap-4 lg:grid-cols-2">
-        <div x-show="showAddChargeForm" x-cloak>
-        <form method="post" action="{{ route('property.revenue.utilities.store') }}" x-ref="addChargeForm" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showAddChargeForm = true"
+        >
+            <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+            <span>Add charge line</span>
+        </button>
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-cyan-300 bg-cyan-50 px-3 py-2 text-sm font-semibold text-cyan-900 hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-100 dark:hover:bg-cyan-950/60"
+            @click="showWaterReadingForm = true"
+        >
+            <i class="fa-solid fa-droplet" aria-hidden="true"></i>
+            <span>Water reading</span>
+        </button>
+    </x-slot>
+
+    <x-slot name="modals">
+        <x-property.modal
+            show="showAddChargeForm"
+            close="showAddChargeForm = false"
+            name="utility-charge-create"
+            title="Add charge line"
+            max-width="2xl"
+        >
+<form method="post" action="{{ route('property.revenue.utilities.store') }}" x-ref="addChargeForm" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add charge line</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -400,10 +382,16 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save charge</button>
         </form>
-        </div>
+        </x-property.modal>
 
-        <div x-show="showWaterReadingForm" x-cloak class="lg:col-span-2 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Water meter reading</h3>
+        <x-property.modal
+            show="showWaterReadingForm"
+            close="showWaterReadingForm = false"
+            name="utility-water-reading"
+            title="Water meter reading"
+            max-width="4xl"
+        >
+<h3 class="text-sm font-semibold text-slate-900 dark:text-white">Water meter reading</h3>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property (water-enabled)</label>
                 <select x-model.number="selectedWaterPropertyId" @change="syncUnitSelection('reading')" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
@@ -519,13 +507,39 @@
                 </div>
                 <button type="submit" :disabled="!hasSelectedWaterProperty()" class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400">Save bulk readings</button>
                 </form>
-            </div>
-        </div>
-        </div>
+        </x-property.modal>
+    </x-slot>
+
+    <x-slot name="secondary">
+        <div class="flex flex-wrap gap-2">
+            <button
+                type="button"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100"
+                @click="$store.utilityUi.showReadiness = !$store.utilityUi.showReadiness"
+            >
+                <i class="fa-solid fa-list-check" aria-hidden="true"></i>
+                <span x-text="$store.utilityUi.showReadiness ? 'Hide billing readiness' : 'Billing readiness'"></span>
+            </button>
+            <button
+                type="button"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100"
+                @click="$store.utilityUi.showBillingActions = !$store.utilityUi.showBillingActions"
+            >
+                <i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>
+                <span x-text="$store.utilityUi.showBillingActions ? 'Hide billing actions' : 'Billing actions'"></span>
+            </button>
+            <button
+                type="button"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-gray-800 dark:text-slate-200 dark:hover:bg-slate-700/80"
+                @click="$store.utilityUi.showWaterReadingsTable = !$store.utilityUi.showWaterReadingsTable"
+            >
+                <i class="fa-solid fa-table" aria-hidden="true"></i>
+                <span x-text="$store.utilityUi.showWaterReadingsTable ? 'Hide water readings' : 'Water readings'"></span>
+            </button>
         </div>
     </x-slot>
 
-    <div x-show="$store.utilityUi?.showReadiness" x-cloak class="mt-6 rounded-2xl border border-amber-200 bg-amber-50/40 p-4 shadow-sm space-y-3">
+<div x-show="$store.utilityUi?.showReadiness" x-cloak class="mt-6 rounded-2xl border border-amber-200 bg-amber-50/40 p-4 shadow-sm space-y-3">
         <div class="flex flex-wrap items-end justify-between gap-3">
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Billing readiness</h3>
             <form method="get" action="{{ route('property.revenue.utilities', absolute: false) }}" class="flex flex-wrap items-end gap-2">
@@ -745,3 +759,4 @@
         @endif
     </x-slot>
 </x-property.workspace>
+</div>

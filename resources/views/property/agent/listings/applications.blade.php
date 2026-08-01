@@ -1,3 +1,13 @@
+@php
+    $applicationCfg = $applicationFields ?? [];
+    $applicationRequired = fn (string $k, bool $d = false) => (bool) (($applicationCfg[$k]['required'] ?? $d) && ($applicationCfg[$k]['enabled'] ?? true));
+    $showApplicationFormByDefault = $errors->hasAny(['applicant_name','applicant_phone','applicant_email','status','property_unit_id','notes']);
+@endphp
+<div
+    x-data="{ showApplicationForm: @js($showApplicationFormByDefault) }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
 <x-property.workspace
     title="Applications"
     :show-search="false"
@@ -7,76 +17,26 @@
     :table-rows="$tableRows"
     empty-title="No applications"
 >
-    @php
-        $applicationCfg = $applicationFields ?? [];
-        $applicationRequired = fn (string $k, bool $d = false) => (bool) (($applicationCfg[$k]['required'] ?? $d) && ($applicationCfg[$k]['enabled'] ?? true));
-    @endphp
-    <x-slot name="above">
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
-            <div class="flex flex-wrap items-center gap-2">
-                <a href="{{ route('property.listings.applications', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All applications</a>
-                <a href="{{ route('property.listings.applications', array_merge((array) ($filters ?? []), ['status' => 'review']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">In review</a>
-                <a href="{{ route('property.listings.applications', array_merge((array) ($filters ?? []), ['status' => 'approved']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Approved</a>
-                <a href="{{ route('property.listings.applications.export', (array) ($filters ?? []), absolute: false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
-            </div>
-        </div>
-
-        <form method="get" action="{{ route('property.listings.applications') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-                <div class="lg:col-span-2">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
-                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name, phone, email, notes..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
-                    <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">All</option>
-                        @foreach (['received', 'review', 'approved', 'declined', 'withdrawn'] as $st)
-                            <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ ucfirst($st) }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-                    <select name="unit_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="">All</option>
-                        @foreach ($units as $u)
-                            <option value="{{ $u->id }}" @selected((string) ($filters['unit_id'] ?? '') === (string) $u->id)>{{ $u->property->name }} / {{ $u->label }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">From</label>
-                    <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">To</label>
-                    <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rows</label>
-                    <select name="per_page" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        @foreach ([10, 20, 50, 100] as $pageSize)
-                            <option value="{{ $pageSize }}" @selected((int) ($filters['per_page'] ?? 20) === $pageSize)>{{ $pageSize }} / page</option>
-                        @endforeach
-                    </select>
-                </div>
-            </div>
-            <div class="flex flex-wrap gap-2">
-                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
-                <a href="{{ route('property.listings.applications', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
-            </div>
-        </form>
-        @php
-            $showApplicationFormByDefault = $errors->hasAny(['applicant_name','applicant_phone','applicant_email','status','property_unit_id','notes']);
-        @endphp
-        <details class="space-y-3 group" @if($showApplicationFormByDefault) open @endif>
-        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showApplicationForm = true"
+        >
             <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
-            <span class="group-open:hidden">Add application</span>
-            <span class="hidden group-open:inline">Hide application form</span>
-        </summary>
-        <form method="post" action="{{ route('property.listings.applications.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+            <span>Add application</span>
+        </button>
+    </x-slot>
+
+    <x-slot name="modals">
+        <x-property.modal
+            show="showApplicationForm"
+            close="showApplicationForm = false"
+            name="application-create"
+            title="New application"
+            max-width="3xl"
+        >
+        <form method="post" action="{{ route('property.listings.applications.store') }}" class="space-y-3">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New application</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -133,7 +93,65 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save application</button>
         </form>
-        </details>
+        </x-property.modal>
+    </x-slot>
+
+    <x-slot name="tabs">
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('property.listings.applications', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All applications</a>
+            <a href="{{ route('property.listings.applications', array_merge((array) ($filters ?? []), ['status' => 'review']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">In review</a>
+            <a href="{{ route('property.listings.applications', array_merge((array) ($filters ?? []), ['status' => 'approved']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Approved</a>
+            <a href="{{ route('property.listings.applications.export', (array) ($filters ?? []), absolute: false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
+        </div>
+    </x-slot>
+
+    <x-slot name="toolbar">
+        <form method="get" action="{{ route('property.listings.applications') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3 w-full min-w-0">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
+                    <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Name, phone, email, notes..." class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
+                    <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">All</option>
+                        @foreach (['received', 'review', 'approved', 'declined', 'withdrawn'] as $st)
+                            <option value="{{ $st }}" @selected(($filters['status'] ?? '') === $st)>{{ ucfirst($st) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
+                    <select name="unit_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="">All</option>
+                        @foreach ($units as $u)
+                            <option value="{{ $u->id }}" @selected((string) ($filters['unit_id'] ?? '') === (string) $u->id)>{{ $u->property->name }} / {{ $u->label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">From</label>
+                    <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">To</label>
+                    <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rows</label>
+                    <select name="per_page" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        @foreach ([10, 20, 50, 100] as $pageSize)
+                            <option value="{{ $pageSize }}" @selected((int) ($filters['per_page'] ?? 20) === $pageSize)>{{ $pageSize }} / page</option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
+                <a href="{{ route('property.listings.applications', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
+            </div>
+        </form>
     </x-slot>
 
     @if (isset($applicationsPager))
@@ -149,3 +167,4 @@
         </x-slot>
     @endif
 </x-property.workspace>
+</div>

@@ -10,29 +10,6 @@
     empty-title="No rows for this filter"
     empty-hint="All active leases are invoiced for this month, or try filter “All active”."
 >
-    <x-slot name="above">
-        <div class="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm">
-            <p class="text-lg font-semibold text-slate-900">Who is not being invoiced?</p>
-            <p class="mt-1 text-sm text-slate-600">
-                This report compares <span class="font-medium">active leases</span> to rent invoices issued in
-                <span class="font-medium">{{ $month }}</span>.
-                Rows marked <span class="font-medium">Not invoiced</span> can be billed from here.
-                After a lease rent increase, use filter <span class="font-medium">Rent increase due</span> to issue supplement invoices for the difference.
-            </p>
-            @if (! ($automationOn ?? false))
-                <p class="mt-2 text-xs text-amber-800 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2">
-                    Auto rent invoicing is <span class="font-semibold">off</span> (Settings → Workflow adjustments).
-                    Use <span class="font-semibold">Generate all missing</span> below or enable automation.
-                </p>
-            @endif
-            <div class="mt-3 flex flex-wrap gap-2">
-                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Leases</a>
-                <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Invoices</a>
-                <a href="{{ route('property.revenue.arrears', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Arrears (unpaid only)</a>
-            </div>
-        </div>
-    </x-slot>
-
     <x-slot name="actions">
         @if ($canGenerate ?? false)
             <form
@@ -71,6 +48,29 @@
                 </button>
             </form>
         @endif
+    </x-slot>
+
+    <x-slot name="secondary">
+        <div class="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5 shadow-sm">
+            <p class="text-lg font-semibold text-slate-900">Who is not being invoiced?</p>
+            <p class="mt-1 text-sm text-slate-600">
+                This report compares <span class="font-medium">active leases</span> to rent invoices issued in
+                <span class="font-medium">{{ $month }}</span>.
+                Rows marked <span class="font-medium">Not invoiced</span> can be billed from here.
+                After a lease rent increase, use filter <span class="font-medium">Rent increase due</span> to issue supplement invoices for the difference.
+            </p>
+            @if (! ($automationOn ?? false))
+                <p class="mt-2 text-xs text-amber-800 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2">
+                    Auto rent invoicing is <span class="font-semibold">off</span> (Settings → Workflow adjustments).
+                    Use <span class="font-semibold">Generate all missing</span> below or enable automation.
+                </p>
+            @endif
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.tenants.leases', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Leases</a>
+                <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Invoices</a>
+                <a href="{{ route('property.revenue.arrears', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Arrears (unpaid only)</a>
+            </div>
+        </div>
     </x-slot>
 
     <x-slot name="toolbar">

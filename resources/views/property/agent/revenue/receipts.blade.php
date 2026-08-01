@@ -10,7 +10,7 @@
     empty-title="No paid-invoice receipts listed"
     empty-hint="Shows invoices marked paid; link eTIMS when your integration is ready."
 >
-    <x-slot name="above">
+    <x-slot name="secondary">
         <div class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm max-w-3xl">
             <p class="text-lg font-semibold text-slate-900">Receipts</p>
             <p class="mt-1 text-sm text-slate-600">Receipts appear after invoices are fully paid. Normal flow: Lease → Invoice → Payment → Receipt.</p>

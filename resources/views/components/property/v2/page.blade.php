@@ -34,8 +34,11 @@
                     'font-semibold text-slate-900 dark:text-slate-100 tracking-tight leading-tight',
                     $compactList ? 'text-base sm:text-lg' : 'text-lg sm:text-xl',
                 ])>{{ $title }}</h1>
-                @if ($subtitle && ! $compactList)
-                    <p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-snug max-w-3xl">{{ $subtitle }}</p>
+                @if ($subtitle)
+                    <p @class([
+                        'text-slate-600 dark:text-slate-400 leading-snug max-w-3xl',
+                        $compactList ? 'text-xs sm:text-sm mt-0.5' : 'text-sm mt-1',
+                    ])>{{ $subtitle }}</p>
                 @endif
             </div>
             @isset($actions)

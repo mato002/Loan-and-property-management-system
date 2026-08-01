@@ -1,4 +1,13 @@
+@php
+    $showMovementFormByDefault = $errors->hasAny(['property_unit_id', 'movement_type', 'status', 'scheduled_on', 'completed_on', 'notes']);
+@endphp
+<div
+    x-data="{ showMovementForm: @js($showMovementFormByDefault) }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
 <x-property.workspace
+    :legacy-toolbar="false"
     title="Move-in / move-out"
     subtitle="Schedule and complete move events per unit. Checklists and deposits can attach to these rows later."
     back-route="property.tenants.index"
@@ -9,18 +18,103 @@
     empty-title="No movement events"
     empty-hint="Log a planned move-in or move-out below."
 >
-    <x-slot name="above">
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
-            <div class="flex flex-wrap items-center gap-2">
-                <a href="{{ route('property.tenants.movements', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All movements</a>
-                <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'planned', 'status' => 'planned']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Planned</a>
-                <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'in_progress', 'status' => 'in_progress']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">In progress</a>
-                <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'done', 'status' => 'done']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Done</a>
-                <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'move_out', 'movement_type' => 'move_out']), absolute: false) }}" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Move-outs</a>
-            </div>
-        </div>
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showMovementForm = true"
+        >
+            <i class="fa-solid fa-truck-moving" aria-hidden="true"></i>
+            <span>Log movement</span>
+        </button>
+    </x-slot>
 
-        <form method="get" action="{{ route('property.tenants.movements') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
+    <x-slot name="modals">
+        <x-property.modal
+            show="showMovementForm"
+            close="showMovementForm = false"
+            name="movement-create"
+            title="Log movement"
+            max-width="2xl"
+        >
+            <form method="post" action="{{ route('property.tenants.movements.store') }}" class="space-y-3">
+                @csrf
+                @if (! $tenantMoveInEnabled)
+                    <p class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                        Move-in form is disabled in System setup. You can still log move-out events.
+                    </p>
+                @endif
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
+                        <x-property.quick-create-select
+                            name="property_unit_id"
+                            :required="true"
+                            :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
+                            :create="[
+                                'mode' => 'ajax',
+                                'title' => 'Add unit',
+                                'endpoint' => route('property.units.store_json'),
+                                'fields' => [
+                                    ['name' => 'property_id', 'label' => 'Property', 'required' => true, 'span' => '2', 'type' => 'select', 'placeholder' => 'Select property', 'options' => collect($units)->map(fn($u) => ['value' => $u->property_id, 'label' => $u->property->name])->unique('value')->values()->all()],
+                                    ['name' => 'label', 'label' => 'Unit label', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. A1'],
+                                    ['name' => 'unit_type', 'label' => 'Unit type', 'required' => false, 'type' => 'select', 'options' => [['value' => 'apartment', 'label' => 'Apartment'], ['value' => 'single_room', 'label' => 'Single room'], ['value' => 'bedsitter', 'label' => 'Bedsitter'], ['value' => 'studio', 'label' => 'Studio'], ['value' => 'bungalow', 'label' => 'Bungalow'], ['value' => 'maisonette', 'label' => 'Maisonette'], ['value' => 'villa', 'label' => 'Villa'], ['value' => 'townhouse', 'label' => 'Townhouse'], ['value' => 'commercial', 'label' => 'Commercial']]],
+                                    ['name' => 'status', 'label' => 'Status', 'required' => false, 'type' => 'select', 'options' => [['value' => 'vacant', 'label' => 'Vacant'], ['value' => 'occupied', 'label' => 'Occupied'], ['value' => 'notice', 'label' => 'Notice']]],
+                                ],
+                            ]"
+                        />
+                        @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Type</label>
+                        <select name="movement_type" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                            <option value="move_in" @selected(old('movement_type') === 'move_in')>Move in</option>
+                            <option value="move_out" @selected(old('movement_type') === 'move_out')>Move out</option>
+                        </select>
+                        @error('movement_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
+                        <select name="status" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                            @foreach (['planned', 'in_progress', 'done', 'cancelled'] as $st)
+                                <option value="{{ $st }}" @selected(old('status', 'planned') === $st)>{{ ucfirst(str_replace('_', ' ', $st)) }}</option>
+                            @endforeach
+                        </select>
+                        @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Scheduled</label>
+                        <input type="date" name="scheduled_on" value="{{ old('scheduled_on') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        @error('scheduled_on')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Completed</label>
+                        <input type="date" name="completed_on" value="{{ old('completed_on') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                        @error('completed_on')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                        <textarea name="notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('notes') }}</textarea>
+                        @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save</button>
+            </form>
+        </x-property.modal>
+    </x-slot>
+
+    <x-slot name="tabs">
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('property.tenants.movements', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All movements</a>
+            <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'planned', 'status' => 'planned']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Planned</a>
+            <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'in_progress', 'status' => 'in_progress']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">In progress</a>
+            <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'done', 'status' => 'done']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Done</a>
+            <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['preset' => 'move_out', 'movement_type' => 'move_out']), absolute: false) }}" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Move-outs</a>
+        </div>
+    </x-slot>
+
+    <x-slot name="toolbar">
+        <form method="get" action="{{ route('property.tenants.movements') }}" class="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm space-y-3">
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
                 <div class="lg:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
@@ -70,7 +164,9 @@
                 <a href="{{ route('property.tenants.movements', array_merge((array) ($filters ?? []), ['export' => 'word']), absolute: false) }}" data-turbo="false" class="rounded-xl border border-indigo-300 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Word</a>
             </div>
         </form>
+    </x-slot>
 
+    <x-slot name="secondary">
         <div class="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-5 shadow-sm max-w-3xl">
             <p class="text-lg font-semibold text-slate-900">Handover flow: Move-ins &amp; Move-outs</p>
             <p class="mt-1 text-sm text-slate-600">Use this page for checklists and handover notes. Leases can auto-log move-ins/move-outs; you can also log manual events here.</p>
@@ -84,80 +180,6 @@
                     <i class="fa-solid fa-building" aria-hidden="true"></i>
                 </a>
             </div>
-        </div>
-        <div x-data="{ showMovementForm: @js($errors->hasAny(['property_unit_id','movement_type','status','scheduled_on','completed_on','notes'])) }" class="space-y-3">
-        <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showMovementForm = !showMovementForm"
-        >
-            <i class="fa-solid fa-truck-moving" aria-hidden="true"></i>
-            <span x-text="showMovementForm ? 'Hide movement form' : 'Log movement'"></span>
-        </button>
-        <form method="post" action="{{ route('property.tenants.movements.store') }}" x-show="showMovementForm" x-cloak class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
-            @csrf
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Log movement</h3>
-            @if (! $tenantMoveInEnabled)
-                <p class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-                    Move-in form is disabled in System setup. You can still log move-out events.
-                </p>
-            @endif
-            <div class="grid gap-3 sm:grid-cols-2">
-                <div class="sm:col-span-2">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
-                    <x-property.quick-create-select
-                        name="property_unit_id"
-                        :required="true"
-                        :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => $u->property->name.' / '.$u->label, 'selected' => (string) old('property_unit_id') === (string) $u->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Add unit',
-                            'endpoint' => route('property.units.store_json'),
-                            'fields' => [
-                                ['name' => 'property_id', 'label' => 'Property', 'required' => true, 'span' => '2', 'type' => 'select', 'placeholder' => 'Select property', 'options' => collect($units)->map(fn($u) => ['value' => $u->property_id, 'label' => $u->property->name])->unique('value')->values()->all()],
-                                ['name' => 'label', 'label' => 'Unit label', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. A1'],
-                                ['name' => 'unit_type', 'label' => 'Unit type', 'required' => false, 'type' => 'select', 'options' => [['value' => 'apartment', 'label' => 'Apartment'], ['value' => 'single_room', 'label' => 'Single room'], ['value' => 'bedsitter', 'label' => 'Bedsitter'], ['value' => 'studio', 'label' => 'Studio'], ['value' => 'bungalow', 'label' => 'Bungalow'], ['value' => 'maisonette', 'label' => 'Maisonette'], ['value' => 'villa', 'label' => 'Villa'], ['value' => 'townhouse', 'label' => 'Townhouse'], ['value' => 'commercial', 'label' => 'Commercial']]],
-                                ['name' => 'status', 'label' => 'Status', 'required' => false, 'type' => 'select', 'options' => [['value' => 'vacant', 'label' => 'Vacant'], ['value' => 'occupied', 'label' => 'Occupied'], ['value' => 'notice', 'label' => 'Notice']]],
-                            ],
-                        ]"
-                    />
-                    @error('property_unit_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Type</label>
-                    <select name="movement_type" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="move_in" @selected(old('movement_type') === 'move_in')>Move in</option>
-                        <option value="move_out" @selected(old('movement_type') === 'move_out')>Move out</option>
-                    </select>
-                    @error('movement_type')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
-                    <select name="status" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        @foreach (['planned', 'in_progress', 'done', 'cancelled'] as $st)
-                            <option value="{{ $st }}" @selected(old('status', 'planned') === $st)>{{ ucfirst(str_replace('_', ' ', $st)) }}</option>
-                        @endforeach
-                    </select>
-                    @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Scheduled</label>
-                    <input type="date" name="scheduled_on" value="{{ old('scheduled_on') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                    @error('scheduled_on')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Completed</label>
-                    <input type="date" name="completed_on" value="{{ old('completed_on') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
-                    @error('completed_on')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-                <div class="sm:col-span-2">
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
-                    <textarea name="notes" rows="2" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">{{ old('notes') }}</textarea>
-                    @error('notes')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
-                </div>
-            </div>
-            <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save</button>
-        </form>
         </div>
     </x-slot>
 
@@ -228,3 +250,4 @@
         </div>
     </x-slot>
 </x-property.workspace>
+</div>

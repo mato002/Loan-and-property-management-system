@@ -1,3 +1,11 @@
+@php
+    $showPenaltyFormByDefault = $errors->hasAny(['name','scope','trigger_event','grace_days','formula','percent','amount','cap','effective_from','is_active']);
+@endphp
+<div
+    x-data="{ showPenaltyForm: @js($showPenaltyFormByDefault) }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
@@ -10,18 +18,26 @@
     empty-title="No penalty rules"
     empty-hint="Add a rule below. Applied / waived counts stay at zero until billing automation uses this table."
 >
-    <x-slot name="above">
-        @php
-            $showPenaltyFormByDefault = $errors->hasAny(['name','scope','trigger_event','grace_days','formula','percent','amount','cap','effective_from','is_active']);
-        @endphp
-        <details class="space-y-3 group" @if($showPenaltyFormByDefault) open @endif>
-            <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                <i class="fa-solid fa-percent" aria-hidden="true"></i>
-                <span class="group-open:hidden">Add penalty rule</span>
-                <span class="hidden group-open:inline">Hide penalty rule form</span>
-            </summary>
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showPenaltyForm = true"
+        >
+            <i class="fa-solid fa-percent" aria-hidden="true"></i>
+            <span>Add penalty rule</span>
+        </button>
+    </x-slot>
 
-        <form method="post" action="{{ route('property.revenue.penalties.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl">
+    <x-slot name="modals">
+        <x-property.modal
+            show="showPenaltyForm"
+            close="showPenaltyForm = false"
+            name="penalty-rule-create"
+            title="New penalty rule"
+            max-width="3xl"
+        >
+        <form method="post" action="{{ route('property.revenue.penalties.store') }}" class="space-y-3">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New rule</h3>
             <div class="grid gap-3 sm:grid-cols-2">
@@ -83,7 +99,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save rule</button>
         </form>
-        </details>
+        </x-property.modal>
     </x-slot>
 
     <x-slot name="toolbar">
@@ -118,3 +134,4 @@
         @endisset
     </x-slot>
 </x-property.workspace>
+</div>

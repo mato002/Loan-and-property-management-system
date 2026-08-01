@@ -1,4 +1,19 @@
+@php
+    $amenityCfg = $amenityFields ?? [];
+    $amenityRequired = fn (string $k, bool $d = false) => (bool) (($amenityCfg[$k]['required'] ?? $d) && ($amenityCfg[$k]['enabled'] ?? true));
+    $amenityLibraryFormHasErrors = $errors->hasAny(['name', 'category']);
+    $amenityAttachFormHasErrors = $errors->hasAny(['pm_amenity_id', 'property_id']);
+@endphp
+<div
+    x-data="{
+        showAmenityLibraryForm: @js($amenityLibraryFormHasErrors),
+        showAmenityAttachForm: @js($amenityAttachFormHasErrors),
+    }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
 <x-property.workspace
+    :legacy-toolbar="false"
     title="Amenities"
     subtitle="Library of amenity labels and which properties they apply to."
     back-route="property.properties.index"
@@ -9,41 +24,35 @@
     empty-title="No amenities in library"
     empty-hint="Add types below, then tag properties."
 >
-    @php
-        $amenityCfg = $amenityFields ?? [];
-        $amenityRequired = fn (string $k, bool $d = false) => (bool) (($amenityCfg[$k]['required'] ?? $d) && ($amenityCfg[$k]['enabled'] ?? true));
-    @endphp
-    <x-slot name="above">
-        @if ($errors->has('amenity'))
-            <p class="text-sm text-red-600 dark:text-red-400">{{ $errors->first('amenity') }}</p>
-        @endif
-        @php
-            $amenityLibraryFormHasErrors = $errors->hasAny(['name', 'category']);
-            $amenityAttachFormHasErrors = $errors->hasAny(['pm_amenity_id', 'property_id']);
-        @endphp
-        <div x-data="{ showAmenityLibraryForm: @js($amenityLibraryFormHasErrors), showAmenityAttachForm: @js($amenityAttachFormHasErrors) }" class="space-y-4">
-            <div class="flex flex-wrap items-center gap-3">
-                <button
-                    type="button"
-                    class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                    @click="showAmenityLibraryForm = !showAmenityLibraryForm"
-                >
-                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                    <span x-text="showAmenityLibraryForm ? 'Hide amenity library form' : 'Add amenity to library'"></span>
-                </button>
-                <button
-                    type="button"
-                    class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-                    @click="showAmenityAttachForm = !showAmenityAttachForm"
-                >
-                    <i class="fa-solid fa-link" aria-hidden="true"></i>
-                    <span x-text="showAmenityAttachForm ? 'Hide property tag form' : 'Tag amenity to property'"></span>
-                </button>
-            </div>
-        <div class="grid gap-4 lg:grid-cols-2 max-w-5xl">
-            <form method="post" action="{{ route('property.properties.amenities.store') }}" x-show="showAmenityLibraryForm" x-cloak class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showAmenityLibraryForm = true"
+        >
+            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+            <span>Add amenity</span>
+        </button>
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            @click="showAmenityAttachForm = true"
+        >
+            <i class="fa-solid fa-link" aria-hidden="true"></i>
+            <span>Tag property</span>
+        </button>
+    </x-slot>
+
+    <x-slot name="modals">
+        <x-property.modal
+            show="showAmenityLibraryForm"
+            close="showAmenityLibraryForm = false"
+            name="amenity-library-create"
+            title="Add to library"
+            max-width="lg"
+        >
+            <form method="post" action="{{ route('property.properties.amenities.store') }}" class="space-y-3">
                 @csrf
-                <h3 class="text-sm font-semibold text-slate-900">Add to library</h3>
                 <div>
                     <label class="block text-xs font-medium text-slate-600">Name</label>
                     <input type="text" name="name" value="{{ old('name') }}" @required($amenityRequired('name', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" placeholder="e.g. Solar water heating" />
@@ -56,8 +65,19 @@
                 </div>
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save amenity</button>
             </form>
+        </x-property.modal>
 
-            <form method="post" action="{{ route('property.properties.amenities.attach') }}" x-show="showAmenityAttachForm" x-cloak class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3"
+        <x-property.modal
+            show="showAmenityAttachForm"
+            close="showAmenityAttachForm = false"
+            name="amenity-attach"
+            title="Tag a property"
+            max-width="lg"
+        >
+            <form
+                method="post"
+                action="{{ route('property.properties.amenities.attach') }}"
+                class="space-y-3"
                 x-data="{
                     selectedAmenity: '{{ old('pm_amenity_id', '') }}',
                     selectedProperty: '{{ old('property_id', '') }}',
@@ -70,7 +90,6 @@
                 }"
             >
                 @csrf
-                <h3 class="text-sm font-semibold text-slate-900">Tag a property</h3>
                 <div>
                     <label class="block text-xs font-medium text-slate-600">Amenity</label>
                     <select name="pm_amenity_id" x-model="selectedAmenity" required class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
@@ -100,13 +119,14 @@
                 </div>
                 <button type="submit" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50">Attach</button>
             </form>
-        </div>
-        </div>
+        </x-property.modal>
     </x-slot>
 
-    <x-slot name="actions">
-        <a href="{{ route('property.properties.amenities', array_merge(request()->query(), ['preset' => 'tagged', 'tagged' => 'yes']), false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Tagged only</a>
-        <a href="{{ route('property.properties.amenities', array_merge(request()->query(), ['preset' => 'unused', 'tagged' => 'no']), false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Unused only</a>
+    <x-slot name="tabs">
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('property.properties.amenities', array_merge(request()->query(), ['preset' => 'tagged', 'tagged' => 'yes']), false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Tagged only</a>
+            <a href="{{ route('property.properties.amenities', array_merge(request()->query(), ['preset' => 'unused', 'tagged' => 'no']), false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Unused only</a>
+        </div>
     </x-slot>
 
     <x-slot name="toolbar">
@@ -134,6 +154,12 @@
             </div>
         </form>
     </x-slot>
+
+    @if ($errors->has('amenity'))
+        <x-slot name="secondary">
+            <p class="text-sm text-red-600 dark:text-red-400">{{ $errors->first('amenity') }}</p>
+        </x-slot>
+    @endif
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -167,7 +193,7 @@
                             <form method="post" action="{{ route('property.properties.amenities.destroy', $a) }}" data-swal-confirm="Delete &quot;{{ $a->name }}&quot; from the library?" class="inline">
                                 @csrf
                                 @method('DELETE')
-                                <button type="submit" class="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50">{{ $a->name }} ├ù</button>
+                                <button type="submit" class="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50">{{ $a->name }} ×</button>
                             </form>
                         </li>
                     @endif
@@ -192,7 +218,7 @@
                                         @csrf
                                         <input type="hidden" name="pm_amenity_id" value="{{ $am->id }}" />
                                         <input type="hidden" name="property_id" value="{{ $p->id }}" />
-                                        <button type="submit" class="text-red-600 hover:underline font-semibold leading-none" title="Remove">├ù</button>
+                                        <button type="submit" class="text-red-600 hover:underline font-semibold leading-none" title="Remove">×</button>
                                     </form>
                                 </span>
                             @empty
@@ -219,3 +245,4 @@
         </div>
     </x-slot>
 </x-property.workspace>
+</div>

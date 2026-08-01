@@ -10,7 +10,18 @@
         'maintenance_expense' => 'Maintenance Expense',
         'accounts_payable' => 'Accounts Payable',
     ];
+    $journalFormHasErrors = $errors->has('entry_date')
+        || $errors->has('reference')
+        || $errors->has('description')
+        || $errors->has('property_id')
+        || $errors->has('lines')
+        || collect($errors->keys())->contains(fn ($key) => is_string($key) && str_starts_with($key, 'lines.'));
 @endphp
+<div
+    x-data="{ showJournalForm: @js($journalFormHasErrors) }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
 <x-property.workspace
     title="Journal entry management"
     subtitle="Controlled double-entry posting with reversal-only correction."
@@ -22,111 +33,30 @@
     empty-hint="Post your first balanced journal below."
 >
     <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showJournalForm = true"
+        >
+            <i class="fa-solid fa-book" aria-hidden="true"></i>
+            <span>New journal entry</span>
+        </button>
         @include('property.agent.partials.export_dropdown', [
             'csvUrl' => route('property.accounting.entries.export', request()->query()),
             'pdfUrl' => route('property.accounting.entries.export', array_merge(request()->query(), ['format' => 'pdf'])),
         ])
     </x-slot>
 
-    <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.accounting.entries') }}" class="w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">From</label>
-                    <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">To</label>
-                    <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Source</label>
-                    <select name="source" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                        <option value="">All</option>
-                        <option value="manual" @selected(($filters['source'] ?? '') === 'manual')>Manual</option>
-                        <option value="system" @selected(($filters['source'] ?? '') === 'system')>System</option>
-                        @foreach(($sourceOptions ?? []) as $value => $label)
-                            <option value="{{ $value }}" @selected(($filters['source'] ?? '') === $value)>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Status</label>
-                    <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                        <option value="">All</option>
-                        @foreach(($statusOptions ?? []) as $value => $label)
-                            <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Account</label>
-                    <select name="account_id" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                        <option value="">All</option>
-                        @foreach(($accounts ?? collect()) as $acc)
-                            <option value="{{ $acc->id }}" @selected((int)($filters['account_id'] ?? 0) === (int)$acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600">Property</label>
-                    <select name="property_id" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                        <option value="">All</option>
-                        @foreach(($properties ?? collect()) as $property)
-                            <option value="{{ $property->id }}" @selected((int)($filters['property_id'] ?? 0) === (int)$property->id)>{{ $property->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="sm:col-span-2 lg:col-span-6">
-                    <label class="block text-xs font-medium text-slate-600">Search</label>
-                    <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Reference, description, source..." class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                </div>
-            </div>
-            <div class="flex flex-wrap gap-2">
-                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
-                <a href="{{ route('property.accounting.entries') }}" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
-            </div>
-        </form>
-    </x-slot>
-
-    <x-slot name="above">
-        <form method="post" action="{{ route('property.accounting.settings.account_map.save') }}" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3 max-w-5xl">
+    <x-slot name="modals">
+        <x-property.modal
+            show="showJournalForm"
+            close="showJournalForm = false"
+            name="journal-entry-create"
+            title="Create journal entry"
+            max-width="4xl"
+        >
+        <form method="post" action="{{ route('property.accounting.entries.store') }}" id="journal-builder-form" class="space-y-3">
             @csrf
-            <div class="flex items-center justify-between gap-2">
-                <h3 class="text-sm font-semibold text-slate-900">Auto-posting account mapping</h3>
-                <button type="button" id="mapping-reset-defaults" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Reset to default</button>
-            </div>
-            <p class="text-xs text-slate-500">Only active chart accounts can be mapped.</p>
-            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                @foreach($defaultMap as $mapKey => $defaultLabel)
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600">{{ ucwords(str_replace('_', ' ', $mapKey)) }}</label>
-                        <select
-                            name="{{ $mapKey }}"
-                            required
-                            data-default-label="{{ $defaultLabel }}"
-                            class="mapping-select mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        >
-                            <option value="">Select account</option>
-                            @foreach(($accounts ?? collect()) as $acc)
-                                <option
-                                    value="{{ $acc->id }}"
-                                    data-label="{{ $acc->name }}"
-                                    @selected((old($mapKey) && (int) old($mapKey) === (int) $acc->id) || (!old($mapKey) && (($accountMap[$mapKey] ?? '') === $acc->name)))
-                                >
-                                    {{ $acc->code }} - {{ $acc->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-                @endforeach
-            </div>
-            <button type="submit" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Save mapping</button>
-        </form>
-
-        <form method="post" action="{{ route('property.accounting.entries.store') }}" id="journal-builder-form" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3 max-w-6xl">
-            @csrf
-            <h3 class="text-sm font-semibold text-slate-900">Create journal entry</h3>
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                     <label class="block text-xs font-medium text-slate-600">Date</label>
@@ -196,7 +126,7 @@
                 <p class="text-xs text-slate-500">At least two lines required. Debit and credit must balance.</p>
             </div>
 
-            <div id="journal-totals" class="sticky bottom-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div id="journal-totals" class="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div class="grid gap-2 sm:grid-cols-3 text-sm">
                     <p><span class="font-semibold">Total Debit:</span> <span id="total-debit">KES 0.00</span></p>
                     <p><span class="font-semibold">Total Credit:</span> <span id="total-credit">KES 0.00</span></p>
@@ -205,7 +135,105 @@
                 <p id="balance-hint" class="mt-2 text-xs font-semibold text-rose-700">Unbalanced entry.</p>
             </div>
 
-            <button type="submit" id="submit-journal" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400">Post journal</button>
+            <button type="submit" id="submit-journal" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400">Post journal</button>
+        </form>
+        </x-property.modal>
+    </x-slot>
+
+    <x-slot name="toolbar">
+        <form method="get" action="{{ route('property.accounting.entries') }}" class="w-full rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">From</label>
+                    <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">To</label>
+                    <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Source</label>
+                    <select name="source" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        <option value="">All</option>
+                        <option value="manual" @selected(($filters['source'] ?? '') === 'manual')>Manual</option>
+                        <option value="system" @selected(($filters['source'] ?? '') === 'system')>System</option>
+                        @foreach(($sourceOptions ?? []) as $value => $label)
+                            <option value="{{ $value }}" @selected(($filters['source'] ?? '') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Status</label>
+                    <select name="status" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        <option value="">All</option>
+                        @foreach(($statusOptions ?? []) as $value => $label)
+                            <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Account</label>
+                    <select name="account_id" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        <option value="">All</option>
+                        @foreach(($accounts ?? collect()) as $acc)
+                            <option value="{{ $acc->id }}" @selected((int)($filters['account_id'] ?? 0) === (int)$acc->id)>{{ $acc->code }} - {{ $acc->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Property</label>
+                    <select name="property_id" class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        <option value="">All</option>
+                        @foreach(($properties ?? collect()) as $property)
+                            <option value="{{ $property->id }}" @selected((int)($filters['property_id'] ?? 0) === (int)$property->id)>{{ $property->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="sm:col-span-2 lg:col-span-6">
+                    <label class="block text-xs font-medium text-slate-600">Search</label>
+                    <input type="search" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Reference, description, source..." class="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply filters</button>
+                <a href="{{ route('property.accounting.entries') }}" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
+            </div>
+        </form>
+    </x-slot>
+
+    <x-slot name="secondary">
+        <form method="post" action="{{ route('property.accounting.settings.account_map.save') }}" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3 max-w-5xl">
+            @csrf
+            <div class="flex items-center justify-between gap-2">
+                <h3 class="text-sm font-semibold text-slate-900">Auto-posting account mapping</h3>
+                <button type="button" id="mapping-reset-defaults" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Reset to default</button>
+            </div>
+            <p class="text-xs text-slate-500">Only active chart accounts can be mapped.</p>
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                @foreach($defaultMap as $mapKey => $defaultLabel)
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600">{{ ucwords(str_replace('_', ' ', $mapKey)) }}</label>
+                        <select
+                            name="{{ $mapKey }}"
+                            required
+                            data-default-label="{{ $defaultLabel }}"
+                            class="mapping-select mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        >
+                            <option value="">Select account</option>
+                            @foreach(($accounts ?? collect()) as $acc)
+                                <option
+                                    value="{{ $acc->id }}"
+                                    data-label="{{ $acc->name }}"
+                                    @selected((old($mapKey) && (int) old($mapKey) === (int) $acc->id) || (!old($mapKey) && (($accountMap[$mapKey] ?? '') === $acc->name)))
+                                >
+                                    {{ $acc->code }} - {{ $acc->name }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                @endforeach
+            </div>
+            <button type="submit" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Save mapping</button>
         </form>
     </x-slot>
 
@@ -394,3 +422,4 @@
         })();
     </script>
 </x-property.workspace>
+</div>

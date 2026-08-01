@@ -1,3 +1,11 @@
+@php
+    $showTemplateFormByDefault = $errors->hasAny(['name','channel','subject','body']);
+@endphp
+<div
+    x-data="{ showTemplateForm: @js($showTemplateFormByDefault) }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
 <x-property.workspace
     title="Message templates"
     subtitle="Reusable SMS / email bodies. Merge placeholders are your convention until a linter is added."
@@ -8,17 +16,26 @@
     empty-title="No templates"
     empty-hint="Create templates below; delete only when unused."
 >
-    <x-slot name="above">
-        @php
-            $showTemplateFormByDefault = $errors->hasAny(['name','channel','subject','body']);
-        @endphp
-        <details class="space-y-3 group" @if($showTemplateFormByDefault) open @endif>
-        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showTemplateForm = true"
+        >
             <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
-            <span class="group-open:hidden">Add template</span>
-            <span class="hidden group-open:inline">Hide template form</span>
-        </summary>
-        <form method="post" action="{{ route('property.communications.templates.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+            <span>Add template</span>
+        </button>
+    </x-slot>
+
+    <x-slot name="modals">
+        <x-property.modal
+            show="showTemplateForm"
+            close="showTemplateForm = false"
+            name="message-template-create"
+            title="New template"
+            max-width="2xl"
+        >
+        <form method="post" action="{{ route('property.communications.templates.store') }}" class="space-y-3">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New template</h3>
             <div>
@@ -42,7 +59,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save template</button>
         </form>
-        </details>
+        </x-property.modal>
     </x-slot>
 
     <x-slot name="toolbar">
@@ -57,10 +74,11 @@
                     <form method="post" action="{{ route('property.communications.templates.destroy', $t) }}" data-swal-confirm="Delete template {{ $t->name }}?" class="inline">
                         @csrf
                         @method('DELETE')
-                        <button type="submit" class="rounded-lg border border-red-200 dark:border-red-900/50 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30">{{ $t->name }} ├ù</button>
+                        <button type="submit" class="rounded-lg border border-red-200 dark:border-red-900/50 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30">{{ $t->name }} ×</button>
                     </form>
                 </li>
             @endforeach
         </ul>
     </div>
 </x-property.workspace>
+</div>
