@@ -37,7 +37,7 @@
 
         <button
             type="button"
-            @click="filterOpen = true"
+            @click="filterOpen = true; $nextTick(() => window.dispatchEvent(new CustomEvent('property:filter-drawer-open')))"
             class="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-100 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/50"
         >
             <i class="fa-solid fa-sliders text-slate-500" aria-hidden="true"></i>

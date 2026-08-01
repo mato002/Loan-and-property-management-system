@@ -11,6 +11,20 @@ import { submitPropertyFilterForm } from './property-auto-filter';
 const ALL_VALUES = new Set(['', '0']);
 
 /**
+ * @param {string|null|undefined} value
+ */
+function asId(value) {
+    return String(value ?? '');
+}
+
+/**
+ * @param {string|null|undefined} value
+ */
+function isAllValue(value) {
+    return ALL_VALUES.has(asId(value));
+}
+
+/**
  * @param {HTMLSelectElement|null} select
  * @param {Array<{ value: string, label: string }>} options
  * @param {string} allLabel
@@ -21,7 +35,7 @@ function rebuildSelect(select, options, allLabel, preferredValue) {
         return;
     }
 
-    const nextValue = preferredValue || '0';
+    const nextValue = isAllValue(preferredValue) ? '0' : asId(preferredValue);
     select.innerHTML = '';
 
     const allOption = document.createElement('option');
@@ -31,7 +45,7 @@ function rebuildSelect(select, options, allLabel, preferredValue) {
 
     options.forEach(({ value, label }) => {
         const option = document.createElement('option');
-        option.value = value;
+        option.value = asId(value);
         option.textContent = label;
         select.appendChild(option);
     });
@@ -41,23 +55,32 @@ function rebuildSelect(select, options, allLabel, preferredValue) {
 }
 
 /**
- * @param {string|null|undefined} value
+ * @param {HTMLElement} toolbar
+ * @returns {CascadeCatalog}
  */
-function isAllValue(value) {
-    return ALL_VALUES.has(String(value ?? ''));
+function readCascadeCatalog(toolbar) {
+    const scriptEl = toolbar.querySelector('script[data-filter-cascade-catalog-json]');
+    const raw = (scriptEl?.textContent || '').trim()
+        || toolbar.getAttribute('data-filter-cascade-catalog')
+        || '{}';
+
+    try {
+        const parsed = JSON.parse(raw);
+
+        return {
+            units: Array.isArray(parsed?.units) ? parsed.units : [],
+            tenants: Array.isArray(parsed?.tenants) ? parsed.tenants : [],
+        };
+    } catch {
+        return { units: [], tenants: [] };
+    }
 }
 
 /**
  * @param {HTMLElement} toolbar
  */
 function cascadeConfig(toolbar) {
-    let catalog = { units: [], tenants: [] };
-
-    try {
-        catalog = JSON.parse(toolbar.dataset.filterCascadeCatalog || '{}');
-    } catch {
-        catalog = { units: [], tenants: [] };
-    }
+    const catalog = readCascadeCatalog(toolbar);
 
     return {
         catalog,
@@ -73,10 +96,6 @@ function cascadeConfig(toolbar) {
  * @param {{ tenantField: string, autoApply: boolean, mode: string }} config
  */
 function wirePropertyUnitTenantCascadeForm(form, catalog, config) {
-    if (form.dataset.filterCascadeBound === '1') {
-        return;
-    }
-
     const propertySelect = form.querySelector('[name="property_id"]');
     const unitSelect = form.querySelector('[name="unit_id"]');
     const tenantSelect = config.mode === 'property-unit'
@@ -91,10 +110,18 @@ function wirePropertyUnitTenantCascadeForm(form, catalog, config) {
         return;
     }
 
-    form.dataset.filterCascadeBound = '1';
-
     const units = Array.isArray(catalog.units) ? catalog.units : [];
     const tenants = Array.isArray(catalog.tenants) ? catalog.tenants : [];
+
+    if (units.length === 0) {
+        return;
+    }
+
+    if (form.dataset.filterCascadeBound === '1') {
+        return;
+    }
+
+    form.dataset.filterCascadeBound = '1';
 
     const maybeAutoApply = () => {
         if (!config.autoApply) {
@@ -105,14 +132,17 @@ function wirePropertyUnitTenantCascadeForm(form, catalog, config) {
     };
 
     const sync = (resetUnit = false, resetTenant = false) => {
-        const propertyId = isAllValue(propertySelect.value) ? '0' : propertySelect.value;
-        let unitId = resetUnit ? '0' : (isAllValue(unitSelect.value) ? '0' : unitSelect.value);
+        const propertyId = isAllValue(propertySelect.value) ? '0' : asId(propertySelect.value);
+        let unitId = resetUnit ? '0' : (isAllValue(unitSelect.value) ? '0' : asId(unitSelect.value));
 
-        const visibleUnits = units.filter((unit) => propertyId === '0' || unit.property_id === propertyId);
+        const visibleUnits = units.filter((unit) => {
+            return propertyId === '0' || asId(unit.property_id) === propertyId;
+        });
+
         rebuildSelect(
             unitSelect,
             visibleUnits.map((unit) => ({
-                value: unit.id,
+                value: asId(unit.id),
                 label: propertyId !== '0'
                     ? unit.label
                     : (unit.property_name ? `${unit.property_name}/${unit.label}` : unit.label),
@@ -125,24 +155,27 @@ function wirePropertyUnitTenantCascadeForm(form, catalog, config) {
             return;
         }
 
-        unitId = isAllValue(unitSelect.value) ? '0' : unitSelect.value;
+        unitId = isAllValue(unitSelect.value) ? '0' : asId(unitSelect.value);
         const visibleTenants = tenants.filter((tenant) => {
+            const unitIds = (tenant.unit_ids || []).map(asId);
+            const propertyIds = (tenant.property_ids || []).map(asId);
+
             if (unitId !== '0') {
-                return tenant.unit_ids.includes(unitId);
+                return unitIds.includes(unitId);
             }
 
             if (propertyId !== '0') {
-                return tenant.property_ids.includes(propertyId);
+                return propertyIds.includes(propertyId);
             }
 
             return true;
         });
 
-        const tenantValue = resetTenant ? '0' : (isAllValue(tenantSelect.value) ? '0' : tenantSelect.value);
+        const tenantValue = resetTenant ? '0' : (isAllValue(tenantSelect.value) ? '0' : asId(tenantSelect.value));
         rebuildSelect(
             tenantSelect,
             visibleTenants.map((tenant) => ({
-                value: tenant.id,
+                value: asId(tenant.id),
                 label: tenant.name,
             })),
             'Tenant: All',
@@ -195,6 +228,9 @@ function bindFilterCascadeLifecycle() {
     });
     document.addEventListener('livewire:navigated', () => run(document));
     document.addEventListener('alpine:navigated', () => run(document));
+    document.addEventListener('property:filter-drawer-open', () => {
+        run(document);
+    });
 }
 
 bindFilterCascadeLifecycle();

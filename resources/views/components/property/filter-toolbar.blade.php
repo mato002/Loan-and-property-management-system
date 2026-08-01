@@ -15,10 +15,18 @@
     $showMobileToolbar = $toolbarViewport === 'all' || $toolbarViewport === 'mobile';
 @endphp
 
+@php
+    $filterCascadeCatalogJson = (string) ($attributes->get('data-filter-cascade-catalog') ?? '');
+    $filterToolbarAttributes = $attributes->except('data-filter-cascade-catalog');
+@endphp
+
 <div
     data-property-filter-toolbar
-    {{ $attributes->merge(['class' => 'property-filter-toolbar property-workspace-toolbar-host w-full min-w-0 space-y-2']) }}
+    {{ $filterToolbarAttributes->merge(['class' => 'property-filter-toolbar property-workspace-toolbar-host w-full min-w-0 space-y-2']) }}
 >
+    @if (filled($attributes->get('data-filter-cascade')) && $filterCascadeCatalogJson !== '')
+        <script type="application/json" data-filter-cascade-catalog-json>{!! $filterCascadeCatalogJson !!}</script>
+    @endif
     @if ($showDesktopToolbar && $submitFilters && $action)
         <form
             id="{{ $formId }}"

@@ -12,6 +12,7 @@ import { setupPropertyWorkspaceUi } from './property-workspace-ui';
 
 import { bootPropertyDashboard } from './property-dashboard';
 import { ensurePropertyPageModalsInitialized } from './property-page-modals';
+import { wirePropertyFilterCascades } from './property-filter-cascade';
 
 export const PROPERTY_MAIN_FRAME_ID = 'property-main';
 const HYDRATION_GEN_ATTR = 'data-property-hydration-gen';
@@ -165,6 +166,7 @@ function runDeferredHydrationTasks(frame, hooks) {
     setupReversal(frame);
     ensurePropertyFormModalHost();
     bootPropertyDashboard(frame);
+    wirePropertyFilterCascades(frame);
     onHydrationComplete(frame);
 }
 
