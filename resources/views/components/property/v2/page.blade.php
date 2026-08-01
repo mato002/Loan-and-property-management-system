@@ -36,8 +36,8 @@
     @endif
 
     <header @class(['property-erp-header', $compactList ? 'space-y-1' : 'space-y-2 sm:space-y-3'])>
-        <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-3">
-            <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-start gap-x-4 gap-y-3">
+            <div class="min-w-0 flex-[1_1_16rem] basis-full sm:basis-auto">
                 <h1 @class([
                     'font-semibold text-slate-900 dark:text-slate-100 tracking-tight leading-tight',
                     $compactList ? 'text-base sm:text-lg' : 'text-lg sm:text-xl',
@@ -51,7 +51,7 @@
             </div>
             @isset($actions)
                 @if (! $actions->isEmpty())
-                    <div class="print-hide flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full lg:w-auto min-w-0 shrink-0 lg:pt-1 [&>button]:w-full [&>button]:min-h-[44px] [&>button]:sm:w-auto [&>button]:sm:min-h-0 [&>a]:w-full [&>a]:min-h-[44px] [&>a]:sm:w-auto [&>a]:sm:min-h-0">
+                    <div class="print-hide flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full min-w-0 flex-[1_1_24rem] sm:w-auto sm:max-w-full sm:ml-auto [&>button]:w-full [&>button]:min-h-[44px] [&>button]:sm:w-auto [&>button]:sm:min-h-0 [&>a]:w-full [&>a]:min-h-[44px] [&>a]:sm:w-auto [&>a]:sm:min-h-0">
                         {{ $actions }}
                     </div>
                 @endif

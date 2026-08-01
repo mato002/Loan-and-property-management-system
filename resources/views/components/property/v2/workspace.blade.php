@@ -194,30 +194,32 @@
                             />
                         @endif
 
-                        @if ($hasToolbar && ! $useLegacyToolbar)
-                            {{ $toolbar }}
-                        @elseif ($hasToolbar || $hasMobileFiltersExtra)
-                            <div class="hidden md:block w-full min-w-0 property-workspace-toolbar-host">
-                                @if ($hasToolbar)
-                                    <div class="flex flex-row flex-wrap items-end gap-2 w-full min-w-0 [&_form]:flex [&_form]:flex-row [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-2 [&_form]:w-full [&_form]:min-w-0">
-                                        {{ $toolbar }}
-                                    </div>
+                        @if ($hasToolbar || $hasMobileFiltersExtra)
+                            <x-property.responsive.mobile-filter-drawer
+                                :label="'Filters'"
+                                :active-count="$filterActiveCount"
+                                class="print-hide property-workspace-toolbar-host"
+                            >
+                                @if ($hasMobileFiltersExtra)
+                                    <x-slot name="mobile_filters_extra">
+                                        {{ $mobile_filters_extra }}
+                                    </x-slot>
                                 @endif
-                            </div>
-                            <div class="md:hidden w-full min-w-0">
-                                <x-property.responsive.mobile-filter-drawer :label="'Filters & options'" :active-count="$filterActiveCount">
-                                    @if ($hasMobileFiltersExtra)
-                                        <x-slot name="mobile_filters_extra">
-                                            {{ $mobile_filters_extra }}
-                                        </x-slot>
-                                    @endif
-                                    <div class="flex flex-col gap-3 w-full min-w-0 [&_form]:w-full [&_form]:space-y-3 [&_input]:w-full [&_select]:w-full [&_button]:w-full [&_a]:w-full">
-                                        @if ($hasToolbar)
+                                @if ($hasToolbar)
+                                    <x-slot name="desktop">
+                                        @php($__propertyToolbarViewport = 'desktop')
+                                        <div class="flex flex-row flex-wrap items-end gap-2 w-full min-w-0 [&_form]:flex [&_form]:flex-row [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-2 [&_form]:w-full [&_form]:min-w-0">
                                             {{ $toolbar }}
-                                        @endif
-                                    </div>
-                                </x-property.responsive.mobile-filter-drawer>
-                            </div>
+                                        </div>
+                                    </x-slot>
+                                    <x-slot name="mobile">
+                                        @php($__propertyToolbarViewport = 'mobile')
+                                        <div class="flex flex-col gap-3 w-full min-w-0 [&_form]:w-full [&_form]:space-y-3 [&_form_input]:w-full [&_form_input]:min-h-[44px] [&_form_select]:w-full [&_form_select]:min-h-[44px] [&_form_textarea]:w-full [&_form_button]:min-h-[44px] [&_form_a]:min-h-[44px]">
+                                            {{ $toolbar }}
+                                        </div>
+                                    </x-slot>
+                                @endif
+                            </x-property.responsive.mobile-filter-drawer>
                         @endif
                     </div>
                 @endif

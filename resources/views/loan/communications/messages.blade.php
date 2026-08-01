@@ -14,8 +14,6 @@
     <x-slot name="above">
         @include('loan.communications.partials.communications_manage_bar', ['manageContext' => 'messages'])
 
-        @include('loan.communications.partials.messages_toolbar')
-
         @php
             $canManage = (bool) ($canManageCommunications ?? false);
             $showMessageFormByDefault = $canManage || $errors->hasAny(['channel','to_address','subject','body']);
@@ -203,6 +201,10 @@
                 Sending SMS or email requires the <strong>Manage communications</strong> permission. You can still review delivery logs, filter, and export below.
             </div>
         @endif
+    </x-slot>
+
+    <x-slot name="toolbar">
+        @include('loan.communications.partials.messages_toolbar')
     </x-slot>
 
     @include('loan.communications.partials.messages_log_table')

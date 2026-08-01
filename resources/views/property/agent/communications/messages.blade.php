@@ -6,7 +6,6 @@
     title="SMS / email"
     subtitle="Outbound SMS and email delivery log (tenant and staff sends). System alerts such as logins are on Notifications."
     back-route="property.communications.index"
-    :legacy-toolbar="false"
     :stats="$stats"
     :columns="[]"
     :show-search="false"

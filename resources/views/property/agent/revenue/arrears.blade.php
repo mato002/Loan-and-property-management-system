@@ -10,8 +10,10 @@
     empty-title="No arrears cases"
     empty-hint="When due date passes and balance remains, rows appear here automatically."
 >
-    <x-slot name="actions">
-        <div class="flex flex-wrap items-end gap-2">
+    <x-slot name="above">
+        <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm p-3 sm:p-4 print-hide space-y-2">
+            <p class="text-sm font-semibold text-slate-900 dark:text-white">Send reminders</p>
+            <div class="flex flex-wrap items-end gap-2">
             <form id="arrears-reminder-form" method="post" action="{{ route('property.revenue.arrears.reminders', absolute: false) }}" class="flex flex-wrap items-end gap-2">
             @csrf
             <div>
@@ -63,11 +65,12 @@
         </form>
         </div>
         @error('arrears_test_email')
-            <p class="mt-2 text-xs text-red-600">{{ $message }}</p>
+            <p class="text-xs text-red-600">{{ $message }}</p>
         @enderror
         @error('selected_invoice_ids')
-            <p class="mt-2 text-xs text-red-600">{{ $message }}</p>
+            <p class="text-xs text-red-600">{{ $message }}</p>
         @enderror
+        </div>
     </x-slot>
 
     <x-slot name="toolbar">

@@ -2,22 +2,27 @@
     'label' => 'Filters',
     'activeCount' => 0,
     'formId' => null,
+    'turboFrame' => 'property-main',
 ])
 
 @php
     $drawerId = 'filter-drawer-' . ($formId ?? uniqid('', false));
+    $hasDesktopSlot = isset($desktop) && ! $desktop->isEmpty();
+    $hasMobileSlot = isset($mobile) && ! $mobile->isEmpty();
+    $desktopContent = $hasDesktopSlot ? $desktop : $slot;
+    $mobileContent = $hasMobileSlot ? $mobile : $slot;
 @endphp
 
 <div
     x-data="{ filterOpen: false }"
     x-on:keydown.escape.window="filterOpen = false"
     x-on:turbo:before-visit.window="filterOpen = false"
-    x-on:turbo:frame-load.window="if ($event.target?.id === 'property-main') filterOpen = false"
+    x-on:turbo:frame-load.window="if ($event.target?.id === @js($turboFrame)) filterOpen = false"
     {{ $attributes->merge(['class' => 'w-full min-w-0']) }}
 >
     {{-- Desktop: filters inline --}}
     <div class="hidden md:block w-full min-w-0">
-        {{ $slot }}
+        {{ $desktopContent }}
     </div>
 
     {{-- Mobile: collapsed trigger --}}
@@ -94,7 +99,7 @@
                         </div>
                     @endif
                 @endisset
-                {{ $slot }}
+                {{ $mobileContent }}
             </div>
             <div class="shrink-0 px-4 py-3 border-t border-slate-200 dark:border-slate-700 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 <button
