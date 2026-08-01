@@ -1,3 +1,11 @@
+@php
+    $showVendorFormByDefault = $errors->hasAny(['name', 'category', 'status', 'phone', 'email', 'rating']);
+@endphp
+<div
+    x-data="{ showVendorForm: @js($showVendorFormByDefault) }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
 <x-property.workspace
     :legacy-toolbar="false"
     title="Vendor directory"
@@ -10,19 +18,18 @@
     empty-title="No vendors"
     empty-hint="Add vendors here; assign them when creating maintenance jobs."
 >
-    <x-slot name="above">
-        @php
-            $showVendorFormByDefault = $errors->hasAny(['name','category','status','phone','email','rating']);
-        @endphp
-        <div x-data="{ showVendorForm: @js($showVendorFormByDefault) }">
+    <x-slot name="actions">
         <button
             type="button"
-            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
             @click="showVendorForm = true"
         >
             <i class="fa-solid fa-user-tie" aria-hidden="true"></i>
             <span>Add vendor</span>
         </button>
+    </x-slot>
+
+    <x-slot name="modals">
         <x-property.modal
             show="showVendorForm"
             close="showVendorForm = false"
@@ -71,7 +78,6 @@
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save vendor</button>
         </form>
         </x-property.modal>
-        </div>
     </x-slot>
 
     <x-slot name="toolbar">
@@ -176,3 +182,4 @@
         </div>
     @endif
 </x-property.workspace>
+</div>

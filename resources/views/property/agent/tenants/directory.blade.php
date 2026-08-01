@@ -3,7 +3,8 @@
         showTenantForm: @js($errors->any()),
         showImportForm: @js((bool) ($openImportModal ?? false) || !empty($lastImportStats ?? null) || (is_array($lastImportErrors ?? null) && count($lastImportErrors) > 0)),
     }"
-    class="contents"
+    class="w-full min-w-0"
+    data-property-page-modals
 >
 <x-property.workspace
     :legacy-toolbar="false"
@@ -46,7 +47,7 @@
         $tenantCfg = $tenantFields ?? [];
         $tenantRequired = fn (string $k, bool $d = false) => (bool) (($tenantCfg[$k]['required'] ?? $d) && ($tenantCfg[$k]['enabled'] ?? true));
     @endphp
-    <x-slot name="above">
+    <x-slot name="modals">
         <div>
         <x-property.modal
             show="showTenantForm"

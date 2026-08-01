@@ -410,6 +410,9 @@ function bindTurboModalLifecycle() {
         if (!(event.target instanceof HTMLElement) || event.target.id !== 'property-main') {
             return;
         }
+        // Frame navigations do not fire turbo:before-visit; clear stack before purge so the
+        // capture-phase backdrop guard cannot block clicks on the incoming page.
+        resetPropertyModalStackSilently('turbo:before-frame-render');
         purgeOrphanedTeleportedPropertyModals('turbo:before-frame-render');
     });
 

@@ -76,6 +76,7 @@
     ])->filter(static fn ($value) => ! is_null($value) && trim((string) $value) !== '');
     $compactList = (bool) ($compactList ?? true);
     $hasBanner = isset($banner) && ! $banner->isEmpty();
+    $hasModals = isset($modals) && ! $modals->isEmpty();
     $hasSecondary = isset($secondary) && ! $secondary->isEmpty();
     $hasPageActions = isset($actions) && ! $actions->isEmpty();
     $deferAbove = $compactList && $hasTable && isset($above) && ! $above->isEmpty();
@@ -121,6 +122,12 @@
 
         @if ($compactList && $hasBanner)
             {{ $banner }}
+        @endif
+
+        @if ($hasModals)
+            <div class="hidden" aria-hidden="true" data-workspace-modals>
+                {{ $modals }}
+            </div>
         @endif
 
         @isset($above)

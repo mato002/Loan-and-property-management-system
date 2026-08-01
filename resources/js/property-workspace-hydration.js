@@ -45,7 +45,19 @@ export function hydratePropertyMainAlpine(frame) {
         return;
     }
 
-    window.Alpine.initTree(frame);
+    const initAlpineScopes = (root) => {
+        window.Alpine.initTree(root);
+        root.querySelectorAll('[data-workspace-modals]').forEach((host) => {
+            window.Alpine.initTree(host);
+        });
+    };
+
+    initAlpineScopes(frame);
+
+    // x-teleport templates and display:contents wrappers can miss the first pass after Turbo.
+    requestAnimationFrame(() => {
+        initAlpineScopes(frame);
+    });
 }
 
 function syncHydratingWindowFlag() {
@@ -247,6 +259,11 @@ export function schedulePropertyWorkspaceHydration(frame, source, hooks = {}) {
     const generation = readFrameHydrationGen(frame) || assignInitialHydrationGeneration(frame);
 
     if (shouldSkipHydration(frame, source, generation)) {
+        // Hydration coalescing must never skip Alpine — list-page modals break without re-init.
+        queueMicrotask(() => {
+            hydratePropertyMainAlpine(frame);
+        });
+
         return;
     }
 

@@ -19,7 +19,8 @@
             }
         },
     }"
-    class="contents"
+    class="w-full min-w-0"
+    data-property-page-modals
 >
 <x-property.workspace
     :legacy-toolbar="false"
@@ -51,7 +52,7 @@
         </button>
     </x-slot>
 
-    <x-slot name="above">
+    <x-slot name="modals">
         <div>
         <x-property.modal
             show="showPropertyForm"
