@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-dvh overflow-hidden">
     <head>
         @php
             $companyName = \App\Support\Property\PropertyWorkspaceBranding::forGuestPage('company_name') ?: config('app.name');
@@ -30,9 +30,9 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
         <style>[x-cloak]{display:none!important}</style>
     </head>
-    <body class="min-h-screen antialiased bg-[#eef5f3] text-slate-900" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">
+    <body class="h-dvh overflow-hidden antialiased bg-[#eef5f3] text-slate-900" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">
         <x-swal-flash />
-        <div class="relative min-h-screen overflow-hidden">
+        <div class="relative h-full overflow-hidden">
             <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
                 <div class="absolute inset-0">
                     <img
@@ -48,14 +48,13 @@
                 <div class="absolute bottom-10 left-8 h-44 w-44 rounded-full bg-emerald-200/30 blur-2xl"></div>
             </div>
 
-            <div class="relative z-10 min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
+            <div class="relative z-10 h-full grid lg:grid-cols-[1.05fr_1fr] lg:overflow-hidden">
                 {{-- Visual column --}}
-                <aside class="relative overflow-hidden flex min-h-[140px] lg:min-h-screen">
-
-                <div class="relative z-10 flex w-full flex-col justify-between px-5 py-4 lg:px-12 lg:py-12 text-white">
+                <aside class="relative overflow-hidden hidden lg:flex min-h-0 h-full">
+                <div class="relative z-10 flex w-full flex-col justify-between px-5 py-4 lg:px-10 lg:py-8 text-white">
                     <div>
                         <p class="text-[11px] lg:text-sm font-semibold uppercase tracking-[0.18em] lg:tracking-[0.2em] text-white/75">{{ $companyName }}</p>
-                        <h2 class="mt-2 lg:mt-6 max-w-md text-lg lg:text-4xl font-extrabold leading-tight">
+                        <h2 class="mt-2 lg:mt-4 max-w-md text-lg lg:text-3xl font-extrabold leading-tight">
                             {{ $heroTitle }}
                         </h2>
                         <p class="mt-1.5 lg:mt-4 max-w-md text-xs lg:text-sm leading-relaxed text-white/85">
@@ -63,7 +62,7 @@
                         </p>
                     </div>
 
-                    <div class="hidden lg:block rounded-3xl border border-white/25 bg-white/10 p-5 backdrop-blur-sm">
+                    <div class="hidden lg:block rounded-2xl border border-white/25 bg-white/10 p-4 backdrop-blur-sm">
                         <p class="text-xs font-semibold uppercase tracking-wide text-white/70">{{ $heroCardLabel }}</p>
                         <p class="mt-2 text-lg font-semibold">{{ $heroCardTitle }}</p>
                         <p class="mt-1 text-sm text-white/80">{{ $heroCardBody }}</p>
@@ -72,9 +71,9 @@
                 </aside>
 
                 {{-- Form column --}}
-                <div class="relative z-10 flex items-center justify-center px-6 py-10 sm:px-10 lg:px-14 xl:px-20 lg:-ml-8">
-                    <div class="w-full max-w-md overflow-hidden rounded-[2rem] bg-white shadow-[0_20px_45px_rgba(47,79,79,0.14)] ring-1 ring-[#dbe8e4]">
-                        <div class="h-24 w-full overflow-hidden rounded-t-[2rem] border-b border-[#dbe8e4] bg-gradient-to-r from-[#f4faf8] to-[#eaf4f1]">
+                <div class="relative z-10 flex h-full min-h-0 items-center justify-center overflow-y-auto px-4 py-4 sm:px-8 lg:px-10 xl:px-14 lg:-ml-8">
+                    <div class="my-auto w-full max-w-md overflow-hidden rounded-[1.75rem] bg-white shadow-[0_20px_45px_rgba(47,79,79,0.14)] ring-1 ring-[#dbe8e4]">
+                        <div class="h-16 sm:h-[4.5rem] w-full overflow-hidden rounded-t-[1.75rem] border-b border-[#dbe8e4] bg-gradient-to-r from-[#f4faf8] to-[#eaf4f1]">
                             @if ($companyLogoUrl !== '')
                                 <img src="{{ $companyLogoUrl }}" alt="{{ $companyName }}" class="block h-full w-full object-fill" />
                             @else
@@ -83,7 +82,7 @@
                                 </div>
                             @endif
                         </div>
-                        <div class="px-7 py-8 sm:px-9 sm:py-10">
+                        <div class="px-5 py-5 sm:px-7 sm:py-6">
                             @hasSection('content')
                                 @yield('content')
                             @else

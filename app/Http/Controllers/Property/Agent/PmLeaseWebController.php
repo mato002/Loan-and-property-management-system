@@ -20,6 +20,7 @@ use App\Services\Property\CarryForwardConsolidationService;
 use App\Services\Property\FinanceFirebreakService;
 use App\Services\Property\PropertyDashboardCache;
 use App\Services\Property\PropertyMoney;
+use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\TabularExport;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Http\JsonResponse;
@@ -68,6 +69,7 @@ class PmLeaseWebController extends Controller
             'window' => trim((string) $request->query('window', '')),
             'pm_tenant_id' => max(0, (int) $request->query('pm_tenant_id', 0)),
             'property_id' => max(0, (int) $request->query('property_id', 0)),
+            'unit_id' => max(0, (int) $request->query('unit_id', 0)),
             'term' => trim((string) $request->query('term', '')),
             'expiring' => trim((string) $request->query('expiring', '')),
             'carry_forward' => trim((string) $request->query('carry_forward', '')),
@@ -121,10 +123,7 @@ class PmLeaseWebController extends Controller
             $query->where('pm_leases.pm_tenant_id', (int) $filters['pm_tenant_id']);
         }
 
-        if (($filters['property_id'] ?? 0) > 0) {
-            $propertyId = (int) $filters['property_id'];
-            $query->whereHas('units', fn (Builder $unitQuery) => $unitQuery->where('property_id', $propertyId));
-        }
+        app(PropertyFilterCascadeCatalog::class)->applyToLeaseQuery($query, $filters);
 
         if (($filters['term'] ?? '') === 'open_ended') {
             $query->whereNull('pm_leases.end_date');
@@ -1470,6 +1469,16 @@ SQL;
         $activeTab = $request->string('tab')->toString() === 'expiry' ? 'expiry' : 'leases';
         $filters = $this->leaseListFiltersFromRequest($request);
         $filterOptions = $this->leaseListFilterOptions();
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $propertyId = (int) $filters['property_id'];
+        $unitId = (int) $filters['unit_id'];
+        $tenantId = (int) $filters['pm_tenant_id'];
+        $cascadeViewData = [
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'tenantsForFilter' => $cascade->leaseTenantsForFilter($tenantId, $propertyId, $unitId),
+            'filterCascadeCatalog' => $cascade->fromLeases(),
+        ];
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
@@ -1479,7 +1488,7 @@ SQL;
         if ($activeTab === 'expiry') {
             $expiryPayload = $this->expiryTablePayload($filters);
 
-            return property_view('property.agent.tenants.leases', [
+            return property_view('property.agent.tenants.leases', array_merge([
                 'activeTab' => $activeTab,
                 'stats' => $expiryPayload['stats'],
                 'columns' => $expiryPayload['columns'],
@@ -1487,7 +1496,7 @@ SQL;
                 'expiryFilterTexts' => $expiryPayload['expiryFilterTexts'],
                 'filters' => $filters,
                 'filterOptions' => $filterOptions,
-            ]);
+            ], $cascadeViewData));
         }
 
         $leaseQuery = PmLease::query()->with(['pmTenant', 'units.property']);
@@ -1509,7 +1518,7 @@ SQL;
             'filterOptions' => $filterOptions,
             'leasePager' => $leasePager,
             'openLeaseCreateModal' => $request->boolean('open_create'),
-        ], $this->leaseFormPageContext($request)));
+        ], $cascadeViewData, $this->leaseFormPageContext($request)));
     }
 
     public function createForm(Request $request): View

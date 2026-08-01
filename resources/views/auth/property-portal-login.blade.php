@@ -10,7 +10,7 @@
         $loginOldValue = old('login', old('email'));
     @endphp
 
-    <form method="POST" action="{{ $postRoute }}" class="space-y-5" x-data="{ showPassword: false }">
+    <form method="POST" action="{{ $postRoute }}" class="space-y-4" x-data="{ showPassword: false }">
         @csrf
 
         <div class="space-y-1">
@@ -91,7 +91,7 @@
             </label>
         </div>
 
-        <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+        <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2.5 pt-1">
             @if (Route::has('password.request'))
                 <a
                     class="text-sm text-slate-500 hover:text-[#3f7a70] underline underline-offset-2 text-center sm:text-left"
@@ -101,7 +101,7 @@
                 </a>
             @endif
 
-            <x-primary-button class="w-full sm:w-auto justify-center rounded-full border-transparent bg-[#4d8d82] hover:bg-[#3f7a70] focus:ring-[#4d8d82] px-7 py-3">
+            <x-primary-button class="w-full sm:w-auto justify-center rounded-full border-transparent bg-[#4d8d82] hover:bg-[#3f7a70] focus:ring-[#4d8d82] px-6 py-2.5">
                 {{ __('Sign in') }}
             </x-primary-button>
         </div>

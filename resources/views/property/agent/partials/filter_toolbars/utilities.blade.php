@@ -8,14 +8,24 @@
     :action="$utilitiesUrl"
     :reset-url="$utilitiesUrl"
     :drawer-label="$drawerLabel"
+    data-filter-cascade="property-unit"
+    data-filter-cascade-catalog='@json($filterCascadeCatalog ?? ['units' => [], 'tenants' => []])'
+    data-filter-cascade-auto-apply="true"
     :chip-labels="[
         'q' => 'Search',
+        'property_id' => 'Property',
+        'unit_id' => 'Unit',
         'charge_type' => 'Type',
         'month' => 'Billing month',
     ]"
 >
     <x-slot name="primary">
         <x-property.filter-field type="search" name="q" placeholder="Search label or unit…" :value="$filters['q'] ?? ''" wide />
+        @include('property.agent.partials.filter_toolbars.partials.property_unit_fields', [
+            'filters' => $filters,
+            'properties' => $properties ?? [],
+            'units' => $units ?? [],
+        ])
         <x-property.filter-field type="select"
             name="charge_type"
             label="Type"

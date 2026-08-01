@@ -513,6 +513,7 @@ final class RentInvoiceGenerator
             'key' => $key,
             'lease_id' => (int) $lease->id,
             'unit_id' => $unitId ? (int) $unitId : null,
+            'property_id' => (int) ($unit?->property_id ?? $units->first()?->property_id ?? 0),
             'tenant_id' => (int) $lease->pm_tenant_id,
             'tenant_name' => (string) ($lease->pmTenant?->name ?? '—'),
             'property_name' => (string) ($unit?->property?->name ?? ($units->first()?->property?->name ?? '—')),

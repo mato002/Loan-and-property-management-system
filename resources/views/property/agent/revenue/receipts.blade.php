@@ -32,7 +32,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.receipts', ['filters' => $filters])
+        @include('property.agent.partials.filter_toolbars.receipts', get_defined_vars())
     </x-slot>
     <x-slot name="footer">
         @isset($paginator)

@@ -21,7 +21,7 @@ use App\Services\Property\RentInvoiceGenerator;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentSettlementService;
 use App\Services\Property\PropertyReversalFinalizeService;
-use App\Services\Property\UtilityPeriodGuardService;
+use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Exceptions\Property\UtilityPeriodClosedException;
 use App\Services\Property\TenantCreditService;
 use App\Support\TabularExport;
@@ -642,10 +642,9 @@ class PmInvoiceController extends Controller
         })->all();
 
         $propertyId = (int) $filters['property_id'];
-        $unitsQuery = PropertyUnit::query()->with('property')->orderBy('property_id');
-        if ($propertyId > 0) {
-            $unitsQuery->where('property_id', $propertyId);
-        }
+        $unitId = (int) $filters['unit_id'];
+        $tenantId = (int) $filters['tenant_id'];
+        $cascade = app(PropertyFilterCascadeCatalog::class);
 
         return property_view('property.agent.revenue.invoices', [
             'stats' => $stats,
@@ -660,10 +659,11 @@ class PmInvoiceController extends Controller
                 'per_page' => (string) $perPage,
             ],
             'leases' => PmLease::query()->with(['pmTenant', 'units'])->orderByDesc('start_date')->get(),
-            'units' => $unitsQuery->get(),
-            'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'properties' => $cascade->properties(),
             'tenants' => PmTenant::query()->orderBy('name')->get(),
-            'tenantsForFilter' => $this->invoiceFilterTenants((int) $filters['tenant_id']),
+            'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
+            'filterCascadeCatalog' => $cascade->fromInvoices(),
         ]);
     }
 
@@ -1266,32 +1266,6 @@ class PmInvoiceController extends Controller
         }
 
         return $query;
-    }
-
-    /**
-     * Tenants that appear on at least one invoice (for billing filters only).
-     *
-     * @return \Illuminate\Database\Eloquent\Collection<int, PmTenant>
-     */
-    private function invoiceFilterTenants(int $ensureTenantId = 0): \Illuminate\Database\Eloquent\Collection
-    {
-        $tenantIds = PmInvoice::query()
-            ->whereNotNull('pm_tenant_id')
-            ->distinct()
-            ->pluck('pm_tenant_id');
-
-        if ($ensureTenantId > 0 && ! $tenantIds->contains($ensureTenantId)) {
-            $tenantIds->push($ensureTenantId);
-        }
-
-        if ($tenantIds->isEmpty()) {
-            return PmTenant::query()->whereRaw('1 = 0')->get(['id', 'name']);
-        }
-
-        return PmTenant::query()
-            ->whereIn('id', $tenantIds)
-            ->orderBy('name')
-            ->get(['id', 'name']);
     }
 
     private function aggregateInvoiceSummary(\Illuminate\Database\Eloquent\Builder $query): object

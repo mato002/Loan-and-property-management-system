@@ -2,6 +2,7 @@ import './bootstrap';
 import './swal-init';
 import './superadmin-auto-filter';
 import './property-auto-filter';
+import './property-filter-cascade';
 import './property-flash-lifecycle';
 import './property-portal-ui';
 import './property-page-modals';

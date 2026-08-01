@@ -71,7 +71,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.arrears', ['filters' => $filters])
+        @include('property.agent.partials.filter_toolbars.arrears', get_defined_vars())
     </x-slot>
     <x-slot name="footer">
         @isset($paginator)

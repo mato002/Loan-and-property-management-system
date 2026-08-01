@@ -202,13 +202,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.invoices', [
-            'filters' => $filters,
-            'tenants' => $tenants,
-            'tenantsForFilter' => $tenantsForFilter,
-            'units' => $units,
-            'billingRangeLabel' => $billingRangeLabel ?? null,
-        ])
+        @include('property.agent.partials.filter_toolbars.invoices', get_defined_vars())
         @if (trim((string) ($filters['q'] ?? '')) !== '' || (int) ($filters['tenant_id'] ?? 0) > 0)
             <p class="mt-2 text-xs text-slate-500">Tenant search shows all matching invoices, including carry-forward from earlier periods.</p>
         @endif

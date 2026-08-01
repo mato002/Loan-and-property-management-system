@@ -122,11 +122,7 @@
     @endif
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.leases', [
-            'activeTab' => $activeTab ?? 'leases',
-            'filters' => $filters ?? [],
-            'filterOptions' => $filterOptions ?? ['tenants' => [], 'properties' => []],
-        ])
+        @include('property.agent.partials.filter_toolbars.leases', get_defined_vars())
     </x-slot>
 
     <x-slot name="table_actions">

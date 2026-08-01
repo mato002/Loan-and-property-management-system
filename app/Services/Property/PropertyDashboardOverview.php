@@ -503,6 +503,14 @@ final class PropertyDashboardOverview
      */
     private static function landlordWorkspaceStats(bool $applyAgentFilter, ?int $agentUserId): array
     {
+        if (! Schema::hasColumn((new User)->getTable(), 'property_portal_role')) {
+            return [
+                'landlord_users' => 0,
+                'linked_landlord_users' => 0,
+                'unlinked_landlord_users' => 0,
+            ];
+        }
+
         $landlordsQuery = User::query()->where('property_portal_role', 'landlord');
         if ($applyAgentFilter && $agentUserId) {
             $landlordsQuery = LandlordWorkspaceScope::applyToLandlordUsersQuery(

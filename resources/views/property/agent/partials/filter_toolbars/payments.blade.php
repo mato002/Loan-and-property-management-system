@@ -9,8 +9,14 @@
     :reset-url="$paymentsUrl"
     :drawer-label="$drawerLabel"
     revenue-date-filter="payments"
+    data-filter-cascade="property-unit-tenant"
+    data-filter-cascade-catalog='@json($filterCascadeCatalog ?? ['units' => [], 'tenants' => []])'
+    data-filter-cascade-auto-apply="true"
     :chip-labels="[
         'q' => 'Search',
+        'property_id' => 'Property',
+        'unit_id' => 'Unit',
+        'tenant_id' => 'Tenant',
         'status' => 'Status',
         'reversal_status' => 'Reversal',
         'channel' => 'Channel',
@@ -31,6 +37,12 @@
 
     <x-slot name="primary">
         <x-property.filter-field type="search" name="q" placeholder="Search ref, tenant, phone…" :value="$filters['q'] ?? ''" wide />
+        @include('property.agent.partials.filter_toolbars.partials.property_unit_tenant_fields', [
+            'filters' => $filters,
+            'properties' => $properties ?? [],
+            'units' => $units ?? [],
+            'tenantsForFilter' => $tenantsForFilter ?? [],
+        ])
         <x-property.filter-field type="select"
             name="status"
             label="Status"

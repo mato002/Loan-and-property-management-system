@@ -15,7 +15,7 @@
         : 'inline-flex items-center rounded-full bg-[#6a9f97]/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#386f66] ring-1 ring-[#6a9f97]/35';
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-pwa-context="portal">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-pwa-context="portal" class="h-dvh overflow-hidden">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -27,6 +27,7 @@
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
         @vite(['resources/css/app.css', 'resources/js/app.js'])
+        <style>[x-cloak]{display:none!important}</style>
         @php
             $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');
             $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
@@ -39,9 +40,9 @@
         <meta name="theme-color" content="#059669" />
         <script src="{{ asset('js/pwa-install.js') }}?v=2" defer></script>
     </head>
-    <body class="font-sans antialiased text-slate-900 bg-[#eef5f3]">
+    <body class="h-dvh overflow-hidden font-sans antialiased text-slate-900 bg-[#eef5f3]">
         <x-swal-flash />
-        <div class="relative min-h-screen overflow-hidden">
+        <div class="relative h-full overflow-hidden">
             <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
                 <div class="absolute inset-0">
                     <img
@@ -57,19 +58,18 @@
                 <div class="absolute bottom-10 left-8 h-44 w-44 rounded-full bg-emerald-200/30 blur-2xl"></div>
             </div>
 
-            <div class="relative z-10 min-h-screen grid lg:grid-cols-[1.05fr_1fr]">
-                <aside class="relative overflow-hidden flex min-h-[140px] lg:min-h-screen">
-
-                <div class="relative z-10 flex w-full flex-col justify-between px-5 py-4 lg:px-12 lg:py-12 text-white">
+            <div class="relative z-10 h-full grid lg:grid-cols-[1.05fr_1fr] lg:overflow-hidden">
+                <aside class="relative overflow-hidden hidden lg:flex min-h-0 h-full">
+                <div class="relative z-10 flex w-full flex-col justify-between px-5 py-4 lg:px-10 lg:py-8 text-white">
                     <div>
                         <p class="text-[11px] lg:text-sm font-semibold uppercase tracking-[0.18em] lg:tracking-[0.2em] text-white/75">{{ $displayName }}</p>
-                        <h2 class="mt-2 lg:mt-6 max-w-md text-lg lg:text-4xl font-extrabold leading-tight">
+                        <h2 class="mt-2 lg:mt-4 max-w-md text-lg lg:text-3xl font-extrabold leading-tight">
                             {{ $isTenant ? __('Manage your tenancy with ease.') : __('Track portfolio performance with clarity.') }}
                         </h2>
                         <p class="mt-1.5 lg:mt-4 max-w-md text-xs lg:text-sm leading-relaxed text-white/85">{{ $pageSubtitle }}</p>
                     </div>
 
-                    <div class="hidden lg:block rounded-3xl border border-white/25 bg-white/10 p-5 backdrop-blur-sm">
+                    <div class="hidden lg:block rounded-2xl border border-white/25 bg-white/10 p-4 backdrop-blur-sm">
                         <p class="text-xs font-semibold uppercase tracking-wide text-white/70">{{ __('Portal Access') }}</p>
                         <p class="mt-2 text-lg font-semibold">{{ $isTenant ? __('Resident sign in') : __('Landlord sign in') }}</p>
                         <p class="mt-1 text-sm text-white/80">{{ __('Secure role-based access for your account area.') }}</p>
@@ -77,9 +77,9 @@
                 </div>
                 </aside>
 
-                <div class="relative z-10 flex items-center justify-center px-6 py-10 sm:px-10 lg:px-14 xl:px-20 lg:-ml-8">
-                    <div class="w-full max-w-md overflow-hidden rounded-[2rem] bg-white shadow-[0_20px_45px_rgba(47,79,79,0.14)] ring-1 ring-[#dbe8e4]">
-                        <div class="h-24 w-full overflow-hidden rounded-t-[2rem] border-b border-[#dbe8e4] bg-gradient-to-r from-[#f4faf8] to-[#eaf4f1]">
+                <div class="relative z-10 flex h-full min-h-0 items-center justify-center overflow-y-auto px-4 py-4 sm:px-8 lg:px-10 xl:px-14 lg:-ml-8">
+                    <div class="my-auto w-full max-w-md overflow-hidden rounded-[1.75rem] bg-white shadow-[0_20px_45px_rgba(47,79,79,0.14)] ring-1 ring-[#dbe8e4]">
+                        <div class="h-16 sm:h-[4.5rem] w-full overflow-hidden rounded-t-[1.75rem] border-b border-[#dbe8e4] bg-gradient-to-r from-[#f4faf8] to-[#eaf4f1]">
                             @if ($companyLogoUrl !== '')
                                 <img src="{{ $companyLogoUrl }}" alt="{{ $displayName }}" class="block h-full w-full object-fill" />
                             @else
@@ -88,16 +88,16 @@
                                 </div>
                             @endif
                         </div>
-                        <div class="px-7 py-8 sm:px-9 sm:py-10">
-                            <div class="text-center mb-7">
+                        <div class="px-5 py-5 sm:px-7 sm:py-6">
+                            <div class="text-center mb-5">
                                 <p class="{{ $badgeClass }}">{{ $isTenant ? __('Resident access') : __('Owner access') }}</p>
-                                <h1 class="mt-4 text-2xl font-bold tracking-tight text-slate-900">{{ $pageTitle }}</h1>
-                                <p class="mt-2 text-sm leading-relaxed text-slate-500">{{ $pageSubtitle }}</p>
+                                <h1 class="mt-3 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">{{ $pageTitle }}</h1>
+                                <p class="mt-1.5 text-sm leading-snug text-slate-500 lg:hidden">{{ $pageSubtitle }}</p>
                             </div>
 
                             {{ $slot }}
 
-                            <div class="mt-8 text-center text-xs text-slate-500 space-y-2">
+                            <div class="mt-5 text-center text-xs text-slate-500 space-y-2">
                                 <p>
                                     @if ($isTenant)
                                         <a href="{{ route('property.landlord.login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Landlord sign-in') }}</a>

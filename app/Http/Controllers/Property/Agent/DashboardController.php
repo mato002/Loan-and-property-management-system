@@ -19,12 +19,26 @@ class DashboardController extends Controller
         return property_view('property.agent.dashboard', PropertyDashboardOverview::lightForAgent());
     }
 
-    public function metricsFrame(Request $request): View
+    public function metricsFrame(Request $request): View|\Illuminate\Http\Response
     {
         // Release the session lock before slow aggregates so other tabs/routes stay clickable.
         $request->session()->save();
 
-        $data = PropertyDashboardOverview::heavyForAgent();
+        try {
+            $data = PropertyDashboardOverview::heavyForAgent();
+        } catch (\Throwable $e) {
+            report($e);
+
+            if ($request->header('X-Property-Dashboard-Metrics') === '1') {
+                return response()->view('property.agent.partials.dashboard_metrics_error', [
+                    'message' => config('app.debug')
+                        ? $e->getMessage()
+                        : __('Something went wrong while loading collections, charts, and activity.'),
+                ], 500);
+            }
+
+            throw $e;
+        }
 
         if ($request->header('X-Property-Dashboard-Metrics') === '1') {
             return property_view('property.agent.partials.dashboard_stats_heavy', $data);

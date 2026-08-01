@@ -74,11 +74,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.uninvoiced_leases', [
-            'filters' => $filters,
-            'month' => $month,
-            'canGenerate' => $canGenerate ?? false,
-        ])
+        @include('property.agent.partials.filter_toolbars.uninvoiced_leases', get_defined_vars())
     </x-slot>
 
     @if (session('bulk_invoice_errors'))

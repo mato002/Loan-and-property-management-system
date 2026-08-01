@@ -12,6 +12,7 @@
         'window' => 'Window',
         'pm_tenant_id' => 'Tenant',
         'property_id' => 'Property',
+        'unit_id' => 'Unit',
         'term' => 'Term type',
         'expiring' => 'Expiring',
         'carry_forward' => 'Carry-forward',
@@ -26,6 +27,10 @@
     :action="$leasesUrl"
     :reset-url="$leasesUrl"
     :drawer-label="$drawerLabel"
+    data-filter-cascade="property-unit-tenant"
+    data-filter-cascade-tenant-field="pm_tenant_id"
+    data-filter-cascade-catalog='@json($filterCascadeCatalog ?? ['units' => [], 'tenants' => []])'
+    data-filter-cascade-auto-apply="true"
     :chip-labels="$chipLabels"
 >
     <x-slot name="primary">
@@ -67,20 +72,13 @@
                 :value="$filters['expiring'] ?? ''"
             />
         @endif
-        <x-property.filter-field type="select"
-            name="pm_tenant_id"
-            label="Tenant"
-            empty-option="Tenant: All"
-            :options="$filterOptions['tenants'] ?? []"
-            :value="(string) ($filters['pm_tenant_id'] ?? '')"
-        />
-        <x-property.filter-field type="select"
-            name="property_id"
-            label="Property"
-            empty-option="Property: All"
-            :options="$filterOptions['properties'] ?? []"
-            :value="(string) ($filters['property_id'] ?? '')"
-        />
+        @include('property.agent.partials.filter_toolbars.partials.property_unit_tenant_fields', [
+            'filters' => $filters,
+            'properties' => $properties ?? collect($filterOptions['properties'] ?? [])->map(fn ($option) => (object) ['id' => (int) $option['value'], 'name' => $option['label']]),
+            'units' => $units ?? [],
+            'tenantsForFilter' => $tenantsForFilter ?? collect($filterOptions['tenants'] ?? [])->map(fn ($option) => (object) ['id' => (int) $option['value'], 'name' => $option['label']]),
+            'tenantField' => 'pm_tenant_id',
+        ])
     </x-slot>
 
     <x-slot name="secondary">

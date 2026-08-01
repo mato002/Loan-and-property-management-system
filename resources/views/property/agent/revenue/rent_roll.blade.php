@@ -14,7 +14,7 @@
         <span class="inline-flex items-center rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">Live data</span>
     </x-slot>
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.rent_roll', ['filters' => $filters])
+        @include('property.agent.partials.filter_toolbars.rent_roll', get_defined_vars())
     </x-slot>
     <x-slot name="footer">
         @isset($paginator)

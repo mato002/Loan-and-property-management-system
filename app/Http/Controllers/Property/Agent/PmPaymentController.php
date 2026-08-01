@@ -7,6 +7,7 @@ use App\Models\PmInvoice;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
+use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\TabularExport;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
@@ -34,6 +35,9 @@ class PmPaymentController extends Controller
             'status' => strtolower(trim((string) $request->query('status', ''))),
             'reversal_status' => strtolower(trim((string) $request->query('reversal_status', ''))),
             'channel' => strtolower(trim((string) $request->query('channel', ''))),
+            'property_id' => max(0, (int) $request->query('property_id', 0)),
+            'unit_id' => max(0, (int) $request->query('unit_id', 0)),
+            'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
             'from' => (string) $request->query('from', ''),
             'to' => (string) $request->query('to', ''),
             'range_months' => (string) $rangeMonths,
@@ -236,6 +240,11 @@ class PmPaymentController extends Controller
             ];
         })->all();
 
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $propertyId = (int) $filters['property_id'];
+        $unitId = (int) $filters['unit_id'];
+        $tenantId = (int) $filters['tenant_id'];
+
         return property_view('property.agent.revenue.payments', [
             // Legacy workspace view still reads `$stats`; v2 uses statsPrimary/statsTable in the above slot.
             'stats' => $statsPrimary,
@@ -247,6 +256,10 @@ class PmPaymentController extends Controller
             'paginator' => $payments,
             'perPage' => $perPage,
             'filters' => $filters,
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
+            'filterCascadeCatalog' => $cascade->fromPayments(),
             'openInvoices' => PmInvoice::query()
                 ->with('tenant')
                 ->whereColumn('amount_paid', '<', 'amount')
@@ -628,6 +641,6 @@ class PmPaymentController extends Controller
             });
         }
 
-        return $query;
+        return app(PropertyFilterCascadeCatalog::class)->applyToPaymentQuery($query, $filters);
     }
 }

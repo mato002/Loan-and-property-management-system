@@ -2,10 +2,6 @@
     $invoicesUrl = route('property.revenue.invoices', absolute: false);
     $drawerLabel = 'Invoice filters';
     $filterFormId = 'property-filter-form-'.substr(md5($invoicesUrl.$drawerLabel), 0, 8);
-    $propertyId = (int) ($filters['property_id'] ?? 0);
-    $unitLabel = fn ($u) => $propertyId > 0
-        ? $u->label
-        : ($u->property?->name ?? 'Unknown').'/'.$u->label;
 @endphp
 
 <x-property.filter-toolbar
@@ -13,6 +9,9 @@
     :reset-url="$invoicesUrl"
     :drawer-label="$drawerLabel"
     revenue-date-filter="invoices"
+    data-filter-cascade="property-unit-tenant"
+    data-filter-cascade-catalog='@json($filterCascadeCatalog ?? ['units' => [], 'tenants' => []])'
+    data-filter-cascade-auto-apply="true"
     :chip-labels="[
         'q' => 'Search',
         'property_id' => 'Property',
@@ -40,30 +39,12 @@
 
     <x-slot name="primary">
         <x-property.filter-field type="search" name="q" placeholder="Search invoice, tenant, unit…" :value="$filters['q'] ?? ''" wide />
-        <x-property.filter-field type="select"
-            name="property_id"
-            label="Property"
-            :options="collect([['value' => '0', 'label' => 'Property: All']])
-                ->merge(collect($properties ?? [])->map(fn ($p) => ['value' => (string) $p->id, 'label' => $p->name]))
-                ->all()"
-            :value="(string) ($filters['property_id'] ?? '0')"
-        />
-        <x-property.filter-field type="select"
-            name="unit_id"
-            label="Unit"
-            :options="collect([['value' => '0', 'label' => 'Unit: All']])
-                ->merge(collect($units)->map(fn ($u) => ['value' => (string) $u->id, 'label' => $unitLabel($u)]))
-                ->all()"
-            :value="(string) ($filters['unit_id'] ?? '0')"
-        />
-        <x-property.filter-field type="select"
-            name="tenant_id"
-            label="Tenant"
-            :options="collect([['value' => '0', 'label' => 'Tenant: All']])
-                ->merge(collect($tenantsForFilter ?? $tenants)->map(fn ($t) => ['value' => (string) $t->id, 'label' => $t->name]))
-                ->all()"
-            :value="(string) ($filters['tenant_id'] ?? '0')"
-        />
+        @include('property.agent.partials.filter_toolbars.partials.property_unit_tenant_fields', [
+            'filters' => $filters,
+            'properties' => $properties ?? [],
+            'units' => $units ?? [],
+            'tenantsForFilter' => $tenantsForFilter ?? [],
+        ])
         <x-property.filter-field type="select"
             name="status"
             label="Status"

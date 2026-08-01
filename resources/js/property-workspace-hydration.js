@@ -10,6 +10,7 @@ import { setupPropertyPaymentReversal } from './property-payment-reversal';
 import { setupPropertyWorkspaceTabs } from './property-workspace-tabs';
 import { setupPropertyWorkspaceUi } from './property-workspace-ui';
 
+import { bootPropertyDashboard } from './property-dashboard';
 import { ensurePropertyPageModalsInitialized } from './property-page-modals';
 
 export const PROPERTY_MAIN_FRAME_ID = 'property-main';
@@ -163,6 +164,7 @@ function runDeferredHydrationTasks(frame, hooks) {
     reconcilePropertyFrameWithBrowserUrl(frame, { force: false });
     setupReversal(frame);
     ensurePropertyFormModalHost();
+    bootPropertyDashboard(frame);
     onHydrationComplete(frame);
 }
 

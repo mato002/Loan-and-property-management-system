@@ -16,7 +16,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.utilities', ['filters' => $filters])
+        @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
     </x-slot>
 
     <x-slot name="above">

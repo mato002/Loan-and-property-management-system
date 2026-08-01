@@ -8,9 +8,15 @@
     :action="$uninvoicedUrl"
     :reset-url="$uninvoicedUrl"
     :drawer-label="$drawerLabel"
+    data-filter-cascade="property-unit-tenant"
+    data-filter-cascade-catalog='@json($filterCascadeCatalog ?? ['units' => [], 'tenants' => []])'
+    data-filter-cascade-auto-apply="true"
     :chip-labels="[
         'month' => 'Billing month',
         'filter' => 'Show',
+        'property_id' => 'Property',
+        'unit_id' => 'Unit',
+        'tenant_id' => 'Tenant',
         'q' => 'Search',
     ]"
 >
@@ -28,6 +34,12 @@
             ]"
             :value="$filters['filter'] ?? 'missing'"
         />
+        @include('property.agent.partials.filter_toolbars.partials.property_unit_tenant_fields', [
+            'filters' => $filters,
+            'properties' => $properties ?? [],
+            'units' => $units ?? [],
+            'tenantsForFilter' => $tenantsForFilter ?? [],
+        ])
         <x-property.filter-field type="search" name="q" placeholder="Search tenant, unit…" :value="$filters['q'] ?? ''" wide />
         <x-property.filter-field type="select"
             name="per_page"

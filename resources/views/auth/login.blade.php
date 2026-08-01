@@ -6,10 +6,10 @@
         $badgeClass = 'inline-flex items-center rounded-full bg-[#6a9f97]/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#386f66] ring-1 ring-[#6a9f97]/35';
     @endphp
 
-    <div class="text-center mb-7">
+    <div class="text-center mb-5">
         <p class="{{ $badgeClass }}">{{ __('Operations') }}</p>
-        <h1 class="mt-4 text-2xl font-bold tracking-tight text-slate-900">{{ __('Welcome back') }}</h1>
-        <p class="mt-2 text-sm leading-relaxed text-slate-500">
+        <h1 class="mt-3 text-xl sm:text-2xl font-bold tracking-tight text-slate-900">{{ __('Welcome back') }}</h1>
+        <p class="mt-1.5 text-sm leading-snug text-slate-500">
             {{ __('Sign in with your staff credentials to open your workspace.') }}
         </p>
     </div>
@@ -20,7 +20,7 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ route('login') }}" class="space-y-5" x-data="{ showPassword: false }">
+    <form method="POST" action="{{ route('login') }}" class="space-y-4" x-data="{ showPassword: false }">
         @csrf
 
         <div class="space-y-1">
@@ -98,7 +98,7 @@
             </label>
         </div>
 
-        <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+        <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2.5 pt-1">
             @if (Route::has('password.request'))
                 <a
                     class="text-sm text-slate-500 hover:text-[#3f7a70] underline underline-offset-2 text-center sm:text-left"
@@ -108,13 +108,13 @@
                 </a>
             @endif
 
-            <x-primary-button class="w-full sm:w-auto justify-center rounded-full border-transparent bg-[#4d8d82] hover:bg-[#3f7a70] focus:ring-[#4d8d82] px-7 py-3">
+            <x-primary-button class="w-full sm:w-auto justify-center rounded-full border-transparent bg-[#4d8d82] hover:bg-[#3f7a70] focus:ring-[#4d8d82] px-6 py-2.5">
                 {{ __('Sign in') }}
             </x-primary-button>
         </div>
     </form>
 
-    <div class="mt-8 text-center text-xs text-slate-500 space-y-3">
+    <div class="mt-5 text-center text-xs text-slate-500 space-y-2">
         <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">{{ __('Quick access') }}</p>
         <p class="space-x-2">
             <a href="{{ route('property.tenant.login') }}" class="font-semibold text-[#4d8d82] hover:text-[#3f7a70] underline underline-offset-2">{{ __('Tenant portal') }}</a>

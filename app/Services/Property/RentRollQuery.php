@@ -10,9 +10,9 @@ use App\Models\PropertyUnit;
 final class RentRollQuery
 {
     /**
-     * @return list<list<string>>
+     * @return list<array{property_id: int, unit_id: int, tenant_id: int|null, cells: list<string>}>
      */
-    public static function tableRows(): array
+    public static function rowRecords(): array
     {
         $utilityTotals = PmUnitUtilityCharge::query()
             ->selectRaw('property_unit_id, SUM(amount) as total')
@@ -60,17 +60,30 @@ final class RentRollQuery
             $otherLabel = $other > 0 ? PropertyMoney::kes($other) : '—';
 
             $rows[] = [
-                $unit->property->name.' / '.$unit->label,
-                $tenant?->name ?? '—',
-                $period,
-                $lease ? PropertyMoney::kes((float) $lease->monthly_rent) : PropertyMoney::kes((float) $unit->rent_amount),
-                $otherLabel,
-                PropertyMoney::kes(max(0, $paid)),
-                PropertyMoney::kes($balance),
-                ucfirst($unit->status),
+                'property_id' => (int) $unit->property_id,
+                'unit_id' => (int) $unit->id,
+                'tenant_id' => $tenant ? (int) $tenant->id : null,
+                'cells' => [
+                    $unit->property->name.' / '.$unit->label,
+                    $tenant?->name ?? '—',
+                    $period,
+                    $lease ? PropertyMoney::kes((float) $lease->monthly_rent) : PropertyMoney::kes((float) $unit->rent_amount),
+                    $otherLabel,
+                    PropertyMoney::kes(max(0, $paid)),
+                    PropertyMoney::kes($balance),
+                    ucfirst($unit->status),
+                ],
             ];
         }
 
         return $rows;
+    }
+
+    /**
+     * @return list<list<string>>
+     */
+    public static function tableRows(): array
+    {
+        return array_map(static fn (array $row) => $row['cells'], self::rowRecords());
     }
 }

@@ -233,11 +233,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.payments', [
-            'filters' => $filters,
-            'perPage' => $perPage ?? null,
-            'receivedRangeLabel' => $receivedRangeLabel ?? null,
-        ])
+        @include('property.agent.partials.filter_toolbars.payments', get_defined_vars())
     </x-slot>
 
     <x-slot name="footer">

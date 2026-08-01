@@ -11,6 +11,7 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PmUnitUtilityCharge;
 use App\Models\PmWaterReading;
 use App\Models\PropertyUnit;
+use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\Property\UtilityWorkspaceViewData;
 use App\Exceptions\Property\UtilityPeriodClosedException;
 use App\Jobs\RefreshUtilityIntelligenceCacheJob;
@@ -35,6 +36,8 @@ class PropertyUtilityChargeController extends Controller
     {
         $filters = [
             'q' => trim((string) $request->query('q', '')),
+            'property_id' => max(0, (int) $request->query('property_id', 0)),
+            'unit_id' => max(0, (int) $request->query('unit_id', 0)),
             'charge_type' => strtolower(trim((string) $request->query('charge_type', ''))),
             'month' => trim((string) $request->query('month', '')),
             'sort' => strtolower(trim((string) $request->query('sort', 'id'))),
@@ -51,6 +54,7 @@ class PropertyUtilityChargeController extends Controller
         $query = PmUnitUtilityCharge::query()
             ->with(['unit.property'])
             ->whereNotNull('id');
+        $query = app(PropertyFilterCascadeCatalog::class)->applyToUtilityChargeQuery($query, $filters);
         if ($filters['q'] !== '') {
             $q = $filters['q'];
             $query->where(function ($inner) use ($q) {
@@ -305,6 +309,8 @@ class PropertyUtilityChargeController extends Controller
         ];
 
         $units = PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get();
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $propertyId = (int) $filters['property_id'];
         $viewFilters = [
             ...$filters,
             'sort' => $sortBy,
@@ -320,7 +326,9 @@ class PropertyUtilityChargeController extends Controller
             'waterReadings' => $waterReadings,
             'readingAnomalies' => $readingAnomalies,
             'filters' => $viewFilters,
-            'units' => $units,
+            'units' => $cascade->unitsForProperty($propertyId),
+            'properties' => $cascade->properties(),
+            'filterCascadeCatalog' => $cascade->fromUtilityCharges(),
             'wrProperties' => PropertyUnit::query()->with('property:id,name')->select(['id', 'property_id'])->get()
                 ->pluck('property')
                 ->filter()

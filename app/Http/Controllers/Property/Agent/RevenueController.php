@@ -22,6 +22,7 @@ use App\Services\Property\RentInvoiceGenerator;
 use App\Services\Property\RentRollQuery;
 use App\Services\Property\TenantCommunicationStageService;
 use App\Models\PropertyPortalSetting;
+use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -80,11 +81,28 @@ class RevenueController extends Controller
 
     public function rentRoll(Request $request): View|StreamedResponse
     {
-        $rows = RentRollQuery::tableRows();
-        $q = trim((string) $request->query('q', ''));
-        $sort = strtolower(trim((string) $request->query('sort', 'unit')));
-        $dir = strtolower(trim((string) $request->query('dir', 'asc')));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $filters = [
+            'q' => trim((string) $request->query('q', '')),
+            'property_id' => max(0, (int) $request->query('property_id', 0)),
+            'unit_id' => max(0, (int) $request->query('unit_id', 0)),
+            'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
+            'sort' => strtolower(trim((string) $request->query('sort', 'unit'))),
+            'dir' => strtolower(trim((string) $request->query('dir', 'asc'))),
+            'per_page' => (string) min(200, max(10, (int) $request->query('per_page', 30))),
+        ];
+        $sort = (string) $filters['sort'];
+        $dir = (string) $filters['dir'];
+        $perPage = (int) $filters['per_page'];
+
+        $records = RentRollQuery::rowRecords();
+        $records = array_values(array_filter(
+            $records,
+            static fn (array $row) => $cascade->matchesLeaseScope($row, $filters)
+        ));
+
+        $rows = array_map(static fn (array $row) => $row['cells'], $records);
+        $q = (string) $filters['q'];
 
         if ($q !== '') {
             $needle = mb_strtolower($q);
@@ -132,30 +150,43 @@ class RevenueController extends Controller
             ['label' => 'Units on roll', 'value' => (string) count($rows), 'hint' => 'Filtered total'],
         ];
 
+        $propertyId = (int) $filters['property_id'];
+        $unitId = (int) $filters['unit_id'];
+        $tenantId = (int) $filters['tenant_id'];
+
         return property_view('property.agent.revenue.rent_roll', [
             'stats' => $stats,
             'columns' => ['Unit', 'Tenant', 'Period', 'Rent due', 'Other charges', 'Paid', 'Balance', 'Status'],
             'tableRows' => $pageRows,
             'paginator' => $paginator,
-            'filters' => [
-                'q' => $q,
-                'sort' => $sort,
-                'dir' => $dir,
-                'per_page' => (string) $perPage,
-            ],
+            'filters' => $filters,
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'tenantsForFilter' => $cascade->leaseTenantsForFilter($tenantId, $propertyId, $unitId),
+            'filterCascadeCatalog' => $cascade->fromLeases(),
         ]);
     }
 
     public function uninvoicedLeases(Request $request): View|StreamedResponse
     {
+        $cascade = app(PropertyFilterCascadeCatalog::class);
         $generator = app(RentInvoiceGenerator::class);
         $month = trim((string) $request->query('month', now()->format('Y-m')));
         $filter = strtolower(trim((string) $request->query('filter', 'missing')));
         if (! in_array($filter, ['missing', 'all', 'blocked', 'invoiced', 'underbilled'], true)) {
             $filter = 'missing';
         }
-        $q = trim((string) $request->query('q', ''));
-        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+        $filters = [
+            'month' => $month,
+            'filter' => $filter,
+            'q' => trim((string) $request->query('q', '')),
+            'property_id' => max(0, (int) $request->query('property_id', 0)),
+            'unit_id' => max(0, (int) $request->query('unit_id', 0)),
+            'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
+            'per_page' => (string) min(200, max(10, (int) $request->query('per_page', 30))),
+        ];
+        $q = (string) $filters['q'];
+        $perPage = (int) $filters['per_page'];
 
         $allRows = $generator->reportRows($month);
         $counts = [
@@ -187,7 +218,7 @@ class RevenueController extends Controller
                 'invoiced' => $row['reason'] === RentInvoiceGenerator::REASON_ALREADY,
                 default => true,
             };
-        });
+        })->filter(fn (array $row) => $cascade->matchesLeaseScope($row, $filters));
 
         if ($q !== '') {
             $needle = mb_strtolower($q);
@@ -299,6 +330,9 @@ class RevenueController extends Controller
         $paginator->setCollection(collect($tableRows));
 
         $automationOn = PropertyPortalSetting::isRentInvoiceAutomationEnabled();
+        $propertyId = (int) $filters['property_id'];
+        $unitId = (int) $filters['unit_id'];
+        $tenantId = (int) $filters['tenant_id'];
 
         return property_view('property.agent.revenue.uninvoiced_leases', [
             'stats' => [
@@ -314,12 +348,11 @@ class RevenueController extends Controller
             'month' => $month,
             'automationOn' => $automationOn,
             'canGenerate' => $canGenerate,
-            'filters' => [
-                'month' => $month,
-                'filter' => $filter,
-                'q' => $q,
-                'per_page' => (string) $perPage,
-            ],
+            'filters' => $filters,
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'tenantsForFilter' => $cascade->leaseTenantsForFilter($tenantId, $propertyId, $unitId),
+            'filterCascadeCatalog' => $cascade->fromLeases(),
             'missingCount' => $counts['missing'],
             'underbilledCount' => $counts['underbilled'],
         ]);
@@ -488,6 +521,9 @@ class RevenueController extends Controller
 
         $filters = [
             'q' => trim((string) $request->query('q', '')),
+            'property_id' => max(0, (int) $request->query('property_id', 0)),
+            'unit_id' => max(0, (int) $request->query('unit_id', 0)),
+            'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
             'aging' => strtolower(trim((string) $request->query('aging', ''))),
             'workflow' => strtolower(trim((string) $request->query('workflow', ''))),
             'from' => (string) $request->query('from', ''),
@@ -812,6 +848,11 @@ class RevenueController extends Controller
             ->values()
             ->all();
 
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $propertyId = (int) $filters['property_id'];
+        $unitId = (int) $filters['unit_id'];
+        $tenantId = (int) $filters['tenant_id'];
+
         return property_view('property.agent.revenue.arrears', [
             'stats' => $statsPrimary,
             'statsPrimary' => $statsPrimary,
@@ -830,6 +871,10 @@ class RevenueController extends Controller
                 'dir' => $sortDir,
                 'per_page' => (string) $perPage,
             ],
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
+            'filterCascadeCatalog' => $cascade->fromInvoices(),
         ]);
     }
 
@@ -1051,7 +1096,7 @@ class RevenueController extends Controller
             }
         }
 
-        return $query->orderBy('due_date')->orderBy('id');
+        return app(PropertyFilterCascadeCatalog::class)->applyToInvoiceQuery($query, $filters)->orderBy('due_date')->orderBy('id');
     }
 
     public function sendArrearsReminders(
@@ -1554,6 +1599,9 @@ class RevenueController extends Controller
     {
         $filters = [
             'q' => trim((string) $request->query('q', '')),
+            'property_id' => max(0, (int) $request->query('property_id', 0)),
+            'unit_id' => max(0, (int) $request->query('unit_id', 0)),
+            'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
             'from' => (string) $request->query('from', ''),
             'to' => (string) $request->query('to', ''),
             'sort' => strtolower(trim((string) $request->query('sort', 'updated_at'))),
@@ -1565,6 +1613,7 @@ class RevenueController extends Controller
             ->with(['tenant', 'unit.property'])
             ->where('status', PmInvoice::STATUS_PAID)
             ->whereNotNull('updated_at');
+        $query = app(PropertyFilterCascadeCatalog::class)->applyToInvoiceQuery($query, $filters);
         if ($filters['q'] !== '') {
             $q = $filters['q'];
             $query->where(function ($inner) use ($q) {
@@ -1632,6 +1681,11 @@ class RevenueController extends Controller
             new HtmlString('<a href="'.route('property.revenue.invoices.show', ['invoice' => $i->id], false).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">View</a>'),
         ])->all();
 
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $propertyId = (int) $filters['property_id'];
+        $unitId = (int) $filters['unit_id'];
+        $tenantId = (int) $filters['tenant_id'];
+
         return property_view('property.agent.revenue.receipts', [
             'stats' => $stats,
             'columns' => ['Receipt #', 'Invoice', 'Tenant', 'Amount', 'Tax', 'Submitted', 'eTIMS status', 'Actions'],
@@ -1643,6 +1697,10 @@ class RevenueController extends Controller
                 'dir' => $dir,
                 'per_page' => (string) $perPage,
             ],
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
+            'filterCascadeCatalog' => $cascade->fromInvoices(),
         ]);
     }
 

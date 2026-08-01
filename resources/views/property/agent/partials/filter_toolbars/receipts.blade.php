@@ -7,14 +7,26 @@
     :action="$receiptsUrl"
     :reset-url="$receiptsUrl"
     :drawer-label="$drawerLabel"
+    data-filter-cascade="property-unit-tenant"
+    data-filter-cascade-catalog='@json($filterCascadeCatalog ?? ['units' => [], 'tenants' => []])'
+    data-filter-cascade-auto-apply="true"
     :chip-labels="[
         'q' => 'Search',
+        'property_id' => 'Property',
+        'unit_id' => 'Unit',
+        'tenant_id' => 'Tenant',
         'from' => 'From',
         'to' => 'To',
     ]"
 >
     <x-slot name="primary">
         <x-property.filter-field type="search" name="q" placeholder="Search receipt, invoice, tenant…" :value="$filters['q'] ?? ''" wide />
+        @include('property.agent.partials.filter_toolbars.partials.property_unit_tenant_fields', [
+            'filters' => $filters,
+            'properties' => $properties ?? [],
+            'units' => $units ?? [],
+            'tenantsForFilter' => $tenantsForFilter ?? [],
+        ])
         <x-property.filter-field type="date" name="from" label="From" :value="$filters['from'] ?? ''" />
         <x-property.filter-field type="date" name="to" label="To" :value="$filters['to'] ?? ''" />
         <x-property.filter-field type="select"
