@@ -77,9 +77,9 @@
     $compactList = (bool) ($compactList ?? true);
     $hasBanner = isset($banner) && ! $banner->isEmpty();
     $hasModals = isset($modals) && ! $modals->isEmpty();
+    $hasTabs = isset($tabs) && ! $tabs->isEmpty();
     $hasSecondary = isset($secondary) && ! $secondary->isEmpty();
     $hasPageActions = isset($actions) && ! $actions->isEmpty();
-    $deferAbove = $compactList && $hasTable && isset($above) && ! $above->isEmpty();
 @endphp
 
 <x-property-layout>
@@ -131,7 +131,7 @@
         @endif
 
         @isset($above)
-            @if (! $above->isEmpty() && ! $deferAbove)
+            @if (! $above->isEmpty())
                 <div @class([
                     'w-full min-w-0',
                     $compactList ? 'mb-2 space-y-2' : 'mb-4 space-y-4',
@@ -140,6 +140,12 @@
                 </div>
             @endif
         @endisset
+
+        @if ($hasTabs)
+            <div class="print-hide w-full min-w-0 mb-2" data-workspace-tabs>
+                {{ $tabs }}
+            </div>
+        @endif
 
         @if (! $compactList)
         <div class="print-hide flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between w-full min-w-0">
@@ -339,14 +345,9 @@
             </div>
         @endif
 
-        @if ($deferAbove || ($compactList && $hasSecondary))
+        @if ($compactList && $hasSecondary)
             <div class="mt-3 space-y-3 w-full min-w-0 print-hide" data-workspace-secondary>
-                @if ($deferAbove)
-                    {{ $above }}
-                @endif
-                @if ($compactList && $hasSecondary)
-                    {{ $secondary }}
-                @endif
+                {{ $secondary }}
             </div>
         @endif
 

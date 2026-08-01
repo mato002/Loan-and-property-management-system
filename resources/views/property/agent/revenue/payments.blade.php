@@ -1,3 +1,31 @@
+@php
+    $showPaymentFormByDefault = request('form') === 'invoice'
+        || (old('payment_form') !== 'advance' && $errors->hasAny(['pm_tenant_id','channel','pm_invoice_id','amount','paid_at','external_ref']));
+    $showAdvanceFormByDefault = request('form') === 'advance'
+        || old('payment_form') === 'advance'
+        || $errors->has('advance')
+        || (old('payment_form') === 'advance' && $errors->hasAny(['pm_tenant_id', 'channel', 'amount', 'paid_at', 'external_ref', 'notes']));
+@endphp
+<div
+    x-data="{
+        showInvoicePaymentForm: @js($showPaymentFormByDefault),
+        showAdvancePaymentForm: @js($showAdvanceFormByDefault),
+        init() {
+            window.addEventListener('property-payment-panel-open', (event) => {
+                const panel = event.detail?.panel;
+                if (panel === 'invoice-payment-panel') this.showInvoicePaymentForm = true;
+                if (panel === 'advance-payment-panel') this.showAdvancePaymentForm = true;
+            });
+            window.addEventListener('property-payment-panel-close', (event) => {
+                const panel = event.detail?.panel;
+                if (panel === 'invoice-payment-panel') this.showInvoicePaymentForm = false;
+                if (panel === 'advance-payment-panel') this.showAdvancePaymentForm = false;
+            });
+        },
+    }"
+    class="w-full min-w-0"
+    data-property-page-modals
+>
 <x-property.workspace
     title="Payment tracking"
     subtitle="Manual receipt entry — allocates to an open invoice and updates balances."
@@ -10,71 +38,26 @@
     empty-title="No payment events"
     empty-hint="Record a payment for the paying tenant and choose an invoice with an open balance."
 >
-    <x-slot name="above">
-        <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm">
-            <p class="text-lg font-semibold text-slate-900">Rent flow (Step 3 of 3): Collect payment</p>
-            <p class="mt-1 text-sm text-slate-600">Record the tenant payment and select the invoice with an open balance. The invoice updates automatically (Partial / Paid).</p>
-            <div class="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                <span class="font-semibold">Trust accounting controls:</span>
-                Completed payments can be submitted for reversal with a reason, then approved by a different checker (maker/checker rule).
-            </div>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
-                    Back: Create rent bill
-                </a>
-                <a href="{{ route('property.revenue.receipts', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    View receipts
-                    <i class="fa-solid fa-receipt" aria-hidden="true"></i>
-                </a>
-                <a href="{{ route('property.revenue.tenant_credits', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
-                    Tenant credits
-                    <i class="fa-solid fa-piggy-bank" aria-hidden="true"></i>
-                </a>
-                @if (auth()->user()?->hasPmPermission('payments.settle'))
-                    <a href="{{ route('property.equity.matched', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">
-                        Matched payments
-                        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
-                    </a>
-                    <a href="{{ route('property.equity.unmatched', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100">
-                        Unmatched bank payments
-                        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
-                    </a>
-                    <a href="{{ route('property.equity.all', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                        All equity payments
-                        <i class="fa-solid fa-building-columns" aria-hidden="true"></i>
-                    </a>
-                @endif
-            </div>
-            @include('property.agent.revenue.partials.payment_collection_ctas')
-        </div>
-
-        @php
-            $showPaymentFormByDefault = request('form') === 'invoice'
-                || (old('payment_form') !== 'advance' && $errors->hasAny(['pm_tenant_id','channel','pm_invoice_id','amount','paid_at','external_ref']));
-            $showAdvanceFormByDefault = request('form') === 'advance'
-                || old('payment_form') === 'advance'
-                || $errors->has('advance')
-                || (old('payment_form') === 'advance' && $errors->hasAny(['pm_tenant_id', 'channel', 'amount', 'paid_at', 'external_ref', 'notes']));
-        @endphp
-        <div
-            x-data="{
-                showInvoicePaymentForm: @js($showPaymentFormByDefault),
-                showAdvancePaymentForm: @js($showAdvanceFormByDefault),
-                init() {
-                    window.addEventListener('property-payment-panel-open', (event) => {
-                        const panel = event.detail?.panel;
-                        if (panel === 'invoice-payment-panel') this.showInvoicePaymentForm = true;
-                        if (panel === 'advance-payment-panel') this.showAdvancePaymentForm = true;
-                    });
-                    window.addEventListener('property-payment-panel-close', (event) => {
-                        const panel = event.detail?.panel;
-                        if (panel === 'invoice-payment-panel') this.showInvoicePaymentForm = false;
-                        if (panel === 'advance-payment-panel') this.showAdvancePaymentForm = false;
-                    });
-                },
-            }"
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showInvoicePaymentForm = true"
         >
+            <i class="fa-solid fa-money-check-dollar" aria-hidden="true"></i>
+            <span>Record payment</span>
+        </button>
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+            @click="showAdvancePaymentForm = true"
+        >
+            <i class="fa-solid fa-piggy-bank" aria-hidden="true"></i>
+            <span>Record advance</span>
+        </button>
+    </x-slot>
+
+    <x-slot name="modals">
         <x-property.modal
             show="showInvoicePaymentForm"
             close="showInvoicePaymentForm = false"
@@ -172,7 +155,6 @@
                 ])
             @endif
         </x-property.modal>
-        </div>
 
         <script>
             (function () {
@@ -212,6 +194,45 @@
         </script>
     </x-slot>
 
+    <x-slot name="secondary">
+        <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm">
+            <p class="text-lg font-semibold text-slate-900">Rent flow (Step 3 of 3): Collect payment</p>
+            <p class="mt-1 text-sm text-slate-600">Record the tenant payment and select the invoice with an open balance. The invoice updates automatically (Partial / Paid).</p>
+            <div class="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <span class="font-semibold">Trust accounting controls:</span>
+                Completed payments can be submitted for reversal with a reason, then approved by a different checker (maker/checker rule).
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                    Back: Create rent bill
+                </a>
+                <a href="{{ route('property.revenue.receipts', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                    View receipts
+                    <i class="fa-solid fa-receipt" aria-hidden="true"></i>
+                </a>
+                <a href="{{ route('property.revenue.tenant_credits', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100">
+                    Tenant credits
+                    <i class="fa-solid fa-piggy-bank" aria-hidden="true"></i>
+                </a>
+                @if (auth()->user()?->hasPmPermission('payments.settle'))
+                    <a href="{{ route('property.equity.matched', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">
+                        Matched payments
+                        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                    </a>
+                    <a href="{{ route('property.equity.unmatched', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100">
+                        Unmatched bank payments
+                        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                    </a>
+                    <a href="{{ route('property.equity.all', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                        All equity payments
+                        <i class="fa-solid fa-building-columns" aria-hidden="true"></i>
+                    </a>
+                @endif
+            </div>
+        </div>
+    </x-slot>
+
     <x-slot name="toolbar">
         @include('property.agent.partials.filter_toolbars.payments', [
             'filters' => $filters,
@@ -245,3 +266,4 @@
         @endif
     </x-slot>
 </x-property.workspace>
+</div>

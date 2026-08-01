@@ -1,4 +1,65 @@
-﻿<x-property.workspace
+﻿@php
+    $showLeaseFormByDefault = ($errors ?? null)?->hasAny([
+        'pm_tenant_id',
+        'start_date',
+        'end_date',
+        'utility_expense_type',
+        'utility_expense_rate',
+        'status',
+        'property_unit_ids',
+        'property_unit_ids.*',
+        'monthly_rent',
+        'deposit_amount',
+        'additional_deposits',
+        'additional_deposits.*.label',
+        'additional_deposits.*.amount',
+        'terms_summary',
+        'opening_arrears_items',
+        'opening_arrears_items.*.type',
+        'opening_arrears_items.*.label',
+        'opening_arrears_items.*.period',
+        'opening_arrears_items.*.amount',
+        'opening_arrears_amount',
+        'opening_arrears_as_of',
+        'opening_arrears_notes',
+        'opening_arrears',
+        'opening_arrears.*',
+        'opening_rent_arrears',
+        'opening_rent_arrears_period',
+        'opening_rent_arrears_details',
+        'opening_deposit_arrears',
+        'opening_deposit_arrears.*',
+        'opening_arrears_manual_total',
+        'opening_arrears_as_of_date',
+        'opening_arrears_note',
+    ]) ?? false;
+    $leaseFormOpen = $showLeaseFormByDefault || (bool) ($openLeaseCreateModal ?? false);
+    $leaseCreateAlpineConfig = \App\Support\Property\LeaseCreateAlpineConfig::build($errors ?? null, $openingArrearsTypeOptions ?? []);
+@endphp
+<div
+    data-lease-form-root
+    x-data="Object.assign({ showLeaseCreateForm: @js($leaseFormOpen) }, leaseCreateFormAlpineState(@js($leaseCreateAlpineConfig)))"
+    :data-lease-form-open="showLeaseCreateForm ? '1' : '0'"
+    x-init="
+        const leaseFormStorageKey = 'property.leases.createFormOpen';
+        const bootLeaseCreatePanel = () => $nextTick(() => { window.initLeaseFormLogic?.(); });
+        try {
+            if (sessionStorage.getItem(leaseFormStorageKey) === '1') {
+                showLeaseCreateForm = true;
+            }
+        } catch (e) {}
+        if (showLeaseCreateForm) bootLeaseCreatePanel();
+        $watch('showLeaseCreateForm', (open) => {
+            try {
+                sessionStorage.setItem(leaseFormStorageKey, open ? '1' : '0');
+            } catch (e) {}
+            if (open) bootLeaseCreatePanel();
+        });
+    "
+    class="w-full min-w-0"
+    data-property-page-modals
+>
+<x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
     :title="($activeTab ?? 'leases') === 'expiry' ? 'Lease expiry tracking' : 'Lease agreements'"
@@ -15,17 +76,50 @@
         ? 'When leases have end dates in the next 90 days, they appear here.'
         : 'Create a lease and select vacant units; active leases mark units occupied.'"
 >
-    <x-slot name="above">
-        @include('property.agent.tenants.partials.leases_workspace_above')
+    <x-slot name="actions">
+        @if (($activeTab ?? 'leases') === 'leases')
+            <button
+                type="button"
+                class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                @click="showLeaseCreateForm = true"
+            >
+                <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+                <span>Create lease</span>
+            </button>
+        @else
+            <a
+                href="{{ route('property.workspace.form.show', 'tenants-renewal-email') }}"
+                class="inline-flex justify-center items-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+            >Email renewals</a>
+        @endif
     </x-slot>
 
-    @if (($activeTab ?? 'leases') === 'expiry')
-    <x-slot name="actions">
-        <a
-            href="{{ route('property.workspace.form.show', 'tenants-renewal-email') }}"
-            class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto"
-        >Email renewals</a>
+    <x-slot name="tabs">
+        @include('property.agent.tenants.partials.leases_workspace_tabs')
     </x-slot>
+
+    @if (($activeTab ?? 'leases') === 'leases')
+        <x-slot name="modals">
+            <x-property.modal
+                show="showLeaseCreateForm"
+                close="showLeaseCreateForm = false"
+                name="lease-create-workspace"
+                title="Create lease"
+                max-width="4xl"
+            >
+            <div class="w-full min-w-0">
+                @include('property.agent.tenants.partials.lease_create_form_content', [
+                    'leaseFormTurboFrame' => 'property-main',
+                    'leaseFormAlpineOnParent' => true,
+                ])
+                @include('property.agent.tenants.partials.lease_create_form_script')
+            </div>
+            </x-property.modal>
+        </x-slot>
+
+        <x-slot name="secondary">
+            @include('property.agent.tenants.partials.leases_workspace_onboarding')
+        </x-slot>
     @endif
 
     <x-slot name="toolbar">
@@ -80,3 +174,4 @@
         </x-slot>
     @endif
 </x-property.workspace>
+</div>
