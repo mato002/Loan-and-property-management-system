@@ -2,8 +2,6 @@
  * Dependent property → unit → tenant filter dropdowns on workspace list pages.
  */
 
-import { submitPropertyFilterForm } from './property-auto-filter';
-
 /** @typedef {{ id: string, label: string, property_id: string, property_name: string }} CascadeUnit */
 /** @typedef {{ id: string, name: string, unit_ids: string[], property_ids: string[] }} CascadeTenant */
 /** @typedef {{ units?: CascadeUnit[], tenants?: CascadeTenant[] }} CascadeCatalog */
@@ -85,7 +83,6 @@ function cascadeConfig(toolbar) {
     return {
         catalog,
         tenantField: toolbar.dataset.filterCascadeTenantField || 'tenant_id',
-        autoApply: toolbar.dataset.filterCascadeAutoApply !== 'false',
         mode: toolbar.dataset.filterCascade || 'property-unit-tenant',
     };
 }
@@ -93,7 +90,7 @@ function cascadeConfig(toolbar) {
 /**
  * @param {HTMLFormElement} form
  * @param {CascadeCatalog} catalog
- * @param {{ tenantField: string, autoApply: boolean, mode: string }} config
+ * @param {{ tenantField: string, mode: string }} config
  */
 function wirePropertyUnitTenantCascadeForm(form, catalog, config) {
     const propertySelect = form.querySelector('[name="property_id"]');
@@ -122,14 +119,6 @@ function wirePropertyUnitTenantCascadeForm(form, catalog, config) {
     }
 
     form.dataset.filterCascadeBound = '1';
-
-    const maybeAutoApply = () => {
-        if (!config.autoApply) {
-            return;
-        }
-
-        submitPropertyFilterForm(form, 'apply');
-    };
 
     const sync = (resetUnit = false, resetTenant = false) => {
         const propertyId = isAllValue(propertySelect.value) ? '0' : asId(propertySelect.value);
@@ -185,11 +174,9 @@ function wirePropertyUnitTenantCascadeForm(form, catalog, config) {
 
     propertySelect.addEventListener('change', () => {
         sync(true, true);
-        maybeAutoApply();
     });
     unitSelect.addEventListener('change', () => {
         sync(false, true);
-        maybeAutoApply();
     });
 
     sync(false, false);

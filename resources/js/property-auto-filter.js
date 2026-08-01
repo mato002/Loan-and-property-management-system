@@ -1,6 +1,5 @@
 /**
- * Phase 2C — Property GET filter forms: debounced search-only auto-submit.
- * Sort, dates, ranges, and dropdowns require the explicit Apply button.
+ * Property GET filter forms: debounced search + auto-apply on dropdown/date changes.
  */
 
 const PROPERTY_MAIN_FRAME_ID = 'property-main';
@@ -9,6 +8,7 @@ function isPropertyWorkspaceHydrating() {
     return window.__propertyWorkspaceHydrating === true;
 }
 const SEARCH_DEBOUNCE_MS = 300;
+const CONTROL_APPLY_DEBOUNCE_MS = 120;
 
 /** @typedef {{ inFlight: boolean, queuedSearch: boolean, activeSubmission: object|null }} FilterFormState */
 
@@ -17,6 +17,9 @@ const filterFormState = new WeakMap();
 
 /** @type {WeakMap<HTMLInputElement, number>} */
 const searchDebounceTimers = new WeakMap();
+
+/** @type {WeakMap<HTMLFormElement, number>} */
+const controlApplyDebounceTimers = new WeakMap();
 
 function getFilterFormState(form) {
     let state = filterFormState.get(form);
@@ -41,6 +44,35 @@ function isSearchInput(el) {
         el instanceof HTMLInputElement &&
         (el.name === 'q' || el.type === 'search' || el.dataset.autoSearch === 'true')
     );
+}
+
+function isAutoApplyControl(el) {
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) {
+        return false;
+    }
+
+    if (el.matches('[data-auto-submit="off"]') || el.disabled) {
+        return false;
+    }
+
+    if (isSearchInput(el)) {
+        return false;
+    }
+
+    if (el instanceof HTMLSelectElement) {
+        return true;
+    }
+
+    if (el instanceof HTMLTextAreaElement) {
+        return true;
+    }
+
+    const type = (el.type || 'text').toLowerCase();
+    if (['hidden', 'submit', 'button', 'reset', 'file', 'image', 'password'].includes(type)) {
+        return false;
+    }
+
+    return ['date', 'month', 'number', 'checkbox', 'radio', 'time', 'datetime-local', 'week'].includes(type);
 }
 
 function formFilterControls(form) {
@@ -111,6 +143,20 @@ function scheduleSearchSubmit(form, input) {
     searchDebounceTimers.set(input, timer);
 }
 
+function scheduleControlApply(form) {
+    const existing = controlApplyDebounceTimers.get(form);
+    if (existing) {
+        window.clearTimeout(existing);
+    }
+
+    const timer = window.setTimeout(() => {
+        controlApplyDebounceTimers.delete(form);
+        submitPropertyFilterForm(form, 'apply');
+    }, CONTROL_APPLY_DEBOUNCE_MS);
+
+    controlApplyDebounceTimers.set(form, timer);
+}
+
 export function wireAutoFilterForms(scopeRoot) {
     if (isPropertyWorkspaceHydrating()) {
         return;
@@ -133,6 +179,14 @@ export function wireAutoFilterForms(scopeRoot) {
             .forEach((input) => {
                 input.addEventListener('input', () => {
                     scheduleSearchSubmit(form, input);
+                });
+            });
+
+        formFilterControls(form)
+            .filter((control) => isAutoApplyControl(control))
+            .forEach((control) => {
+                control.addEventListener('change', () => {
+                    scheduleControlApply(form);
                 });
             });
 
