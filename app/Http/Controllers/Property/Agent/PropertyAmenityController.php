@@ -76,7 +76,7 @@ class PropertyAmenityController extends Controller
             $propertyTags = $a->properties->map(function (Property $p) use ($a) {
                 return '<span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">'.
                     e($p->name).
-                    '<form method="post" action="'.route('property.properties.amenities.detach', absolute: false).'" class="inline" onsubmit="return confirm(\'Remove this property tag?\');">'.
+                    '<form method="post" action="'.route('property.properties.amenities.detach', absolute: false).'" class="inline" data-swal-confirm="Remove this property tag?">'.
                     csrf_field().
                     '<input type="hidden" name="pm_amenity_id" value="'.$a->id.'" />'.
                     '<input type="hidden" name="property_id" value="'.$p->id.'" />'.

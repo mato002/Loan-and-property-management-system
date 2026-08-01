@@ -6,11 +6,6 @@
         subtitle="Use the matrix to grant permissions per role in one view. User badges show counts from assigned roles, optional direct overrides, and the effective total (what the app enforces)."
     >
         @include('property.agent.settings.system_setup.partials.hub_nav', ['active' => 'property.settings.system_setup.access'])
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         @if (! $tablesReady)
             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                 Access-control tables are not ready yet. Run <code>php artisan migrate</code> then reload this page.

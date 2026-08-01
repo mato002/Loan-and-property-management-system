@@ -6,51 +6,51 @@
     $hasDateRange = isset($dateRange) && ! $dateRange->isEmpty();
     $hasExport = isset($export) && ! $export->isEmpty();
     $hasActions = isset($actions) && ! $actions->isEmpty();
+    $hasFilterFields = $hasDateRange || $hasPrimary || $hasSecondary;
 @endphp
 
-@if ($hasDateRange)
-    <div
-        @class([
-            'min-w-0',
-            'w-full space-y-2' => $isMobile,
-            'flex flex-row flex-wrap items-end gap-2 shrink-0' => ! $isMobile,
-        ])
-        data-filter-date-range
-    >
-        @if ($isMobile)
-            <p class="w-full text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Date range</p>
-        @endif
-        {{ $dateRange }}
-    </div>
-@endif
-
-@if ($hasPrimary)
-    <div
-        @class([
-            'min-w-0',
-            'flex flex-col gap-2 w-full' => $isMobile,
-            'flex flex-row flex-wrap items-end gap-2 flex-1' => ! $isMobile,
-        ])
-        data-filter-primary
-    >
-        {{ $primary }}
-    </div>
-@endif
-
-@if ($hasSecondary)
+@if ($hasFilterFields)
     @if ($isMobile)
-        <div class="w-full min-w-0 space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700" data-filter-secondary>
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">More filters</p>
-            <div class="flex flex-col gap-2 w-full">
-                {{ $secondary }}
+        @if ($hasDateRange)
+            <div class="min-w-0 w-full space-y-2" data-filter-date-range>
+                <p class="w-full text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Date range</p>
+                {{ $dateRange }}
             </div>
-        </div>
+        @endif
+
+        @if ($hasPrimary)
+            <div class="min-w-0 flex flex-col gap-2 w-full" data-filter-primary>
+                {{ $primary }}
+            </div>
+        @endif
+
+        @if ($hasSecondary)
+            <div class="w-full min-w-0 space-y-2 pt-2 border-t border-slate-200 dark:border-slate-700" data-filter-secondary>
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">More filters</p>
+                <div class="flex flex-col gap-2 w-full">
+                    {{ $secondary }}
+                </div>
+            </div>
+        @endif
     @else
-        <div
-            class="flex flex-row flex-wrap items-end gap-2 w-full min-w-0 shrink-0"
-            data-filter-secondary
-        >
-            {{ $secondary }}
+        <div class="flex flex-row flex-wrap items-end gap-x-2 gap-y-2 w-full min-w-0 flex-1" data-filter-main-row>
+            @if ($hasDateRange)
+                <div class="flex flex-row flex-wrap items-end gap-2 shrink-0 min-w-0" data-filter-date-range>
+                    {{ $dateRange }}
+                </div>
+            @endif
+
+            @if ($hasPrimary)
+                <div class="flex flex-row flex-wrap items-end gap-2 min-w-0 flex-1" data-filter-primary>
+                    {{ $primary }}
+                </div>
+            @endif
+
+            @if ($hasSecondary)
+                <div class="flex flex-row flex-wrap items-end gap-2 shrink-0 min-w-0" data-filter-secondary>
+                    {{ $secondary }}
+                </div>
+            @endif
         </div>
     @endif
 @endif

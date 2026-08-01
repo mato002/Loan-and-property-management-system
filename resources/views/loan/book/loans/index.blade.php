@@ -516,24 +516,12 @@
                         const count = Number(button.getAttribute('data-loan-count') || '0');
                         const message = bodyTemplate.replace(':count', String(count));
 
-                        if (window.Swal && typeof window.Swal.fire === 'function') {
-                            const result = await window.Swal.fire({
-                                title,
-                                text: message,
-                                icon: 'warning',
-                                showCancelButton: true,
-                                confirmButtonText: confirmText,
-                                cancelButtonText: 'Cancel',
-                                reverseButtons: true,
-                            });
-                            if (result.isConfirmed) {
-                                form.submit();
-                            }
-
-                            return;
-                        }
-
-                        if (window.confirm(message)) {
+                        const confirmed = await window.swalConfirm(message, {
+                            title,
+                            confirmText,
+                            reverseButtons: true,
+                        });
+                        if (confirmed) {
                             form.submit();
                         }
                     });
@@ -553,16 +541,6 @@
                     'Replay posted collections on :count loans in your portfolio and fix balances only where they differ from disbursements + payments. Loans that already match are left unchanged.',
                     'Yes, rebuild now'
                 );
-
-                const flashTitle = @json(session('loan_register_bulk_title'));
-                const flashStatus = @json(session('status'));
-                if (flashStatus && window.Swal && typeof window.Swal.fire === 'function') {
-                    window.Swal.fire({
-                        icon: 'success',
-                        title: flashTitle || 'Done',
-                        text: flashStatus,
-                    });
-                }
             })();
         </script>
     </x-loan.page>

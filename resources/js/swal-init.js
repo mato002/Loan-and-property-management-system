@@ -237,6 +237,65 @@ function runFlash(scope) {
 
 window.__runSwalFlash = runFlash;
 
+function extractConfirmMessageFromHandler(raw) {
+    if (!raw) {
+        return null;
+    }
+    const match = raw.match(/confirm\((['"])(.*?)\1\)/);
+    return match?.[2] ?? null;
+}
+
+function resolveFormConfirmMessage(form, submitter) {
+    let msg = submitter?.getAttribute('data-swal-confirm') || form.getAttribute('data-swal-confirm');
+    if (msg) {
+        return msg;
+    }
+    msg = extractConfirmMessageFromHandler(form.getAttribute('onsubmit') || '');
+    if (msg) {
+        return msg;
+    }
+    if (submitter instanceof HTMLElement) {
+        msg = extractConfirmMessageFromHandler(submitter.getAttribute('onclick') || '');
+    }
+
+    return msg || null;
+}
+
+window.swalAlert = function swalAlert(message, options = {}) {
+    const opts = {
+        icon: options.icon || 'info',
+        confirmButtonColor: options.confirmButtonColor || '#2f4f4f',
+        confirmButtonText: options.confirmButtonText || 'OK',
+        ...options,
+    };
+    if (options.title !== undefined) {
+        opts.title = options.title;
+    } else if (!opts.title) {
+        opts.title = 'Notice';
+    }
+    opts.text = opts.text ?? String(message ?? '');
+
+    return safeSwalFire(opts, options.source || 'swal_alert');
+};
+
+window.swalConfirm = function swalConfirm(message, options = {}) {
+    return safeSwalFire({
+        icon: options.icon || 'warning',
+        title: options.title || 'Are you sure?',
+        text: String(message ?? ''),
+        showCancelButton: true,
+        confirmButtonColor: options.confirmButtonColor || '#2f4f4f',
+        cancelButtonColor: options.cancelButtonColor || '#64748b',
+        confirmButtonText: options.confirmText || options.confirmButtonText || 'Yes, continue',
+        cancelButtonText: options.cancelText || options.cancelButtonText || 'Cancel',
+        ...options,
+    }, options.source || 'swal_confirm').then((result) => !!result.isConfirmed);
+};
+
+window.alert = function alertShim(message) {
+    void window.swalAlert(message, { source: 'native_alert' });
+};
+
 /**
  * Turbo applies the new document before inline scripts in the body run. Read flash
  * payloads from data-swal-flash nodes (available immediately) and defer once so
@@ -325,14 +384,7 @@ document.addEventListener(
             }
         }
         const submitter = e.submitter instanceof HTMLElement ? e.submitter : null;
-        let msg = submitter?.getAttribute('data-swal-confirm') || form.getAttribute('data-swal-confirm');
-        if (!msg) {
-            const onsubmitRaw = form.getAttribute('onsubmit') || '';
-            const match = onsubmitRaw.match(/confirm\((['"])(.*?)\1\)/);
-            if (match && match[2]) {
-                msg = match[2];
-            }
-        }
+        const msg = resolveFormConfirmMessage(form, submitter);
         if (!msg) {
             return;
         }
@@ -356,6 +408,7 @@ document.addEventListener(
                 // Prevent the native confirm() prompt from re-blocking submit on forms
                 // that still use inline onsubmit="return confirm(...)"
                 form.removeAttribute('onsubmit');
+                submitter?.removeAttribute('onclick');
                 form.removeAttribute('data-swal-confirm');
                 form.removeAttribute('data-swal-title');
                 form.removeAttribute('data-swal-confirm-text');

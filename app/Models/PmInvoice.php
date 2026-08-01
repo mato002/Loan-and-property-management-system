@@ -50,6 +50,8 @@ class PmInvoice extends Model
 
     public const KIND_RENT_SUPPLEMENT = 'rent_supplement';
 
+    public const KIND_WATER_SUPPLEMENT = 'water_supplement';
+
     public const LEASE_OPENING_ARREARS_PREFIX = '[Lease Opening Arrears]';
 
     protected $fillable = [

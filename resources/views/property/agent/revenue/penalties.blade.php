@@ -11,10 +11,6 @@
     empty-hint="Add a rule below. Applied / waived counts stay at zero until billing automation uses this table."
 >
     <x-slot name="above">
-        @if (session('success'))
-            <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         @php
             $showPenaltyFormByDefault = $errors->hasAny(['name','scope','trigger_event','grace_days','formula','percent','amount','cap','effective_from','is_active']);
         @endphp

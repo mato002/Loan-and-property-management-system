@@ -83,9 +83,10 @@
                                     return null;
                                 },
                             });
+                            if (!result.isConfirmed) {
+                                return;
+                            }
                             raw = String(result.value || '').trim();
-                        } else {
-                            raw = String(window.prompt('New charge type (e.g. internet, security, sewer):', '') || '').trim();
                         }
                         if (!raw) return;
                         const normalized = String(raw)
@@ -226,8 +227,7 @@
                         const email = (document.getElementById('new-landlord-email')?.value || '').trim();
                         const phone = (document.getElementById('new-landlord-phone')?.value || '').trim();
                         if (!name || (!email && !phone)) {
-                            if (window.Swal) Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' });
-                            else window.Swal?.fire?.({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' }) || alert('Name and at least one of email or phone are required.');
+                            Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' });
                             return;
                         }
                         this.creating = true;
@@ -245,8 +245,7 @@
                             const data = await res.json().catch(() => ({}));
                             if (!res.ok || !data.ok) {
                                 const msg = (data && (data.message || data.error)) ? (data.message || data.error) : 'Could not create landlord.';
-                                if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: msg });
-                                else window.Swal?.fire?.({ icon: 'error', title: 'Error', text: msg }) || alert(msg);
+                                Swal.fire({ icon: 'error', title: 'Error', text: msg });
                                 return;
                             }
                             const u = data.user;
@@ -261,8 +260,7 @@
                             if (window.Swal) Swal.fire({ icon: 'success', title: 'Landlord created', text: data.message || 'Created.', timer: 1800, showConfirmButton: false });
                             this.showNewLandlord = false;
                         } catch (e) {
-                            if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: 'Network/server error while creating landlord.' });
-                            else window.Swal?.fire?.({ icon: 'error', title: 'Error', text: 'Network/server error while creating landlord.' }) || alert('Network/server error while creating landlord.');
+                            Swal.fire({ icon: 'error', title: 'Error', text: 'Network/server error while creating landlord.' });
                         } finally {
                             this.creating = false;
                         }

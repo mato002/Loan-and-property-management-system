@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.crud-shell :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Edit vendor"
     subtitle="Update supplier profile used across maintenance jobs, quotes, and performance."
     back-route="property.vendors.directory"
@@ -52,5 +52,5 @@
             <a href="{{ route('property.vendors.directory') }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Back</a>
         </div>
     </form>
-</x-property.workspace>
+</x-property.crud-shell>
 

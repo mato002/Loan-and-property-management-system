@@ -22,32 +22,47 @@
                 || $errors->has('user_id')
                 || $errors->has('ownership_percent');
         @endphp
-        <div x-data="{ showPropertyForm: @js($propertyFormHasErrors), showLinkLandlordForm: @js($linkLandlordFormHasErrors) }" class="space-y-4">
+        <div
+            x-data="{
+                showPropertyForm: @js($propertyFormHasErrors),
+                showLinkLandlordForm: @js($linkLandlordFormHasErrors),
+                init() {
+                    if (window.location.hash === '#link-landlord-form') {
+                        this.showLinkLandlordForm = true;
+                    }
+                },
+            }"
+            class="space-y-4"
+        >
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <button
                     type="button"
                     class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
-                    @click="showPropertyForm = !showPropertyForm"
+                    @click="showPropertyForm = true"
                 >
                     <i class="fa-solid fa-building-circle-plus text-lg" aria-hidden="true"></i>
-                    <span x-text="showPropertyForm ? 'Hide add property form' : 'Add property'"></span>
+                    <span>Add property</span>
                 </button>
                 <button
                     type="button"
                     class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700 sm:w-auto"
-                    @click="showLinkLandlordForm = !showLinkLandlordForm"
+                    @click="showLinkLandlordForm = true"
                 >
                     <i class="fa-solid fa-link text-lg" aria-hidden="true"></i>
-                    <span x-text="showLinkLandlordForm ? 'Hide link landlord form' : 'Link landlord user'"></span>
+                    <span>Link landlord user</span>
                 </button>
             </div>
 
-        <div class="grid gap-4 lg:grid-cols-2">
+        <x-property.modal
+            show="showPropertyForm"
+            close="showPropertyForm = false"
+            name="property-create"
+            title="Add property"
+            max-width="3xl"
+        >
             <form
                 method="post"
                 action="{{ route('property.properties.store') }}"
-                x-show="showPropertyForm"
-                x-cloak
                 x-data="{
                     showChargeBuilder: @js(count((array) old('charge_templates', [])) > 0),
                     chargeTypeOptions: ['water', 'service', 'garbage', 'other'],
@@ -84,9 +99,10 @@
                                     return null;
                                 },
                             });
+                            if (!result.isConfirmed) {
+                                return;
+                            }
                             raw = String(result.value || '').trim();
-                        } else {
-                            raw = String(window.prompt('New charge type (e.g. internet, security, sewer):', '') || '').trim();
                         }
                         if (!raw) return;
                         const normalized = String(raw)
@@ -107,7 +123,7 @@
                         if (this.charges.length === 0) this.showChargeBuilder = false;
                     }
                 }"
-                class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3"
+                class="space-y-3"
             >
                 @csrf
                 <h3 class="property-attention-title dark:text-white">Add Property</h3>
@@ -208,16 +224,22 @@
                 </div>
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save property</button>
             </form>
+        </x-property.modal>
 
+        <x-property.modal
+            show="showLinkLandlordForm"
+            close="showLinkLandlordForm = false"
+            name="link-landlord"
+            title="Link landlord to property"
+            max-width="3xl"
+        >
             <form
                 id="link-landlord-form"
                 method="post"
                 action="{{ route('property.properties.landlords.attach') }}"
                 data-turbo-frame="property-main"
                 data-turbo="false"
-                x-show="showLinkLandlordForm"
-                x-cloak
-                class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 scroll-mt-24"
+                class="space-y-3 scroll-mt-24"
                 x-data="{
                     showNewLandlord: false,
                     creating: false,
@@ -227,8 +249,7 @@
                         const email = (document.getElementById('new-landlord-email')?.value || '').trim();
                         const phone = (document.getElementById('new-landlord-phone')?.value || '').trim();
                         if (!name || (!email && !phone)) {
-                            if (window.Swal) Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' });
-                            else window.Swal?.fire?.({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' }) || alert('Name and at least one of email or phone are required.');
+                            Swal.fire({ icon: 'warning', title: 'Missing fields', text: 'Name and at least one of email or phone are required.' });
                             return;
                         }
                         this.creating = true;
@@ -246,8 +267,7 @@
                             const data = await res.json().catch(() => ({}));
                             if (!res.ok || !data.ok) {
                                 const msg = (data && (data.message || data.error)) ? (data.message || data.error) : 'Could not create landlord.';
-                                if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: msg });
-                                else window.Swal?.fire?.({ icon: 'error', title: 'Error', text: msg }) || alert(msg);
+                                Swal.fire({ icon: 'error', title: 'Error', text: msg });
                                 return;
                             }
                             const u = data.user;
@@ -262,8 +282,7 @@
                             if (window.Swal) Swal.fire({ icon: 'success', title: 'Landlord created', text: data.message || 'Created.', timer: 1800, showConfirmButton: false });
                             this.showNewLandlord = false;
                         } catch (e) {
-                            if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: 'Network/server error while creating landlord.' });
-                            else window.Swal?.fire?.({ icon: 'error', title: 'Error', text: 'Network/server error while creating landlord.' }) || alert('Network/server error while creating landlord.');
+                            Swal.fire({ icon: 'error', title: 'Error', text: 'Network/server error while creating landlord.' });
                         } finally {
                             this.creating = false;
                         }
@@ -336,7 +355,7 @@
                 <button type="submit" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80">Attach</button>
 
             </form>
-        </div>
+        </x-property.modal>
 
         @if (isset($landlordLinks) && $landlordLinks->isNotEmpty())
             <div class="mt-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">

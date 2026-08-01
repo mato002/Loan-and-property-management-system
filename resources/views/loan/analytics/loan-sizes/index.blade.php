@@ -8,11 +8,6 @@
                 Add size band
             </a>
         </x-slot>
-
-        @if (session('status'))
-            <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">{{ session('status') }}</div>
-        @endif
-
         <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
                 <h2 class="text-sm font-semibold text-slate-700">Bands</h2>

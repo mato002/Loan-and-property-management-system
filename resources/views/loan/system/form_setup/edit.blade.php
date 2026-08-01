@@ -52,22 +52,10 @@
                         if (row.is_core) {
                             return;
                         }
-                        let confirmed = false;
-                        if (typeof window.Swal !== 'undefined' && typeof window.Swal.fire === 'function') {
-                            const r = await window.Swal.fire({
-                                icon: 'warning',
-                                title: 'Remove field?',
-                                text: 'This line will be removed when you save.',
-                                showCancelButton: true,
-                                confirmButtonColor: '#2f4f4f',
-                                cancelButtonColor: '#64748b',
-                                confirmButtonText: 'Yes, remove',
-                                cancelButtonText: 'Cancel',
-                            });
-                            confirmed = !!r.isConfirmed;
-                        } else {
-                            confirmed = window.confirm('Remove this field? It will be removed when you save.');
-                        }
+                        const confirmed = await window.swalConfirm('This line will be removed when you save.', {
+                            title: 'Remove field?',
+                            confirmText: 'Yes, remove',
+                        });
                         if (!confirmed) {
                             return;
                         }

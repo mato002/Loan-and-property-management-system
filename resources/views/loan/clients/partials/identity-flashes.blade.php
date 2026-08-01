@@ -35,9 +35,3 @@
         @endforeach
     </div>
 @endif
-
-@if (session('warning'))
-    <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-sm" role="status">
-        {{ session('warning') }}
-    </div>
-@endif

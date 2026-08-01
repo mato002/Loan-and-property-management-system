@@ -3,11 +3,6 @@
 
     <x-property.page title="Loan services">
         <p class="mb-3 text-sm"><a href="{{ route('property.landlord.settings.index') }}" data-turbo-frame="property-main" class="text-emerald-700 hover:underline">← Account</a></p>
-        @if (session('success'))
-            <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                {{ session('success') }}
-            </div>
-        @endif
         @if ($errors->has('loan'))
             <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {{ $errors->first('loan') }}

@@ -1710,6 +1710,35 @@
     @apply md:sr-only;
   }
 
+  @media (min-width: 768px) {
+    .property-filter-toolbar__form,
+    .property-filter-toolbar__static {
+      align-items: flex-end;
+    }
+
+    .property-filter-toolbar__form > [data-filter-main-row],
+    .property-filter-toolbar__static > [data-filter-main-row] {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .property-filter-toolbar__form [data-filter-main-row] > [data-filter-date-range],
+    .property-filter-toolbar__form [data-filter-main-row] > [data-filter-primary],
+    .property-filter-toolbar__form [data-filter-main-row] > [data-filter-secondary],
+    .property-filter-toolbar__static [data-filter-main-row] > [data-filter-date-range],
+    .property-filter-toolbar__static [data-filter-main-row] > [data-filter-primary],
+    .property-filter-toolbar__static [data-filter-main-row] > [data-filter-secondary] {
+      width: auto;
+      max-width: none;
+      flex: 0 1 auto;
+    }
+
+    .property-filter-toolbar__form [data-filter-primary] .property-filter-field,
+    .property-filter-toolbar__static [data-filter-primary] .property-filter-field {
+      width: auto;
+    }
+  }
+
   /* Compact horizontal filter toolbar on desktop (ERP-style single row) */
   .property-workspace-toolbar-host {
     @apply w-full min-w-0;
@@ -1733,22 +1762,6 @@
     .dark .property-filter-toolbar.property-workspace-toolbar-host {
       background-color: rgb(17 24 39 / 0.95);
       border-bottom-color: rgb(51 65 85);
-    }
-
-    .property-filter-toolbar__form > [data-filter-date-range],
-    .property-filter-toolbar__form > [data-filter-primary],
-    .property-filter-toolbar__form > [data-filter-secondary],
-    .property-filter-toolbar__static > [data-filter-date-range],
-    .property-filter-toolbar__static > [data-filter-primary],
-    .property-filter-toolbar__static > [data-filter-secondary] {
-      width: 100%;
-      max-width: 100%;
-      flex: 1 1 100%;
-    }
-
-    .property-filter-toolbar__form > [data-filter-primary],
-    .property-filter-toolbar__static > [data-filter-primary] {
-      min-width: 0;
     }
 
     .property-filter-toolbar__form > [data-filter-actions],

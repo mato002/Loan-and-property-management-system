@@ -21,10 +21,14 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 
 class PmMaintenanceWebController extends Controller
 {
+    use RespondsWithPropertyFormModal;
+
     private function notifyTenantProgress(PmMaintenanceRequest $requestItem, string $subject, string $body): void
     {
         $requestItem->loadMissing(['reportedBy', 'unit.property']);
@@ -206,17 +210,17 @@ class PmMaintenanceWebController extends Controller
         return back()->with('success', 'Request status updated.');
     }
 
-    public function editRequest(PmMaintenanceRequest $requestItem): View
+    public function editRequest(Request $request, PmMaintenanceRequest $requestItem): View
     {
         $requestItem->load(['unit.property', 'reportedBy']);
 
-        return property_view('property.agent.maintenance.request_edit', [
+        return property_view('property.agent.maintenance.request_edit', array_merge([
             'requestItem' => $requestItem,
             'units' => PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get(),
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function updateRequest(Request $request, PmMaintenanceRequest $requestItem): RedirectResponse
+    public function updateRequest(Request $request, PmMaintenanceRequest $requestItem): RedirectResponse|Response
     {
         $data = $request->validate([
             'property_unit_id' => ['required', 'exists:property_units,id'],
@@ -242,7 +246,11 @@ class PmMaintenanceWebController extends Controller
             );
         }
 
-        return back()->with('success', 'Maintenance request updated.');
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            back()->with('success', 'Maintenance request updated.'),
+            'Maintenance request updated.',
+        );
     }
 
     public function jobs(Request $request): View
@@ -391,18 +399,18 @@ class PmMaintenanceWebController extends Controller
         return back()->with('success', 'Job saved.');
     }
 
-    public function editJob(PmMaintenanceJob $job): View
+    public function editJob(Request $request, PmMaintenanceJob $job): View
     {
         $job->load(['request.unit.property', 'vendor']);
 
-        return property_view('property.agent.maintenance.job_edit', [
+        return property_view('property.agent.maintenance.job_edit', array_merge([
             'job' => $job,
             'requests' => PmMaintenanceRequest::query()->with('unit.property')->orderByDesc('id')->limit(200)->get(),
             'vendors' => PmVendor::query()->where('status', 'active')->orderBy('name')->get(),
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function updateJob(Request $request, PmMaintenanceJob $job): RedirectResponse
+    public function updateJob(Request $request, PmMaintenanceJob $job): RedirectResponse|Response
     {
         $data = $request->validate([
             'pm_maintenance_request_id' => ['required', 'exists:pm_maintenance_requests,id'],
@@ -437,7 +445,11 @@ class PmMaintenanceWebController extends Controller
             );
         }
 
-        return redirect()->route('property.maintenance.jobs')->with('success', 'Job updated.');
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            redirect()->route('property.maintenance.jobs')->with('success', 'Job updated.'),
+            'Job updated.',
+        );
     }
 
     public function destroyJob(PmMaintenanceJob $job): RedirectResponse

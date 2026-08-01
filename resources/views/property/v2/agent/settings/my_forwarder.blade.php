@@ -6,10 +6,6 @@
         subtitle="Generate a personal token so the SMS-forwarder app on your office phone tags every M-Pesa payment with your agent id. You only see your own payments; super admin sees everything."
     >
         @include('property.agent.settings.partials.subnav', ['active' => 'property.settings.forwarder'])
-
-        @if (session('success'))
-            <p class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-700/50 dark:bg-emerald-900/30 dark:text-emerald-300">{{ session('success') }}</p>
-        @endif
         @error('forwarder')
             <p class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ $message }}</p>
         @enderror

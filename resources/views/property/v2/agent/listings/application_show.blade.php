@@ -81,9 +81,6 @@
             </div>
 
             <div class="pt-4 border-t border-slate-200 dark:border-slate-700" id="message">
-                @if (session('success'))
-                    <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-                @endif
                 @if ($errors->any())
                     <p class="text-xs text-rose-700 dark:text-rose-300">Could not send. Please fix the highlighted fields.</p>
                 @endif

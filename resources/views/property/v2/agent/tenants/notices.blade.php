@@ -36,13 +36,6 @@
                 </a>
             </div>
         </div>
-
-        @if (session('success'))
-            <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-        @if (session('error'))
-            <p class="text-sm text-rose-700 dark:text-rose-400">{{ session('error') }}</p>
-        @endif
         @if (is_array(session('bulk_notice_errors')) && count(session('bulk_notice_errors')) > 0)
             <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 max-w-3xl">
                 <p class="font-semibold">Some notices were skipped</p>

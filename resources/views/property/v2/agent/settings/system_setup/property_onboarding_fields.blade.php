@@ -6,11 +6,6 @@
         subtitle="Choose the exact fields used when onboarding a property. Add new fields, disable old ones, or mark fields as required."
     >
         @include('property.agent.settings.system_setup.partials.field_nav', ['active' => 'property.settings.system_setup.property_onboarding_fields'])
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <form method="post" action="{{ route('property.settings.system_setup.property_onboarding_fields.store') }}" class="space-y-4" x-data="{
             rows: @js(old('fields', $fields)),
             addRow() {

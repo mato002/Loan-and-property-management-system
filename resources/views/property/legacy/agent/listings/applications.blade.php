@@ -67,11 +67,6 @@
                 <a href="{{ route('property.listings.applications', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
             </div>
         </form>
-
-        @if (session('success'))
-            <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         @php
             $showApplicationFormByDefault = $errors->hasAny(['applicant_name','applicant_phone','applicant_email','status','property_unit_id','notes']);
         @endphp

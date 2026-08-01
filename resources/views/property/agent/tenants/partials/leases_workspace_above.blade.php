@@ -84,22 +84,30 @@
             <button
                 type="button"
                 class="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 sm:ml-auto"
-                @click="showLeaseCreateForm = !showLeaseCreateForm"
+                @click="showLeaseCreateForm = true"
             >
                 <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
-                <span x-text="showLeaseCreateForm ? 'Hide lease form' : 'Create lease'"></span>
+                <span>Create lease</span>
             </button>
         @endif
     </div>
 
     @if (($activeTab ?? 'leases') === 'leases')
-        <div x-show="showLeaseCreateForm" x-cloak class="w-full min-w-0">
+        <x-property.modal
+            show="showLeaseCreateForm"
+            close="showLeaseCreateForm = false"
+            name="lease-create-workspace"
+            title="Create lease"
+            max-width="4xl"
+        >
+        <div class="w-full min-w-0">
             @include('property.agent.tenants.partials.lease_create_form_content', [
                 'leaseFormTurboFrame' => 'property-main',
                 'leaseFormAlpineOnParent' => true,
             ])
             @include('property.agent.tenants.partials.lease_create_form_script')
         </div>
+        </x-property.modal>
 
         <div class="rounded-xl sm:rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-950/30 dark:to-slate-900/40 p-3 md:p-4 shadow-sm">
             <p class="text-sm sm:text-base font-semibold text-slate-900 dark:text-slate-100">Rent flow (Step 1 of 3): Allocate a unit</p>

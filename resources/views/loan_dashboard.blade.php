@@ -63,18 +63,6 @@
             </div>
         @endif
 
-        @if (session('status'))
-            <div
-                x-data="{ open: true }"
-                x-show="open"
-                x-transition
-                class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 flex items-center justify-between"
-            >
-                <span>{{ session('status') }}</span>
-                <button type="button" @click="open = false" class="text-emerald-700 hover:text-emerald-900">&times;</button>
-            </div>
-        @endif
-
         {{-- Profile + compact summary strip --}}
         <div
             class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start"

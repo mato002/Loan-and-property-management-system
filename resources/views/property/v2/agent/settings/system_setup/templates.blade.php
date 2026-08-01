@@ -6,11 +6,6 @@
         subtitle="Set default text templates that can be used by lease and notice-related forms."
     >
         @include('property.agent.settings.system_setup.partials.hub_nav', ['active' => 'property.settings.system_setup.templates'])
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <form method="post" action="{{ route('property.settings.system_setup.templates.store') }}" class="max-w-3xl rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
             @csrf
             <div>

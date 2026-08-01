@@ -147,11 +147,7 @@ function propertyQuickCreateSelect(config) {
                 }
                 if (f.required && !payload[f.name]) {
                     const msg = `${f.label || f.name} is required.`;
-                    if (window.Swal) {
-                        Swal.fire({ icon: 'warning', title: 'Missing field', text: msg });
-                    } else {
-                        alert(msg);
-                    }
+                    Swal.fire({ icon: 'warning', title: 'Missing field', text: msg });
 
                     return;
                 }
@@ -172,11 +168,7 @@ function propertyQuickCreateSelect(config) {
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok || !data.ok) {
                     const msg = data?.message || data?.error || 'Could not create record.';
-                    if (window.Swal) {
-                        Swal.fire({ icon: 'error', title: 'Error', text: msg });
-                    } else {
-                        alert(msg);
-                    }
+                    Swal.fire({ icon: 'error', title: 'Error', text: msg });
 
                     return;
                 }
@@ -195,11 +187,7 @@ function propertyQuickCreateSelect(config) {
                 }
                 this.open = false;
             } catch {
-                if (window.Swal) {
-                    Swal.fire({ icon: 'error', title: 'Error', text: 'Network/server error while creating.' });
-                } else {
-                    alert('Network/server error while creating.');
-                }
+                Swal.fire({ icon: 'error', title: 'Error', text: 'Network/server error while creating.' });
             } finally {
                 this.creating = false;
             }

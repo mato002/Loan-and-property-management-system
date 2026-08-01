@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.crud-shell :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Edit maintenance request"
     subtitle="Update ticket details, urgency, and status for an existing maintenance request."
     back-route="property.maintenance.requests"
@@ -68,5 +68,5 @@
             <a href="{{ route('property.maintenance.requests') }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Back</a>
         </div>
     </form>
-</x-property.workspace>
+</x-property.crud-shell>
 

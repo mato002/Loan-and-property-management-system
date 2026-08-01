@@ -6,11 +6,6 @@
         subtitle="Configure the fields used in unit creation/edit forms. Keep only what operations teams need."
     >
         @include('property.agent.settings.system_setup.partials.field_nav', ['active' => 'property.settings.system_setup.unit_fields'])
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <form method="post" action="{{ route('property.settings.system_setup.unit_fields.store') }}" class="space-y-4" x-data="{
             rows: @js(old('fields', $fields)),
             addRow() {

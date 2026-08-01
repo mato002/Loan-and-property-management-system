@@ -36,10 +36,13 @@ use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 use Illuminate\View\View;
 
 class PmLeaseWebController extends Controller
 {
+    use RespondsWithPropertyFormModal;
+
     private const AUTO_ARREARS_PREFIX = '[Lease Opening Arrears]';
 
     private const AUTO_UTILITY_PREFIX = '[Lease Utility Expense]';
@@ -1839,14 +1842,14 @@ SQL;
         ]);
     }
 
-    public function edit(PmLease $lease): View
+    public function edit(Request $request, PmLease $lease): View
     {
         $lease->load(['pmTenant', 'units.property']);
         $utilityChargeTemplatesByProperty = $this->utilityChargeTemplatesByPropertyMerged();
 
         $carryForwardTotal = $this->leaseCarryForwardTotal($lease);
 
-        return property_view('property.agent.tenants.lease_edit', [
+        return property_view('property.agent.tenants.lease_edit', array_merge([
             'lease' => $lease,
             'carryForwardTotal' => $carryForwardTotal,
             'tenants' => $this->selectableTenants($lease),
@@ -1861,10 +1864,10 @@ SQL;
             'depositDefinitionsByProperty' => $this->depositDefinitionsByProperty(),
             'leaseTemplate' => PropertyPortalSetting::getValue('template_lease_text', ''),
             'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function update(Request $request, PmLease $lease): RedirectResponse
+    public function update(Request $request, PmLease $lease): RedirectResponse|Response
     {
         $lease->load(['units:id', 'pmTenant']);
 
@@ -1998,9 +2001,13 @@ SQL;
             }
         }
 
-        return redirect()
-            ->route('property.leases.show', $lease, absolute: false)
-            ->with('success', $message);
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            redirect()
+                ->route('property.leases.show', $lease, absolute: false)
+                ->with('success', $message),
+            $message,
+        );
     }
 
     public function bulk(Request $request): RedirectResponse

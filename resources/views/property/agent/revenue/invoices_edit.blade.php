@@ -11,7 +11,7 @@
     // and revert to the underlying manual status (sent) on save.
     $isComputed = in_array($invoice->status, [PmInvoice::STATUS_PARTIAL, PmInvoice::STATUS_PAID, PmInvoice::STATUS_OVERDUE], true);
 @endphp
-<x-property.workspace
+<x-property.crud-shell :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Edit invoice"
     subtitle="Adjust billing details and status. Material changes (amount, cancel) re-post journal entries automatically."
     back-route="property.revenue.invoices"
@@ -94,4 +94,4 @@
             Material changes — switching to <em>Cancelled</em>, reopening, or changing the amount — automatically reverse and re-post journal entries so the trust ledger stays in sync.
         </p>
     </div>
-</x-property.workspace>
+</x-property.crud-shell>

@@ -14,13 +14,17 @@ use App\Support\CsvExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
+use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 use Illuminate\View\View;
 
 class PmVendorWebController extends Controller
 {
+    use RespondsWithPropertyFormModal;
+
     public function directory(Request $request): View
     {
         $filters = $request->only(['q', 'status', 'category', 'sort', 'dir', 'per_page']);
@@ -435,14 +439,14 @@ class PmVendorWebController extends Controller
         ]);
     }
 
-    public function edit(PmVendor $vendor): View
+    public function edit(Request $request, PmVendor $vendor): View
     {
-        return property_view('property.agent.vendors.edit', [
+        return property_view('property.agent.vendors.edit', array_merge([
             'vendor' => $vendor,
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function update(Request $request, PmVendor $vendor): RedirectResponse
+    public function update(Request $request, PmVendor $vendor): RedirectResponse|Response
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -455,7 +459,11 @@ class PmVendorWebController extends Controller
 
         $vendor->update($data);
 
-        return back()->with('success', 'Vendor updated.');
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            back()->with('success', 'Vendor updated.'),
+            'Vendor updated.',
+        );
     }
 
     public function updateStatus(Request $request, PmVendor $vendor): RedirectResponse

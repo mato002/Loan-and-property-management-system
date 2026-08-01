@@ -20,13 +20,6 @@
                 <a href="{{ route('property.maintenance.requests.export', (array) ($filters ?? []), absolute: false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
             </div>
         </div>
-
-        @if (session('success'))
-            <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-        @if (session('error'))
-            <p class="text-sm text-rose-700 dark:text-rose-400">{{ session('error') }}</p>
-        @endif
         @if ($workflowAutoAssignTickets)
             <p class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200 max-w-2xl">
                 Workflow automation is ON: new requests are auto-routed to triage.

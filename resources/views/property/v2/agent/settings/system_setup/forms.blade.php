@@ -6,11 +6,6 @@
         subtitle="Adjust which core forms are active and store custom field mapping for future dynamic form rendering."
     >
         @include('property.agent.settings.system_setup.partials.hub_nav', ['active' => 'property.settings.system_setup.forms'])
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <form method="post" action="{{ route('property.settings.system_setup.forms.store') }}" class="max-w-3xl rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
             @csrf
             <input type="hidden" name="tenant_move_in_enabled" value="0" />

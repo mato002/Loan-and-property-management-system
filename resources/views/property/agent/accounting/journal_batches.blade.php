@@ -123,7 +123,7 @@
                                 <div class="flex flex-wrap gap-2">
                                     <a href="{{ route('property.accounting.entries.show', ['batch' => $batch->id]) }}" class="text-indigo-600 hover:text-indigo-700">View</a>
                                     @if($isReversible)
-                                        <form method="post" action="{{ route('property.accounting.entries.reverse', ['entry' => $batch->id]) }}" onsubmit="return confirm('Reverse this posted batch?');">
+                                        <form method="post" action="{{ route('property.accounting.entries.reverse', ['entry' => $batch->id]) }}" data-swal-confirm="Reverse this posted batch?">
                                             @csrf
                                             <button type="submit" class="text-rose-600 hover:text-rose-700">Reverse</button>
                                         </form>

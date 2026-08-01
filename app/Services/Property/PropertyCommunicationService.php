@@ -7,6 +7,7 @@ use App\Jobs\SendEmailJob;
 use App\Jobs\SendSmsJob;
 use App\Models\PmMessage;
 use App\Models\PmMessageBatch;
+use App\Models\PmInvoice;
 use App\Models\PmConversation;
 use App\Models\PmConversationMessage;
 use App\Models\PmMessageAttachment;
@@ -204,6 +205,32 @@ class PropertyCommunicationService
         $message = $recipient->message;
         if (! $message || $recipient->status === 'sent') {
             return;
+        }
+
+        if (($message->category ?? '') === 'rent_reminder') {
+            $eligibility = $this->rentReminderEligibility();
+            $invoiceId = $eligibility->invoiceIdFromMessage($message);
+            if ($invoiceId !== null) {
+                $invoice = PmInvoice::query()->withoutGlobalScopes()->find($invoiceId);
+                if ($invoice !== null && ! $eligibility->rentReminderStillBillable($invoice)) {
+                    $this->cancelRentReminderRecipient($recipient, 'Invoice settled or no longer billable before SMS send.');
+
+                    return;
+                }
+
+                if ($invoice !== null) {
+                    $refreshedBody = $eligibility->refreshRentReminderMessageBody(
+                        $invoice,
+                        $message,
+                        app(PropertyCommunicationTemplateService::class),
+                        app(PropertyAgentContactResolver::class),
+                    );
+                    if ($refreshedBody !== null && $refreshedBody !== (string) $message->body) {
+                        $message->update(['body' => $refreshedBody]);
+                        $message->refresh();
+                    }
+                }
+            }
         }
 
         $recipient->update(['status' => 'sending', 'sending_at' => now()]);
@@ -431,6 +458,36 @@ class PropertyCommunicationService
         $this->syncConversationForRecipient($recipient, 'outbound', $reason);
     }
 
+    private function rentReminderEligibility(): RentReminderEligibilityService
+    {
+        return app(RentReminderEligibilityService::class);
+    }
+
+    private function cancelRentReminderRecipient(PmMessageRecipient $recipient, string $reason): void
+    {
+        $recipient->update([
+            'status' => 'cancelled',
+            'is_opted_out' => true,
+            'opt_out_reason' => $reason,
+        ]);
+
+        $message = $recipient->message;
+        if ($message === null) {
+            return;
+        }
+
+        $message->loadMissing('recipients');
+        $allCancelled = $message->recipients->every(
+            static fn (PmMessageRecipient $row): bool => $row->status === 'cancelled'
+        );
+
+        if ($allCancelled) {
+            $message->update([
+                'status' => 'cancelled',
+            ]);
+        }
+    }
+
     private function redispatchRentReminderRecipients(PmMessage $message, bool $sync): void
     {
         $message->loadMissing('recipients');
@@ -465,11 +522,6 @@ class PropertyCommunicationService
         ]);
 
         $this->queueMessageRecipients($message->fresh(['recipients']), sync: $sync);
-    }
-
-    private function rentReminderEligibility(): RentReminderEligibilityService
-    {
-        return app(RentReminderEligibilityService::class);
     }
 
     private function checkRecipientPolicy(string $channel, string $category, string $recipientType, int $recipientId): array

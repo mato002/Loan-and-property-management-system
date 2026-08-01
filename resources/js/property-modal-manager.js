@@ -4,6 +4,8 @@
  * Enable debug: localStorage.setItem('overlay_debug', '1') then reload.
  */
 
+import { PropertyFormModal as PropertyFormModalConfig } from './property-form-modal-config';
+
 const MODAL_DEBUG =
     import.meta.env.DEV ||
     window.__overlayDebug === true ||
@@ -250,12 +252,27 @@ function isLeaseCreateFormOpen() {
     }
 }
 
+function isPersistentPropertyFormModalShell(modal) {
+    if (!(modal instanceof HTMLElement)) {
+        return false;
+    }
+
+    if (modal.getAttribute('data-property-modal-id') === PropertyFormModalConfig.HOST_MODAL_ID) {
+        return true;
+    }
+
+    return Boolean(modal.closest('#property-form-modal-host'));
+}
+
 export function purgeOrphanedTeleportedPropertyModals(reason = 'manual') {
     const frame = document.getElementById('property-main');
     let removed = 0;
 
     document.querySelectorAll('[data-property-modal]').forEach((modal) => {
         if (!(modal instanceof HTMLElement)) {
+            return;
+        }
+        if (isPersistentPropertyFormModalShell(modal)) {
             return;
         }
         if (modal.hasAttribute('data-lease-submodal')) {
@@ -400,7 +417,8 @@ function bindTurboModalLifecycle() {
         if (!(event.target instanceof HTMLElement) || event.target.id !== 'property-main') {
             return;
         }
-        purgeOrphanedTeleportedPropertyModals('turbo:frame-load');
+        // Orphan purge runs on turbo:before-frame-render only — purging here races Alpine.initTree
+        // and removes freshly teleported create/edit modals from the new page.
         requestAnimationFrame(() => {
             resetPropertyModalStackSilently('turbo:frame-load');
         });

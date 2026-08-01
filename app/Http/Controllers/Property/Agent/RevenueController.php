@@ -17,6 +17,7 @@ use App\Services\Property\PropertyAgentContactResolver;
 use App\Services\Property\PropertyCommunicationTemplateService;
 use App\Services\Property\PropertyDashboardStats;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\RentReminderEligibilityService;
 use App\Services\Property\RentInvoiceGenerator;
 use App\Services\Property\RentRollQuery;
 use App\Services\Property\TenantCommunicationStageService;
@@ -1132,8 +1133,9 @@ class RevenueController extends Controller
                 continue;
             }
 
-            $balance = max(0.0, (float) $inv->amount - (float) $inv->amount_paid);
-            if ($balance <= 0) {
+            $inv = app(RentReminderEligibilityService::class)->syncInvoiceForReminder($inv);
+            $balance = $inv->balanceFloat();
+            if ($balance <= 0.009) {
                 continue;
             }
 
@@ -1179,14 +1181,7 @@ class RevenueController extends Controller
                 $stage['stage_message'] = trim((string) $stage['stage_message']).' Please treat this as urgent.';
             }
 
-            $messageContext = $agentContacts->mergeIntoContext([
-                'tenant_name' => (string) $tenant->name,
-                'invoice_no' => (string) $inv->invoice_no,
-                'unit_name' => $propertyUnit !== '' ? $propertyUnit : '—',
-                'balance' => number_format($balance, 2),
-                'due_date' => $dueDate,
-                'stage' => $stage,
-            ], $inv);
+            $messageContext = app(RentReminderEligibilityService::class)->buildRentReminderContext($inv, $stage, $agentContacts);
             $staffSubject = $stageService->staffSubjectLine([
                 'internal_stage' => $stage['internal_stage'],
                 'display_label' => $stage['display_label'],

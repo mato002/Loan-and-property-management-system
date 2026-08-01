@@ -14,11 +14,6 @@
                 <a href="{{ route('property.settings.system_setup.access') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Access control</a>
             @endif
         </div>
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <div class="mb-4 max-w-3xl rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-200">
             <p class="font-medium text-slate-800 dark:text-slate-100">Scheduled automation (production)</p>
             <p class="mt-2 text-xs text-slate-600 dark:text-slate-400">

@@ -6,11 +6,6 @@
         subtitle="Configure simple automation switches for operational workflow handling."
     >
         @include('property.agent.settings.system_setup.partials.hub_nav', ['active' => 'property.settings.system_setup.workflows'])
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <div class="mb-4 max-w-3xl rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-900/40 dark:text-slate-200">
             <p class="font-medium text-slate-800 dark:text-slate-100">Scheduled automation (production)</p>
             <p class="mt-2 text-xs text-slate-600 dark:text-slate-400">

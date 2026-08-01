@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
                     'resources/css/app.css',
                     'resources/js/app.js',
                     'resources/js/public-site.js',
+                    'resources/js/guest-minimal.js',
                 ],
                 refresh: true,
             }),

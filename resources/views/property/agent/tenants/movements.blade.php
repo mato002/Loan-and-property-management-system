@@ -85,14 +85,6 @@
                 </a>
             </div>
         </div>
-
-        @if (session('success'))
-            <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-        @if (session('error'))
-            <p class="text-sm text-rose-700 dark:text-rose-400">{{ session('error') }}</p>
-        @endif
-
         <div x-data="{ showMovementForm: @js($errors->hasAny(['property_unit_id','movement_type','status','scheduled_on','completed_on','notes'])) }" class="space-y-3">
         <button
             type="button"

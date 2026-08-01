@@ -14,7 +14,7 @@
                 method="post"
                 action="{{ route('property.tenants.repair_allocations', ['tenant' => $tenant->id], false) }}"
                 class="inline"
-                onsubmit="return confirm('Rebuild how each payment is applied to invoices (oldest due first). Use this when M-Pesa payments are matched but the wrong invoice still shows unpaid. Continue?');"
+                data-swal-confirm="Rebuild how each payment is applied to invoices (oldest due first). Use this when M-Pesa payments are matched but the wrong invoice still shows unpaid. Continue?"
             >
                 @csrf
                 @if (! empty($filters['from'] ?? null))

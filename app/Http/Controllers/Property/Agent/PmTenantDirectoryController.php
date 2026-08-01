@@ -30,9 +30,12 @@ use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentAllocationRepairService;
 use App\Services\Property\TenantCreditService;
+use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 
 class PmTenantDirectoryController extends Controller
 {
+    use RespondsWithPropertyFormModal;
+
     public function directory(): View
     {
         return property_view('property.agent.tenants.directory', $this->tenantListPayload(
@@ -1036,17 +1039,17 @@ class PmTenantDirectoryController extends Controller
             ->with('success', $message);
     }
 
-    public function edit(PmTenant $tenant): View
+    public function edit(Request $request, PmTenant $tenant): View
     {
         $tenant->loadCount('leases');
 
-        return view('property.agent.tenants.edit', [
+        return view('property.agent.tenants.edit', array_merge([
             'tenant' => $tenant,
             'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function update(Request $request, PmTenant $tenant): RedirectResponse
+    public function update(Request $request, PmTenant $tenant): RedirectResponse|Response
     {
         $cfg = $this->tenantFieldConfig();
         $data = $request->validate([
@@ -1101,7 +1104,11 @@ class PmTenantDirectoryController extends Controller
             ...$openingArrearsPayload,
         ]);
 
-        return back()->with('success', 'Tenant updated.');
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            back()->with('success', 'Tenant updated.'),
+            'Tenant updated.',
+        );
     }
 
     public function destroy(PmTenant $tenant): RedirectResponse

@@ -37,10 +37,13 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
+use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PmInvoiceController extends Controller
 {
+    use RespondsWithPropertyFormModal;
+
     public function show(PmInvoice $invoice): View
     {
         $invoice->loadMissing([
@@ -66,7 +69,7 @@ class PmInvoiceController extends Controller
         ]);
     }
 
-    public function edit(PmInvoice $invoice): View
+    public function edit(Request $request, PmInvoice $invoice): View
     {
         $invoice->loadMissing([
             'tenant:id,name',
@@ -75,12 +78,12 @@ class PmInvoiceController extends Controller
             'items',
         ]);
 
-        return property_view('property.agent.revenue.invoices_edit', [
+        return property_view('property.agent.revenue.invoices_edit', array_merge([
             'invoice' => $invoice,
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function update(Request $request, PmInvoice $invoice): RedirectResponse
+    public function update(Request $request, PmInvoice $invoice): RedirectResponse|Response
     {
         // The status select on this form only exposes statuses an agent can
         // _set manually_: draft, sent, cancelled. Computed statuses
@@ -180,9 +183,13 @@ class PmInvoiceController extends Controller
             }
         });
 
-        return redirect()
-            ->route('property.revenue.invoices.show', $invoice)
-            ->with('success', 'Invoice '.$invoice->invoice_no.' updated.');
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            redirect()
+                ->route('property.revenue.invoices.show', $invoice)
+                ->with('success', 'Invoice '.$invoice->invoice_no.' updated.'),
+            'Invoice '.$invoice->invoice_no.' updated.',
+        );
     }
 
     public function destroy(Request $request, PmInvoice $invoice): RedirectResponse

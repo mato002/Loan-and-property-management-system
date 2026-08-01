@@ -106,4 +106,18 @@ return [
         'maintenance_payment' => 'Maintenance payment requests',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Rent reminder SMS guards (cron rent:send-reminders)
+    |--------------------------------------------------------------------------
+    */
+    'rent_reminder' => [
+        /** Skip SMS when open balance is at or below this amount (KES). */
+        'min_balance_kes' => (float) env('RENT_REMINDER_MIN_BALANCE_KES', 1),
+        /** At most one rent-reminder SMS per tenant phone per calendar day (saves SMS on multi-invoice tenants). */
+        'one_sms_per_tenant_per_day' => filter_var(env('RENT_REMINDER_ONE_SMS_PER_TENANT_PER_DAY', true), FILTER_VALIDATE_BOOL),
+        /** Skip when tenant advance credit covers the full invoice balance (payment likely pending auto-apply). */
+        'skip_when_credit_covers_balance' => filter_var(env('RENT_REMINDER_SKIP_WHEN_CREDIT_COVERS', true), FILTER_VALIDATE_BOOL),
+    ],
+
 ];

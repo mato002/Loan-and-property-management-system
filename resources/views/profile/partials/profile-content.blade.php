@@ -158,16 +158,6 @@
                 </form>
             </div>
 
-            @if (session('status') === 'device-removed')
-                <p class="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Device removed successfully.</p>
-            @elseif (session('status') === 'devices-cleared')
-                <p class="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">All other devices were signed out.</p>
-            @elseif (session('status') === 'device-current')
-                <p class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Current device cannot be removed from this list.</p>
-            @elseif (session('status') === 'device-unavailable')
-                <p class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Device management is unavailable because sessions are not stored in database.</p>
-            @endif
-
             <div class="mt-4 overflow-hidden rounded-lg border border-slate-200">
                 <div class="md:hidden divide-y divide-slate-100">
                     @forelse (($activeDevices ?? collect()) as $device)

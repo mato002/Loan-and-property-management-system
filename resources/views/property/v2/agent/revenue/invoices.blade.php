@@ -35,13 +35,20 @@
             <button
                 type="button"
                 class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                @click="showInvoiceForm = !showInvoiceForm"
+                @click="showInvoiceForm = true"
             >
                 <i class="fa-solid fa-file-invoice" aria-hidden="true"></i>
-                <span x-text="showInvoiceForm ? 'Hide invoice form' : 'Create invoice'"></span>
+                <span>Create invoice</span>
             </button>
 
-        <form method="post" action="{{ route('property.invoices.store') }}" x-show="showInvoiceForm" x-cloak class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-3xl" data-lease-info-url="{{ route('property.invoices.lease_info', ['lease' => 'LEASE_ID'], false) }}" data-initial-tenant-id="{{ old('pm_tenant_id') }}">
+        <x-property.modal
+            show="showInvoiceForm"
+            close="showInvoiceForm = false"
+            name="invoice-create"
+            title="Create invoice"
+            max-width="3xl"
+        >
+        <form method="post" action="{{ route('property.invoices.store') }}" class="space-y-3" data-lease-info-url="{{ route('property.invoices.lease_info', ['lease' => 'LEASE_ID'], false) }}" data-initial-tenant-id="{{ old('pm_tenant_id') }}">
             @csrf
             <h3 class="property-attention-title dark:text-white">Create Invoice</h3>
             <p class="property-attention-hint dark:text-slate-300">Generate the rent bill for tenant + unit; payment status will auto-update after collection.</p>
@@ -188,6 +195,7 @@
             <input type="hidden" name="idempotency_key" value="{{ (string) \Illuminate\Support\Str::uuid() }}">
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Create invoice</button>
         </form>
+        </x-property.modal>
         </div>
     </x-slot>
 

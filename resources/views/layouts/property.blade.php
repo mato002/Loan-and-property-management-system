@@ -392,6 +392,7 @@
         </div>
 
         @if (($propertyPortal ?? 'agent') === 'agent')
+            <x-property.form-modal-host />
             <a
                 href="{{ route('property.advisor') }}"
                 data-turbo-frame="property-main"

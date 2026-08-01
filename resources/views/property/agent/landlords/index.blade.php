@@ -81,18 +81,23 @@
             <button
                 type="button"
                 class="inline-flex w-full sm:w-auto min-h-[48px] items-center justify-center gap-3 rounded-xl sm:rounded-2xl bg-blue-600 px-5 py-3.5 text-sm sm:text-base font-bold text-white shadow-lg shadow-blue-200/70 transition hover:bg-blue-700"
-                @click="showLandlordCreateForm = !showLandlordCreateForm"
+                @click="showLandlordCreateForm = true"
             >
                 <i class="fa-solid fa-user-plus text-lg" aria-hidden="true"></i>
-                <span x-text="showLandlordCreateForm ? 'Hide landlord form' : 'Create landlord account'"></span>
+                <span>Create landlord account</span>
             </button>
 
+            <x-property.modal
+                show="showLandlordCreateForm"
+                close="showLandlordCreateForm = false"
+                name="landlord-create"
+                title="Onboard landlord"
+                max-width="3xl"
+            >
             <form
                 method="post"
                 action="{{ route('property.landlords.onboard') }}"
-                x-show="showLandlordCreateForm"
-                x-cloak
-                class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm space-y-3 w-full min-w-0"
+                class="space-y-3 w-full min-w-0"
             >
                 @csrf
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Onboard landlord</h3>
@@ -142,6 +147,7 @@
                 </div>
                 <button type="submit" class="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">Create landlord account</button>
             </form>
+            </x-property.modal>
         </div>
     </x-slot>
 

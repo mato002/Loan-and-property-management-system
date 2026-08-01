@@ -10,11 +10,15 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 use Throwable;
 
 class AgentPublicListingController extends Controller
 {
+    use RespondsWithPropertyFormModal;
+
     public function hub(): View
     {
         $vacant = PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT);
@@ -99,11 +103,11 @@ class AgentPublicListingController extends Controller
             ['label' => 'Featured', 'value' => (string) $vacantUnits->where('public_listing_published', true)->count(), 'hint' => 'Photos + publish'],
         ];
 
-        return property_view('property.agent.listings.create', [
+        return property_view('property.agent.listings.create', array_merge([
             'stats' => $stats,
             'vacantUnits' => $vacantUnits,
             'selectedUnit' => $selectedUnit,
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
     public function start(Request $request): RedirectResponse

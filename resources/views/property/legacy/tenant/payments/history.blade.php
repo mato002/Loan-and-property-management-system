@@ -120,25 +120,6 @@
             </div>
         @endif
         <script>
-            if (window.Swal) {
-                @if (session('success'))
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Success',
-                        text: @json(session('success')),
-                        timer: 2200,
-                        showConfirmButton: false
-                    });
-                @endif
-                @if ($errors->any())
-                    Swal.fire({
-                        icon: 'warning',
-                        title: 'Attention',
-                        text: @json($errors->first()),
-                    });
-                @endif
-            }
-
             document.addEventListener('click', async function (e) {
                 const btn = e.target.closest('[data-copy-ref]');
                 if (!btn) return;

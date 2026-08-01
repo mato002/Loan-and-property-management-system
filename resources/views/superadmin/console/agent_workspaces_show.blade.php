@@ -51,7 +51,7 @@
                         <button type="submit" class="w-full rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-left text-sm font-bold text-emerald-800 hover:bg-emerald-100">Activate workspace</button>
                     </form>
                 @else
-                    <form method="post" action="{{ route('superadmin.agent_workspaces.toggle_status', $agent) }}" onsubmit="return confirm('Suspend this workspace?');">
+                    <form method="post" action="{{ route('superadmin.agent_workspaces.toggle_status', $agent) }}" data-swal-confirm="Suspend this workspace?">
                         @csrf
                         <input type="hidden" name="intent" value="suspend">
                         <button type="submit" class="w-full rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-left text-sm font-bold text-rose-800 hover:bg-rose-100">Suspend workspace</button>
@@ -90,7 +90,7 @@
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
             <h2 class="text-lg font-bold text-slate-900">Transfer ownership</h2>
             <p class="mt-2 text-sm text-slate-600">Bulk reassign properties, tenants, and other agent-scoped records to another workspace.</p>
-            <form method="post" action="{{ route('superadmin.agent_workspaces.transfer', $agent) }}" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" onsubmit="return confirm('Transfer all scoped records to the selected agent?');">
+            <form method="post" action="{{ route('superadmin.agent_workspaces.transfer', $agent) }}" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end" data-swal-confirm="Transfer all scoped records to the selected agent?">
                 @csrf
                 <div class="flex-1">
                     <label class="block text-xs font-semibold text-slate-600">Receiving agent</label>

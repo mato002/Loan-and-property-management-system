@@ -1,3 +1,4 @@
+import './swal-init';
 import Alpine from 'alpinejs';
 
 /**

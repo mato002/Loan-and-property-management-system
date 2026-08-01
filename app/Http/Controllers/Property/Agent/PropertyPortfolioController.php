@@ -37,9 +37,13 @@ use Illuminate\View\View;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
+use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
+use Illuminate\Http\Response;
 
 class PropertyPortfolioController extends Controller
 {
+    use RespondsWithPropertyFormModal;
+
     private const IMPERSONATOR_SESSION_KEY = 'pm_impersonator_id';
 
     public function impersonateLandlord(Request $request, User $landlord): RedirectResponse
@@ -736,16 +740,16 @@ class PropertyPortfolioController extends Controller
     {
         $property->load(['landlords' => fn ($q) => $q->orderBy('name')]);
 
-        return view('property.agent.properties.edit', [
+        return view('property.agent.properties.edit', array_merge([
             'property' => $property,
             'propertyOnboardingFields' => $this->propertyOnboardingFieldConfig(),
             'propertyCommissionPercent' => $this->propertyCommissionPercent((int) $property->id),
             'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
             'propertyChargeTemplates' => $this->propertyChargeTemplates((int) $property->id),
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function updateProperty(Request $request, Property $property): RedirectResponse
+    public function updateProperty(Request $request, Property $property): RedirectResponse|Response
     {
         app(\App\Services\Property\PropertyManagementGuardService::class)->assertCanMutatePropertySettings($property);
 
@@ -816,7 +820,11 @@ class PropertyPortfolioController extends Controller
             $this->setPropertyDepositDefinitions((int) $property->id, $depositDefinitions);
         }
 
-        return back()->with('success', 'Property updated.');
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            back()->with('success', 'Property updated.'),
+            'Property updated.',
+        );
     }
 
     public function destroyProperty(Property $property): RedirectResponse
@@ -1718,13 +1726,13 @@ class PropertyPortfolioController extends Controller
     {
         $this->ensureLandlordVisibleForActor($request->user(), $landlord);
 
-        return view('property.agent.landlords.edit', [
+        return view('property.agent.landlords.edit', array_merge([
             'landlord' => $landlord,
             'landlordFields' => $this->landlordFieldConfig(),
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function updateLandlord(Request $request, User $landlord): RedirectResponse
+    public function updateLandlord(Request $request, User $landlord): RedirectResponse|Response
     {
         $this->ensureLandlordVisibleForActor($request->user(), $landlord);
 
@@ -1780,9 +1788,13 @@ class PropertyPortfolioController extends Controller
 
         $landlord->update($updates);
 
-        return redirect()
-            ->route('property.landlords.show', $landlord)
-            ->with('success', 'Landlord profile updated.');
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            redirect()
+                ->route('property.landlords.show', $landlord)
+                ->with('success', 'Landlord profile updated.'),
+            'Landlord profile updated.',
+        );
     }
 
     public function onboardLandlord(Request $request): RedirectResponse
@@ -2927,19 +2939,19 @@ class PropertyPortfolioController extends Controller
         return back()->with('success', 'Unit status updated.');
     }
 
-    public function editUnit(PropertyUnit $unit): View
+    public function editUnit(Request $request, PropertyUnit $unit): View
     {
         $unit->loadMissing('property');
 
-        return view('property.agent.properties.edit_unit', [
+        return view('property.agent.properties.edit_unit', array_merge([
             'unit' => $unit,
             'unitFields' => $this->unitFieldConfig(),
             'unitTypes' => $this->propertyUnitTypeOptions((string) $unit->unit_type),
             'bedroomOptionsByType' => $this->propertyBedroomOptionsByType((string) $unit->unit_type, (int) $unit->bedrooms),
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function updateUnit(Request $request, PropertyUnit $unit): RedirectResponse
+    public function updateUnit(Request $request, PropertyUnit $unit): RedirectResponse|Response
     {
         $unitFields = $this->unitFieldConfig();
         $data = $request->validate([
@@ -2995,9 +3007,13 @@ class PropertyPortfolioController extends Controller
             $unit->update(['public_listing_published' => false]);
         }
 
-        return redirect()
-            ->route('property.properties.units', ['property_id' => $unit->property_id])
-            ->with('success', 'Unit updated.');
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            redirect()
+                ->route('property.properties.units', ['property_id' => $unit->property_id])
+                ->with('success', 'Unit updated.'),
+            'Unit updated.',
+        );
     }
 
     public function storeUnitJson(Request $request)

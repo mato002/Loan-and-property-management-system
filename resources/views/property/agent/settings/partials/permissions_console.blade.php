@@ -11,10 +11,6 @@
     $openAddModal = $errors->any() && ! $editingPermissionId && (old('name') || old('key'));
 @endphp
 
-@if (session('success'))
-    <p class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">{{ session('success') }}</p>
-@endif
-
 @if ($errors->any() && ! $editingPermissionId && ! $openAddModal)
     <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200">
         <p class="font-semibold">Please fix the errors below.</p>

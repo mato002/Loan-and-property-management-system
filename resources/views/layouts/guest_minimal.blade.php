@@ -12,7 +12,7 @@
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <title>{{ $resolvedTitle }}</title>
         <link rel="icon" href="{{ asset('favicon.ico') }}" />
-        @vite(['resources/css/app.css'])
+        @vite(['resources/css/app.css', 'resources/js/guest-minimal.js'])
         <style>[x-cloak]{display:none!important}</style>
     </head>
     <body class="min-h-screen bg-gradient-to-br from-[#eef5f3] to-[#dbe8e4] text-slate-900 antialiased">

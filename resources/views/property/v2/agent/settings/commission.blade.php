@@ -12,11 +12,6 @@
             ['label' => 'Default commission', 'value' => $defaultPercent !== '' ? $defaultPercent.'%' : 'Not set', 'hint' => 'Fallback when no property override is set.'],
             ['label' => 'Notes length', 'value' => (string) mb_strlen((string) $notes), 'hint' => 'Internal memo characters saved.'],
         ]" />
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <form method="post" action="{{ route('property.settings.commission.store') }}" class="max-w-4xl rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
             @csrf
             <div>

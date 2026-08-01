@@ -7,6 +7,8 @@ use App\Models\PmMessage;
 use App\Models\PmMessageLog;
 use App\Models\PmMessagePreference;
 use App\Models\PmMessageRecipient;
+use App\Models\PmTenant;
+use App\Services\BulkSmsService;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -27,6 +29,14 @@ final class RentReminderEligibilityService
 
     public const REASON_NO_TENANT = 'no_tenant';
 
+    public const REASON_BELOW_MIN_BALANCE = 'below_min_balance';
+
+    public const REASON_TENANT_SMS_TODAY = 'tenant_sms_already_today';
+
+    public const REASON_CREDIT_COVERS = 'credit_covers_balance';
+
+    public const REASON_SETTLED = 'settled';
+
     /**
      * Base query for the daily rent reminder pipeline (active AR with open balance).
      */
@@ -42,6 +52,7 @@ final class RentReminderEligibilityService
                 PmInvoice::STATUS_CANCELLED,
                 PmInvoice::STATUS_DRAFT,
             ])
+            ->where('balance_due', '>', 0)
             ->whereNotNull('due_date')
             ->whereBetween('due_date', [$scanFrom, $scanTo])
             ->where(function (Builder $q) {
@@ -81,6 +92,22 @@ final class RentReminderEligibilityService
                 'reason' => (string) $invoice->status === PmInvoice::STATUS_PAID
                     ? self::REASON_PAID
                     : self::REASON_NO_OPEN_BALANCE,
+                'balance' => $balance,
+            ];
+        }
+
+        if ($balance < $this->minBalanceThreshold()) {
+            return [
+                'eligible' => false,
+                'reason' => self::REASON_BELOW_MIN_BALANCE,
+                'balance' => $balance,
+            ];
+        }
+
+        if ($this->creditCoversOpenBalance((int) ($invoice->pm_tenant_id ?? 0), $balance)) {
+            return [
+                'eligible' => false,
+                'reason' => self::REASON_CREDIT_COVERS,
                 'balance' => $balance,
             ];
         }
@@ -221,11 +248,13 @@ final class RentReminderEligibilityService
             return false;
         }
 
+        $asOfDate = $asOf->toDateString();
+
         $query = PmMessageLog::query()
             ->withoutGlobalScopes()
             ->where('channel', 'sms')
             ->where('delivery_status', 'sent')
-            ->whereDate('created_at', $asOf->toDateString())
+            ->whereRaw('DATE(COALESCE(sent_at, created_at)) = ?', [$asOfDate])
             ->where(function (Builder $q) use ($suffix) {
                 $q->where('to_address', 'like', '%'.$suffix);
             })
@@ -853,6 +882,206 @@ final class RentReminderEligibilityService
         }
 
         return false;
+    }
+
+    public function syncInvoiceForReminder(PmInvoice $invoice): PmInvoice
+    {
+        $invoice->syncAmountPaidFromAllocations();
+
+        return $invoice->fresh() ?? $invoice;
+    }
+
+    public function minBalanceThreshold(): float
+    {
+        $configured = config('property_communication.rent_reminder.min_balance_kes');
+
+        return max(0.0, round((float) ($configured ?? 1), 2));
+    }
+
+    public function oneSmsPerTenantPerDayEnabled(): bool
+    {
+        return (bool) config('property_communication.rent_reminder.one_sms_per_tenant_per_day', true);
+    }
+
+    public function creditCoversOpenBalance(int $tenantId, float $openBalance): bool
+    {
+        if (! (bool) config('property_communication.rent_reminder.skip_when_credit_covers_balance', true)) {
+            return false;
+        }
+
+        if ($tenantId <= 0 || $openBalance <= 0.009) {
+            return false;
+        }
+
+        $credit = app(TenantCreditService::class)->balanceForTenant($tenantId);
+
+        return $credit + 0.009 >= $openBalance;
+    }
+
+    /**
+     * @param  array<string, mixed>  $stage
+     * @return array<string, mixed>
+     */
+    public function buildRentReminderContext(PmInvoice $invoice, array $stage, PropertyAgentContactResolver $agentContacts): array
+    {
+        $invoice = $this->syncInvoiceForReminder($invoice);
+        $invoice->loadMissing(['tenant:id,name,email,phone', 'unit:id,label,property_id', 'unit.property:id,name']);
+
+        $balance = $invoice->balanceFloat();
+        $invoiceAmount = round((float) $invoice->amount, 2);
+        $amountPaid = round((float) $invoice->amount_paid, 2);
+        $unitName = trim((string) (($invoice->unit?->property?->name ?? '').'/'.($invoice->unit?->label ?? '')), '/');
+        $due = $invoice->due_date?->toDateString() ?? '';
+
+        $partialNote = '';
+        if ($amountPaid > 0.009 && $balance > 0.009) {
+            $partialNote = sprintf(
+                'Partial payment of KES %s is on record. Outstanding balance: KES %s.',
+                number_format($amountPaid, 2),
+                number_format($balance, 2)
+            );
+        }
+
+        $context = [
+            'tenant_name' => (string) ($invoice->tenant?->name ?? 'Tenant'),
+            'invoice_no' => (string) $invoice->invoice_no,
+            'unit_name' => $unitName !== '' ? $unitName : '—',
+            'balance' => number_format($balance, 2),
+            'balance_due' => number_format($balance, 2),
+            'invoice_amount' => number_format($invoiceAmount, 2),
+            'amount_paid' => number_format($amountPaid, 2),
+            'amount' => number_format($balance, 2),
+            'due_date' => $due,
+            'stage' => $stage,
+            'partial_payment_note' => $partialNote,
+        ];
+
+        if ($partialNote !== '') {
+            $context['status_message'] = $partialNote;
+        }
+
+        return $agentContacts->mergeIntoContext($context, $invoice);
+    }
+
+    public function invoiceIdFromRentReminderIdempotencyKey(?string $key): ?int
+    {
+        $key = trim((string) $key);
+        if ($key === '') {
+            return null;
+        }
+
+        if (preg_match('/^rent:(?:sms|email):(\d+):/', $key, $matches)) {
+            $id = (int) ($matches[1] ?? 0);
+
+            return $id > 0 ? $id : null;
+        }
+
+        return null;
+    }
+
+    public function invoiceIdFromMessage(PmMessage $message): ?int
+    {
+        $fromKey = $this->invoiceIdFromRentReminderIdempotencyKey($message->idempotency_key);
+        if ($fromKey !== null) {
+            return $fromKey;
+        }
+
+        $body = (string) $message->body;
+        $subject = (string) ($message->subject ?? '');
+        $invoiceNo = $this->extractInvoiceNoFromLogText($subject, $body);
+        if ($invoiceNo === '') {
+            return null;
+        }
+
+        $id = PmInvoice::query()
+            ->withoutGlobalScopes()
+            ->where('invoice_no', $invoiceNo)
+            ->value('id');
+
+        return $id !== null && (int) $id > 0 ? (int) $id : null;
+    }
+
+    /**
+     * True when any rent-reminder SMS was already delivered to this tenant today.
+     */
+    public function tenantRentReminderSmsSentToday(int $tenantId, CarbonInterface $asOf): bool
+    {
+        if ($tenantId <= 0) {
+            return false;
+        }
+
+        $tenant = PmTenant::query()->withoutGlobalScopes()->find($tenantId);
+        if ($tenant === null || trim((string) $tenant->phone) === '') {
+            return false;
+        }
+
+        $phones = app(BulkSmsService::class)->normalizeRecipientList((string) $tenant->phone);
+        foreach ($phones as $phone) {
+            if ($this->logShowsTenantRentReminderSmsOnDate($phone, $asOf)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function logShowsTenantRentReminderSmsOnDate(string $toAddress, CarbonInterface $asOf): bool
+    {
+        $suffix = $this->phoneSuffixFromAddress($toAddress);
+        if ($suffix === '') {
+            return false;
+        }
+
+        return PmMessageLog::query()
+            ->withoutGlobalScopes()
+            ->where('channel', 'sms')
+            ->whereIn('delivery_status', ['sent', 'delivered'])
+            ->whereRaw('DATE(COALESCE(sent_at, created_at)) = ?', [$asOf->toDateString()])
+            ->where(function (Builder $q) use ($suffix) {
+                $q->where('to_address', 'like', '%'.$suffix);
+            })
+            ->where(function (Builder $q) {
+                $q->where('template_category', 'rent_reminder')
+                    ->orWhere('subject', 'like', '%INV-%')
+                    ->orWhere('body', 'like', '%INV-%');
+            })
+            ->exists();
+    }
+
+    /**
+     * Re-check invoice balance immediately before SMS dispatch (queue delay / late payments).
+     */
+    public function rentReminderStillBillable(PmInvoice $invoice): bool
+    {
+        $invoice = $this->syncInvoiceForReminder($invoice);
+        if (! $this->isActiveInvoice($invoice)) {
+            return false;
+        }
+
+        $balance = $invoice->balanceFloat();
+        if ($balance <= 0.009 || $balance < $this->minBalanceThreshold()) {
+            return false;
+        }
+
+        if ($this->creditCoversOpenBalance((int) ($invoice->pm_tenant_id ?? 0), $balance)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function refreshRentReminderMessageBody(PmInvoice $invoice, PmMessage $message, PropertyCommunicationTemplateService $templates, PropertyAgentContactResolver $agentContacts): ?string
+    {
+        $internalStage = trim((string) ($message->internal_stage ?? ''));
+        $stage = [
+            'internal_stage' => $internalStage,
+            'display_label' => (string) ($message->display_stage ?? $internalStage),
+            'stage_key' => $internalStage,
+        ];
+
+        $context = $this->buildRentReminderContext($invoice, $stage, $agentContacts);
+
+        return $templates->resolveRentReminderSms($context);
     }
 
     private function inactiveReason(PmInvoice $invoice): string

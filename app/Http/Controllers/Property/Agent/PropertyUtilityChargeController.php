@@ -273,6 +273,11 @@ class PropertyUtilityChargeController extends Controller
             'recorded_units' => $monthReadings->count(),
         ];
 
+        $waterRateAdjustments = app(WaterBillingService::class)->waterRateAdjustmentRows(
+            $readinessMonth,
+            $waterTemplateByUnit,
+        );
+
         $openWaterAr = (float) PmInvoice::query()
             ->liveBalances()
             ->whereIn('invoice_type', [PmInvoice::TYPE_WATER, PmInvoice::TYPE_MIXED])
@@ -296,6 +301,7 @@ class PropertyUtilityChargeController extends Controller
             ['label' => 'Readings captured', 'value' => ((int) $billingReadiness['recorded_units']).'/'.((int) $billingReadiness['water_enabled_units']), 'hint' => $readinessMonth, 'tone' => 'info'],
             ['label' => 'Uninvoiced', 'value' => (string) $uninvoicedReadings, 'hint' => 'Readings pending invoice', 'tone' => $uninvoicedReadings > 0 ? 'warning' : 'success'],
             ['label' => 'Usage alerts', 'value' => (string) collect($billingReadiness['anomalies'])->count(), 'hint' => 'Review before billing', 'tone' => collect($billingReadiness['anomalies'])->count() > 0 ? 'danger' : 'success'],
+            ['label' => 'Rate corrections', 'value' => (string) count($waterRateAdjustments), 'hint' => 'Bill water supplement', 'tone' => count($waterRateAdjustments) > 0 ? 'warning' : 'success'],
         ];
 
         $units = PropertyUnit::query()->with('property')->orderBy('property_id')->orderBy('label')->get();
@@ -326,6 +332,7 @@ class PropertyUtilityChargeController extends Controller
             'utilityTemplateByUnit' => $utilityTemplateByUnit,
             'waterReadingUnitIdsByMonth' => $waterReadingUnitIdsByMonth,
             'billingReadiness' => $billingReadiness,
+            'waterRateAdjustments' => $waterRateAdjustments,
             ...UtilityWorkspaceViewData::compose($request, $viewFilters, $units, $waterChargePropertyIds->all()),
         ]);
     }
@@ -561,6 +568,38 @@ class PropertyUtilityChargeController extends Controller
         return back()->with('success', 'Water meter reading saved.');
     }
 
+    public function updateWaterReading(Request $request, PmWaterReading $reading, WaterBillingService $billing): RedirectResponse
+    {
+        $data = $request->validate([
+            'previous_reading' => ['nullable', 'numeric', 'min:0'],
+            'current_reading' => ['required', 'numeric', 'min:0'],
+            'rate_per_unit' => ['required', 'numeric', 'min:0'],
+            'fixed_charge' => ['nullable', 'numeric', 'min:0'],
+            'is_estimated' => ['nullable', 'boolean'],
+            'is_meter_reset' => ['nullable', 'boolean'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $data['utility_override_request_id'] = (int) $request->input('utility_override_request_id', 0) ?: null;
+
+        try {
+            $billing->updateReading(
+                $reading,
+                $data,
+                $request->user(),
+                $data['utility_override_request_id'],
+            );
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['billing_month' => $e->getMessage()])->withInput();
+        } catch (ValidationException $e) {
+            return back()->withErrors($e->errors())->withInput();
+        }
+
+        $this->refreshUtilityIntelligence((int) $request->user()?->id);
+
+        return back()->with('success', 'Water reading updated.');
+    }
+
     /**
      * Default previous reading per unit (last current reading before billing_month), for meter forms.
      */
@@ -705,6 +744,60 @@ class PropertyUtilityChargeController extends Controller
         }
 
         return back()->with('success', $msg);
+    }
+
+    public function generateWaterSupplements(Request $request, WaterBillingService $billing): RedirectResponse
+    {
+        $data = $request->validate([
+            'billing_month' => ['required', 'date_format:Y-m'],
+            'due_date' => ['nullable', 'date'],
+            'reading_ids' => ['nullable', 'array'],
+            'reading_ids.*' => ['integer', 'exists:pm_water_readings,id'],
+            'generate_all' => ['nullable', 'boolean'],
+        ]);
+
+        $month = (string) $data['billing_month'];
+        $generateAll = $request->boolean('generate_all');
+        $readingIds = $generateAll
+            ? null
+            : collect($data['reading_ids'] ?? [])->map(fn ($id) => (int) $id)->filter()->values()->all();
+
+        if (! $generateAll && $readingIds === []) {
+            return back()->withErrors(['reading_ids' => 'Select at least one row, or use Bill all rate corrections.'])->withInput();
+        }
+
+        $templates = $billing->waterTemplateByUnitFromSettings();
+
+        try {
+            $result = $billing->generateWaterSupplements(
+                $month,
+                $templates,
+                $readingIds,
+                $request->user(),
+                isset($data['due_date']) ? (string) $data['due_date'] : null,
+                (int) $request->input('utility_override_request_id', 0) ?: null,
+            );
+        } catch (UtilityPeriodClosedException $e) {
+            return back()->withErrors(['billing_month' => $e->getMessage()])->withInput();
+        }
+
+        $message = "Issued {$result['created']} water supplement invoice(s) for {$month}.";
+        if ($result['skipped'] > 0) {
+            $message .= " Skipped {$result['skipped']}.";
+        }
+        if ($result['errors'] !== []) {
+            return back()
+                ->with('warning', $message)
+                ->with('bulk_invoice_errors', array_slice($result['errors'], 0, 8));
+        }
+
+        if ($result['created'] === 0) {
+            return back()->withErrors([
+                'billing_month' => 'No water supplements were created. Update property water rates first, or amounts may already match current rates.',
+            ]);
+        }
+
+        return back()->with('success', $message);
     }
 
     public function applyWaterPenalties(Request $request, WaterPenaltyService $penalties): RedirectResponse

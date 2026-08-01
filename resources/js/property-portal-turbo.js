@@ -1,4 +1,5 @@
 import * as Turbo from '@hotwired/turbo';
+import { isPropertyFormModalLink } from './property-form-modal';
 import { closeAllPropertyDropdowns } from './property-dropdown-cleanup';
 import { recoverPropertyScrollState } from './property-modal-manager';
 import { wireAutoFilterForms } from './property-auto-filter';
@@ -11,10 +12,12 @@ import {
 } from './property-frame-reconciliation';
 import {
     bumpPropertyHydrationGeneration,
+    hydratePropertyMainAlpine,
     PROPERTY_MAIN_FRAME_ID,
     resetPropertyHydrationGuard,
     schedulePropertyWorkspaceHydration,
 } from './property-workspace-hydration';
+import { ensurePropertyFormModalHost } from './property-form-modal';
 
 /** Guard flag so frame redirects do not recurse through turbo:before-visit. */
 let routingViaMainFrame = false;
@@ -312,6 +315,64 @@ function isPortalStylesheetActive() {
     return active;
 }
 
+/** Print header must stay hidden on screen; visible chrome means layout CSS dropped. */
+function isPropertyPrintChromeVisibleOnScreen() {
+    if (window.matchMedia('print').matches) {
+        return false;
+    }
+
+    const el = document.querySelector('.property-print-only');
+    if (!(el instanceof HTMLElement)) {
+        return false;
+    }
+
+    const style = window.getComputedStyle(el);
+
+    return style.display !== 'none' && style.visibility !== 'hidden';
+}
+
+function isBuiltAppStylesheetLoaded() {
+    const links = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).filter((link) => {
+        if (!(link instanceof HTMLLinkElement)) {
+            return false;
+        }
+
+        return /\/build\/assets\/app-[^/?#]+\.css(?:[?#]|$)/i.test(link.href);
+    });
+
+    if (links.length === 0) {
+        return true;
+    }
+
+    return links.every((link) => {
+        if (link.disabled) {
+            return false;
+        }
+
+        try {
+            return link.sheet instanceof CSSStyleSheet;
+        } catch {
+            return false;
+        }
+    });
+}
+
+function isPortalPresentationHealthy() {
+    if (!isPortalStylesheetActive()) {
+        return false;
+    }
+
+    if (isPropertyPrintChromeVisibleOnScreen()) {
+        return false;
+    }
+
+    if (document.readyState === 'complete' && !isBuiltAppStylesheetLoaded()) {
+        return false;
+    }
+
+    return true;
+}
+
 function recoverPropertyPortalDocument(url = window.location.href) {
     if (propertyPortalShellRecoveryInFlight) {
         return;
@@ -324,13 +385,97 @@ function ensurePropertyPortalShell(url = window.location.href) {
     if (!isPropertyShellUrl(new URL(url, window.location.href))) {
         return true;
     }
-    if (!hasPropertyPortalShell() || !isPortalStylesheetActive()) {
+    if (!hasPropertyPortalShell() || !isPortalPresentationHealthy()) {
         recoverPropertyPortalDocument(url);
 
         return false;
     }
 
     return true;
+}
+
+function isPortalAuthFailureResponse(status, responseUrl) {
+    if (status === 401 || status === 403 || status === 419) {
+        return true;
+    }
+
+    if (!responseUrl) {
+        return false;
+    }
+
+    try {
+        const path = new URL(responseUrl, window.location.href).pathname.replace(/\/+$/, '');
+
+        return path === '/login' || path.endsWith('/login');
+    } catch {
+        return false;
+    }
+}
+
+const PORTAL_SHELL_WATCH_MS = 90_000;
+let portalShellWatchTimer = null;
+let portalStylesheetRecoveryBound = false;
+
+function bindPortalStylesheetRecovery() {
+    if (portalStylesheetRecoveryBound) {
+        return;
+    }
+    portalStylesheetRecoveryBound = true;
+
+    document.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
+        if (!(link instanceof HTMLLinkElement)) {
+            return;
+        }
+
+        if (!/\/build\/assets\/app-[^/?#]+\.css(?:[?#]|$)/i.test(link.href)) {
+            return;
+        }
+
+        link.addEventListener('error', () => {
+            if (!isPropertyShellUrl(new URL(window.location.href, window.location.href))) {
+                return;
+            }
+
+            recoverPropertyPortalDocument(window.location.href);
+        });
+    });
+}
+
+function startPortalShellWatch() {
+    if (document.documentElement?.getAttribute('data-pwa-context') !== 'portal') {
+        return;
+    }
+
+    if (portalShellWatchTimer !== null) {
+        return;
+    }
+
+    portalShellWatchTimer = window.setInterval(() => {
+        if (document.visibilityState !== 'visible') {
+            return;
+        }
+
+        try {
+            if (isPropertyShellUrl(new URL(window.location.href, window.location.href))) {
+                ensurePropertyPortalShell();
+            }
+        } catch {
+            // ignore malformed URLs
+        }
+    }, PORTAL_SHELL_WATCH_MS);
+}
+
+function bootPropertyPortalShellGuards() {
+    bindPortalStylesheetRecovery();
+    startPortalShellWatch();
+
+    try {
+        if (isPropertyShellUrl(new URL(window.location.href, window.location.href))) {
+            ensurePropertyPortalShell();
+        }
+    } catch {
+        // ignore malformed URLs
+    }
 }
 
 /** Hub shell paths redirect server-side — Turbo frame visits need the concrete tab URL. */
@@ -660,6 +805,10 @@ document.addEventListener('turbo:click', (event) => {
         return;
     }
 
+    if (isPropertyFormModalLink(link)) {
+        return;
+    }
+
     if (link.classList.contains('property-workspace-tab') || link.classList.contains('property-workspace-subtab')) {
         notePendingWorkspaceNavigation(url.toString());
     }
@@ -694,6 +843,8 @@ document.addEventListener('turbo:frame-load', (event) => {
     if (!(frame instanceof HTMLElement) || frame.id !== PROPERTY_MAIN_FRAME_ID) {
         return;
     }
+    hydratePropertyMainAlpine(frame);
+    ensurePropertyFormModalHost();
     afterMainFrameSwap(frame, 'turbo:frame-load');
 });
 
@@ -725,6 +876,7 @@ document.addEventListener('turbo:load', () => {
     document.body.scrollTop = 0;
     window.scrollTo(0, 0);
     wirePropertyFrameNavigation();
+    bootPropertyPortalShellGuards();
     const frame = document.getElementById(PROPERTY_MAIN_FRAME_ID);
     if (frame instanceof HTMLElement) {
         afterMainFrameSwap(frame, 'turbo:load');
@@ -734,14 +886,11 @@ document.addEventListener('turbo:load', () => {
 document.addEventListener('turbo:before-fetch-response', (event) => {
     const fetchResponse = event.detail?.fetchResponse;
     const status = fetchResponse?.response?.status;
-    if (status === 401 || status === 403) {
-        const url = fetchResponse?.response?.url;
-        if (!url) {
-            return;
-        }
+    const responseUrl = fetchResponse?.response?.url || '';
 
+    if (isPortalAuthFailureResponse(status, responseUrl)) {
         event.preventDefault();
-        visitPropertyMainFrame(url);
+        recoverPropertyPortalDocument(responseUrl || window.location.href);
 
         return;
     }
@@ -771,6 +920,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.scrollTop = 0;
     window.scrollTo(0, 0);
     wirePropertyFrameNavigation();
+    bootPropertyPortalShellGuards();
     const frame = getPropertyMainFrame();
     if (frame) {
         afterMainFrameSwap(frame, 'dom:ready');

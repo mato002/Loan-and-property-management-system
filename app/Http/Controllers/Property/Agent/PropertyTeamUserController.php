@@ -14,19 +14,23 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 
 class PropertyTeamUserController extends Controller
 {
+    use RespondsWithPropertyFormModal;
+
     public function create(Request $request): View
     {
         app(PropertySettingsStoreWebController::class)->ensureAccessControlDefaults();
 
         if (! Schema::hasTable('pm_roles')) {
-            return property_view('property.agent.settings.team_users.create', [
+            return property_view('property.agent.settings.team_users.create', array_merge([
                 'roles' => collect(),
                 'rolesReady' => false,
-            ]);
+            ], $this->propertyFormModalViewData($request)));
         }
 
         $roles = PmRole::query()
@@ -34,13 +38,13 @@ class PropertyTeamUserController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'slug', 'portal_scope']);
 
-        return property_view('property.agent.settings.team_users.create', [
+        return property_view('property.agent.settings.team_users.create', array_merge([
             'roles' => $roles,
             'rolesReady' => $roles->isNotEmpty(),
-        ]);
+        ], $this->propertyFormModalViewData($request)));
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|Response
     {
         app(PropertySettingsStoreWebController::class)->ensureAccessControlDefaults();
 
@@ -112,12 +116,18 @@ class PropertyTeamUserController extends Controller
             return $user;
         });
 
-        return redirect()
-            ->route('property.settings.roles')
-            ->with('success', __('Team member :name was created. Share the temporary password securely; they should change it after first login.', ['name' => $user->name]))
-            ->with('team_user_created', [
-                'email' => $user->email,
-                'temporary_password' => $plainPassword,
-            ]);
+        $successMessage = __('Team member :name was created. Share the temporary password securely; they should change it after first login.', ['name' => $user->name]);
+
+        return $this->redirectOrPropertyFormModalSuccess(
+            $request,
+            redirect()
+                ->route('property.settings.roles')
+                ->with('success', $successMessage)
+                ->with('team_user_created', [
+                    'email' => $user->email,
+                    'temporary_password' => $plainPassword,
+                ]),
+            $successMessage,
+        );
     }
 }

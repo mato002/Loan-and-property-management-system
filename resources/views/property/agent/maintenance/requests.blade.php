@@ -67,13 +67,6 @@
                 <a href="{{ route('property.maintenance.requests', absolute: false) }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
             </div>
         </form>
-
-        @if (session('success'))
-            <p class="text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-        @if (session('error'))
-            <p class="text-sm text-rose-700 dark:text-rose-400">{{ session('error') }}</p>
-        @endif
         @if ($workflowAutoAssignTickets)
             <p class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200 max-w-2xl">
                 Workflow automation is ON: new requests are auto-routed to triage.
@@ -89,17 +82,22 @@
         <button
             type="button"
             class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-            @click="showRequestForm = !showRequestForm"
+            @click="showRequestForm = true"
         >
             <i class="fa-solid fa-screwdriver-wrench" aria-hidden="true"></i>
-            <span x-text="showRequestForm ? 'Hide request form' : 'Add maintenance request'"></span>
+            <span>Add maintenance request</span>
         </button>
+        <x-property.modal
+            show="showRequestForm"
+            close="showRequestForm = false"
+            name="maintenance-request-create"
+            title="New maintenance request"
+            max-width="2xl"
+        >
         <form
             method="post"
             action="{{ route('property.maintenance.requests.store') }}"
-            x-show="showRequestForm"
-            x-cloak
-            class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl"
+            class="space-y-3"
             x-data="{
                 propertyId: @js((string) old('property_id')),
                 unitId: @js((string) old('property_unit_id')),
@@ -169,6 +167,7 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Submit request</button>
         </form>
+        </x-property.modal>
         </div>
         @endif
     </x-slot>

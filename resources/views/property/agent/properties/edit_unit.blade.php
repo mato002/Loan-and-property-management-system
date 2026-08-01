@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.crud-shell :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Edit unit"
     subtitle="Update unit details such as label, type, bedrooms, rent, and status."
     back-route="property.properties.units"
@@ -392,4 +392,4 @@
             syncBedrooms();
         })();
     </script>
-</x-property.workspace>
+</x-property.crud-shell>

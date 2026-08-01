@@ -13,11 +13,6 @@
                 {{ __('You are editing the branding used on the login page and agent workspace for this deployment.') }}
             </p>
         @endif
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <div class="grid gap-6 lg:grid-cols-2">
             <form method="post" action="{{ route('property.settings.branding.store') }}" enctype="multipart/form-data" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
                 @csrf

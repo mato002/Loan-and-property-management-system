@@ -10,7 +10,7 @@
     };
 @endphp
 
-<x-property.workspace
+<x-property.crud-shell :in-property-form-modal="$inPropertyFormModal ?? false"
     :title="'Edit landlord: '.$landlord->name"
     subtitle="Update landlord contact details used for portal login and communications."
     back-route="property.landlords.show"
@@ -51,4 +51,4 @@
             <a href="{{ route('property.landlords.show', $landlord, false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Cancel</a>
         </div>
     </form>
-</x-property.workspace>
+</x-property.crud-shell>

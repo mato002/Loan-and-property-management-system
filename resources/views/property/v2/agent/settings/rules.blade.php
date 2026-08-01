@@ -14,11 +14,6 @@
                 <a href="{{ route('property.revenue.penalties') }}" data-turbo-frame="property-main" class="font-semibold text-emerald-700 hover:underline">Penalty rules engine</a>.
             </p>
         </div>
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <form method="post" action="{{ route('property.settings.rules.store') }}" class="max-w-xl rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
             @csrf
             <div class="grid gap-4 sm:grid-cols-2">

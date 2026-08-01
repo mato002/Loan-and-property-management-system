@@ -30,11 +30,8 @@
                 btn.dataset.paymentPanelBound = '1';
                 btn.addEventListener('click', () => {
                     const id = btn.getAttribute('data-open-payment-panel');
-                    const panel = id ? document.getElementById(id) : null;
-                    if (panel && panel.tagName === 'DETAILS') {
-                        panel.open = true;
-                    }
-                    panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    if (!id) return;
+                    window.dispatchEvent(new CustomEvent('property-payment-panel-open', { detail: { panel: id } }));
                 });
             });
 
@@ -43,10 +40,8 @@
                 btn.dataset.paymentPanelCollapseBound = '1';
                 btn.addEventListener('click', () => {
                     const id = btn.getAttribute('data-collapse-payment-panel');
-                    const panel = id ? document.getElementById(id) : null;
-                    if (panel && panel.tagName === 'DETAILS') {
-                        panel.open = false;
-                    }
+                    if (!id) return;
+                    window.dispatchEvent(new CustomEvent('property-payment-panel-close', { detail: { panel: id } }));
                 });
             });
         };

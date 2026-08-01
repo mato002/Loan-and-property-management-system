@@ -1,7 +1,8 @@
-<x-property.workspace
+<x-property.crud-shell
     title="Edit tenant"
     subtitle="Update tenant profile details used in leases, billing, and tenant operations."
     back-route="property.tenants.directory"
+    :in-property-form-modal="$inPropertyFormModal ?? false"
     :stats="[
         ['label' => 'Tenant', 'value' => $tenant->name, 'hint' => $tenant->email ?: 'No email'],
         ['label' => 'Risk', 'value' => ucfirst($tenant->risk_level), 'hint' => 'Current'],
@@ -158,8 +159,10 @@
         </div>
         <div class="flex gap-2">
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save changes</button>
+            @unless($inPropertyFormModal ?? false)
             <a href="{{ route('property.tenants.directory') }}" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Back</a>
+            @endunless
         </div>
     </form>
-</x-property.workspace>
+</x-property.crud-shell>
 

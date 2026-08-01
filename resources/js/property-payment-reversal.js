@@ -27,26 +27,6 @@ function promptPaymentReversalReason(form, mode) {
     const isRequest = mode === 'request';
 
     if (!window.Swal?.fire) {
-        const fallback = window.prompt(
-            isRequest
-                ? `Enter a reason to request reversal for ${ref} (min 5 characters):`
-                : `Optional checker note for approving reversal of ${ref}:`,
-            '',
-        );
-        if (fallback === null) {
-            return;
-        }
-        const trimmed = fallback.trim();
-        if (isRequest && trimmed.length < 5) {
-            window.alert('Please enter a clearer reason (at least 5 characters).');
-            return;
-        }
-        const input = form.querySelector('input[name="reason"]');
-        if (input instanceof HTMLInputElement) {
-            input.value = trimmed;
-        }
-        form.dataset.reversalConfirmed = '1';
-        form.requestSubmit?.() ?? form.submit();
         return;
     }
 

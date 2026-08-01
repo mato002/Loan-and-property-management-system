@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.crud-shell :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Edit lease"
     subtitle="Update term dates, rent, linked units, and status for an existing lease."
     back-route="property.tenants.leases"
@@ -870,5 +870,5 @@
             syncDepositRules();
         })();
     </script>
-</x-property.workspace>
+</x-property.crud-shell>
 

@@ -52,17 +52,40 @@
         @php
             $showPaymentFormByDefault = request('form') === 'invoice'
                 || (old('payment_form') !== 'advance' && $errors->hasAny(['pm_tenant_id','channel','pm_invoice_id','amount','paid_at','external_ref']));
+            $showAdvanceFormByDefault = request('form') === 'advance'
+                || old('payment_form') === 'advance'
+                || $errors->has('advance')
+                || (old('payment_form') === 'advance' && $errors->hasAny(['pm_tenant_id', 'channel', 'amount', 'paid_at', 'external_ref', 'notes']));
         @endphp
-        <details id="invoice-payment-panel" class="group mt-4 rounded-2xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-gray-800/80 shadow-sm" @if($showPaymentFormByDefault) open @endif>
-            <summary class="sr-only">Invoice payment form</summary>
-            <div class="flex justify-end border-b border-slate-100 px-4 py-2 dark:border-slate-700">
-                <button type="button" class="text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" data-collapse-payment-panel="invoice-payment-panel">Hide form</button>
-            </div>
-
+        <div
+            x-data="{
+                showInvoicePaymentForm: @js($showPaymentFormByDefault),
+                showAdvancePaymentForm: @js($showAdvanceFormByDefault),
+                init() {
+                    window.addEventListener('property-payment-panel-open', (event) => {
+                        const panel = event.detail?.panel;
+                        if (panel === 'invoice-payment-panel') this.showInvoicePaymentForm = true;
+                        if (panel === 'advance-payment-panel') this.showAdvancePaymentForm = true;
+                    });
+                    window.addEventListener('property-payment-panel-close', (event) => {
+                        const panel = event.detail?.panel;
+                        if (panel === 'invoice-payment-panel') this.showInvoicePaymentForm = false;
+                        if (panel === 'advance-payment-panel') this.showAdvancePaymentForm = false;
+                    });
+                },
+            }"
+        >
+        <x-property.modal
+            show="showInvoicePaymentForm"
+            close="showInvoicePaymentForm = false"
+            name="invoice-payment-panel"
+            title="Record payment (against invoice)"
+            max-width="3xl"
+        >
             <form
                 method="post"
                 action="{{ route('property.payments.store') }}"
-                class="space-y-3 p-5 max-w-3xl"
+                class="space-y-3"
             >
                 @csrf
                 <input type="hidden" name="payment_form" value="invoice" />
@@ -128,13 +151,28 @@
                 </div>
                 <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save payment</button>
             </form>
-        </details>
+        </x-property.modal>
 
-        @include('property.agent.revenue.partials.advance_payment_form', [
-            'tenantsForAdvance' => $tenantsForAdvance ?? collect(),
-            'advanceCreditsEnabled' => $advanceCreditsEnabled ?? false,
-            'hideSummary' => true,
-        ])
+        <x-property.modal
+            show="showAdvancePaymentForm"
+            close="showAdvancePaymentForm = false"
+            name="advance-payment-panel"
+            title="Record advance payment"
+            max-width="3xl"
+        >
+            @error('advance')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
+            @if (! ($advanceCreditsEnabled ?? false))
+                <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    Tenant advance credits are not enabled on this database. Run migrations for <code class="text-xs">pm_tenant_credit_*</code> tables, then retry.
+                </div>
+            @else
+                @include('property.agent.revenue.partials.advance_payment_form_fields', [
+                    'tenantsForAdvance' => $tenantsForAdvance ?? collect(),
+                    'returnTo' => null,
+                ])
+            @endif
+        </x-property.modal>
+        </div>
 
         <script>
             (function () {

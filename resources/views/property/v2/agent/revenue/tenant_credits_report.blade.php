@@ -7,11 +7,6 @@
         ['label' => 'Tenants with credit', 'value' => (string) $balances->total(), 'hint' => 'This page'],
     ]"
 >
-    @if (session('success'))
-        <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-            {{ session('success') }}
-        </div>
-    @endif
 
     <div class="mb-6">
         <h2 class="text-sm font-semibold text-slate-900 mb-2">Record advance payment</h2>

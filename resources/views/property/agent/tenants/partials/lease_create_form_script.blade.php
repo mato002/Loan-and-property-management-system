@@ -629,8 +629,7 @@
                 const templateRows = getTemplateTypeRows(getCurrentPropertyId());
                 if (templateRows.length === 0) {
                     const msg = 'No charge types configured for the selected property.';
-                    if (window.Swal) window.Swal.fire({ icon: 'info', title: 'No charge types', text: msg });
-                    else alert(msg);
+                    window.Swal.fire({ icon: 'info', title: 'No charge types', text: msg });
                     return;
                 }
                 const index = openingArrearsCreateRows.querySelectorAll('.opening-arrears-row').length;

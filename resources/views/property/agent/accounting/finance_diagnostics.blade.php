@@ -4,10 +4,6 @@
     back-route="property.accounting.index"
     :stats="$stats"
 >
-    @if (session('success'))
-        <div class="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{{ session('success') }}</div>
-    @endif
-
     <div class="space-y-4">
         <form method="post" action="{{ route('property.accounting.finance_diagnostics.refresh_invoice_statuses') }}" class="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-gray-800/80">
             @csrf

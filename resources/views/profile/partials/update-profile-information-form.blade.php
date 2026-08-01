@@ -60,11 +60,6 @@
                         </button>
                     </p>
 
-                    @if (session('status') === 'verification-link-sent')
-                        <p class="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                            {{ __('Verification code sent. Check your inbox and follow the verification link.') }}
-                        </p>
-                    @endif
                 </div>
             @elseif (request()->boolean('verified'))
                 <p class="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">

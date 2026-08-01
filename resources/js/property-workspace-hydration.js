@@ -4,6 +4,7 @@
  */
 
 import { closeAllPropertyDropdowns } from './property-dropdown-cleanup';
+import { ensurePropertyFormModalHost } from './property-form-modal';
 import { recoverPropertyScrollState } from './property-modal-manager';
 import { setupPropertyPaymentReversal } from './property-payment-reversal';
 import { setupPropertyWorkspaceTabs } from './property-workspace-tabs';
@@ -31,6 +32,28 @@ function propertyNavigationKey() {
 
 export function isPropertyWorkspaceHydrating() {
     return workspaceHydrating || pendingHydrationGen !== null;
+}
+
+/**
+ * Bind Alpine on #property-main after Turbo swaps (inline modals, x-data CTAs, x-teleport dialogs).
+ * Runs synchronously plus one rAF pass so teleported modals stay wired to their frame scope.
+ */
+export function hydratePropertyMainAlpine(frame) {
+    if (!(frame instanceof HTMLElement) || frame.id !== PROPERTY_MAIN_FRAME_ID) {
+        return;
+    }
+    if (!window.Alpine?.initTree) {
+        return;
+    }
+
+    window.Alpine.initTree(frame);
+
+    requestAnimationFrame(() => {
+        if (document.getElementById(PROPERTY_MAIN_FRAME_ID) !== frame) {
+            return;
+        }
+        window.Alpine.initTree(frame);
+    });
 }
 
 function syncHydratingWindowFlag() {
@@ -178,10 +201,9 @@ export function runPropertyWorkspaceHydration(frame, source, hooks = {}) {
         wirePropertyFrameNavigation(frame);
         wirePropertyFrameNavigation(document);
 
-        if (window.Alpine?.initTree) {
-            window.Alpine.initTree(frame);
-        }
+        hydratePropertyMainAlpine(frame);
         setupPropertyPaymentReversal(frame);
+        ensurePropertyFormModalHost();
     } finally {
         workspaceHydrating = false;
         syncHydratingWindowFlag();

@@ -14,11 +14,6 @@
             ['label' => 'Passkey', 'value' => $hasPasskey ? 'Configured' : 'Not set'],
             ['label' => 'Trust account', 'value' => ($trustAccountLabel ?? '') !== '' ? $trustAccountLabel : 'Not set'],
         ]" />
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <div class="grid gap-6 lg:grid-cols-2 w-full min-w-0">
             <form method="post" action="{{ route('property.settings.payments.store') }}" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-6 shadow-sm space-y-4 min-w-0">
                 @csrf

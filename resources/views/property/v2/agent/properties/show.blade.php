@@ -213,9 +213,10 @@
                                 return null;
                             },
                         });
+                        if (!result.isConfirmed) {
+                            return;
+                        }
                         raw = String(result.value || '').trim();
-                    } else {
-                        raw = String(window.prompt('New charge type (e.g. internet, security, sewer):', '') || '').trim();
                     }
                     if (!raw) return;
                     const normalized = String(raw).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -855,65 +856,52 @@
             };
 
             const showErrorMessage = async (message) => {
-                if (window.Swal && typeof window.Swal.fire === 'function') {
-                    await window.Swal.fire({
-                        icon: 'warning',
-                        text: message,
-                        confirmButtonText: 'OK',
-                    });
-                    return;
-                }
-                window.alert(message);
+                await window.swalAlert(message, { icon: 'warning', title: '', confirmButtonText: 'OK' });
             };
 
             const askTextValue = async (title, inputLabel, placeholder = '') => {
-                if (window.Swal && typeof window.Swal.fire === 'function') {
-                    const result = await window.Swal.fire({
-                        title,
-                        input: 'text',
-                        inputLabel,
-                        inputPlaceholder: placeholder,
-                        showCancelButton: true,
-                        confirmButtonText: 'Save',
-                        cancelButtonText: 'Cancel',
-                        inputValidator: (value) => {
-                            if (!String(value || '').trim()) {
-                                return 'This field is required.';
-                            }
-                            return null;
-                        },
-                    });
-                    if (!result.isConfirmed) return null;
-                    return String(result.value || '').trim();
+                const result = await window.Swal.fire({
+                    title,
+                    input: 'text',
+                    inputLabel,
+                    inputPlaceholder: placeholder,
+                    showCancelButton: true,
+                    confirmButtonText: 'Save',
+                    cancelButtonText: 'Cancel',
+                    inputValidator: (value) => {
+                        if (!String(value || '').trim()) {
+                            return 'This field is required.';
+                        }
+                        return null;
+                    },
+                });
+                if (!result.isConfirmed) {
+                    return null;
                 }
-                const value = window.prompt(inputLabel, '');
-                return value ? String(value).trim() : null;
+                return String(result.value || '').trim();
             };
 
             const askBedroomCount = async (unitType) => {
-                if (window.Swal && typeof window.Swal.fire === 'function') {
-                    const result = await window.Swal.fire({
-                        title: 'Add bedroom count',
-                        input: 'number',
-                        inputLabel: `Bedrooms for "${unitType}" (0-20)`,
-                        inputAttributes: { min: '0', max: '20', step: '1' },
-                        showCancelButton: true,
-                        confirmButtonText: 'Save',
-                        cancelButtonText: 'Cancel',
-                        inputValidator: (value) => {
-                            const parsed = Number.parseInt(String(value), 10);
-                            if (!Number.isFinite(parsed) || parsed < 0 || parsed > 20) {
-                                return 'Enter a whole number between 0 and 20.';
-                            }
-                            return null;
-                        },
-                    });
-                    if (!result.isConfirmed) return null;
-                    return Number.parseInt(String(result.value), 10);
+                const result = await window.Swal.fire({
+                    title: 'Add bedroom count',
+                    input: 'number',
+                    inputLabel: `Bedrooms for "${unitType}" (0-20)`,
+                    inputAttributes: { min: '0', max: '20', step: '1' },
+                    showCancelButton: true,
+                    confirmButtonText: 'Save',
+                    cancelButtonText: 'Cancel',
+                    inputValidator: (value) => {
+                        const parsed = Number.parseInt(String(value), 10);
+                        if (!Number.isFinite(parsed) || parsed < 0 || parsed > 20) {
+                            return 'Enter a whole number between 0 and 20.';
+                        }
+                        return null;
+                    },
+                });
+                if (!result.isConfirmed) {
+                    return null;
                 }
-                const raw = window.prompt(`Add bedroom count for "${unitType}" (0-20):`, '');
-                if (raw === null) return null;
-                return Number.parseInt(String(raw), 10);
+                return Number.parseInt(String(result.value), 10);
             };
 
             applyStoredOptions();

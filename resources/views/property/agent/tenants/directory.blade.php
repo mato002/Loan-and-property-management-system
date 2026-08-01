@@ -42,10 +42,10 @@
             <button
                 type="button"
                 class="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-blue-600 px-6 py-4 text-base font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 sm:w-auto"
-                @click="showTenantForm = !showTenantForm"
+                @click="showTenantForm = true"
             >
                 <i class="fa-solid fa-user-plus text-lg" aria-hidden="true"></i>
-                <span x-text="showTenantForm ? 'Hide add tenant form' : 'Add tenant'"></span>
+                <span>Add tenant</span>
             </button>
             <button
                 type="button"
@@ -57,12 +57,16 @@
             </button>
         </div>
 
-        @if ($showTenantForm ?? true)
+        <x-property.modal
+            show="showTenantForm"
+            close="showTenantForm = false"
+            name="tenant-create"
+            title="Add tenant"
+            max-width="2xl"
+        >
         <form
             method="post"
             action="{{ route('property.tenants.store') }}"
-            x-show="showTenantForm"
-            x-cloak
             x-data="{
                 showOpeningArrearsSection: @js($errors->hasAny(['opening_arrears_items','opening_arrears_items.*.type','opening_arrears_items.*.period','opening_arrears_items.*.amount','opening_arrears_amount','opening_arrears_as_of','opening_arrears_notes']) || count((array) old('opening_arrears_items', [])) > 0 || (float) old('opening_arrears_amount', 0) > 0 || trim((string) old('opening_arrears_notes', '')) !== ''),
                 arrearsItems: @js(array_values((array) old('opening_arrears_items', []))),
@@ -78,7 +82,7 @@
                     item.label = this.arrearsTypeLabels[item.type] ?? '';
                 }
             }"
-            class="property-attention-card rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl"
+            class="space-y-3"
         >
             @csrf
             <h3 class="property-attention-title dark:text-white">Add Tenant</h3>
@@ -203,7 +207,7 @@
             </label>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save tenant</button>
         </form>
-        @endif
+        </x-property.modal>
             <div
                 x-show="showImportForm"
                 x-cloak

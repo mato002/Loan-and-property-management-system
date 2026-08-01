@@ -592,6 +592,7 @@
                 @endif
             </div>
         </div>
+        @include('property.agent.revenue.utilities._water_rate_adjustments')
     </div>
 
     <div x-show="$store.utilityUi?.showBillingActions" x-cloak class="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">

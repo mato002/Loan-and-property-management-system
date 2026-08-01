@@ -178,18 +178,8 @@
 </x-property.workspace>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const showAlert = (message, title = 'Notice', icon = 'warning') => {
-        if (window.Swal && typeof window.Swal.fire === 'function') {
-            return window.Swal.fire({
-                icon,
-                title,
-                text: String(message || ''),
-                confirmButtonText: 'OK',
-            });
-        }
-        window.alert(String(message || ''));
-        return Promise.resolve();
-    };
+    const showAlert = (message, title = 'Notice', icon = 'warning') =>
+        window.swalAlert(String(message || ''), { title, icon, confirmButtonText: 'OK' });
 
     const buttons = document.querySelectorAll('.pm-load-recipients');
     const recipientsEl = document.getElementById('pm-recipients');

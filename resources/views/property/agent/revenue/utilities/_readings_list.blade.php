@@ -47,6 +47,7 @@
                         <th class="px-3 py-2">Used</th>
                         <th class="px-3 py-2">Amount</th>
                         <th class="px-3 py-2">Status</th>
+                        <th class="px-3 py-2 w-24"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -84,9 +85,31 @@
                                     </div>
                                 @endif
                             </td>
+                            <td class="px-3 py-2 align-top">
+                                @if ($r->pm_invoice_id === null)
+                                    <details class="text-xs">
+                                        <summary class="cursor-pointer font-semibold text-indigo-700 hover:underline">Edit</summary>
+                                        <form method="post" action="{{ route('property.revenue.utilities.water_readings.update', $r, false) }}" class="mt-2 space-y-2 min-w-[12rem] rounded-lg border border-slate-200 bg-slate-50 p-2">
+                                            @csrf
+                                            @method('PATCH')
+                                            <label class="block text-[10px] font-semibold uppercase text-slate-500">Previous</label>
+                                            <input type="number" step="0.001" min="0" name="previous_reading" value="{{ (float) $r->previous_reading }}" class="w-full rounded border border-slate-200 text-sm px-2 py-1" />
+                                            <label class="block text-[10px] font-semibold uppercase text-slate-500">Current</label>
+                                            <input type="number" step="0.001" min="0" name="current_reading" value="{{ (float) $r->current_reading }}" required class="w-full rounded border border-slate-200 text-sm px-2 py-1" />
+                                            <label class="block text-[10px] font-semibold uppercase text-slate-500">Rate / unit</label>
+                                            <input type="number" step="0.01" min="0" name="rate_per_unit" value="{{ (float) $r->rate_per_unit }}" required class="w-full rounded border border-slate-200 text-sm px-2 py-1" />
+                                            <label class="block text-[10px] font-semibold uppercase text-slate-500">Fixed</label>
+                                            <input type="number" step="0.01" min="0" name="fixed_charge" value="{{ (float) $r->fixed_charge }}" class="w-full rounded border border-slate-200 text-sm px-2 py-1" />
+                                            <button type="submit" class="w-full rounded bg-indigo-600 px-2 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">Save</button>
+                                        </form>
+                                    </details>
+                                @else
+                                    <span class="text-xs text-slate-400">Invoiced</span>
+                                @endif
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="8" class="px-3 py-8 text-center text-slate-500">No readings yet.</td></tr>
+                        <tr><td colspan="9" class="px-3 py-8 text-center text-slate-500">No readings yet.</td></tr>
                     @endforelse
                 </tbody>
             </table>

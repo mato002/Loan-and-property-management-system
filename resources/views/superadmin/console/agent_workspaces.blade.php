@@ -174,7 +174,7 @@
                                                     <button type="submit" class="block w-full px-4 py-2 text-left text-xs font-semibold text-emerald-700 hover:bg-emerald-50">Activate workspace</button>
                                                 </form>
                                             @else
-                                                <form method="post" action="{{ route('superadmin.agent_workspaces.toggle_status', $agent) }}" onsubmit="return confirm('Suspend this agent workspace? They will lose property module access.');">
+                                                <form method="post" action="{{ route('superadmin.agent_workspaces.toggle_status', $agent) }}" data-swal-confirm="Suspend this agent workspace? They will lose property module access.">
                                                     @csrf
                                                     <input type="hidden" name="intent" value="suspend">
                                                     <button type="submit" class="block w-full px-4 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50">Suspend workspace</button>
@@ -219,7 +219,7 @@
             <div class="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
                 <h3 class="text-lg font-bold text-slate-900">Transfer ownership</h3>
                 <p class="mt-2 text-sm text-slate-600">Move all properties, units, and scoped records from <span class="font-semibold text-slate-900" x-text="transferAgentName"></span> to another agent.</p>
-                <form method="post" :action="`{{ url('/superadmin/agent-workspaces') }}/${transferAgentId}/transfer`" class="mt-5 space-y-4">
+                <form method="post" :action="`{{ url('/superadmin/agent-workspaces') }}/${transferAgentId}/transfer`" class="mt-5 space-y-4" data-swal-confirm="Transfer all scoped records to the selected agent?">
                     @csrf
                     <div>
                         <label class="block text-xs font-semibold text-slate-600">Receiving agent</label>
@@ -232,7 +232,7 @@
                     </div>
                     <div class="flex justify-end gap-2">
                         <button type="button" @click="transferOpen = false" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Cancel</button>
-                        <button type="submit" class="rounded-xl bg-[#2f4f4f] px-4 py-2 text-sm font-bold text-white hover:bg-[#264040]" onclick="return confirm('Transfer all scoped records to the selected agent?');">Transfer</button>
+                        <button type="submit" class="rounded-xl bg-[#2f4f4f] px-4 py-2 text-sm font-bold text-white hover:bg-[#264040]">Transfer</button>
                     </div>
                 </form>
             </div>
@@ -288,20 +288,22 @@
                 });
             });
 
-            applyBtn.addEventListener('click', function () {
+            applyBtn.addEventListener('click', async function () {
                 const checked = Array.from(rowCheckboxes()).filter(function (cb) { return cb.checked; });
                 if (checked.length === 0) {
-                    if (window.Swal && typeof window.Swal.fire === 'function') {
-                        window.Swal.fire({ icon: 'info', title: 'No rows selected', text: 'Select at least one agent workspace.' });
-                    } else {
-                        window.alert('Select at least one agent workspace.');
-                    }
+                    await window.swalAlert('Select at least one agent workspace.', {
+                        icon: 'info',
+                        title: 'No rows selected',
+                    });
                     return;
                 }
 
                 const action = actionSelect.value;
-                if ((action === 'suspend' || action === 'activate') && !window.confirm('Apply this action to ' + checked.length + ' selected workspace(s)?')) {
-                    return;
+                if (action === 'suspend' || action === 'activate') {
+                    const confirmed = await window.swalConfirm('Apply this action to ' + checked.length + ' selected workspace(s)?');
+                    if (!confirmed) {
+                        return;
+                    }
                 }
 
                 idsWrap.innerHTML = '';

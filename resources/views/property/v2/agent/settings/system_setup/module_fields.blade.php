@@ -6,11 +6,6 @@
         :subtitle="$subtitle"
     >
         @include('property.agent.settings.system_setup.partials.field_nav')
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         <form method="post" action="{{ route('property.settings.system_setup.'.$module.'_fields.store') }}" class="space-y-4" x-data="{
             rows: @js(old('fields', $fields)),
             addRow() {

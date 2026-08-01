@@ -430,6 +430,7 @@
             </form>
         </div>
     </div>
+    @include('property.agent.revenue.utilities._water_rate_adjustments')
             </div>
             <div x-show="activeTab === 'charges'" x-cloak class="space-y-4">
                 <form method="post" action="{{ route('property.revenue.utilities.store') }}" x-ref="addChargeForm" class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">

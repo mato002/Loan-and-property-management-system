@@ -58,10 +58,17 @@ class SendRentReminders extends Command
             RentReminderEligibilityService::REASON_NO_STAGE => 0,
             RentReminderEligibilityService::REASON_TENANT_OPTED_OUT => 0,
             RentReminderEligibilityService::REASON_NO_TENANT => 0,
+            RentReminderEligibilityService::REASON_BELOW_MIN_BALANCE => 0,
+            RentReminderEligibilityService::REASON_TENANT_SMS_TODAY => 0,
+            RentReminderEligibilityService::REASON_CREDIT_COVERS => 0,
+            RentReminderEligibilityService::REASON_SETTLED => 0,
         ];
         $scanned = $invoices->count();
+        $tenantsSmsSentToday = [];
 
         foreach ($invoices as $inv) {
+            $inv = $eligibility->syncInvoiceForReminder($inv);
+
             $dueC = $inv->due_date?->copy()->startOfDay();
             if (! $dueC) {
                 continue;
@@ -79,20 +86,10 @@ class SendRentReminders extends Command
 
             $tenant = $inv->tenant;
             $tenantId = (int) ($inv->pm_tenant_id ?? 0);
-            $unitName = trim((string) (($inv->unit?->property?->name ?? '').'/'.($inv->unit?->label ?? '')), '/');
-            $balance = number_format((float) $decision['balance'], 2);
-            $due = $dueC->toDateString();
             $internalStage = (string) $stage['internal_stage'];
             $invoiceNo = (string) $inv->invoice_no;
 
-            $messageContext = $agentContacts->mergeIntoContext([
-                'tenant_name' => (string) ($tenant?->name ?? 'Tenant'),
-                'invoice_no' => (string) $inv->invoice_no,
-                'unit_name' => $unitName !== '' ? $unitName : '—',
-                'balance' => $balance,
-                'due_date' => $due,
-                'stage' => $stage,
-            ], $inv);
+            $messageContext = $eligibility->buildRentReminderContext($inv, $stage, $agentContacts);
 
             $staffSubject = $stageService->staffSubjectLine([
                 'internal_stage' => $internalStage,
@@ -101,12 +98,11 @@ class SendRentReminders extends Command
             ]);
             $emailPack = $templates->buildRentReminderEmail($messageContext);
             $smsBody = $templates->resolveRentReminderSms($messageContext);
-            $asOfDate = $todayCarbon->toDateString();
             $noticeCreated = false;
 
-            $inv->syncAmountPaidFromAllocations();
+            $inv = $eligibility->syncInvoiceForReminder($inv);
             if ($inv->balanceFloat() <= 0.009) {
-                $skipped[RentReminderEligibilityService::REASON_NO_OPEN_BALANCE]++;
+                $skipped[RentReminderEligibilityService::REASON_SETTLED]++;
 
                 continue;
             }
@@ -151,6 +147,19 @@ class SendRentReminders extends Command
                 && $eligibility->tenantAllowsChannel($tenantId, 'sms')
                 && ! $eligibility->channelStageAlreadySent((int) $inv->id, 'sms', $stage, $todayCarbon)
             ) {
+                if ($eligibility->oneSmsPerTenantPerDayEnabled()) {
+                    if ($tenantsSmsSentToday[$tenantId] ?? false) {
+                        $skipped[RentReminderEligibilityService::REASON_TENANT_SMS_TODAY]++;
+
+                        continue;
+                    }
+                    if ($eligibility->tenantRentReminderSmsSentToday($tenantId, $todayCarbon)) {
+                        $skipped[RentReminderEligibilityService::REASON_TENANT_SMS_TODAY]++;
+
+                        continue;
+                    }
+                }
+
                 $phones = app(BulkSmsService::class)->normalizeRecipientList((string) $tenant->phone);
                 if ($phones !== []) {
                     $smsTo = implode(',', $phones);
@@ -174,6 +183,7 @@ class SendRentReminders extends Command
 
                     if ($eligibility->channelStageDeliverySucceeded($message)) {
                         $sent++;
+                        $tenantsSmsSentToday[$tenantId] = true;
                         if (! $noticeCreated) {
                             $noticeCreated = $this->createArrearsNoticeIfMissing(
                                 $inv,

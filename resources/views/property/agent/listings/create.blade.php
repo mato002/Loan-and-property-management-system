@@ -1,4 +1,4 @@
-<x-property.workspace
+<x-property.crud-shell :in-property-form-modal="$inPropertyFormModal ?? false"
     title="Setup a public listing"
     back-route="property.listings.index"
     :stats="$stats"
@@ -279,4 +279,4 @@
             </table>
         </div>
     </section>
-</x-property.workspace>
+</x-property.crud-shell>

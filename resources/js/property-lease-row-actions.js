@@ -1,19 +1,7 @@
 function confirmLeaseRowAction(message) {
-    return new Promise((resolve) => {
-        if (window.Swal && typeof window.Swal.fire === 'function') {
-            window.Swal.fire({
-                icon: 'warning',
-                title: 'Please confirm',
-                text: message,
-                showCancelButton: true,
-                confirmButtonText: 'Yes, continue',
-                cancelButtonText: 'Cancel',
-            }).then((result) => resolve(!!result.isConfirmed));
-
-            return;
-        }
-
-        resolve(window.confirm(message));
+    return window.swalConfirm(message, {
+        title: 'Please confirm',
+        confirmText: 'Yes, continue',
     });
 }
 

@@ -12,11 +12,6 @@
             <a href="{{ route('property.settings.system_setup.templates') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Template adjustments</a>
             <a href="{{ route('property.settings.system_setup.access') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Access control</a>
         </div>
-
-        @if (session('success'))
-            <p class="mb-4 text-sm text-emerald-700 dark:text-emerald-400">{{ session('success') }}</p>
-        @endif
-
         @if (! $tablesReady)
             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                 Access-control tables are not ready yet. Run <code>php artisan migrate</code> then reload this page.

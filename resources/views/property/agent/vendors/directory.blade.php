@@ -14,13 +14,23 @@
         @php
             $showVendorFormByDefault = $errors->hasAny(['name','category','status','phone','email','rating']);
         @endphp
-        <details class="space-y-3 group" @if($showVendorFormByDefault) open @endif>
-        <summary class="inline-flex cursor-pointer list-none items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+        <div x-data="{ showVendorForm: @js($showVendorFormByDefault) }">
+        <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            @click="showVendorForm = true"
+        >
             <i class="fa-solid fa-user-tie" aria-hidden="true"></i>
-            <span class="group-open:hidden">Add vendor</span>
-            <span class="hidden group-open:inline">Hide vendor form</span>
-        </summary>
-        <form method="post" action="{{ route('property.vendors.store') }}" class="mt-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
+            <span>Add vendor</span>
+        </button>
+        <x-property.modal
+            show="showVendorForm"
+            close="showVendorForm = false"
+            name="vendor-create"
+            title="Add vendor"
+            max-width="2xl"
+        >
+        <form method="post" action="{{ route('property.vendors.store') }}" class="space-y-3">
             @csrf
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add vendor</h3>
             <div>
@@ -60,7 +70,8 @@
             </div>
             <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save vendor</button>
         </form>
-        </details>
+        </x-property.modal>
+        </div>
     </x-slot>
 
     <x-slot name="toolbar">

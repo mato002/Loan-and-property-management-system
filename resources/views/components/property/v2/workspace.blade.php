@@ -77,7 +77,7 @@
 <x-property-layout>
     <x-slot name="header">{{ $title }}</x-slot>
     <x-property.page :title="$title" :subtitle="$subtitle" :workspace="$resolvedWorkspaceKey" :show-workspace-tabs="$showWorkspaceTabs">
-        <div class="property-print-only mb-4 border-b border-slate-300 pb-3">
+        <div class="property-print-only mb-4 border-b border-slate-300 pb-3" style="display: none" aria-hidden="true">
             <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0">
                     <div class="text-lg font-semibold text-slate-900">{{ $printBrandName }}</div>

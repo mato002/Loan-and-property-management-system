@@ -127,15 +127,6 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
-        if (! $this->app->environment('local')) {
-            return;
-        }
-
-        $allow = filter_var((string) env('ALLOW_DESTRUCTIVE_DB_COMMANDS', false), FILTER_VALIDATE_BOOLEAN);
-        if ($allow) {
-            return;
-        }
-
         $argv = $_SERVER['argv'] ?? [];
         $command = (string) ($argv[1] ?? '');
         if ($command === '') {
@@ -151,6 +142,32 @@ class AppServiceProvider extends ServiceProvider
         ];
 
         if (! in_array($command, $blocked, true)) {
+            return;
+        }
+
+        $this->assertDestructiveDbCommandAllowed($command);
+    }
+
+    private function assertDestructiveDbCommandAllowed(string $command): void
+    {
+        $connection = (string) config('database.default', 'mysql');
+        $database = (string) config("database.connections.{$connection}.database", '');
+
+        $allow = filter_var((string) env('ALLOW_DESTRUCTIVE_DB_COMMANDS', false), FILTER_VALIDATE_BOOLEAN);
+
+        if ($database !== '' && ! str_ends_with(strtolower($database), '_test') && ! $allow) {
+            throw new RuntimeException(
+                'Blocked destructive database command "'.$command.'" on database "'.$database.'". '
+                .'Use a dedicated *_test database for PHPUnit (RefreshDatabase runs migrate:fresh), '
+                .'or set ALLOW_DESTRUCTIVE_DB_COMMANDS=true only when you intentionally want to wipe this database.'
+            );
+        }
+
+        if (! $this->app->environment('local')) {
+            return;
+        }
+
+        if ($allow) {
             return;
         }
 

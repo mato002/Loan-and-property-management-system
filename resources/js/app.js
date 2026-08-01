@@ -5,6 +5,7 @@ import './property-auto-filter';
 import './property-flash-lifecycle';
 import './property-portal-ui';
 import './property-modal-manager';
+import './property-form-modal';
 import './property-lease-row-actions';
 import './property-dropdown-cleanup';
 import './property-export-dropdowns';

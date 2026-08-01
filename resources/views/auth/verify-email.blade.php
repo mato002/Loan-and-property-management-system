@@ -17,12 +17,6 @@
         {{ __('Thanks for signing up! Before getting started, verify your email using the link we sent. If you did not receive it, we can send another.') }}
     </p>
 
-    @if (session('status') == 'verification-link-sent')
-        <p class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            {{ __('A new verification link has been sent to your email address.') }}
-        </p>
-    @endif
-
     <div class="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center">
         <form method="POST" action="{{ route('verification.send') }}">
             @csrf

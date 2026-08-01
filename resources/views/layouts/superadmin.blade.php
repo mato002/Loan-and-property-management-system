@@ -351,22 +351,6 @@
 
                 {{-- Content --}}
                 <main class="flex-1 min-w-0 overflow-y-auto overflow-x-auto overscroll-x-contain px-4 sm:px-6 lg:px-8 py-8 bg-[#f4f7fa]">
-                    @if (session('success'))
-                        <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
-                            {{ session('success') }}
-                        </div>
-                    @endif
-
-                    @if ($errors->any())
-                        <div class="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-800 text-sm">
-                            <ul class="list-disc list-inside space-y-1">
-                                @foreach ($errors->all() as $message)
-                                    <li>{{ $message }}</li>
-                                @endforeach
-                            </ul>
-                        </div>
-                    @endif
-
                     @yield('content')
                 </main>
 
