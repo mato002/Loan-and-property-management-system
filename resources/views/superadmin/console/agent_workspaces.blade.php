@@ -215,9 +215,14 @@
         </div>
 
         <div x-show="transferOpen" x-cloak class="fixed inset-0 z-[7000] flex items-center justify-center p-4">
-            <div class="absolute inset-0 bg-slate-950/60" @click="transferOpen = false"></div>
+            <div class="absolute inset-0 bg-slate-950/60" aria-hidden="true"></div>
             <div class="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-                <h3 class="text-lg font-bold text-slate-900">Transfer ownership</h3>
+                <div class="flex items-start justify-between gap-3">
+                    <h3 class="text-lg font-bold text-slate-900">Transfer ownership</h3>
+                    <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Close" @click="transferOpen = false">
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
                 <p class="mt-2 text-sm text-slate-600">Move all properties, units, and scoped records from <span class="font-semibold text-slate-900" x-text="transferAgentName"></span> to another agent.</p>
                 <form method="post" :action="`{{ url('/superadmin/agent-workspaces') }}/${transferAgentId}/transfer`" class="mt-5 space-y-4" data-swal-confirm="Transfer all scoped records to the selected agent?">
                     @csrf

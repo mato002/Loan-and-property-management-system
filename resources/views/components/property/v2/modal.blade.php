@@ -11,8 +11,8 @@
     'mobileSheet' => true,
     /** z-index for overlay root (default: modal tier 7010) */
     'zIndex' => 7010,
-    'closeOnBackdrop' => true,
-    'closeOnEscape' => true,
+    'closeOnBackdrop' => false,
+    'closeOnEscape' => false,
     'ariaLabel' => 'Dialog',
 ])
 
@@ -102,8 +102,16 @@
                 border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 shadow-2xl"
         >
             @isset($header)
-                <div class="shrink-0 border-b border-slate-200 dark:border-slate-700 px-4 py-3 sm:px-5">
-                    {{ $header }}
+                <div class="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 dark:border-slate-700 px-4 py-3 sm:px-5">
+                    <div class="min-w-0 flex-1">{{ $header }}</div>
+                    <button
+                        type="button"
+                        class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        aria-label="Close"
+                        @click="{{ $closeExpr }}"
+                    >
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
                 </div>
             @elseif ($title)
                 <div class="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 dark:border-slate-700 px-4 py-3 sm:px-5">

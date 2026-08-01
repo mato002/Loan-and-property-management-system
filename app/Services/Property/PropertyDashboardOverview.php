@@ -1,4 +1,4 @@
-<?php
+?php
 
 namespace App\Services\Property;
 
@@ -33,53 +33,46 @@ final class PropertyDashboardOverview
      */
     public static function forAgent(): array
     {
-        $userId = (int) (Auth::id() ?? 0);
-        $scoped = AgentWorkspaceScope::shouldApply();
-        $cacheKey = PropertyDashboardCache::overviewKey($userId, $scoped);
-
-        return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildForAgent());
+        return array_merge(self::lightForAgent(), self::heavyForAgent());
     }
 
     /**
-     * Landlord counts aligned with Landlords workspace (role=landlord, agent-scoped).
+     * Fast counts and portfolio KPIs â€” safe to render on every Turbo navigation.
      *
-     * @return array{landlord_users: int, linked_landlord_users: int, unlinked_landlord_users: int}
+     * @return array<string, mixed>
      */
-    private static function landlordWorkspaceStats(bool $applyAgentFilter, ?int $agentUserId): array
+    public static function lightForAgent(): array
     {
-        $landlordsQuery = User::query()->where('property_portal_role', 'landlord');
-        if ($applyAgentFilter && $agentUserId) {
-            $landlordsQuery = LandlordWorkspaceScope::applyToLandlordUsersQuery(
-                $landlordsQuery,
-                User::query()->find($agentUserId),
-            );
-        }
+        $userId = (int) (Auth::id() ?? 0);
+        $scoped = AgentWorkspaceScope::shouldApply();
+        $cacheKey = PropertyDashboardCache::lightKey($userId, $scoped);
 
-        $landlordUsers = (int) (clone $landlordsQuery)->count();
+        return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildLightForAgent());
+    }
 
-        $linkedQuery = (clone $landlordsQuery)->whereHas('landlordProperties', function ($q) use ($applyAgentFilter, $agentUserId) {
-            if ($applyAgentFilter && $agentUserId) {
-                $q->where('properties.agent_user_id', $agentUserId);
-            }
-        });
-        $linkedLandlordUsers = (int) $linkedQuery->count();
+    /**
+     * Financial aggregates, charts, SMS provider calls, and activity tables.
+     *
+     * @return array<string, mixed>
+     */
+    public static function heavyForAgent(): array
+    {
+        $userId = (int) (Auth::id() ?? 0);
+        $scoped = AgentWorkspaceScope::shouldApply();
+        $cacheKey = PropertyDashboardCache::heavyKey($userId, $scoped);
 
-        return [
-            'landlord_users' => $landlordUsers,
-            'linked_landlord_users' => $linkedLandlordUsers,
-            'unlinked_landlord_users' => max(0, $landlordUsers - $linkedLandlordUsers),
-        ];
+        return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildHeavyForAgent());
     }
 
     /**
      * @return array<string, mixed>
      */
-    private static function buildForAgent(): array
+    private static function buildLightForAgent(): array
     {
         $year = (int) now()->year;
+        $operationalPropertyIds = Property::query()->operational()->select('id');
 
         $properties = Property::query()->operational()->count();
-        $operationalPropertyIds = Property::query()->operational()->select('id');
         $unitsTotal = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->count();
         $unitsOccupied = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
         $unitsVacant = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_VACANT)->count();
@@ -94,35 +87,24 @@ final class PropertyDashboardOverview
             ->whereBetween('end_date', [now()->toDateString(), now()->addDays(60)->toDateString()])
             ->count();
 
-        $formulas = app(FinancialReportingFormulaService::class);
-        $openInvoiceBalance = $formulas->outstandingGlobal();
-
-        $overdueCount = PmInvoice::countPastDueOpen();
-        $mtdCollected = PropertyDashboardStats::mtdCollected();
-        $billedYtd = $formulas->billedForPeriod(
-            Carbon::create($year, 1, 1)->startOfYear(),
-            Carbon::create($year, 12, 31)->endOfYear(),
-        );
-
         $maintOpen = PmMaintenanceRequest::query()->where('status', 'open')->count();
         $maintInProgress = PmMaintenanceRequest::query()->where('status', 'in_progress')->count();
-        $jobsActive = PmMaintenanceJob::query()->whereIn('status', ['quoted', 'approved', 'in_progress'])->count();
         $vendorsActive = PmVendor::query()->where('status', 'active')->count();
         $applyAgentFilter = AgentWorkspaceScope::shouldApply();
         $agentUserId = $applyAgentFilter ? (int) Auth::id() : null;
 
-        $landlordStats = self::landlordWorkspaceStats($applyAgentFilter, $agentUserId);
-        $landlords = $landlordStats['landlord_users'];
-        $linkedLandlords = $landlordStats['linked_landlord_users'];
-        $unlinkedLandlordUsers = $landlordStats['unlinked_landlord_users'];
+        $linkedLandlordsQuery = DB::table('property_landlord as pl')
+            ->join('properties as p', 'p.id', '=', 'pl.property_id');
+        if ($applyAgentFilter && $agentUserId) {
+            $linkedLandlordsQuery->where('p.agent_user_id', $agentUserId);
+        }
+        $linkedLandlords = (int) $linkedLandlordsQuery->distinct('pl.user_id')->count('pl.user_id');
 
         $linkedProperties = (int) Property::query()->has('landlords')->count();
         $propertiesWithoutLandlord = max(0, $properties - $linkedProperties);
         $unmatchedBankPayments = Schema::hasTable('unassigned_payments')
             ? (int) UnassignedPayment::query()->count()
             : 0;
-
-        $occ = $unitsTotal > 0 ? round(100 * $unitsOccupied / $unitsTotal, 1) : null;
 
         $kpis = [
             [
@@ -175,27 +157,6 @@ final class PropertyDashboardOverview
                 'bar' => 'bg-orange-500',
             ],
             [
-                'label' => 'Collections (MTD)',
-                'value' => PropertyMoney::kes($mtdCollected),
-                'icon' => 'fa-sack-dollar',
-                'route' => 'property.revenue.payments',
-                'bar' => 'bg-green-600',
-            ],
-            [
-                'label' => 'Billed (YTD)',
-                'value' => PropertyMoney::kes($billedYtd),
-                'icon' => 'fa-file-invoice-dollar',
-                'route' => 'property.revenue.invoices',
-                'bar' => 'bg-teal-500',
-            ],
-            [
-                'label' => 'Tenant arrears',
-                'value' => PropertyMoney::kes($openInvoiceBalance),
-                'icon' => 'fa-scale-unbalanced',
-                'route' => 'property.revenue.arrears',
-                'bar' => 'bg-rose-500',
-            ],
-            [
                 'label' => 'Open maintenance',
                 'value' => (string) ($maintOpen + $maintInProgress),
                 'icon' => 'fa-screwdriver-wrench',
@@ -232,6 +193,64 @@ final class PropertyDashboardOverview
             ],
         ];
 
+        return [
+            'kpis' => $kpis,
+            'chartYear' => $year,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function buildHeavyForAgent(): array
+    {
+        $year = (int) now()->year;
+        $formulas = app(FinancialReportingFormulaService::class);
+        $openInvoiceBalance = $formulas->outstandingGlobal();
+        $overdueCount = PmInvoice::countPastDueOpen();
+        $mtdCollected = PropertyDashboardStats::mtdCollected();
+        $billedYtd = $formulas->billedForPeriod(
+            Carbon::create($year, 1, 1)->startOfYear(),
+            Carbon::create($year, 12, 31)->endOfYear(),
+        );
+
+        $applyAgentFilter = AgentWorkspaceScope::shouldApply();
+        $agentUserId = $applyAgentFilter ? (int) Auth::id() : null;
+        $landlordStats = self::landlordWorkspaceStats($applyAgentFilter, $agentUserId);
+
+        $financialKpis = [
+            [
+                'label' => 'Collections (MTD)',
+                'value' => PropertyMoney::kes($mtdCollected),
+                'icon' => 'fa-sack-dollar',
+                'route' => 'property.revenue.payments',
+                'bar' => 'bg-green-600',
+            ],
+            [
+                'label' => 'Billed (YTD)',
+                'value' => PropertyMoney::kes($billedYtd),
+                'icon' => 'fa-file-invoice-dollar',
+                'route' => 'property.revenue.invoices',
+                'bar' => 'bg-teal-500',
+            ],
+            [
+                'label' => 'Tenant arrears',
+                'value' => PropertyMoney::kes($openInvoiceBalance),
+                'icon' => 'fa-scale-unbalanced',
+                'route' => 'property.revenue.arrears',
+                'bar' => 'bg-rose-500',
+            ],
+        ];
+
+        $operationalPropertyIds = Property::query()->operational()->select('id');
+        $unitsTotal = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->count();
+        $unitsOccupied = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
+        $occ = $unitsTotal > 0 ? round(100 * $unitsOccupied / $unitsTotal, 1) : null;
+        $jobsActive = PmMaintenanceJob::query()->whereIn('status', ['quoted', 'approved', 'in_progress'])->count();
+        $propertiesCount = Property::query()->operational()->count();
+        $linkedProperties = (int) Property::query()->has('landlords')->count();
+        $propertiesWithoutLandlord = max(0, $propertiesCount - $linkedProperties);
+
         $invoiceByMonth = PmInvoice::query()
             ->whereYear('issue_date', $year)
             ->selectRaw('MONTH(issue_date) as month_num, COALESCE(SUM(amount), 0) as total')
@@ -264,7 +283,7 @@ final class PropertyDashboardOverview
                 $u = $r->unit;
                 $unitLabel = $u && $u->property
                     ? $u->property->name.' / '.$u->label
-                    : '—';
+                    : 'â€”';
 
                 return [
                     'summary' => Str::limit($r->category.': '.$r->description, 48),
@@ -285,10 +304,10 @@ final class PropertyDashboardOverview
             ->map(function (PmPayment $p) {
                 return [
                     'ref' => 'PAY-'.$p->id,
-                    'tenant' => $p->tenant?->name ?? '—',
+                    'tenant' => $p->tenant?->name ?? 'â€”',
                     'amount' => PropertyMoney::kes((float) $p->amount),
                     'channel' => $p->channel,
-                    'date' => $p->paid_at?->format('Y-m-d H:i') ?? '—',
+                    'date' => $p->paid_at?->format('Y-m-d H:i') ?? 'â€”',
                     'url' => route('property.revenue.payments'),
                 ];
             })
@@ -296,7 +315,7 @@ final class PropertyDashboardOverview
 
         $recentUnmatched = [];
         if (Schema::hasTable('unassigned_payments')) {
-            $recentUnmatched = \App\Models\UnassignedPayment::query()
+            $recentUnmatched = UnassignedPayment::query()
                 ->orderByDesc('created_at')
                 ->limit(5)
                 ->get(['transaction_id', 'amount', 'payment_method', 'reason', 'created_at'])
@@ -306,7 +325,7 @@ final class PropertyDashboardOverview
                         'amount' => PropertyMoney::kes((float) ($u->amount ?? 0)),
                         'source' => (string) ($u->payment_method ?? ''),
                         'reason' => (string) ($u->reason ?? ''),
-                        'date' => $u->created_at ? $u->created_at->format('Y-m-d H:i') : '—',
+                        'date' => $u->created_at ? $u->created_at->format('Y-m-d H:i') : 'â€”',
                         'url' => route('property.equity.unmatched'),
                     ];
                 })
@@ -335,7 +354,7 @@ final class PropertyDashboardOverview
             ->get(['channel', 'to_address', 'delivery_status', 'delivery_error', 'created_at', 'subject'])
             ->map(function (PmMessageLog $m) {
                 return [
-                    'when' => $m->created_at?->format('Y-m-d H:i') ?? '—',
+                    'when' => $m->created_at?->format('Y-m-d H:i') ?? 'â€”',
                     'channel' => strtoupper((string) ($m->channel ?? '')),
                     'to' => (string) ($m->to_address ?? ''),
                     'status' => strtoupper((string) ($m->delivery_status ?? '')),
@@ -355,17 +374,17 @@ final class PropertyDashboardOverview
             ->get()
             ->map(function (PmLease $l) {
                 $unit = $l->units->first();
-                $unitLabel = $unit && $unit->property ? ($unit->property->name.' / '.$unit->label) : '—';
+                $unitLabel = $unit && $unit->property ? ($unit->property->name.' / '.$unit->label) : 'â€”';
+
                 return [
                     'id' => (int) $l->id,
                     'tenant' => (string) ($l->pmTenant?->name ?? ''),
                     'unit' => $unitLabel,
-                    'start' => $l->start_date?->format('Y-m-d') ?? '—',
+                    'start' => $l->start_date?->format('Y-m-d') ?? 'â€”',
                 ];
             })
             ->all();
 
-        // Takeover checklist: occupied units with no active lease
         $occupiedNoLease = PropertyUnit::query()
             ->where('status', PropertyUnit::STATUS_OCCUPIED)
             ->whereDoesntHave('leases', function ($q) {
@@ -380,13 +399,12 @@ final class PropertyDashboardOverview
                 return [
                     'id' => (int) $u->id,
                     'unit' => (string) $u->label,
-                    'property' => (string) ($u->property?->name ?? '—'),
+                    'property' => (string) ($u->property?->name ?? 'â€”'),
                     'action_url' => route('property.tenants.leases', ['property_id' => $u->property_id]),
                 ];
             })
             ->all();
 
-        // System health
         $mailFrom = (string) (config('mail.from.address') ?? config('mail.from') ?? env('MAIL_FROM_ADDRESS', ''));
         $smtpHost = (string) (config('mail.mailers.smtp.host') ?? env('MAIL_HOST', ''));
         $mailConfigured = $mailFrom !== '' && $smtpHost !== '';
@@ -424,15 +442,15 @@ final class PropertyDashboardOverview
             ])
             ->map(function ($row) {
                 return [
-                    'property' => (string) ($row->property_name ?? '—'),
-                    'landlord' => (string) ($row->landlord_name ?? '—'),
+                    'property' => (string) ($row->property_name ?? 'â€”'),
+                    'landlord' => (string) ($row->landlord_name ?? 'â€”'),
                     'ownership' => number_format((float) ($row->ownership_percent ?? 0), 2).'%',
                 ];
             })
             ->all();
 
         return [
-            'kpis' => $kpis,
+            'financialKpis' => $financialKpis,
             'chartYear' => $year,
             'chartLabels' => $chartLabels,
             'chartInvoices' => $chartInvoices,
@@ -447,12 +465,11 @@ final class PropertyDashboardOverview
             'arrears7' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(7, 14)),
             'arrears14' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(14, 30)),
             'arrears30' => PropertyMoney::kes(PropertyDashboardStats::arrearsBucket(30)),
-            'occupancyDisplay' => $occ !== null ? $occ.'%' : '—',
+            'occupancyDisplay' => $occ !== null ? $occ.'%' : 'â€”',
             'overdueCount' => $overdueCount,
-            'landlords' => $landlords,
-            'linkedLandlords' => $linkedLandlords,
-            'unlinkedLandlordUsers' => $unlinkedLandlordUsers,
-            'linkedProperties' => $linkedProperties,
+            'landlords' => $landlordStats['landlord_users'],
+            'linkedLandlords' => $landlordStats['linked_landlord_users'],
+            'unlinkedLandlordUsers' => $landlordStats['unlinked_landlord_users'],
             'propertiesWithoutLandlord' => $propertiesWithoutLandlord,
             'jobsActive' => $jobsActive,
             'maintenanceMtd' => PropertyMoney::kes(PropertyDashboardStats::maintenanceSpendMtd()),
@@ -470,11 +487,41 @@ final class PropertyDashboardOverview
             'smsTopup' => [
                 'config' => $topupConfig,
                 'can_topup' => $canManageCommunications && ($topupConfig['enabled'] ?? false),
-                // Recent top-ups are loaded on Communications → Provider SMS (avoids provider HTTP here).
                 'recent' => [],
                 'default_phone' => $defaultTopupPhone,
             ],
             'canManageCommunications' => $canManageCommunications,
+        ];
+    }
+
+    /**
+     * Landlord counts aligned with Landlords workspace (role=landlord, agent-scoped).
+     *
+     * @return array{landlord_users: int, linked_landlord_users: int, unlinked_landlord_users: int}
+     */
+    private static function landlordWorkspaceStats(bool $applyAgentFilter, ?int $agentUserId): array
+    {
+        $landlordsQuery = User::query()->where('property_portal_role', 'landlord');
+        if ($applyAgentFilter && $agentUserId) {
+            $landlordsQuery = LandlordWorkspaceScope::applyToLandlordUsersQuery(
+                $landlordsQuery,
+                User::query()->find($agentUserId),
+            );
+        }
+
+        $landlordUsers = (int) (clone $landlordsQuery)->count();
+
+        $linkedQuery = (clone $landlordsQuery)->whereHas('landlordProperties', function ($q) use ($applyAgentFilter, $agentUserId) {
+            if ($applyAgentFilter && $agentUserId) {
+                $q->where('properties.agent_user_id', $agentUserId);
+            }
+        });
+        $linkedLandlordUsers = (int) $linkedQuery->count();
+
+        return [
+            'landlord_users' => $landlordUsers,
+            'linked_landlord_users' => $linkedLandlordUsers,
+            'unlinked_landlord_users' => max(0, $landlordUsers - $linkedLandlordUsers),
         ];
     }
 }

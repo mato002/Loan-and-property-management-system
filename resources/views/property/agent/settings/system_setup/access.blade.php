@@ -31,11 +31,13 @@
                     </div>
                 </div>
 
-                <div x-show="modal !== ''" x-cloak class="fixed inset-0 z-[7000] flex items-center justify-center bg-slate-900/50 p-4" @keydown.escape.window="modal = ''">
-                    <div class="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-800 shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700" @click.outside="modal = ''">
+                <div x-show="modal !== ''" x-cloak class="fixed inset-0 z-[7000] flex items-center justify-center bg-slate-900/50 p-4">
+                    <div class="w-full max-w-xl rounded-2xl bg-white dark:bg-gray-800 shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700" @click.stop>
                         <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-5 py-3">
                             <h3 class="text-base font-semibold text-slate-900 dark:text-white" x-text="modal === 'add-role' ? 'Add role' : (modal === 'clone-role' ? 'Clone role' : 'Add permission')"></h3>
-                            <button type="button" class="rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="modal = ''">Close</button>
+                            <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close" @click="modal = ''">
+                                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            </button>
                         </div>
 
                         <form x-show="modal === 'add-role'" method="post" action="{{ route('property.settings.system_setup.access.roles.store') }}" class="p-5 space-y-3" data-turbo="false">
@@ -183,11 +185,13 @@
                                     <button type="button" @click="userModal = 'permissions'" class="rounded border border-indigo-300 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-200 dark:hover:bg-indigo-950/40">Direct overrides</button>
                                 </div>
 
-                                <div x-show="userModal !== ''" x-cloak class="fixed inset-0 z-[7100] flex items-center justify-center bg-slate-900/50 p-4" @keydown.escape.window="userModal = ''">
-                                    <div class="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-800 shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700" @click.outside="userModal = ''">
+                                <div x-show="userModal !== ''" x-cloak class="fixed inset-0 z-[7100] flex items-center justify-center bg-slate-900/50 p-4">
+                                    <div class="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-800 shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700" @click.stop>
                                         <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-5 py-3">
                                             <h4 class="text-base font-semibold text-slate-900 dark:text-white" x-text="userModal === 'roles' ? 'Edit roles for {{ $u->name }}' : 'Direct permission overrides for {{ $u->name }}'"></h4>
-                                            <button type="button" class="rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="userModal = ''">Close</button>
+                                            <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close" @click="userModal = ''">
+                                                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                            </button>
                                         </div>
 
                                         <form x-show="userModal === 'roles'" method="post" action="{{ route('property.settings.system_setup.access.users.roles.store', $u) }}" class="p-5 space-y-3" data-turbo="false">

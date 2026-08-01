@@ -166,14 +166,16 @@
                             </div>
                         </div>
 
-                        <div x-show="previewModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" @keydown.escape.window="closePreviewModal()">
-                            <div class="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" @click.outside="closePreviewModal()">
+                        <div x-show="previewModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+                            <div class="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl" @click.stop>
                                 <div class="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                                     <div>
                                         <p class="text-sm font-semibold text-slate-900">Booking form preview</p>
                                         <p class="text-xs text-slate-500">From the table below (including unsaved edits). “On booking” follows the same rules as LoanBook create application for active vs product scope.</p>
                                     </div>
-                                    <button type="button" class="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50" @click="closePreviewModal()">Close</button>
+                                    <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Close" @click="closePreviewModal()">
+                                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                    </button>
                                 </div>
                                 <div class="max-h-[calc(85vh-8rem)] overflow-auto p-4">
                                     <p class="mb-3 text-xs text-slate-600">Create application shows the same custom fields (including image and document uploads) in the main form when they are included for the selected product.</p>
@@ -209,9 +211,14 @@
                             </div>
                         </div>
 
-                        <div x-show="cloneModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" @keydown.escape.window="closeCloneModal()">
-                            <div class="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl" @click.outside="closeCloneModal()">
-                                <p class="text-sm font-semibold text-slate-900">Clone form checklist</p>
+                        <div x-show="cloneModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+                            <div class="w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl" @click.stop>
+                                <div class="flex items-start justify-between gap-3">
+                                    <p class="text-sm font-semibold text-slate-900">Clone form checklist</p>
+                                    <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Close" @click="closeCloneModal()">
+                                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                    </button>
+                                </div>
                                 <p x-show="cloneMode === 'global'" x-cloak class="mt-2 text-xs leading-relaxed text-slate-600">Select a <strong>loan product</strong> in “Product selector”, then return here. Clone copies <strong>include / require / order / visibility</strong> from another product’s <strong>saved</strong> setup into the product you are editing (apply, then Save).</p>
                                 <div x-show="cloneMode === 'product'" x-cloak class="mt-3 space-y-3">
                                     <p class="text-xs text-slate-600">Load field rules from another product into <strong>this</strong> editor. Unsaved rows above are updated; click Save to persist.</p>

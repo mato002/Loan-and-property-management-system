@@ -434,7 +434,7 @@ function bindEscapeHandler() {
             }
 
             const top = modalStack[modalStack.length - 1];
-            if (top?.closeOnEscape === false) {
+            if (top?.closeOnEscape !== true) {
                 return;
             }
 

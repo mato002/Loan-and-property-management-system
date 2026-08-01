@@ -401,7 +401,7 @@
         @endisset
     </x-slot>
     <div id="unit_meta_modal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
-        <div class="absolute inset-0 bg-slate-900/40" data-unit-meta-close></div>
+        <div class="absolute inset-0 bg-slate-900/40" aria-hidden="true"></div>
         <div class="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
             <div class="flex items-center justify-between">
                 <h3 id="unit_meta_modal_title" class="text-base font-semibold text-slate-900">Add option</h3>

@@ -13,23 +13,23 @@ class DashboardController extends Controller
 
     public function commandCenter(Request $request): View
     {
-        $deferMetrics = $request->session()->pull(self::DEFER_METRICS_SESSION_KEY, false)
-            || $request->header('Turbo-Frame') === 'property-main';
+        $deferHeavy = $request->header('Turbo-Frame') === 'property-main'
+            || $request->session()->pull(self::DEFER_METRICS_SESSION_KEY, false);
 
-        if ($deferMetrics) {
-            return property_view('property.agent.dashboard', [
-                'deferDashboardMetrics' => true,
-            ]);
+        $data = PropertyDashboardOverview::lightForAgent();
+
+        if (! $deferHeavy) {
+            $data = array_merge($data, PropertyDashboardOverview::heavyForAgent());
         }
 
         return property_view('property.agent.dashboard', array_merge(
-            PropertyDashboardOverview::forAgent(),
-            ['deferDashboardMetrics' => false],
+            $data,
+            ['deferHeavyDashboardMetrics' => $deferHeavy],
         ));
     }
 
     public function metricsFrame(): View
     {
-        return property_view('property.agent.partials.dashboard_metrics_frame', PropertyDashboardOverview::forAgent());
+        return property_view('property.agent.partials.dashboard_metrics_frame', PropertyDashboardOverview::heavyForAgent());
     }
 }

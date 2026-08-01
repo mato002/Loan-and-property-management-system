@@ -559,10 +559,9 @@
             <div
                 x-show="addUnitOpen"
                 x-cloak
-                @keydown.escape.window="addUnitOpen = false"
                 class="fixed inset-0 z-[7000] flex items-center justify-center bg-slate-900/50 p-4"
             >
-                <div class="w-full max-w-3xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" @click.outside="addUnitOpen = false">
+                <div class="w-full max-w-3xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" @click.stop>
                     @php
                         $unitFieldCfg = $unitFields ?? [];
                         $unitEnabled = fn (string $k, bool $d = true) => (bool) (($unitFieldCfg[$k]['enabled'] ?? $d));
@@ -570,7 +569,9 @@
                     @endphp
                     <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
                         <h3 class="text-base font-semibold text-slate-900">Add unit to {{ $property->name }}</h3>
-                        <button type="button" class="rounded-lg border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" @click="addUnitOpen = false">Close</button>
+                        <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Close" @click="addUnitOpen = false">
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </button>
                     </div>
                     <form method="post" action="{{ route('property.units.store', absolute: false) }}" class="p-5 space-y-4" data-turbo="false">
                         @csrf

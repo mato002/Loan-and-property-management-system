@@ -24,6 +24,30 @@ final class PropertyDashboardCache
         );
     }
 
+    public static function lightKey(int $userId, bool $agentScoped): string
+    {
+        $version = (int) Cache::get(self::VERSION_KEY, 1);
+
+        return sprintf(
+            'property.dashboard.light:%d:%s:v%d',
+            $userId,
+            $agentScoped ? 'agent' : 'all',
+            $version,
+        );
+    }
+
+    public static function heavyKey(int $userId, bool $agentScoped): string
+    {
+        $version = (int) Cache::get(self::VERSION_KEY, 1);
+
+        return sprintf(
+            'property.dashboard.heavy:%d:%s:v%d',
+            $userId,
+            $agentScoped ? 'agent' : 'all',
+            $version,
+        );
+    }
+
     public static function leasesFormContextKey(): string
     {
         $version = (int) Cache::get(self::LEASES_FORM_CONTEXT_VERSION_KEY, 1);

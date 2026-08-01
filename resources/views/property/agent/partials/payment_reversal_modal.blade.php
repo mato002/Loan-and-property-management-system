@@ -12,14 +12,9 @@
         max-width="lg"
     >
         <x-slot name="header">
-            <div class="flex items-start justify-between gap-3">
-                <div>
-                    <h2 class="text-base font-semibold text-slate-900 dark:text-white" x-text="title"></h2>
-                    <p class="mt-1 text-xs text-slate-600 dark:text-slate-400" x-text="subtitle"></p>
-                </div>
-                <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close" @click="close()">
-                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-                </button>
+            <div>
+                <h2 class="text-base font-semibold text-slate-900 dark:text-white" x-text="title"></h2>
+                <p class="mt-1 text-xs text-slate-600 dark:text-slate-400" x-text="subtitle"></p>
             </div>
         </x-slot>
 

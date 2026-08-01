@@ -27,10 +27,7 @@
 
                 <x-property.modal show="modal !== ''" close="modal = ''" name="access-control" max-width="xl" :z-index="7010">
                     <x-slot name="header">
-                        <div class="flex items-center justify-between gap-3">
-                            <h3 class="text-base font-semibold text-slate-900 dark:text-white" x-text="modal === 'add-role' ? 'Add role' : (modal === 'clone-role' ? 'Clone role' : 'Add permission')"></h3>
-                            <button type="button" class="rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="modal = ''">Close</button>
-                        </div>
+                        <h3 class="text-base font-semibold text-slate-900 dark:text-white" x-text="modal === 'add-role' ? 'Add role' : (modal === 'clone-role' ? 'Clone role' : 'Add permission')"></h3>
                     </x-slot>
 
                         <form x-show="modal === 'add-role'" method="post" action="{{ route('property.settings.system_setup.access.roles.store') }}" class="p-5 space-y-3" data-turbo="false">
@@ -179,10 +176,7 @@
 
                                 <x-property.modal show="userModal !== ''" close="userModal = ''" :name="'access-user-' . $u->id" max-width="2xl" :z-index="7110">
                                     <x-slot name="header">
-                                        <div class="flex items-center justify-between gap-3">
-                                            <h4 class="text-base font-semibold text-slate-900 dark:text-white" x-text="userModal === 'roles' ? 'Edit roles for {{ $u->name }}' : 'Direct permission overrides for {{ $u->name }}'"></h4>
-                                            <button type="button" class="rounded-lg border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="userModal = ''">Close</button>
-                                        </div>
+                                        <h4 class="text-base font-semibold text-slate-900 dark:text-white" x-text="userModal === 'roles' ? 'Edit roles for {{ $u->name }}' : 'Direct permission overrides for {{ $u->name }}'"></h4>
                                     </x-slot>
 
                                         <form x-show="userModal === 'roles'" method="post" action="{{ route('property.settings.system_setup.access.users.roles.store', $u) }}" class="p-5 space-y-3" data-turbo="false">

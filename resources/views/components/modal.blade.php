@@ -30,6 +30,7 @@ $maxWidth = [
         prevFocusable() { return this.focusables()[this.prevFocusableIndex()] || this.lastFocusable() },
         nextFocusableIndex() { return (this.focusables().indexOf(document.activeElement) + 1) % (this.focusables().length + 1) },
         prevFocusableIndex() { return Math.max(0, this.focusables().indexOf(document.activeElement)) -1 },
+        close() { this.show = false; },
     }"
     x-init="$watch('show', value => {
         if (value) {
@@ -42,7 +43,6 @@ $maxWidth = [
     x-on:open-modal.window="$event.detail == '{{ $name }}' ? show = true : null"
     x-on:close-modal.window="$event.detail == '{{ $name }}' ? show = false : null"
     x-on:close.stop="show = false"
-    x-on:keydown.escape.window="show = false"
     x-on:keydown.tab.prevent="$event.shiftKey || nextFocusable().focus()"
     x-on:keydown.shift.tab.prevent="prevFocusable().focus()"
     x-show="show"
@@ -52,7 +52,6 @@ $maxWidth = [
     <div
         x-show="show"
         class="fixed inset-0 transform transition-all"
-        x-on:click="show = false"
         x-transition:enter="ease-out duration-300"
         x-transition:enter-start="opacity-0"
         x-transition:enter-end="opacity-100"
@@ -60,12 +59,12 @@ $maxWidth = [
         x-transition:leave-start="opacity-100"
         x-transition:leave-end="opacity-0"
     >
-        <div class="absolute inset-0 bg-gray-500 dark:bg-gray-900 opacity-75"></div>
+        <div class="absolute inset-0 bg-gray-500 dark:bg-gray-900 opacity-75" aria-hidden="true"></div>
     </div>
 
     <div
         x-show="show"
-        class="mb-6 bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-xl transform transition-all sm:w-full {{ $maxWidth }} sm:mx-auto"
+        class="relative mb-6 bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-xl transform transition-all sm:w-full {{ $maxWidth }} sm:mx-auto"
         x-transition:enter="ease-out duration-300"
         x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
         x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
@@ -73,6 +72,16 @@ $maxWidth = [
         x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
         x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
     >
+        <button
+            type="button"
+            class="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+            aria-label="{{ __('Close') }}"
+            x-on:click="close()"
+        >
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </button>
         {{ $slot }}
     </div>
 </div>

@@ -111,7 +111,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 document.addEventListener('turbo:frame-load', (e) => {
-    if (e.target.id === 'property-main') {
+    if (e.target.id === 'property-main' || e.target.id === 'property-dashboard-heavy') {
         initPropertyDashboardCharts(e.target);
     }
 });
