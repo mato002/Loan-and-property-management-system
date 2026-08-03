@@ -524,6 +524,7 @@ Route::prefix('loan/payments')->name('loan.payments.')->group(function () {
     Route::post('/', [LoanPaymentsController::class, 'store'])->name('store');
     Route::post('/unposted/auto-match', [LoanPaymentsController::class, 'autoMatch'])->name('unposted.auto_match');
     Route::post('/{loan_book_payment}/assign-loan', [LoanPaymentsController::class, 'assignLoan'])->name('assign_loan');
+    Route::get('/{loan_book_payment}/post', [LoanPaymentsController::class, 'postRedirect'])->name('post.redirect');
     Route::post('/{loan_book_payment}/post', [LoanPaymentsController::class, 'post'])->name('post');
     Route::get('/{loan_book_payment}', [LoanPaymentsController::class, 'show'])->name('show');
     Route::get('/{loan_book_payment}/edit', [LoanPaymentsController::class, 'edit'])->name('edit');

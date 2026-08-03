@@ -56,7 +56,7 @@
     <x-slot name="pageModalsAttributes"
         data-lease-form-root
         x-data="Object.assign({!! \Illuminate\Support\Js::from(['showLeaseCreateForm' => $leaseFormOpen]) !!}, leaseCreateFormAlpineState({!! \Illuminate\Support\Js::from($leaseCreateAlpineConfig) !!}))"
-        :data-lease-form-open="showLeaseCreateForm ? '1' : '0'"
+        x-bind:data-lease-form-open="showLeaseCreateForm ? '1' : '0'"
         x-init="
             const leaseFormStorageKey = 'property.leases.createFormOpen';
             const bootLeaseCreatePanel = () => $nextTick(() => { window.initLeaseFormLogic?.(); });

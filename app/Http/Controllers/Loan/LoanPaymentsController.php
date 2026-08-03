@@ -1055,6 +1055,22 @@ class LoanPaymentsController extends Controller
             ->with('status', 'Payment deleted.');
     }
 
+    public function postRedirect(Request $request, LoanBookPayment $loan_book_payment): RedirectResponse
+    {
+        $loan_book_payment->load('loan.loanClient');
+        $this->ensureLoanClientOwner($loan_book_payment->loan?->loanClient, $request->user());
+
+        if ($loan_book_payment->status === LoanBookPayment::STATUS_PROCESSED) {
+            return redirect()
+                ->route('loan.payments.show', $loan_book_payment)
+                ->with('status', 'This payment has already been posted.');
+        }
+
+        return redirect()
+            ->route('loan.payments.unposted')
+            ->with('status', 'Use Confirm / Post from the actions menu to post this payment.');
+    }
+
     public function post(Request $request, LoanBookPayment $loan_book_payment): RedirectResponse
     {
         $loan_book_payment->load('loan.loanClient');
@@ -1094,11 +1110,11 @@ class LoanPaymentsController extends Controller
             $message = collect($e->errors())->flatten()->first() ?? $e->getMessage();
 
             return redirect()
-                ->back()
+                ->route('loan.payments.unposted')
                 ->withErrors(['accounting' => $message]);
         } catch (\RuntimeException $e) {
             return redirect()
-                ->back()
+                ->route('loan.payments.unposted')
                 ->withErrors(['accounting' => $e->getMessage()]);
         }
 
@@ -1109,7 +1125,7 @@ class LoanPaymentsController extends Controller
         ));
 
         return redirect()
-            ->back()
+            ->route('loan.payments.unposted')
             ->with('status', 'Payment posted as processed and recorded in the general ledger.');
     }
 
