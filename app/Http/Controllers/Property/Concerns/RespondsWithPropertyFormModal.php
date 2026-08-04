@@ -64,4 +64,34 @@ trait RespondsWithPropertyFormModal
             throw $e;
         }
     }
+
+    protected function backWithPropertySwalError(
+        Request $request,
+        string $message,
+        string $title = 'Cannot save',
+    ): RedirectResponse {
+        return back()
+            ->withInput()
+            ->with('swal_flash', [
+                'icon' => 'error',
+                'title' => $title,
+                'text' => $message,
+                'confirmButtonColor' => '#dc2626',
+            ]);
+    }
+
+    protected function propertyAccountingErrorTitle(string $message): string
+    {
+        $normalized = strtolower($message);
+
+        if (str_contains($normalized, 'open period') || str_contains($normalized, 'locked accounting period') || str_contains($normalized, 'accounting period for')) {
+            return 'Accounting period required';
+        }
+
+        if (str_contains($normalized, 'chart account')) {
+            return 'Chart of accounts setup';
+        }
+
+        return 'Cannot save invoice';
+    }
 }

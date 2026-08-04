@@ -247,7 +247,8 @@ final class PropertyWorkspaceTabs
                 ['key' => 'rent_roll', 'label' => 'Rent roll', 'route' => 'property.revenue.rent_roll', 'active' => ['property.revenue.rent_roll']],
                 ['key' => 'arrears', 'label' => 'Arrears', 'route' => 'property.revenue.arrears', 'active' => ['property.revenue.arrears', 'property.revenue.arrears.*']],
                 ['key' => 'invoices', 'label' => 'Invoices', 'route' => 'property.revenue.invoices', 'active' => ['property.revenue.invoices', 'property.revenue.invoices.*', 'property.invoices.*']],
-                ['key' => 'payments', 'label' => 'Payments', 'route' => 'property.revenue.payments', 'active' => ['property.revenue.payments', 'property.payments.*', 'property.tenants.credit.*']],
+                ['key' => 'uninvoiced', 'label' => 'Uninvoiced leases', 'route' => 'property.revenue.uninvoiced_leases', 'active' => ['property.revenue.uninvoiced_leases', 'property.revenue.uninvoiced_leases.*']],
+                ['key' => 'payments', 'label' => 'Payments', 'route' => 'property.revenue.payments', 'active' => ['property.revenue.payments', 'property.revenue.tenant_credits', 'property.payments.*', 'property.tenants.credit.*']],
                 ['key' => 'utilities', 'label' => 'Utilities', 'route' => 'property.revenue.utilities', 'active' => ['property.revenue.utilities', 'property.revenue.utilities.*', 'property.tenants.utility.statement']],
                 ['key' => 'receipts', 'label' => 'Receipts', 'route' => 'property.revenue.receipts', 'active' => ['property.revenue.receipts']],
                 ['key' => 'penalties', 'label' => 'Penalties', 'route' => 'property.revenue.penalties', 'active' => ['property.revenue.penalties', 'property.revenue.penalties.*']],
@@ -360,39 +361,8 @@ final class PropertyWorkspaceTabs
     {
         return [
             [
-                'label' => 'Rent',
-                'tabs' => [
-                    ['key' => 'rent_roll', 'label' => 'Rent roll', 'route' => 'property.revenue.rent_roll', 'active' => ['property.revenue.rent_roll']],
-                    ['key' => 'arrears', 'label' => 'Arrears', 'route' => 'property.revenue.arrears', 'active' => ['property.revenue.arrears', 'property.revenue.arrears.*']],
-                    ['key' => 'uninvoiced', 'label' => 'Uninvoiced leases', 'route' => 'property.revenue.uninvoiced_leases', 'active' => ['property.revenue.uninvoiced_leases', 'property.revenue.uninvoiced_leases.*']],
-                ],
-            ],
-            [
-                'label' => 'Billing',
-                'tabs' => [
-                    ['key' => 'invoices', 'label' => 'Invoices', 'route' => 'property.revenue.invoices', 'active' => ['property.revenue.invoices', 'property.revenue.invoices.*', 'property.invoices.*']],
-                    ['key' => 'penalties', 'label' => 'Penalties', 'route' => 'property.revenue.penalties', 'active' => ['property.revenue.penalties', 'property.revenue.penalties.*']],
-                ],
-            ],
-            [
-                'label' => 'Cash',
-                'tabs' => [
-                    ['key' => 'payments', 'label' => 'Payments', 'route' => 'property.revenue.payments', 'active' => ['property.revenue.payments', 'property.payments.*', 'property.tenants.credit.*']],
-                    ['key' => 'receipts', 'label' => 'Receipts', 'route' => 'property.revenue.receipts', 'active' => ['property.revenue.receipts']],
-                    ['key' => 'tenant_credits', 'label' => 'Tenant credits', 'route' => 'property.revenue.tenant_credits', 'active' => ['property.revenue.tenant_credits']],
-                ],
-            ],
-            [
                 'label' => 'Utilities',
                 'tabs' => self::collectionsUtilitySubTabs(),
-            ],
-            [
-                'label' => 'Bank',
-                'tabs' => [
-                    ['key' => 'matched', 'label' => 'Matched payments', 'route' => 'property.equity.matched', 'active' => ['property.equity.matched', 'property.equity.matched.*']],
-                    ['key' => 'unmatched', 'label' => 'Unmatched', 'route' => 'property.equity.unmatched', 'active' => ['property.equity.unmatched', 'property.equity.unmatched.*']],
-                    ['key' => 'all', 'label' => 'All payments', 'route' => 'property.equity.all', 'active' => ['property.equity.all']],
-                ],
             ],
         ];
     }

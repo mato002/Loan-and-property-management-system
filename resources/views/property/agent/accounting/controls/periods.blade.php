@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Accounting periods"
-    subtitle="Close, lock, and reopen periods with controlled actions."
+    subtitle="Current month opens automatically. Close or lock at month-end when you are ready."
     back-route="property.accounting.index"
     :stats="[['label' => 'Periods', 'value' => (string) ($rows->total() ?? 0), 'hint' => 'Control periods']]"
     :columns="['Period', 'Start', 'End', 'Status', 'Closed By', 'Actions']"
@@ -46,7 +46,7 @@
     </x-slot>
 
     <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-        Payment reversals, payroll posting, and other GL actions require an <strong>open</strong> period covering today. Close at month-end, then lock after review.
+        The current month is created and kept <strong>open</strong> automatically when invoices, payments, or reversals need it. Use <strong>Close</strong> at month-end, then <strong>Lock</strong> after review.
     </div>
 
     <x-slot name="footer">

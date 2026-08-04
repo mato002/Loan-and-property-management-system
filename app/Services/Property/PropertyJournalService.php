@@ -5,7 +5,6 @@ namespace App\Services\Property;
 use App\Models\AccountingChartAccount;
 use App\Models\AccountingJournalBatch;
 use App\Models\AccountingJournalLine;
-use App\Models\AccountingPeriod;
 use App\Services\Property\AccountingPeriodService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -157,28 +156,18 @@ class PropertyJournalService
 
     private function assertCurrentPeriodOpen(string $date, int $agentUserId): void
     {
-        $period = app(AccountingPeriodService::class)->findPeriodCovering(
+        app(AccountingPeriodService::class)->ensureOpenPeriodCovering(
             \Carbon\Carbon::parse($date),
             $agentUserId > 0 ? $agentUserId : null,
         );
-
-        if ($period && $period->status === AccountingPeriod::STATUS_LOCKED) {
-            throw new RuntimeException('Cannot post into a locked accounting period.');
-        }
     }
 
     private function assertReversalPeriodOpen(int $agentUserId): void
     {
-        $current = app(AccountingPeriodService::class)->findOpenPeriodCovering(
+        app(AccountingPeriodService::class)->ensureOpenPeriodCovering(
             now(),
             $agentUserId > 0 ? $agentUserId : null,
         );
-
-        if (! $current) {
-            throw new RuntimeException(
-                'Reversal is only allowed in current open period. Go to Accounting → Controls → Periods and click "Open current month".'
-            );
-        }
     }
 }
 

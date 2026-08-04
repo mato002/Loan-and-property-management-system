@@ -2787,6 +2787,8 @@ class PropertyAccountingController extends Controller
 
     public function periods(Request $request): View
     {
+        app(AccountingPeriodService::class)->openTrailingMonths(1);
+
         $rows = AccountingPeriod::query()->orderByDesc('start_date')->paginate(50)->withQueryString();
 
         return property_view('property.agent.accounting.controls.periods', [

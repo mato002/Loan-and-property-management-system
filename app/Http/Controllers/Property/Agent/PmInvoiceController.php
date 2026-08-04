@@ -122,7 +122,7 @@ class PmInvoiceController extends Controller
                 : UtilityPeriodGuardService::ACTION_EDIT_INVOICE;
             $guard->assertInvoiceMutable($invoice, $action, $request->user(), $overrideId);
         } catch (UtilityPeriodClosedException $e) {
-            return back()->withErrors(['period' => $e->getMessage()])->withInput();
+            return $this->backWithPropertySwalError($request, $e->getMessage(), 'Utility period closed');
         }
 
         $previousAmount = (float) $invoice->amount;
@@ -130,7 +130,8 @@ class PmInvoiceController extends Controller
         $newAmount = (float) $data['amount'];
         $newStatus = (string) $data['status'];
 
-        DB::transaction(function () use ($invoice, $data, $request, $previousAmount, $previousStatus, $newAmount, $newStatus) {
+        try {
+            DB::transaction(function () use ($invoice, $data, $request, $previousAmount, $previousStatus, $newAmount, $newStatus) {
             $payload = [
                 'issue_date' => $data['issue_date'],
                 'due_date' => $data['due_date'],
@@ -183,7 +184,14 @@ class PmInvoiceController extends Controller
                 // previous journal and post a fresh one under a new revision.
                 PropertyAccountingPostingService::repostInvoiceAfterEdit($invoice, $request->user());
             }
-        });
+            });
+        } catch (\RuntimeException $e) {
+            return $this->backWithPropertySwalError(
+                $request,
+                $e->getMessage(),
+                $this->propertyAccountingErrorTitle($e->getMessage()),
+            );
+        }
 
         return $this->redirectOrPropertyFormModalSuccess(
             $request,
@@ -216,20 +224,28 @@ class PmInvoiceController extends Controller
 
         $invoiceNo = (string) $invoice->invoice_no;
 
-        DB::transaction(function () use ($invoice, $request) {
-            // Reverse any open journal entries so the GL doesn't ghost-credit
-            // an income line for an invoice that no longer exists.
-            app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), 'Invoice deleted');
+        try {
+            DB::transaction(function () use ($invoice, $request) {
+                // Reverse any open journal entries so the GL doesn't ghost-credit
+                // an income line for an invoice that no longer exists.
+                app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), 'Invoice deleted');
 
-            PmInvoiceEvent::record(
-                (int) $invoice->id,
-                PmInvoiceEvent::EVENT_DELETED,
-                $request->user()?->id,
-                'Invoice soft-deleted'
+                PmInvoiceEvent::record(
+                    (int) $invoice->id,
+                    PmInvoiceEvent::EVENT_DELETED,
+                    $request->user()?->id,
+                    'Invoice soft-deleted'
+                );
+
+                $invoice->delete();
+            });
+        } catch (\RuntimeException $e) {
+            return $this->backWithPropertySwalError(
+                $request,
+                $e->getMessage(),
+                $this->propertyAccountingErrorTitle($e->getMessage()),
             );
-
-            $invoice->delete();
-        });
+        }
 
         return back()->with('success', 'Invoice '.$invoiceNo.' deleted.');
     }

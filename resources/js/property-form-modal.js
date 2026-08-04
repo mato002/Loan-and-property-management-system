@@ -343,6 +343,9 @@ function bindTurboFrameHooks() {
         if (window.Alpine?.initTree) {
             window.Alpine.initTree(frame);
         }
+        if (typeof window.__runSwalFlash === 'function') {
+            window.__runSwalFlash(frame);
+        }
     });
 }
 

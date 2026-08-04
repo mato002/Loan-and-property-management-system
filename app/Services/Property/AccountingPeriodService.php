@@ -52,6 +52,43 @@ class AccountingPeriodService
         return true;
     }
 
+    /**
+     * Ensure an open accounting period exists for the given date.
+     * Missing months between the target date and today are created automatically.
+     *
+     * @throws \RuntimeException when the period exists but is closed or locked
+     */
+    public function ensureOpenPeriodCovering(CarbonInterface $date, ?int $agentUserId = null): AccountingPeriod
+    {
+        $agentUserId = ($agentUserId !== null && $agentUserId > 0) ? $agentUserId : null;
+        $target = Carbon::parse($date)->startOfMonth();
+        $today = now()->startOfMonth();
+        $from = $target->lte($today) ? $target : $today;
+        $months = min(24, max(1, $from->diffInMonths($today) + 1));
+
+        $this->openTrailingMonths($months, $agentUserId);
+
+        $open = $this->findOpenPeriodCovering($date, $agentUserId);
+        if ($open) {
+            return $open;
+        }
+
+        $period = $this->findPeriodCovering($date, $agentUserId);
+        if ($period?->status === AccountingPeriod::STATUS_LOCKED) {
+            throw new \RuntimeException('Cannot post into a locked accounting period.');
+        }
+
+        if ($period?->status === AccountingPeriod::STATUS_CLOSED) {
+            throw new \RuntimeException(
+                'The accounting period for '.$target->format('F Y').' is closed. Reopen it under Accounting → Controls → Periods before making this change.'
+            );
+        }
+
+        throw new \RuntimeException(
+            'Could not open the accounting period for '.$target->format('F Y').'.'
+        );
+    }
+
     public function findOpenPeriodCovering(CarbonInterface $date, ?int $agentUserId = null): ?AccountingPeriod
     {
         $dateString = Carbon::parse($date)->toDateString();

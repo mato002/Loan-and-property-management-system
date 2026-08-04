@@ -15,6 +15,7 @@
 @if ($inModal)
     <turbo-frame id="{{ $frameId }}">
         <div class="property-form-modal-content space-y-4">
+            <x-swal-flash />
             {{ $slot }}
         </div>
     </turbo-frame>
