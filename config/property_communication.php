@@ -120,4 +120,24 @@ return [
         'skip_when_credit_covers_balance' => filter_var(env('RENT_REMINDER_SKIP_WHEN_CREDIT_COVERS', true), FILTER_VALIDATE_BOOL),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Automatic retry for failed outbound SMS
+    |--------------------------------------------------------------------------
+    */
+    'sms_auto_retry' => [
+        'enabled' => filter_var(env('PROPERTY_SMS_AUTO_RETRY_ENABLED', true), FILTER_VALIDATE_BOOL),
+        /** Immediate job retries after each failure (SendSmsJob). */
+        'max_retries' => (int) env('PROPERTY_SMS_MAX_RETRIES', 5),
+        'default_retry_minutes' => (int) env('PROPERTY_SMS_RETRY_MINUTES', 10),
+        'balance_retry_minutes' => (int) env('PROPERTY_SMS_BALANCE_RETRY_MINUTES', 60),
+        'rate_limit_retry_minutes' => (int) env('PROPERTY_SMS_RATE_LIMIT_RETRY_MINUTES', 15),
+        'rate_limit_wait_seconds' => (int) env('PROPERTY_SMS_RATE_LIMIT_WAIT_SECONDS', 60),
+        /** Scheduled recovery pass (communications:retry-failed-sms). */
+        'min_minutes_between_attempts' => (int) env('PROPERTY_SMS_AUTO_RETRY_COOLDOWN_MINUTES', 30),
+        'max_age_hours' => (int) env('PROPERTY_SMS_AUTO_RETRY_MAX_AGE_HOURS', 72),
+        'batch_limit' => (int) env('PROPERTY_SMS_AUTO_RETRY_BATCH_LIMIT', 25),
+        'delay_between_sends_ms' => (int) env('PROPERTY_SMS_AUTO_RETRY_DELAY_MS', 1500),
+    ],
+
 ];

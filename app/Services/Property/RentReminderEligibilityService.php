@@ -545,6 +545,15 @@ final class RentReminderEligibilityService
             ];
         }
 
+        if (! $this->logStillBillableForResend($log)) {
+            return [
+                'can_resend' => false,
+                'can_bulk_select' => false,
+                'label' => 'Paid / settled',
+                'hint' => 'The linked invoice is paid or has no open balance. Retry is not offered.',
+            ];
+        }
+
         if ($status === 'failed') {
             return [
                 'can_resend' => true,
@@ -999,6 +1008,50 @@ final class RentReminderEligibilityService
             ->value('id');
 
         return $id !== null && (int) $id > 0 ? (int) $id : null;
+    }
+
+    public function invoiceForReminderLog(PmMessageLog $log): ?PmInvoice
+    {
+        $invoiceNo = $this->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body);
+        if ($invoiceNo === '') {
+            return null;
+        }
+
+        return PmInvoice::query()
+            ->withoutGlobalScopes()
+            ->where('invoice_no', $invoiceNo)
+            ->first();
+    }
+
+    /**
+     * Rent reminders may only be resent while the linked invoice still has an open balance.
+     * Manual/non-rent SMS logs are always eligible from a billing perspective.
+     */
+    public function logStillBillableForResend(PmMessageLog $log): bool
+    {
+        if (! app(RentReminderMessageLogResolver::class)->isRentReminder($log)) {
+            return true;
+        }
+
+        $invoice = $this->invoiceForReminderLog($log);
+        if ($invoice === null) {
+            return false;
+        }
+
+        return $this->rentReminderStillBillable($invoice);
+    }
+
+    public function supersedeFailedLogBecauseSettled(PmMessageLog $log, string $reason = 'Invoice paid or settled'): void
+    {
+        if (strtolower((string) ($log->delivery_status ?? '')) !== 'failed') {
+            return;
+        }
+
+        $log->update([
+            'delivery_status' => 'superseded',
+            'superseded_at' => now(),
+            'delivery_error' => $reason,
+        ]);
     }
 
     /**

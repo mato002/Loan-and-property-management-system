@@ -19,7 +19,7 @@ use App\Services\Property\PropertyCommunicationService;
 use App\Services\Property\PropertyCommunicationTemplateService;
 use App\Services\Property\RentReminderEligibilityService;
 use App\Services\Property\SmsHealthService;
-use App\Services\Property\RentReminderMessageLogResolver;
+use App\Services\Property\PropertySmsResendService;
 use App\Services\Property\SmsDeliveryErrorPresenter;
 use App\Services\Property\TenantCommunicationStageService;
 use App\Support\CsvExport;
@@ -474,7 +474,7 @@ class PropertyCommunicationsWebController extends Controller
             static fn (PmMessageLog $log): bool => (bool) (($resendActions[(int) $log->id]['can_bulk_select'] ?? false))
         );
         $ineligibleSelectionSkipped = $smsLogs->count() - $eligibleSmsLogs->count();
-        $deduped = $this->dedupeSmsLogsForResend($eligibleSmsLogs, $eligibility);
+        $deduped = app(PropertySmsResendService::class)->dedupeLogsForResend($eligibleSmsLogs);
         $sendable = 0;
 
         foreach ($deduped as $log) {
@@ -507,7 +507,7 @@ class PropertyCommunicationsWebController extends Controller
             }
             $attemptIndex++;
 
-            $result = $this->resendSmsLogRow($sms, $log, $phones, (int) $request->user()->id);
+            $result = app(PropertySmsResendService::class)->resendLog($log, $phones, (int) $request->user()->id);
 
             if (($result['ok'] ?? false) === true) {
                 $resent++;
@@ -558,7 +558,7 @@ class PropertyCommunicationsWebController extends Controller
             return back()->withErrors(['to_address' => 'Could not normalize the stored phone number.']);
         }
 
-        $result = $this->resendSmsLogRow($sms, $log, $phones, (int) $request->user()->id);
+        $result = app(PropertySmsResendService::class)->resendLog($log, $phones, (int) $request->user()->id);
 
         if (($result['ok'] ?? false) !== true) {
             return back()->withErrors([
@@ -567,135 +567,6 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return back()->with('success', 'SMS resent to '.implode(', ', $phones).'.');
-    }
-
-    /**
-     * @param  list<string>  $phones
-     * @return array{ok: bool, skipped?: bool, error?: string}
-     */
-    private function resendSmsLogRow(BulkSmsService $sms, PmMessageLog $log, array $phones, int $userId): array
-    {
-        $eligibility = app(RentReminderEligibilityService::class);
-
-        if (! $eligibility->isLogEligibleForSmsResend($log)) {
-            return [
-                'ok' => false,
-                'skipped' => true,
-                'error' => 'This row is not a failed SMS that needs resending.',
-            ];
-        }
-
-        $resolver = app(RentReminderMessageLogResolver::class);
-        $body = $resolver->resolveSmsBody($log);
-        if ($body === null && $resolver->isRentReminder($log)) {
-            return ['ok' => false, 'error' => 'Could not rebuild this rent reminder (invoice missing or inaccessible). Update the template and try again.'];
-        }
-        $body = $body ?? (string) $log->body;
-        $meta = $resolver->resolveStaffMeta($log);
-        $invoiceNo = $eligibility->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body);
-        $subject = (string) ($meta['subject'] ?? $log->subject);
-        $internalStage = (string) ($meta['internal_stage'] ?? $log->internal_stage);
-        if ($internalStage === '') {
-            $internalStage = $eligibility->extractInternalStageFromLogText($subject, (string) $log->internal_stage);
-        }
-        $messageHash = $eligibility->messageBodyHash($body);
-
-        if ($eligibility->logShowsSuccessfulSmsForIntent(
-            implode(',', $phones),
-            $invoiceNo,
-            $internalStage,
-            $messageHash,
-            (int) $log->id
-        )) {
-            return [
-                'ok' => false,
-                'skipped' => true,
-                'error' => 'A successful SMS for this invoice, stage, and message is already logged. Skipped to avoid duplicate charges.',
-            ];
-        }
-
-        $displayStage = (string) ($meta['display_stage'] ?? $log->display_stage);
-        $templateCategory = $resolver->isRentReminder($log) ? 'rent_reminder' : $log->template_category;
-
-        $result = $sms->sendNow(
-            $body,
-            $phones,
-            $userId,
-            null,
-            'property',
-            verifyBalance: false
-        );
-
-        if (($result['ok'] ?? false) !== true && $this->isProviderRateLimitError((string) ($result['error'] ?? ''))) {
-            sleep(60);
-            $result = $sms->sendNow(
-                $body,
-                $phones,
-                $userId,
-                null,
-                'property',
-                verifyBalance: false
-            );
-        }
-
-        if (($result['ok'] ?? false) === true) {
-            $sentLog = PmMessageLog::query()->create([
-                'user_id' => $userId,
-                'channel' => 'sms',
-                'to_address' => implode(',', $phones),
-                'subject' => $subject,
-                'internal_stage' => $internalStage !== '' ? $internalStage : null,
-                'display_stage' => $displayStage !== '' ? $displayStage : null,
-                'template_category' => $templateCategory,
-                'body' => $body,
-                'delivery_status' => 'sent',
-                'sent_at' => now(),
-            ]);
-
-            if ($invoiceNo !== '') {
-                $eligibility->supersedeFailedLogsForRecipientInvoice(
-                    $phones,
-                    $invoiceNo,
-                    null,
-                    $internalStage,
-                    $messageHash,
-                    (int) $sentLog->id
-                );
-            }
-        }
-
-        return $result;
-    }
-
-    private function isProviderRateLimitError(string $error): bool
-    {
-        return str_contains($error, '429')
-            || str_contains(strtolower($error), 'rate_limit')
-            || str_contains(strtolower($error), 'too many requests');
-    }
-
-    /**
-     * One resend per invoice + phone in a bulk selection (avoids re-sending the same failed row 4–5 times).
-     *
-     * @param  \Illuminate\Support\Collection<int, PmMessageLog>  $logs
-     * @return \Illuminate\Support\Collection<int, PmMessageLog>
-     */
-    private function dedupeSmsLogsForResend(Collection $logs, RentReminderEligibilityService $eligibility): Collection
-    {
-        $picked = [];
-
-        foreach ($logs->sortBy('id') as $log) {
-            $phones = app(BulkSmsService::class)->normalizeRecipientList((string) $log->to_address);
-            $invoiceNo = $eligibility->extractInvoiceNoFromLogText((string) $log->subject, (string) $log->body);
-            $phoneKey = $phones[0] ?? trim((string) $log->to_address);
-            $groupKey = strtolower($invoiceNo !== '' ? $invoiceNo.'|'.$phoneKey : 'log:'.$log->id);
-
-            if (! isset($picked[$groupKey])) {
-                $picked[$groupKey] = $log;
-            }
-        }
-
-        return collect(array_values($picked));
     }
 
     public function messagesExport(Request $request)
