@@ -1616,6 +1616,7 @@ class PropertyCommunicationsWebController extends Controller
         $table = (new PmMessageLog)->getTable();
 
         return (clone $query)
+            ->reorder()
             ->toBase()
             ->selectRaw("COUNT(*) as stat_total")
             ->selectRaw("SUM(CASE WHEN {$table}.channel = 'sms' THEN 1 ELSE 0 END) as stat_sms")
@@ -1631,6 +1632,7 @@ class PropertyCommunicationsWebController extends Controller
         $today = now()->toDateString();
         $weekStart = now()->copy()->startOfWeek()->toDateString();
         $aggregateQuery = (clone $query)
+            ->reorder()
             ->toBase()
             ->selectRaw('COUNT(*) as stat_total')
             ->selectRaw("SUM(CASE WHEN DATE({$table}.created_at) = ? THEN 1 ELSE 0 END) as stat_today", [$today])
