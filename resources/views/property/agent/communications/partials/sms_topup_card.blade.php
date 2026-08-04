@@ -7,7 +7,7 @@
     $maxAmount = (float) ($config['max_amount'] ?? 50000);
     $currency = (string) ($config['currency'] ?? 'KES');
     $defaultPhone = old('phone', (string) ($topup['default_phone'] ?? ''));
-    $showForm = $canTopup || $errors->hasAny(['sms_topup', 'amount', 'phone']);
+    $showForm = $canTopup || (isset($errors) && $errors->hasAny(['sms_topup', 'amount', 'phone']));
     $pendingTopupId = session('sms_topup_pending_id');
     $topupFlash = session('success');
     $showPendingNotice = filled($pendingTopupId) || (is_string($topupFlash) && str_contains(strtolower($topupFlash), 'm-pesa'));

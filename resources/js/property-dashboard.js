@@ -1,7 +1,7 @@
 import Chart from 'chart.js/auto';
 
 const HEAVY_METRICS_HEADER = 'X-Property-Dashboard-Metrics';
-const FETCH_TIMEOUT_MS = 45000;
+const FETCH_TIMEOUT_MS = 20000;
 
 let heavyMetricsAbort = null;
 
@@ -265,7 +265,9 @@ function initPropertyDashboardCharts(root = document) {
 export function bootPropertyDashboard(scope = document) {
     const host = findHeavyMetricsHost(scope);
     if (host instanceof HTMLElement) {
-        loadHeavyDashboardMetrics(host);
+        if (host.dataset.loaded !== '1' && host.dataset.loading !== '1') {
+            loadHeavyDashboardMetrics(host);
+        }
     }
     initPropertyDashboardCharts(scope);
 }

@@ -187,7 +187,6 @@ function runDeferredHydrationTasks(frame, hooks) {
     reconcilePropertyFrameWithBrowserUrl(frame, { force: false });
     setupReversal(frame);
     ensurePropertyFormModalHost();
-    bootPropertyDashboard(frame);
     wirePropertyFilterCascades(frame);
     wireAutoFilterForms(frame);
     requestAnimationFrame(() => restorePropertySearchFocus(frame));
@@ -255,6 +254,7 @@ export function runPropertyWorkspaceHydration(frame, source, hooks = {}) {
         }
 
         hydratePropertyMainAlpine(frame);
+        bootPropertyDashboard(frame);
 
         scheduleDeferredHydrationTasks(frame, {
             reconcilePropertyFrameWithBrowserUrl,
@@ -280,9 +280,9 @@ export function schedulePropertyWorkspaceHydration(frame, source, hooks = {}) {
     const generation = readFrameHydrationGen(frame) || assignInitialHydrationGeneration(frame);
 
     if (shouldSkipHydration(frame, source, generation)) {
-        // Hydration coalescing must never skip Alpine — list-page modals break without re-init.
         queueMicrotask(() => {
             hydratePropertyMainAlpine(frame);
+            bootPropertyDashboard(frame);
         });
 
         return;

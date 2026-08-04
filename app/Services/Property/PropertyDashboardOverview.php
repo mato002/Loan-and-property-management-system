@@ -53,6 +53,20 @@ final class PropertyDashboardOverview
     }
 
     /**
+     * Lightweight lazy-load payload: KPIs, charts, and two short activity lists.
+     *
+     * @return array<string, mixed>
+     */
+    public static function metricsForAgent(): array
+    {
+        $userId = (int) (Auth::id() ?? 0);
+        $scoped = AgentWorkspaceScope::shouldApply();
+        $cacheKey = PropertyDashboardCache::heavyKey($userId, $scoped).':metrics';
+
+        return Cache::remember($cacheKey, self::CACHE_TTL_SECONDS, static fn () => self::buildMetricsForAgent());
+    }
+
+    /**
      * Financial aggregates, charts, SMS provider calls, and activity tables.
      *
      * @return array<string, mixed>
@@ -198,6 +212,108 @@ final class PropertyDashboardOverview
         return [
             'kpis' => $kpis,
             'chartYear' => $year,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function buildMetricsForAgent(): array
+    {
+        $year = (int) now()->year;
+        $mtdCollected = PropertyDashboardStats::mtdCollected();
+        $mtdBilled = PropertyDashboardStats::mtdBilled();
+        $openBalance = PropertyDashboardStats::outstandingBalance();
+
+        $financialKpis = [
+            [
+                'label' => 'Collections (MTD)',
+                'value' => PropertyMoney::kes($mtdCollected),
+                'icon' => 'fa-sack-dollar',
+                'route' => 'property.revenue.payments',
+                'bar' => 'bg-green-600',
+            ],
+            [
+                'label' => 'Billed (MTD)',
+                'value' => PropertyMoney::kes($mtdBilled),
+                'icon' => 'fa-file-invoice-dollar',
+                'route' => 'property.revenue.invoices',
+                'bar' => 'bg-teal-500',
+            ],
+            [
+                'label' => 'Tenant arrears',
+                'value' => PropertyMoney::kes($openBalance),
+                'icon' => 'fa-scale-unbalanced',
+                'route' => 'property.revenue.arrears',
+                'bar' => 'bg-rose-500',
+            ],
+        ];
+
+        $invoiceByMonth = PmInvoice::query()
+            ->whereYear('issue_date', $year)
+            ->selectRaw('MONTH(issue_date) as month_num, COALESCE(SUM(amount), 0) as total')
+            ->groupByRaw('MONTH(issue_date)')
+            ->pluck('total', 'month_num');
+
+        $paymentByMonth = PmPayment::query()
+            ->where('status', PmPayment::STATUS_COMPLETED)
+            ->whereNotNull('paid_at')
+            ->whereYear('paid_at', $year)
+            ->selectRaw('MONTH(paid_at) as month_num, COALESCE(SUM(amount), 0) as total')
+            ->groupByRaw('MONTH(paid_at)')
+            ->pluck('total', 'month_num');
+
+        $chartLabels = [];
+        $chartInvoices = [];
+        $chartPayments = [];
+        for ($m = 1; $m <= 12; $m++) {
+            $chartLabels[] = Carbon::createFromDate($year, $m, 1)->format('M');
+            $chartInvoices[] = (float) ($invoiceByMonth[$m] ?? 0);
+            $chartPayments[] = (float) ($paymentByMonth[$m] ?? 0);
+        }
+
+        $recentRequests = PmMaintenanceRequest::query()
+            ->with(['unit.property'])
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get()
+            ->map(function (PmMaintenanceRequest $r) {
+                $u = $r->unit;
+                $unitLabel = $u && $u->property
+                    ? $u->property->name.' / '.$u->label
+                    : '—';
+
+                return [
+                    'summary' => Str::limit($r->category.': '.$r->description, 48),
+                    'unit' => $unitLabel,
+                    'status' => ucfirst(str_replace('_', ' ', $r->status)),
+                ];
+            })
+            ->all();
+
+        $recentPayments = PmPayment::query()
+            ->with('tenant')
+            ->orderByDesc('paid_at')
+            ->orderByDesc('id')
+            ->limit(5)
+            ->get()
+            ->map(function (PmPayment $p) {
+                return [
+                    'tenant' => $p->tenant?->name ?? '—',
+                    'amount' => PropertyMoney::kes((float) $p->amount),
+                    'date' => $p->paid_at?->format('d M Y') ?? '—',
+                ];
+            })
+            ->all();
+
+        return [
+            'financialKpis' => $financialKpis,
+            'chartYear' => $year,
+            'chartLabels' => $chartLabels,
+            'chartInvoices' => $chartInvoices,
+            'chartPayments' => $chartPayments,
+            'recentRequests' => $recentRequests,
+            'recentPayments' => $recentPayments,
         ];
     }
 
