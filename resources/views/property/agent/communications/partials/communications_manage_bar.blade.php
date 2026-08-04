@@ -43,9 +43,9 @@
                         Mark all as read
                     </button>
                 </form>
-                <a href="{{ route('property.communications.messages', absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Open SMS / email log</a>
+                <a href="{{ route('property.communications.messages', absolute: false) }}" data-turbo-frame="property-main" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Open SMS / email log</a>
             @elseif ($context === 'provider')
-                <a href="{{ route('property.communications.messages', absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">SMS / email log</a>
+                <a href="{{ route('property.communications.messages', absolute: false) }}" data-turbo-frame="property-main" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">SMS / email log</a>
                 @if ($canManage)
                     <a href="#sms-topup-card" class="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700">Top up SMS</a>
                 @endif

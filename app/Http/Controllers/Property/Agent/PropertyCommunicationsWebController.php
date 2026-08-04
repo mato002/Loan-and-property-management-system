@@ -30,6 +30,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +50,17 @@ class PropertyCommunicationsWebController extends Controller
             $perPage = 25;
         }
 
-        $logs = $this->notificationLogsQuery($filters)->paginate($perPage)->withQueryString();
+        $query = $this->notificationLogsQuery($filters);
+        $aggregates = $this->notificationLogAggregates($query);
+        $page = max(1, (int) $request->query('page', 1));
+        $items = (clone $query)->with('user')->forPage($page, $perPage)->get();
+        $logs = new LengthAwarePaginator(
+            $items,
+            (int) ($aggregates->stat_total ?? 0),
+            $perPage,
+            $page,
+            ['path' => Paginator::resolveCurrentPath(), 'query' => $request->query()]
+        );
         $uid = (int) $request->user()->id;
         $readIds = collect();
         if (Schema::hasTable('pm_message_reads') && $logs->isNotEmpty()) {
@@ -59,13 +71,11 @@ class PropertyCommunicationsWebController extends Controller
         }
         $readLookup = $readIds->flip();
 
-        $statsQuery = $this->notificationLogsQuery($filters);
-        $statsRows = $statsQuery->limit(3000)->get();
         $stats = [
-            ['label' => 'Total alerts', 'value' => (string) $statsRows->count(), 'hint' => 'Filtered set'],
-            ['label' => 'Unread', 'value' => (string) $statsRows->filter(fn (PmMessageLog $l) => ! $readLookup->has((int) $l->id))->count(), 'hint' => 'Current page aware'],
-            ['label' => 'Today', 'value' => (string) $statsRows->filter(fn (PmMessageLog $l) => $l->created_at?->isToday())->count(), 'hint' => ''],
-            ['label' => 'This week', 'value' => (string) $statsRows->filter(fn (PmMessageLog $l) => $l->created_at?->greaterThanOrEqualTo(now()->startOfWeek()))->count(), 'hint' => ''],
+            ['label' => 'Total alerts', 'value' => (string) ((int) ($aggregates->stat_total ?? 0)), 'hint' => 'Filtered set'],
+            ['label' => 'Unread', 'value' => (string) ((int) ($aggregates->stat_unread ?? 0)), 'hint' => 'Matching filters'],
+            ['label' => 'Today', 'value' => (string) ((int) ($aggregates->stat_today ?? 0)), 'hint' => ''],
+            ['label' => 'This week', 'value' => (string) ((int) ($aggregates->stat_week ?? 0)), 'hint' => ''],
         ];
 
         return property_view('property.agent.communications.notifications', [
@@ -235,17 +245,29 @@ class PropertyCommunicationsWebController extends Controller
             $perPage = 25;
         }
 
-        $logs = $this->messageLogsQuery($filters)->paginate($perPage)->withQueryString();
-        $stats = $this->messageStats($filters);
+        $query = $this->messageLogsQuery($filters);
+        $aggregates = $this->messageLogAggregates($query);
+        $page = max(1, (int) $request->query('page', 1));
+        $items = (clone $query)->with('user')->forPage($page, $perPage)->get();
+        $logs = new LengthAwarePaginator(
+            $items,
+            (int) ($aggregates->stat_total ?? 0),
+            $perPage,
+            $page,
+            ['path' => Paginator::resolveCurrentPath(), 'query' => $request->query()]
+        );
+        $stats = $this->messageStatsFromAggregates($aggregates, $filters);
         $canViewBody = $this->canViewMessageBody($request);
-        $senderOptions = $this->messageSenderOptions($filters);
-        $resendActions = app(RentReminderEligibilityService::class)->resendActionsForLogs($logs->getCollection());
+        $senderOptions = $this->cachedMessageSenderOptions($filters);
+        $resendActions = $this->resendActionsForMessageLogs($request, $items);
+        $logPresentations = $this->messageLogPresentations($items);
         $inlineCompose = $this->shouldInlineComposeContext($request);
 
         return property_view('property.agent.communications.messages', [
             'stats' => $stats,
             'logs' => $logs,
             'resendActions' => $resendActions,
+            'logPresentations' => $logPresentations,
             'filters' => $filters,
             'perPage' => $perPage,
             'canViewBody' => $canViewBody,
@@ -688,7 +710,7 @@ class PropertyCommunicationsWebController extends Controller
         if (! in_array($format, ['csv', 'xls', 'pdf'], true)) {
             $format = 'csv';
         }
-        $rows = $this->messageLogsQuery($filters)->get();
+        $rows = $this->messageLogsQuery($filters)->with('user')->get();
         $canViewBody = $this->canViewMessageBody($request);
         $this->logExportAudit($request, 'messages', $format, (int) $rows->count(), $filters);
 
@@ -1468,7 +1490,6 @@ class PropertyCommunicationsWebController extends Controller
         $filters = $this->normalizeMessageFilters($filters);
         $table = (new PmMessageLog)->getTable();
         $q = PmMessageLog::query()
-            ->with('user')
             ->whereIn($table.'.channel', ['email', 'sms']);
 
         $search = trim((string) ($filters['q'] ?? ''));
@@ -1590,36 +1611,69 @@ class PropertyCommunicationsWebController extends Controller
         })->addSelect("{$table}.*", 'dup_groups.duplicate_group_count');
     }
 
-    /**
-     * @return list<array{label:string,value:string,hint?:string}>
-     */
-    private function messageStats(array $filters): array
+    private function messageLogAggregates(Builder $query): object
     {
         $table = (new PmMessageLog)->getTable();
-        $aggregates = (clone $this->messageLogsQuery($filters))
+
+        return (clone $query)
             ->toBase()
             ->selectRaw("COUNT(*) as stat_total")
             ->selectRaw("SUM(CASE WHEN {$table}.channel = 'sms' THEN 1 ELSE 0 END) as stat_sms")
             ->selectRaw("SUM(CASE WHEN {$table}.channel = 'email' THEN 1 ELSE 0 END) as stat_email")
             ->selectRaw("SUM(CASE WHEN {$table}.delivery_status IN ('sent', 'delivered') THEN 1 ELSE 0 END) as stat_delivered")
+            ->selectRaw("SUM(CASE WHEN {$table}.delivery_status = 'failed' THEN 1 ELSE 0 END) as stat_failed")
             ->first();
+    }
 
+    private function notificationLogAggregates(Builder $query): object
+    {
+        $table = (new PmMessageLog)->getTable();
+        $today = now()->toDateString();
+        $weekStart = now()->copy()->startOfWeek()->toDateString();
+        $aggregateQuery = (clone $query)
+            ->toBase()
+            ->selectRaw('COUNT(*) as stat_total')
+            ->selectRaw("SUM(CASE WHEN DATE({$table}.created_at) = ? THEN 1 ELSE 0 END) as stat_today", [$today])
+            ->selectRaw("SUM(CASE WHEN DATE({$table}.created_at) >= ? THEN 1 ELSE 0 END) as stat_week", [$weekStart]);
+
+        if (Schema::hasTable('pm_message_reads')) {
+            $uid = (int) auth()->id();
+            $aggregateQuery->selectRaw(
+                "SUM(CASE WHEN NOT EXISTS (
+                    SELECT 1 FROM pm_message_reads pmr
+                    WHERE pmr.pm_message_log_id = {$table}.id
+                      AND pmr.user_id = ?
+                ) THEN 1 ELSE 0 END) as stat_unread",
+                [$uid]
+            );
+        } else {
+            $aggregateQuery->selectRaw('COUNT(*) as stat_unread');
+        }
+
+        return $aggregateQuery->first();
+    }
+
+    /**
+     * @return list<array{label:string,value:string,hint?:string}>
+     */
+    private function messageStatsFromAggregates(object $aggregates, array $filters): array
+    {
         $total = (int) ($aggregates->stat_total ?? 0);
         $sms = (int) ($aggregates->stat_sms ?? 0);
         $email = (int) ($aggregates->stat_email ?? 0);
         $delivered = (int) ($aggregates->stat_delivered ?? 0);
+        $failed = (int) ($aggregates->stat_failed ?? 0);
         $successRate = $total > 0 ? (int) round(($delivered / $total) * 100) : 0;
-
-        $failed = (int) Cache::remember(
-            'property.messages.failed_count.'.md5(json_encode($filters)),
-            now()->addSeconds(60),
-            fn () => $this->unresolvedFailedLogCount($filters),
-        );
+        $statusFilter = trim((string) ($filters['status'] ?? ''));
+        $failedLabel = $statusFilter === 'failed' ? 'Failed (needs action)' : 'Failed';
+        $failedHint = $statusFilter === 'failed'
+            ? ($failed > 0 ? 'Unresolved SMS failures only' : 'All clear')
+            : 'Use the Failed (needs action) quick filter for unresolved SMS only';
 
         $stats = [
             ['label' => 'Matching sends', 'value' => (string) $total, 'hint' => 'Current filters'],
             ['label' => 'Delivered', 'value' => (string) $delivered, 'hint' => $successRate.'% success rate'],
-            ['label' => 'Failed (needs action)', 'value' => (string) $failed, 'hint' => $failed > 0 ? 'Unresolved SMS failures only' : 'All clear'],
+            ['label' => $failedLabel, 'value' => (string) $failed, 'hint' => $failedHint],
             ['label' => 'SMS / Email', 'value' => $sms.' / '.$email, 'hint' => 'Channel split'],
         ];
 
@@ -1632,6 +1686,67 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return $stats;
+    }
+
+    /**
+     * @return array<int, array{internal_stage:string,display_stage:string}>
+     */
+    private function messageLogPresentations(Collection $logs): array
+    {
+        if ($logs->isEmpty()) {
+            return [];
+        }
+
+        $stageService = app(TenantCommunicationStageService::class);
+        $presentations = [];
+
+        foreach ($logs as $log) {
+            if (! $log instanceof PmMessageLog) {
+                continue;
+            }
+
+            $parsed = $stageService->parseStaffSubject($log->subject);
+            $presentations[(int) $log->id] = [
+                'internal_stage' => (string) ($log->internal_stage ?: ($parsed['internal_stage'] ?? '—')),
+                'display_stage' => (string) ($log->display_stage ?: ($parsed['display_label'] ?? '—')),
+            ];
+        }
+
+        return $presentations;
+    }
+
+    /**
+     * @return array<int, array{can_resend: bool, can_bulk_select: bool, label: string, hint: string}>
+     */
+    private function resendActionsForMessageLogs(Request $request, Collection $logs): array
+    {
+        if (! $this->canManageCommunications($request) || $logs->isEmpty()) {
+            return [];
+        }
+
+        $failedSms = $logs->filter(static function (PmMessageLog $log): bool {
+            return $log->channel === 'sms'
+                && strtolower((string) ($log->delivery_status ?? '')) === 'failed';
+        });
+
+        if ($failedSms->isEmpty()) {
+            return [];
+        }
+
+        return app(RentReminderEligibilityService::class)->resendActionsForLogs($failedSms);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     * @return list<array{id:int,name:string}>
+     */
+    private function cachedMessageSenderOptions(array $filters): array
+    {
+        return Cache::remember(
+            'property.messages.senders.'.md5(json_encode($filters)),
+            now()->addMinutes(5),
+            fn () => $this->messageSenderOptions($filters),
+        );
     }
 
     /**
@@ -1771,7 +1886,6 @@ class PropertyCommunicationsWebController extends Controller
     private function notificationLogsQuery(array $filters): Builder
     {
         $q = PmMessageLog::query()
-            ->with('user')
             ->where('channel', 'system');
 
         $search = trim((string) ($filters['q'] ?? ''));

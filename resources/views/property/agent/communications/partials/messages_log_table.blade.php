@@ -24,6 +24,7 @@
     };
 
     $resendActions = (array) ($resendActions ?? []);
+    $logPresentations = (array) ($logPresentations ?? []);
     $smsErrorPresenter = app(\App\Services\Property\SmsDeliveryErrorPresenter::class);
 @endphp
 
@@ -78,9 +79,9 @@
             <tbody>
                 @forelse (($logs ?? collect()) as $log)
                     @php
-                        $parsedStage = app(\App\Services\Property\TenantCommunicationStageService::class)->parseStaffSubject($log->subject);
-                        $internalStage = $log->internal_stage ?: ($parsedStage['internal_stage'] ?? '—');
-                        $displayStage = $log->display_stage ?: ($parsedStage['display_label'] ?? '—');
+                        $presentation = (array) ($logPresentations[(int) $log->id] ?? []);
+                        $internalStage = (string) ($presentation['internal_stage'] ?? '—');
+                        $displayStage = (string) ($presentation['display_stage'] ?? '—');
                         $status = strtolower((string) ($log->delivery_status ?? 'unknown'));
                         $statusClass = match ($status) {
                             'sent', 'delivered' => 'bg-emerald-50 text-emerald-700',
