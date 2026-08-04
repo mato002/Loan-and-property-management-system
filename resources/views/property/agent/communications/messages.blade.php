@@ -13,18 +13,39 @@
     empty-hint="Send a test SMS/email below to confirm provider and SMTP setup."
 >
     @if ($canManage)
-        <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from(['showMessageForm' => $showMessageFormByDefault]) !!}" ></x-slot>
+        <x-slot name="pageModalsAttributes" x-data="{
+            showMessageForm: @js($showMessageFormByDefault),
+            composeLoading: false,
+            composeLoaded: @js(! empty($recipientContacts) || ! empty($composeTemplates)),
+            async openMessageCompose() {
+                if (! this.composeLoaded) {
+                    this.composeLoading = true;
+                    try {
+                        if (typeof window.__propertyMessagesEnsureCompose === 'function') {
+                            await window.__propertyMessagesEnsureCompose();
+                        }
+                        this.composeLoaded = true;
+                    } catch {
+                        return;
+                    } finally {
+                        this.composeLoading = false;
+                    }
+                }
+                this.showMessageForm = true;
+            }
+        }"></x-slot>
     @endif
 
     @if ($canManage)
         <x-slot name="actions">
             <button
                 type="button"
-                class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                data-property-modal-open="showMessageForm" @click="showMessageForm = true"
+                class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                :disabled="composeLoading"
+                @click="openMessageCompose()"
             >
                 <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
-                <span>Send message</span>
+                <span x-text="composeLoading ? 'Loading…' : 'Send message'">Send message</span>
             </button>
         </x-slot>
 
@@ -44,10 +65,47 @@
                 templates: @js($composeTemplates ?? []),
                 manualTo: @js(old('to_address', '')),
                 smsWallet: @js($smsWallet ?? []),
+                composeLoading: false,
+                composeLoaded: @js(! empty($recipientContacts) || ! empty($composeTemplates)),
+                composeContextUrl: @js($composeContextUrl ?? route('property.communications.messages.compose_context', absolute: false)),
                 search: '',
                 groupFilter: '',
                 pickerOpen: false,
                 selected: [],
+                async ensureComposeContext() {
+                    if (this.composeLoaded || this.composeLoading) {
+                        return;
+                    }
+                    this.composeLoading = true;
+                    try {
+                        const response = await fetch(this.composeContextUrl, {
+                            headers: {
+                                Accept: 'application/json',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'same-origin',
+                        });
+                        if (! response.ok) {
+                            throw new Error('Could not load compose data.');
+                        }
+                        const payload = await response.json();
+                        this.templates = Array.isArray(payload.composeTemplates) ? payload.composeTemplates : [];
+                        this.contacts = Array.isArray(payload.recipientContacts) ? payload.recipientContacts : [];
+                        this.smsWallet = payload.smsWallet && typeof payload.smsWallet === 'object' ? payload.smsWallet : {};
+                        this.composeLoaded = true;
+                    } catch (error) {
+                        if (window.Swal?.fire) {
+                            window.Swal.fire({
+                                icon: 'error',
+                                title: 'Could not open composer',
+                                text: error instanceof Error ? error.message : 'Try again in a moment.',
+                            });
+                        }
+                        throw error;
+                    } finally {
+                        this.composeLoading = false;
+                    }
+                },
                 templatesForChannel() {
                     return this.templates.filter(t => t.channel === this.channel);
                 },
@@ -116,8 +174,11 @@
                     this.selected = [];
                     this.pickerOpen = false;
                     this.templateId = '';
+                },
+                init() {
+                    window.__propertyMessagesEnsureCompose = () => this.ensureComposeContext();
                 }
-            }">
+            }" x-init="init()">
                 @csrf
                 <h3 class="text-sm font-semibold text-slate-900 dark:text-white" x-text="channel === 'sms' ? 'Send SMS' : 'Send email'">Send / log a message</h3>
                 <div x-show="channel === 'sms'" x-cloak class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">

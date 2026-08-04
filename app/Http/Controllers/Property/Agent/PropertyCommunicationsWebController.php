@@ -31,6 +31,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\HtmlString;
@@ -221,9 +222,14 @@ class PropertyCommunicationsWebController extends Controller
 
     public function messages(Request $request): View
     {
-        $filters = $this->normalizeMessageFilters($request->only([
+        $rawFilters = $request->only([
             'q', 'channel', 'status', 'from', 'to', 'sort', 'dir', 'sender', 'has_error', 'period', 'per_page', 'duplicates',
-        ]));
+        ]);
+        if (! $this->messageFiltersAreScoped($rawFilters)) {
+            $rawFilters['period'] = 'month';
+        }
+
+        $filters = $this->normalizeMessageFilters($rawFilters);
         $perPage = (int) ($filters['per_page'] ?? 25);
         if (! in_array($perPage, [10, 25, 50, 100], true)) {
             $perPage = 25;
@@ -232,8 +238,9 @@ class PropertyCommunicationsWebController extends Controller
         $logs = $this->messageLogsQuery($filters)->paginate($perPage)->withQueryString();
         $stats = $this->messageStats($filters);
         $canViewBody = $this->canViewMessageBody($request);
-        $senderOptions = $this->messageSenderOptions();
+        $senderOptions = $this->messageSenderOptions($filters);
         $resendActions = app(RentReminderEligibilityService::class)->resendActionsForLogs($logs->getCollection());
+        $inlineCompose = $this->shouldInlineComposeContext($request);
 
         return property_view('property.agent.communications.messages', [
             'stats' => $stats,
@@ -243,14 +250,29 @@ class PropertyCommunicationsWebController extends Controller
             'perPage' => $perPage,
             'canViewBody' => $canViewBody,
             'senderOptions' => $senderOptions,
-            'recipientContacts' => $this->recipientContactsForCompose(),
+            'recipientContacts' => $inlineCompose ? $this->recipientContactsForCompose() : [],
             'columns' => [],
             'tableRows' => [],
             'tableRowFilters' => [],
             'canManageCommunications' => $this->canManageCommunications($request),
             'canExportCommunications' => $this->canExportCommunications($request),
-            'smsWallet' => $this->smsWalletStatus(),
+            'smsWallet' => $inlineCompose ? $this->smsWalletStatus() : $this->emptySmsWalletStatus(),
+            'composeTemplates' => $inlineCompose ? $this->composeTemplates() : [],
+            'composeContextUrl' => route('property.communications.messages.compose_context', absolute: false),
+        ]);
+    }
+
+    public function messagesComposeContext(Request $request): JsonResponse
+    {
+        if (! $this->canManageCommunications($request)) {
+            abort(403, 'You do not have permission to compose messages.');
+        }
+
+        return response()->json([
+            'ok' => true,
+            'recipientContacts' => $this->recipientContactsForCompose(),
             'composeTemplates' => $this->composeTemplates(),
+            'smsWallet' => $this->smsWalletStatus(),
         ]);
     }
 
@@ -1573,13 +1595,26 @@ class PropertyCommunicationsWebController extends Controller
      */
     private function messageStats(array $filters): array
     {
-        $base = $this->messageLogsQuery($filters);
-        $total = (clone $base)->count();
-        $sms = (clone $base)->where((new PmMessageLog)->getTable().'.channel', 'sms')->count();
-        $email = (clone $base)->where((new PmMessageLog)->getTable().'.channel', 'email')->count();
-        $failed = $this->unresolvedFailedLogCount($filters);
-        $delivered = (clone $base)->whereIn('delivery_status', ['sent', 'delivered'])->count();
+        $table = (new PmMessageLog)->getTable();
+        $aggregates = (clone $this->messageLogsQuery($filters))
+            ->toBase()
+            ->selectRaw("COUNT(*) as stat_total")
+            ->selectRaw("SUM(CASE WHEN {$table}.channel = 'sms' THEN 1 ELSE 0 END) as stat_sms")
+            ->selectRaw("SUM(CASE WHEN {$table}.channel = 'email' THEN 1 ELSE 0 END) as stat_email")
+            ->selectRaw("SUM(CASE WHEN {$table}.delivery_status IN ('sent', 'delivered') THEN 1 ELSE 0 END) as stat_delivered")
+            ->first();
+
+        $total = (int) ($aggregates->stat_total ?? 0);
+        $sms = (int) ($aggregates->stat_sms ?? 0);
+        $email = (int) ($aggregates->stat_email ?? 0);
+        $delivered = (int) ($aggregates->stat_delivered ?? 0);
         $successRate = $total > 0 ? (int) round(($delivered / $total) * 100) : 0;
+
+        $failed = (int) Cache::remember(
+            'property.messages.failed_count.'.md5(json_encode($filters)),
+            now()->addSeconds(60),
+            fn () => $this->unresolvedFailedLogCount($filters),
+        );
 
         $stats = [
             ['label' => 'Matching sends', 'value' => (string) $total, 'hint' => 'Current filters'],
@@ -1594,22 +1629,52 @@ class PropertyCommunicationsWebController extends Controller
                 'value' => (string) $total,
                 'hint' => 'Same phone + subject + day (count > 1)',
             ];
-        } else {
-            $duplicateFilters = array_merge($filters, [
-                'duplicates' => 'yes',
-                'status' => trim((string) ($filters['status'] ?? '')) !== '' ? $filters['status'] : 'sent',
-            ]);
-            $duplicateCount = (clone $this->messageLogsQuery($duplicateFilters))->count();
-            if ($duplicateCount > 0) {
-                $stats[] = [
-                    'label' => 'Sent duplicates',
-                    'value' => (string) $duplicateCount,
-                    'hint' => 'Extra SENT rows (same phone + subject + day). Use Duplicates filter',
-                ];
-            }
         }
 
         return $stats;
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function messageFiltersAreScoped(array $filters): bool
+    {
+        foreach (['q', 'channel', 'status', 'from', 'to', 'period', 'sender', 'has_error', 'duplicates'] as $key) {
+            if (trim((string) ($filters[$key] ?? '')) !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function shouldInlineComposeContext(Request $request): bool
+    {
+        return old('channel') !== null
+            || old('body') !== null
+            || old('to_address') !== null
+            || old('subject') !== null;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function emptySmsWalletStatus(): array
+    {
+        return [
+            'balance' => 0.0,
+            'cost_per_sms' => 0.0,
+            'currency' => app(BulkSmsService::class)->currency(),
+            'billing_mode' => 'local',
+            'balance_source' => 'local',
+            'max_recipients' => 0,
+            'can_send_one' => false,
+            'status' => 'unknown',
+            'headline' => 'SMS balance loads when you open Send message',
+            'detail' => null,
+            'provider_ok' => false,
+            'provider_error' => null,
+        ];
     }
 
     /**
@@ -1624,11 +1689,12 @@ class PropertyCommunicationsWebController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $filters
      * @return list<array{id:int,name:string}>
      */
-    private function messageSenderOptions(): array
+    private function messageSenderOptions(array $filters = []): array
     {
-        $userIds = PmMessageLog::query()
+        $userIds = $this->messageLogsQuery($filters, applyDuplicates: false)
             ->whereNotNull('user_id')
             ->distinct()
             ->pluck('user_id')

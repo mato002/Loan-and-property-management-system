@@ -444,6 +444,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/notifications/mark-all-read', [PropertyCommunicationsWebController::class, 'notificationsMarkAllRead'])->name('notifications.mark_all_read');
     Route::get('/notifications/{log}', [PropertyCommunicationsWebController::class, 'showNotification'])->name('notifications.show');
     Route::get('/communications/messages', [PropertyCommunicationsWebController::class, 'messages'])->name('communications.messages');
+    Route::get('/communications/messages/compose-context', [PropertyCommunicationsWebController::class, 'messagesComposeContext'])->middleware('property.permission:communications.manage')->name('communications.messages.compose_context');
     Route::get('/communications/messages/export', [PropertyCommunicationsWebController::class, 'messagesExport'])->name('communications.messages.export');
     Route::post('/communications/messages/bulk', [PropertyCommunicationsWebController::class, 'messagesBulk'])->middleware('property.permission:communications.manage')->name('communications.messages.bulk');
     Route::post('/communications/sms-topup', [PropertyCommunicationsWebController::class, 'smsWalletTopup'])->middleware('property.permission:communications.manage')->name('communications.sms_topup');

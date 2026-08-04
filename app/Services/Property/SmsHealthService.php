@@ -249,7 +249,7 @@ final class SmsHealthService
     public function normalizeCommunicationsPeriodFilters(array $filters): array
     {
         $period = trim((string) ($filters['period'] ?? ''));
-        if ($period !== '' && trim((string) ($filters['from'] ?? '')) === '' && trim((string) ($filters['to'] ?? '')) === '') {
+        if ($period !== '' && $period !== 'all' && trim((string) ($filters['from'] ?? '')) === '' && trim((string) ($filters['to'] ?? '')) === '') {
             $now = now();
             if ($period === 'today') {
                 $filters['from'] = $now->toDateString();

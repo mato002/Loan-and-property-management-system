@@ -12,7 +12,7 @@
         <div class="space-y-2">
             <span class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Quick filters</span>
             <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:flex md:flex-wrap md:items-center md:gap-2">
-            <a href="{{ route('property.communications.messages', absolute: false) }}" data-turbo-frame="property-main" class="{{ $quickFilterLinkClass }} border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All</a>
+            <a href="{{ route('property.communications.messages', ['period' => 'all'], absolute: false) }}" data-turbo-frame="property-main" class="{{ $quickFilterLinkClass }} border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All time</a>
             <a href="{{ route('property.communications.messages', ['period' => 'today'], absolute: false) }}" data-turbo-frame="property-main" class="{{ $quickFilterLinkClass }} border-slate-300 text-slate-700 hover:bg-slate-50">Today</a>
             <a href="{{ route('property.communications.messages', ['period' => 'week'], absolute: false) }}" data-turbo-frame="property-main" class="{{ $quickFilterLinkClass }} border-slate-300 text-slate-700 hover:bg-slate-50">This week</a>
             <a href="{{ route('property.communications.messages', ['period' => 'month'], absolute: false) }}" data-turbo-frame="property-main" class="{{ $quickFilterLinkClass }} border-slate-300 text-slate-700 hover:bg-slate-50">This month</a>
