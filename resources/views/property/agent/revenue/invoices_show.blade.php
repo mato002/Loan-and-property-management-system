@@ -17,6 +17,9 @@
     $canManage = (bool) (auth()->user()?->hasPmPermission('invoices.manage'));
     $canPay = (bool) (auth()->user()?->hasPmPermission('payments.record'));
     $canSend = (bool) (auth()->user()?->hasPmPermission('communications.manage'));
+    $chargeCategory = $invoice->chargeCategoryLabel();
+    $chargeHint = $invoice->chargeDetailHint();
+    $leaseRentExpectation = $invoice->leaseRentExpectationForUnit();
 @endphp
 <x-property.workspace
     title="Invoice {{ $invoice->invoice_no }}"
@@ -76,8 +79,12 @@
                         @if ($invoice->billing_period)
                             <p class="text-xs text-slate-500">Period: {{ $invoice->billing_period }}</p>
                         @endif
-                        @if ($invoice->invoice_type)
-                            <p class="text-xs text-slate-500">Type: {{ ucfirst($invoice->invoice_type) }}</p>
+                        <p class="text-xs text-slate-500">Charge: <span class="font-medium text-slate-700">{{ $chargeCategory }}</span></p>
+                        @if ($chargeHint)
+                            <p class="text-xs text-slate-500">{{ $chargeHint }}</p>
+                        @endif
+                        @if ($leaseRentExpectation !== null && (string) ($invoice->invoice_type ?? '') === \App\Models\PmInvoice::TYPE_RENT && ! $invoice->isCarryForwardInvoice() && ! $invoice->isRentSupplement())
+                            <p class="text-xs text-slate-500">Lease rent (current): {{ number_format($leaseRentExpectation, 2) }}</p>
                         @endif
                     </div>
                     <div>
@@ -89,6 +96,18 @@
                         <p class="text-slate-700">{{ optional($invoice->due_date)->format('Y-m-d') ?? '—' }}</p>
                     </div>
                 </div>
+
+                @if ($chargeHint && abs((float) $invoice->amount - (float) ($leaseRentExpectation ?? 0)) > 0.009 && (string) ($invoice->invoice_type ?? '') === \App\Models\PmInvoice::TYPE_RENT && ! $invoice->isCarryForwardInvoice())
+                    <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <p class="font-semibold">Amount vs lease rent</p>
+                        <p class="mt-1 text-xs text-amber-800">{{ $chargeHint }}. This is not a duplicate bill — open the line items below or check lease history if the difference looks wrong.</p>
+                    </div>
+                @elseif ($invoice->isCarryForwardInvoice())
+                    <div class="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+                        <p class="font-semibold">Opening balance invoice</p>
+                        <p class="mt-1 text-xs text-indigo-800">{{ $chargeHint ?: 'Previous balance brought forward when the lease started.' }} Monthly rent on the lease is billed separately.</p>
+                    </div>
+                @endif
 
                 <div class="mt-4 border-t border-slate-100 pt-4">
                     <h3 class="text-sm font-semibold text-slate-800 mb-2">Line items</h3>

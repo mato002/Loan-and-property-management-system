@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\Property\CarryForwardConsolidationService;
 use App\Services\Property\FinanceFirebreakService;
 use App\Services\Property\InvoiceStateIntegrityService;
+use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,7 +13,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 
 class PmInvoice extends Model
 {
@@ -555,4 +555,184 @@ class PmInvoice extends Model
 
         return $token;
     }
+
+    public function invoiceKindKey(): string
+    {
+        return (string) ($this->invoice_kind ?? self::KIND_INVOICE);
+    }
+
+    public function isRentSupplement(): bool
+    {
+        return $this->invoiceKindKey() === self::KIND_RENT_SUPPLEMENT;
+    }
+
+    public function isWaterSupplement(): bool
+    {
+        return $this->invoiceKindKey() === self::KIND_WATER_SUPPLEMENT;
+    }
+
+    public function isCarryForwardInvoice(): bool
+    {
+        if (! empty($this->carry_forward_origin)) {
+            return true;
+        }
+
+        $description = (string) ($this->description ?? '');
+
+        return str_starts_with($description, self::LEASE_OPENING_ARREARS_PREFIX)
+            || str_starts_with($description, FinanceFirebreakService::CARRY_FORWARD_PREFIX);
+    }
+
+    /**
+     * Human label for what is being billed (clearer than invoice_type alone).
+     */
+    public function chargeCategoryLabel(): string
+    {
+        if ($this->isCreditNote()) {
+            return 'Credit note';
+        }
+
+        if ($this->isRentSupplement()) {
+            return 'Rent supplement';
+        }
+
+        if ($this->isWaterSupplement()) {
+            return 'Water supplement';
+        }
+
+        if ($this->isCarryForwardInvoice()) {
+            return 'Opening balance';
+        }
+
+        return match ((string) ($this->invoice_type ?? self::TYPE_RENT)) {
+            self::TYPE_WATER => 'Water utility',
+            self::TYPE_MIXED => 'Mixed charges',
+            self::TYPE_RENT => 'Monthly rent',
+            default => ucfirst((string) $this->invoice_type),
+        };
+    }
+
+    /**
+     * Expected rent for this invoice's unit (split when lease spans multiple units).
+     */
+    public function leaseRentExpectationForUnit(): ?float
+    {
+        $lease = $this->lease;
+        if (! $lease) {
+            return null;
+        }
+
+        $rent = round((float) $lease->monthly_rent, 2);
+        if ($lease->relationLoaded('units')) {
+            $unitCount = max(1, $lease->units->count());
+
+            return round($rent / $unitCount, 2);
+        }
+
+        return $rent;
+    }
+
+    /**
+     * Short subtitle for invoice lists — explains amount vs lease rent or carry-forward context.
+     */
+    public function chargeDetailHint(): ?string
+    {
+        if ($this->isRentSupplement()) {
+            return $this->truncateChargeHint((string) ($this->description ?: 'Top-up after lease rent change'));
+        }
+
+        if ($this->isCarryForwardInvoice()) {
+            return $this->truncateChargeHint($this->carryForwardDescriptionSummary());
+        }
+
+        $rentDeltaHint = $this->rentAmountDeltaHint();
+        if ($rentDeltaHint !== null) {
+            return $rentDeltaHint;
+        }
+
+        $description = trim((string) ($this->description ?? ''));
+        if ($description === '') {
+            return null;
+        }
+
+        $normalizedDescription = $this->normalizeChargeDescription($description);
+        $category = Str::lower($this->chargeCategoryLabel());
+        if (Str::lower($normalizedDescription) === $category) {
+            return null;
+        }
+
+        return $this->truncateChargeHint($normalizedDescription);
+    }
+
+    public function rentAmountDeltaHint(): ?string
+    {
+        if ((string) ($this->invoice_type ?? '') !== self::TYPE_RENT) {
+            return null;
+        }
+
+        if ($this->isRentSupplement() || $this->isCarryForwardInvoice() || $this->isCreditNote()) {
+            return null;
+        }
+
+        $expected = $this->leaseRentExpectationForUnit();
+        if ($expected === null) {
+            return null;
+        }
+
+        $amount = round((float) $this->amount, 2);
+        $delta = round($amount - $expected, 2);
+        if (abs($delta) <= self::AMOUNT_EPSILON) {
+            return null;
+        }
+
+        $sign = $delta > 0 ? '+' : '';
+
+        return sprintf(
+            'Lease rent %s · billed %s (%s%s)',
+            number_format($expected, 2),
+            number_format($amount, 2),
+            $sign,
+            number_format($delta, 2),
+        );
+    }
+
+    private function carryForwardDescriptionSummary(): string
+    {
+        $description = trim((string) ($this->description ?? ''));
+        foreach ([FinanceFirebreakService::CARRY_FORWARD_PREFIX, self::LEASE_OPENING_ARREARS_PREFIX] as $prefix) {
+            if (str_starts_with($description, $prefix)) {
+                $description = trim(substr($description, strlen($prefix)));
+                break;
+            }
+        }
+
+        $description = ltrim($description, '| ');
+        if ($description !== '') {
+            return $this->normalizeChargeDescription($description);
+        }
+
+        return 'Previous balance brought forward at lease start';
+    }
+
+    private function normalizeChargeDescription(string $description): string
+    {
+        $parts = array_values(array_filter(array_map(
+            static fn (string $part): string => trim($part),
+            preg_split('/\s*[|·]\s*/', $description) ?: [],
+        )));
+
+        return $parts !== [] ? implode(' · ', $parts) : trim($description);
+    }
+
+    private function truncateChargeHint(string $text, int $limit = 88): string
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return '';
+        }
+
+        return Str::length($text) > $limit ? Str::limit($text, $limit) : $text;
+    }
+
+    private const AMOUNT_EPSILON = 0.01;
 }

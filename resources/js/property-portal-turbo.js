@@ -25,7 +25,9 @@ let propertyPortalShellRecoveryInFlight = false;
 
 /** Delay before dimming the frame — keep high so fast Turbo swaps feel instant. */
 const FRAME_LOADING_DELAY_MS = 600;
+const WORKSPACE_LOADING_FAILSAFE_MS = 120_000;
 let frameLoadingTimer = null;
+let workspaceLoadingFailsafeTimer = null;
 
 function isBypassTurboUrl(url) {
     const path = url.pathname.toLowerCase();
@@ -148,9 +150,16 @@ function schedulePropertyFrameLoading(frame) {
 
 function showWorkspaceLoading() {
     getGlobalProgressEl()?.setAttribute('data-active', '');
+    window.clearTimeout(workspaceLoadingFailsafeTimer);
+    workspaceLoadingFailsafeTimer = window.setTimeout(() => {
+        hideWorkspaceLoading();
+        clearPropertyFrameLoading();
+    }, WORKSPACE_LOADING_FAILSAFE_MS);
 }
 
 function hideWorkspaceLoading() {
+    window.clearTimeout(workspaceLoadingFailsafeTimer);
+    workspaceLoadingFailsafeTimer = null;
     getWorkspaceLoadingEl()?.removeAttribute('data-active');
     getGlobalProgressEl()?.removeAttribute('data-active');
 }

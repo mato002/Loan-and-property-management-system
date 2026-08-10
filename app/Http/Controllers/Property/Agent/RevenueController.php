@@ -28,6 +28,7 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\HtmlString;
@@ -540,88 +541,102 @@ class RevenueController extends Controller
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
         $today = now()->startOfDay();
-        $balanceSnapshot = app(FinanceBalanceSnapshotService::class);
+        $todayStr = $today->toDateString();
         $baseFilters = array_merge($filters, ['aging' => '', 'workflow' => '']);
-        $allInvoices = $this->buildArrearsInvoices($baseFilters)->limit(5000)->get();
-        $invoices = $allInvoices->filter(
-            fn (PmInvoice $invoice) => $this->arrearsInvoiceMatchesDisplayFilters($invoice, $filters, $today)
-        )->values();
-        $summaryInvoices = $allInvoices;
-        $aggregated = $invoices
-            ->filter(fn (PmInvoice $i) => (int) ($i->pm_tenant_id ?? 0) > 0)
-            ->groupBy('pm_tenant_id')
-            ->map(function ($group) use ($today, $balanceSnapshot) {
-                /** @var \Illuminate\Support\Collection<int,PmInvoice> $group */
-                $first = $group->first();
-                $tenant = $first->tenant;
-                $totalBalance = (float) $group->sum(fn (PmInvoice $i) => $balanceSnapshot->invoiceBalance($i));
-                $oldestDue = $group->pluck('due_date')->filter()->min();
-                $maxDaysOverdue = (int) $group->max(fn (PmInvoice $i) => $this->arrearsDaysOverdue($i->due_date, $today));
-                $daysLate = $maxDaysOverdue > 0
-                    ? $maxDaysOverdue
-                    : ($oldestDue ? (int) $today->diffInDays($oldestDue->copy()->startOfDay(), true) : 0);
-                $agingLabel = $maxDaysOverdue > 0
-                    ? (string) $maxDaysOverdue
-                    : $this->arrearsAgingLabel($oldestDue, $today);
-                $workflow = $this->arrearsWorkflowForDaysOverdue($maxDaysOverdue);
+        $summaryQuery = $this->buildArrearsInvoices($baseFilters);
+        $tableQuery = $this->buildArrearsInvoices($filters);
 
-                $units = $group
-                    ->map(fn (PmInvoice $i) => trim(((string) ($i->unit?->property?->name ?? '')).' / '.((string) ($i->unit?->label ?? '')), ' /'))
-                    ->filter(fn ($label) => $label !== '')
-                    ->unique()
-                    ->values();
+        $summaryRow = (clone $summaryQuery)->reorder()->toBase()->selectRaw(
+            'COUNT(*) as invoice_count,
+            COUNT(DISTINCT pm_tenant_id) as tenant_count,
+            COALESCE(SUM(balance_due), 0) as total_balance,
+            COALESCE(SUM(amount_paid), 0) as total_collected,
+            COALESCE(SUM(CASE WHEN due_date IS NULL OR due_date >= ? THEN balance_due ELSE 0 END), 0) as not_due,
+            COALESCE(SUM(CASE WHEN due_date < ? AND DATEDIFF(?, due_date) BETWEEN 1 AND 30 THEN balance_due ELSE 0 END), 0) as bucket_0_30,
+            COALESCE(SUM(CASE WHEN due_date < ? AND DATEDIFF(?, due_date) BETWEEN 31 AND 60 THEN balance_due ELSE 0 END), 0) as bucket_31_60,
+            COALESCE(SUM(CASE WHEN due_date < ? AND DATEDIFF(?, due_date) BETWEEN 61 AND 90 THEN balance_due ELSE 0 END), 0) as bucket_61_90,
+            COALESCE(SUM(CASE WHEN due_date < ? AND DATEDIFF(?, due_date) > 90 THEN balance_due ELSE 0 END), 0) as bucket_over_90',
+            [$todayStr, $todayStr, $todayStr, $todayStr, $todayStr, $todayStr, $todayStr, $todayStr, $todayStr]
+        )->first();
 
-                $types = $group
-                    ->map(fn (PmInvoice $i) => strtoupper((string) ($i->invoice_type ?: 'rent')))
-                    ->unique()
-                    ->values()
-                    ->all();
-
-                $lastContact = $group->max('updated_at');
-                if ($lastContact && ! $lastContact instanceof \Carbon\Carbon) {
-                    $lastContact = \Carbon\Carbon::parse((string) $lastContact);
-                }
-
-                return [
-                    'tenant_id' => (int) $first->pm_tenant_id,
-                    'tenant_name' => (string) ($tenant?->name ?? '—'),
-                    'tenant_phone' => (string) ($tenant?->phone ?? ''),
-                    'tenant_email' => (string) ($tenant?->email ?? ''),
-                    'tenant_account' => (string) ($tenant?->account_number ?? ''),
-                    'invoice_count' => $group->count(),
-                    'invoice_ids' => $group->pluck('id')->map(fn ($id) => (int) $id)->all(),
-                    'units' => $units,
-                    'types' => $types,
-                    'oldest_due' => $oldestDue,
-                    'days_late' => $daysLate,
-                    'aging_label' => $agingLabel,
-                    'balance' => $totalBalance,
-                    'last_contact' => $lastContact,
-                    'workflow' => $workflow,
-                ];
-            })
-            ->values();
+        $overdueTenantCount = (int) ((clone $summaryQuery)->reorder()->toBase()
+            ->whereDate('due_date', '<', $todayStr)
+            ->selectRaw('COUNT(DISTINCT pm_tenant_id) as overdue_tenant_count')
+            ->value('overdue_tenant_count') ?? 0);
 
         $sortBy = in_array($filters['sort'], ['oldest_due', 'days_late', 'balance', 'tenant', 'last_contact', 'invoice_count'], true)
             ? $filters['sort']
             : 'oldest_due';
         $sortDir = in_array($filters['dir'], ['asc', 'desc'], true) ? $filters['dir'] : 'asc';
-        $aggregated = $aggregated
-            ->sortBy(function (array $row) use ($sortBy) {
-                return match ($sortBy) {
-                    'tenant' => mb_strtolower($row['tenant_name']),
-                    'days_late' => (int) $row['days_late'],
-                    'balance' => (float) $row['balance'],
-                    'last_contact' => $row['last_contact']?->getTimestamp() ?? 0,
-                    'invoice_count' => (int) $row['invoice_count'],
-                    default => $row['oldest_due']?->getTimestamp() ?? PHP_INT_MAX,
-                };
-            }, SORT_REGULAR, $sortDir === 'desc')
+
+        $tenantAggSub = (clone $tableQuery)->reorder()->toBase()
+            ->where('pm_tenant_id', '>', 0)
+            ->selectRaw(
+                'pm_tenant_id,
+                COUNT(*) as invoice_count,
+                COALESCE(SUM(balance_due), 0) as total_balance,
+                MIN(due_date) as oldest_due,
+                MAX(GREATEST(DATEDIFF(?, due_date), 0)) as max_days_overdue,
+                MAX(updated_at) as last_contact',
+                [$todayStr]
+            )
+            ->groupBy('pm_tenant_id');
+
+        $tenantRowsQuery = DB::query()->fromSub($tenantAggSub, 'agg')
+            ->join('pm_tenants as tenant', 'tenant.id', '=', 'agg.pm_tenant_id');
+
+        $aggregated = (clone $tenantRowsQuery)
+            ->orderBy(match ($sortBy) {
+                'tenant' => 'tenant.name',
+                'days_late' => 'agg.max_days_overdue',
+                'balance' => 'agg.total_balance',
+                'last_contact' => 'agg.last_contact',
+                'invoice_count' => 'agg.invoice_count',
+                default => 'agg.oldest_due',
+            }, $sortDir)
+            ->get([
+                'agg.pm_tenant_id',
+                'agg.invoice_count',
+                'agg.total_balance',
+                'agg.oldest_due',
+                'agg.max_days_overdue',
+                'agg.last_contact',
+                'tenant.name as tenant_name',
+                'tenant.phone as tenant_phone',
+                'tenant.email as tenant_email',
+                'tenant.account_number as tenant_account',
+            ])
+            ->map(function ($row) use ($today) {
+                $maxDaysOverdue = (int) ($row->max_days_overdue ?? 0);
+                $oldestDue = $row->oldest_due ? Carbon::parse((string) $row->oldest_due) : null;
+
+                return [
+                    'tenant_id' => (int) $row->pm_tenant_id,
+                    'tenant_name' => (string) ($row->tenant_name ?? '—'),
+                    'tenant_phone' => (string) ($row->tenant_phone ?? ''),
+                    'tenant_email' => (string) ($row->tenant_email ?? ''),
+                    'tenant_account' => (string) ($row->tenant_account ?? ''),
+                    'invoice_count' => (int) ($row->invoice_count ?? 0),
+                    'invoice_ids' => [],
+                    'units' => collect(),
+                    'types' => [],
+                    'oldest_due' => $oldestDue,
+                    'days_late' => $maxDaysOverdue > 0
+                        ? $maxDaysOverdue
+                        : ($oldestDue ? (int) $today->diffInDays($oldestDue->copy()->startOfDay(), true) : 0),
+                    'aging_label' => $maxDaysOverdue > 0
+                        ? (string) $maxDaysOverdue
+                        : $this->arrearsAgingLabel($oldestDue, $today),
+                    'balance' => (float) ($row->total_balance ?? 0),
+                    'last_contact' => $row->last_contact ? Carbon::parse((string) $row->last_contact) : null,
+                    'workflow' => $this->arrearsWorkflowForDaysOverdue($maxDaysOverdue),
+                ];
+            })
             ->values();
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
-            $exportRows = $aggregated;
+            $exportRows = $this->hydrateArrearsTenantRows($aggregated, $tableQuery);
 
             return TabularExport::stream(
                 'arrears-'.now()->format('Ymd_His'),
@@ -650,7 +665,10 @@ class RevenueController extends Controller
 
         $page = max(1, (int) $request->query('page', 1));
         $total = $aggregated->count();
-        $sliced = $aggregated->slice(($page - 1) * $perPage, $perPage)->values();
+        $sliced = $this->hydrateArrearsTenantRows(
+            $aggregated->slice(($page - 1) * $perPage, $perPage)->values(),
+            $tableQuery
+        );
         $paginator = new LengthAwarePaginator(
             $sliced,
             $total,
@@ -663,32 +681,17 @@ class RevenueController extends Controller
         );
 
         $summaryBuckets = [
-            'not_due' => 0.0,
-            '0_30' => 0.0,
-            '31_60' => 0.0,
-            '61_90' => 0.0,
-            'over_90' => 0.0,
+            'not_due' => (float) ($summaryRow->not_due ?? 0),
+            '0_30' => (float) ($summaryRow->bucket_0_30 ?? 0),
+            '31_60' => (float) ($summaryRow->bucket_31_60 ?? 0),
+            '61_90' => (float) ($summaryRow->bucket_61_90 ?? 0),
+            'over_90' => (float) ($summaryRow->bucket_over_90 ?? 0),
         ];
-        foreach ($summaryInvoices as $i) {
-            $balance = $balanceSnapshot->invoiceBalance($i);
-            $balanceSnapshot->addBalanceToAgingBuckets($i->due_date, $balance, $summaryBuckets, $today);
-        }
-
-        $summaryTotal = (float) $summaryInvoices->sum(fn (PmInvoice $i) => $balanceSnapshot->invoiceBalance($i));
+        $summaryTotal = (float) ($summaryRow->total_balance ?? 0);
         $summaryOverdue = $summaryBuckets['0_30'] + $summaryBuckets['31_60'] + $summaryBuckets['61_90'] + $summaryBuckets['over_90'];
-        $summaryInvoiceCount = $summaryInvoices->count();
-        $summaryTenantCount = $summaryInvoices
-            ->filter(fn (PmInvoice $i) => (int) ($i->pm_tenant_id ?? 0) > 0)
-            ->pluck('pm_tenant_id')
-            ->unique()
-            ->count();
-        $overdueTenantCount = $summaryInvoices
-            ->filter(fn (PmInvoice $i) => $this->arrearsDaysOverdue($i->due_date, $today) > 0)
-            ->pluck('pm_tenant_id')
-            ->filter(fn ($id) => (int) $id > 0)
-            ->unique()
-            ->count();
-        $summaryCollectedOnOpen = (float) $summaryInvoices->sum(fn (PmInvoice $i) => (float) $i->amount_paid);
+        $summaryInvoiceCount = (int) ($summaryRow->invoice_count ?? 0);
+        $summaryTenantCount = (int) ($summaryRow->tenant_count ?? 0);
+        $summaryCollectedOnOpen = (float) ($summaryRow->total_collected ?? 0);
         $overduePct = $summaryTotal > 0 ? round(($summaryOverdue / $summaryTotal) * 100) : 0;
         $avgPerTenant = $summaryTenantCount > 0 ? $summaryTotal / $summaryTenantCount : 0.0;
 
@@ -838,9 +841,12 @@ class RevenueController extends Controller
             '',
         ];
 
-        $reminderTargets = $invoices
+        $reminderTargets = (clone $tableQuery)
+            ->with('tenant:id,name')
+            ->orderBy('due_date')
+            ->limit(500)
+            ->get(['id', 'invoice_no', 'pm_tenant_id', 'due_date'])
             ->filter(fn (PmInvoice $i) => (int) ($i->pm_tenant_id ?? 0) > 0)
-            ->take(500)
             ->map(fn (PmInvoice $i) => [
                 'id' => (int) $i->id,
                 'label' => (string) ($i->invoice_no.' · '.($i->tenant->name ?? 'Tenant').' · '.$i->due_date?->format('Y-m-d')),
@@ -1097,6 +1103,43 @@ class RevenueController extends Controller
         }
 
         return app(PropertyFilterCascadeCatalog::class)->applyToInvoiceQuery($query, $filters)->orderBy('due_date')->orderBy('id');
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, array<string, mixed>>  $rows
+     * @param  \Illuminate\Database\Eloquent\Builder<PmInvoice>  $tableQuery
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function hydrateArrearsTenantRows($rows, \Illuminate\Database\Eloquent\Builder $tableQuery)
+    {
+        if ($rows->isEmpty()) {
+            return $rows;
+        }
+
+        $tenantIds = $rows->pluck('tenant_id')->filter()->values()->all();
+        $pageInvoices = (clone $tableQuery)
+            ->whereIn('pm_tenant_id', $tenantIds)
+            ->with(['unit.property:id,name'])
+            ->get(['id', 'pm_tenant_id', 'property_unit_id', 'invoice_type']);
+
+        $grouped = $pageInvoices->groupBy('pm_tenant_id');
+
+        return $rows->map(function (array $row) use ($grouped) {
+            $group = $grouped->get($row['tenant_id'], collect());
+            $row['invoice_ids'] = $group->pluck('id')->map(fn ($id) => (int) $id)->all();
+            $row['units'] = $group
+                ->map(fn (PmInvoice $invoice) => trim(((string) ($invoice->unit?->property?->name ?? '')).' / '.((string) ($invoice->unit?->label ?? '')), ' /'))
+                ->filter(fn ($label) => $label !== '')
+                ->unique()
+                ->values();
+            $row['types'] = $group
+                ->map(fn (PmInvoice $invoice) => strtoupper((string) ($invoice->invoice_type ?: 'rent')))
+                ->unique()
+                ->values()
+                ->all();
+
+            return $row;
+        })->values();
     }
 
     public function sendArrearsReminders(

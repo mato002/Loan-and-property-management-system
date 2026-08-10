@@ -53,6 +53,7 @@ class PmInvoiceController extends Controller
             'unit:id,label,property_id',
             'unit.property:id,name',
             'lease:id,start_date,end_date,monthly_rent',
+            'lease.units:id',
             'items',
             'events.user:id,name',
             'allocations.payment:id,external_ref,paid_at,status,amount,channel',
@@ -525,7 +526,7 @@ class PmInvoiceController extends Controller
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
         $baseQuery = $this->applyInvoiceListFilters(
-            PmInvoice::query()->with(['tenant', 'unit.property']),
+            PmInvoice::query()->with(['tenant', 'unit.property', 'lease:id,monthly_rent', 'lease.units:id']),
             $filters
         );
         $sortMap = [
@@ -546,12 +547,13 @@ class PmInvoiceController extends Controller
             $items = (clone $baseQuery)->limit(5000)->get();
             return TabularExport::stream(
                 'invoices-'.now()->format('Ymd_His'),
-                ['Invoice #', 'Type', 'Tenant', 'Unit', 'Period', 'Amount', 'Paid', 'Balance', 'Issued', 'Due', 'Status'],
+                ['Invoice #', 'Charge', 'Charge detail', 'Tenant', 'Unit', 'Period', 'Amount', 'Paid', 'Balance', 'Issued', 'Due', 'Status'],
                 function () use ($items) {
                     foreach ($items as $i) {
                         yield [
                             (string) $i->invoice_no,
-                            (string) ($i->invoice_type ?? 'rent'),
+                            $i->chargeCategoryLabel(),
+                            (string) ($i->chargeDetailHint() ?? ''),
                             (string) ($i->tenant->name ?? ''),
                             (string) (($i->unit->property->name ?? '').'/'.($i->unit->label ?? '')),
                             $i->billing_period ?: ($i->issue_date?->format('Y-m') ?? ''),
@@ -639,13 +641,22 @@ class PmInvoiceController extends Controller
 
             $actions = new HtmlString(view('property.agent.partials.invoice_row_actions', ['invoice' => $i])->render());
 
-            $typeLabel = ucfirst((string) ($i->invoice_type ?? 'rent'));
+            $chargeLabel = e($i->chargeCategoryLabel());
+            $chargeHint = $i->chargeDetailHint();
+            $chargeCell = $chargeHint
+                ? new HtmlString(
+                    '<div class="min-w-[9rem]">'
+                    .'<p class="font-medium text-slate-800">'.$chargeLabel.'</p>'
+                    .'<p class="mt-0.5 text-[11px] leading-snug text-slate-500">'.e($chargeHint).'</p>'
+                    .'</div>'
+                )
+                : $chargeLabel;
             $statusBadge = '<span class="rounded-full px-2 py-0.5 text-[11px] font-semibold '.self::statusBadgeClasses((string) $i->status).'">'.ucfirst((string) $i->status).'</span>';
 
             return [
                 new HtmlString('<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="ids[]" value="'.$i->id.'" form="property-invoices-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select</span></label>'),
                 new HtmlString('<a href="'.$showAction.'" class="font-semibold text-blue-700 hover:underline">'.$i->invoice_no.'</a>'),
-                $typeLabel,
+                $chargeCell,
                 $i->tenant->name ?? '—',
                 ($i->unit->property->name ?? '—').'/'.($i->unit->label ?? '—'),
                 $i->billing_period ?: ($i->issue_date?->format('Y-m') ?? '—'),
@@ -666,7 +677,7 @@ class PmInvoiceController extends Controller
         return property_view('property.agent.revenue.invoices', [
             'stats' => $stats,
             'billingRangeLabel' => $billingRangeLabel,
-            'columns' => ['Select', 'Invoice #', 'Type', 'Tenant', 'Unit', 'Period', 'Amount', 'Balance', 'Issued', 'Due', 'Status', 'Actions'],
+            'columns' => ['Select', 'Invoice #', 'Charge', 'Tenant', 'Unit', 'Period', 'Amount', 'Balance', 'Issued', 'Due', 'Status', 'Actions'],
             'tableRows' => $rows,
             'paginator' => $invoices,
             'filters' => [

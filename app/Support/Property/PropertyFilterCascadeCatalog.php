@@ -11,6 +11,8 @@ use App\Models\Property;
 use App\Models\PropertyUnit;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 final class PropertyFilterCascadeCatalog
 {
@@ -19,28 +21,35 @@ final class PropertyFilterCascadeCatalog
      */
     public function fromInvoices(): array
     {
-        $units = PropertyUnit::query()
-            ->with('property:id,name')
-            ->orderBy('property_id')
-            ->orderBy('label')
-            ->get(['id', 'label', 'property_id']);
+        return Cache::remember($this->catalogCacheKey('invoices'), 300, function () {
+            $units = PropertyUnit::query()
+                ->with('property:id,name')
+                ->orderBy('property_id')
+                ->orderBy('label')
+                ->get(['id', 'label', 'property_id']);
 
-        $tenantScopes = [];
-        PmInvoice::query()
-            ->whereNotNull('pm_tenant_id')
-            ->whereNotNull('property_unit_id')
-            ->with('unit:id,property_id')
-            ->get(['pm_tenant_id', 'property_unit_id'])
-            ->each(function (PmInvoice $invoice) use (&$tenantScopes): void {
-                $this->rememberTenantScope(
-                    $tenantScopes,
-                    (int) $invoice->pm_tenant_id,
-                    (int) $invoice->property_unit_id,
-                    (int) ($invoice->unit?->property_id ?? 0),
-                );
-            });
+            $tenantScopes = [];
+            $scopedInvoiceIds = PmInvoice::query()->select('id');
+            DB::table('pm_invoices as i')
+                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->whereIn('i.id', $scopedInvoiceIds)
+                ->whereNotNull('i.pm_tenant_id')
+                ->whereNotNull('i.property_unit_id')
+                ->whereNull('i.deleted_at')
+                ->selectRaw('DISTINCT i.pm_tenant_id, i.property_unit_id, pu.property_id')
+                ->orderBy('i.pm_tenant_id')
+                ->lazy()
+                ->each(function ($row) use (&$tenantScopes): void {
+                    $this->rememberTenantScope(
+                        $tenantScopes,
+                        (int) $row->pm_tenant_id,
+                        (int) $row->property_unit_id,
+                        (int) $row->property_id,
+                    );
+                });
 
-        return $this->buildCatalog($units, $tenantScopes);
+            return $this->buildCatalog($units, $tenantScopes);
+        });
     }
 
     /**
@@ -48,29 +57,34 @@ final class PropertyFilterCascadeCatalog
      */
     public function fromLeases(): array
     {
-        $units = PropertyUnit::query()
-            ->with('property:id,name')
-            ->orderBy('property_id')
-            ->orderBy('label')
-            ->get(['id', 'label', 'property_id']);
+        return Cache::remember($this->catalogCacheKey('leases'), 300, function () {
+            $units = PropertyUnit::query()
+                ->with('property:id,name')
+                ->orderBy('property_id')
+                ->orderBy('label')
+                ->get(['id', 'label', 'property_id']);
 
-        $tenantScopes = [];
-        PmLease::query()
-            ->whereNotNull('pm_tenant_id')
-            ->with(['units:id,property_id,label'])
-            ->get(['id', 'pm_tenant_id'])
-            ->each(function (PmLease $lease) use (&$tenantScopes): void {
-                foreach ($lease->units as $unit) {
+            $tenantScopes = [];
+            $scopedLeaseIds = PmLease::query()->select('id');
+            DB::table('pm_lease_unit as lu')
+                ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
+                ->join('property_units as pu', 'pu.id', '=', 'lu.property_unit_id')
+                ->whereIn('l.id', $scopedLeaseIds)
+                ->whereNotNull('l.pm_tenant_id')
+                ->selectRaw('DISTINCT l.pm_tenant_id, lu.property_unit_id, pu.property_id')
+                ->orderBy('l.pm_tenant_id')
+                ->lazy()
+                ->each(function ($row) use (&$tenantScopes): void {
                     $this->rememberTenantScope(
                         $tenantScopes,
-                        (int) $lease->pm_tenant_id,
-                        (int) $unit->id,
-                        (int) $unit->property_id,
+                        (int) $row->pm_tenant_id,
+                        (int) $row->property_unit_id,
+                        (int) $row->property_id,
                     );
-                }
-            });
+                });
 
-        return $this->buildCatalog($units, $tenantScopes);
+            return $this->buildCatalog($units, $tenantScopes);
+        });
     }
 
     /**
@@ -78,42 +92,46 @@ final class PropertyFilterCascadeCatalog
      */
     public function fromPayments(): array
     {
-        $units = PropertyUnit::query()
-            ->with('property:id,name')
-            ->orderBy('property_id')
-            ->orderBy('label')
-            ->get(['id', 'label', 'property_id']);
+        return Cache::remember($this->catalogCacheKey('payments'), 300, function () {
+            $units = PropertyUnit::query()
+                ->with('property:id,name')
+                ->orderBy('property_id')
+                ->orderBy('label')
+                ->get(['id', 'label', 'property_id']);
 
-        $tenantScopes = [];
-        PmPayment::query()
-            ->whereNotNull('pm_tenant_id')
-            ->with(['allocations.invoice:id,property_unit_id,pm_tenant_id', 'allocations.invoice.unit:id,property_id'])
-            ->get(['id', 'pm_tenant_id'])
-            ->each(function (PmPayment $payment) use (&$tenantScopes): void {
-                $tenantId = (int) $payment->pm_tenant_id;
-                $linked = false;
-
-                foreach ($payment->allocations as $allocation) {
-                    $invoice = $allocation->invoice;
-                    if (! $invoice || (int) $invoice->property_unit_id <= 0) {
-                        continue;
-                    }
-
-                    $linked = true;
+            $tenantScopes = [];
+            $scopedPaymentIds = PmPayment::query()->select('id');
+            DB::table('pm_payment_allocations as pa')
+                ->join('pm_payments as p', 'p.id', '=', 'pa.pm_payment_id')
+                ->join('pm_invoices as i', 'i.id', '=', 'pa.pm_invoice_id')
+                ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
+                ->whereIn('p.id', $scopedPaymentIds)
+                ->whereNotNull('p.pm_tenant_id')
+                ->whereNotNull('i.property_unit_id')
+                ->selectRaw('DISTINCT p.pm_tenant_id, i.property_unit_id, pu.property_id')
+                ->orderBy('p.pm_tenant_id')
+                ->lazy()
+                ->each(function ($row) use (&$tenantScopes): void {
                     $this->rememberTenantScope(
                         $tenantScopes,
-                        $tenantId,
-                        (int) $invoice->property_unit_id,
-                        (int) ($invoice->unit?->property_id ?? 0),
+                        (int) $row->pm_tenant_id,
+                        (int) $row->property_unit_id,
+                        (int) $row->property_id,
                     );
-                }
+                });
 
-                if (! $linked && $tenantId > 0) {
-                    $tenantScopes[$tenantId] ??= ['unit_ids' => [], 'property_ids' => []];
-                }
-            });
+            PmPayment::query()
+                ->whereNotNull('pm_tenant_id')
+                ->whereDoesntHave('allocations')
+                ->select('pm_tenant_id')
+                ->distinct()
+                ->pluck('pm_tenant_id')
+                ->each(function ($tenantId) use (&$tenantScopes): void {
+                    $tenantScopes[(int) $tenantId] ??= ['unit_ids' => [], 'property_ids' => []];
+                });
 
-        return $this->buildCatalog($units, $tenantScopes);
+            return $this->buildCatalog($units, $tenantScopes);
+        });
     }
 
     /**
@@ -310,6 +328,13 @@ final class PropertyFilterCascadeCatalog
         }
 
         return true;
+    }
+
+    private function catalogCacheKey(string $suffix): string
+    {
+        $userId = (int) (auth()->id() ?? 0);
+
+        return 'property.filter_cascade.'.$suffix.'.user.'.$userId;
     }
 
     /**
