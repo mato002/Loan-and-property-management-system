@@ -21,6 +21,7 @@
         <form
             method="get"
             action="{{ route('loan.book.collection_reports') }}"
+            data-auto-submit="off"
             class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
             x-data="{
                 timer: null,
@@ -51,7 +52,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan, client, phone, branch..." @input="autoSubmitDebounced(500)" class="rounded-lg border-slate-200 text-sm" />
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Loan, client, phone, branch..." @input="autoSubmitDebounced(1100)" class="rounded-lg border-slate-200 text-sm" />
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">Report view</label>

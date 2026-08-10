@@ -262,6 +262,7 @@ class PropertyCommunicationsWebController extends Controller
         $resendActions = $this->resendActionsForMessageLogs($request, $items);
         $logPresentations = $this->messageLogPresentations($items);
         $inlineCompose = $this->shouldInlineComposeContext($request);
+        $quickFilterCounts = $this->quickMessageFilterCounts();
 
         return property_view('property.agent.communications.messages', [
             'stats' => $stats,
@@ -272,6 +273,7 @@ class PropertyCommunicationsWebController extends Controller
             'perPage' => $perPage,
             'canViewBody' => $canViewBody,
             'senderOptions' => $senderOptions,
+            'quickFilterCounts' => $quickFilterCounts,
             'recipientContacts' => $inlineCompose ? $this->recipientContactsForCompose() : [],
             'columns' => [],
             'tableRows' => [],
@@ -1390,6 +1392,8 @@ class PropertyCommunicationsWebController extends Controller
             });
         } elseif ($status === 'failed_all') {
             $q->where($table.'.delivery_status', 'failed');
+        } elseif ($status === 'success') {
+            $q->whereIn($table.'.delivery_status', ['sent', 'delivered']);
         } elseif ($status !== '') {
             $q->where($table.'.delivery_status', $status);
         }
@@ -1559,6 +1563,31 @@ class PropertyCommunicationsWebController extends Controller
         }
 
         return $stats;
+    }
+
+    /**
+     * @return array{today:int,sent_today:int,sms_today:int,email_today:int,failed_today:int}
+     */
+    private function quickMessageFilterCounts(): array
+    {
+        $todayAgg = $this->messageLogAggregates(
+            $this->messageLogsQuery($this->normalizeMessageFilters(['period' => 'today']))
+        );
+        $failedTodayAgg = $this->messageLogAggregates(
+            $this->messageLogsQuery($this->normalizeMessageFilters([
+                'period' => 'today',
+                'status' => 'failed',
+                'channel' => 'sms',
+            ]))
+        );
+
+        return [
+            'today' => (int) ($todayAgg->stat_total ?? 0),
+            'sent_today' => (int) ($todayAgg->stat_delivered ?? 0),
+            'sms_today' => (int) ($todayAgg->stat_sms ?? 0),
+            'email_today' => (int) ($todayAgg->stat_email ?? 0),
+            'failed_today' => (int) ($failedTodayAgg->stat_total ?? 0),
+        ];
     }
 
     /**

@@ -15,18 +15,19 @@
         : 'inline-flex items-center rounded-full bg-[#6a9f97]/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#386f66] ring-1 ring-[#6a9f97]/35';
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-pwa-context="portal" class="h-dvh overflow-hidden">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-pwa-context="portal-guest" data-turbo="false" class="h-dvh overflow-hidden">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        <meta name="turbo-visit-control" content="reload">
 
         <title>{{ $pageTitle }} — {{ $displayName }}</title>
 
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
+        @vite(['resources/css/app.css', 'resources/js/guest-portal.js'])
         <style>[x-cloak]{display:none!important}</style>
         @php
             $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');

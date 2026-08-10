@@ -26,6 +26,9 @@ use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
@@ -483,14 +486,7 @@ class LoanBookOperationsController extends Controller
 
         $entriesQuery = LoanBookCollectionEntry::query()
             ->with([
-                'loan' => function ($loanQuery) use ($from, $to) {
-                    $loanQuery
-                        ->with(['loanClient.assignedEmployee'])
-                        ->withSum('processedRepayments', 'amount')
-                        ->withSum(['collectionEntries as period_collection_sum' => function ($entryQuery) use ($from, $to) {
-                            $entryQuery->whereBetween('collected_on', [$from, $to]);
-                        }], 'amount');
-                },
+                'loan.loanClient.assignedEmployee',
                 'collectedBy',
                 'accountingJournalEntry',
             ])
@@ -543,27 +539,78 @@ class LoanBookOperationsController extends Controller
         }
 
         $entries = $entriesQuery->paginate($perPage)->withQueryString();
+        $this->hydrateCollectionSheetLoanMetrics($entries, $from, $to);
 
-        $loanQuery = LoanBookLoan::query()
-            ->with('loanClient')
-            ->where('status', LoanBookLoan::STATUS_ACTIVE)
-            ->orderBy('loan_number');
-        $this->scopeByAssignedLoanClient($loanQuery, $request->user());
-        $loans = $loanQuery->get();
+        $portfolioKey = $this->canAccessAllLoanData($request->user())
+            ? 'all'
+            : (string) ($this->resolveLoanEmployeeId($request->user()) ?? 'none');
+        $sidebarCacheKey = 'loan.collection_sheet.sidebar.v1.'.$portfolioKey;
+
+        [$loans, $employees] = Cache::remember($sidebarCacheKey, 300, function () use ($request) {
+            $loanQuery = LoanBookLoan::query()
+                ->with('loanClient:id,first_name,last_name,client_number')
+                ->where('status', LoanBookLoan::STATUS_ACTIVE)
+                ->orderBy('loan_number');
+            $this->scopeByAssignedLoanClient($loanQuery, $request->user());
+
+            return [
+                $loanQuery->get(['id', 'loan_number', 'loan_client_id']),
+                Employee::query()->orderBy('last_name')->orderBy('first_name')->get(['id', 'first_name', 'last_name']),
+            ];
+        });
+
+        $channels = LoanBookCollectionEntry::query()
+            ->whereBetween('collected_on', [$from, $to])
+            ->select('channel')
+            ->distinct()
+            ->orderBy('channel')
+            ->pluck('channel');
 
         return view('loan.book.collection_sheet', [
             'title' => 'Collection sheet',
             'subtitle' => 'Daily receipts by loan account.',
             'entries' => $entries,
             'loans' => $loans,
-            'employees' => Employee::query()->orderBy('last_name')->orderBy('first_name')->get(),
+            'employees' => $employees,
             'filterFrom' => $from,
             'filterTo' => $to,
             'q' => $q,
             'channel' => $channel,
             'perPage' => $perPage,
-            'channels' => LoanBookCollectionEntry::query()->select('channel')->distinct()->orderBy('channel')->pluck('channel'),
+            'channels' => $channels,
         ]);
+    }
+
+    /**
+     * @param  \Illuminate\Contracts\Pagination\LengthAwarePaginator<int, LoanBookCollectionEntry>  $entries
+     */
+    private function hydrateCollectionSheetLoanMetrics($entries, string $from, string $to): void
+    {
+        $loanIds = $entries->getCollection()->pluck('loan_book_loan_id')->filter()->unique()->values();
+        if ($loanIds->isEmpty()) {
+            return;
+        }
+
+        $paidTotals = DB::table('loan_book_payments')
+            ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->whereIn('loan_book_loan_id', $loanIds)
+            ->groupBy('loan_book_loan_id')
+            ->pluck(DB::raw('COALESCE(SUM(amount), 0)'), 'loan_book_loan_id');
+
+        $periodTotals = DB::table('loan_book_collection_entries')
+            ->whereIn('loan_book_loan_id', $loanIds)
+            ->whereBetween('collected_on', [$from, $to])
+            ->groupBy('loan_book_loan_id')
+            ->pluck(DB::raw('COALESCE(SUM(amount), 0)'), 'loan_book_loan_id');
+
+        $entries->getCollection()->transform(function (LoanBookCollectionEntry $row) use ($paidTotals, $periodTotals) {
+            if ($row->loan) {
+                $row->loan->processed_repayments_sum_amount = (float) ($paidTotals[$row->loan_book_loan_id] ?? 0);
+                $row->loan->period_collection_sum = (float) ($periodTotals[$row->loan_book_loan_id] ?? 0);
+            }
+
+            return $row;
+        });
     }
 
     public function collectionSheetStore(Request $request): RedirectResponse
@@ -786,6 +833,7 @@ class LoanBookOperationsController extends Controller
         $processedPaymentsSub = DB::table('loan_book_payments')
             ->selectRaw('loan_book_loan_id, COALESCE(SUM(amount), 0) as paid_total')
             ->where('status', LoanBookPayment::STATUS_PROCESSED)
+            ->whereIn('loan_book_loan_id', $scopedLoanIds)
             ->groupBy('loan_book_loan_id');
 
         $detailQuery = DB::table('loan_book_loans as l')
@@ -910,8 +958,21 @@ class LoanBookOperationsController extends Controller
             );
         }
 
-        $byBranch = $byBranchQuery->paginate($perPage)->withQueryString();
-        $detailRows = $detailQuery->paginate($perPage, ['*'], 'detail_page')->withQueryString();
+        $emptyPaginator = new LengthAwarePaginator(
+            [],
+            0,
+            $perPage,
+            1,
+            ['path' => Paginator::resolveCurrentPath(), 'query' => $request->query()]
+        );
+
+        if ($reportMode === 'branch') {
+            $byBranch = $byBranchQuery->paginate($perPage)->withQueryString();
+            $detailRows = $emptyPaginator;
+        } else {
+            $detailRows = $detailQuery->paginate($perPage, ['*'], 'detail_page')->withQueryString();
+            $byBranch = $emptyPaginator;
+        }
 
         return view('loan.book.collection_reports', [
             'title' => 'Collection reports',
@@ -1040,18 +1101,27 @@ class LoanBookOperationsController extends Controller
             ->when($active !== '', fn ($builder) => $builder->where('is_active', $active === '1'))
             ->orderBy('name');
 
+        $scopedLoanIds = LoanBookLoan::query()->select('id');
+        $this->scopeByAssignedLoanClient($scopedLoanIds, $request->user());
+
         $assignedLoansByEmployee = DB::table('loan_book_loans as l')
             ->join('loan_clients as c', 'c.id', '=', 'l.loan_client_id')
+            ->whereIn('l.id', $scopedLoanIds)
             ->whereNotNull('c.assigned_employee_id')
             ->selectRaw('c.assigned_employee_id as employee_id, COUNT(*) as assigned_loans')
             ->groupBy('c.assigned_employee_id')
             ->pluck('assigned_loans', 'employee_id');
 
+        $collectionDay = $day !== null
+            ? $monthDate->copy()->day(min($day, $monthDate->daysInMonth))->toDateString()
+            : null;
+
         $collectionMetricsByEmployee = DB::table('loan_book_collection_entries')
+            ->whereIn('loan_book_loan_id', $scopedLoanIds)
             ->whereNotNull('collected_by_employee_id')
             ->whereDate('collected_on', '>=', $monthStart)
             ->whereDate('collected_on', '<=', $monthEnd)
-            ->when($day !== null, fn ($builder) => $builder->whereRaw('DAY(collected_on) = ?', [$day]))
+            ->when($collectionDay !== null, fn ($builder) => $builder->whereDate('collected_on', $collectionDay))
             ->selectRaw('collected_by_employee_id as employee_id, COUNT(*) as loanbook_lines, COALESCE(SUM(amount), 0) as month_collections')
             ->groupBy('collected_by_employee_id')
             ->get()

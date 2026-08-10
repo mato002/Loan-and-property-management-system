@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => {
                     'resources/js/app.js',
                     'resources/js/public-site.js',
                     'resources/js/guest-minimal.js',
+                    'resources/js/guest-portal.js',
                 ],
                 refresh: true,
             }),

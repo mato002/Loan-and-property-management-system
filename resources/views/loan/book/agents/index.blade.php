@@ -6,6 +6,7 @@
 
         <form
             method="get"
+            data-auto-submit="off"
             class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
             x-data="{
                 timer: null,
@@ -19,7 +20,7 @@
             <div class="flex flex-wrap items-end gap-2">
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Search</label>
-                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Name or phone..." @input="autoSubmitDebounced(500)" class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
+                    <input type="text" name="q" value="{{ $q ?? '' }}" placeholder="Name or phone..." @input="autoSubmitDebounced(1100)" class="h-10 w-72 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm">
                 </div>
                 <div>
                     <label class="mb-1 block text-[11px] font-semibold uppercase text-slate-500">Branch</label>

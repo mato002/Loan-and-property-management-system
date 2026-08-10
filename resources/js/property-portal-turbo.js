@@ -276,10 +276,33 @@ function scrollPropertyMainToTop(frame) {
     }
 }
 
+function isPropertyPortalGuestUrl(url) {
+    const path = url.pathname.replace(/\/+$/, '').toLowerCase();
+
+    return /\/property\/(tenant|landlord)\/login$/i.test(path);
+}
+
+function isPropertyPortalGuestPage(url = window.location.href) {
+    if (document.documentElement?.getAttribute('data-pwa-context') === 'portal-guest') {
+        return true;
+    }
+
+    try {
+        return isPropertyPortalGuestUrl(new URL(url, window.location.href));
+    } catch {
+        return false;
+    }
+}
+
 function isPropertyShellUrl(url) {
     if (url.origin !== window.location.origin) {
         return false;
     }
+
+    if (isPropertyPortalGuestUrl(url)) {
+        return false;
+    }
+
     const path = url.pathname;
 
     return path.startsWith('/property/') || path.startsWith('/profile');
@@ -372,6 +395,10 @@ function recoverPropertyPortalDocument(url = window.location.href) {
 }
 
 function ensurePropertyPortalShell(url = window.location.href) {
+    if (isPropertyPortalGuestPage(url)) {
+        return true;
+    }
+
     if (!isPropertyShellUrl(new URL(url, window.location.href))) {
         return true;
     }
@@ -422,6 +449,10 @@ function bindPortalStylesheetRecovery() {
         }
 
         link.addEventListener('error', () => {
+            if (isPropertyPortalGuestPage()) {
+                return;
+            }
+
             if (!isPropertyShellUrl(new URL(window.location.href, window.location.href))) {
                 return;
             }
@@ -433,6 +464,10 @@ function bindPortalStylesheetRecovery() {
 
 function startPortalShellWatch() {
     if (document.documentElement?.getAttribute('data-pwa-context') !== 'portal') {
+        return;
+    }
+
+    if (isPropertyPortalGuestPage()) {
         return;
     }
 
@@ -456,6 +491,10 @@ function startPortalShellWatch() {
 }
 
 function bootPropertyPortalShellGuards() {
+    if (isPropertyPortalGuestPage()) {
+        return;
+    }
+
     bindPortalStylesheetRecovery();
     startPortalShellWatch();
 
@@ -981,7 +1020,7 @@ document.addEventListener('visibilitychange', () => {
     recoverPropertyScrollState('visibility:visible');
 
     try {
-        if (isPropertyShellUrl(new URL(window.location.href, window.location.href))) {
+        if (!isPropertyPortalGuestPage() && isPropertyShellUrl(new URL(window.location.href, window.location.href))) {
             ensurePropertyPortalShell();
         }
     } catch {

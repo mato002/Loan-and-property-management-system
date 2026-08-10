@@ -34,7 +34,7 @@
             <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{{ $message }}</div>
         @enderror
 
-        <form method="get" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <form method="get" data-auto-submit="off" class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <input type="hidden" name="from" value="{{ $filterFrom }}">
             <input type="hidden" name="to" value="{{ $filterTo }}">
             <div class="flex flex-wrap items-end gap-2">

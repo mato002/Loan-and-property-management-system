@@ -10,7 +10,7 @@
         $loginOldValue = old('login', old('email'));
     @endphp
 
-    <form method="POST" action="{{ $postRoute }}" class="space-y-4" x-data="{ showPassword: false }">
+    <form method="POST" action="{{ $postRoute }}" class="space-y-4" data-turbo="false" x-data="{ showPassword: false }">
         @csrf
 
         <div class="space-y-1">
