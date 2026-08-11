@@ -168,7 +168,7 @@ function shouldSkipHydration(frame, source, generation) {
 
 function runDeferredHydrationTasks(frame, hooks) {
     const {
-        reconcilePropertyFrameWithBrowserUrl = () => {},
+        schedulePropertyFrameReconciliation = () => {},
         wirePropertyFrameNavigation = () => {},
         setupPropertyWorkspaceTabs: setupTabs = () => {},
         setupPropertyPaymentReversal: setupReversal = () => {},
@@ -184,7 +184,7 @@ function runDeferredHydrationTasks(frame, hooks) {
     }
 
     wirePropertyFrameNavigation(frame);
-    reconcilePropertyFrameWithBrowserUrl(frame, { force: false });
+    schedulePropertyFrameReconciliation(frame, { force: false });
     setupReversal(frame);
     ensurePropertyFormModalHost();
     wirePropertyFilterCascades(frame);

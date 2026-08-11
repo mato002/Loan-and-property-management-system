@@ -5,13 +5,7 @@
         title="Access control"
         subtitle="Use the matrix to grant permissions per role in one view. User badges show counts from assigned roles, optional direct overrides, and the effective total (what the app enforces)."
     >
-        <div class="mb-4 flex flex-wrap gap-2">
-            <a href="{{ route('property.settings.system_setup') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System setup hub</a>
-            <a href="{{ route('property.settings.system_setup.forms') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Form adjustments</a>
-            <a href="{{ route('property.settings.system_setup.workflows') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Workflow adjustments</a>
-            <a href="{{ route('property.settings.system_setup.templates') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Template adjustments</a>
-            <a href="{{ route('property.settings.system_setup.access') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">Access control</a>
-        </div>
+        @include('property.agent.settings.system_setup.partials.hub_nav', ['active' => 'property.settings.system_setup.access'])
         @if (! $tablesReady)
             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                 Access-control tables are not ready yet. Run <code>php artisan migrate</code> then reload this page.

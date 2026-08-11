@@ -29,6 +29,9 @@
     if ($canSystemSetup) {
         $tabs[] = ['route' => 'property.settings.system_setup', 'label' => 'System setup'];
     }
+    if ($canSystemSetup || $canViewPermissionCatalog) {
+        $tabs[] = ['route' => 'property.settings.activity_log', 'label' => 'Activity log'];
+    }
 
     $activeRoute = $active ?? request()->route()?->getName();
 @endphp

@@ -18,6 +18,14 @@ let lastReconcileRefetchUrl = null;
 let pendingWorkspaceNavigationUrl = null;
 /** @type {number} */
 let deferredReconcileRaf = 0;
+/** @type {number} */
+let lastMainFrameLoadAt = 0;
+
+const RECONCILE_AFTER_LOAD_COOLDOWN_MS = 2500;
+
+export function stampPropertyMainFrameLoaded() {
+    lastMainFrameLoadAt = Date.now();
+}
 
 function browserNavigationKey() {
     try {
@@ -244,6 +252,85 @@ const PROPERTY_FRAME_RECONCILE_RULES = [
         ],
     },
 
+    // —— Portfolio (properties workspace) ——
+    {
+        pathSuffix: '/properties/performance',
+        expectedActive: ['property.properties.performance'],
+    },
+    {
+        pathSuffix: '/properties/occupancy',
+        expectedActive: ['property.properties.occupancy'],
+    },
+    {
+        pathSuffix: '/properties/amenities',
+        expectedActive: ['property.properties.amenities', 'property.properties.amenities.*'],
+    },
+    {
+        pathSuffix: '/properties/units',
+        expectedActive: ['property.properties.units', 'property.units.*'],
+    },
+    {
+        pathSuffix: '/properties/list',
+        expectedActive: [
+            'property.properties.list',
+            'property.properties.store',
+            'property.properties.show',
+            'property.properties.edit',
+            'property.properties.landlords.*',
+        ],
+    },
+
+    // —— Settings ——
+    {
+        pathSuffix: '/settings/activity-log',
+        expectedActive: ['property.settings.activity_log'],
+    },
+    {
+        pathSuffix: '/settings/system-setup',
+        expectedActive: ['property.settings.system_setup', 'property.settings.system_setup.*'],
+    },
+    {
+        pathSuffix: '/settings/permissions',
+        expectedActive: ['property.settings.permissions'],
+    },
+    {
+        pathSuffix: '/settings/roles',
+        expectedActive: ['property.settings.roles', 'property.settings.team_users.*'],
+    },
+    {
+        pathSuffix: '/settings/commission',
+        expectedActive: ['property.settings.commission', 'property.settings.commission.store'],
+    },
+    {
+        pathSuffix: '/settings/payments',
+        expectedActive: ['property.settings.payments', 'property.settings.payments.store'],
+    },
+    {
+        pathSuffix: '/settings/branding',
+        expectedActive: ['property.settings.branding', 'property.settings.branding.store'],
+    },
+    {
+        pathSuffix: '/settings/rules',
+        expectedActive: ['property.settings.rules', 'property.settings.rules.store'],
+    },
+    {
+        pathSuffix: '/settings/deposits',
+        expectedActive: ['property.settings.deposits', 'property.settings.deposits.store'],
+    },
+    {
+        pathSuffix: '/settings/expenses',
+        expectedActive: ['property.settings.expenses', 'property.settings.expenses.store'],
+    },
+    {
+        pathSuffix: '/settings/my-forwarder',
+        expectedActive: ['property.settings.forwarder', 'property.settings.forwarder.*'],
+    },
+    {
+        pathSuffix: '/settings',
+        pathMatch: (path) => /\/settings$/.test(path) || path.endsWith('/property/settings'),
+        expectedActive: ['property.settings.index'],
+    },
+
     // —— Portfolio (property offboarding / detail) ——
     {
         pathSuffix: '/offboarding',
@@ -275,7 +362,6 @@ const COLLECTIONS_WORKSPACE_ROUTE_PATTERNS = [
     'property.equity.sync_status.*',
 ];
 
-/** Tenants workspace tab routes (for cross-tab stale detection). */
 const TENANTS_WORKSPACE_ROUTE_PATTERNS = [
     'property.tenants.directory.*',
     'property.tenants.directory',
@@ -293,6 +379,45 @@ const TENANTS_WORKSPACE_ROUTE_PATTERNS = [
     'property.tenants.store_json',
     'property.tenants.update',
     'property.tenants.destroy',
+];
+
+const PORTFOLIO_WORKSPACE_ROUTE_PATTERNS = [
+    'property.properties.list',
+    'property.properties.store',
+    'property.properties.show',
+    'property.properties.edit',
+    'property.properties.units',
+    'property.units.*',
+    'property.properties.occupancy',
+    'property.properties.performance',
+    'property.properties.amenities',
+    'property.properties.amenities.*',
+    'property.properties.offboarding',
+    'property.properties.offboarding.*',
+];
+
+const SETTINGS_WORKSPACE_ROUTE_PATTERNS = [
+    'property.settings.index',
+    'property.settings.activity_log',
+    'property.settings.roles',
+    'property.settings.team_users.*',
+    'property.settings.permissions',
+    'property.settings.commission',
+    'property.settings.commission.store',
+    'property.settings.payments',
+    'property.settings.payments.store',
+    'property.settings.branding',
+    'property.settings.branding.store',
+    'property.settings.rules',
+    'property.settings.rules.store',
+    'property.settings.deposits',
+    'property.settings.deposits.store',
+    'property.settings.expenses',
+    'property.settings.expenses.store',
+    'property.settings.forwarder',
+    'property.settings.forwarder.*',
+    'property.settings.system_setup',
+    'property.settings.system_setup.*',
 ];
 
 /**
@@ -400,6 +525,20 @@ function resolveReconcileRule(browserPath) {
 export function reconcilePropertyFrameWithBrowserUrl(frame, visitMainFrame, options = {}) {
     const force = options.force === true;
     if (!(frame instanceof HTMLElement) || frame.id !== PROPERTY_MAIN_FRAME_ID) {
+        return;
+    }
+
+    if (
+        !force
+        && lastMainFrameLoadAt > 0
+        && Date.now() - lastMainFrameLoadAt < RECONCILE_AFTER_LOAD_COOLDOWN_MS
+    ) {
+        propertyNavDebug({
+            action: 'skip',
+            reason: 'recent-frame-load',
+            msSinceLoad: Date.now() - lastMainFrameLoadAt,
+        });
+
         return;
     }
 
@@ -537,7 +676,11 @@ export function reconcilePropertyFrameWithBrowserUrl(frame, visitMainFrame, opti
 
     const workspacePatterns = rule.pathSuffix.includes('/revenue')
         ? COLLECTIONS_WORKSPACE_ROUTE_PATTERNS
-        : TENANTS_WORKSPACE_ROUTE_PATTERNS;
+        : (rule.pathSuffix.includes('/settings')
+            ? SETTINGS_WORKSPACE_ROUTE_PATTERNS
+            : (rule.pathSuffix.includes('/properties')
+                ? PORTFOLIO_WORKSPACE_ROUTE_PATTERNS
+                : TENANTS_WORKSPACE_ROUTE_PATTERNS));
 
     if (!routeMatchesAny(frameRoute, workspacePatterns)) {
         propertyNavDebug({

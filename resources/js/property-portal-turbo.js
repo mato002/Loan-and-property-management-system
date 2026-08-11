@@ -9,6 +9,7 @@ import {
     reconcilePropertyFrameWithBrowserUrl as runPropertyFrameReconciliation,
     resetPropertyFrameReconcileToken,
     scheduleDeferredPropertyFrameReconciliation,
+    stampPropertyMainFrameLoaded,
 } from './property-frame-reconciliation';
 import {
     bumpPropertyHydrationGeneration,
@@ -687,6 +688,9 @@ const workspaceHydrationHooks = {
     clearAllStuckPropertySubmitButtons,
     syncPropertyPortalNav,
     reconcilePropertyFrameWithBrowserUrl,
+    schedulePropertyFrameReconciliation: (frame, options = {}) => {
+        scheduleDeferredPropertyFrameReconciliation(frame, visitPropertyMainFrame, options);
+    },
     scrollPropertyMainToTop,
     wirePropertyFrameNavigation,
     onHydrationComplete: (frame) => {
@@ -742,6 +746,7 @@ document.addEventListener('turbo:frame-render', (event) => {
     if (!(event.target instanceof HTMLElement) || event.target.id !== PROPERTY_MAIN_FRAME_ID) {
         return;
     }
+    stampPropertyMainFrameLoaded();
     hideWorkspaceLoading();
     clearPropertyFrameLoading();
 });
@@ -875,12 +880,21 @@ document.addEventListener('turbo:click', (event) => {
         return;
     }
 
+    const frameTarget = link.getAttribute('data-turbo-frame');
+    const usesNativeMainFrame = frameTarget === PROPERTY_MAIN_FRAME_ID;
+
     if (link.classList.contains('property-workspace-tab') || link.classList.contains('property-workspace-subtab')) {
         notePendingWorkspaceNavigation(url.toString());
     }
 
     closeAllPropertyDropdowns();
     showWorkspaceLoading();
+
+    // Links already targeting #property-main: let Turbo handle the frame swap (faster, no double-fetch).
+    if (usesNativeMainFrame) {
+        return;
+    }
+
     event.preventDefault();
     visitPropertyMainFrame(resolvePropertyNavUrl(url.toString()));
 });

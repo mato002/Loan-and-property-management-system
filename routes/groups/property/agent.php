@@ -24,6 +24,7 @@ use App\Http\Controllers\Property\Agent\PropertyOffboardingController;
 use App\Http\Controllers\Property\Agent\PropertyPortfolioController;
 use App\Http\Controllers\Property\Agent\PropertySettingsStoreWebController;
 use App\Http\Controllers\Property\Agent\PropertyTeamUserController;
+use App\Http\Controllers\Property\Agent\PropertyActivityLogController;
 use App\Http\Controllers\Property\Agent\PropertySettingsWebController;
 use App\Http\Controllers\Property\Agent\PropertyTenantsOpsWebController;
 use App\Http\Controllers\Property\Agent\PropertyUtilityChargeController;
@@ -502,6 +503,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
 
     Route::get('/settings/roles', [PropertySettingsWebController::class, 'roles'])->middleware('property.permission:team.users.manage')->name('settings.roles');
     Route::get('/settings/permissions', [PropertySettingsWebController::class, 'permissions'])->middleware('property.permission:settings.access.manage')->name('settings.permissions');
+    Route::get('/settings/activity-log', [PropertyActivityLogController::class, 'index'])->name('settings.activity_log');
     Route::get('/settings/team-users/create', [PropertyTeamUserController::class, 'create'])->middleware('property.permission:team.users.manage')->name('settings.team_users.create');
     Route::post('/settings/team-users', [PropertyTeamUserController::class, 'store'])->middleware('property.permission:team.users.manage')->name('settings.team_users.store');
     Route::get('/settings/commission', [PropertySettingsStoreWebController::class, 'commission'])->name('settings.commission');

@@ -5,22 +5,7 @@
         :title="$title"
         :subtitle="$subtitle"
     >
-        <div class="mb-4 flex flex-wrap gap-2">
-            <a href="{{ route('property.settings.system_setup') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">System setup hub</a>
-            <a href="{{ route('property.settings.system_setup.property_onboarding_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Property onboarding fields</a>
-            <a href="{{ route('property.settings.system_setup.unit_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Unit fields</a>
-            <a href="{{ route('property.settings.system_setup.amenity_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Amenity fields</a>
-            <a href="{{ route('property.settings.system_setup.landlord_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Landlord fields</a>
-            <a href="{{ route('property.settings.system_setup.lead_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Lead fields</a>
-            <a href="{{ route('property.settings.system_setup.rental_application_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Rental application fields</a>
-            <a href="{{ route('property.settings.system_setup.tenant_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Tenant fields</a>
-            <a href="{{ route('property.settings.system_setup.lease_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Lease fields</a>
-            <a href="{{ route('property.settings.system_setup.maintenance_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Maintenance fields</a>
-            <a href="{{ route('property.settings.system_setup.vendor_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Vendor fields</a>
-            <a href="{{ route('property.settings.system_setup.invoice_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Invoice/payment fields</a>
-            <a href="{{ route('property.settings.system_setup.tenant_notice_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Tenant notice fields</a>
-            <a href="{{ route('property.settings.system_setup.movement_fields') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Move-in/move-out fields</a>
-        </div>
+        @include('property.agent.settings.system_setup.partials.field_nav')
         <form method="post" action="{{ route('property.settings.system_setup.'.$module.'_fields.store') }}" class="space-y-4" x-data="{
             rows: @js(old('fields', $fields)),
             addRow() {

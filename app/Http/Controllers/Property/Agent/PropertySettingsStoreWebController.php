@@ -12,6 +12,7 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Support\Property\PropertyWorkspaceBranding;
+use App\Services\Property\PropertyActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -292,6 +293,8 @@ class PropertySettingsStoreWebController extends Controller
         PropertyPortalSetting::setValue('workflow_notes', $data['workflow_notes'] ?? '');
         PropertyPortalSetting::setValue('system_setup_workflows_count', '8');
 
+        $this->logSettingsActivity('workflows', 'Workflow setup updated');
+
         return back()->with('success', __('Workflow setup saved.'));
     }
 
@@ -313,6 +316,8 @@ class PropertySettingsStoreWebController extends Controller
         PropertyPortalSetting::setValue('template_lease_text', $data['template_lease_text'] ?? '');
         PropertyPortalSetting::setValue('template_notice_text', $data['template_notice_text'] ?? '');
         PropertyPortalSetting::setValue('system_setup_templates_count', '2');
+
+        $this->logSettingsActivity('templates', 'Template setup updated');
 
         return back()->with('success', __('Template setup saved.'));
     }
@@ -890,6 +895,11 @@ class PropertySettingsStoreWebController extends Controller
         );
         PropertyPortalSetting::setValue('system_setup_forms_count', (string) max((int) PropertyPortalSetting::getValue('system_setup_forms_count', '2'), count($fields)));
 
+        $this->logSettingsActivity('system_setup.'.$module, ucfirst(str_replace('_', ' ', $module)).' fields updated', [
+            'module' => $module,
+            'field_count' => count($fields),
+        ]);
+
         return back()->with('success', __($successMessage));
     }
 
@@ -1096,6 +1106,11 @@ class PropertySettingsStoreWebController extends Controller
             json_encode($overrides, JSON_UNESCAPED_UNICODE)
         );
 
+        $this->logSettingsActivity('commission', 'Commission settings updated', [
+            'default_percent' => $data['commission_default_percent'] ?? '',
+            'override_count' => count($overrides),
+        ]);
+
         return back()->with('success', __('Commission settings saved.'));
     }
 
@@ -1205,6 +1220,8 @@ class PropertySettingsStoreWebController extends Controller
             PropertyPortalSetting::setValue($key, $value ?? '');
         }
 
+        $this->logSettingsActivity('payments', 'Payment settings updated');
+
         return back()->with('success', __('Payment settings saved (store secrets carefully — encryption not enabled in this build).'));
     }
 
@@ -1228,6 +1245,8 @@ class PropertySettingsStoreWebController extends Controller
         PropertyPortalSetting::setValue('rules_grace_days', $data['rules_grace_days'] ?? '');
         PropertyPortalSetting::setValue('rules_late_fee_percent', $data['rules_late_fee_percent'] ?? '');
         PropertyPortalSetting::setValue('rules_notes', $data['rules_notes'] ?? '');
+
+        $this->logSettingsActivity('rules', 'System rules updated');
 
         return back()->with('success', __('Rules saved — wire these values into invoice generation when you automate penalties.'));
     }
@@ -1290,6 +1309,8 @@ class PropertySettingsStoreWebController extends Controller
             }
         });
 
+        $this->logSettingsActivity('deposits', 'Deposit rules updated');
+
         return back()->with('success', __('Deposit rules saved.'));
     }
 
@@ -1350,6 +1371,8 @@ class PropertySettingsStoreWebController extends Controller
 
             $this->syncUtilityTemplatesFromExpenseRules($rows->all());
         });
+
+        $this->logSettingsActivity('expenses', 'Expense charge rules updated');
 
         return back()->with('success', __('Expense charge rules saved.'));
     }
@@ -1469,6 +1492,18 @@ class PropertySettingsStoreWebController extends Controller
             PropertyWorkspaceBranding::setForSettings('site_favicon_url', $data['site_favicon_url'] ?? '', $request->user());
         }
 
+        $this->logSettingsActivity('branding', 'Branding settings updated', [
+            'company_name' => $data['company_name'] ?? '',
+        ]);
+
         return back()->with('success', __('Branding settings saved.'));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function logSettingsActivity(string $section, string $summary, array $payload = []): void
+    {
+        PropertyActivityLogger::settingsChanged($section, $summary, $payload);
     }
 }

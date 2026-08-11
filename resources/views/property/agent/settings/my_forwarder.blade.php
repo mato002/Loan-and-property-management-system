@@ -5,11 +5,7 @@
         title="My SMS Forwarder"
         subtitle="Generate a personal token so the SMS-forwarder app on your office phone tags every M-Pesa payment with your agent id. You only see your own payments; super admin sees everything."
     >
-        <div class="mb-4 flex flex-wrap gap-2">
-            <a href="{{ route('property.settings.payments') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Payment config</a>
-            <a href="{{ route('property.settings.forwarder') }}" aria-current="page" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white">My SMS Forwarder</a>
-            <a href="{{ route('property.settings.branding') }}" class="rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Branding</a>
-        </div>
+        @include('property.agent.settings.partials.subnav', ['active' => 'property.settings.forwarder'])
         @error('forwarder')
             <p class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ $message }}</p>
         @enderror

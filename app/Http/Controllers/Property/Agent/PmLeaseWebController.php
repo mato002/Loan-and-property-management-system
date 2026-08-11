@@ -18,6 +18,7 @@ use App\Models\PropertyUnit;
 use Illuminate\Database\Eloquent\Builder;
 use App\Services\Property\CarryForwardConsolidationService;
 use App\Services\Property\FinanceFirebreakService;
+use App\Services\Property\PropertyActivityLogger;
 use App\Services\Property\PropertyDashboardCache;
 use App\Services\Property\PropertyMoney;
 use App\Support\Property\PropertyFilterCascadeCatalog;
@@ -1932,6 +1933,16 @@ SQL;
         $this->assertUtilityExpenseTypesAllowed($utilityExpenses, $unitIds);
         $firstUtility = $utilityExpenses[0] ?? null;
 
+        $beforeSnapshot = [
+            'monthly_rent' => round((float) $lease->monthly_rent, 2),
+            'status' => (string) $lease->status,
+            'start_date' => optional($lease->start_date)->toDateString(),
+            'end_date' => optional($lease->end_date)->toDateString(),
+            'pm_tenant_id' => (int) $lease->pm_tenant_id,
+            'deposit_amount' => round((float) $lease->deposit_amount, 2),
+            'rent_due_day' => (int) ($lease->rent_due_day ?? 0),
+        ];
+
         DB::transaction(function () use ($request, $data, $lease, $utilityExpenses, $firstUtility, $unitIds, $depositLines) {
             $prevStatus = $lease->status;
             $prevUnitIds = $lease->units->pluck('id')->map(fn ($v) => (int) $v)->all();
@@ -1998,6 +2009,25 @@ SQL;
         });
 
         $lease->refresh();
+        $afterSnapshot = [
+            'monthly_rent' => round((float) $lease->monthly_rent, 2),
+            'status' => (string) $lease->status,
+            'start_date' => optional($lease->start_date)->toDateString(),
+            'end_date' => optional($lease->end_date)->toDateString(),
+            'pm_tenant_id' => (int) $lease->pm_tenant_id,
+            'deposit_amount' => round((float) $lease->deposit_amount, 2),
+            'rent_due_day' => (int) ($lease->rent_due_day ?? 0),
+        ];
+        $leaseChanges = [];
+        foreach ($beforeSnapshot as $field => $oldValue) {
+            $newValue = $afterSnapshot[$field] ?? null;
+            if ((string) $oldValue === (string) $newValue) {
+                continue;
+            }
+            $leaseChanges[$field] = ['from' => $oldValue, 'to' => $newValue];
+        }
+        PropertyActivityLogger::leaseUpdated($lease, $leaseChanges, $request->user());
+
         $carryForwardTotal = $this->leaseCarryForwardTotal($lease);
         $message = 'Lease updated.';
         if (! Schema::hasColumn('pm_leases', 'opening_arrears')) {

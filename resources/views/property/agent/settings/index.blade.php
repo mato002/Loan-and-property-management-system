@@ -39,6 +39,10 @@
             $tabLinks[] = ['route' => 'property.settings.system_setup', 'label' => 'System setup'];
             $hubItems[] = ['route' => 'property.settings.system_setup', 'title' => 'System setup', 'description' => 'Adjust forms, workflows, and templates.'];
         }
+        if ($canSystemSetup || $canViewPermissionCatalog) {
+            $tabLinks[] = ['route' => 'property.settings.activity_log', 'label' => 'Activity log'];
+            $hubItems[] = ['route' => 'property.settings.activity_log', 'title' => 'Activity log', 'description' => 'Who changed settings, leases, invoices, and other system records.'];
+        }
     @endphp
 
     <x-property.page
