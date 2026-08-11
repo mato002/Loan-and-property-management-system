@@ -114,6 +114,7 @@ class GenerateMonthlyRentInvoices extends Command
                         'description' => 'Rent '.$lease->pmTenant?->name.' · '.$issueDate.' → '.$dueDate,
                     ]);
                     $inv->refreshComputedStatus();
+                    $inv->ensureDefaultRentLineItem($perUnitAmount);
 
                     // A1: post to the trust/GL ledger so every auto-generated
                     // rent invoice shows up in receivables, income, and the
@@ -131,7 +132,10 @@ class GenerateMonthlyRentInvoices extends Command
                         PmInvoiceEvent::EVENT_ISSUED,
                         null,
                         'Auto-generated rent invoice for '.$inv->billing_period,
-                        ['source' => 'rent:generate-invoices', 'amount' => (float) $inv->amount]
+                        array_merge(
+                            PmInvoice::rentBillingEventPayload($lease, $perUnitAmount, 'rent:generate-invoices'),
+                            ['amount' => (float) $inv->amount],
+                        )
                     );
 
                     $created++;

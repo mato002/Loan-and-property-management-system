@@ -99,8 +99,8 @@
 
                 @if ($chargeHint && abs((float) $invoice->amount - (float) ($leaseRentExpectation ?? 0)) > 0.009 && (string) ($invoice->invoice_type ?? '') === \App\Models\PmInvoice::TYPE_RENT && ! $invoice->isCarryForwardInvoice())
                     <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        <p class="font-semibold">Amount vs lease rent</p>
-                        <p class="mt-1 text-xs text-amber-800">{{ $chargeHint }}. This is not a duplicate bill — open the line items below or check lease history if the difference looks wrong.</p>
+                        <p class="font-semibold">Why this amount differs from current lease rent</p>
+                        <p class="mt-1 text-xs text-amber-800">{{ $chargeHint }}</p>
                     </div>
                 @elseif ($invoice->isCarryForwardInvoice())
                     <div class="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">

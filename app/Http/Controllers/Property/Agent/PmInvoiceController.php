@@ -371,6 +371,7 @@ class PmInvoiceController extends Controller
         }
 
         $invoiceType = $data['invoice_type'] ?? PmInvoice::TYPE_RENT;
+        $leaseForRent = null;
         if ($invoiceType === PmInvoice::TYPE_RENT) {
             if (empty($data['pm_lease_id'])) {
                 return back()->withErrors([
@@ -444,7 +445,7 @@ class PmInvoiceController extends Controller
             $invoiceNo = PmInvoice::nextInvoiceNumber();
             $amount = (float) $data['amount'];
 
-            return PmInvoice::query()->create([
+            $invoice = PmInvoice::query()->create([
                 'pm_lease_id' => $data['pm_lease_id'] ?? null,
                 'property_unit_id' => $data['property_unit_id'],
                 'pm_tenant_id' => $data['pm_tenant_id'],
@@ -465,6 +466,12 @@ class PmInvoiceController extends Controller
                 'description' => $data['description'] ?? null,
                 'notes' => $data['notes'] ?? null,
             ]);
+
+            if ($invoiceType === PmInvoice::TYPE_RENT) {
+                $invoice->ensureDefaultRentLineItem($amount);
+            }
+
+            return $invoice;
         });
 
         if ($idemKey !== '') {
@@ -490,7 +497,12 @@ class PmInvoiceController extends Controller
             PmInvoiceEvent::EVENT_ISSUED,
             $request->user()?->id,
             'Invoice manually issued',
-            ['amount' => (float) $invoice->amount, 'status' => (string) $invoice->status]
+            array_merge(
+                ['source' => 'manual', 'amount' => (float) $invoice->amount, 'status' => (string) $invoice->status],
+                ! empty($data['pm_lease_id']) && ($leaseForRent ?? null)
+                    ? PmInvoice::rentBillingEventPayload($leaseForRent, (float) $invoice->amount, 'manual')
+                    : [],
+            )
         );
 
         return redirect()
@@ -526,7 +538,7 @@ class PmInvoiceController extends Controller
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
         $baseQuery = $this->applyInvoiceListFilters(
-            PmInvoice::query()->with(['tenant', 'unit.property', 'lease:id,monthly_rent', 'lease.units:id']),
+            PmInvoice::query()->with(['tenant', 'unit.property', 'lease:id,monthly_rent', 'lease.units:id', 'items', 'events']),
             $filters
         );
         $sortMap = [
@@ -645,7 +657,7 @@ class PmInvoiceController extends Controller
             $chargeHint = $i->chargeDetailHint();
             $chargeCell = $chargeHint
                 ? new HtmlString(
-                    '<div class="min-w-[9rem]">'
+                    '<div class="min-w-[12rem] max-w-xs">'
                     .'<p class="font-medium text-slate-800">'.$chargeLabel.'</p>'
                     .'<p class="mt-0.5 text-[11px] leading-snug text-slate-500">'.e($chargeHint).'</p>'
                     .'</div>'

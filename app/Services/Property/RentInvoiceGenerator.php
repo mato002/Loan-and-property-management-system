@@ -358,6 +358,7 @@ final class RentInvoiceGenerator
                 'description' => 'Rent '.$lease->pmTenant?->name.' · '.$period['issue_date'].' → '.$dueDate,
             ]);
             $inv->refreshComputedStatus();
+            $inv->ensureDefaultRentLineItem($amount);
 
             PropertyAccountingPostingService::postInvoiceIssued($inv, $actor);
 
@@ -373,7 +374,10 @@ final class RentInvoiceGenerator
                 PmInvoiceEvent::EVENT_ISSUED,
                 $actor?->id,
                 'Rent invoice generated from uninvoiced leases report',
-                ['source' => 'revenue.uninvoiced_leases', 'billing_period' => $period['ym']]
+                array_merge(
+                    PmInvoice::rentBillingEventPayload($lease, $amount, 'revenue.uninvoiced_leases'),
+                    ['billing_period' => $period['ym']],
+                )
             );
 
             return $inv;
@@ -449,6 +453,7 @@ final class RentInvoiceGenerator
                 'description' => 'Rent supplement (lease increase) · '.$period['ym'].' · was KES '.number_format($invoiced, 2).' → KES '.number_format($expected, 2),
             ]);
             $inv->refreshComputedStatus();
+            $inv->ensureDefaultRentLineItem($amount, 'Rent supplement (lease increase)');
 
             PropertyAccountingPostingService::postInvoiceIssued($inv, $actor);
 
@@ -464,13 +469,15 @@ final class RentInvoiceGenerator
                 PmInvoiceEvent::EVENT_ISSUED,
                 $actor?->id,
                 'Rent supplement for billing period '.$period['ym'],
-                [
-                    'source' => 'revenue.uninvoiced_leases.supplement',
-                    'billing_period' => $period['ym'],
-                    'expected' => $expected,
-                    'previously_invoiced' => $invoiced,
-                    'supplement_amount' => $amount,
-                ]
+                array_merge(
+                    PmInvoice::rentBillingEventPayload($lease, $expected, 'revenue.uninvoiced_leases.supplement'),
+                    [
+                        'billing_period' => $period['ym'],
+                        'expected' => $expected,
+                        'previously_invoiced' => $invoiced,
+                        'supplement_amount' => $amount,
+                    ]
+                )
             );
 
             return $inv;
