@@ -225,6 +225,24 @@
     z-index: 95000 !important;
   }
 
+  /* Amount number fields: hide spinner controls to prevent accidental nudging */
+  input[type="number"][name*="amount" i]::-webkit-outer-spin-button,
+  input[type="number"][name*="amount" i]::-webkit-inner-spin-button,
+  input[type="number"][id*="amount" i]::-webkit-outer-spin-button,
+  input[type="number"][id*="amount" i]::-webkit-inner-spin-button,
+  input[type="number"][placeholder*="amount" i]::-webkit-outer-spin-button,
+  input[type="number"][placeholder*="amount" i]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"][name*="amount" i],
+  input[type="number"][id*="amount" i],
+  input[type="number"][placeholder*="amount" i] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
   /* Panel padding: compact on mobile, roomier from md */
   .property-compact-panel {
     padding: 0.75rem;

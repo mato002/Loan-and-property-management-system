@@ -26,6 +26,7 @@ import './property-dashboard';
 import './utility-analytics';
 import './utility-operations';
 import './utility-revenue-page-modals';
+import './amount-input-safety';
 import { registerLoanWorkspaceAlpine } from './loan-workspace';
 
 import Alpine from 'alpinejs';
