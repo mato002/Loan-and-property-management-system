@@ -1118,7 +1118,10 @@ class LoanCommunicationsWebController extends Controller
     public function bulk(Request $request): View
     {
         $filters = $request->only(['q', 'channel', 'status', 'from', 'to', 'sort', 'dir']);
-        $logs = $this->bulkLogsQuery($filters)->limit(200)->get();
+        $engineReady = $this->communicationsEngineReady();
+        $logs = $engineReady
+            ? $this->bulkLogsQuery($filters)->limit(200)->get()
+            : collect();
 
         $stats = [
             ['label' => 'Bulk jobs logged', 'value' => (string) $logs->count(), 'hint' => ''],
@@ -1159,6 +1162,7 @@ class LoanCommunicationsWebController extends Controller
             'filters' => $filters,
             'branchOptions' => LoanClient::query()->whereNotNull('branch')->distinct()->orderBy('branch')->pluck('branch'),
             'composeTemplates' => $this->composeTemplates(),
+            'communicationsEngineReady' => $engineReady,
         ]);
     }
 
@@ -1194,16 +1198,31 @@ class LoanCommunicationsWebController extends Controller
 
     public function logBulk(Request $request): RedirectResponse
     {
+        if (! $this->communicationsEngineReady()) {
+            return back()->withInput()->withErrors([
+                'recipients' => 'Loan communications tables are not installed. Run php artisan migrate on this server, then try again.',
+            ]);
+        }
+
         $data = $request->validate([
             'channel' => ['required', 'in:sms,email'],
+            'category' => ['nullable', 'string', 'max:64'],
+            'priority' => ['nullable', 'in:low,normal,high,critical'],
+            'severity' => ['nullable', 'in:info,warning,critical'],
             'segment_label' => ['required', 'string', 'max:255'],
             'recipients' => ['required', 'string'],
             'message' => ['required', 'string', 'max:1000'],
             'subject' => ['nullable', 'string', 'max:255'],
             'schedule_at' => ['nullable', 'date', 'after:now'],
+            'message_template_id' => ['nullable', 'integer', 'exists:lm_message_templates,id'],
             'attachments' => ['nullable', 'array'],
             'attachments.*' => ['file', 'max:10240'],
         ]);
+
+        $category = (string) ($data['category'] ?? 'general_notice');
+        $deliveryPolicy = (array) config("loan_communication.category_delivery.{$category}", []);
+        $priority = (string) ($data['priority'] ?? ($deliveryPolicy['priority'] ?? 'normal'));
+        $severity = (string) ($data['severity'] ?? ($deliveryPolicy['severity'] ?? 'info'));
 
         $recipients = $data['channel'] === 'sms'
             ? app(BulkSmsService::class)->normalizeRecipientList($data['recipients'])
@@ -1236,30 +1255,50 @@ class LoanCommunicationsWebController extends Controller
         $payload = [
             'created_by_user_id' => (int) $request->user()->id,
             'channel' => $data['channel'],
-            'category' => 'general_notice',
+            'category' => $category,
             'purpose' => 'bulk_message',
             'subject' => $data['channel'] === 'email'
                 ? (trim((string) ($data['subject'] ?? '')) ?: '[Bulk] '.$data['segment_label'])
                 : '[BULK][SMS] '.$data['segment_label'],
             'body' => (string) $data['message'],
-            'priority' => 'normal',
-            'severity' => 'info',
+            'priority' => $priority,
+            'severity' => $severity,
             'is_bulk' => true,
             'batch_name' => $data['segment_label'],
+            'template_id' => $data['message_template_id'] ?? null,
             'attachments' => $request->file('attachments', []),
         ];
+
+        $communications = app(LoanCommunicationService::class);
 
         if (! empty($data['schedule_at'])) {
             $when = Carbon::parse($data['schedule_at']);
             $payload['scheduled_at'] = $when;
-            app(LoanCommunicationService::class)->schedule($payload, $recipients);
+            $communications->schedule($payload, $recipients);
 
             return back()->with('success', __('Bulk message scheduled for '.$when->format('Y-m-d H:i').'.'));
         }
 
-        app(LoanCommunicationService::class)->sendNow($payload, $recipients);
+        $message = $communications->sendNow($payload, $recipients);
 
-        return back()->with('success', __('Bulk message queued for delivery.'));
+        if ((string) $message->status === 'scheduled' && $message->scheduled_at) {
+            return back()->with('success', __(
+                'Bulk message scheduled for :time (SMS send window or daily limit).',
+                ['time' => $message->scheduled_at->format('Y-m-d H:i')]
+            ));
+        }
+
+        $queuedCount = $message->recipients
+            ->filter(fn ($r) => in_array($r->status, ['queued', 'scheduled', 'sending'], true))
+            ->count();
+
+        if ($queuedCount === 0) {
+            return back()->withInput()->withErrors([
+                'recipients' => 'No recipients were queued. Check opt-out preferences or recipient addresses.',
+            ]);
+        }
+
+        return back()->with('success', __('Bulk message queued for :count recipient(s).', ['count' => $queuedCount]));
     }
 
     public function conversationsPage(Request $request): View
@@ -1270,7 +1309,7 @@ class LoanCommunicationsWebController extends Controller
 
         $rows = LmConversation::query()
             ->with([
-                'tenant:id,name',
+                'client:id,first_name,last_name',
                 'messages' => fn ($q) => $q->orderByDesc('id')->limit(20),
             ])
             ->orderByDesc('last_message_at')
@@ -1291,7 +1330,7 @@ class LoanCommunicationsWebController extends Controller
         }
 
         $rows = LmConversation::query()
-            ->with(['tenant:id,name'])
+            ->with(['client:id,first_name,last_name'])
             ->orderByDesc('last_message_at')
             ->orderByDesc('id')
             ->limit(100)
@@ -1614,7 +1653,10 @@ class LoanCommunicationsWebController extends Controller
     {
         $q = LmMessageLog::query()
             ->with('user')
-            ->where('subject', 'like', '[BULK]%');
+            ->where(function (Builder $b) {
+                $b->where('subject', 'like', '[BULK]%')
+                    ->orWhere('subject', 'like', '[Bulk]%');
+            });
         $channel = trim((string) ($filters['channel'] ?? ''));
         if ($channel !== '' && in_array($channel, ['sms', 'email'], true)) {
             $q->where('channel', $channel);
@@ -1692,16 +1734,16 @@ class LoanCommunicationsWebController extends Controller
             $uid = (int) auth()->id();
             $read = trim((string) ($filters['read'] ?? ''));
             if (in_array($read, ['read', 'unread'], true)) {
-                $q->leftJoin('lm_message_reads as pmr', function ($join) use ($uid) {
-                    $join->on('pm_message_logs.id', '=', 'pmr.lm_message_log_id')
-                        ->where('pmr.user_id', '=', $uid);
+                $q->leftJoin('lm_message_reads as lmr', function ($join) use ($uid) {
+                    $join->on('lm_message_logs.id', '=', 'lmr.lm_message_log_id')
+                        ->where('lmr.user_id', '=', $uid);
                 });
                 if ($read === 'read') {
-                    $q->whereNotNull('pmr.id');
+                    $q->whereNotNull('lmr.id');
                 } else {
-                    $q->whereNull('pmr.id');
+                    $q->whereNull('lmr.id');
                 }
-                $q->select('pm_message_logs.*');
+                $q->select('lm_message_logs.*');
             }
         }
 
@@ -1718,6 +1760,13 @@ class LoanCommunicationsWebController extends Controller
     private function canManageCommunications(Request $request): bool
     {
         return $request->user()->hasLoanPermission('bulksms.create');
+    }
+
+    private function communicationsEngineReady(): bool
+    {
+        return Schema::hasTable('lm_messages')
+            && Schema::hasTable('lm_message_recipients')
+            && Schema::hasTable('lm_message_logs');
     }
 
     private function canExportCommunications(Request $request): bool

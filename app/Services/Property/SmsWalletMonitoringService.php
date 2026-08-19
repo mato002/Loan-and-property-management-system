@@ -2,6 +2,8 @@
 
 namespace App\Services\Property;
 
+use App\Models\LmMessageLog;
+use App\Models\LmMessageRecipient;
 use App\Models\PmMessageLog;
 use App\Models\PmMessageRecipient;
 use App\Services\BulkSmsService;
@@ -16,10 +18,6 @@ class SmsWalletMonitoringService
 
     public function monitorAndNotify(): void
     {
-        if (! Schema::hasTable('pm_message_logs')) {
-            return;
-        }
-
         $wallet = $this->bulkSms->walletStatusForUi();
         $this->notifyForWalletStatus($wallet);
         $this->notifyForQueuedPressure();
@@ -157,15 +155,25 @@ class SmsWalletMonitoringService
 
     public function countPendingSmsRecipients(): int
     {
-        if (! Schema::hasTable('pm_message_recipients')) {
-            return 0;
+        $count = 0;
+
+        if (Schema::hasTable('pm_message_recipients')) {
+            $count += (int) PmMessageRecipient::query()
+                ->withoutGlobalScopes()
+                ->where('channel', 'sms')
+                ->whereIn('status', ['queued', 'scheduled', 'sending'])
+                ->count();
         }
 
-        return (int) PmMessageRecipient::query()
-            ->withoutGlobalScopes()
-            ->where('channel', 'sms')
-            ->whereIn('status', ['queued', 'scheduled', 'sending'])
-            ->count();
+        if (Schema::hasTable('lm_message_recipients')) {
+            $count += (int) LmMessageRecipient::query()
+                ->withoutGlobalScopes()
+                ->where('channel', 'sms')
+                ->whereIn('status', ['queued', 'scheduled', 'sending'])
+                ->count();
+        }
+
+        return $count;
     }
 
     private function raiseSystemAlert(
@@ -175,10 +183,6 @@ class SmsWalletMonitoringService
         ?int $userId = null,
         int $cooldownMinutes = 60,
     ): void {
-        if (! Schema::hasTable('pm_message_logs')) {
-            return;
-        }
-
         $cooldownMinutes = max(5, (int) config('bulksms.alert_cooldown_minutes', $cooldownMinutes));
         $cacheKey = 'sms_wallet_system_alert:'.sha1($type);
 
@@ -186,19 +190,40 @@ class SmsWalletMonitoringService
             return;
         }
 
-        try {
-            PmMessageLog::query()->create([
-                'user_id' => $userId,
-                'channel' => 'system',
-                'to_address' => null,
-                'subject' => $subject,
-                'body' => $body,
-                'delivery_status' => 'sent',
-                'delivery_error' => null,
-                'sent_at' => now(),
-            ]);
+        $written = false;
 
-            Cache::put($cacheKey, true, now()->addMinutes($cooldownMinutes));
+        try {
+            if (Schema::hasTable('pm_message_logs')) {
+                PmMessageLog::query()->create([
+                    'user_id' => $userId,
+                    'channel' => 'system',
+                    'to_address' => null,
+                    'subject' => $subject,
+                    'body' => $body,
+                    'delivery_status' => 'sent',
+                    'delivery_error' => null,
+                    'sent_at' => now(),
+                ]);
+                $written = true;
+            }
+
+            if (Schema::hasTable('lm_message_logs')) {
+                LmMessageLog::query()->create([
+                    'user_id' => $userId,
+                    'channel' => 'system',
+                    'to_address' => null,
+                    'subject' => $subject,
+                    'body' => $body,
+                    'delivery_status' => 'sent',
+                    'delivery_error' => null,
+                    'sent_at' => now(),
+                ]);
+                $written = true;
+            }
+
+            if ($written) {
+                Cache::put($cacheKey, true, now()->addMinutes($cooldownMinutes));
+            }
         } catch (\Throwable) {
             // Never block sends or webhooks if alerting fails.
         }

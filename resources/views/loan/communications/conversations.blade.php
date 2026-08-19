@@ -3,7 +3,7 @@
 
     <x-loan.page
         title="Conversation Inbox"
-        subtitle="Inbound and outbound tenant communication threads."
+        subtitle="Inbound and outbound client communication threads."
     >
         <div class="grid gap-4 lg:grid-cols-2">
             @forelse($rows as $conversation)
@@ -11,7 +11,7 @@
                     <div class="flex items-start justify-between gap-3">
                         <div>
                             <p class="text-sm font-semibold text-slate-900">{{ $conversation->topic ?: 'Untitled conversation' }}</p>
-                            <p class="text-xs text-slate-500">{{ $conversation->tenant?->name ?: 'Unknown tenant' }}  -  {{ str_replace('_', ' ', (string) $conversation->category) }}</p>
+                            <p class="text-xs text-slate-500">{{ trim(($conversation->client?->first_name ?? '').' '.($conversation->client?->last_name ?? '')) ?: 'Unknown client' }}  -  {{ str_replace('_', ' ', (string) $conversation->category) }}</p>
                         </div>
                         <span class="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold uppercase text-slate-700">{{ $conversation->status }}</span>
                     </div>

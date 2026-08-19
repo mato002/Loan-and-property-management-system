@@ -54,4 +54,54 @@ return [
         'application_update' => 'Application status updates',
         'collections' => 'Collections escalation notices',
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Category delivery policy (channels, priority, in-app alerts)
+    |--------------------------------------------------------------------------
+    */
+    'category_delivery' => [
+        'payment_reminder' => [
+            'priority' => 'high',
+            'severity' => 'warning',
+            'channels' => ['sms', 'email'],
+            'notify_staff_on_failure' => true,
+        ],
+        'general_notice' => [
+            'priority' => 'normal',
+            'severity' => 'info',
+            'channels' => ['sms', 'email'],
+            'notify_staff_on_failure' => false,
+        ],
+        'application_update' => [
+            'priority' => 'normal',
+            'severity' => 'info',
+            'channels' => ['sms', 'email', 'system'],
+            'notify_staff_on_failure' => false,
+        ],
+        'collections' => [
+            'priority' => 'high',
+            'severity' => 'critical',
+            'channels' => ['sms', 'email'],
+            'notify_staff_on_failure' => true,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Automatic retry for failed outbound SMS
+    |--------------------------------------------------------------------------
+    */
+    'sms_auto_retry' => [
+        'enabled' => filter_var(env('LOAN_SMS_AUTO_RETRY_ENABLED', true), FILTER_VALIDATE_BOOL),
+        'max_retries' => (int) env('LOAN_SMS_MAX_RETRIES', 5),
+        'default_retry_minutes' => (int) env('LOAN_SMS_RETRY_MINUTES', 10),
+        'balance_retry_minutes' => (int) env('LOAN_SMS_BALANCE_RETRY_MINUTES', 60),
+        'rate_limit_retry_minutes' => (int) env('LOAN_SMS_RATE_LIMIT_RETRY_MINUTES', 15),
+        'min_minutes_between_attempts' => (int) env('LOAN_SMS_AUTO_RETRY_COOLDOWN_MINUTES', 30),
+        'max_age_hours' => (int) env('LOAN_SMS_AUTO_RETRY_MAX_AGE_HOURS', 72),
+        'batch_limit' => (int) env('LOAN_SMS_AUTO_RETRY_BATCH_LIMIT', 25),
+        'delay_between_sends_ms' => (int) env('LOAN_SMS_AUTO_RETRY_DELAY_MS', 1500),
+    ],
+
 ];

@@ -13,6 +13,11 @@
     empty-hint="Describe the segment and message plan below."
 >
     <x-slot name="above">
+        @unless ($communicationsEngineReady ?? true)
+            <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                Loan communications tables are not installed. Run <code class="font-mono text-xs">php artisan migrate</code> on this server before bulk SMS/email can send or log messages.
+            </div>
+        @endunless
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
             <div class="flex flex-wrap items-center gap-2">
                 <a href="{{ route('loan.communications.bulk', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All bulk logs</a>
@@ -66,12 +71,39 @@
                     <option value="email" @selected(old('channel') === 'email')>Email</option>
                 </select>
             </div>
+            <div class="grid gap-3 sm:grid-cols-3">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Category</label>
+                    <select name="category" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        @foreach (config('loan_communication.template_categories', []) as $key => $label)
+                            <option value="{{ $key }}" @selected(old('category', 'general_notice') === $key)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Priority</label>
+                    <select name="priority" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        @foreach (['low' => 'Low', 'normal' => 'Normal', 'high' => 'High', 'critical' => 'Critical'] as $val => $label)
+                            <option value="{{ $val }}" @selected(old('priority', 'normal') === $val)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Severity</label>
+                    <select name="severity" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        @foreach (['info' => 'Info', 'warning' => 'Warning', 'critical' => 'Critical'] as $val => $label)
+                            <option value="{{ $val }}" @selected(old('severity', 'info') === $val)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 -mt-1">High/critical priority failures also raise in-app alerts under Communications → Notifications.</p>
             <x-communications.send-template-picker />
             <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-gray-900/40 p-3">
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="text-xs text-slate-600 dark:text-slate-400 mr-1">Load recipients:</span>
                     <button type="button" data-segment="clients" class="pm-load-recipients rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">Clients</button>
-                    <button type="button" data-segment="landlords" class="pm-load-recipients rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">Landlords</button>
+                    <button type="button" data-segment="leads" class="pm-load-recipients rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">Leads</button>
                     <button type="button" data-segment="staff" class="pm-load-recipients rounded border border-slate-300 dark:border-slate-600 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">Staff</button>
                     <span id="pm-load-hint" class="text-[11px] text-slate-500 dark:text-slate-400 hidden">Loading…</span>
                 </div>
@@ -107,7 +139,7 @@
                         <select id="pm-tenant-pick" multiple class="mt-1 w-full min-h-[120px] rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-xs px-2 py-1.5"></select>
                         <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Hold Ctrl/Cmd to select multiple.</p>
                     </div>
-                    <button type="button" id="pm-apply-clients" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Apply tenant recipients</button>
+                    <button type="button" id="pm-apply-clients" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50">Apply client recipients</button>
                 </div>
                 <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-2">This app loads recipients for the selected group and appends them below based on channel. Review before sending.</p>
             </div>
@@ -293,7 +325,7 @@ document.addEventListener('DOMContentLoaded', function () {
             list = [...(tenantPickEl?.options || [])].map(opt => opt.getAttribute('data-recipient') || '').filter(Boolean);
         }
         if (list.length === 0) {
-            await showAlert('No tenant recipients selected.', 'No selection', 'info');
+            await showAlert('No client recipients selected.', 'No selection', 'info');
             return;
         }
         appendRecipients(list);

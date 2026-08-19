@@ -137,6 +137,7 @@ class LoanCommunicationService
                     'status' => $isBlocked ? 'cancelled' : ($resolvedSendNow ? 'queued' : 'scheduled'),
                     'is_opted_out' => $isBlocked,
                     'opt_out_reason' => $policy['reason'] ?? null,
+                    'max_retries' => max(1, (int) config('loan_communication.sms_auto_retry.max_retries', 5)),
                     'queued_at' => $resolvedSendNow && ! $isBlocked ? now() : null,
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -391,7 +392,9 @@ class LoanCommunicationService
             'failed_at' => now(),
             'last_error' => $reason,
             'retry_count' => $recipient->retry_count + 1,
-            'next_retry_at' => $recipient->retry_count + 1 < $recipient->max_retries ? now()->addMinutes(10) : null,
+            'next_retry_at' => $recipient->retry_count + 1 < $this->maxRetriesFor($recipient)
+                ? now()->addMinutes($this->retryDelayMinutes($reason))
+                : null,
         ]);
 
         $delivery->update([
@@ -402,12 +405,14 @@ class LoanCommunicationService
             'failure_reason' => $reason,
         ]);
 
-        if ($recipient->retry_count < $recipient->max_retries) {
+        if ($recipient->retry_count < $this->maxRetriesFor($recipient)) {
             if ($recipient->channel === 'sms') {
-                SendLoanSmsJob::dispatch($recipient->id)->delay(now()->addMinutes(10));
+                SendLoanSmsJob::dispatch($recipient->id)->delay(now()->addMinutes($this->retryDelayMinutes($reason)));
             } elseif ($recipient->channel === 'email') {
-                SendLoanEmailJob::dispatch($recipient->id)->delay(now()->addMinutes(10));
+                SendLoanEmailJob::dispatch($recipient->id)->delay(now()->addMinutes($this->retryDelayMinutes($reason)));
             }
+        } else {
+            $this->maybeNotifyStaffOfDeliveryFailure($recipient, $reason);
         }
 
         $deliveryError = $reason;
@@ -731,5 +736,81 @@ class LoanCommunicationService
         }
 
         return true;
+    }
+
+    private function maxRetriesFor(LmMessageRecipient $recipient): int
+    {
+        $configured = max(1, (int) config('loan_communication.sms_auto_retry.max_retries', 5));
+        $stored = (int) ($recipient->max_retries ?? 0);
+
+        return max($configured, $stored > 0 ? $stored : $configured);
+    }
+
+    private function retryDelayMinutes(string $reason): int
+    {
+        $error = strtolower($reason);
+
+        if (
+            str_contains($error, 'balance')
+            || str_contains($error, 'insufficient')
+            || str_contains($error, 'top up')
+            || str_contains($error, 'top-up')
+        ) {
+            return max(1, (int) config('loan_communication.sms_auto_retry.balance_retry_minutes', 60));
+        }
+
+        if ($this->isRateLimitError($error)) {
+            return max(1, (int) config('loan_communication.sms_auto_retry.rate_limit_retry_minutes', 15));
+        }
+
+        return max(1, (int) config('loan_communication.sms_auto_retry.default_retry_minutes', 10));
+    }
+
+    private function isRateLimitError(string $error): bool
+    {
+        return str_contains($error, 'rate')
+            || str_contains($error, 'too many')
+            || str_contains($error, '429')
+            || str_contains($error, 'busy');
+    }
+
+    private function maybeNotifyStaffOfDeliveryFailure(LmMessageRecipient $recipient, string $reason): void
+    {
+        $message = $recipient->message;
+        if (! $message) {
+            return;
+        }
+
+        $category = (string) ($message->category ?? 'general_notice');
+        $policy = (array) config("loan_communication.category_delivery.{$category}", []);
+        $notifyStaff = (bool) ($policy['notify_staff_on_failure'] ?? false)
+            || in_array((string) $message->priority, ['high', 'critical'], true);
+
+        if (! $notifyStaff) {
+            return;
+        }
+
+        try {
+            LmMessageLog::query()->create([
+                'user_id' => $message->created_by_user_id,
+                'channel' => 'system',
+                'to_address' => $recipient->to_address,
+                'subject' => '[DELIVERY FAILED] '.((string) ($message->subject ?? 'Message')),
+                'template_category' => $category,
+                'body' => sprintf(
+                    "Outbound %s to %s failed after retries.\n\nReason: %s\n\nPriority: %s | Severity: %s",
+                    strtoupper((string) $recipient->channel),
+                    $recipient->to_address,
+                    $reason,
+                    (string) $message->priority,
+                    (string) $message->severity
+                ),
+                'delivery_status' => 'sent',
+                'delivery_error' => null,
+                'sent_at' => now(),
+            ]);
+        } catch (\Throwable) {
+            // Never block delivery pipeline if alerting fails.
+        }
     }
 }
