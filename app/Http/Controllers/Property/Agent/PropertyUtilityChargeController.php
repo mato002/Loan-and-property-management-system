@@ -458,10 +458,19 @@ class PropertyUtilityChargeController extends Controller
                 }
 
                 $chargeType = strtolower(trim((string) ($charge->charge_type ?? '')));
-                $knownUtilityTypes = array_values(array_diff(PmInvoice::utilityTypes(), [PmInvoice::TYPE_MIXED]));
-                $invoiceType = in_array($chargeType, $knownUtilityTypes, true)
-                    ? $chargeType
-                    : PmInvoice::TYPE_OTHER;
+                $label = trim((string) ($charge->label ?? ''));
+                $knownOptions = PmInvoice::createTypeOptions();
+                if ($chargeType !== '' && isset($knownOptions[$chargeType])) {
+                    $invoiceType = $chargeType;
+                } elseif ($chargeType !== '' && in_array($chargeType, PmInvoice::reservedTypeKeys(), true)
+                    && $chargeType !== PmInvoice::TYPE_OTHER && $chargeType !== PmInvoice::TYPE_MIXED) {
+                    $invoiceType = $chargeType;
+                } else {
+                    $invoiceType = PmInvoice::resolveOrCreateTypeFromLabel(
+                        $label !== '' ? $label : ($chargeType !== '' ? $chargeType : 'Service'),
+                        PmInvoice::TYPE_SERVICE
+                    );
+                }
 
                 $usageMeta = (($charge->units_consumed ?? null) !== null || ($charge->rate_per_unit ?? null) !== null || ($charge->fixed_charge ?? null) !== null)
                     ? ' | U: '.number_format((float) ($charge->units_consumed ?? 0), 3)

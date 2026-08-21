@@ -156,31 +156,7 @@
                     </select>
                     @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
-                <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Invoice type</label>
-                    <div class="mt-1 flex items-stretch gap-2">
-                        <select
-                            name="invoice_type"
-                            data-invoice-type-select
-                            class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
-                        >
-                            @foreach (\App\Models\PmInvoice::createTypeOptions() as $typeValue => $typeLabel)
-                                <option value="{{ $typeValue }}" @selected(old('invoice_type', 'rent') === $typeValue)>{{ $typeLabel }}</option>
-                            @endforeach
-                        </select>
-                        <button
-                            type="button"
-                            class="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-                            title="Add invoice type"
-                            aria-label="Add invoice type"
-                            data-invoice-type-add
-                            data-endpoint="{{ route('property.invoices.types.store') }}"
-                        >
-                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                        </button>
-                    </div>
-                    <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Built-in types plus any you add for this workspace.</p>
-                </div>
+                @include('property.agent.revenue.partials.invoice_type_field', ['selected' => old('invoice_type', 'rent')])
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Billing period (YYYY-MM, optional)</label>
                     <input type="month" name="billing_period" value="{{ old('billing_period') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />

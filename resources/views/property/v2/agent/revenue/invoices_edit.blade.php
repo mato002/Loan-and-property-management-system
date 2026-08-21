@@ -67,6 +67,10 @@
                         @endforeach
                     </select>
                 </div>
+                @include('property.agent.revenue.partials.invoice_type_field', [
+                    'selected' => old('invoice_type', $invoice->invoice_type ?: 'rent'),
+                    'selectedLabel' => $invoice->chargeCategoryLabel(),
+                ])
             </div>
 
             <div x-data="{ show: {{ $current === PmInvoice::STATUS_CANCELLED ? 'true' : 'false' }} }">

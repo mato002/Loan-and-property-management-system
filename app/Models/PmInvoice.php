@@ -49,15 +49,17 @@ class PmInvoice extends Model
 
     public const TYPE_SERVICE = 'service';
 
+    /** @deprecated Not offered in the create dropdown — agents should add a named type instead. Kept for legacy rows. */
     public const TYPE_OTHER = 'other';
 
-    /** @deprecated Prefer a specific charge type (water, electricity, garbage, service, other). Kept for legacy rows. */
+    /** @deprecated Prefer a specific charge type. Kept for legacy rows. */
     public const TYPE_MIXED = 'mixed';
 
     public const CUSTOM_TYPES_SETTING_KEY = 'invoice_custom_types_json';
 
     /**
      * Built-in types agents can pick when manually creating an invoice.
+     * No generic "Other charge" — use + to create a named type.
      *
      * @return array<string, string> value => label
      */
@@ -69,7 +71,24 @@ class PmInvoice extends Model
             self::TYPE_ELECTRICITY => 'Electricity',
             self::TYPE_GARBAGE => 'Garbage',
             self::TYPE_SERVICE => 'Service',
-            self::TYPE_OTHER => 'Other charge',
+        ];
+    }
+
+    /**
+     * Keys that must not be recreated as custom types.
+     *
+     * @return list<string>
+     */
+    public static function reservedTypeKeys(): array
+    {
+        return [
+            self::TYPE_RENT,
+            self::TYPE_WATER,
+            self::TYPE_ELECTRICITY,
+            self::TYPE_GARBAGE,
+            self::TYPE_SERVICE,
+            self::TYPE_OTHER,
+            self::TYPE_MIXED,
         ];
     }
 
@@ -105,6 +124,7 @@ class PmInvoice extends Model
             return [];
         }
 
+        $reserved = array_flip(self::reservedTypeKeys());
         $out = [];
         foreach ($decoded as $row) {
             if (! is_array($row)) {
@@ -115,7 +135,7 @@ class PmInvoice extends Model
             if ($value === '' || $label === '') {
                 continue;
             }
-            if (isset(self::builtinTypeOptions()[$value]) || $value === self::TYPE_MIXED) {
+            if (isset($reserved[$value])) {
                 continue;
             }
             $out[$value] = $label;
@@ -141,8 +161,8 @@ class PmInvoice extends Model
         if ($value === '') {
             throw new \InvalidArgumentException('Type name must include letters or numbers.');
         }
-        if (isset(self::builtinTypeOptions()[$value]) || $value === self::TYPE_MIXED) {
-            throw new \InvalidArgumentException('That type already exists as a built-in option.');
+        if (in_array($value, self::reservedTypeKeys(), true)) {
+            throw new \InvalidArgumentException('That name is reserved. Pick a more specific charge name.');
         }
 
         $custom = self::customTypeOptions();
@@ -154,6 +174,35 @@ class PmInvoice extends Model
         self::writeCustomTypesJson($custom);
 
         return ['value' => $value, 'label' => $label];
+    }
+
+    /**
+     * Resolve a free-text charge name into a stored invoice_type (registers custom types).
+     */
+    public static function resolveOrCreateTypeFromLabel(string $label, ?string $fallbackType = null): string
+    {
+        $label = trim($label);
+        $fallbackType = $fallbackType ?: self::TYPE_SERVICE;
+        if ($label === '') {
+            return $fallbackType;
+        }
+
+        $key = self::normalizeTypeKey($label);
+        $options = self::createTypeOptions();
+        if (isset($options[$key])) {
+            return $key;
+        }
+        if (in_array($key, self::reservedTypeKeys(), true) && $key !== self::TYPE_OTHER && $key !== self::TYPE_MIXED) {
+            return $key;
+        }
+
+        try {
+            return self::addCustomType($label)['value'];
+        } catch (\InvalidArgumentException) {
+            return $key !== '' && $key !== self::TYPE_OTHER && $key !== self::TYPE_MIXED
+                ? $key
+                : $fallbackType;
+        }
     }
 
     public static function normalizeTypeKey(string $raw): string
@@ -221,7 +270,7 @@ class PmInvoice extends Model
     {
         return array_values(array_unique(array_merge(
             array_keys(self::createTypeOptions()),
-            [self::TYPE_MIXED],
+            [self::TYPE_MIXED, self::TYPE_OTHER],
         )));
     }
 
@@ -834,16 +883,35 @@ class PmInvoice extends Model
             return $custom[$type];
         }
 
+        if ($type === self::TYPE_OTHER || $type === self::TYPE_MIXED) {
+            return $this->legacyUnspecifiedChargeLabel();
+        }
+
         return match ($type) {
             self::TYPE_RENT => 'Monthly rent',
             self::TYPE_WATER => 'Water',
             self::TYPE_ELECTRICITY => 'Electricity',
             self::TYPE_GARBAGE => 'Garbage',
             self::TYPE_SERVICE => 'Service',
-            self::TYPE_OTHER => 'Other charge',
-            self::TYPE_MIXED => 'Other charge',
             default => ucfirst(str_replace('_', ' ', $type)),
         };
+    }
+
+    /**
+     * Prefer description text over the old generic "Other charge" label.
+     */
+    private function legacyUnspecifiedChargeLabel(): string
+    {
+        $desc = trim((string) ($this->description ?? ''));
+        if ($desc !== '') {
+            $chunk = preg_split('/\s*[·|–—]\s*/u', $desc, 2)[0] ?? $desc;
+            $chunk = trim(explode(' - ', $chunk, 2)[0] ?? $chunk);
+            if ($chunk !== '') {
+                return \Illuminate\Support\Str::limit($chunk, 48, '');
+            }
+        }
+
+        return 'Charge';
     }
 
     /**

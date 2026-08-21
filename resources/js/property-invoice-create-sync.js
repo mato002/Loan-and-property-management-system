@@ -38,10 +38,10 @@ async function promptAndCreateInvoiceType(button) {
     let label = '';
     if (window.Swal) {
         const result = await window.Swal.fire({
-            title: 'Add invoice type',
-            text: 'Examples: Internet, Security, Parking',
+            title: 'Add charge type',
+            text: 'Name the charge (e.g. Security, Parking, Internet). It will appear in the Charge type list.',
             input: 'text',
-            inputPlaceholder: 'Type name',
+            inputPlaceholder: 'Charge type name',
             showCancelButton: true,
             confirmButtonText: 'Add',
             cancelButtonText: 'Cancel',

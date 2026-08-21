@@ -100,6 +100,7 @@ class PmInvoiceController extends Controller
             'notes' => ['nullable', 'string', 'max:5000'],
             'status' => ['required', 'in:draft,sent,cancelled'],
             'cancelled_reason' => ['nullable', 'string', 'max:255'],
+            'invoice_type' => ['nullable', 'in:'.implode(',', PmInvoice::allowedTypes())],
         ]);
 
         if ((string) $invoice->status === PmInvoice::STATUS_PAID) {
@@ -142,6 +143,10 @@ class PmInvoiceController extends Controller
                 'notes' => $data['notes'] ?? null,
                 'status' => $newStatus,
             ];
+
+            if (! empty($data['invoice_type'])) {
+                $payload['invoice_type'] = (string) $data['invoice_type'];
+            }
 
             // Stamp status transitions so the audit trail and downstream
             // reports (e.g. landlord activity) have authoritative timestamps.
