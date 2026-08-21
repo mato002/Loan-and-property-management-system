@@ -133,8 +133,7 @@
                     <tbody class="divide-y divide-gray-100">
                         @forelse (($openInvoices ?? collect()) as $inv)
                             @php
-                                $type = (string) ($inv->invoice_type ?? 'rent');
-                                $label = $type === 'water' ? 'Water' : ($type === 'mixed' ? 'Mixed' : 'Rent');
+                                $label = $inv->chargeCategoryLabel();
                                 $bal = max(0, (float) $inv->amount - (float) $inv->amount_paid);
                             @endphp
                             <tr class="hover:bg-gray-50">

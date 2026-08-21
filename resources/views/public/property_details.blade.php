@@ -9,7 +9,9 @@
     $mapsUrl = 'https://www.google.com/maps/search/?api=1&query='.rawurlencode($mapsQuery);
     $mapEmbedUrl = 'https://maps.google.com/maps?q='.rawurlencode($mapsQuery).'&t=&z=15&ie=UTF8&iwloc=&output=embed';
     $currentPage = url()->current();
-    $listingImage = $publicPageImage ?? ($imageUrls[0] ?? $listingPlaceholderImage);
+    $listingImage = $publicPageImage
+        ?? (is_array($imageUrls[0] ?? null) ? ($imageUrls[0]['url'] ?? null) : ($imageUrls[0] ?? null))
+        ?? $listingPlaceholderImage;
     $breadcrumbSchema = [
         '@context' => 'https://schema.org',
         '@type' => 'BreadcrumbList',

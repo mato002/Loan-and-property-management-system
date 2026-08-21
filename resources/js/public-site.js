@@ -36,54 +36,94 @@ document.addEventListener('alpine:init', () => {
         },
     });
 
-    Alpine.data('propertyCardCarousel', (images = []) => ({
-        images: Array.isArray(images) ? images.filter(Boolean) : [],
-        index: 0,
-        get hasMultiple() {
-            return this.images.length > 1;
-        },
-        next(event) {
-            event?.preventDefault?.();
-            event?.stopPropagation?.();
-            if (!this.hasMultiple) return;
-            this.index = (this.index + 1) % this.images.length;
-        },
-        prev(event) {
-            event?.preventDefault?.();
-            event?.stopPropagation?.();
-            if (!this.hasMultiple) return;
-            this.index = (this.index - 1 + this.images.length) % this.images.length;
-        },
-        goTo(i, event) {
-            event?.preventDefault?.();
-            event?.stopPropagation?.();
-            this.index = i;
-        },
-    }));
+    Alpine.data('propertyCardCarousel', (media = []) => {
+        const items = (Array.isArray(media) ? media : [])
+            .map((item) => {
+                if (typeof item === 'string' && item) {
+                    return { url: item, type: 'image' };
+                }
+                if (item && typeof item === 'object' && item.url) {
+                    return {
+                        url: String(item.url),
+                        type: item.type === 'video' ? 'video' : 'image',
+                    };
+                }
+                return null;
+            })
+            .filter(Boolean);
 
-    Alpine.data('propertyGallery', (images = []) => ({
-        images: Array.isArray(images) ? images.filter(Boolean) : [],
-        lightboxOpen: false,
-        lightboxIndex: 0,
-        openAt(i) {
-            if (!this.images.length) return;
-            this.lightboxIndex = Math.max(0, Math.min(i, this.images.length - 1));
-            this.lightboxOpen = true;
-            document.body.classList.add('public-lightbox-open');
-        },
-        close() {
-            this.lightboxOpen = false;
-            document.body.classList.remove('public-lightbox-open');
-        },
-        next() {
-            if (!this.images.length) return;
-            this.lightboxIndex = (this.lightboxIndex + 1) % this.images.length;
-        },
-        prev() {
-            if (!this.images.length) return;
-            this.lightboxIndex = (this.lightboxIndex - 1 + this.images.length) % this.images.length;
-        },
-    }));
+        return {
+            items,
+            index: 0,
+            get hasMultiple() {
+                return this.items.length > 1;
+            },
+            get current() {
+                return this.items[this.index] || null;
+            },
+            next(event) {
+                event?.preventDefault?.();
+                event?.stopPropagation?.();
+                if (!this.hasMultiple) return;
+                this.index = (this.index + 1) % this.items.length;
+            },
+            prev(event) {
+                event?.preventDefault?.();
+                event?.stopPropagation?.();
+                if (!this.hasMultiple) return;
+                this.index = (this.index - 1 + this.items.length) % this.items.length;
+            },
+            goTo(i, event) {
+                event?.preventDefault?.();
+                event?.stopPropagation?.();
+                this.index = i;
+            },
+        };
+    });
+
+    Alpine.data('propertyGallery', (media = []) => {
+        const items = (Array.isArray(media) ? media : [])
+            .map((item) => {
+                if (typeof item === 'string' && item) {
+                    return { url: item, type: 'image' };
+                }
+                if (item && typeof item === 'object' && item.url) {
+                    return {
+                        url: String(item.url),
+                        type: item.type === 'video' ? 'video' : 'image',
+                    };
+                }
+                return null;
+            })
+            .filter(Boolean);
+
+        return {
+            items,
+            lightboxOpen: false,
+            lightboxIndex: 0,
+            get current() {
+                return this.items[this.lightboxIndex] || null;
+            },
+            openAt(i) {
+                if (!this.items.length) return;
+                this.lightboxIndex = Math.max(0, Math.min(i, this.items.length - 1));
+                this.lightboxOpen = true;
+                document.body.classList.add('public-lightbox-open');
+            },
+            close() {
+                this.lightboxOpen = false;
+                document.body.classList.remove('public-lightbox-open');
+            },
+            next() {
+                if (!this.items.length) return;
+                this.lightboxIndex = (this.lightboxIndex + 1) % this.items.length;
+            },
+            prev() {
+                if (!this.items.length) return;
+                this.lightboxIndex = (this.lightboxIndex - 1 + this.items.length) % this.items.length;
+            },
+        };
+    });
 
     Alpine.data('heroSearchToggle', () => ({
         listingType: 'rent',

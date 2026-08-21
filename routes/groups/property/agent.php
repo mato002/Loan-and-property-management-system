@@ -81,6 +81,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
         ->name('revenue.arrears.reminders.test_email');
     Route::get('/revenue/invoices', [PmInvoiceController::class, 'invoices'])->name('revenue.invoices');
     Route::post('/revenue/invoices', [PmInvoiceController::class, 'store'])->middleware('property.permission:invoices.manage')->name('invoices.store');
+    Route::post('/revenue/invoices/types', [PmInvoiceController::class, 'storeCustomType'])->middleware('property.permission:invoices.manage')->name('invoices.types.store');
     Route::get('/revenue/invoices/{invoice}/edit', [PmInvoiceController::class, 'edit'])->name('revenue.invoices.edit');
     Route::put('/revenue/invoices/{invoice}', [PmInvoiceController::class, 'update'])->middleware('property.permission:invoices.manage')->name('revenue.invoices.update');
     Route::patch('/revenue/invoices/{invoice}/status', [PmInvoiceController::class, 'updateStatus'])->middleware('property.permission:invoices.manage')->name('revenue.invoices.status');

@@ -329,6 +329,31 @@ class PmInvoiceController extends Controller
         return response()->json($response);
     }
 
+    public function storeCustomType(Request $request)
+    {
+        $data = $request->validate([
+            'label' => ['required', 'string', 'max:64'],
+        ]);
+
+        try {
+            $created = PmInvoice::addCustomType((string) $data['label']);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'ok' => false,
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'type' => $created,
+            'options' => collect(PmInvoice::createTypeOptions())
+                ->map(fn ($label, $value) => ['value' => $value, 'label' => $label])
+                ->values()
+                ->all(),
+        ]);
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
@@ -341,7 +366,7 @@ class PmInvoiceController extends Controller
             'description' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'status' => ['required', 'in:draft,sent'],
-            'invoice_type' => ['nullable', 'in:rent,water,mixed'],
+            'invoice_type' => ['nullable', 'in:'.implode(',', PmInvoice::allowedTypes())],
             'billing_period' => ['nullable', 'date_format:Y-m'],
             'idempotency_key' => ['nullable', 'string', 'max:120'],
         ]);
@@ -1268,7 +1293,7 @@ class PmInvoiceController extends Controller
             $query->where('status', $status);
         }
         $type = strtolower(trim((string) ($filters['type'] ?? '')));
-        if (in_array($type, [PmInvoice::TYPE_RENT, PmInvoice::TYPE_WATER, PmInvoice::TYPE_MIXED], true)) {
+        if (in_array($type, PmInvoice::allowedTypes(), true)) {
             $query->where('invoice_type', $type);
         }
         if ((int) ($filters['tenant_id'] ?? 0) > 0) {

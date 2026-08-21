@@ -63,11 +63,7 @@
             name="type"
             label="Type"
             empty-option="Type: All"
-            :options="[
-                ['value' => 'rent', 'label' => 'Rent'],
-                ['value' => 'water', 'label' => 'Water'],
-                ['value' => 'mixed', 'label' => 'Mixed'],
-            ]"
+            :options="collect(\App\Models\PmInvoice::createTypeOptions())->map(fn ($label, $value) => ['value' => $value, 'label' => $label])->values()->all()"
             :value="$filters['type'] ?? ''"
         />
         <x-property.filter-field type="select"

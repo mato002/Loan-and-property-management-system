@@ -457,9 +457,11 @@ class PropertyUtilityChargeController extends Controller
                     continue;
                 }
 
-                $invoiceType = $charge->charge_type === PmInvoice::TYPE_WATER
-                    ? PmInvoice::TYPE_WATER
-                    : PmInvoice::TYPE_MIXED;
+                $chargeType = strtolower(trim((string) ($charge->charge_type ?? '')));
+                $knownUtilityTypes = array_values(array_diff(PmInvoice::utilityTypes(), [PmInvoice::TYPE_MIXED]));
+                $invoiceType = in_array($chargeType, $knownUtilityTypes, true)
+                    ? $chargeType
+                    : PmInvoice::TYPE_OTHER;
 
                 $usageMeta = (($charge->units_consumed ?? null) !== null || ($charge->rate_per_unit ?? null) !== null || ($charge->fixed_charge ?? null) !== null)
                     ? ' | U: '.number_format((float) ($charge->units_consumed ?? 0), 3)

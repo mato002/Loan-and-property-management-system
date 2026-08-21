@@ -8,6 +8,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\Property\PropertyCommunicationWebhookController;
 use App\Http\Controllers\Property\PropertyPaymentWebhookController;
 use App\Http\Controllers\PublicController;
+use App\Http\Controllers\PublicListingMediaController;
 use App\Http\Middleware\EnsureLoanAccessPolicy;
 use App\Models\Property;
 use Carbon\Carbon;
@@ -30,6 +31,9 @@ Route::get('/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController
 Route::get('/property/manifest.webmanifest', [\App\Http\Controllers\PwaManifestController::class, 'portal'])->name('pwa.manifest.portal');
 
 Route::get('/', [PublicController::class, 'home'])->name('public.home');
+Route::get('/media/unit-listings/{path}', [PublicListingMediaController::class, 'show'])
+    ->where('path', '.*')
+    ->name('public.unit_listing_media');
 Route::get('/properties', [PublicController::class, 'properties'])->name('public.properties');
 Route::get('/properties/{id}', [PublicController::class, 'propertyDetails'])->name('public.property_details');
 Route::get('/about', [PublicController::class, 'about'])->name('public.about');

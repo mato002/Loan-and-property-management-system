@@ -6,11 +6,11 @@
 
 @php
     $placeholder = $placeholderImage ?: \App\Http\Controllers\PublicController::LISTING_PLACEHOLDER_IMAGE;
-    $imageUrls = $unit->relationLoaded('publicImages')
-        ? $unit->publicImages->map(fn ($img) => $img->publicUrl())->filter()->values()->all()
+    $mediaItems = $unit->relationLoaded('publicImages')
+        ? $unit->publicImages->map(fn ($img) => $img->toGalleryItem())->filter(fn ($item) => ($item['url'] ?? '') !== '')->values()->all()
         : [];
-    if (empty($imageUrls)) {
-        $imageUrls = [$placeholder];
+    if ($mediaItems === []) {
+        $mediaItems = [['url' => $placeholder, 'type' => 'image']];
     }
     $propertyName = (string) ($unit->property?->name ?? 'Property');
     $title = $propertyName.' — Unit '.$unit->label;
@@ -25,10 +25,15 @@
 
 <article
     {{ $attributes->merge(['class' => 'public-property-card group public-animate-in']) }}
-    x-data="propertyCardCarousel(@js($imageUrls))"
+    x-data="propertyCardCarousel(@js($mediaItems))"
 >
     <a href="{{ $detailUrl }}" class="public-property-card-media block relative" aria-label="{{ $title }}">
-        <img :src="images[index]" alt="{{ $title }}" loading="lazy" decoding="async" @class(['opacity-90' => ! $hasRealPhoto])>
+        <template x-if="current?.type === 'video'">
+            <video :src="current.url" class="absolute inset-0 h-full w-full object-cover" muted playsinline preload="metadata" @class(['opacity-90' => ! $hasRealPhoto])></video>
+        </template>
+        <template x-if="current?.type !== 'video'">
+            <img :src="current?.url" alt="{{ $title }}" loading="lazy" decoding="async" @class(['opacity-90' => ! $hasRealPhoto])>
+        </template>
 
         <div class="absolute inset-x-0 top-0 flex items-start justify-between p-2.5 sm:p-3 pointer-events-none">
             <span class="public-badge public-badge-available shadow-sm">Available</span>
@@ -64,7 +69,7 @@
                 <span class="text-[10px] sm:text-xs font-semibold text-gray-300"> / mo</span>
             </div>
             <template x-if="hasMultiple">
-                <span class="rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm" x-text="`${index + 1}/${images.length}`"></span>
+                <span class="rounded-full bg-black/50 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm" x-text="`${index + 1}/${items.length}`"></span>
             </template>
         </div>
 

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\Property\CarryForwardConsolidationService;
 use App\Services\Property\FinanceFirebreakService;
 use App\Services\Property\InvoiceStateIntegrityService;
+use App\Support\Property\PropertyWorkspaceBranding;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -42,7 +43,213 @@ class PmInvoice extends Model
 
     public const TYPE_WATER = 'water';
 
+    public const TYPE_ELECTRICITY = 'electricity';
+
+    public const TYPE_GARBAGE = 'garbage';
+
+    public const TYPE_SERVICE = 'service';
+
+    public const TYPE_OTHER = 'other';
+
+    /** @deprecated Prefer a specific charge type (water, electricity, garbage, service, other). Kept for legacy rows. */
     public const TYPE_MIXED = 'mixed';
+
+    public const CUSTOM_TYPES_SETTING_KEY = 'invoice_custom_types_json';
+
+    /**
+     * Built-in types agents can pick when manually creating an invoice.
+     *
+     * @return array<string, string> value => label
+     */
+    public static function builtinTypeOptions(): array
+    {
+        return [
+            self::TYPE_RENT => 'Rent',
+            self::TYPE_WATER => 'Water',
+            self::TYPE_ELECTRICITY => 'Electricity',
+            self::TYPE_GARBAGE => 'Garbage',
+            self::TYPE_SERVICE => 'Service',
+            self::TYPE_OTHER => 'Other charge',
+        ];
+    }
+
+    /**
+     * Types agents can pick when manually creating an invoice (built-in + custom).
+     *
+     * @return array<string, string> value => label
+     */
+    public static function createTypeOptions(): array
+    {
+        return array_merge(self::builtinTypeOptions(), self::customTypeOptions());
+    }
+
+    /**
+     * Custom invoice types stored per agent workspace.
+     *
+     * @return array<string, string> value => label
+     */
+    public static function customTypeOptions(): array
+    {
+        $raw = self::readCustomTypesJson();
+        if ($raw === '') {
+            return [];
+        }
+
+        try {
+            $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            return [];
+        }
+
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($decoded as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $value = self::normalizeTypeKey((string) ($row['value'] ?? $row['key'] ?? ''));
+            $label = trim((string) ($row['label'] ?? ''));
+            if ($value === '' || $label === '') {
+                continue;
+            }
+            if (isset(self::builtinTypeOptions()[$value]) || $value === self::TYPE_MIXED) {
+                continue;
+            }
+            $out[$value] = $label;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{value: string, label: string}
+     */
+    public static function addCustomType(string $label): array
+    {
+        $label = trim(preg_replace('/\s+/', ' ', $label) ?? '');
+        if ($label === '') {
+            throw new \InvalidArgumentException('Type name is required.');
+        }
+        if (mb_strlen($label) > 64) {
+            throw new \InvalidArgumentException('Type name is too long (max 64 characters).');
+        }
+
+        $value = self::normalizeTypeKey($label);
+        if ($value === '') {
+            throw new \InvalidArgumentException('Type name must include letters or numbers.');
+        }
+        if (isset(self::builtinTypeOptions()[$value]) || $value === self::TYPE_MIXED) {
+            throw new \InvalidArgumentException('That type already exists as a built-in option.');
+        }
+
+        $custom = self::customTypeOptions();
+        if (isset($custom[$value])) {
+            return ['value' => $value, 'label' => $custom[$value]];
+        }
+
+        $custom[$value] = $label;
+        self::writeCustomTypesJson($custom);
+
+        return ['value' => $value, 'label' => $label];
+    }
+
+    public static function normalizeTypeKey(string $raw): string
+    {
+        $normalized = strtolower(trim($raw));
+        $normalized = preg_replace('/[^a-z0-9]+/', '_', $normalized) ?? '';
+
+        return trim($normalized, '_');
+    }
+
+    private static function readCustomTypesJson(): string
+    {
+        $agentUserId = PropertyWorkspaceBranding::resolveViewerAgentUserId();
+        $query = PropertyPortalSetting::query()->where('key', self::CUSTOM_TYPES_SETTING_KEY);
+        if (Schema::hasColumn('property_portal_settings', 'agent_user_id')) {
+            if ($agentUserId !== null) {
+                $query->where('agent_user_id', $agentUserId);
+            } else {
+                $query->whereNull('agent_user_id');
+            }
+        }
+
+        return trim((string) ($query->value('value') ?? ''));
+    }
+
+    /**
+     * @param  array<string, string>  $types
+     */
+    private static function writeCustomTypesJson(array $types): void
+    {
+        $payload = [];
+        foreach ($types as $value => $label) {
+            $payload[] = ['value' => (string) $value, 'label' => (string) $label];
+        }
+
+        $json = json_encode(array_values($payload), JSON_UNESCAPED_UNICODE);
+        if ($json === false) {
+            throw new \RuntimeException('Could not save invoice types.');
+        }
+
+        $agentUserId = PropertyWorkspaceBranding::resolveViewerAgentUserId()
+            ?? PropertyWorkspaceBranding::storeAgentUserId();
+
+        if (Schema::hasColumn('property_portal_settings', 'agent_user_id') && $agentUserId !== null) {
+            PropertyPortalSetting::query()->updateOrCreate(
+                [
+                    'agent_user_id' => $agentUserId,
+                    'key' => self::CUSTOM_TYPES_SETTING_KEY,
+                ],
+                ['value' => $json]
+            );
+
+            return;
+        }
+
+        PropertyPortalSetting::setGlobalValue(self::CUSTOM_TYPES_SETTING_KEY, $json);
+    }
+
+    /**
+     * All known invoice_type values (including legacy mixed + custom).
+     *
+     * @return list<string>
+     */
+    public static function allowedTypes(): array
+    {
+        return array_values(array_unique(array_merge(
+            array_keys(self::createTypeOptions()),
+            [self::TYPE_MIXED],
+        )));
+    }
+
+    /**
+     * Utility / non-rent charge types (used for AR/income posting and filters).
+     *
+     * @return list<string>
+     */
+    public static function utilityTypes(): array
+    {
+        $types = [
+            self::TYPE_WATER,
+            self::TYPE_ELECTRICITY,
+            self::TYPE_GARBAGE,
+            self::TYPE_SERVICE,
+            self::TYPE_OTHER,
+            self::TYPE_MIXED,
+        ];
+
+        return array_values(array_unique(array_merge($types, array_keys(self::customTypeOptions()))));
+    }
+
+    public function isUtilityChargeType(): bool
+    {
+        $type = (string) ($this->invoice_type ?? '');
+
+        return $type !== '' && $type !== self::TYPE_RENT;
+    }
 
     public const KIND_INVOICE = 'invoice';
 
@@ -621,11 +828,21 @@ class PmInvoice extends Model
             return 'Opening balance';
         }
 
-        return match ((string) ($this->invoice_type ?? self::TYPE_RENT)) {
-            self::TYPE_WATER => 'Water utility',
-            self::TYPE_MIXED => 'Mixed charges',
+        $type = (string) ($this->invoice_type ?? self::TYPE_RENT);
+        $custom = self::customTypeOptions();
+        if (isset($custom[$type])) {
+            return $custom[$type];
+        }
+
+        return match ($type) {
             self::TYPE_RENT => 'Monthly rent',
-            default => ucfirst((string) $this->invoice_type),
+            self::TYPE_WATER => 'Water',
+            self::TYPE_ELECTRICITY => 'Electricity',
+            self::TYPE_GARBAGE => 'Garbage',
+            self::TYPE_SERVICE => 'Service',
+            self::TYPE_OTHER => 'Other charge',
+            self::TYPE_MIXED => 'Other charge',
+            default => ucfirst(str_replace('_', ' ', $type)),
         };
     }
 

@@ -182,19 +182,22 @@ class AgentPublicListingController extends Controller
     {
         abort_unless($property_unit->status === PropertyUnit::STATUS_VACANT, 404);
 
+        $maxKb = PropertyUnitPublicImage::MAX_UPLOAD_KB;
+        $maxFiles = PropertyUnitPublicImage::MAX_FILES_PER_BATCH;
+        $mimes = implode(',', PropertyUnitPublicImage::allowedUploadExtensions());
+
         $validator = Validator::make($request->all(), [
-            'photos' => ['required', 'array', 'max:12'],
-            // Laravel max uses KB; 102400 = 100 MB per image.
-            'photos.*' => ['required', 'file', 'image', 'mimes:jpeg,jpg,png,webp', 'max:102400'],
+            'photos' => ['required', 'array', 'max:'.$maxFiles],
+            // Laravel max uses KB; 1048576 = 1 GB per file.
+            'photos.*' => ['required', 'file', 'mimes:'.$mimes, 'max:'.$maxKb],
         ], [
-            'photos.required' => 'Select at least one image to upload.',
-            'photos.array' => 'Upload failed: photos input was not sent correctly.',
-            'photos.max' => 'Upload at most 12 files per batch.',
+            'photos.required' => 'Select at least one photo or video to upload.',
+            'photos.array' => 'Upload failed: media input was not sent correctly.',
+            'photos.max' => 'Upload at most '.$maxFiles.' files per batch.',
             'photos.*.required' => 'One of the selected files is empty or missing.',
             'photos.*.file' => 'One of the selected items is not a valid file.',
-            'photos.*.image' => 'Only image files are allowed.',
-            'photos.*.mimes' => 'Allowed image types: JPEG, JPG, PNG, WEBP.',
-            'photos.*.max' => 'Each image must not exceed 100 MB.',
+            'photos.*.mimes' => 'Allowed types: JPEG, PNG, WEBP, GIF, MP4, WEBM, MOV, M4V, OGG.',
+            'photos.*.max' => 'Each file must not exceed 1 GB.',
         ]);
 
         if ($validator->fails()) {
@@ -207,10 +210,12 @@ class AgentPublicListingController extends Controller
             $postMax = (string) ini_get('post_max_size');
             $postMaxBytes = $this->iniBytes($postMax);
             $postMaxHint = $postMax !== '' ? $postMax : 'unknown';
+            $uploadMax = (string) ini_get('upload_max_filesize');
 
             $message = 'No files reached the server.';
             if ($contentLength > 0 && $postMaxBytes > 0 && $contentLength > $postMaxBytes) {
-                $message = 'Upload rejected by server: request body size ('.number_format($contentLength).' bytes) is larger than post_max_size='.$postMaxHint.'.';
+                $message = 'Upload rejected by server: request is larger than PHP post_max_size='.$postMaxHint
+                    .' (upload_max_filesize='.$uploadMax.'). Ask hosting to allow at least 1GB uploads.';
             }
 
             return back()->withErrors([
@@ -268,7 +273,7 @@ class AgentPublicListingController extends Controller
             });
         }
 
-        return back()->with('success', __('Photos uploaded.'));
+        return back()->with('success', __('Photos and videos uploaded.'));
     }
 
     public function destroyPhoto(PropertyUnit $property_unit, int $public_image): RedirectResponse

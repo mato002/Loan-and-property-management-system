@@ -1,6 +1,126 @@
 /**
  * Lease ↔ tenant ↔ unit sync on Create Invoice (avoids change-event feedback loops).
+ * Also binds “+” add invoice type on the create form.
  */
+
+function csrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || document.querySelector('input[name="_token"]')?.value
+        || '';
+}
+
+function rebuildInvoiceTypeSelect(select, options, selectedValue) {
+    if (!select || !Array.isArray(options)) {
+        return;
+    }
+    const previous = selectedValue ?? select.value;
+    select.innerHTML = '';
+    options.forEach((opt) => {
+        const option = document.createElement('option');
+        option.value = String(opt.value ?? '');
+        option.textContent = String(opt.label ?? opt.value ?? '');
+        select.appendChild(option);
+    });
+    if (previous && [...select.options].some((o) => o.value === previous)) {
+        select.value = previous;
+    }
+}
+
+async function promptAndCreateInvoiceType(button) {
+    const endpoint = button.getAttribute('data-endpoint') || '';
+    if (!endpoint) {
+        return;
+    }
+
+    const form = button.closest('form');
+    const select = form?.querySelector('[data-invoice-type-select], select[name="invoice_type"]');
+
+    let label = '';
+    if (window.Swal) {
+        const result = await window.Swal.fire({
+            title: 'Add invoice type',
+            text: 'Examples: Internet, Security, Parking',
+            input: 'text',
+            inputPlaceholder: 'Type name',
+            showCancelButton: true,
+            confirmButtonText: 'Add',
+            cancelButtonText: 'Cancel',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            inputValidator: (value) => {
+                if (!String(value || '').trim()) {
+                    return 'Type name is required.';
+                }
+
+                return null;
+            },
+        });
+        if (!result.isConfirmed) {
+            return;
+        }
+        label = String(result.value || '').trim();
+    } else {
+        label = String(window.prompt('Add invoice type (e.g. Internet, Security)', '') || '').trim();
+        if (!label) {
+            return;
+        }
+    }
+
+    button.disabled = true;
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-CSRF-TOKEN': csrfToken(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ label }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok) {
+            const message = data?.message || 'Could not add invoice type.';
+            if (window.swalAlert) {
+                await window.swalAlert(message, 'error');
+            } else if (window.Swal) {
+                await window.Swal.fire({ icon: 'error', title: message });
+            } else {
+                window.alert(message);
+            }
+
+            return;
+        }
+
+        rebuildInvoiceTypeSelect(select, data.options || [], data.type?.value);
+        if (select && data.type?.value) {
+            select.value = String(data.type.value);
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (window.swalAlert) {
+            await window.swalAlert(`Added “${data.type?.label || label}”.`, 'success');
+        }
+    } catch {
+        if (window.swalAlert) {
+            await window.swalAlert('Could not add invoice type.', 'error');
+        }
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function bindInvoiceTypeAddButtons(root = document) {
+    root.querySelectorAll('[data-invoice-type-add]').forEach((button) => {
+        if (button.dataset.invoiceTypeAddBound === '1') {
+            return;
+        }
+        button.dataset.invoiceTypeAddBound = '1';
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            promptAndCreateInvoiceType(button);
+        });
+    });
+}
 
 function bindInvoiceCreateForm(form) {
     if (!form || form.dataset.invoiceCreateSyncBound === '1') {
@@ -231,6 +351,7 @@ function bindInvoiceCreateForm(form) {
 
 function scanInvoiceCreateForms(root = document) {
     root.querySelectorAll('form[data-lease-info-url]').forEach(bindInvoiceCreateForm);
+    bindInvoiceTypeAddButtons(root);
 }
 
 document.addEventListener('DOMContentLoaded', () => scanInvoiceCreateForms(document));

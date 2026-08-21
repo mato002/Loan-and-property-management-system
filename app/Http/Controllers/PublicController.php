@@ -164,7 +164,7 @@ class PublicController extends Controller
             ->with(['property', 'publicImages', 'amenities'])
             ->firstOrFail();
 
-        $imageUrls = $unit->publicImages->map(fn ($img) => $img->publicUrl())->filter()->values()->all();
+        $imageUrls = $unit->publicImages->map(fn ($img) => $img->toGalleryItem())->filter(fn ($item) => ($item['url'] ?? '') !== '')->values()->all();
 
         $similarUnits = PropertyUnit::query()
             ->publiclyListed()
@@ -186,7 +186,7 @@ class PublicController extends Controller
         $pageDescription = 'View '.$unit->label.' at '.$unit->property->name
             .(count($metaBits) ? ' in '.implode(', ', $metaBits) : '')
             .'. See photos, amenities, and availability before booking a visit.';
-        $heroImage = $imageUrls[0] ?? self::LISTING_PLACEHOLDER_IMAGE;
+        $heroImage = ($imageUrls[0]['url'] ?? null) ?: self::LISTING_PLACEHOLDER_IMAGE;
 
         $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name');
         $contactWhatsapp = \App\Models\PropertyPortalSetting::getValue('contact_whatsapp', '') ?: '254717018779';
