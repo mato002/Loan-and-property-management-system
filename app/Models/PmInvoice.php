@@ -819,6 +819,8 @@ class PmInvoice extends Model
         }
 
         $lineTotal = round($amount, 2);
+        $itemType = (string) ($this->invoice_type ?? self::TYPE_RENT);
+
         $this->items()->create([
             'line_no' => 1,
             'description' => $description,
@@ -826,6 +828,8 @@ class PmInvoice extends Model
             'unit_price' => $lineTotal,
             'line_subtotal' => $lineTotal,
             'line_total' => $lineTotal,
+            'source_type' => $itemType,
+            'type' => $itemType,
         ]);
     }
 

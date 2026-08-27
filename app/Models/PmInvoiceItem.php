@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Schema;
 
 class PmInvoiceItem extends Model
 {
@@ -23,7 +24,26 @@ class PmInvoiceItem extends Model
         'line_total',
         'source_type',
         'source_id',
+        'type',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (PmInvoiceItem $item): void {
+            if ($item->type !== null && $item->type !== '') {
+                return;
+            }
+
+            if (! Schema::hasColumn('pm_invoice_items', 'type')) {
+                return;
+            }
+
+            $invoiceType = $item->invoice?->invoice_type;
+            $item->type = $invoiceType !== null && $invoiceType !== ''
+                ? (string) $invoiceType
+                : PmInvoice::TYPE_RENT;
+        });
+    }
 
     protected function casts(): array
     {
