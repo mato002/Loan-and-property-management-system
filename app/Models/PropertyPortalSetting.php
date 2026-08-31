@@ -125,6 +125,7 @@ class PropertyPortalSetting extends Model
             'workflow_auto_rent_reminders',
             'workflow_auto_water_penalties',
             'workflow_auto_attached_utility_charges',
+            'workflow_auto_invoice_delivery',
         ] as $key) {
             $query = static::query()->where('key', $key)->where('value', '1');
             if (Schema::hasColumn('property_portal_settings', 'agent_user_id')) {
@@ -179,5 +180,10 @@ class PropertyPortalSetting extends Model
     public static function isAttachedUtilityChargeAutomationEnabled(): bool
     {
         return self::granularAutomationEnabled('workflow_auto_attached_utility_charges');
+    }
+
+    public static function isInvoiceDeliveryAutomationEnabled(): bool
+    {
+        return self::granularAutomationEnabled('workflow_auto_invoice_delivery');
     }
 }

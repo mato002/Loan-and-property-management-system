@@ -149,11 +149,12 @@
                     @error('amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Initial status</label>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">When to issue</label>
                     <select name="status" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="draft" @selected(old('status', 'draft') === 'draft')>Draft</option>
-                        <option value="sent" @selected(old('status') === 'sent')>Sent</option>
+                        <option value="draft" @selected(old('status', 'draft') === 'draft')>Draft — save only (not on ledger)</option>
+                        <option value="sent" @selected(old('status') === 'sent')>Issue now — open bill (posts to ledger)</option>
                     </select>
+                    <p class="mt-1 text-[11px] leading-snug text-slate-500">Issuing does not email the tenant immediately. After saving, use <span class="font-medium">Send to tenant</span>, or enable <span class="font-medium">Deliver issued invoices</span> under System setup → Workflows for daily automatic delivery.</p>
                     @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 @include('property.agent.revenue.partials.invoice_type_field', ['selected' => old('invoice_type', 'rent')])

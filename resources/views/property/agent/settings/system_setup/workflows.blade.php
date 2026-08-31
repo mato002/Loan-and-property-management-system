@@ -11,7 +11,7 @@
             <p class="mt-2 text-xs text-slate-600 dark:text-slate-400">
                 When enabled below (or via <code class="rounded bg-white px-1 py-0.5 text-slate-800 dark:bg-slate-800 dark:text-slate-200">PROPERTY_WORKFLOW_AUTOMATION_ENABLED</code> in <code class="rounded bg-white px-1 py-0.5">.env</code>),
                 the server must run <code class="rounded bg-white px-1 py-0.5 text-slate-800 dark:bg-slate-800 dark:text-slate-200">php artisan schedule:run</code> every minute (see <code class="rounded bg-white px-1 py-0.5">deploy/laravel-scheduler.cron.example</code>).
-                Use the switches below to turn <strong>rent invoices</strong>, <strong>water invoices</strong>, <strong>rent reminders</strong>, and <strong>water penalties</strong> on or off independently. Until you save this form once per environment, each switch follows the legacy “master” checkbox.
+                Use the switches below to turn <strong>rent invoices</strong>, <strong>water invoices</strong>, <strong>invoice delivery</strong>, <strong>rent reminders</strong>, and <strong>water penalties</strong> on or off independently. Until you save this form once per environment, each switch follows the legacy “master” checkbox.
             </p>
             <p class="mt-2 text-xs font-medium {{ ($workflowAutomationEffective ?? false) ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-300' }}">
                 Automation is currently <strong>{{ ($workflowAutomationEffective ?? false) ? 'ON' : 'OFF' }}</strong> for scheduled commands.
@@ -33,6 +33,7 @@
             <input type="hidden" name="workflow_auto_rent_reminders" value="0" />
             <input type="hidden" name="workflow_auto_water_penalties" value="0" />
             <input type="hidden" name="workflow_auto_attached_utility_charges" value="0" />
+            <input type="hidden" name="workflow_auto_invoice_delivery" value="0" />
 
             <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input type="checkbox" name="workflow_auto_assign_tickets" value="1" @checked(old('workflow_auto_assign_tickets', $autoAssignTickets ? '1' : '0') === '1') />
@@ -53,6 +54,10 @@
                 <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                     <input type="checkbox" name="workflow_auto_water_invoices" value="1" @checked(old('workflow_auto_water_invoices', $waterInvoicesAuto ? '1' : '0') === '1') />
                     Monthly water invoices from readings (<code class="text-xs">water:generate-invoices</code>)
+                </label>
+                <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                    <input type="checkbox" name="workflow_auto_invoice_delivery" value="1" @checked(old('workflow_auto_invoice_delivery', $invoiceDeliveryAuto ? '1' : '0') === '1') />
+                    Deliver issued invoices to tenants — email PDF / SMS link (<code class="text-xs">invoices:deliver-pending</code>)
                 </label>
                 <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                     <input type="checkbox" name="workflow_auto_rent_reminders" value="1" @checked(old('workflow_auto_rent_reminders', $rentRemindersAuto ? '1' : '0') === '1') />

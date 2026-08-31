@@ -463,6 +463,43 @@ class PmInvoice extends Model
         return $this->hasMany(PmInvoiceEvent::class, 'pm_invoice_id')->latest('occurred_at');
     }
 
+    /**
+     * How the tenant was notified (email/SMS). Null if never delivered electronically.
+     */
+    public function tenantDeliverySummary(): ?string
+    {
+        $events = $this->relationLoaded('events')
+            ? $this->events
+            : $this->events()->whereIn('event', [
+                PmInvoiceEvent::EVENT_EMAILED,
+                PmInvoiceEvent::EVENT_SMS_SENT,
+            ])->get();
+
+        $hasEmail = $events->contains('event', PmInvoiceEvent::EVENT_EMAILED);
+        $hasSms = $events->contains('event', PmInvoiceEvent::EVENT_SMS_SENT);
+
+        if ($hasEmail && $hasSms) {
+            return 'Emailed & SMS';
+        }
+        if ($hasEmail) {
+            return 'Emailed to tenant';
+        }
+        if ($hasSms) {
+            return 'SMS sent';
+        }
+
+        return null;
+    }
+
+    public function tenantDeliveryPending(): bool
+    {
+        if (in_array((string) $this->status, [self::STATUS_DRAFT, self::STATUS_CANCELLED], true)) {
+            return false;
+        }
+
+        return $this->tenantDeliverySummary() === null;
+    }
+
     public function creditNotes(): HasMany
     {
         return $this->hasMany(self::class, 'original_invoice_id');

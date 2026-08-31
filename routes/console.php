@@ -65,6 +65,7 @@ scheduleAutomation('rent:generate-invoices', oneServer: true, overlapMinutes: 90
 scheduleAutomation('utility:materialize-attached-charges', oneServer: true, overlapMinutes: 90)->dailyAt('00:22');
 // Rent reminders: daily stage evaluation (D-3, D-1, due today, overdue buckets) per invoice due_date.
 scheduleAutomation('rent:send-reminders', oneServer: true, overlapMinutes: 120)->dailyAt('08:00');
+scheduleAutomation('invoices:deliver-pending', oneServer: true, overlapMinutes: 120)->dailyAt('08:30');
 
 // Water: safe to run daily because generation checks for duplicates; penalties are applied on overdue balances.
 scheduleAutomation('water:generate-invoices', oneServer: true, overlapMinutes: 90)->dailyAt('00:25');

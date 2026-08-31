@@ -7,15 +7,15 @@ use App\Models\PmInvoice;
 use App\Models\PmInvoiceEvent;
 use App\Models\PmInvoiceItem;
 use App\Models\PmLease;
-use App\Models\PmMessageLog;
 use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
 use App\Models\PropertyPortalSetting;
 use App\Models\Property;
 use App\Models\PropertyUnit;
-use App\Services\BulkSmsService;
 use App\Services\Property\FinanceBalanceSnapshotService;
+use App\Services\Property\InvoicePdfService;
+use App\Services\Property\InvoiceTenantDeliveryService;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\RentInvoiceGenerator;
 use App\Services\Property\PropertyMoney;
@@ -34,9 +34,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\HtmlString;
 use Illuminate\View\View;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
@@ -707,6 +705,12 @@ class PmInvoiceController extends Controller
                 )
                 : $chargeLabel;
             $statusBadge = '<span class="rounded-full px-2 py-0.5 text-[11px] font-semibold '.self::statusBadgeClasses((string) $i->status).'">'.ucfirst((string) $i->status).'</span>';
+            $deliverySummary = $i->tenantDeliverySummary();
+            if ($deliverySummary !== null) {
+                $statusBadge .= '<p class="mt-0.5 text-[10px] font-medium text-emerald-700">'.e($deliverySummary).'</p>';
+            } elseif ($i->tenantDeliveryPending()) {
+                $statusBadge .= '<p class="mt-0.5 text-[10px] font-medium text-amber-700">Not emailed</p>';
+            }
 
             return [
                 new HtmlString('<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="ids[]" value="'.$i->id.'" form="property-invoices-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select</span></label>'),
@@ -922,7 +926,7 @@ class PmInvoiceController extends Controller
      * B4: send invoice to tenant via email and/or SMS. Email gets the PDF
      * attached. SMS gets a short summary + the public share link.
      */
-    public function sendToTenant(Request $request, PmInvoice $invoice, BulkSmsService $sms): RedirectResponse
+    public function sendToTenant(Request $request, PmInvoice $invoice, InvoiceTenantDeliveryService $delivery): RedirectResponse
     {
         $data = $request->validate([
             'channel' => ['required', 'in:email,sms,both'],
@@ -931,110 +935,18 @@ class PmInvoiceController extends Controller
             'message' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        if ((string) $invoice->status === PmInvoice::STATUS_DRAFT) {
-            return back()->withErrors(['channel' => 'Draft invoices cannot be sent. Mark as Sent first.']);
+        $result = $delivery->deliver($invoice, $request->user(), [
+            'channel' => $data['channel'],
+            'override_email' => $data['override_email'] ?? null,
+            'override_phone' => $data['override_phone'] ?? null,
+            'message' => $data['message'] ?? null,
+        ]);
+
+        if (! $result->succeeded() && $result->errors !== []) {
+            return back()->withErrors(['channel' => implode(' ', $result->errors)]);
         }
 
-        $invoice->loadMissing(['tenant:id,name,phone,email', 'unit.property:id,name']);
-        $tenant = $invoice->tenant;
-        $shareToken = $invoice->ensureShareToken();
-        $publicUrl = URL::to(route('property.invoices.public.show', ['token' => $shareToken], false));
-
-        $defaultMessage = sprintf(
-            "Hello %s, your invoice %s for KES %s is due %s. View / pay: %s",
-            $tenant?->name ?? 'Tenant',
-            $invoice->invoice_no,
-            number_format((float) $invoice->amount - (float) $invoice->amount_paid, 2),
-            optional($invoice->due_date)->format('Y-m-d') ?? '',
-            $publicUrl,
-        );
-        $body = trim((string) ($data['message'] ?? '')) !== '' ? $data['message'] : $defaultMessage;
-
-        $emailedCount = 0;
-        $smsedCount = 0;
-        $errors = [];
-
-        if (in_array($data['channel'], ['email', 'both'], true)) {
-            $emailTo = trim((string) ($data['override_email'] ?? $tenant?->email ?? ''));
-            if ($emailTo === '') {
-                $errors[] = 'Tenant has no email on file.';
-            } else {
-                try {
-                    $pdf = $this->buildPdfBinary($invoice);
-                    Mail::raw($body, function ($m) use ($emailTo, $invoice, $pdf) {
-                        $m->to($emailTo)
-                            ->subject('Invoice '.$invoice->invoice_no)
-                            ->attachData($pdf, 'invoice-'.$invoice->invoice_no.'.pdf', [
-                                'mime' => 'application/pdf',
-                            ]);
-                    });
-                    PmMessageLog::query()->create([
-                        'user_id' => $request->user()?->id,
-                        'channel' => 'email',
-                        'to_address' => $emailTo,
-                        'subject' => 'Invoice '.$invoice->invoice_no,
-                        'body' => $body,
-                        'status' => 'sent',
-                    ]);
-                    PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_EMAILED, $request->user()?->id, 'Email sent to '.$emailTo);
-                    $emailedCount++;
-                } catch (\Throwable $e) {
-                    report($e);
-                    $errors[] = 'Email failed: '.$e->getMessage();
-                }
-            }
-        }
-
-        if (in_array($data['channel'], ['sms', 'both'], true)) {
-            $phone = trim((string) ($data['override_phone'] ?? $tenant?->phone ?? ''));
-            if ($phone === '') {
-                $errors[] = 'Tenant has no phone on file.';
-            } else {
-                $phones = $sms->normalizeRecipientList($phone);
-                if ($phones === []) {
-                    $errors[] = 'Invalid tenant phone number.';
-                } else {
-                    $result = $sms->sendNow($body, $phones, $request->user()?->id, null, 'property');
-                    if (($result['ok'] ?? false) === true) {
-                        PmMessageLog::query()->create([
-                            'user_id' => $request->user()?->id,
-                            'channel' => 'sms',
-                            'to_address' => implode(',', $phones),
-                            'body' => $body,
-                            'status' => 'sent',
-                        ]);
-                        PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_SMS_SENT, $request->user()?->id, 'SMS sent to '.implode(',', $phones));
-                        $smsedCount++;
-                    } else {
-                        $errors[] = 'SMS failed: '.($result['error'] ?? 'unknown');
-                    }
-                }
-            }
-        }
-
-        // Once we have a successful send, mark the invoice as sent if it
-        // wasn't already (helps with the "I issued but didn't notify" flow).
-        if (($emailedCount + $smsedCount) > 0 && empty($invoice->sent_at)) {
-            $invoice->update(['sent_at' => now(), 'sent_by_user_id' => $request->user()?->id]);
-        }
-
-        if ($errors && ($emailedCount + $smsedCount) === 0) {
-            return back()->withErrors(['channel' => implode(' ', $errors)]);
-        }
-
-        $parts = [];
-        if ($emailedCount) {
-            $parts[] = 'email sent';
-        }
-        if ($smsedCount) {
-            $parts[] = 'SMS sent';
-        }
-        $msg = 'Invoice '.$invoice->invoice_no.': '.implode(' + ', $parts).'.';
-        if ($errors) {
-            $msg .= ' Issues: '.implode(' ', $errors);
-        }
-
-        return back()->with('success', $msg);
+        return back()->with('success', $result->summaryMessage((string) $invoice->invoice_no));
     }
 
     /**
@@ -1132,8 +1044,8 @@ class PmInvoiceController extends Controller
     private function renderInvoicePdf(PmInvoice $invoice, string $disposition = 'attachment'): StreamedResponse|Response
     {
         $invoice->loadMissing(['tenant', 'unit.property', 'items']);
-
-        $html = view('property.agent.revenue.invoice_print', $this->invoicePrintViewData($invoice))->render();
+        $pdfService = app(InvoicePdfService::class);
+        $html = view('property.agent.revenue.invoice_print', $pdfService->printViewData($invoice))->render();
 
         try {
             $options = new Options();
@@ -1162,19 +1074,7 @@ class PmInvoiceController extends Controller
 
     private function buildPdfBinary(PmInvoice $invoice): string
     {
-        $invoice->loadMissing(['tenant', 'unit.property', 'items']);
-        $html = view('property.agent.revenue.invoice_print', $this->invoicePrintViewData($invoice))->render();
-
-        $options = new Options();
-        $options->set('isRemoteEnabled', true);
-        $options->set('defaultFont', 'DejaVu Sans');
-
-        $dompdf = new Dompdf($options);
-        $dompdf->loadHtml($html, 'UTF-8');
-        $dompdf->setPaper('A4', 'portrait');
-        $dompdf->render();
-
-        return (string) $dompdf->output();
+        return app(InvoicePdfService::class)->buildBinary($invoice);
     }
 
     /**
@@ -1182,11 +1082,7 @@ class PmInvoiceController extends Controller
      */
     private function invoicePrintViewData(PmInvoice $invoice): array
     {
-        return [
-            'invoice' => $invoice,
-            'branding' => $this->branding(),
-            'payments' => $this->paymentInstructions(),
-        ];
+        return app(InvoicePdfService::class)->printViewData($invoice);
     }
 
     private function resolvePublic(string $token): PmInvoice
@@ -1200,45 +1096,6 @@ class PmInvoiceController extends Controller
             abort(404);
         }
         return $invoice;
-    }
-
-    private function branding(): array
-    {
-        $b = PropertyPortalSetting::query()->where('key', 'branding')->value('value');
-        $decoded = is_string($b) ? json_decode($b, true) : (is_array($b) ? $b : []);
-
-        $defaults = [
-            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
-            'address' => '',
-            'phone' => '',
-            'email' => PropertyPortalSetting::getValue('contact_email_primary', ''),
-            'logo_url' => PropertyPortalSetting::getValue('company_logo_url', ''),
-            'colour' => '#0f766e',
-            'footer_note' => 'Thank you for your business.',
-        ];
-        $merged = array_merge($defaults, is_array($decoded) ? $decoded : []);
-        if (trim((string) ($merged['logo_url'] ?? '')) === '') {
-            $merged['logo_url'] = PropertyPortalSetting::getValue('company_logo_url', '');
-        }
-
-        return $merged;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function paymentInstructions(): array
-    {
-        return [
-            'mpesa_shortcode' => trim((string) PropertyPortalSetting::getValue('mpesa_shortcode', '')),
-            'trust_bank_name' => trim((string) PropertyPortalSetting::getValue('trust_bank_name', '')),
-            'trust_account_number' => trim((string) PropertyPortalSetting::getValue('trust_account_number', '')),
-            'trust_account_label' => trim((string) PropertyPortalSetting::getValue('trust_account_label', '')),
-            'payments_notes' => trim((string) PropertyPortalSetting::getValue('payments_notes', '')),
-            'rules_notes' => trim((string) PropertyPortalSetting::getValue('rules_notes', '')),
-            'late_fee_percent' => trim((string) PropertyPortalSetting::getValue('rules_late_fee_percent', '')),
-            'grace_days' => trim((string) PropertyPortalSetting::getValue('rules_grace_days', '')),
-        ];
     }
 
     private static function statusBadgeClasses(string $status): string

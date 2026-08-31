@@ -51,6 +51,11 @@
                             @endif
                         </div>
                         <span class="inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] sm:text-xs font-semibold uppercase {{ $statusBadge }}">{{ $invoice->status }}</span>
+                        @if ($deliverySummary = $invoice->tenantDeliverySummary())
+                            <p class="mt-1 text-xs font-medium text-emerald-700">{{ $deliverySummary }}</p>
+                        @elseif ($invoice->tenantDeliveryPending())
+                            <p class="mt-1 text-xs font-medium text-amber-700">Not emailed to tenant yet</p>
+                        @endif
                     </div>
 
                     <x-property.responsive.quick-action-grid class="mt-3">
@@ -245,7 +250,8 @@
                         @if ($canManage && $invoice->status === 'draft')
                             <form method="post" action="{{ route('property.revenue.invoices.mark_sent', $invoice) }}">
                                 @csrf
-                                <button type="submit" class="w-full rounded-lg bg-blue-600 text-white px-3 py-2.5 text-sm font-semibold hover:bg-blue-700"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Mark as sent</button>
+                                <button type="submit" class="w-full rounded-lg bg-blue-600 text-white px-3 py-2.5 text-sm font-semibold hover:bg-blue-700"><i class="fa-solid fa-file-invoice" aria-hidden="true"></i> Issue invoice</button>
+                                <p class="mt-1 text-[11px] text-slate-500">Opens the bill on the ledger. Use Send to tenant below to email or SMS.</p>
                             </form>
                         @endif
                         @if ($canManage && in_array($invoice->status, ['sent','partial','overdue'], true) && (float) $invoice->amount_paid == 0)

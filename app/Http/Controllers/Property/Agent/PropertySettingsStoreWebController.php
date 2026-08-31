@@ -251,6 +251,7 @@ class PropertySettingsStoreWebController extends Controller
             'rentRemindersAuto' => PropertyPortalSetting::isRentReminderAutomationEnabled(),
             'waterPenaltiesAuto' => PropertyPortalSetting::isWaterPenaltyAutomationEnabled(),
             'attachedUtilityChargesAuto' => PropertyPortalSetting::isAttachedUtilityChargeAutomationEnabled(),
+            'invoiceDeliveryAuto' => PropertyPortalSetting::isInvoiceDeliveryAutomationEnabled(),
             'reminderLeadDays' => PropertyPortalSetting::getValue('workflow_reminder_lead_days', '3'),
             'rentDueDayDefault' => app(\App\Services\Property\RentDueDayResolver::class)->systemDefaultDueDay(),
             'rentDueDayEnvDefault' => (int) config('property.rent_due_day_default', 5),
@@ -268,6 +269,7 @@ class PropertySettingsStoreWebController extends Controller
             'workflow_auto_rent_reminders' => ['nullable', 'in:0,1'],
             'workflow_auto_water_penalties' => ['nullable', 'in:0,1'],
             'workflow_auto_attached_utility_charges' => ['nullable', 'in:0,1'],
+            'workflow_auto_invoice_delivery' => ['nullable', 'in:0,1'],
             'workflow_reminder_lead_days' => ['nullable', 'integer', 'min:0', 'max:60'],
             'property_rent_due_day_default' => ['nullable', 'integer', 'min:1', 'max:31'],
             'workflow_notes' => ['nullable', 'string', 'max:3000'],
@@ -280,6 +282,7 @@ class PropertySettingsStoreWebController extends Controller
         PropertyPortalSetting::setValue('workflow_auto_rent_reminders', (string) ($data['workflow_auto_rent_reminders'] ?? '0'));
         PropertyPortalSetting::setValue('workflow_auto_water_penalties', (string) ($data['workflow_auto_water_penalties'] ?? '0'));
         PropertyPortalSetting::setValue('workflow_auto_attached_utility_charges', (string) ($data['workflow_auto_attached_utility_charges'] ?? '0'));
+        PropertyPortalSetting::setValue('workflow_auto_invoice_delivery', (string) ($data['workflow_auto_invoice_delivery'] ?? '0'));
         PropertyPortalSetting::setValue('workflow_reminder_lead_days', (string) ($data['workflow_reminder_lead_days'] ?? 3));
         $rentDueDefault = $data['property_rent_due_day_default'] ?? null;
         if ($rentDueDefault === null || $rentDueDefault === '') {
@@ -291,7 +294,7 @@ class PropertySettingsStoreWebController extends Controller
             );
         }
         PropertyPortalSetting::setValue('workflow_notes', $data['workflow_notes'] ?? '');
-        PropertyPortalSetting::setValue('system_setup_workflows_count', '8');
+        PropertyPortalSetting::setValue('system_setup_workflows_count', '9');
 
         $this->logSettingsActivity('workflows', 'Workflow setup updated');
 
