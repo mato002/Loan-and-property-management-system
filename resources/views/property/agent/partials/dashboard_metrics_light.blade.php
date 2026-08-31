@@ -9,6 +9,10 @@
     data-labels='@json($chartLabels)'
     data-invoices='@json($chartInvoices)'
     data-payments='@json($chartPayments)'
+    data-commission-by-property='@json($chartCommissionByProperty ?? ['labels' => [], 'values' => []])'
+    data-commission-split='@json($chartCommissionSplit ?? ['labels' => [], 'values' => []])'
+    data-occupancy='@json($chartOccupancy ?? ['labels' => [], 'values' => []])'
+    data-collections-billed='@json($chartCollectionsBilled ?? ['labels' => [], 'values' => []])'
 ></div>
 
 <x-property.responsive.compact-card-grid class="gap-3 sm:gap-4">
@@ -34,6 +38,70 @@
         </div>
         <div class="h-48 sm:h-56 w-full min-w-0 overflow-hidden">
             <canvas id="dashboard-chart-payments" aria-label="Payments by month chart"></canvas>
+        </div>
+    </div>
+</x-property.responsive.compact-card-grid>
+
+<x-property.responsive.compact-card-grid class="gap-3 sm:gap-4 mt-3 sm:mt-4">
+    <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm">
+        <div class="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+            <h2 class="text-sm sm:text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-chart-pie text-indigo-600 dark:text-indigo-400" aria-hidden="true"></i>
+                @if ($commissionByPropertyFallback ?? false)
+                    Collections by property (MTD)
+                @else
+                    Your commission by property (MTD)
+                @endif
+            </h2>
+            <a href="{{ route('property.financials.commission') }}" data-turbo-frame="property-main" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">Details</a>
+        </div>
+        <div class="relative h-48 sm:h-56 w-full min-w-0">
+            <canvas id="dashboard-chart-commission-properties" aria-label="Commission by property chart"></canvas>
+            <p id="dashboard-chart-commission-properties-empty" class="hidden absolute inset-0 flex items-center justify-center text-xs text-slate-500 dark:text-slate-400 px-4 text-center">No collections this month yet.</p>
+        </div>
+    </div>
+    <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm">
+        <div class="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+            <h2 class="text-sm sm:text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-chart-pie text-violet-600 dark:text-violet-400" aria-hidden="true"></i>
+                @if ($commissionSplitFallback ?? false)
+                    Collections vs billed (MTD)
+                @else
+                    Commission vs landlord net (MTD)
+                @endif
+            </h2>
+            <a href="{{ route('property.financials.commission') }}" data-turbo-frame="property-main" class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">Earnings</a>
+        </div>
+        <div class="relative h-48 sm:h-56 w-full min-w-0">
+            <canvas id="dashboard-chart-commission-split" aria-label="Commission split chart"></canvas>
+            <p id="dashboard-chart-commission-split-empty" class="hidden absolute inset-0 flex items-center justify-center text-xs text-slate-500 dark:text-slate-400 px-4 text-center">No financial activity this month yet.</p>
+        </div>
+    </div>
+</x-property.responsive.compact-card-grid>
+
+<x-property.responsive.compact-card-grid class="gap-3 sm:gap-4 mt-3 sm:mt-4">
+    <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm">
+        <div class="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+            <h2 class="text-sm sm:text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-chart-pie text-emerald-600 dark:text-emerald-400" aria-hidden="true"></i>
+                Unit occupancy
+            </h2>
+            <a href="{{ route('property.properties.occupancy') }}" data-turbo-frame="property-main" class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:underline">Units</a>
+        </div>
+        <div class="relative h-48 sm:h-56 w-full min-w-0">
+            <canvas id="dashboard-chart-occupancy" aria-label="Occupancy chart"></canvas>
+        </div>
+    </div>
+    <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm">
+        <div class="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+            <h2 class="text-sm sm:text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                <i class="fa-solid fa-chart-pie text-teal-600 dark:text-teal-400" aria-hidden="true"></i>
+                Billed vs collected (MTD)
+            </h2>
+            <a href="{{ route('property.revenue.overview') }}" data-turbo-frame="property-main" class="text-xs font-semibold text-teal-600 dark:text-teal-400 hover:underline">Collections</a>
+        </div>
+        <div class="relative h-48 sm:h-56 w-full min-w-0">
+            <canvas id="dashboard-chart-collections-billed" aria-label="Collections vs billed chart"></canvas>
         </div>
     </div>
 </x-property.responsive.compact-card-grid>

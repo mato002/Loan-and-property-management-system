@@ -16,6 +16,11 @@ class PropertyJournalService
      */
     public function postBatch(array $payload, array $lines): AccountingJournalBatch
     {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('accounting_journal_batches')
+            || ! \Illuminate\Support\Facades\Schema::hasTable('accounting_journal_lines')) {
+            throw new RuntimeException('Accounting ledger tables are not installed.');
+        }
+
         return DB::transaction(function () use ($payload, $lines) {
             $this->assertCurrentPeriodOpen($payload['date'], (int) ($payload['agent_user_id'] ?? 0));
             $this->assertBalanced($lines);

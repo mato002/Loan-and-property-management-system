@@ -217,6 +217,93 @@ async function loadHeavyDashboardMetrics(host) {
     }
 }
 
+const PIE_COLORS = ['#4f46e5', '#0891b2', '#059669', '#f59e0b', '#ef4444', '#8b5cf6', '#64748b', '#ec4899'];
+
+function pieOptions(showLegend = true) {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: 4 },
+        plugins: {
+            legend: {
+                display: showLegend,
+                position: 'bottom',
+                labels: { boxWidth: 10, font: { size: 10 }, padding: 8 },
+            },
+            tooltip: {
+                callbacks: {
+                    label(ctx) {
+                        const v = ctx.parsed ?? 0;
+                        const s = Number(v).toLocaleString(undefined, {
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 0,
+                        });
+                        return `${ctx.label}: ${Number.isFinite(v) && v >= 1000 ? `KES ${s}` : s}`;
+                    },
+                },
+            },
+        },
+    };
+}
+
+function normalizePieSeries(labels, values) {
+    const nums = (values ?? []).map((v) => Number(v) || 0);
+    const total = nums.reduce((sum, v) => sum + v, 0);
+    if (total <= 0) {
+        return { labels: [], values: [], isEmpty: true };
+    }
+
+    return { labels: labels ?? [], values: nums, isEmpty: false };
+}
+
+function togglePieEmptyState(canvasId, isEmpty, root = document) {
+    const emptyEl = root.querySelector?.(`#${CSS.escape(canvasId)}-empty`)
+        ?? document.getElementById(`${canvasId}-empty`);
+    const canvas = root.querySelector?.(`#${CSS.escape(canvasId)}`) ?? document.getElementById(canvasId);
+    if (emptyEl instanceof HTMLElement) {
+        emptyEl.classList.toggle('hidden', !isEmpty);
+    }
+    if (canvas instanceof HTMLCanvasElement) {
+        canvas.classList.toggle('hidden', isEmpty);
+    }
+}
+
+function renderPieChart(canvasId, labels, values, colors = PIE_COLORS, root = document) {
+    destroyChartOnCanvas(canvasId, root);
+    const canvas = root.querySelector?.(`#${CSS.escape(canvasId)}`) ?? document.getElementById(canvasId);
+    if (!canvas?.getContext) {
+        return null;
+    }
+
+    const series = normalizePieSeries(labels, values);
+    togglePieEmptyState(canvasId, series.isEmpty, root);
+    if (series.isEmpty) {
+        return null;
+    }
+
+    const chart = new Chart(canvas.getContext('2d'), {
+        type: 'pie',
+        data: {
+            labels: series.labels,
+            datasets: [{
+                data: series.values,
+                backgroundColor: colors.slice(0, series.values.length),
+                borderWidth: 1,
+                borderColor: '#ffffff',
+            }],
+        },
+        options: pieOptions(true),
+    });
+
+    window.requestAnimationFrame(() => chart.resize());
+
+    return chart;
+}
+
+function doughnutOptions() {
+    return pieOptions(true);
+}
+
 function initPropertyDashboardCharts(root = document) {
     const holder = root.querySelector?.('#property-dashboard-charts') ?? document.getElementById('property-dashboard-charts');
     if (!holder) {
@@ -225,14 +312,26 @@ function initPropertyDashboardCharts(root = document) {
 
     destroyChartOnCanvas('dashboard-chart-invoices', root);
     destroyChartOnCanvas('dashboard-chart-payments', root);
+    destroyChartOnCanvas('dashboard-chart-commission-properties', root);
+    destroyChartOnCanvas('dashboard-chart-commission-split', root);
+    destroyChartOnCanvas('dashboard-chart-occupancy', root);
+    destroyChartOnCanvas('dashboard-chart-collections-billed', root);
 
     let labels = [];
     let invoices = [];
     let payments = [];
+    let commissionByProperty = { labels: [], values: [] };
+    let commissionSplit = { labels: [], values: [] };
+    let occupancy = { labels: [], values: [] };
+    let collectionsBilled = { labels: [], values: [] };
     try {
         labels = JSON.parse(holder.dataset.labels || '[]');
         invoices = JSON.parse(holder.dataset.invoices || '[]');
         payments = JSON.parse(holder.dataset.payments || '[]');
+        commissionByProperty = JSON.parse(holder.dataset.commissionByProperty || '{"labels":[],"values":[]}');
+        commissionSplit = JSON.parse(holder.dataset.commissionSplit || '{"labels":[],"values":[]}');
+        occupancy = JSON.parse(holder.dataset.occupancy || '{"labels":[],"values":[]}');
+        collectionsBilled = JSON.parse(holder.dataset.collectionsBilled || '{"labels":[],"values":[]}');
     } catch {
         return;
     }
@@ -260,6 +359,11 @@ function initPropertyDashboardCharts(root = document) {
             options: baseOptions(),
         });
     }
+
+    renderPieChart('dashboard-chart-commission-properties', commissionByProperty.labels, commissionByProperty.values, PIE_COLORS, root);
+    renderPieChart('dashboard-chart-commission-split', commissionSplit.labels, commissionSplit.values, ['#4f46e5', '#7c3aed'], root);
+    renderPieChart('dashboard-chart-occupancy', occupancy.labels, occupancy.values, ['#059669', '#f59e0b'], root);
+    renderPieChart('dashboard-chart-collections-billed', collectionsBilled.labels, collectionsBilled.values, ['#0d9488', '#f97316'], root);
 }
 
 export function bootPropertyDashboard(scope = document) {

@@ -179,16 +179,18 @@ class PmInvoiceController extends Controller
             );
 
             // Accounting parity: keep the GL in sync with edits.
-            if ($newStatus === PmInvoice::STATUS_CANCELLED && $previousStatus !== PmInvoice::STATUS_CANCELLED) {
-                app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), 'Edit: status moved to cancelled');
-                PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_CANCELLED, $request->user()?->id, $data['cancelled_reason'] ?? null);
-            } elseif ($previousStatus === PmInvoice::STATUS_CANCELLED && $newStatus !== PmInvoice::STATUS_CANCELLED) {
-                PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
-                PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_REOPENED, $request->user()?->id);
-            } elseif (round($previousAmount, 2) !== round($newAmount, 2) && $newStatus !== PmInvoice::STATUS_CANCELLED) {
-                // Material amount change on an active invoice — reverse the
-                // previous journal and post a fresh one under a new revision.
-                PropertyAccountingPostingService::repostInvoiceAfterEdit($invoice, $request->user());
+            try {
+                if ($newStatus === PmInvoice::STATUS_CANCELLED && $previousStatus !== PmInvoice::STATUS_CANCELLED) {
+                    app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), 'Edit: status moved to cancelled');
+                    PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_CANCELLED, $request->user()?->id, $data['cancelled_reason'] ?? null);
+                } elseif ($previousStatus === PmInvoice::STATUS_CANCELLED && $newStatus !== PmInvoice::STATUS_CANCELLED) {
+                    PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
+                    PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_REOPENED, $request->user()?->id);
+                } elseif (round($previousAmount, 2) !== round($newAmount, 2) && $newStatus !== PmInvoice::STATUS_CANCELLED) {
+                    PropertyAccountingPostingService::repostInvoiceAfterEdit($invoice, $request->user());
+                }
+            } catch (\Throwable $e) {
+                report($e);
             }
             });
         } catch (\RuntimeException $e) {
@@ -232,9 +234,11 @@ class PmInvoiceController extends Controller
 
         try {
             DB::transaction(function () use ($invoice, $request) {
-                // Reverse any open journal entries so the GL doesn't ghost-credit
-                // an income line for an invoice that no longer exists.
-                app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), 'Invoice deleted');
+                try {
+                    app(PropertyReversalFinalizeService::class)->reverseInvoiceFully($invoice, $request->user(), 'Invoice deleted');
+                } catch (\Throwable $e) {
+                    report($e);
+                }
 
                 PmInvoiceEvent::record(
                     (int) $invoice->id,
@@ -349,13 +353,18 @@ class PmInvoiceController extends Controller
             ], 422);
         }
 
+        $optionRows = collect(PmInvoice::createTypeOptions())
+            ->map(fn ($label, $value) => ['value' => $value, 'label' => $label])
+            ->values();
+
+        if (! $optionRows->contains(fn ($row) => ($row['value'] ?? '') === $created['value'])) {
+            $optionRows->push(['value' => $created['value'], 'label' => $created['label']]);
+        }
+
         return response()->json([
             'ok' => true,
             'type' => $created,
-            'options' => collect(PmInvoice::createTypeOptions())
-                ->map(fn ($label, $value) => ['value' => $value, 'label' => $label])
-                ->values()
-                ->all(),
+            'options' => $optionRows->all(),
         ]);
     }
 
@@ -513,12 +522,16 @@ class PmInvoiceController extends Controller
 
         // Only post to GL once the invoice is "sent" — drafts stay off-ledger.
         if ((string) $invoice->status !== PmInvoice::STATUS_DRAFT) {
-            PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
-            if ($invoice->pm_tenant_id) {
-                app(TenantCreditService::class)->autoApplyForTenant(
-                    (int) $invoice->pm_tenant_id,
-                    $request->user(),
-                );
+            try {
+                PropertyAccountingPostingService::postInvoiceIssued($invoice, $request->user());
+                if ($invoice->pm_tenant_id) {
+                    app(TenantCreditService::class)->autoApplyForTenant(
+                        (int) $invoice->pm_tenant_id,
+                        $request->user(),
+                    );
+                }
+            } catch (\Throwable $e) {
+                report($e);
             }
         }
 

@@ -508,6 +508,11 @@ function bindModalBackdropGuard() {
                 return;
             }
 
+            // SweetAlert (confirm/error) renders outside [data-property-modal] — must stay clickable.
+            if (target.closest('.swal2-container')) {
+                return;
+            }
+
             const modalRoot = target.closest('[data-property-modal]');
             if (!modalRoot) {
                 event.preventDefault();

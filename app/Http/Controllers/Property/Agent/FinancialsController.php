@@ -8,9 +8,11 @@ use App\Models\PmInvoice;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmPayment;
 use App\Models\PmUnitUtilityCharge;
-use App\Models\PropertyPortalSetting;
+use App\Models\Property;
+use App\Models\User;
 use App\Support\CsvExport;
 use App\Support\TabularExport;
+use App\Services\Property\AgentCommissionService;
 use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
@@ -279,80 +281,29 @@ class FinancialsController extends Controller
     {
         [$monthValue, $fyValue, $monthStart, $monthEnd, $periodLabel] = $this->resolvePeriod($request);
         $search = trim((string) $request->query('q', ''));
+        $landlordId = max(0, (int) $request->query('landlord_id', 0));
+        $propertyId = max(0, (int) $request->query('property_id', 0));
 
-        $defaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
-        $defaultPct = is_numeric($defaultRaw) ? (float) $defaultRaw : 10.0;
-        if ($defaultPct < 0) {
-            $defaultPct = 0;
-        }
-        $overrideRaw = (string) PropertyPortalSetting::getValue('commission_property_overrides_json', '[]');
-        $overrides = [];
-        $decoded = json_decode($overrideRaw, true);
-        if (is_array($decoded)) {
-            foreach ($decoded as $propertyId => $pct) {
-                $pid = (int) $propertyId;
-                if ($pid <= 0 || ! is_numeric($pct)) {
-                    continue;
-                }
-                $overrides[$pid] = max(0.0, (float) $pct);
-            }
-        }
+        $filterLandlord = $landlordId > 0 ? $landlordId : null;
+        $filterProperty = $propertyId > 0 ? $propertyId : null;
+        $filterSearch = $search !== '' ? $search : null;
 
-        $linksQuery = DB::table('property_landlord as pl')
-            ->join('users as u', 'u.id', '=', 'pl.user_id')
-            ->join('properties as p', 'p.id', '=', 'pl.property_id')
-            ->select([
-                'pl.user_id',
-                'pl.property_id',
-                'pl.ownership_percent',
-                'u.name as owner_name',
-                'p.name as property_name',
-            ])
-            ->orderBy('u.name')
-            ->orderBy('p.name');
-        if (AgentWorkspaceScope::shouldApply()) {
-            $linksQuery->where('p.agent_user_id', (int) $request->user()?->id);
-        }
-        $links = $linksQuery->get();
+        $service = app(AgentCommissionService::class);
+        $agg = $service->aggregate(
+            $monthStart,
+            $monthEnd,
+            $filterLandlord,
+            $filterProperty,
+            $filterSearch,
+        );
+        $chartByProperty = $service->chartByProperty($monthStart, $monthEnd, 6, $filterLandlord, $filterProperty, $filterSearch);
+        $chartSplit = $service->chartSplit($monthStart, $monthEnd, $filterLandlord, $filterProperty, $filterSearch);
 
-        $collectedMtdByProperty = DB::table('pm_payment_allocations as a')
-            ->join('pm_payments as pay', 'pay.id', '=', 'a.pm_payment_id')
-            ->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
-            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
-            ->where('pay.status', PmPayment::STATUS_COMPLETED)
-            ->whereBetween('pay.paid_at', [$monthStart, $monthEnd])
-            ->groupBy('pu.property_id')
-            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(a.amount),0) as total')
-            ->pluck('total', 'property_id');
-
-        $invoicedMtdByProperty = DB::table('pm_invoices as i')
-            ->join('property_units as pu', 'pu.id', '=', 'i.property_unit_id')
-            ->whereBetween('i.issue_date', [$monthStart->toDateString(), $monthEnd->toDateString()])
-            ->tap(fn ($q) => PmInvoice::applyLiveBalanceConstraints($q, 'i'))
-            ->groupBy('pu.property_id')
-            ->selectRaw('pu.property_id as property_id, COALESCE(SUM(i.amount),0) as total')
-            ->pluck('total', 'property_id');
-
-        if ($search !== '') {
-            $needle = mb_strtolower($search);
-            $links = $links->filter(function ($link) use ($needle) {
-                $hay = mb_strtolower((string) ($link->owner_name.' '.$link->property_name));
-
-                return str_contains($hay, $needle);
-            })->values();
-        }
-
-        $rows = $links->map(function ($link) use ($defaultPct, $overrides, $collectedMtdByProperty, $invoicedMtdByProperty, $periodLabel) {
-            $ownership = ((float) $link->ownership_percent) / 100;
-            $baseRent = ((float) ($collectedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
-            $ratePct = $overrides[(int) $link->property_id] ?? $defaultPct;
-            $accrued = $baseRent * ($ratePct / 100);
-            $invoicedBase = ((float) ($invoicedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
-            $delta = max(0.0, ($invoicedBase - $baseRent) * ($ratePct / 100));
-
-            $ownerHref = route('property.landlords.show', ['landlord' => (int) $link->user_id], false);
-            $statementHref = route('property.landlords.statement', ['landlord' => (int) $link->user_id], false);
-            $propertyHref = route('property.properties.show', ['property' => (int) $link->property_id], false);
+        $rows = collect($agg['rows'])->map(function (array $row) use ($periodLabel) {
+            $ownerHref = route('property.landlords.show', ['landlord' => $row['landlord_id']], false);
+            $statementHref = route('property.landlords.statement', ['landlord' => $row['landlord_id']], false);
+            $propertyHref = route('property.properties.show', ['property' => $row['property_id']], false);
+            $delta = max(0.0, ($row['owner_invoiced'] - $row['owner_share']) * ($row['rate_pct'] / 100));
             $actions = new HtmlString(
                 '<div class="flex flex-wrap items-center gap-1.5">'
                 .'<a href="'.$ownerHref.'" class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Owner</a>'
@@ -363,43 +314,33 @@ class FinancialsController extends Controller
 
             return [
                 $periodLabel,
-                $link->owner_name,
-                $link->property_name,
-                PropertyMoney::kes($baseRent),
-                number_format($ratePct, 2).'%',
-                PropertyMoney::kes($accrued),
-                $delta > 0 ? 'Review delta' : ($accrued > 0 ? 'Accrued' : 'No activity'),
+                $row['owner_name'],
+                $row['property_name'],
+                number_format($row['ownership_percent'], 1).'%',
+                PropertyMoney::kes($row['owner_share']),
+                PropertyMoney::kes($row['commission']),
+                PropertyMoney::kes($row['landlord_net']),
+                number_format($row['rate_pct'], 2).'%',
+                $delta > 0 ? 'Review delta' : ($row['commission'] > 0 ? 'Accrued' : 'No activity'),
                 $actions,
             ];
         })->all();
 
-        $totalAccrued = 0.0;
-        $totalInvoiced = 0.0;
-        $totalPaid = 0.0;
-        foreach ($links as $link) {
-            $ownership = ((float) $link->ownership_percent) / 100;
-            $baseCollected = ((float) ($collectedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
-            $baseInvoiced = ((float) ($invoicedMtdByProperty[$link->property_id] ?? 0)) * $ownership;
-            $ratePct = $overrides[(int) $link->property_id] ?? $defaultPct;
-            $totalAccrued += $baseCollected * ($ratePct / 100);
-            $totalInvoiced += $baseInvoiced * ($ratePct / 100);
-            $totalPaid += $baseCollected * ($ratePct / 100);
-        }
-
-        $openDelta = max(0.0, $totalInvoiced - $totalPaid);
+        $totals = $agg['totals'];
+        $openDelta = max(0.0, ($totals['invoiced'] * ($service->defaultPercent() / 100)) - $totals['commission']);
 
         if (in_array(strtolower((string) $request->query('export', '')), ['csv', 'pdf', 'word'], true)) {
             $export = strtolower((string) $request->query('export', 'csv'));
             $exportRows = array_map(static function (array $row): array {
                 $copy = $row;
-                $copy[7] = 'Owner | Statement | Property';
+                $copy[9] = 'Owner | Statement | Property';
 
                 return $copy;
             }, $rows);
 
             return TabularExport::stream(
                 'financials_commission_'.now()->format('Ymd_His'),
-                ['Period', 'Owner', 'Property', 'Base Rent', 'Fee %', 'Accrued', 'Status', 'Actions'],
+                ['Period', 'Owner', 'Property', 'Ownership', 'Owner share', 'Your commission', 'Landlord net', 'Fee %', 'Status', 'Actions'],
                 function () use ($exportRows) {
                     foreach ($exportRows as $row) {
                         yield $row;
@@ -409,19 +350,38 @@ class FinancialsController extends Controller
             );
         }
 
+        $propertiesQuery = Property::query()->orderBy('name');
+        if (AgentWorkspaceScope::shouldApply()) {
+            $propertiesQuery->where('agent_user_id', (int) $request->user()?->id);
+        }
+        $properties = $propertiesQuery->get(['id', 'name']);
+
+        $landlordsQuery = User::query()
+            ->whereIn('id', DB::table('property_landlord')->pluck('user_id'))
+            ->orderBy('name');
+        $landlords = $landlordsQuery->get(['id', 'name']);
+
         return property_view('property.agent.financials.commission', [
             'stats' => [
-                ['label' => 'Accrued', 'value' => PropertyMoney::kes($totalAccrued), 'hint' => $periodLabel],
-                ['label' => 'Invoiced', 'value' => PropertyMoney::kes($totalInvoiced), 'hint' => 'From invoice base'],
-                ['label' => 'Paid', 'value' => PropertyMoney::kes($totalPaid), 'hint' => 'Collection-linked'],
-                ['label' => 'Disputes', 'value' => $openDelta > 0 ? '1' : '0', 'hint' => 'Open fee delta'],
+                ['label' => 'Your commission', 'value' => PropertyMoney::kes($totals['commission']), 'hint' => $periodLabel],
+                ['label' => 'Landlord net', 'value' => PropertyMoney::kes($totals['landlord_net']), 'hint' => 'After your fee'],
+                ['label' => 'Owner share collected', 'value' => PropertyMoney::kes($totals['landlord_share']), 'hint' => 'Ownership-adjusted'],
+                ['label' => 'Total collected', 'value' => PropertyMoney::kes($totals['collected']), 'hint' => 'All properties'],
             ],
-            'columns' => ['Period', 'Owner', 'Property', 'Base rent', 'Fee %', 'Accrued', 'Status', 'Actions'],
+            'columns' => ['Period', 'Owner', 'Property', 'Ownership', 'Owner share', 'Your commission', 'Landlord net', 'Fee %', 'Status', 'Actions'],
             'tableRows' => $rows,
             'monthValue' => $monthValue,
             'fyValue' => $fyValue,
             'periodLabel' => $periodLabel,
-            'filters' => ['q' => $search],
+            'chartByProperty' => $chartByProperty,
+            'chartCommissionSplit' => $chartSplit,
+            'properties' => $properties,
+            'landlords' => $landlords,
+            'filters' => [
+                'q' => $search,
+                'landlord_id' => $landlordId,
+                'property_id' => $propertyId,
+            ],
         ]);
     }
 

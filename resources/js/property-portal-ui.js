@@ -176,19 +176,32 @@ document.addEventListener('turbo:frame-load', (e) => initKenyaAddressAutocomplet
         try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
     }
 
-    function syncAlpineQuickSelect(selectEl, value) {
-        const root = selectEl?.closest?.('[x-data]');
-        const alpine = window.Alpine;
-        if (!root || !alpine || typeof alpine.$data !== 'function') {
-            return;
-        }
-        const data = alpine.$data(root);
-        if (!data || !Object.prototype.hasOwnProperty.call(data, 'selectedValue')) {
-            return;
-        }
+    function syncAlpineQuickSelect(selectEl, value, opts = {}) {
+        const silent = Boolean(opts.silent);
         const next = String(value);
-        if (String(data.selectedValue) !== next) {
-            data.selectedValue = next;
+        let root = selectEl?.closest?.('[x-data]');
+        const alpine = window.Alpine;
+
+        while (root && alpine && typeof alpine.$data === 'function') {
+            const data = alpine.$data(root);
+            if (data && typeof data.setExternalValue === 'function') {
+                data.setExternalValue(next, { silent });
+
+                return;
+            }
+            if (data && Object.prototype.hasOwnProperty.call(data, 'selectedValue')) {
+                if (String(data.selectedValue) !== next) {
+                    data.selectedValue = next;
+                }
+                if (typeof data.syncHiddenSelectSilent === 'function') {
+                    data.syncHiddenSelectSilent();
+                } else if (typeof data.syncHiddenSelect === 'function') {
+                    data.syncHiddenSelect();
+                }
+
+                return;
+            }
+            root = root.parentElement?.closest?.('[x-data]') ?? null;
         }
     }
 
@@ -203,7 +216,7 @@ document.addEventListener('turbo:frame-load', (e) => initKenyaAddressAutocomplet
             selectEl.appendChild(opt);
             selectEl.value = v;
         }
-        syncAlpineQuickSelect(selectEl, selectEl.value);
+        syncAlpineQuickSelect(selectEl, selectEl.value, { silent });
         if (!silent && selectEl.value !== before) {
             dispatchAll(selectEl);
         }

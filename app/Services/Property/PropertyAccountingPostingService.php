@@ -10,6 +10,7 @@ use App\Models\PmMaintenanceJob;
 use App\Models\PmPayment;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
+use Illuminate\Support\Facades\Schema;
 
 class PropertyAccountingPostingService
 {
@@ -39,6 +40,9 @@ class PropertyAccountingPostingService
      */
     public static function postInvoiceIssued(PmInvoice $invoice, ?User $actor = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         if ((float) $invoice->amount <= 0) {
             return;
         }
@@ -145,6 +149,9 @@ class PropertyAccountingPostingService
      */
     public static function postWaterPenalty(PmInvoice $invoice, float $penaltyAmount, int $applicationId, ?User $actor = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         if ($penaltyAmount <= 0 || (string) $invoice->invoice_type !== PmInvoice::TYPE_WATER) {
             return;
         }
@@ -204,6 +211,9 @@ class PropertyAccountingPostingService
 
     public static function reverseWaterPenalty(PmInvoice $invoice, float $penaltyAmount, int $applicationId, ?User $actor = null, ?string $reason = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         if ($penaltyAmount <= 0) {
             return;
         }
@@ -304,6 +314,10 @@ class PropertyAccountingPostingService
      */
     public static function reverseInvoiceIssued(PmInvoice $invoice, ?User $actor = null, ?string $reason = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
+
         $batch = AccountingJournalBatch::query()
             ->where('source_type', 'pm_invoice')
             ->where('source_id', (int) $invoice->id)
@@ -362,6 +376,10 @@ class PropertyAccountingPostingService
      */
     public static function reverseAllInvoiceIssuanceBatches(PmInvoice $invoice, ?User $actor = null, ?string $reason = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
+
         $batches = AccountingJournalBatch::query()
             ->where('source_type', 'pm_invoice')
             ->where('source_id', (int) $invoice->id)
@@ -393,6 +411,9 @@ class PropertyAccountingPostingService
      */
     public static function postCreditMemoIssued(PmInvoice $creditNote, ?User $actor = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         if (! $creditNote->isCreditNote()) {
             return;
         }
@@ -488,6 +509,9 @@ class PropertyAccountingPostingService
      */
     public static function reverseCreditMemoIssued(PmInvoice $creditNote, ?User $actor = null, ?string $reason = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         if (! $creditNote->isCreditNote()) {
             return;
         }
@@ -512,6 +536,9 @@ class PropertyAccountingPostingService
 
     public static function reverseTenantCreditApplied(int $creditTransactionId, ?User $actor = null, ?string $reason = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         if ($creditTransactionId <= 0) {
             return;
         }
@@ -608,6 +635,10 @@ class PropertyAccountingPostingService
      */
     public static function repostInvoiceAfterEdit(PmInvoice $invoice, ?User $actor = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
+
         self::reverseInvoiceIssued($invoice, $actor, 'Invoice '.$invoice->invoice_no.' edited');
 
         // Issue under a revised event_type so the firstOrCreate on the
@@ -678,6 +709,9 @@ class PropertyAccountingPostingService
 
     public static function postPaymentReceived(PmPayment $payment, ?User $actor = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         if ($payment->status !== PmPayment::STATUS_COMPLETED || (float) $payment->amount <= 0) {
             return;
         }
@@ -853,6 +887,9 @@ class PropertyAccountingPostingService
      */
     public static function postTenantCreditApplied(PmInvoice $invoice, float $amount, int $creditTransactionId, ?User $actor = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         if ($amount <= 0) {
             return;
         }
@@ -916,6 +953,9 @@ class PropertyAccountingPostingService
      */
     public static function postTenantCreditRefund(int $tenantId, float $amount, ?string $reference, ?User $actor = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         if ($amount <= 0 || $tenantId <= 0) {
             return;
         }
@@ -962,6 +1002,9 @@ class PropertyAccountingPostingService
 
     public static function postMaintenanceExpense(PmMaintenanceJob $job, ?User $actor = null): void
     {
+        if (! self::ledgerReady()) {
+            return;
+        }
         $amount = (float) ($job->quote_amount ?? 0);
         if ($amount <= 0) {
             return;
@@ -1037,6 +1080,9 @@ class PropertyAccountingPostingService
 
     public static function postUnmatchedPaymentToSuspense(PmPayment $payment, ?User $actor = null): ?AccountingJournalBatch
     {
+        if (! self::ledgerReady()) {
+            return null;
+        }
         if ($payment->status !== PmPayment::STATUS_COMPLETED || (float) $payment->amount <= 0) {
             return null;
         }
@@ -1090,11 +1136,21 @@ class PropertyAccountingPostingService
         ]);
     }
 
+    public static function ledgerReady(): bool
+    {
+        return Schema::hasTable('accounting_journal_batches')
+            && Schema::hasTable('accounting_journal_lines');
+    }
+
     /**
      * @param array<string,mixed> $data
      */
     private static function firstOrCreateEntry(array $data): void
     {
+        if (! Schema::hasTable('pm_accounting_entries')) {
+            return;
+        }
+
         PmAccountingEntry::query()->firstOrCreate([
             'entry_date' => $data['entry_date'],
             'account_name' => $data['account_name'],

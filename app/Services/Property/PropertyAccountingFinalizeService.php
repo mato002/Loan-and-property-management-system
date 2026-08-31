@@ -35,6 +35,9 @@ class PropertyAccountingFinalizeService
      */
     public function afterPaymentSettled(PmPayment $payment, ?User $actor = null, ?float $unallocatedAmount = null): void
     {
+        if (! PropertyAccountingPostingService::ledgerReady()) {
+            return;
+        }
         if ($payment->status !== PmPayment::STATUS_COMPLETED || (float) $payment->amount <= 0) {
             return;
         }

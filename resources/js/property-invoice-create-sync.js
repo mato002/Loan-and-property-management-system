@@ -9,6 +9,58 @@ function csrfToken() {
         || '';
 }
 
+function resolveInvoiceTypeSelects(button) {
+    const selects = [];
+    const add = (el) => {
+        if (el instanceof HTMLSelectElement && !selects.includes(el)) {
+            selects.push(el);
+        }
+    };
+
+    if (button instanceof HTMLElement) {
+        add(button.parentElement?.querySelector('[data-invoice-type-select], select[name="invoice_type"]'));
+        button.closest('[data-property-modal]')
+            ?.querySelectorAll('[data-invoice-type-select], select[name="invoice_type"]')
+            .forEach(add);
+        button.closest('form')
+            ?.querySelectorAll('[data-invoice-type-select], select[name="invoice_type"]')
+            .forEach(add);
+    }
+
+    if (selects.length === 0) {
+        document.querySelectorAll('form[data-lease-info-url] [data-invoice-type-select], form[data-lease-info-url] select[name="invoice_type"]').forEach(add);
+    }
+
+    return selects;
+}
+
+function normalizeInvoiceTypeOptions(options, typeMeta) {
+    const normalized = [];
+    const seen = new Set();
+
+    if (Array.isArray(options)) {
+        options.forEach((opt) => {
+            const value = String(opt?.value ?? '').trim();
+            if (value === '' || seen.has(value)) {
+                return;
+            }
+            seen.add(value);
+            normalized.push({
+                value,
+                label: String(opt?.label ?? opt?.value ?? value),
+            });
+        });
+    }
+
+    const selectedValue = String(typeMeta?.value ?? '').trim();
+    const selectedLabel = String(typeMeta?.label ?? selectedValue).trim();
+    if (selectedValue !== '' && !seen.has(selectedValue)) {
+        normalized.push({ value: selectedValue, label: selectedLabel || selectedValue });
+    }
+
+    return { normalized, selectedValue };
+}
+
 function rebuildInvoiceTypeSelect(select, options, selectedValue) {
     if (!select || !Array.isArray(options)) {
         return;
@@ -26,14 +78,24 @@ function rebuildInvoiceTypeSelect(select, options, selectedValue) {
     }
 }
 
+function applyInvoiceTypeOptions(button, options, typeMeta) {
+    const { normalized, selectedValue } = normalizeInvoiceTypeOptions(options, typeMeta);
+    const selects = resolveInvoiceTypeSelects(button);
+
+    selects.forEach((select) => {
+        rebuildInvoiceTypeSelect(select, normalized, selectedValue);
+        if (selectedValue !== '') {
+            select.value = selectedValue;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    });
+}
+
 async function promptAndCreateInvoiceType(button) {
     const endpoint = button.getAttribute('data-endpoint') || '';
     if (!endpoint) {
         return;
     }
-
-    const form = button.closest('form');
-    const select = form?.querySelector('[data-invoice-type-select], select[name="invoice_type"]');
 
     let label = '';
     if (window.Swal) {
@@ -92,11 +154,7 @@ async function promptAndCreateInvoiceType(button) {
             return;
         }
 
-        rebuildInvoiceTypeSelect(select, data.options || [], data.type?.value);
-        if (select && data.type?.value) {
-            select.value = String(data.type.value);
-            select.dispatchEvent(new Event('change', { bubbles: true }));
-        }
+        applyInvoiceTypeOptions(button, data.options || [], data.type || { value: label, label });
         if (window.swalAlert) {
             await window.swalAlert(`Added “${data.type?.label || label}”.`, 'success');
         }
@@ -109,17 +167,31 @@ async function promptAndCreateInvoiceType(button) {
     }
 }
 
-function bindInvoiceTypeAddButtons(root = document) {
-    root.querySelectorAll('[data-invoice-type-add]').forEach((button) => {
-        if (button.dataset.invoiceTypeAddBound === '1') {
-            return;
-        }
-        button.dataset.invoiceTypeAddBound = '1';
-        button.addEventListener('click', (e) => {
-            e.preventDefault();
+let invoiceTypeAddDelegated = false;
+
+/** Delegated handler (capture) — teleported modals use @click.stop on the panel, which blocks bubble. */
+function bindInvoiceTypeAddButtons() {
+    if (invoiceTypeAddDelegated) {
+        return;
+    }
+    invoiceTypeAddDelegated = true;
+
+    document.addEventListener(
+        'click',
+        (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) {
+                return;
+            }
+            const button = target.closest('[data-invoice-type-add]');
+            if (!(button instanceof HTMLElement)) {
+                return;
+            }
+            event.preventDefault();
             promptAndCreateInvoiceType(button);
-        });
-    });
+        },
+        true,
+    );
 }
 
 function bindInvoiceCreateForm(form) {
@@ -163,6 +235,35 @@ function bindInvoiceCreateForm(form) {
         el.value = String(value);
 
         return true;
+    };
+
+    const syncLeaseFieldsFromOption = () => {
+        const opt = leaseSel.options?.[leaseSel.selectedIndex];
+        if (!opt?.value) {
+            return false;
+        }
+
+        quietSync = true;
+        try {
+            const tenantId = (opt.getAttribute('data-tenant-id') || '').trim();
+            const unitIdsRaw = opt.getAttribute('data-unit-ids') || '';
+            const firstUnitId = unitIdsRaw.split(',').map((s) => s.trim()).find(Boolean);
+            const rent = parseFloat(opt.getAttribute('data-rent') || '0') || 0;
+
+            if (tenantId) {
+                setFieldValueSilent('pm_tenant_id', tenantId);
+            }
+            if (firstUnitId) {
+                setFieldValueSilent('property_unit_id', firstUnitId);
+            }
+            if (amountInput && rent > 0 && (!amountInput.value || parseFloat(amountInput.value) <= 0)) {
+                amountInput.value = String(rent);
+            }
+
+            return Boolean(tenantId || firstUnitId);
+        } finally {
+            quietSync = false;
+        }
     };
 
     const getSelectedUnitMeta = () => {
@@ -242,6 +343,8 @@ function bindInvoiceCreateForm(form) {
         if (!leaseId) {
             return;
         }
+
+        syncLeaseFieldsFromOption();
 
         const fetchId = ++leaseFetchToken;
         const url = leaseInfoTemplate.replace('LEASE_ID', encodeURIComponent(leaseId));
@@ -351,11 +454,26 @@ function bindInvoiceCreateForm(form) {
 
 function scanInvoiceCreateForms(root = document) {
     root.querySelectorAll('form[data-lease-info-url]').forEach(bindInvoiceCreateForm);
-    bindInvoiceTypeAddButtons(root);
+    bindInvoiceTypeAddButtons();
+}
+
+function rescanInvoiceCreateModal(event) {
+    const modalId = event?.detail?.id;
+    if (modalId) {
+        const modal = document.querySelector(`[data-property-modal-id="${modalId}"]`);
+        if (modal) {
+            scanInvoiceCreateForms(modal);
+
+            return;
+        }
+    }
+    scanInvoiceCreateForms(document);
 }
 
 document.addEventListener('DOMContentLoaded', () => scanInvoiceCreateForms(document));
+document.addEventListener('alpine:initialized', () => scanInvoiceCreateForms(document));
 document.addEventListener('turbo:load', () => scanInvoiceCreateForms(document));
 document.addEventListener('turbo:frame-load', (e) => scanInvoiceCreateForms(e.target));
+window.addEventListener('property-modal:open', rescanInvoiceCreateModal);
 
 export { bindInvoiceCreateForm, scanInvoiceCreateForms };

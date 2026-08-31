@@ -398,7 +398,7 @@ final class PropertyNavigation
                     ['label' => 'Income & expenses', 'route' => 'property.financials.income_expenses', 'active' => ['property.financials.income_expenses']],
                     ['label' => 'Cash flow', 'route' => 'property.financials.cash_flow', 'active' => ['property.financials.cash_flow']],
                     ['label' => 'Owner balances', 'route' => 'property.financials.owner_balances', 'active' => ['property.financials.owner_balances']],
-                    ['label' => 'Commission', 'route' => 'property.financials.commission', 'active' => ['property.financials.commission']],
+                    ['label' => 'Earnings & commission', 'route' => 'property.financials.commission', 'active' => ['property.financials.commission']],
                 ],
             ],
             'analytics' => [

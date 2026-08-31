@@ -84,7 +84,7 @@
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Unit</label>
                     <x-property.quick-create-select
-                        id="invoice-unit"
+                        selectId="invoice-unit"
                         name="property_unit_id"
                         :required="true"
                         :options="collect($units)->map(fn($u) => ['value' => $u->id, 'label' => (($u->property?->name ?? 'Unknown property').' / '.$u->label), 'selected' => (string) old('property_unit_id') === (string) $u->id, 'attrs' => ['data-rent' => (string) ($u->rent_amount ?? 0), 'data-unit-label' => $u->label]])->all()"

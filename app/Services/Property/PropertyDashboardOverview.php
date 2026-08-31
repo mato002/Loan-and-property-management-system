@@ -224,6 +224,41 @@ final class PropertyDashboardOverview
         $mtdCollected = PropertyDashboardStats::mtdCollected();
         $mtdBilled = PropertyDashboardStats::mtdBilled();
         $openBalance = PropertyDashboardStats::outstandingBalance();
+        $commissionService = app(AgentCommissionService::class);
+        $mtdStart = now()->startOfMonth();
+        $mtdEnd = now()->endOfMonth();
+        $mtdCommissionTotals = $commissionService->aggregate($mtdStart, $mtdEnd)['totals'];
+        $commissionByProperty = $commissionService->chartByProperty($mtdStart, $mtdEnd, 5);
+        if (($commissionByProperty['values'] ?? []) === []) {
+            $commissionByProperty = $commissionService->collectionsChartByProperty($mtdStart, $mtdEnd, 5);
+            $commissionByProperty['fallback'] = 'collections';
+        }
+        $commissionSplit = $commissionService->chartSplit($mtdStart, $mtdEnd);
+        if (array_sum($commissionSplit['values'] ?? []) <= 0 && $mtdCollected > 0) {
+            $commissionSplit = [
+                'labels' => ['Collected (MTD)', 'Still to collect from billed'],
+                'values' => [
+                    round($mtdCollected, 2),
+                    round(max(0.0, $mtdBilled - $mtdCollected), 2),
+                ],
+                'fallback' => 'collections',
+            ];
+        }
+
+        $operationalPropertyIds = Property::query()->operational()->select('id');
+        $unitsOccupied = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_OCCUPIED)->count();
+        $unitsVacant = PropertyUnit::query()->whereIn('property_id', $operationalPropertyIds)->where('status', PropertyUnit::STATUS_VACANT)->count();
+        $chartOccupancy = [
+            'labels' => ['Occupied', 'Vacant'],
+            'values' => [(float) $unitsOccupied, (float) $unitsVacant],
+        ];
+        $chartCollectionsBilled = [
+            'labels' => ['Collected (MTD)', 'Billed not yet collected'],
+            'values' => [
+                round($mtdCollected, 2),
+                round(max(0.0, $mtdBilled - $mtdCollected), 2),
+            ],
+        ];
 
         $financialKpis = [
             [
@@ -232,6 +267,20 @@ final class PropertyDashboardOverview
                 'icon' => 'fa-sack-dollar',
                 'route' => 'property.revenue.payments',
                 'bar' => 'bg-green-600',
+            ],
+            [
+                'label' => 'Your commission (MTD)',
+                'value' => PropertyMoney::kes($mtdCommissionTotals['commission']),
+                'icon' => 'fa-percent',
+                'route' => 'property.financials.commission',
+                'bar' => 'bg-indigo-600',
+            ],
+            [
+                'label' => 'Landlord net (MTD)',
+                'value' => PropertyMoney::kes($mtdCommissionTotals['landlord_net']),
+                'icon' => 'fa-hand-holding-dollar',
+                'route' => 'property.financials.commission',
+                'bar' => 'bg-violet-500',
             ],
             [
                 'label' => 'Billed (MTD)',
@@ -312,6 +361,12 @@ final class PropertyDashboardOverview
             'chartLabels' => $chartLabels,
             'chartInvoices' => $chartInvoices,
             'chartPayments' => $chartPayments,
+            'chartCommissionByProperty' => $commissionByProperty,
+            'chartCommissionSplit' => $commissionSplit,
+            'chartOccupancy' => $chartOccupancy,
+            'chartCollectionsBilled' => $chartCollectionsBilled,
+            'commissionByPropertyFallback' => ($commissionByProperty['fallback'] ?? '') === 'collections',
+            'commissionSplitFallback' => ($commissionSplit['fallback'] ?? '') === 'collections',
             'recentRequests' => $recentRequests,
             'recentPayments' => $recentPayments,
         ];

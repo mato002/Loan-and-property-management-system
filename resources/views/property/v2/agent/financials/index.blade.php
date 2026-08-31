@@ -40,7 +40,7 @@
             ['route' => 'property.financials.income_expenses', 'title' => 'Income vs expenses', 'description' => 'Period P&amp;L style views.'],
             ['route' => 'property.financials.cash_flow', 'title' => 'Cash flow', 'description' => 'Operating liquidity picture.'],
             ['route' => 'property.financials.owner_balances', 'title' => 'Owner balances', 'description' => 'Trust and remittance positions.'],
-            ['route' => 'property.financials.commission', 'title' => 'Commission tracking', 'description' => 'Accrual vs paid.'],
+            ['route' => 'property.financials.commission', 'title' => 'Agent earnings & commission', 'description' => 'Your fees, landlord net, filters by month/property/owner.'],
             ];
             if (auth()->user()?->hasPmPermission('payments.settle')) {
                 $items[] = ['route' => 'property.equity.sync_status', 'title' => 'Equity bank sync', 'description' => 'Live intake, matching, and reconciliation status.'];

@@ -292,7 +292,7 @@ final class PropertyWorkspaceTabs
                 ['key' => 'income_expenses', 'label' => 'Income & expenses', 'route' => 'property.financials.income_expenses', 'active' => ['property.financials.income_expenses']],
                 ['key' => 'cash_flow', 'label' => 'Cash flow', 'route' => 'property.financials.cash_flow', 'active' => ['property.financials.cash_flow']],
                 ['key' => 'owner_balances', 'label' => 'Owner balances', 'route' => 'property.financials.owner_balances', 'active' => ['property.financials.owner_balances']],
-                ['key' => 'commission', 'label' => 'Commission', 'route' => 'property.financials.commission', 'active' => ['property.financials.commission']],
+                ['key' => 'commission', 'label' => 'Earnings & commission', 'route' => 'property.financials.commission', 'active' => ['property.financials.commission']],
             ],
             'reports' => [
                 ['key' => 'center', 'label' => 'Center', 'route' => 'property.reports.center', 'active' => ['property.reports.center']],

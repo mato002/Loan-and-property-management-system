@@ -113,6 +113,36 @@ function propertyQuickCreateSelect(config) {
             sel.dispatchEvent(new Event('change', { bubbles: true }));
         },
 
+        /** Set value from external sync (e.g. lease → tenant/unit). Updates visible label. */
+        setExternalValue(value, opts = {}) {
+            const silent = Boolean(opts.silent);
+            const next = String(value ?? '');
+            if (this.selectedValue === next) {
+                this.syncHiddenSelectSilent();
+
+                return;
+            }
+            this.selectedValue = next;
+            this.syncHiddenSelectSilent();
+            if (!silent) {
+                const sel = this.$refs.nativeSelect;
+                if (sel instanceof HTMLSelectElement) {
+                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        },
+
+        syncHiddenSelectSilent() {
+            const sel = this.$refs.nativeSelect;
+            if (!(sel instanceof HTMLSelectElement)) {
+                return;
+            }
+            const next = this.selectedValue;
+            if (sel.value !== next) {
+                sel.value = next;
+            }
+        },
+
         appendCreatedItem(item) {
             if (!item || item.id === undefined || item.id === null) {
                 return;

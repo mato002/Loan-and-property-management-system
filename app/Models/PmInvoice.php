@@ -213,9 +213,15 @@ class PmInvoice extends Model
         return trim($normalized, '_');
     }
 
+    private static function resolveCustomTypesAgentUserId(): ?int
+    {
+        return PropertyWorkspaceBranding::resolveViewerAgentUserId()
+            ?? PropertyWorkspaceBranding::storeAgentUserId();
+    }
+
     private static function readCustomTypesJson(): string
     {
-        $agentUserId = PropertyWorkspaceBranding::resolveViewerAgentUserId();
+        $agentUserId = self::resolveCustomTypesAgentUserId();
         $query = PropertyPortalSetting::query()->where('key', self::CUSTOM_TYPES_SETTING_KEY);
         if (Schema::hasColumn('property_portal_settings', 'agent_user_id')) {
             if ($agentUserId !== null) {
@@ -243,8 +249,7 @@ class PmInvoice extends Model
             throw new \RuntimeException('Could not save invoice types.');
         }
 
-        $agentUserId = PropertyWorkspaceBranding::resolveViewerAgentUserId()
-            ?? PropertyWorkspaceBranding::storeAgentUserId();
+        $agentUserId = self::resolveCustomTypesAgentUserId();
 
         if (Schema::hasColumn('property_portal_settings', 'agent_user_id') && $agentUserId !== null) {
             PropertyPortalSetting::query()->updateOrCreate(
