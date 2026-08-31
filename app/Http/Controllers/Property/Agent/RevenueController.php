@@ -389,9 +389,19 @@ class RevenueController extends Controller
             $message .= " Skipped {$result['skipped']}.";
         }
         if ($result['errors'] !== []) {
+            $firstError = (string) ($result['errors'][0] ?? '');
+            if ($firstError !== '') {
+                $message .= ' '.$firstError;
+            }
+
             return back()
                 ->with('warning', $message)
                 ->with('bulk_invoice_errors', array_slice($result['errors'], 0, 8));
+        }
+
+        if ($result['created'] === 0) {
+            return back()
+                ->with('warning', $message.' No rent increase rows matched the selection.');
         }
 
         return redirect()
@@ -429,6 +439,11 @@ class RevenueController extends Controller
             $message .= " Skipped {$result['skipped']}.";
         }
         if ($result['errors'] !== []) {
+            $firstError = (string) ($result['errors'][0] ?? '');
+            if ($firstError !== '') {
+                $message .= ' '.$firstError;
+            }
+
             return back()
                 ->with('warning', $message)
                 ->with('bulk_invoice_errors', array_slice($result['errors'], 0, 8));

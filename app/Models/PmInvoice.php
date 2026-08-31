@@ -1050,7 +1050,7 @@ class PmInvoice extends Model
         $lineTotal = round($amount, 2);
         $itemType = (string) ($this->invoice_type ?? self::TYPE_RENT);
 
-        $this->items()->create([
+        $payload = [
             'line_no' => 1,
             'description' => $description,
             'quantity' => 1,
@@ -1058,8 +1058,13 @@ class PmInvoice extends Model
             'line_subtotal' => $lineTotal,
             'line_total' => $lineTotal,
             'source_type' => $itemType,
-            'type' => $itemType,
-        ]);
+        ];
+
+        if (Schema::hasColumn('pm_invoice_items', 'type')) {
+            $payload['type'] = $itemType;
+        }
+
+        $this->items()->create($payload);
     }
 
     public function invoiceKindKey(): string
