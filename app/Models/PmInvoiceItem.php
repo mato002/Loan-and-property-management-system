@@ -25,23 +25,34 @@ class PmInvoiceItem extends Model
         'source_type',
         'source_id',
         'type',
+        'amount',
     ];
 
     protected static function booted(): void
     {
         static::creating(function (PmInvoiceItem $item): void {
-            if ($item->type !== null && $item->type !== '') {
-                return;
+            if ($item->type === null || $item->type === '') {
+                if (Schema::hasColumn('pm_invoice_items', 'type')) {
+                    $invoiceType = $item->invoice?->invoice_type;
+                    $item->type = $invoiceType !== null && $invoiceType !== ''
+                        ? (string) $invoiceType
+                        : PmInvoice::TYPE_RENT;
+                }
             }
 
-            if (! Schema::hasColumn('pm_invoice_items', 'type')) {
-                return;
-            }
+            if (
+                Schema::hasColumn('pm_invoice_items', 'amount')
+                && ($item->amount === null || $item->amount === '')
+            ) {
+                $lineTotal = (float) ($item->line_total ?? 0);
+                if ($lineTotal <= 0) {
+                    $qty = (float) ($item->quantity ?? 1);
+                    $unit = (float) ($item->unit_price ?? 0);
+                    $lineTotal = round($qty * $unit, 2);
+                }
 
-            $invoiceType = $item->invoice?->invoice_type;
-            $item->type = $invoiceType !== null && $invoiceType !== ''
-                ? (string) $invoiceType
-                : PmInvoice::TYPE_RENT;
+                $item->amount = $lineTotal;
+            }
         });
     }
 
@@ -56,6 +67,7 @@ class PmInvoiceItem extends Model
             'tax_pct' => 'decimal:3',
             'tax_amount' => 'decimal:2',
             'line_total' => 'decimal:2',
+            'amount' => 'decimal:2',
         ];
     }
 

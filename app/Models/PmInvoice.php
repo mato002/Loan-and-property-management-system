@@ -1064,6 +1064,10 @@ class PmInvoice extends Model
             $payload['type'] = $itemType;
         }
 
+        if (Schema::hasColumn('pm_invoice_items', 'amount')) {
+            $payload['amount'] = $lineTotal;
+        }
+
         $this->items()->create($payload);
     }
 
