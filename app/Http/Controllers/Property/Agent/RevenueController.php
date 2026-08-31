@@ -1314,6 +1314,12 @@ class RevenueController extends Controller
                             if (! $noticeCreated) {
                                 $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $emailPack['body'], $request->user()?->id, $stage);
                             }
+                            PmInvoice::recordTenantChannelDelivery(
+                                (int) $inv->id,
+                                'email',
+                                $request->user()?->id,
+                                'Arrears reminder emailed to '.$tenantEmail
+                            );
                         } catch (\Throwable $e) {
                             $failed++;
                             $addFailedReason('email send error');
@@ -1377,6 +1383,12 @@ class RevenueController extends Controller
                                 if (! $noticeCreated) {
                                     $noticeCreated = $this->createArrearsNoticeIfMissing($inv, $smsBody, $request->user()?->id, $stage);
                                 }
+                                PmInvoice::recordTenantChannelDelivery(
+                                    (int) $inv->id,
+                                    'sms',
+                                    $request->user()?->id,
+                                    'Arrears reminder SMS sent to '.$smsTo
+                                );
                             } else {
                                 $failed++;
                                 $addFailedReason('sms provider error');

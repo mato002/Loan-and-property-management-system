@@ -16,7 +16,7 @@
     <div class="rounded-2xl border border-gray-100 bg-white p-5 sm:p-6 shadow-[0_12px_40px_rgb(0,0,0,0.06)]">
         <div class="flex items-center gap-4 pb-5 mb-5 border-b border-gray-100">
             <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white flex items-center justify-center font-black text-lg shadow-lg shadow-emerald-500/25">
-                {{ strtoupper(substr($companyName ?: 'GP', 0, 2)) }}
+                {{ strtoupper(substr(preg_replace('/\s+/', '', $companyName) ?: 'PM', 0, 2)) }}
             </div>
             <div class="min-w-0">
                 <p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Managed by</p>

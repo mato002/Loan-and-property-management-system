@@ -73,4 +73,41 @@ return [
     */
     'login_branding_agent_user_id' => env('PROPERTY_LOGIN_BRANDING_AGENT_ID'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Public marketing site tenant (domain → agent)
+    |--------------------------------------------------------------------------
+    |
+    | PROPERTY_PUBLIC_SITE_AGENT_ID — default agent when host is not mapped.
+    | PROPERTY_PUBLIC_SITE_DOMAINS — comma list: host:agent_user_id,...
+    |   e.g. gaithoproperties.co.ke:12,client.example.com:45
+    |
+    | Per-agent host can also be set in Settings → Branding → Public website domain.
+    |
+    */
+    'public_site_agent_user_id' => env('PROPERTY_PUBLIC_SITE_AGENT_ID'),
+
+    'public_site_domains' => (static function (): array {
+        $raw = trim((string) env('PROPERTY_PUBLIC_SITE_DOMAINS', ''));
+        if ($raw === '') {
+            return [];
+        }
+
+        $out = [];
+        foreach (explode(',', $raw) as $pair) {
+            $pair = trim($pair);
+            if ($pair === '' || ! str_contains($pair, ':')) {
+                continue;
+            }
+            [$host, $agentId] = explode(':', $pair, 2);
+            $host = strtolower(trim($host));
+            $host = str_starts_with($host, 'www.') ? substr($host, 4) : $host;
+            if ($host !== '' && is_numeric(trim($agentId))) {
+                $out[$host] = (int) trim($agentId);
+            }
+        }
+
+        return $out;
+    })(),
+
 ];

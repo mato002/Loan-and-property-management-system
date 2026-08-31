@@ -374,7 +374,7 @@ class PropertyCommunicationService
             ]);
         }
 
-        if ($recipient->channel === 'sms' && ($recipient->message?->category ?? '') === 'rent_reminder') {
+        if (($recipient->message?->category ?? '') === 'rent_reminder') {
             $eligibility = app(RentReminderEligibilityService::class);
             $body = (string) ($recipient->message?->body ?? '');
             $subject = (string) ($recipient->message?->subject ?? '');
@@ -392,7 +392,19 @@ class PropertyCommunicationService
                     $messageHash
                 )?->id;
 
-            if ($invoiceNo !== '' && $successLogId !== null) {
+            if ($invoiceNo !== '') {
+                $invoiceId = PmInvoice::query()->where('invoice_no', $invoiceNo)->value('id');
+                if ($invoiceId) {
+                    PmInvoice::recordTenantChannelDelivery(
+                        (int) $invoiceId,
+                        (string) $recipient->channel,
+                        $recipient->message?->created_by_user_id ? (int) $recipient->message->created_by_user_id : null,
+                        'Rent reminder sent via '.strtoupper((string) $recipient->channel)
+                    );
+                }
+            }
+
+            if ($recipient->channel === 'sms' && $invoiceNo !== '' && $successLogId !== null) {
                 $eligibility->supersedeFailedLogsForRecipientInvoice(
                     (string) $recipient->to_address,
                     $invoiceNo,

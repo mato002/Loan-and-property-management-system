@@ -2,26 +2,29 @@
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scroll-smooth" data-pwa-context="public">
 <head>
     @php
-        $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: 'Gaitho Properties';
-        $companyLogoUrl = \App\Models\PropertyPortalSetting::getValue('company_logo_url', '');
-        $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');
-        $contactEmailPrimary = \App\Models\PropertyPortalSetting::getValue('contact_email_primary', '') ?: 'info@gaithoproperties.co.ke';
-        $contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '0717 018779';
-        $contactWhatsapp = \App\Models\PropertyPortalSetting::getValue('contact_whatsapp', '') ?: '254717018779';
-        $contactAddress = \App\Models\PropertyPortalSetting::getValue('contact_address', '') ?: "Nairobi, Kenya";
-        $contactRegNo = \App\Models\PropertyPortalSetting::getValue('contact_reg_no', '');
-        $contactMapEmbedUrl = \App\Models\PropertyPortalSetting::getValue('contact_map_embed_url', '');
-        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp) ?: '254717018779';
-        $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone) ?: '+254717018779';
+        use App\Support\Property\PropertyWorkspaceBranding;
+
+        $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
+        $companyName = $publicBrand['company_name'];
+        $companyLogoUrl = $publicBrand['company_logo_url'];
+        $siteFaviconUrl = $publicBrand['site_favicon_url'];
+        $contactEmailPrimary = $publicBrand['contact_email_primary'];
+        $contactPhone = $publicBrand['contact_phone'];
+        $contactWhatsapp = $publicBrand['contact_whatsapp'];
+        $contactAddress = $publicBrand['contact_address'];
+        $contactRegNo = $publicBrand['contact_reg_no'];
+        $contactMapEmbedUrl = $publicBrand['contact_map_embed_url'];
+        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp);
+        $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone);
         $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
         $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
         $currentUrl = url()->current();
         $resolvedPageTitle = isset($publicPageTitle) && trim((string) $publicPageTitle) !== ''
             ? trim((string) $publicPageTitle).' | '.$companyName
-            : $companyName.' — Verified Rentals in Kenya';
+            : $companyName;
         $resolvedDescription = isset($publicPageDescription) && trim((string) $publicPageDescription) !== ''
             ? trim((string) $publicPageDescription)
-            : 'Discover verified rental properties across Kenya. Browse apartments, bedsitters and managed homes with professional property operations.';
+            : $companyName.' — verified rental properties and professional property management.';
         $resolvedOgImage = isset($publicPageImage) && trim((string) $publicPageImage) !== ''
             ? trim((string) $publicPageImage)
             : ($companyLogoUrl !== '' ? $companyLogoUrl : \App\Http\Controllers\PublicController::LISTING_PLACEHOLDER_IMAGE);
@@ -31,19 +34,19 @@
         $resolvedLocale = str_replace('_', '-', app()->getLocale());
         $schemaGraph = [
             '@context' => 'https://schema.org',
-            '@graph' => [
+            '@graph' => array_values(array_filter([
                 [
                     '@type' => 'RealEstateAgent',
                     'name' => $companyName,
                     'url' => url('/'),
                     'logo' => $resolvedOgImage,
-                    'email' => $contactEmailPrimary,
-                    'telephone' => $contactPhone,
-                    'address' => [
+                    'email' => $contactEmailPrimary !== '' ? $contactEmailPrimary : null,
+                    'telephone' => $contactPhone !== '' ? $contactPhone : null,
+                    'address' => $contactAddress !== '' ? [
                         '@type' => 'PostalAddress',
-                        'addressLocality' => 'Nairobi',
+                        'streetAddress' => $contactAddress,
                         'addressCountry' => 'KE',
-                    ],
+                    ] : null,
                 ],
                 [
                     '@type' => 'WebSite',
@@ -55,14 +58,13 @@
                         'query-input' => 'required name=city',
                     ],
                 ],
-            ],
+            ])),
         ];
     @endphp
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ $resolvedPageTitle }}</title>
     <meta name="description" content="{{ $resolvedDescription }}">
-    <meta name="keywords" content="rentals Kenya, apartments Nairobi, property management, verified listings, bedsitter, houses for rent">
     <meta name="robots" content="{{ $resolvedRobots }}">
     <link rel="canonical" href="{{ $currentUrl }}">
     <link rel="alternate" hreflang="{{ $resolvedLocale }}" href="{{ $currentUrl }}">
@@ -113,15 +115,20 @@
         {{ $slot }}
     </main>
 
-    {{-- Floating WhatsApp + Call --}}
-    <div class="fixed z-50 right-3 bottom-[4.5rem] md:bottom-4 flex flex-col gap-2.5">
-        <a href="https://wa.me/{{ $whatsAppDigits }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#25D366] hover:bg-[#1ebe57] text-white shadow-lg shadow-[#25D366]/30 transition-transform hover:scale-105" aria-label="Chat on WhatsApp">
-            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M20.52 3.48A11.86 11.86 0 0 0 12.06 0C5.5 0 .16 5.34.16 11.9c0 2.1.55 4.14 1.6 5.95L0 24l6.32-1.66a11.84 11.84 0 0 0 5.73 1.47h.01c6.56 0 11.9-5.34 11.9-11.9 0-3.18-1.24-6.16-3.44-8.43ZM12.06 21.8h-.01a9.8 9.8 0 0 1-4.99-1.37l-.36-.21-3.75.98 1-3.65-.24-.37a9.82 9.82 0 0 1-1.52-5.28c0-5.4 4.39-9.8 9.8-9.8 2.62 0 5.08 1.02 6.92 2.87a9.7 9.7 0 0 1 2.87 6.93c0 5.4-4.4 9.8-9.81 9.8Zm5.38-7.36c-.3-.15-1.77-.88-2.05-.98-.27-.1-.46-.15-.66.15-.2.3-.76.98-.93 1.18-.17.2-.35.23-.65.08-.3-.15-1.26-.46-2.4-1.47a9 9 0 0 1-1.67-2.07c-.18-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.66-1.58-.9-2.17-.24-.57-.49-.5-.66-.5h-.57c-.2 0-.53.08-.8.38-.28.3-1.05 1.03-1.05 2.5 0 1.48 1.08 2.9 1.23 3.1.15.2 2.12 3.23 5.13 4.53.72.31 1.29.5 1.73.64.73.23 1.4.2 1.92.12.58-.09 1.77-.72 2.02-1.42.25-.7.25-1.3.17-1.42-.08-.13-.27-.2-.57-.35Z"/></svg>
-        </a>
-        <a href="tel:{{ $phoneHref }}" class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 transition-transform hover:scale-105" aria-label="Call us">
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
-        </a>
-    </div>
+    @if ($whatsAppDigits !== '' || $phoneHref !== '')
+        <div class="fixed z-50 right-3 bottom-[4.5rem] md:bottom-4 flex flex-col gap-2.5">
+            @if ($whatsAppDigits !== '')
+                <a href="https://wa.me/{{ $whatsAppDigits }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#25D366] hover:bg-[#1ebe57] text-white shadow-lg shadow-[#25D366]/30 transition-transform hover:scale-105" aria-label="Chat on WhatsApp">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M20.52 3.48A11.86 11.86 0 0 0 12.06 0C5.5 0 .16 5.34.16 11.9c0 2.1.55 4.14 1.6 5.95L0 24l6.32-1.66a11.84 11.84 0 0 0 5.73 1.47h.01c6.56 0 11.9-5.34 11.9-11.9 0-3.18-1.24-6.16-3.44-8.43ZM12.06 21.8h-.01a9.8 9.8 0 0 1-4.99-1.37l-.36-.21-3.75.98 1-3.65-.24-.37a9.82 9.82 0 0 1-1.52-5.28c0-5.4 4.39-9.8 9.8-9.8 2.62 0 5.08 1.02 6.92 2.87a9.7 9.7 0 0 1 2.87 6.93c0 5.4-4.4 9.8-9.81 9.8Zm5.38-7.36c-.3-.15-1.77-.88-2.05-.98-.27-.1-.46-.15-.66.15-.2.3-.76.98-.93 1.18-.17.2-.35.23-.65.08-.3-.15-1.26-.46-2.4-1.47a9 9 0 0 1-1.67-2.07c-.18-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.66-1.58-.9-2.17-.24-.57-.49-.5-.66-.5h-.57c-.2 0-.53.08-.8.38-.28.3-1.05 1.03-1.05 2.5 0 1.48 1.08 2.9 1.23 3.1.15.2 2.12 3.23 5.13 4.53.72.31 1.29.5 1.73.64.73.23 1.4.2 1.92.12.58-.09 1.77-.72 2.02-1.42.25-.7.25-1.3.17-1.42-.08-.13-.27-.2-.57-.35Z"/></svg>
+                </a>
+            @endif
+            @if ($phoneHref !== '')
+                <a href="tel:{{ $phoneHref }}" class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 transition-transform hover:scale-105" aria-label="Call us">
+                    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                </a>
+            @endif
+        </div>
+    @endif
 
     <x-public.mobile-bottom-nav />
 

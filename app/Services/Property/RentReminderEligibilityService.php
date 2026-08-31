@@ -308,7 +308,7 @@ final class RentReminderEligibilityService
     public function extractInvoiceNoFromLogText(string $subject, string $body = ''): string
     {
         $haystack = trim($subject).' '.trim($body);
-        if (preg_match('/\b(INV-[\w-]+)\b/i', $haystack, $matches)) {
+        if (preg_match('/\b((?:INV|IV)-[\w-]+)\b/i', $haystack, $matches)) {
             return strtoupper($matches[1]);
         }
 

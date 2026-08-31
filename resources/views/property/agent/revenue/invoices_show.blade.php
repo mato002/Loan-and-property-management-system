@@ -45,7 +45,7 @@
                         @if ($deliverySummary = $invoice->tenantDeliverySummary())
                             <p class="mt-1 text-xs font-medium text-emerald-700">{{ $deliverySummary }}</p>
                         @elseif ($invoice->tenantDeliveryPending())
-                            <p class="mt-1 text-xs font-medium text-amber-700">Not emailed to tenant yet</p>
+                            <p class="mt-1 text-xs font-medium text-amber-700">Not sent to tenant yet</p>
                         @endif
                         <a href="{{ route('property.revenue.invoices.pdf', $invoice) }}" target="_blank" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                             <i class="fa-solid fa-file-pdf"></i> PDF

@@ -688,7 +688,9 @@ class PmInvoiceController extends Controller
             ],
         ];
 
-        $rows = $invoices->getCollection()->map(function (PmInvoice $i) {
+        $deliverySummaries = PmInvoice::prefetchTenantDeliverySummaries($invoices->getCollection());
+
+        $rows = $invoices->getCollection()->map(function (PmInvoice $i) use ($deliverySummaries) {
             $showAction = route('property.revenue.invoices.show', $i, false);
             $balance = app(FinanceBalanceSnapshotService::class)->invoiceBalance($i);
 
@@ -705,11 +707,11 @@ class PmInvoiceController extends Controller
                 )
                 : $chargeLabel;
             $statusBadge = '<span class="rounded-full px-2 py-0.5 text-[11px] font-semibold '.self::statusBadgeClasses((string) $i->status).'">'.ucfirst((string) $i->status).'</span>';
-            $deliverySummary = $i->tenantDeliverySummary();
+            $deliverySummary = $i->tenantDeliverySummary($deliverySummaries[(int) $i->id] ?? null);
             if ($deliverySummary !== null) {
                 $statusBadge .= '<p class="mt-0.5 text-[10px] font-medium text-emerald-700">'.e($deliverySummary).'</p>';
-            } elseif ($i->tenantDeliveryPending()) {
-                $statusBadge .= '<p class="mt-0.5 text-[10px] font-medium text-amber-700">Not emailed</p>';
+            } elseif ($i->tenantDeliveryPending($deliverySummaries[(int) $i->id] ?? null)) {
+                $statusBadge .= '<p class="mt-0.5 text-[10px] font-medium text-amber-700">Not sent to tenant</p>';
             }
 
             return [

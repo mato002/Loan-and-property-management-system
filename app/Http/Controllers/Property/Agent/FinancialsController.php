@@ -74,6 +74,14 @@ class FinancialsController extends Controller
             ],
             'columns' => ['Account', 'Class', 'Budget', 'Actual', 'Variance', 'Notes'],
             'tableRows' => $rows,
+            'tableFooterRow' => [
+                new HtmlString('<span class="font-semibold text-slate-900 dark:text-white">Period net (NOI proxy)</span>'),
+                'Derived',
+                '—',
+                new HtmlString('<span class="font-semibold text-emerald-700 dark:text-emerald-400">'.PropertyMoney::kes($noi).'</span>'),
+                '—',
+                'Income − maintenance − utilities',
+            ],
             'waterfallBars' => $barSeries,
             'monthValue' => $monthValue,
             'fyValue' => $fyValue,
@@ -116,10 +124,12 @@ class FinancialsController extends Controller
         }
 
         $rows = [];
+        $totalIn = 0.0;
         foreach ($payments as $p) {
             $inv = $p->allocations->first()?->invoice;
             $prop = $inv?->unit?->property?->name ?? '—';
             $allocAmount = (float) $p->allocations->sum('amount');
+            $totalIn += $allocAmount;
             $rows[] = [
                 $p->paid_at?->format('Y-m-d') ?? '—',
                 'Collection',
@@ -130,6 +140,10 @@ class FinancialsController extends Controller
                 PropertyMoney::kes($balanceAfter[$p->id] ?? $allocAmount),
             ];
         }
+        $lastPayment = $chron->last();
+        $lastBalance = $lastPayment instanceof PmPayment
+            ? (float) ($balanceAfter[$lastPayment->id] ?? $totalIn)
+            : 0.0;
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'pdf', 'word'], true)) {
@@ -162,6 +176,15 @@ class FinancialsController extends Controller
             ],
             'columns' => ['Date', 'Type', 'Description', 'Property', 'In', 'Out', 'Balance'],
             'tableRows' => $rows,
+            'tableFooterRow' => count($rows) > 0 ? [
+                '',
+                '',
+                new HtmlString('<span class="font-semibold text-slate-900 dark:text-white">Totals</span>'),
+                '',
+                new HtmlString('<span class="font-semibold text-emerald-700 dark:text-emerald-400">'.PropertyMoney::kes($totalIn).'</span>'),
+                PropertyMoney::kes($outMtd),
+                new HtmlString('<span class="font-semibold">'.PropertyMoney::kes($lastBalance).'</span>'),
+            ] : null,
             'cashDual' => $dual,
             'monthValue' => $monthValue,
             'fyValue' => $fyValue,
@@ -270,6 +293,15 @@ class FinancialsController extends Controller
             ],
             'columns' => ['Owner', 'Property', 'Available', 'Pending', 'Last remittance', 'Next run', 'Statement'],
             'tableRows' => $rows,
+            'tableFooterRow' => count($rows) > 0 ? [
+                new HtmlString('<span class="font-semibold text-slate-900 dark:text-white">Totals</span>'),
+                '',
+                new HtmlString('<span class="font-semibold text-emerald-700 dark:text-emerald-400">'.PropertyMoney::kes($held).'</span>'),
+                new HtmlString('<span class="font-semibold text-amber-700 dark:text-amber-400">'.PropertyMoney::kes($pending).'</span>'),
+                '',
+                '',
+                '',
+            ] : null,
             'monthValue' => $monthValue,
             'fyValue' => $fyValue,
             'periodLabel' => $periodLabel,
@@ -361,6 +393,28 @@ class FinancialsController extends Controller
             ->orderBy('name');
         $landlords = $landlordsQuery->get(['id', 'name']);
 
+        $rowCount = count($rows);
+        $avgFeePct = $totals['landlord_share'] > 0
+            ? round(100 * $totals['commission'] / $totals['landlord_share'], 2)
+            : null;
+        $tableFooterRow = $rowCount > 0 ? [
+            '',
+            new HtmlString(
+                '<span class="font-semibold text-slate-900 dark:text-white">Totals</span>'.
+                '<span class="block text-xs font-normal text-slate-500 dark:text-slate-400">'.
+                ($rowCount === 1 ? '1 row' : $rowCount.' rows').
+                '</span>'
+            ),
+            '',
+            '',
+            new HtmlString('<span class="font-semibold">'.PropertyMoney::kes($totals['landlord_share']).'</span>'),
+            new HtmlString('<span class="font-semibold text-indigo-700 dark:text-indigo-400">'.PropertyMoney::kes($totals['commission']).'</span>'),
+            new HtmlString('<span class="font-semibold">'.PropertyMoney::kes($totals['landlord_net']).'</span>'),
+            $avgFeePct !== null ? number_format($avgFeePct, 2).'% avg' : '—',
+            '',
+            '',
+        ] : null;
+
         return property_view('property.agent.financials.commission', [
             'stats' => [
                 ['label' => 'Your commission', 'value' => PropertyMoney::kes($totals['commission']), 'hint' => $periodLabel],
@@ -370,6 +424,7 @@ class FinancialsController extends Controller
             ],
             'columns' => ['Period', 'Owner', 'Property', 'Ownership', 'Owner share', 'Your commission', 'Landlord net', 'Fee %', 'Status', 'Actions'],
             'tableRows' => $rows,
+            'tableFooterRow' => $tableFooterRow,
             'monthValue' => $monthValue,
             'fyValue' => $fyValue,
             'periodLabel' => $periodLabel,

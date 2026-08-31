@@ -3,14 +3,17 @@
     :page-description="$publicPageDescription ?? null"
 >
     @php
-        $brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: 'Gaitho Properties';
-        $contactEmail = \App\Models\PropertyPortalSetting::getValue('contact_email_primary', '') ?: 'info@gaithoproperties.co.ke';
-        $contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '0717 018779';
-        $publicStats = [
-            'properties' => \App\Models\Property::query()->count(),
-            'vacant_listings' => \App\Models\PropertyUnit::query()->where('status', \App\Models\PropertyUnit::STATUS_VACANT)->count(),
-            'landlords' => \App\Models\User::query()->where('property_portal_role', 'landlord')->count(),
-            'tenants' => \App\Models\PmTenant::query()->count(),
+        use App\Support\Property\PropertyWorkspaceBranding;
+
+        $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
+        $brandName = $publicBrand['company_name'];
+        $contactEmail = $publicBrand['contact_email_primary'];
+        $contactPhone = $publicBrand['contact_phone'];
+        $publicStats = $publicStats ?? [
+            'properties' => 0,
+            'vacant_listings' => 0,
+            'landlords' => 0,
+            'tenants' => 0,
         ];
     @endphp
 
@@ -71,7 +74,17 @@
     <section class="py-12 sm:py-16 bg-emerald-600">
         <div class="public-container text-center public-animate-in">
             <h2 class="text-2xl sm:text-4xl font-black text-white mb-3">Let your property earn. We do the work.</h2>
-            <p class="text-emerald-100 mb-6">Call {{ $contactPhone }} · Email {{ $contactEmail }}</p>
+            <p class="text-emerald-100 mb-6">
+                @if ($contactPhone !== '' && $contactEmail !== '')
+                    Call {{ $contactPhone }} · Email {{ $contactEmail }}
+                @elseif ($contactPhone !== '')
+                    Call {{ $contactPhone }}
+                @elseif ($contactEmail !== '')
+                    Email {{ $contactEmail }}
+                @else
+                    Contact us to learn how we can help manage your property.
+                @endif
+            </p>
             <div class="flex flex-col sm:flex-row gap-3 justify-center">
                 <a href="{{ route('public.contact', ['intent' => 'landlord']) }}" class="public-btn bg-white text-emerald-700 hover:bg-emerald-50">Partner with us</a>
                 <a href="{{ route('public.properties') }}" class="public-btn public-btn-ghost">Browse listings</a>

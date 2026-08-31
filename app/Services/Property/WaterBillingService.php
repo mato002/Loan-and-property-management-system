@@ -386,7 +386,7 @@ class WaterBillingService
                     'pm_tenant_id' => $lease->pm_tenant_id,
                     'agent_user_id' => $agentUserId,
                     'invoice_no' => PmInvoice::nextInvoiceNumber(),
-                    'issue_date' => now()->toDateString(),
+                    'issue_date' => PmInvoice::issueDateForBillingPeriod($billingMonth),
                     'due_date' => $dueDate,
                     'amount' => $amount,
                     'amount_paid' => 0,
@@ -699,7 +699,7 @@ class WaterBillingService
             return null;
         }
 
-        $issueDate = now()->toDateString();
+        $issueDate = PmInvoice::issueDateForBillingPeriod($billingMonth);
         $dueDate = $dueDate ?: ($reading->invoice?->due_date?->toDateString() ?? $issueDate);
         if (\Carbon\Carbon::parse($dueDate)->lt(\Carbon\Carbon::parse($issueDate))) {
             $dueDate = $issueDate;

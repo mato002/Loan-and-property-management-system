@@ -54,7 +54,7 @@
                         @if ($deliverySummary = $invoice->tenantDeliverySummary())
                             <p class="mt-1 text-xs font-medium text-emerald-700">{{ $deliverySummary }}</p>
                         @elseif ($invoice->tenantDeliveryPending())
-                            <p class="mt-1 text-xs font-medium text-amber-700">Not emailed to tenant yet</p>
+                            <p class="mt-1 text-xs font-medium text-amber-700">Not sent to tenant yet</p>
                         @endif
                     </div>
 

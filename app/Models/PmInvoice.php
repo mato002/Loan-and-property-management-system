@@ -6,6 +6,7 @@ use App\Services\Property\CarryForwardConsolidationService;
 use App\Services\Property\FinanceFirebreakService;
 use App\Services\Property\InvoiceStateIntegrityService;
 use App\Support\Property\PropertyWorkspaceBranding;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -211,6 +212,16 @@ class PmInvoice extends Model
         $normalized = preg_replace('/[^a-z0-9]+/', '_', $normalized) ?? '';
 
         return trim($normalized, '_');
+    }
+
+    /** Issue date for automated monthly bills — 1st of billing period (YYYY-MM). */
+    public static function issueDateForBillingPeriod(?string $billingPeriod, ?string $fallback = null): string
+    {
+        if ($billingPeriod && preg_match('/^\d{4}-\d{2}$/', $billingPeriod)) {
+            return \Carbon\Carbon::createFromFormat('Y-m', $billingPeriod)->startOfMonth()->toDateString();
+        }
+
+        return $fallback ?? now()->toDateString();
     }
 
     private static function resolveCustomTypesAgentUserId(): ?int
@@ -466,18 +477,190 @@ class PmInvoice extends Model
     /**
      * How the tenant was notified (email/SMS). Null if never delivered electronically.
      */
-    public function tenantDeliverySummary(): ?string
+    public function tenantDeliverySummary(?string $prefetched = null): ?string
     {
-        $events = $this->relationLoaded('events')
-            ? $this->events
-            : $this->events()->whereIn('event', [
+        if ($prefetched !== null) {
+            return $prefetched !== '' ? $prefetched : null;
+        }
+
+        $fromEvents = self::deliverySummaryFromEventCollection(
+            $this->relationLoaded('events')
+                ? $this->events
+                : $this->events()->whereIn('event', [
+                    PmInvoiceEvent::EVENT_EMAILED,
+                    PmInvoiceEvent::EVENT_SMS_SENT,
+                    PmInvoiceEvent::EVENT_REMINDED,
+                ])->get()
+        );
+        if ($fromEvents !== null) {
+            return $fromEvents;
+        }
+
+        return self::deliverySummaryFromMessageLogs((string) ($this->invoice_no ?? ''));
+    }
+
+    public function tenantDeliveryPending(?string $prefetchedSummary = null): bool
+    {
+        if (in_array((string) $this->status, [self::STATUS_DRAFT, self::STATUS_CANCELLED], true)) {
+            return false;
+        }
+
+        return $this->tenantDeliverySummary($prefetchedSummary) === null;
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, PmInvoice>  $invoices
+     * @return array<int, string|null> invoice id => summary label
+     */
+    public static function prefetchTenantDeliverySummaries(Collection $invoices): array
+    {
+        if ($invoices->isEmpty()) {
+            return [];
+        }
+
+        $summaries = [];
+        $invoiceIds = $invoices->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        $eventsByInvoice = PmInvoiceEvent::query()
+            ->whereIn('pm_invoice_id', $invoiceIds)
+            ->whereIn('event', [
                 PmInvoiceEvent::EVENT_EMAILED,
                 PmInvoiceEvent::EVENT_SMS_SENT,
-            ])->get();
+                PmInvoiceEvent::EVENT_REMINDED,
+            ])
+            ->get()
+            ->groupBy('pm_invoice_id');
 
+        $needsLogLookup = [];
+        foreach ($invoices as $invoice) {
+            $summary = self::deliverySummaryFromEventCollection(
+                $eventsByInvoice->get((int) $invoice->id, collect())
+            );
+            if ($summary !== null) {
+                $summaries[(int) $invoice->id] = $summary;
+
+                continue;
+            }
+            $needsLogLookup[] = $invoice;
+        }
+
+        if ($needsLogLookup !== []) {
+            foreach (self::deliverySummariesFromMessageLogs(collect($needsLogLookup)) as $invoiceId => $summary) {
+                $summaries[(int) $invoiceId] = $summary;
+            }
+        }
+
+        return $summaries;
+    }
+
+    public static function recordTenantChannelDelivery(
+        int $invoiceId,
+        string $channel,
+        ?int $userId = null,
+        ?string $summary = null,
+    ): void {
+        $channel = strtolower(trim($channel));
+        $event = match ($channel) {
+            'email' => PmInvoiceEvent::EVENT_EMAILED,
+            'sms' => PmInvoiceEvent::EVENT_SMS_SENT,
+            default => PmInvoiceEvent::EVENT_REMINDED,
+        };
+
+        PmInvoiceEvent::record(
+            $invoiceId,
+            $event,
+            $userId,
+            $summary ?? ('Tenant notified via '.strtoupper($channel))
+        );
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, PmInvoiceEvent>  $events
+     */
+    private static function deliverySummaryFromEventCollection(Collection $events): ?string
+    {
         $hasEmail = $events->contains('event', PmInvoiceEvent::EVENT_EMAILED);
-        $hasSms = $events->contains('event', PmInvoiceEvent::EVENT_SMS_SENT);
+        $hasSms = $events->contains('event', PmInvoiceEvent::EVENT_SMS_SENT)
+            || $events->contains('event', PmInvoiceEvent::EVENT_REMINDED);
 
+        return self::formatTenantDeliverySummary($hasEmail, $hasSms);
+    }
+
+    private static function deliverySummaryFromMessageLogs(string $invoiceNo): ?string
+    {
+        $invoiceNo = trim($invoiceNo);
+        if ($invoiceNo === '') {
+            return null;
+        }
+
+        $logs = self::successfulMessageLogsQuery()
+            ->where(function (Builder $query) use ($invoiceNo) {
+                $query->where('subject', 'like', '%'.$invoiceNo.'%')
+                    ->orWhere('body', 'like', '%'.$invoiceNo.'%');
+            })
+            ->get(['channel']);
+
+        if ($logs->isEmpty()) {
+            return null;
+        }
+
+        $hasEmail = $logs->contains(fn (PmMessageLog $log) => (string) $log->channel === 'email');
+        $hasSms = $logs->contains(fn (PmMessageLog $log) => (string) $log->channel === 'sms');
+
+        return self::formatTenantDeliverySummary($hasEmail, $hasSms);
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, PmInvoice>  $invoices
+     * @return array<int, string>
+     */
+    private static function deliverySummariesFromMessageLogs(Collection $invoices): array
+    {
+        $invoiceNos = $invoices
+            ->mapWithKeys(fn (PmInvoice $invoice) => [(int) $invoice->id => trim((string) ($invoice->invoice_no ?? ''))])
+            ->filter(fn (string $invoiceNo) => $invoiceNo !== '');
+
+        if ($invoiceNos->isEmpty()) {
+            return [];
+        }
+
+        $logs = self::successfulMessageLogsQuery()
+            ->where(function (Builder $query) use ($invoiceNos) {
+                foreach ($invoiceNos->unique()->values() as $invoiceNo) {
+                    $query->orWhere('subject', 'like', '%'.$invoiceNo.'%')
+                        ->orWhere('body', 'like', '%'.$invoiceNo.'%');
+                }
+            })
+            ->get(['channel', 'subject', 'body']);
+
+        $summaries = [];
+        foreach ($invoiceNos as $invoiceId => $invoiceNo) {
+            $hasEmail = false;
+            $hasSms = false;
+            foreach ($logs as $log) {
+                $haystack = (string) $log->subject.' '.(string) $log->body;
+                if (! str_contains($haystack, $invoiceNo)) {
+                    continue;
+                }
+                if ((string) $log->channel === 'email') {
+                    $hasEmail = true;
+                }
+                if ((string) $log->channel === 'sms') {
+                    $hasSms = true;
+                }
+            }
+
+            $summary = self::formatTenantDeliverySummary($hasEmail, $hasSms);
+            if ($summary !== null) {
+                $summaries[(int) $invoiceId] = $summary;
+            }
+        }
+
+        return $summaries;
+    }
+
+    private static function formatTenantDeliverySummary(bool $hasEmail, bool $hasSms): ?string
+    {
         if ($hasEmail && $hasSms) {
             return 'Emailed & SMS';
         }
@@ -491,13 +674,17 @@ class PmInvoice extends Model
         return null;
     }
 
-    public function tenantDeliveryPending(): bool
+    private static function successfulMessageLogsQuery(): Builder
     {
-        if (in_array((string) $this->status, [self::STATUS_DRAFT, self::STATUS_CANCELLED], true)) {
-            return false;
-        }
-
-        return $this->tenantDeliverySummary() === null;
+        return PmMessageLog::query()
+            ->whereNull('superseded_at')
+            ->where(function (Builder $query) {
+                $query->whereIn('delivery_status', ['sent', 'delivered', 'success'])
+                    ->orWhere(function (Builder $inner) {
+                        $inner->whereNull('delivery_status')
+                            ->whereNotNull('sent_at');
+                    });
+            });
     }
 
     public function creditNotes(): HasMany

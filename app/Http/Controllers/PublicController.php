@@ -8,6 +8,8 @@ use App\Models\PmMessageLog;
 use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
+use App\Support\Property\PropertyWorkspaceBranding;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\RedirectResponse;
@@ -22,7 +24,9 @@ class PublicController extends Controller
      */
     public function home(): View
     {
-        $featuredUnits = PropertyUnit::query()
+        $featuredUnits = $this->scopePublicPropertyUnits(
+            PropertyUnit::query()
+        )
             ->publiclyListed()
             ->whereHas('property')
             ->with(['property', 'publicImages'])
@@ -31,12 +35,7 @@ class PublicController extends Controller
             ->limit(6)
             ->get();
 
-        $publicStats = [
-            'properties' => Property::query()->count(),
-            'vacant_listings' => PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)->count(),
-            'landlords' => User::query()->where('property_portal_role', 'landlord')->count(),
-            'tenants' => PmTenant::query()->count(),
-        ];
+        $publicStats = $this->publicStats();
 
         return view('public.home', [
             'featuredUnits' => $featuredUnits,
@@ -55,7 +54,9 @@ class PublicController extends Controller
      */
     public function properties(Request $request): View
     {
-        $query = PropertyUnit::query()
+        $query = $this->scopePublicPropertyUnits(
+            PropertyUnit::query()
+        )
             ->publiclyListed()
             ->whereHas('property')
             ->with(['property', 'publicImages']);
@@ -142,7 +143,9 @@ class PublicController extends Controller
      */
     private function availableCities()
     {
-        return Property::query()
+        return $this->scopePublicProperties(
+            Property::query()
+        )
             ->whereHas('units', fn ($q) => $q->where('status', PropertyUnit::STATUS_VACANT))
             ->whereNotNull('city')
             ->where('city', '!=', '')
@@ -157,7 +160,9 @@ class PublicController extends Controller
      */
     public function propertyDetails(int|string $id): View
     {
-        $unit = PropertyUnit::query()
+        $unit = $this->scopePublicPropertyUnits(
+            PropertyUnit::query()
+        )
             ->publiclyListed()
             ->whereHas('property')
             ->whereKey($id)
@@ -166,7 +171,9 @@ class PublicController extends Controller
 
         $imageUrls = $unit->publicImages->map(fn ($img) => $img->toGalleryItem())->filter(fn ($item) => ($item['url'] ?? '') !== '')->values()->all();
 
-        $similarUnits = PropertyUnit::query()
+        $similarUnits = $this->scopePublicPropertyUnits(
+            PropertyUnit::query()
+        )
             ->publiclyListed()
             ->whereHas('property')
             ->where('property_id', $unit->property_id)
@@ -188,11 +195,12 @@ class PublicController extends Controller
             .'. See photos, amenities, and availability before booking a visit.';
         $heroImage = ($imageUrls[0]['url'] ?? null) ?: self::LISTING_PLACEHOLDER_IMAGE;
 
-        $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name');
-        $contactWhatsapp = \App\Models\PropertyPortalSetting::getValue('contact_whatsapp', '') ?: '254717018779';
-        $contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '0717018779';
-        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp) ?: '254717018779';
-        $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone) ?: '+254717018779';
+        $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
+        $companyName = $publicBrand['company_name'];
+        $contactWhatsapp = $publicBrand['contact_whatsapp'];
+        $contactPhone = $publicBrand['contact_phone'];
+        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp);
+        $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone);
 
         $offerSchema = [
             '@context' => 'https://schema.org',
@@ -239,6 +247,7 @@ class PublicController extends Controller
         return view('public.about', [
             'publicPageTitle' => 'About Us',
             'publicPageDescription' => 'Learn about our property management team, our mission, and how we help landlords and tenants succeed.',
+            'publicStats' => $this->publicStats(),
         ]);
     }
 
@@ -249,7 +258,9 @@ class PublicController extends Controller
     {
         $propertyUnit = null;
         if ($request->filled('property_unit')) {
-            $propertyUnit = PropertyUnit::query()
+            $propertyUnit = $this->scopePublicPropertyUnits(
+                PropertyUnit::query()
+            )
                 ->publiclyListed()
                 ->whereHas('property')
                 ->whereKey($request->integer('property_unit'))
@@ -492,5 +503,65 @@ class PublicController extends Controller
         }
 
         return $filters;
+    }
+
+    private function publicSiteAgentUserId(): ?int
+    {
+        return PropertyWorkspaceBranding::resolvePublicSiteAgentUserId();
+    }
+
+    private function scopePublicPropertyUnits(Builder $query): Builder
+    {
+        $agentId = $this->publicSiteAgentUserId();
+        if ($agentId !== null && Schema::hasColumn('properties', 'agent_user_id')) {
+            $query->whereHas('property', fn ($q) => $q->where('properties.agent_user_id', $agentId));
+        }
+
+        return $query;
+    }
+
+    private function scopePublicProperties(Builder $query): Builder
+    {
+        $agentId = $this->publicSiteAgentUserId();
+        if ($agentId !== null && Schema::hasColumn('properties', 'agent_user_id')) {
+            $query->where('agent_user_id', $agentId);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return array{properties: int, vacant_listings: int, landlords: int, tenants: int}
+     */
+    private function publicStats(): array
+    {
+        $agentId = $this->publicSiteAgentUserId();
+
+        $propertiesQuery = $this->scopePublicProperties(Property::query());
+        $vacantQuery = $this->scopePublicPropertyUnits(
+            PropertyUnit::query()->where('status', PropertyUnit::STATUS_VACANT)
+        );
+
+        $tenantsQuery = PmTenant::query();
+        if ($agentId !== null && Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+            $tenantsQuery->where('agent_user_id', $agentId);
+        }
+
+        $landlordsQuery = User::query()->where('property_portal_role', 'landlord');
+        if ($agentId !== null && Schema::hasTable('property_landlord') && Schema::hasColumn('properties', 'agent_user_id')) {
+            $landlordsQuery->whereIn('id', function ($q) use ($agentId) {
+                $q->select('property_landlord.user_id')
+                    ->from('property_landlord')
+                    ->join('properties', 'properties.id', '=', 'property_landlord.property_id')
+                    ->where('properties.agent_user_id', $agentId);
+            });
+        }
+
+        return [
+            'properties' => $propertiesQuery->count(),
+            'vacant_listings' => $vacantQuery->count(),
+            'landlords' => $landlordsQuery->count(),
+            'tenants' => $tenantsQuery->count(),
+        ];
     }
 }

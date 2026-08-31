@@ -6,7 +6,9 @@
 ])
 
 @php
-    $brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name');
+    use App\Support\Property\PropertyWorkspaceBranding;
+
+    $brandName = PropertyWorkspaceBranding::forPublicSite('company_name', config('app.name', 'Property Platform'));
     $bg = $heroImage ?: \App\Http\Controllers\PublicController::LISTING_PLACEHOLDER_IMAGE;
     $vacantCount = (int) ($stats['vacant_listings'] ?? 0);
     $propertyCount = (int) ($stats['properties'] ?? 0);
@@ -14,7 +16,7 @@
 
 <section class="public-hero" x-data="heroSearchToggle()">
     <div class="public-hero-bg">
-        <img src="{{ $bg }}" alt="Premium properties in Kenya" fetchpriority="high" decoding="async">
+        <img src="{{ $bg }}" alt="{{ $brandName }} — premium properties" fetchpriority="high" decoding="async">
         <div class="public-hero-overlay"></div>
     </div>
 

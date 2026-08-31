@@ -3,7 +3,9 @@
 ])
 
 @php
-    $brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name');
+    use App\Support\Property\PropertyWorkspaceBranding;
+
+    $brandName = PropertyWorkspaceBranding::forPublicSite('company_name', config('app.name', 'Property Platform'));
 @endphp
 
 <section {{ $attributes->merge(['class' => 'py-12 sm:py-16 bg-white border-y border-gray-100']) }}>

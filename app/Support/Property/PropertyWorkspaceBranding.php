@@ -14,6 +14,7 @@ final class PropertyWorkspaceBranding
         'company_name',
         'company_logo_url',
         'site_favicon_url',
+        'public_website_domain',
         'contact_email_primary',
         'contact_email_support',
         'contact_phone',
@@ -234,6 +235,132 @@ final class PropertyWorkspaceBranding
         }
 
         return $default;
+    }
+
+    /**
+     * Branding for the public marketing site (unauthenticated).
+     * Resolves tenant from request host → agent-scoped settings → global → APP_NAME.
+     */
+    public static function forPublicSite(string $key, ?string $default = null): ?string
+    {
+        if (! self::isBrandingKey($key)) {
+            return PropertyPortalSetting::getGlobalValue($key, $default);
+        }
+
+        if ($key === 'public_website_domain') {
+            return self::readPublicWebsiteDomainForAgent(self::resolvePublicSiteAgentUserId());
+        }
+
+        $agentUserId = self::resolvePublicSiteAgentUserId();
+        if ($agentUserId !== null) {
+            $scoped = self::readScopedValue($key, $agentUserId);
+            if ($scoped !== null && $scoped !== '') {
+                return $scoped;
+            }
+        }
+
+        $global = PropertyPortalSetting::getGlobalValue($key);
+        if ($global !== null && $global !== '') {
+            return $global;
+        }
+
+        if ($key === 'company_name') {
+            return $default ?? config('app.name', 'Property Platform');
+        }
+
+        return $default;
+    }
+
+    /**
+     * @return array{
+     *     company_name: string,
+     *     company_logo_url: string,
+     *     site_favicon_url: string,
+     *     contact_email_primary: string,
+     *     contact_email_support: string,
+     *     contact_phone: string,
+     *     contact_whatsapp: string,
+     *     contact_address: string,
+     *     contact_reg_no: string,
+     *     contact_map_embed_url: string,
+     *     public_site_agent_user_id: int|null
+     * }
+     */
+    public static function publicSiteSnapshot(): array
+    {
+        $agentUserId = self::resolvePublicSiteAgentUserId();
+
+        return [
+            'company_name' => (string) (self::forPublicSite('company_name', config('app.name', 'Property Platform')) ?? config('app.name', 'Property Platform')),
+            'company_logo_url' => (string) (self::forPublicSite('company_logo_url', '') ?? ''),
+            'site_favicon_url' => (string) (self::forPublicSite('site_favicon_url', '') ?? ''),
+            'contact_email_primary' => (string) (self::forPublicSite('contact_email_primary', '') ?? ''),
+            'contact_email_support' => (string) (self::forPublicSite('contact_email_support', '') ?? ''),
+            'contact_phone' => (string) (self::forPublicSite('contact_phone', '') ?? ''),
+            'contact_whatsapp' => (string) (self::forPublicSite('contact_whatsapp', '') ?? ''),
+            'contact_address' => (string) (self::forPublicSite('contact_address', '') ?? ''),
+            'contact_reg_no' => (string) (self::forPublicSite('contact_reg_no', '') ?? ''),
+            'contact_map_embed_url' => (string) (self::forPublicSite('contact_map_embed_url', '') ?? ''),
+            'public_site_agent_user_id' => $agentUserId,
+        ];
+    }
+
+    public static function resolvePublicSiteAgentUserId(?string $host = null): ?int
+    {
+        static $cache = [];
+
+        $normalizedHost = self::normalizePublicHost($host ?? (string) request()->getHost());
+        if (array_key_exists($normalizedHost, $cache)) {
+            return $cache[$normalizedHost];
+        }
+
+        $map = config('property.public_site_domains', []);
+        if ($normalizedHost !== '' && isset($map[$normalizedHost])) {
+            return $cache[$normalizedHost] = (int) $map[$normalizedHost];
+        }
+
+        if ($normalizedHost !== '' && Schema::hasColumn('property_portal_settings', 'agent_user_id')) {
+            $matches = PropertyPortalSetting::query()
+                ->where('key', 'public_website_domain')
+                ->whereNotNull('agent_user_id')
+                ->where('value', '!=', '')
+                ->get(['agent_user_id', 'value']);
+
+            foreach ($matches as $row) {
+                if (self::normalizePublicHost((string) $row->value) === $normalizedHost) {
+                    return $cache[$normalizedHost] = (int) $row->agent_user_id;
+                }
+            }
+        }
+
+        $configured = config('property.public_site_agent_user_id');
+        if ($configured !== null && $configured !== '') {
+            return $cache[$normalizedHost] = (int) $configured;
+        }
+
+        $loginAgent = self::loginBrandingAgentUserId();
+        if ($loginAgent !== null) {
+            return $cache[$normalizedHost] = $loginAgent;
+        }
+
+        return $cache[$normalizedHost] = null;
+    }
+
+    public static function normalizePublicHost(string $host): string
+    {
+        $host = strtolower(trim($host));
+        $host = preg_replace('/:\d+$/', '', $host) ?? $host;
+
+        return str_starts_with($host, 'www.') ? substr($host, 4) : $host;
+    }
+
+    private static function readPublicWebsiteDomainForAgent(?int $agentUserId): ?string
+    {
+        if ($agentUserId === null) {
+            return null;
+        }
+
+        return self::readScopedValue('public_website_domain', $agentUserId);
     }
 
     private static function loginBrandingAgentUserId(): ?int

@@ -25,7 +25,15 @@
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Company name</label>
                     <input type="text" name="company_name" value="{{ old('company_name', $companyName) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. Acme Properties Ltd" />
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Shown on the public website, login page, invoices, and portal.</p>
                     @error('company_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Public website domain</label>
+                    <input type="text" name="public_website_domain" value="{{ old('public_website_domain', $publicWebsiteDomain ?? '') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. clientproperties.co.ke" />
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">When visitors open this domain, they see this workspace’s name, logo, favicon, and contact details. Leave blank if you use env mapping or a single-tenant deployment.</p>
+                    @error('public_website_domain')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
 
                 <div>

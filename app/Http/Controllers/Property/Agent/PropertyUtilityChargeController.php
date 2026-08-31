@@ -483,7 +483,7 @@ class PropertyUtilityChargeController extends Controller
                     'property_unit_id' => $charge->property_unit_id,
                     'pm_tenant_id' => $lease->pm_tenant_id,
                     'invoice_no' => PmInvoice::nextInvoiceNumber(),
-                    'issue_date' => now()->toDateString(),
+                    'issue_date' => PmInvoice::issueDateForBillingPeriod($billingMonth),
                     'due_date' => $dueDate,
                     'amount' => $amount,
                     'amount_paid' => 0,

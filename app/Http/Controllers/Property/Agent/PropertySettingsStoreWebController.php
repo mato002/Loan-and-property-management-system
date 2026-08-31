@@ -1435,6 +1435,7 @@ class PropertySettingsStoreWebController extends Controller
             'contactAddress' => PropertyWorkspaceBranding::getForSettings('contact_address', ''),
             'contactRegNo' => PropertyWorkspaceBranding::getForSettings('contact_reg_no', ''),
             'contactMapEmbedUrl' => PropertyWorkspaceBranding::getForSettings('contact_map_embed_url', ''),
+            'publicWebsiteDomain' => PropertyWorkspaceBranding::getForSettings('public_website_domain', ''),
             'brandingEditorAgentUserId' => PropertyWorkspaceBranding::settingsEditorAgentUserId(),
         ]);
     }
@@ -1460,6 +1461,7 @@ class PropertySettingsStoreWebController extends Controller
             'contact_address' => ['nullable', 'string', 'max:500'],
             'contact_reg_no' => ['nullable', 'string', 'max:128'],
             'contact_map_embed_url' => ['nullable', 'url', 'max:2048'],
+            'public_website_domain' => ['nullable', 'string', 'max:255'],
             'remove_logo' => ['nullable', 'in:0,1'],
             'remove_favicon' => ['nullable', 'in:0,1'],
         ]);
@@ -1472,6 +1474,11 @@ class PropertySettingsStoreWebController extends Controller
         PropertyWorkspaceBranding::setForSettings('contact_address', $data['contact_address'] ?? '', $request->user());
         PropertyWorkspaceBranding::setForSettings('contact_reg_no', $data['contact_reg_no'] ?? '', $request->user());
         PropertyWorkspaceBranding::setForSettings('contact_map_embed_url', $data['contact_map_embed_url'] ?? '', $request->user());
+        PropertyWorkspaceBranding::setForSettings(
+            'public_website_domain',
+            PropertyWorkspaceBranding::normalizePublicHost((string) ($data['public_website_domain'] ?? '')),
+            $request->user()
+        );
 
         if (($data['remove_logo'] ?? '0') === '1') {
             PropertyWorkspaceBranding::setForSettings('company_logo_url', '', $request->user());

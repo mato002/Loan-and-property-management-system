@@ -3,14 +3,17 @@
     :page-description="$publicPageDescription ?? null"
 >
     @php
-        $brandName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name');
-        $contactEmailPrimary = \App\Models\PropertyPortalSetting::getValue('contact_email_primary', '') ?: 'info@gaithoproperties.co.ke';
-        $contactEmailSupport = \App\Models\PropertyPortalSetting::getValue('contact_email_support', '') ?: $contactEmailPrimary;
-        $contactPhone = \App\Models\PropertyPortalSetting::getValue('contact_phone', '') ?: '0717 018779';
-        $contactWhatsapp = \App\Models\PropertyPortalSetting::getValue('contact_whatsapp', '') ?: '254717018779';
-        $contactAddress = \App\Models\PropertyPortalSetting::getValue('contact_address', '') ?: "Nairobi, Kenya";
-        $contactMapEmbedUrl = \App\Models\PropertyPortalSetting::getValue('contact_map_embed_url', '');
-        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp) ?: '254717018779';
+        use App\Support\Property\PropertyWorkspaceBranding;
+
+        $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
+        $brandName = $publicBrand['company_name'];
+        $contactEmailPrimary = $publicBrand['contact_email_primary'];
+        $contactEmailSupport = $publicBrand['contact_email_support'] ?: $contactEmailPrimary;
+        $contactPhone = $publicBrand['contact_phone'];
+        $contactWhatsapp = $publicBrand['contact_whatsapp'];
+        $contactAddress = $publicBrand['contact_address'];
+        $contactMapEmbedUrl = $publicBrand['contact_map_embed_url'];
+        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp);
         $intent = $contactIntent ?? 'general';
         $intentLabel = match ($intent) {
             'viewing' => 'Schedule a viewing',
@@ -50,9 +53,11 @@
                     </div>
                 @endforeach
 
-                <a href="https://wa.me/{{ $whatsAppDigits }}" target="_blank" rel="noopener noreferrer" class="public-btn w-full bg-[#25D366] hover:bg-[#1ebe57] text-white !rounded-xl">
-                    Chat on WhatsApp
-                </a>
+                @if ($whatsAppDigits !== '')
+                    <a href="https://wa.me/{{ $whatsAppDigits }}" target="_blank" rel="noopener noreferrer" class="public-btn w-full bg-[#25D366] hover:bg-[#1ebe57] text-white !rounded-xl">
+                        Chat on WhatsApp
+                    </a>
+                @endif
             </div>
 
             <div class="lg:col-span-3">

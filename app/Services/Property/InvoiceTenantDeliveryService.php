@@ -170,7 +170,8 @@ class InvoiceTenantDeliveryService
                 'to_address' => $emailTo,
                 'subject' => 'Invoice '.$invoice->invoice_no,
                 'body' => $body,
-                'status' => 'sent',
+                'delivery_status' => 'sent',
+                'sent_at' => now(),
             ]);
             PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_EMAILED, $actor?->id, 'Email sent to '.$emailTo);
 
@@ -213,7 +214,8 @@ class InvoiceTenantDeliveryService
                 'channel' => 'sms',
                 'to_address' => implode(',', $phones),
                 'body' => $body,
-                'status' => 'sent',
+                'delivery_status' => 'sent',
+                'sent_at' => now(),
             ]);
             PmInvoiceEvent::record((int) $invoice->id, PmInvoiceEvent::EVENT_SMS_SENT, $actor?->id, 'SMS sent to '.implode(',', $phones));
 
