@@ -14,6 +14,7 @@ final class PassionLegacyLeasesImportService
         private PassionLegacyLeasesRegisterParser $parser,
         private PassionLegacyRegisterPdfTextExtractor $extractor,
         private PassionPropertyCodeResolver $codeResolver,
+        private PassionLegacyUnitResolver $unitResolver,
         private LoanClientIdentifierNormalizer $normalizer,
     ) {}
 
@@ -85,7 +86,7 @@ final class PassionLegacyLeasesImportService
             return;
         }
 
-        $tenant = $this->resolveTenant($record, $agentUserId, $updateExisting, $summary);
+        $tenant = $this->resolveTenant($record, $agentUserId, $updateExisting, $summary, $rowNum);
 
         $activeLeases = PmLease::query()
             ->withoutGlobalScopes()
@@ -163,16 +164,14 @@ final class PassionLegacyLeasesImportService
      */
     private function resolveUnit(int $propertyId, string $unitLabel, array $record, array &$summary, int $rowNum): ?PropertyUnit
     {
-        $normalized = PassionLegacyTextNormalizer::normalizeUnitLabel($unitLabel);
-        $unit = PropertyUnit::query()
-            ->withoutGlobalScopes()
-            ->where('property_id', $propertyId)
-            ->get()
-            ->first(fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::unitLabelsMatch($candidate->label, $unitLabel));
+        $unit = $this->unitResolver->findOnProperty($propertyId, $unitLabel);
 
         if ($unit) {
             return $unit;
         }
+
+        $expectedLabel = $this->unitResolver->expectedLabelForProperty($propertyId, $unitLabel);
+        $normalized = PassionLegacyTextNormalizer::normalizeUnitLabel($expectedLabel ?? $unitLabel);
 
         $summary['warnings'][] = "Row {$rowNum}: unit {$unitLabel} not found — creating stub.";
 
@@ -190,7 +189,7 @@ final class PassionLegacyLeasesImportService
      * @param  array<string, mixed>  $record
      * @param  array<string, mixed>  $summary
      */
-    private function resolveTenant(array $record, int $agentUserId, bool $updateExisting, array &$summary): PmTenant
+    private function resolveTenant(array $record, int $agentUserId, bool $updateExisting, array &$summary, int $rowNum): PmTenant
     {
         $accountNumber = strtoupper((string) $record['account_number']);
         $phone = isset($record['phone']) ? $this->normalizer->normalizePhone((string) $record['phone']) : null;
@@ -200,12 +199,8 @@ final class PassionLegacyLeasesImportService
             ->where('account_number', $accountNumber)
             ->first();
 
-        if (! $existing && $phone) {
-            $existing = PmTenant::query()->withoutGlobalScopes()->where('phone', $phone)->first();
-        }
-
         $payload = array_filter([
-            'name' => $record['tenant_name'],
+            'name' => PassionLegacyTextNormalizer::cleanTenantName($record['tenant_name']),
             'phone' => $phone,
             'account_number' => $accountNumber,
             'opening_arrears_amount' => $record['account_balance'],
@@ -221,6 +216,19 @@ final class PassionLegacyLeasesImportService
             }
 
             return $existing;
+        }
+
+        if ($phone && Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+            $phoneTaken = PmTenant::query()
+                ->withoutGlobalScopes()
+                ->where('agent_user_id', $agentUserId)
+                ->where('phone', $phone)
+                ->exists();
+
+            if ($phoneTaken) {
+                unset($payload['phone']);
+                $summary['warnings'][] = "Row {$rowNum} ({$accountNumber}): phone already used by another tenant — imported without phone.";
+            }
         }
 
         $tenant = PmTenant::query()->create($payload);

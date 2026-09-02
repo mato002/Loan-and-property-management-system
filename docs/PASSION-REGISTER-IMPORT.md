@@ -216,11 +216,13 @@ Uses `property_unit_register.txt` + `leases.txt` as source of truth to:
 - remove orphan/extra units not in the unit register
 - sync vacant/occupied status from the unit register
 
-Then import the 3 missing tenants/leases:
+Then import the 3 missing tenants/leases (only if reconcile still reports them):
 
 ```bash
 php artisan property:import-passion-leases storage/passion-legacy/leases.txt --agent-user-id=2
 ```
+
+**Do not re-run lease import after reconcile** unless needed for missing tenants — older versions created new stubs. Latest code uses register label matching to avoid that.
 
 ---
 
