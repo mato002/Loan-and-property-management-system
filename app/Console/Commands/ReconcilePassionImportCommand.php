@@ -49,11 +49,12 @@ class ReconcilePassionImportCommand extends Command
 
         $prefix = $result['dry_run'] ? '[DRY RUN] ' : '';
         $this->info(sprintf(
-            '%sExpected units=%d | DB units %d -> %d | Leases relinked=%d | Labels aligned=%d | Duplicates removed=%d | Orphans removed=%d | Statuses synced=%d',
+            '%sExpected units=%d | DB units %d -> %d | Units created=%d | Leases relinked=%d | Labels aligned=%d | Duplicates removed=%d | Orphans removed=%d | Statuses synced=%d',
             $prefix,
             $result['expected_units'],
             $result['db_units_before'],
             $result['db_units_after'],
+            $result['units_created'],
             $result['leases_relinked'],
             $result['labels_aligned'],
             $result['duplicate_units_removed'],

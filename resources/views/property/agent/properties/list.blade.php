@@ -16,6 +16,7 @@
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
+    :table-row-tones="$tableRowTones ?? []"
     :show-search="false"
     empty-title="No properties"
     empty-hint="Add a property below, then open Units to add doors and rents."

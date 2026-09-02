@@ -171,8 +171,8 @@ final class PassionLegacyLeasesImportService
             return $unit;
         }
 
-        $expectedLabel = $this->unitResolver->expectedLabelForProperty($propertyId, $unitLabel);
-        $normalized = PassionLegacyTextNormalizer::normalizeUnitLabel($expectedLabel ?? $unitLabel);
+        $expectedLabel = $this->unitResolver->expectedLabelForProperty($propertyId, $canonicalLabel);
+        $normalized = PassionLegacyTextNormalizer::normalizeUnitLabel($expectedLabel ?? $canonicalLabel);
 
         $summary['warnings'][] = "Row {$rowNum}: unit {$unitLabel} not found — creating stub.";
 

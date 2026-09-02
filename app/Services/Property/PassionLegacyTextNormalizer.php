@@ -95,7 +95,7 @@ final class PassionLegacyTextNormalizer
         $lease = self::normalizeUnitLabel($leaseLabel);
         $register = self::normalizeUnitLabel($registerLabel);
 
-        if ($register !== '' && (str_ends_with($lease, $register) || str_ends_with($lease, ' '.$register))) {
+        if ($register !== '' && self::suffixTokenMatch($lease, $register)) {
             return true;
         }
 
@@ -113,15 +113,31 @@ final class PassionLegacyTextNormalizer
             return true;
         }
 
-        if ($register !== '' && str_starts_with($register, $lease) && strlen($lease) >= 4) {
+        if ($register !== '' && str_starts_with($register, $lease) && strlen($lease) >= 4 && self::prefixMatchBoundary($register, $lease)) {
             return true;
         }
 
-        if ($lease !== '' && str_starts_with($lease, $register) && strlen($register) >= 4) {
+        if ($lease !== '' && str_starts_with($lease, $register) && strlen($register) >= 4 && self::prefixMatchBoundary($lease, $register)) {
             return true;
         }
 
         return false;
+    }
+
+    private static function suffixTokenMatch(string $haystack, string $token): bool
+    {
+        return preg_match('/(?:^|\s)'.preg_quote($token, '/').'$/i', $haystack) === 1;
+    }
+
+    private static function prefixMatchBoundary(string $haystack, string $prefix): bool
+    {
+        if (! str_starts_with($haystack, $prefix)) {
+            return false;
+        }
+
+        $remainder = substr($haystack, strlen($prefix));
+
+        return $remainder === '' || preg_match('/^\s/u', $remainder) === 1;
     }
 
     private static function stripHousePrefix(string $label): string
@@ -132,6 +148,10 @@ final class PassionLegacyTextNormalizer
     public static function extractCoreUnitToken(string $label): string
     {
         if (preg_match('/\b(HSE\s+[A-Z]?\d+[A-Z]?)\b/i', $label, $match)) {
+            return self::normalizeUnitLabel($match[1]);
+        }
+
+        if (preg_match('/\b(HSE\s+\d+(?:\s*&\s*\d+)?)\b/i', $label, $match)) {
             return self::normalizeUnitLabel($match[1]);
         }
 

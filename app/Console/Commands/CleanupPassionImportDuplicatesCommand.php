@@ -150,6 +150,7 @@ class CleanupPassionImportDuplicatesCommand extends Command
                                     'vacant_since' => null,
                                 ]);
                             }
+                            $leasesRelinked++;
                         }
 
                         if ($this->unitHasActiveLease($unit->id, 0)) {
@@ -178,7 +179,7 @@ class CleanupPassionImportDuplicatesCommand extends Command
         }
 
         $prefix = $dryRun ? '[DRY RUN] ' : '';
-        $this->info("{$prefix}Duplicate leases terminated={$leasesTerminated} | Stub units vacated={$unitsVacated} | Orphan stubs deleted={$unitsDeleted} | Duplicate stubs deleted={$duplicateStubsDeleted}");
+        $this->info("{$prefix}Duplicate leases terminated={$leasesTerminated} | Stub units vacated={$unitsVacated} | Orphan stubs deleted={$unitsDeleted} | Leases relinked={$leasesRelinked} | Duplicate stubs deleted={$duplicateStubsDeleted}");
 
         return self::SUCCESS;
     }

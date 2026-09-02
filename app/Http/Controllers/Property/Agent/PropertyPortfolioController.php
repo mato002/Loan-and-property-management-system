@@ -17,6 +17,7 @@ use App\Support\CsvExport;
 use App\Support\Property\LandlordWorkspaceScope;
 use App\Support\Property\ResponsiveTableColumns;
 use App\Support\Property\UnitListPresentation;
+use App\Support\Property\WorkspaceRowAlert;
 use App\Support\TabularExport;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\Property\FinancialReportingFormulaService;
@@ -184,7 +185,8 @@ class PropertyPortfolioController extends Controller
 
         $propertyChargeTemplatesByPropertyId = $this->allPropertyChargeTemplates();
 
-        $rows = $portfolio->getCollection()->map(function (Property $p) use ($propertyChargeTemplatesByPropertyId) {
+        $tableRowTones = [];
+        $rows = $portfolio->getCollection()->map(function (Property $p) use ($propertyChargeTemplatesByPropertyId, &$tableRowTones) {
             $landlordNames = $p->landlords->pluck('name')->filter()->values();
             $landlordCell = $landlordNames->isEmpty()
                 ? '—'
@@ -194,8 +196,19 @@ class PropertyPortfolioController extends Controller
                     '</span>'
                 );
             $status = $p->units_count === 0
-                ? 'No units'
-                : ($p->vacant_units_count > 0 ? 'Has vacancy' : 'Fully occupied');
+                ? new HtmlString('<span class="text-xs text-slate-500">No units</span>')
+                : new HtmlString(
+                    '<div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">'.
+                    '<span class="font-medium text-slate-700" title="Total units">'.$p->units_count.'</span>'.
+                    '<span class="text-slate-400">·</span>'.
+                    '<span class="text-emerald-700" title="Occupied">'.$p->occupied_units_count.' occ</span>'.
+                    ($p->vacant_units_count > 0
+                        ? '<span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900 ring-1 ring-amber-300/80" title="Vacant units">'.
+                          '<span aria-hidden="true">×</span>'.$p->vacant_units_count.' vacant'.
+                          '</span>'
+                        : '<span class="text-slate-500" title="Vacant">0 vacant</span>').
+                    '</div>'
+                );
             $mgmtStatus = $p->managementStatus();
             $mgmtPillClass = match ($mgmtStatus) {
                 Property::MANAGEMENT_OFFBOARDING => 'bg-amber-100 text-amber-800',
@@ -261,6 +274,8 @@ class PropertyPortfolioController extends Controller
                 '</div>'
             );
 
+            $tableRowTones[] = $p->vacant_units_count > 0 ? WorkspaceRowAlert::TONE_VACANT : '';
+
             return [
                 $nameCodeCell,
                 $addressCityCell,
@@ -304,6 +319,7 @@ class PropertyPortfolioController extends Controller
             'stats' => $stats,
             'columns' => ['Name / Code', 'Address / City', 'Units', 'Utility charges', 'Landlord(s)', 'Management', 'Occupancy', 'Actions'],
             'tableRows' => $rows,
+            'tableRowTones' => $tableRowTones,
             'propertyOnboardingFields' => $this->propertyOnboardingFieldConfig(),
             'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
             'properties' => $portfolio,
@@ -516,7 +532,7 @@ class PropertyPortfolioController extends Controller
 
             $unitsById = $units->keyBy('id');
             $unitSnapshots = DB::table('property_units as u')
-                ->selectRaw('u.id, u.label, u.status, u.rent_amount')
+                ->selectRaw('u.id, u.label, u.status, u.rent_amount, u.vacant_since')
                 ->where('u.property_id', $property->id)
                 ->when($unitStatus !== '', fn ($q) => $q->where('u.status', $unitStatus))
                 ->orderBy('u.label')

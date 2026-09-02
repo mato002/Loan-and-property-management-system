@@ -173,7 +173,9 @@ final class PassionLegacyLeasesRegisterParser
             $unitLabel = PassionLegacyTextNormalizer::normalizeUnitLabel($unitMatch[1]);
         }
 
-        if ($unitLabel === '' && preg_match('/^\s*TNT\d+/i', $line)) {
+        if (preg_match('/\b(RENTAL\s+HOUSE\s+[A-Z]+)\b/i', $beforeTnt, $rentalMatch)) {
+            $unitLabel = PassionLegacyTextNormalizer::normalizeUnitLabel($rentalMatch[1]);
+        } elseif ($unitLabel === '' && preg_match('/^\s*TNT\d+/i', $line)) {
             $unitLabel = 'UNIT-'.substr($accountNumber, -4);
         }
 

@@ -608,60 +608,11 @@
                 @endif
             </div>
         </div>
-        <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
-            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
-                <tr>
-                    <th class="px-4 py-3">Unit</th>
-                    <th class="px-4 py-3">Status</th>
-                    <th class="px-4 py-3">Tenant</th>
-                    <th class="px-4 py-3">Phone</th>
-                    <th class="px-4 py-3">Listed rent</th>
-                    <th class="px-4 py-3">Arrears</th>
-                    @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
-                        <th class="px-4 py-3">Actions</th>
-                    @endif
-                </tr>
-            </thead>
-            <tbody>
-                @php
-                    $unitsById = collect($units ?? [])->keyBy('id');
-                @endphp
-                @forelse($unitSnapshots as $u)
-                    @php
-                        $unitModel = $unitsById->get((int) $u->id);
-                    @endphp
-                    <tr class="border-t border-slate-100 hover:bg-slate-50/70 {{ \App\Support\Property\WorkspaceRowAlert::trClass(\App\Support\Property\WorkspaceRowAlert::forSnapshot((string) $u->status, filled($u->tenant_name), (float) ($u->arrears ?? 0))) }}">
-                        <td class="px-4 py-3 font-medium text-slate-900">
-                            @if ($unitModel)
-                                <a href="{{ route('property.units.show', $unitModel, false) }}" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700">{{ $u->label }}</a>
-                            @else
-                                {{ $u->label }}
-                            @endif
-                        </td>
-                        <td class="px-4 py-3 capitalize text-slate-700">{{ $u->status }}</td>
-                        <td class="px-4 py-3 text-slate-700">{{ $u->tenant_name ?: '—' }}</td>
-                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap">{{ $u->tenant_phone ?: '—' }}</td>
-                        <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->rent_amount) }}</td>
-                        <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
-                        @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
-                            <td class="px-4 py-3 overflow-visible">
-                                @if ($unitModel)
-                                    @include('property.agent.partials.unit_row_actions', [
-                                        'unit' => $unitModel,
-                                        'arrears' => (float) $u->arrears,
-                                        'propertyId' => $property->id,
-                                    ])
-                                @else
-                                    <span class="text-xs text-slate-400">—</span>
-                                @endif
-                            </td>
-                        @endif
-                    </tr>
-                @empty
-                    <tr><td colspan="{{ auth()->check() && auth()->user()?->hasPmPermission('properties.manage') ? 7 : 6 }}" class="px-4 py-10 text-center text-slate-500">No units yet for this property.</td></tr>
-                @endforelse
-            </tbody>
-        </table>
+        @include('property.agent.partials.property_unit_snapshots_table', [
+            'property' => $property,
+            'units' => $units,
+            'unitSnapshots' => $unitSnapshots,
+        ])
 
         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
             @php

@@ -293,13 +293,54 @@ This adds generic `Unit N` spaces where the property register counts more units 
 
 ---
 
+## Archived legacy portfolio (excluded — not errors)
+
+The old Ezen system keeps **~20 archived properties** and **~10 archived landlords** separate from the active workspace. The Passion migration imports **only the active export** (38 properties, 36 landlord rows). Anything tied to archived Ezen records is intentionally out of scope.
+
+### What you will see (safe to ignore)
+
+| Import output | Legacy meaning |
+|---------------|----------------|
+| `property not found — KINGORI(SANKINS HARDWARE)` | Unit register mis-label; tenant is on active **M00044A SUNRISE APARTMENT** (SHOP A1). Row skipped. |
+| `property not found — - HOUSE (SALON)` / `Z - HOUSE SHOP 6` | **E00043A Z - HOUSE** — archived in Ezen or unit register uses a truncated name. Units not imported. |
+| `Landlord saved — no matching property` (`J00041`, `M00008`, `M00017`, `M00018`, `M00028`, `M00029`, `M00038`) | Landlord account exists in register but property is **archived** (e.g. M00038A Teachers Centre, M00028A Wanyama, M00017A Gift Investments). |
+| Stub cleanup: `Stub kept (no register unit match)` on Z-HOUSE / SUNRISE SHOP A1 | Lease row imported before unit register matched, or property/units archived. Stubs stay so active leases are not broken. |
+| Stub cleanup: `Generic fill unit kept (active lease)` | Fill-space units with live tenants — kept by design. |
+
+### Archived property codes (Ezen — not in the 38-property export)
+
+Examples from the Ezen **Archived** property filter (not imported):
+
+`F00047A`, `M00038A`, `M00028A`, `M00017A`, `M00016A`, `M00012A`, `M00010A`, `M00020A`, `M00006A`, `M00021C`, `M00007A`, `M00008A`, `M00032A`, `M00022A`, `M00022B`, `M00018A`, `E00038A`, `M00029A`, `M00042`, `J00041A`, …
+
+### Archived landlord codes (Ezen — not linked to active properties)
+
+`E00036`, `M00006`, `M00007`, `M00010`, `M00012`, `M00016`, `M00020`, `M00022`, `M00032`, `M00042`
+
+### Production totals after cleanup
+
+With archived data excluded, expect approximately:
+
+| Card | Target |
+|------|--------|
+| Properties | **38** (active only) |
+| Landlords | **36** rows (~29 linked to active properties; rest are archived/orphan accounts) |
+| Units/Spaces | **~442–448** (includes a few lease stubs on active properties with label mismatches) |
+| Tenants/Residents | **396** (active leases export) |
+
+**Do not** re-import or reconcile to “fix” archived warnings — they are expected when matching Ezen’s active dashboard.
+
+---
+
 ## Expected warnings (not errors)
 
 | Warning | Meaning |
 |---------|---------|
 | Landlord code has no matching property | Archived/orphan code (e.g. `J00041`, `M00017`) — landlord is still imported |
+| `property not found — KINGORI…` / `- HOUSE (SALON)` | Archived property or mis-labelled unit register row — **skip** (see Archived section) |
 | `property not found — WINTA END APARTMENT` | Property was saved as truncated name `WINTA END`; fixed in latest code — re-run units with `.txt` |
-| Lease import “unit not found — creating stub” | Units phase did not complete; re-run units import first |
+| Lease import “unit not found — creating stub” | Units phase did not complete, or label mismatch on an **active** property — re-run units import; stubs on archived properties are OK |
+| Stub cleanup “kept (no register unit match)” | Often archived portfolio or compound label mismatch — safe if active totals match Ezen |
 
 ---
 

@@ -42,12 +42,13 @@ final class PassionLegacyImportReconciliationService
             'labels_aligned' => 0,
             'duplicate_units_removed' => 0,
             'orphan_units_removed' => 0,
+            'units_created' => 0,
             'statuses_synced' => 0,
             'missing_active_leases' => [],
             'warnings' => [],
         ];
 
-        /** @var array<string, array{property_id: int, label: string, status: string}> $expectedUnits */
+        /** @var array<string, array{property_id: int, label: string, status: string, rent_amount: float, market_rent: ?float, bedrooms: int, unit_type: string, available_from: ?string, legacy_area: ?float, floor: ?string, furnished: bool}> $expectedUnits */
         $expectedUnits = [];
         foreach ($unitRecords as $record) {
             $property = $this->codeResolver->resolveByNameViaRegister($record['property_name'], $propertyRegister);
@@ -63,12 +64,20 @@ final class PassionLegacyImportReconciliationService
                 'property_id' => $property->id,
                 'label' => $label,
                 'status' => $record['status'],
+                'rent_amount' => (float) ($record['current_rent'] ?? 0),
+                'market_rent' => isset($record['market_rent']) ? (float) $record['market_rent'] : null,
+                'bedrooms' => (int) ($record['bedrooms'] ?? 0),
+                'unit_type' => PassionLegacyTextNormalizer::inferUnitType($record['unit_type_text'] ?? null, (int) ($record['bedrooms'] ?? 0))
+                    ?? PropertyUnit::TYPE_APARTMENT,
+                'available_from' => $record['available_from'] ?? null,
+                'legacy_area' => isset($record['legacy_area']) ? (float) $record['legacy_area'] : null,
+                'floor' => $record['floor'] ?? null,
+                'furnished' => (bool) ($record['furnished'] ?? false),
             ];
         }
         $summary['expected_units'] = count($expectedUnits);
 
-        $run = function () use ($agentUserId, $propertyIds, $expectedUnits, $leaseRecords, $dryRun, &$summary): void {
-            $this->relinkLeasesFromRegister($leaseRecords, $expectedUnits, $dryRun, $summary);
+        $run = function () use ($propertyIds, $expectedUnits, $leaseRecords, $dryRun, &$summary): void {
             $this->alignMislabeledUnits($propertyIds, $expectedUnits, $dryRun, $summary);
 
             $dbUnits = PropertyUnit::query()
@@ -78,6 +87,8 @@ final class PassionLegacyImportReconciliationService
                 ->get();
 
             $this->dedupeUnitsOnSameProperty($dbUnits, $expectedUnits, $dryRun, $summary);
+            $this->createMissingUnitsFromRegister($expectedUnits, $dryRun, $summary);
+            $this->relinkLeasesFromRegister($leaseRecords, $expectedUnits, $dryRun, $summary);
             $this->removeExtraUnits($propertyIds, $expectedUnits, $dryRun, $summary);
             $this->syncStatusesFromRegister($expectedUnits, $dryRun, $summary);
             $this->reportMissingLeases($leaseRecords, $summary);
@@ -95,7 +106,7 @@ final class PassionLegacyImportReconciliationService
         }
 
         $summary['db_units_after'] = $dryRun
-            ? $summary['db_units_before'] - $summary['duplicate_units_removed'] - $summary['orphan_units_removed']
+            ? $summary['db_units_before'] - $summary['duplicate_units_removed'] - $summary['orphan_units_removed'] + $summary['units_created']
             : PropertyUnit::query()->withoutGlobalScopes()->whereIn('property_id', $propertyIds)->count();
 
         return $summary;
@@ -172,6 +183,16 @@ final class PassionLegacyImportReconciliationService
 
             $currentUnit = $lease->units->first();
             $target = $this->resolveTargetUnit($property->id, $record['unit_label'], $canonical, $expectedUnits, $dryRun, $summary);
+            $expectedLabel = $this->expectedLabelForUnit($property->id, $record['unit_label'], $expectedUnits)
+                ?? PassionLegacyTextNormalizer::normalizeUnitLabel($record['unit_label']);
+            $target = $this->findUnitOnProperty($property->id, $expectedLabel) ?? $target;
+            $target = $target ? PropertyUnit::query()->withoutGlobalScopes()->find($target->id) : null;
+
+            if (! $target) {
+                $summary['warnings'][] = "Lease relink skipped — target unit missing for {$record['property_code']} / {$record['unit_label']}";
+
+                continue;
+            }
 
             if ($currentUnit && $currentUnit->id === $target->id) {
                 continue;
@@ -185,12 +206,61 @@ final class PassionLegacyImportReconciliationService
                 ]);
 
                 if ($currentUnit && $currentUnit->id !== $target->id) {
-                    $this->removeUnitIfSafe($currentUnit, false, $summary, 'orphan_units_removed');
+                    $this->vacateUnitIfNoActiveLease($currentUnit);
                 }
             }
 
             $summary['leases_relinked']++;
         }
+    }
+
+    /**
+     * @param  array<string, array{property_id: int, label: string, status: string, rent_amount: float, market_rent: ?float, bedrooms: int, unit_type: string, available_from: ?string, legacy_area: ?float, floor: ?string, furnished: bool}> $expectedUnits
+     * @param  array<string, mixed>  $summary
+     */
+    private function createMissingUnitsFromRegister(array $expectedUnits, bool $dryRun, array &$summary): void
+    {
+        foreach ($expectedUnits as $expected) {
+            if ($this->findUnitOnProperty($expected['property_id'], $expected['label'])) {
+                continue;
+            }
+
+            if ($dryRun) {
+                $summary['units_created']++;
+
+                continue;
+            }
+
+            PropertyUnit::query()->create([
+                'property_id' => $expected['property_id'],
+                'label' => $expected['label'],
+                'unit_type' => $expected['unit_type'],
+                'bedrooms' => $expected['bedrooms'],
+                'rent_amount' => $expected['rent_amount'],
+                'market_rent' => $expected['market_rent'],
+                'status' => $expected['status'],
+                'available_from' => $expected['available_from'],
+                'legacy_area' => $expected['legacy_area'],
+                'floor' => $expected['floor'],
+                'furnished' => $expected['furnished'],
+                'vacant_since' => $expected['status'] === PropertyUnit::STATUS_VACANT
+                    ? ($expected['available_from'] ?? now()->toDateString())
+                    : null,
+            ]);
+            $summary['units_created']++;
+        }
+    }
+
+    private function vacateUnitIfNoActiveLease(PropertyUnit $unit): void
+    {
+        if ($this->unitHasActiveLease($unit->id)) {
+            return;
+        }
+
+        $unit->update([
+            'status' => PropertyUnit::STATUS_VACANT,
+            'vacant_since' => $unit->vacant_since ?? now()->toDateString(),
+        ]);
     }
 
     /**
@@ -367,17 +437,26 @@ final class PassionLegacyImportReconciliationService
      */
     private function expectedLabelForUnit(int $propertyId, string $leaseLabel, array $expectedUnits): ?string
     {
+        $bestLabel = null;
+        $bestScore = -1;
+
         foreach ($expectedUnits as $expected) {
             if ($expected['property_id'] !== $propertyId) {
                 continue;
             }
 
-            if (PassionLegacyTextNormalizer::registerUnitLabelMatch($expected['label'], $leaseLabel)) {
-                return $expected['label'];
+            if (! PassionLegacyTextNormalizer::registerUnitLabelMatch($expected['label'], $leaseLabel)) {
+                continue;
+            }
+
+            $score = strlen($expected['label']);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestLabel = $expected['label'];
             }
         }
 
-        return null;
+        return $bestLabel;
     }
 
     private function findUnitOnProperty(int $propertyId, string $label): ?PropertyUnit
@@ -414,13 +493,13 @@ final class PassionLegacyImportReconciliationService
         }
 
         if ($bestExpected !== null) {
-            $registerUnit = $this->findRegisterEnrichedUnit($propertyId, $bestExpected['label']);
+            $registerUnit = $this->findUnitOnProperty($propertyId, $bestExpected['label']);
             if ($registerUnit) {
                 return $registerUnit;
             }
 
             $mislabeled = $this->findMislabeledUnit($propertyId, $bestExpected['label']);
-            if ($mislabeled) {
+            if ($mislabeled && $this->findUnitOnProperty($propertyId, $bestExpected['label']) === null) {
                 return $mislabeled;
             }
         }
@@ -506,9 +585,16 @@ final class PassionLegacyImportReconciliationService
             ->get();
 
         foreach ($leases as $lease) {
+            $target = PropertyUnit::query()->withoutGlobalScopes()->find($to->id);
+            if (! $target) {
+                $summary['warnings'][] = "Lease relink skipped during dedupe — target unit {$to->id} missing";
+
+                continue;
+            }
+
             if (! $dryRun) {
-                $lease->units()->sync([$to->id]);
-                $to->update([
+                $lease->units()->sync([$target->id]);
+                $target->update([
                     'status' => PropertyUnit::STATUS_OCCUPIED,
                     'vacant_since' => null,
                 ]);
