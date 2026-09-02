@@ -430,6 +430,11 @@ function isPortalAuthFailureResponse(status, responseUrl) {
         return false;
     }
 
+    // Staff login lives outside the property shell — let the browser handle redirects/errors.
+    if (document.documentElement?.dataset.turbo === 'false') {
+        return false;
+    }
+
     try {
         const path = new URL(responseUrl, window.location.href).pathname.replace(/\/+$/, '');
 

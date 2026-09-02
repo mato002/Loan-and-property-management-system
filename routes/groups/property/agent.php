@@ -273,6 +273,15 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
 
     Route::get('/properties/list', [PropertyPortfolioController::class, 'propertyList'])->name('properties.list');
     Route::get('/properties/list/export', [PropertyPortfolioController::class, 'propertyListExport'])->name('properties.list.export');
+    Route::get('/properties/import/register', [PropertyPortfolioController::class, 'propertyRegisterImportForm'])
+        ->middleware('property.permission:properties.manage')
+        ->name('properties.register_import');
+    Route::get('/properties/import/register/template.csv', [PropertyPortfolioController::class, 'propertyRegisterImportTemplate'])
+        ->middleware('property.permission:properties.manage')
+        ->name('properties.register_import.template');
+    Route::post('/properties/import/register', [PropertyPortfolioController::class, 'propertyRegisterImportStore'])
+        ->middleware('property.permission:properties.manage')
+        ->name('properties.register_import.store');
     Route::post('/properties', [PropertyPortfolioController::class, 'storeProperty'])->middleware('property.permission:properties.manage')->name('properties.store');
     Route::post('/properties/create-json', [PropertyPortfolioController::class, 'storePropertyJson'])->middleware('property.permission:properties.manage')->name('properties.store_json');
     Route::get('/properties/{property}/edit', [PropertyPortfolioController::class, 'editProperty'])->whereNumber('property')->name('properties.edit');

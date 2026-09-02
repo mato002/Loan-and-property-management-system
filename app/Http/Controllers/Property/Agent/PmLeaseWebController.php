@@ -502,7 +502,15 @@ SQL;
     private function mapLeaseListRow(PmLease $l, bool $isLeasesTab): array
     {
         $units = $l->units->map(fn ($u) => $u->property->name.'/'.$u->label)->implode(', ');
-        $tenantName = $l->pmTenant?->name ?? '—';
+        $tenant = $l->pmTenant;
+        $tenantName = $tenant?->name ?? '—';
+        $tenantAccount = $tenant?->account_number ?? '—';
+        $tenantPhone = $tenant?->phone ?? '—';
+        $tenantEmail = $tenant?->email ?? '—';
+        $tenantBalance = (float) ($tenant?->opening_arrears_amount ?? 0) > 0
+            ? number_format((float) $tenant->opening_arrears_amount, 2)
+            : '—';
+        $variationType = $l->lease_variation_type ?? '—';
         $utilityExpenses = collect($l->utility_expenses ?? [])
             ->filter(fn ($row) => is_array($row))
             ->values();
@@ -547,16 +555,16 @@ SQL;
         ])->render());
 
         $row = [
-            new HtmlString(
-                '<a href="'.route('property.leases.edit', $l, false).'" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">#'.$l->id.'</a>'
-            ),
-            $tenantName,
             $units !== '' ? $units : '—',
+            $tenantAccount,
+            $tenantName,
+            $tenantPhone,
+            $tenantEmail,
+            number_format((float) $l->monthly_rent, 2),
+            $tenantBalance,
             $l->start_date->format('Y-m-d'),
             $l->end_date?->format('Y-m-d') ?? 'Open-ended',
-            number_format((float) $l->monthly_rent, 2),
-            $depositBreakdown,
-            $expenseLabel,
+            $variationType,
             ucfirst($l->status),
             $actions,
         ];
@@ -564,6 +572,9 @@ SQL;
         if ($isLeasesTab) {
             array_unshift(
                 $row,
+                new HtmlString(
+                    '<a href="'.route('property.leases.edit', $l, false).'" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">#'.$l->id.'</a>'
+                ),
                 new HtmlString(
                     '<label class="inline-flex items-center" data-row-ignore-click>'.
                     '<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="lease_ids[]" value="'.(int) $l->id.'" form="property-leases-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select lease</span></label>'.
@@ -1512,7 +1523,7 @@ SQL;
         return property_view('property.agent.tenants.leases', array_merge([
             'activeTab' => $activeTab,
             'stats' => $stats,
-            'columns' => ['', 'Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent', 'Deposit held', 'Expense paid', 'Status', 'Actions'],
+            'columns' => ['', 'Lease #', 'Unit(s)', 'Ac/No', 'Tenant', 'Phone', 'Email', 'Rent', 'A/c balance', 'Start', 'End', 'Variation', 'Status', 'Actions'],
             'tableRows' => $rows,
             'expiryFilterTexts' => [],
             'filters' => $filters,

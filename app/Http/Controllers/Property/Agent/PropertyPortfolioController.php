@@ -21,6 +21,7 @@ use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\LandlordPortalOnboardingService;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyRegisterImportService;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use Illuminate\Support\HtmlString;
@@ -3777,5 +3778,71 @@ class PropertyPortfolioController extends Controller
         $target = $units->first();
 
         return redirect()->route('property.properties.show', ['property' => $target->property_id]);
+    }
+
+    public function propertyRegisterImportForm(): View
+    {
+        $importer = app(PropertyRegisterImportService::class);
+
+        return view('property.agent.properties.register_import', [
+            'expectedColumns' => $importer->templateColumns(),
+            'lastImportStats' => session('property_register_import_stats'),
+            'lastImportErrors' => session('property_register_import_errors', []),
+            'lastImportWarnings' => session('property_register_import_warnings', []),
+        ]);
+    }
+
+    public function propertyRegisterImportTemplate(): Response
+    {
+        $csv = app(PropertyRegisterImportService::class)->templateCsv();
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="property_register_import_template.csv"',
+        ]);
+    }
+
+    public function propertyRegisterImportStore(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'file' => ['required', 'file', 'max:10240', 'mimes:csv,txt'],
+        ]);
+
+        $path = $data['file']->getRealPath();
+        if (! is_string($path) || $path === '') {
+            return back()->with('error', 'Upload failed. Please try again.');
+        }
+
+        $agentUserId = (int) $request->user()->id;
+        $result = app(PropertyRegisterImportService::class)->importFromPath($path, $agentUserId);
+
+        $errors = $result['errors'];
+        $warnings = $result['warnings'];
+
+        return redirect()
+            ->route('property.properties.register_import')
+            ->with('property_register_import_stats', [
+                'properties_created' => $result['properties_created'],
+                'properties_updated' => $result['properties_updated'],
+                'units_created' => $result['units_created'],
+                'units_updated' => $result['units_updated'],
+                'skipped' => $result['skipped'],
+                'errors' => count($errors),
+                'warnings' => count($warnings),
+            ])
+            ->with('property_register_import_errors', array_slice($errors, 0, 25))
+            ->with('property_register_import_warnings', array_slice($warnings, 0, 25))
+            ->with(
+                $errors === []
+                    ? 'success'
+                    : 'error',
+                $errors === []
+                    ? sprintf(
+                        'Import complete: %d properties created, %d units created.',
+                        $result['properties_created'],
+                        $result['units_created'],
+                    )
+                    : 'Import finished with errors. Review the list below.'
+            );
     }
 }

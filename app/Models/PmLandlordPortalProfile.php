@@ -12,6 +12,7 @@ class PmLandlordPortalProfile extends Model
     protected $fillable = [
         'user_id',
         'kra_pin',
+        'address_line',
         'bank_name',
         'bank_account',
         'mpesa_phone',

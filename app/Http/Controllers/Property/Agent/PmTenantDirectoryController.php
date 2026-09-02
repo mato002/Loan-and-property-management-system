@@ -314,6 +314,11 @@ class PmTenantDirectoryController extends Controller
         $stats = $this->tenantDirectoryStatsFromQuery($request);
         $perPage = $this->directoryPerPage($request);
         $tenants = $tenantQuery
+            ->with(['leases' => function ($query): void {
+                $query->where('status', PmLease::STATUS_ACTIVE)
+                    ->with(['units.property'])
+                    ->orderByDesc('start_date');
+            }])
             ->orderBy('name')
             ->paginate($perPage)
             ->withQueryString();
@@ -321,6 +326,11 @@ class PmTenantDirectoryController extends Controller
         $rows = $tenants->getCollection()->map(function (PmTenant $t) {
             $leaseEnd = $t->leases_max_end_date
                 ? (string) \Illuminate\Support\Carbon::parse((string) $t->leases_max_end_date)->format('Y-m-d')
+                : '—';
+            $activeLease = $t->leases->first();
+            $activeUnit = $activeLease?->units->first();
+            $unitLabel = $activeUnit
+                ? trim(($activeUnit->property->name ?? '').' / '.$activeUnit->label, ' /')
                 : '—';
             $deleteConfirm = e("Delete {$t->name} and all related records? This cannot be undone.");
 
@@ -345,11 +355,19 @@ class PmTenantDirectoryController extends Controller
 
             return [
                 new HtmlString('<a href="'.route('property.tenants.show', $t).'" class="font-medium text-slate-800 hover:text-indigo-700 hover:underline">'.$t->name.'</a>'),
+                $t->account_number ?? '—',
                 $t->phone ?? '—',
                 $t->email ?? '—',
-                $t->national_id ?? '—',
-                (string) $t->leases_count,
+                $unitLabel,
+                (float) ($t->opening_arrears_amount ?? 0) > 0
+                    ? number_format((float) $t->opening_arrears_amount, 2)
+                    : '—',
+                $activeLease?->monthly_rent !== null
+                    ? number_format((float) $activeLease->monthly_rent, 2)
+                    : '—',
+                $activeLease?->start_date?->format('Y-m-d') ?? '—',
                 $leaseEnd,
+                (string) $t->leases_count,
                 ucfirst($t->risk_level),
                 $actions,
             ];
@@ -373,7 +391,7 @@ class PmTenantDirectoryController extends Controller
                 'per_page' => $perPage,
             ],
             'tenantPager' => $tenants,
-            'columns' => ['Tenant', 'Phone', 'Email', 'ID / ref', 'Leases', 'Lease end', 'Risk', 'Actions'],
+            'columns' => ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Lease start', 'Lease end', 'Leases', 'Risk', 'Actions'],
             'tableRows' => $rows,
         ];
     }

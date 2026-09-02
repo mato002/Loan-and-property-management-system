@@ -34,8 +34,13 @@ class PropertyUnit extends Model
         'unit_type',
         'bedrooms',
         'rent_amount',
+        'market_rent',
         'status',
         'vacant_since',
+        'available_from',
+        'legacy_area',
+        'floor',
+        'furnished',
         'public_listing_published',
         'public_listing_description',
     ];
@@ -44,7 +49,11 @@ class PropertyUnit extends Model
     {
         return [
             'rent_amount' => 'decimal:2',
+            'market_rent' => 'decimal:2',
             'vacant_since' => 'date',
+            'available_from' => 'date',
+            'legacy_area' => 'decimal:2',
+            'furnished' => 'boolean',
             'public_listing_published' => 'boolean',
         ];
     }

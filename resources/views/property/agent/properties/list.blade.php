@@ -45,6 +45,14 @@
             <i class="fa-solid fa-link" aria-hidden="true"></i>
             <span>Link landlord</span>
         </button>
+        <a
+            href="{{ route('property.properties.register_import') }}"
+            data-turbo-frame="property-main"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200"
+        >
+            <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+            <span>Import register</span>
+        </a>
     </x-slot>
 
     <x-slot name="modals">

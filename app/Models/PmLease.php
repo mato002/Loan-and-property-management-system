@@ -38,6 +38,10 @@ class PmLease extends Model
         'opening_arrears_as_of_date',
         'opening_arrears_note',
         'status',
+        'lease_variation_type',
+        'lease_period_days',
+        'days_to_expire',
+        'escalation_review_start',
         'terms_summary',
     ];
 
@@ -55,6 +59,9 @@ class PmLease extends Model
             'opening_arrears' => 'array',
             'opening_arrears_manual_total' => 'decimal:2',
             'opening_arrears_as_of_date' => 'date',
+            'escalation_review_start' => 'date',
+            'lease_period_days' => 'integer',
+            'days_to_expire' => 'integer',
         ];
     }
 

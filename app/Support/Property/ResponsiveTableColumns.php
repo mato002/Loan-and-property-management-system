@@ -211,19 +211,22 @@ final class ResponsiveTableColumns
         }
 
         return self::build(
-            ['', 'Lease #', 'Tenant', 'Unit(s)', 'Start', 'End', 'Rent', 'Deposit held', 'Expense paid', 'Status', 'Actions'],
+            ['', 'Lease #', 'Unit(s)', 'Ac/No', 'Tenant', 'Phone', 'Email', 'Rent', 'A/c balance', 'Start', 'End', 'Variation', 'Status', 'Actions'],
             [
                 0 => ['is_bulk_select' => true, 'hide_on_mobile' => false],
                 1 => ['is_primary' => true, 'priority' => 1],
-                2 => ['is_subtitle' => true, 'priority' => 2],
-                3 => ['priority' => 4],
-                4 => ['priority' => 6, 'hide_on_mobile' => true],
-                5 => ['priority' => 7, 'mobile_label' => 'End'],
-                6 => ['is_amount' => true, 'priority' => 3],
-                7 => ['priority' => 8, 'hide_on_mobile' => true],
-                8 => ['priority' => 9, 'hide_on_mobile' => true],
-                9 => ['is_status' => true, 'priority' => 5],
-                10 => ['is_action' => true],
+                2 => ['priority' => 4, 'mobile_label' => 'Unit'],
+                3 => ['priority' => 8, 'hide_on_mobile' => true, 'mobile_label' => 'Ac/No'],
+                4 => ['is_subtitle' => true, 'priority' => 2],
+                5 => ['priority' => 9, 'hide_on_mobile' => true],
+                6 => ['priority' => 10, 'hide_on_mobile' => true],
+                7 => ['is_amount' => true, 'priority' => 3],
+                8 => ['is_amount' => true, 'priority' => 5, 'mobile_label' => 'Balance'],
+                9 => ['priority' => 6, 'hide_on_mobile' => true],
+                10 => ['priority' => 7, 'mobile_label' => 'End'],
+                11 => ['priority' => 11, 'hide_on_mobile' => true],
+                12 => ['is_status' => true, 'priority' => 12],
+                13 => ['is_action' => true],
             ]
         );
     }

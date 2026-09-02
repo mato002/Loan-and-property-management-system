@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-dvh overflow-hidden">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-turbo="false" class="h-dvh overflow-hidden">
     <head>
         @php
             $companyName = \App\Support\Property\PropertyWorkspaceBranding::forGuestPage('company_name') ?: config('app.name');
@@ -18,6 +18,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        <meta name="turbo-visit-control" content="reload">
 
         <title>{{ $resolvedTitle }}</title>
         <link rel="icon" href="{{ $faviconVersioned }}" />
@@ -27,7 +28,7 @@
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=plus-jakarta-sans:400,500,600,700&display=swap" rel="stylesheet" />
 
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
+        @vite(['resources/css/app.css', 'resources/js/guest-portal.js'])
         <style>[x-cloak]{display:none!important}</style>
     </head>
     <body class="h-dvh overflow-hidden antialiased bg-[#eef5f3] text-slate-900" style="font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;">
