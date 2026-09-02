@@ -19,7 +19,7 @@ php artisan property:wipe-passion-portfolio --agent-user-id=2 --dry-run
 php artisan property:wipe-passion-portfolio --agent-user-id=2 --force
 ```
 
-Then run phases **1 → 5** below using `.txt` register files (most reliable on production). **Do not** run cleanup or reconcile on a fresh import.
+Then run phases **1 → 5** below using `.txt` register files (most reliable on production). **Do not skip phase 3 or 4.** **Do not** run cleanup or reconcile on a fresh import.
 
 Expected dashboard after a clean run:
 

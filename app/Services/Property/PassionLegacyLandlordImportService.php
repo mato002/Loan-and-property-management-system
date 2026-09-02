@@ -121,6 +121,9 @@ final class PassionLegacyLandlordImportService
                     'phone' => $phone,
                     'property_portal_role' => 'landlord',
                 ]);
+                if (Schema::hasColumn('users', 'agent_user_id')) {
+                    $updates['agent_user_id'] = $agentUserId;
+                }
                 if ($updates !== []) {
                     $existing->update($updates);
                     $summary['landlords_updated']++;
