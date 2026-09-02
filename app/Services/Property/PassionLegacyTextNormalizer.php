@@ -38,6 +38,56 @@ final class PassionLegacyTextNormalizer
 
     public static function registerUnitLabelMatch(?string $leaseLabel, ?string $registerLabel): bool
     {
+        foreach (self::registerLabelParts($registerLabel) as $part) {
+            if (self::registerUnitLabelMatchSingle($leaseLabel, $part)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function registerLabelParts(?string $label): array
+    {
+        $label = self::normalizeUnitLabel($label);
+        if ($label === '') {
+            return [];
+        }
+
+        if (! str_contains($label, '&')) {
+            return [$label];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (string $part): string => self::normalizeUnitLabel($part),
+            preg_split('/\s*&\s*/', $label) ?: [],
+        )));
+    }
+
+    public static function canonicalizeLeaseUnitLabel(?string $label): string
+    {
+        $normalized = self::normalizeUnitLabel($label);
+        if ($normalized === '') {
+            return $normalized;
+        }
+
+        $core = self::extractCoreUnitToken($normalized);
+        if ($core === '' || $core === $normalized) {
+            return $normalized;
+        }
+
+        if (preg_match('/^(HSE|SHOP|S\d|[A-Z]\d)/i', $core)) {
+            return $core;
+        }
+
+        return $normalized;
+    }
+
+    private static function registerUnitLabelMatchSingle(?string $leaseLabel, ?string $registerLabel): bool
+    {
         if (self::unitLabelsMatch($leaseLabel, $registerLabel)) {
             return true;
         }

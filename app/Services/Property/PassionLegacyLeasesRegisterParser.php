@@ -243,7 +243,7 @@ final class PassionLegacyLeasesRegisterParser
 
         return [
             'property_code' => $propertyCode,
-            'unit_label' => $unitLabel,
+            'unit_label' => PassionLegacyTextNormalizer::canonicalizeLeaseUnitLabel($unitLabel),
             'account_number' => $accountNumber,
             'tenant_name' => $tenantName,
             'phone' => $phone,

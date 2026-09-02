@@ -36,17 +36,25 @@ final class PassionLegacyUnitResolver
         }
 
         $fuzzy = $units->first(
-            fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::registerUnitLabelMatch($unit->label, $leaseLabel),
+            fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::registerUnitLabelMatch($leaseLabel, $unit->label),
         );
         if ($fuzzy) {
             return $this->preferRegisterEnriched($units, $fuzzy, $leaseLabel);
+        }
+
+        foreach ($units as $unit) {
+            foreach (PassionLegacyTextNormalizer::registerLabelParts($unit->label) as $part) {
+                if (PassionLegacyTextNormalizer::registerUnitLabelMatch($leaseLabel, $part)) {
+                    return $this->preferRegisterEnriched($units, $unit, $leaseLabel);
+                }
+            }
         }
 
         $expectedLabel = $this->expectedLabelForProperty($propertyId, $leaseLabel);
         if ($expectedLabel !== null) {
             $byExpected = $units->first(
                 fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::unitLabelsMatch($unit->label, $expectedLabel)
-                    || PassionLegacyTextNormalizer::registerUnitLabelMatch($unit->label, $expectedLabel),
+                    || PassionLegacyTextNormalizer::registerUnitLabelMatch($leaseLabel, $unit->label),
             );
             if ($byExpected) {
                 return $byExpected;

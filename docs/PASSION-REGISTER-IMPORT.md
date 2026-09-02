@@ -83,6 +83,10 @@ php artisan property:import-passion-leases storage/passion-legacy/leases.txt \
   --dry-run --agent-user-id=2
 php artisan property:import-passion-leases storage/passion-legacy/leases.txt \
   --agent-user-id=2
+
+# 6 — Remove any lease-import stub units (if total units > ~442)
+php artisan property:cleanup-passion-lease-stubs --agent-user-id=2 --dry-run
+php artisan property:cleanup-passion-lease-stubs --agent-user-id=2
 ```
 
 Replace `--agent-user-id=2` if your Passion agent account uses a different id.
