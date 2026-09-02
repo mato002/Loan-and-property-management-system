@@ -59,8 +59,13 @@ final class PassionLegacyLeaseStubCleanupService
                     continue;
                 }
 
-                $target = $this->unitResolver->findOnProperty($stub->property_id, $stub->label);
-                if (! $target || $target->id === $stub->id || $this->isLikelyImportStub($target)) {
+                $target = $this->unitResolver->findBestOnProperty(
+                    $stub->property_id,
+                    $stub->label,
+                    $stub->id,
+                );
+
+                if (! $target) {
                     $summary['warnings'][] = "Stub kept (no register unit match): property {$stub->property_id} / {$stub->label}";
 
                     continue;
@@ -73,16 +78,14 @@ final class PassionLegacyLeaseStubCleanupService
                         'vacant_since' => null,
                     ]);
 
+                    DB::table('pm_lease_unit')->where('property_unit_id', $stub->id)->delete();
                     if (! $this->unitHasActiveLease($stub->id)) {
-                        DB::table('pm_lease_unit')->where('property_unit_id', $stub->id)->delete();
                         $stub->delete();
-                        $summary['stubs_removed']++;
                     }
-                } else {
-                    $summary['stubs_removed']++;
                 }
 
                 $summary['leases_relinked']++;
+                $summary['stubs_removed']++;
             }
         };
 

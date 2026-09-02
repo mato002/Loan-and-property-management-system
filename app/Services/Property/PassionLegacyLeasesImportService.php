@@ -164,7 +164,8 @@ final class PassionLegacyLeasesImportService
      */
     private function resolveUnit(int $propertyId, string $unitLabel, array $record, array &$summary, int $rowNum): ?PropertyUnit
     {
-        $unit = $this->unitResolver->findOnProperty($propertyId, $unitLabel);
+        $canonicalLabel = PassionLegacyTextNormalizer::canonicalizeLeaseUnitLabel($unitLabel);
+        $unit = $this->unitResolver->findBestOnProperty($propertyId, $canonicalLabel);
 
         if ($unit) {
             return $unit;

@@ -71,7 +71,7 @@ final class PassionLegacyUnitResolver
                 continue;
             }
 
-            if (PassionLegacyTextNormalizer::registerUnitLabelMatch($expected['label'], $leaseLabel)) {
+            if (PassionLegacyTextNormalizer::registerUnitLabelMatch($leaseLabel, $expected['label'])) {
                 return $expected['label'];
             }
         }
@@ -91,11 +91,84 @@ final class PassionLegacyUnitResolver
 
         $canonical = $units
             ->filter(fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::unitLabelsMatch($unit->label, $expectedLabel)
-                || PassionLegacyTextNormalizer::registerUnitLabelMatch($unit->label, $expectedLabel))
-            ->sortByDesc(fn (PropertyUnit $unit) => $this->isLikelyImportStub($unit) ? 0 : 1)
+                || PassionLegacyTextNormalizer::registerUnitLabelMatch($leaseLabel, $unit->label))
+            ->sortByDesc(fn (PropertyUnit $unit) => $this->registerUnitScore($unit))
             ->first();
 
         return $canonical ?? $match;
+    }
+
+    public function findBestOnProperty(int $propertyId, string $leaseLabel, ?int $excludeUnitId = null): ?PropertyUnit
+    {
+        $leaseLabel = PassionLegacyTextNormalizer::canonicalizeLeaseUnitLabel($leaseLabel);
+        $units = PropertyUnit::query()
+            ->withoutGlobalScopes()
+            ->where('property_id', $propertyId)
+            ->when($excludeUnitId, fn ($q) => $q->where('id', '!=', $excludeUnitId))
+            ->get();
+
+        if ($units->isEmpty()) {
+            return null;
+        }
+
+        $matches = $units->filter(function (PropertyUnit $unit) use ($leaseLabel): bool {
+            if (PassionLegacyTextNormalizer::unitLabelsMatch($unit->label, $leaseLabel)) {
+                return true;
+            }
+
+            if (PassionLegacyTextNormalizer::registerUnitLabelMatch($leaseLabel, $unit->label)) {
+                return true;
+            }
+
+            foreach (PassionLegacyTextNormalizer::registerLabelParts($unit->label) as $part) {
+                if (PassionLegacyTextNormalizer::registerUnitLabelMatch($leaseLabel, $part)) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        if ($matches->isEmpty()) {
+            $expectedLabel = $this->expectedLabelForProperty($propertyId, $leaseLabel);
+            if ($expectedLabel !== null) {
+                $matches = $units->filter(
+                    fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::unitLabelsMatch($unit->label, $expectedLabel)
+                        || PassionLegacyTextNormalizer::registerUnitLabelMatch($leaseLabel, $unit->label),
+                );
+            }
+        }
+
+        return $matches
+            ->sortByDesc(fn (PropertyUnit $unit) => $this->registerUnitScore($unit))
+            ->first();
+    }
+
+    private function registerUnitScore(PropertyUnit $unit): int
+    {
+        $score = 0;
+
+        if ($unit->legacy_area !== null && $unit->legacy_area !== '') {
+            $score += 40;
+        }
+        if ($unit->floor !== null && $unit->floor !== '') {
+            $score += 20;
+        }
+        if ($unit->market_rent !== null) {
+            $score += 20;
+        }
+        if ($unit->available_from !== null) {
+            $score += 10;
+        }
+        if ((int) $unit->bedrooms > 0) {
+            $score += 5;
+        }
+        if (! $this->isLikelyImportStub($unit)) {
+            $score += 100;
+        }
+
+        // Prefer units created during register import (lower id) over lease stubs.
+        return ($score * 10_000) - (int) $unit->id;
     }
 
     private function isLikelyImportStub(PropertyUnit $unit): bool
