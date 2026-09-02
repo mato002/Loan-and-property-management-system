@@ -17,6 +17,8 @@ Run phases **in order**. Phase 4 matches units by property code + unit label.
 
 ## Full production sequence
 
+The legacy PDF exports are committed in the repo at `storage/passion-legacy/` — after `git pull` you do **not** need to upload them manually.
+
 ```bash
 cd /home/passion/passion
 git pull origin passion-homes
@@ -24,28 +26,28 @@ composer install --no-dev --optimize-autoloader
 php artisan migrate --force
 
 # 1 — Properties
-php artisan property:import-passion-register storage/property_register.pdf \
-  --dry-run --agent-user-id=YOUR_AGENT_ID
-php artisan property:import-passion-register storage/property_register.pdf \
-  --agent-user-id=YOUR_AGENT_ID
+php artisan property:import-passion-register storage/passion-legacy/property_register.pdf \
+  --dry-run --agent-user-id=2
+php artisan property:import-passion-register storage/passion-legacy/property_register.pdf \
+  --agent-user-id=2
 
 # 2 — Landlords
-php artisan property:import-passion-landlords storage/landlord_register.pdf \
-  --dry-run --agent-user-id=YOUR_AGENT_ID
-php artisan property:import-passion-landlords storage/landlord_register.pdf \
-  --agent-user-id=YOUR_AGENT_ID
+php artisan property:import-passion-landlords storage/passion-legacy/landlord_register.pdf \
+  --dry-run --agent-user-id=2
+php artisan property:import-passion-landlords storage/passion-legacy/landlord_register.pdf \
+  --agent-user-id=2
 
 # 3 — Units
-php artisan property:import-passion-units storage/property_unit_register.pdf \
-  --dry-run --agent-user-id=YOUR_AGENT_ID
-php artisan property:import-passion-units storage/property_unit_register.pdf \
-  --agent-user-id=YOUR_AGENT_ID
+php artisan property:import-passion-units storage/passion-legacy/property_unit_register.pdf \
+  --dry-run --agent-user-id=2
+php artisan property:import-passion-units storage/passion-legacy/property_unit_register.pdf \
+  --agent-user-id=2
 
 # 4 — Tenants + leases
-php artisan property:import-passion-leases storage/leases.pdf \
-  --dry-run --agent-user-id=YOUR_AGENT_ID
-php artisan property:import-passion-leases storage/leases.pdf \
-  --agent-user-id=YOUR_AGENT_ID
+php artisan property:import-passion-leases storage/passion-legacy/leases.pdf \
+  --dry-run --agent-user-id=2
+php artisan property:import-passion-leases storage/passion-legacy/leases.pdf \
+  --agent-user-id=2
 ```
 
 Replace `YOUR_AGENT_ID` with the Passion staff user id.
