@@ -47,12 +47,13 @@ class ImportPassionLegacyLandlordsCommand extends Command
         }
 
         $this->info(sprintf(
-            '%sParsed=%d | Landlords created=%d updated=%d | Property links=%d',
+            '%sParsed=%d | Landlords created=%d updated=%d | Property links=%d | Without property=%d',
             $result['dry_run'] ? '[DRY RUN] ' : '',
             $result['parsed'],
             $result['landlords_created'],
             $result['landlords_updated'],
             $result['links_created'],
+            $result['landlords_without_property'],
         ));
 
         return $result['errors'] === [] ? self::SUCCESS : self::FAILURE;

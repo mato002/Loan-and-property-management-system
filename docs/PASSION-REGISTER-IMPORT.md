@@ -226,11 +226,22 @@ php artisan property:import-passion-leases storage/passion-legacy/leases.txt --a
 
 ---
 
+## Expected totals (old Ezen dashboard)
+
+| Card | Old Ezen | Register export | New system target |
+|------|----------|-----------------|-------------------|
+| Properties | 38 | 38 | 38 |
+| Landlords | 36 | 36 rows | **36** landlord accounts (~28 linked to properties) |
+| Units/Spaces | 445 | 380 unit rows; **442** from property register occupied+vacant | **~442–445** |
+| Tenants | 396 | 396 leases | 396 |
+
+---
+
 ## Expected warnings (not errors)
 
 | Warning | Meaning |
 |---------|---------|
-| Landlord `J00041`, `M00008`, etc. — no matching property | Those landlord codes are **not** in the 38-property register PDF; 28/36 landlords linked is correct |
+| Landlord code has no matching property | Archived/orphan code (e.g. `J00041`, `M00017`) — landlord is still imported |
 | `property not found — WINTA END APARTMENT` | Property was saved as truncated name `WINTA END`; fixed in latest code — re-run units with `.txt` |
 | Lease import “unit not found — creating stub” | Units phase did not complete; re-run units import first |
 
@@ -241,7 +252,7 @@ php artisan property:import-passion-leases storage/passion-legacy/leases.txt --a
 | Phase | Parsed | Created |
 |-------|--------|---------|
 | Properties | 38 | 38 |
-| Landlords | 36 | 28 (+ links) |
+| Landlords | 36 | 36 accounts (28+ property links) |
 | Units | 380 | 372 |
 | Leases | 396 | 396 tenants/leases |
 

@@ -32,6 +32,7 @@ final class PassionLegacyLandlordImportService
             'landlords_created' => 0,
             'landlords_updated' => 0,
             'links_created' => 0,
+            'landlords_without_property' => 0,
             'warnings' => [],
             'errors' => [],
         ];
@@ -72,14 +73,15 @@ final class PassionLegacyLandlordImportService
      */
     private function importRecord(array $record, int $agentUserId, bool $updateExisting, array &$summary, int $rowNum): void
     {
+        $landlord = $this->resolveLandlord($record, $agentUserId, $updateExisting, $summary, $rowNum);
+
         $properties = $this->codeResolver->resolveMany($record['code']);
         if ($properties->isEmpty()) {
-            $summary['warnings'][] = "Row {$rowNum} ({$record['code']}): no matching property — import properties first.";
+            $summary['landlords_without_property']++;
+            $summary['warnings'][] = "Row {$rowNum} ({$record['code']}): landlord saved — no matching property to link (archived/orphan code in legacy register).";
 
             return;
         }
-
-        $landlord = $this->resolveLandlord($record, $agentUserId, $updateExisting, $summary);
 
         foreach ($properties as $property) {
             if ($landlord->landlordProperties()->where('properties.id', $property->id)->exists()) {
@@ -95,18 +97,20 @@ final class PassionLegacyLandlordImportService
      * @param  array<string, mixed>  $record
      * @param  array<string, mixed>  $summary
      */
-    private function resolveLandlord(array $record, int $agentUserId, bool $updateExisting, array &$summary): User
+    private function resolveLandlord(array $record, int $agentUserId, bool $updateExisting, array &$summary, int $rowNum): User
     {
+        $legacyCode = $this->codeResolver->normalizeCode($record['code'] ?? '');
         $email = isset($record['email']) ? Str::lower(trim((string) $record['email'])) : null;
         $phone = isset($record['phone']) ? $this->normalizer->normalizePhone((string) $record['phone']) : null;
         $name = trim((string) ($record['name'] ?? ''));
 
-        $existing = null;
-        if ($email) {
-            $existing = User::query()->where('email', $email)->first();
-        }
-        if (! $existing && $phone) {
-            $existing = User::query()->where('phone', $phone)->first();
+        $existing = $this->findByLegacyCode($legacyCode);
+
+        if (! $existing && $email) {
+            $existing = User::query()
+                ->where('property_portal_role', 'landlord')
+                ->where('email', $email)
+                ->first();
         }
 
         if ($existing) {
@@ -115,13 +119,14 @@ final class PassionLegacyLandlordImportService
                     'name' => $name !== '' ? $name : null,
                     'email' => $email,
                     'phone' => $phone,
+                    'property_portal_role' => 'landlord',
                 ]);
                 if ($updates !== []) {
                     $existing->update($updates);
                     $summary['landlords_updated']++;
                 }
 
-                $this->syncLandlordProfile($existing, $record);
+                $this->syncLandlordProfile($existing, $record, $legacyCode);
             }
 
             return $existing;
@@ -141,16 +146,28 @@ final class PassionLegacyLandlordImportService
         }
 
         $landlord = User::query()->create($attributes);
-        $this->syncLandlordProfile($landlord, $record);
+        $this->syncLandlordProfile($landlord, $record, $legacyCode);
         $summary['landlords_created']++;
 
         return $landlord;
     }
 
+    private function findByLegacyCode(string $legacyCode): ?User
+    {
+        if ($legacyCode === '' || ! Schema::hasColumn('pm_landlord_portal_profiles', 'legacy_landlord_code')) {
+            return null;
+        }
+
+        return User::query()
+            ->where('property_portal_role', 'landlord')
+            ->whereHas('landlordPortalProfile', fn ($q) => $q->where('legacy_landlord_code', $legacyCode))
+            ->first();
+    }
+
     /**
      * @param  array<string, mixed>  $record
      */
-    private function syncLandlordProfile(User $landlord, array $record): void
+    private function syncLandlordProfile(User $landlord, array $record, string $legacyCode): void
     {
         if (! Schema::hasTable('pm_landlord_portal_profiles')) {
             return;
@@ -158,6 +175,7 @@ final class PassionLegacyLandlordImportService
 
         $profile = PmLandlordPortalProfile::forUser($landlord);
         $profile->update(array_filter([
+            'legacy_landlord_code' => $legacyCode !== '' ? $legacyCode : null,
             'kra_pin' => ($record['pin'] ?? null) !== '0' ? ($record['pin'] ?? null) : null,
             'address_line' => $record['address'] ?? null,
         ], static fn ($v) => $v !== null && $v !== ''));

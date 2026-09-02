@@ -108,6 +108,7 @@ final class PropertyDashboardOverview
         $vendorsActive = PmVendor::query()->where('status', 'active')->count();
         $applyAgentFilter = AgentWorkspaceScope::shouldApply();
         $agentUserId = $applyAgentFilter ? (int) Auth::id() : null;
+        $landlordStats = self::landlordWorkspaceStats($applyAgentFilter, $agentUserId);
 
         $linkedLandlordsQuery = DB::table('property_landlord as pl')
             ->join('properties as p', 'p.id', '=', 'pl.property_id');
@@ -180,9 +181,9 @@ final class PropertyDashboardOverview
                 'bar' => 'bg-slate-500',
             ],
             [
-                'label' => 'Landlords on properties',
-                'value' => (string) $linkedLandlords,
-                'icon' => 'fa-user-check',
+                'label' => 'Landlords',
+                'value' => (string) $landlordStats['landlord_users'],
+                'icon' => 'fa-user-tie',
                 'route' => 'property.landlords.index',
                 'bar' => 'bg-fuchsia-500',
             ],

@@ -34,6 +34,14 @@ class User extends Authenticatable
     }
 
     /**
+     * @return HasOne<PmLandlordPortalProfile, $this>
+     */
+    public function landlordPortalProfile(): HasOne
+    {
+        return $this->hasOne(PmLandlordPortalProfile::class, 'user_id');
+    }
+
+    /**
      * @return HasOne<PmTenant, $this>
      */
     public function pmTenantProfile(): HasOne
