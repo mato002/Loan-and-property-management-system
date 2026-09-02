@@ -141,6 +141,9 @@ final class PassionLegacyUnitRegisterParser
         if (preg_match('/^(.+?\([^)]+\))\s+(.+)$/', $beforeAmounts, $split)) {
             $propertyName = trim($split[1]);
             $tenantName = PassionLegacyTextNormalizer::cleanTenantName($split[2]);
+        } elseif (preg_match('/^(.+?APPARTMENT\s+[AB])\s+(.+)$/i', $beforeAmounts, $split)) {
+            $propertyName = trim($split[1]);
+            $tenantName = PassionLegacyTextNormalizer::cleanTenantName($split[2]);
         } elseif (preg_match('/^(.+?\bAPPARTMENTS?|\bAPPARTMENT\s+[AB]|\bCOMPLEX|\bGOSHEN APARTMENT|\bZ - HOUSE|\bKIAMUNYI)\s+(.+)$/i', $beforeAmounts, $split)) {
             $propertyName = trim($split[1]);
             $tenantName = PassionLegacyTextNormalizer::cleanTenantName($split[2]);
