@@ -121,7 +121,7 @@ final class PassionLegacyUnitRegisterParser
      */
     private function parseUnitLine(string $line, string $fallbackProperty): ?array
     {
-        if (! preg_match('/^(HSE\s+[A-Z]?\d+(?:\s*\(\d+BR\))?|[A-Z]\d+(?:\s*\(\d+BR\))?)\s+(.+)$/i', $line, $match)) {
+        if (! preg_match('/^('.$this->unitLabelPattern().')\s+(.+)$/i', $line, $match)) {
             return null;
         }
 
@@ -180,7 +180,12 @@ final class PassionLegacyUnitRegisterParser
 
     private function looksLikeUnitStart(string $line): bool
     {
-        return (bool) preg_match('/^(HSE\s+[A-Z]?\d+(?:\s*\(\d+BR\))?|[A-Z]\d+(?:\s*\(\d+BR\))?)\s+/i', $line);
+        return (bool) preg_match('/^'.$this->unitLabelPattern().'\s+/i', $line);
+    }
+
+    private function unitLabelPattern(): string
+    {
+        return '(?:CARWASH|SHOP(?:\s+[A-Z0-9&]+)+|RENTAL\s+HOUSE(?:\s+[A-Z]+)?|HSE\s+[A-Z]?\d+(?:\s*\(\d+BR\))?|[A-Z]\d+(?:\s*\(\d+BR\))?)';
     }
 
     private function looksLikeTenantTail(string $line): bool

@@ -88,7 +88,7 @@ final class PassionLegacyLeasesRegisterParser
             }
 
             if ($this->isUnitPrefixLine($line)) {
-                $unitPrefix = $line;
+                $unitPrefix = trim($unitPrefix !== '' ? $unitPrefix.' '.$line : $line);
                 continue;
             }
 
@@ -133,7 +133,7 @@ final class PassionLegacyLeasesRegisterParser
     private function isUnitPrefixLine(string $line): bool
     {
         return ! preg_match('/\bTNT\d+/i', $line)
-            && (bool) preg_match('/^(?:HSE\s+[A-Z0-9 ()-]+|SHOP\s+[A-Z0-9]+|[A-Z][A-Z0-9 ()-]*|\d+)$/i', $line);
+            && (bool) preg_match('/^(?:HSE\s+[A-Z0-9 ()-]+|SHOP(?:\s+[A-Z0-9&]+)*|[A-Z][A-Z0-9 ()-]*|\d+)$/i', $line);
     }
 
     private function rowLooksComplete(string $line): bool
