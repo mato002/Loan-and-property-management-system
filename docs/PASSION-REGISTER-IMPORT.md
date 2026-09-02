@@ -233,6 +233,15 @@ php artisan property:import-passion-leases storage/passion-legacy/leases.txt --a
 | Properties | 38 | 38 | 38 |
 | Landlords | 36 | 36 rows | **36** landlord accounts (~28 linked to properties) |
 | Units/Spaces | 445 | 380 unit rows; **442** from property register occupied+vacant | **~442–445** |
+
+After the detailed unit listing import (~380 rows), fill remaining spaces from the property register:
+
+```bash
+php artisan property:fill-passion-register-spaces --dry-run
+php artisan property:fill-passion-register-spaces
+```
+
+This adds generic `Unit N` spaces where the property register counts more units than the unit listing export (owner-occupied, caretaker, unlisted bays, etc.). **Do not run reconcile after fill** — it treats those as extras.
 | Tenants | 396 | 396 leases | 396 |
 
 ---
