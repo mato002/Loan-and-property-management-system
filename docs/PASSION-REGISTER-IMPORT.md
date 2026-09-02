@@ -74,7 +74,7 @@ php artisan property:import-passion-units storage/passion-legacy/property_unit_r
 php artisan property:import-passion-units storage/passion-legacy/property_unit_register.txt \
   --agent-user-id=2
 
-# 4 — Fill register spaces (~442 total)
+# 4 — Fill register spaces (~442 total) — skips properties already covered by unit listing
 php artisan property:fill-passion-register-spaces --dry-run
 php artisan property:fill-passion-register-spaces
 
@@ -84,9 +84,12 @@ php artisan property:import-passion-leases storage/passion-legacy/leases.txt \
 php artisan property:import-passion-leases storage/passion-legacy/leases.txt \
   --agent-user-id=2
 
-# 6 — Remove any lease-import stub units (if total units > ~442)
+# 6 — Remove lease stubs and erroneous generic fill units (if total units > ~442)
 php artisan property:cleanup-passion-lease-stubs --agent-user-id=2 --dry-run
 php artisan property:cleanup-passion-lease-stubs --agent-user-id=2
+
+# 7 — If a property still shows too few real units (e.g. KOINANGE should be 14), re-import units:
+php artisan property:import-passion-units storage/passion-legacy/property_unit_register.txt --agent-user-id=2
 ```
 
 Replace `--agent-user-id=2` if your Passion agent account uses a different id.

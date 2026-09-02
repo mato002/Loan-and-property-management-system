@@ -22,12 +22,13 @@ class CleanupPassionLeaseStubsCommand extends Command
 
         $prefix = $dryRun ? '[DRY RUN] ' : '';
         $this->info(sprintf(
-            '%sUnits %d -> %d | Leases relinked=%d | Stubs removed=%d',
+            '%sUnits %d -> %d | Leases relinked=%d | Stubs removed=%d | Generic fill removed=%d',
             $prefix,
             $result['units_before'],
             $result['units_after'],
             $result['leases_relinked'],
             $result['stubs_removed'],
+            $result['fill_units_removed'],
         ));
 
         foreach ($result['warnings'] as $warning) {

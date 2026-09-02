@@ -7,8 +7,12 @@ use App\Models\PropertyUnit;
 
 final class PassionLegacyRegisterSpaceFillService
 {
+    /** @var array<string, int>|null property code => unit listing row count */
+    private ?array $unitListingCounts = null;
+
     public function __construct(
         private PassionLegacyRegisterParser $propertyRegisterParser,
+        private PassionLegacyUnitRegisterParser $unitRegisterParser,
         private PassionLegacyRegisterPdfTextExtractor $extractor,
         private PassionPropertyCodeResolver $codeResolver,
     ) {}
@@ -38,7 +42,7 @@ final class PassionLegacyRegisterSpaceFillService
             }
 
             $summary['properties_checked']++;
-            $created = $this->fillPropertySpaces($property, $record, $dryRun);
+            $created = $this->fillPropertySpaces($property, $record, $dryRun, $summary);
             $summary['units_created'] += $created;
             $summary['target_spaces'] += (int) ($record['occupied_count'] ?? 0) + (int) ($record['vacant_count'] ?? 0);
         }
@@ -52,18 +56,30 @@ final class PassionLegacyRegisterSpaceFillService
 
     /**
      * @param  array<string, mixed>  $record
+     * @param  array<string, mixed>  $summary
      */
-    private function fillPropertySpaces(Property $property, array $record, bool $dryRun): int
+    private function fillPropertySpaces(Property $property, array $record, bool $dryRun, array &$summary): int
     {
         $target = (int) ($record['occupied_count'] ?? 0) + (int) ($record['vacant_count'] ?? 0);
         if ($target <= 0) {
             return 0;
         }
 
+        $code = $this->codeResolver->normalizeCode($property->code);
+        $listingCount = $this->unitListingCountForCode($code);
+
         $units = PropertyUnit::query()
             ->withoutGlobalScopes()
             ->where('property_id', $property->id)
             ->get();
+
+        if ($listingCount > 0 && $listingCount >= $target) {
+            if ($units->count() < $listingCount) {
+                $summary['warnings'][] = "{$code}: DB has {$units->count()} units but unit register lists {$listingCount} — re-run unit import; skipping generic fill.";
+            }
+
+            return 0;
+        }
 
         $shortfall = $target - $units->count();
         if ($shortfall <= 0) {
@@ -90,6 +106,67 @@ final class PassionLegacyRegisterSpaceFillService
         }
 
         return $created;
+    }
+
+    public function unitListingCountForCode(string $propertyCode): int
+    {
+        $propertyCode = $this->codeResolver->normalizeCode($propertyCode);
+
+        return $this->unitListingCounts()[$propertyCode] ?? 0;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    public function unitListingCounts(): array
+    {
+        if ($this->unitListingCounts !== null) {
+            return $this->unitListingCounts;
+        }
+
+        $this->unitListingCounts = [];
+        $path = storage_path('passion-legacy/property_unit_register.txt');
+        if (! is_file($path)) {
+            return $this->unitListingCounts;
+        }
+
+        $propertyRegister = $this->loadPropertyRegister();
+        $records = $this->unitRegisterParser->parse($this->extractor->extract($path));
+
+        foreach ($records as $record) {
+            $property = $this->codeResolver->resolveByNameViaRegister($record['property_name'], $propertyRegister);
+            if (! $property) {
+                continue;
+            }
+
+            $code = $this->codeResolver->normalizeCode($property->code);
+            $this->unitListingCounts[$code] = ($this->unitListingCounts[$code] ?? 0) + 1;
+        }
+
+        return $this->unitListingCounts;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function loadPropertyRegister(): array
+    {
+        foreach ([
+            storage_path('passion-legacy/property_register.txt'),
+            storage_path('passion-legacy/property_register.pdf'),
+        ] as $path) {
+            if (! is_file($path)) {
+                continue;
+            }
+
+            try {
+                return $this->propertyRegisterParser->parse($this->extractor->extract($path));
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return [];
     }
 
     /**
