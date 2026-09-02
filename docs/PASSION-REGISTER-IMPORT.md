@@ -191,6 +191,9 @@ php artisan property:cleanup-passion-import-duplicates
 # Remove stub units with no active lease (optional)
 php artisan property:cleanup-passion-import-duplicates --delete-orphan-stubs
 
+# Remove duplicate stubs where register unit already exists (optional)
+php artisan property:cleanup-passion-import-duplicates --delete-duplicate-stubs
+
 # Re-run leases once more (updates + relinks; safe to repeat)
 php artisan property:import-passion-leases storage/passion-legacy/leases.txt --agent-user-id=2
 ```

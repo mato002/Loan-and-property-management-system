@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\PmLease;
 use App\Models\PropertyUnit;
+use App\Services\Property\PassionLegacyTextNormalizer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -11,7 +12,8 @@ class CleanupPassionImportDuplicatesCommand extends Command
 {
     protected $signature = 'property:cleanup-passion-import-duplicates
                             {--dry-run : Report only; do not change data}
-                            {--delete-orphan-stubs : Remove stub units with no active lease}';
+                            {--delete-orphan-stubs : Remove stub units with no active lease}
+                            {--delete-duplicate-stubs : Remove stub units when a register-imported unit exists on the same property with the same label}';
 
     protected $description = 'Remove duplicate active leases and orphan stub units after out-of-order Passion legacy imports';
 
