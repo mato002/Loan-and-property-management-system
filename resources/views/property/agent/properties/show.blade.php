@@ -531,7 +531,7 @@
                     @php
                         $unitModel = $unitsById->get((int) $u->id);
                     @endphp
-                    <tr class="border-t border-slate-100 hover:bg-slate-50/70">
+                    <tr class="border-t border-slate-100 hover:bg-slate-50/70 {{ \App\Support\Property\WorkspaceRowAlert::trClass(\App\Support\Property\WorkspaceRowAlert::forSnapshot((string) $u->status, filled($u->tenant_name), (float) ($u->arrears ?? 0))) }}">
                         <td class="px-4 py-3 font-medium text-slate-900">{{ $u->label }}</td>
                         <td class="px-4 py-3 capitalize text-slate-700">{{ $u->status }}</td>
                         <td class="px-4 py-3 text-slate-700">{{ $u->tenant_name ?: '—' }}</td>

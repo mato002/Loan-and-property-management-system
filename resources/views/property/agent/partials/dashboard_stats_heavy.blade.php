@@ -171,7 +171,7 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                         @forelse (($occupiedNoLease ?? []) as $u)
-                            <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                            <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 property-row-alert-attention">
                                 <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $u['property'] }}</td>
                                 <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $u['unit'] }}</td>
                                 <td class="px-4 py-3">

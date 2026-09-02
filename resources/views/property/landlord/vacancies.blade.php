@@ -9,7 +9,7 @@
                 </thead>
                 <tbody>
                     @forelse ($units as $u)
-                        <tr class="border-t border-slate-100">
+                        <tr class="border-t border-slate-100 {{ \App\Support\Property\WorkspaceRowAlert::trClass(\App\Support\Property\WorkspaceRowAlert::inferFromRow([(string) ($u['status'] ?? '')])) }}">
                             <td class="px-4 py-3">{{ $u['property'] }}</td>
                             <td class="px-4 py-3">{{ $u['unit'] }}</td>
                             <td class="px-4 py-3">{{ $u['status'] }}</td>

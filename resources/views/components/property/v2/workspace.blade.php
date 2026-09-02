@@ -14,6 +14,8 @@
     'tableFooterRow' => null,
     /** @var list<string>|null $tableRowFilters Optional per-row filter text (same length as tableRows) for client-side search */
     'tableRowFilters' => null,
+    /** @var list<string>|null $tableRowTones Optional per-row alert tones (same length as tableRows): vacant, vacant-long, notice, attention */
+    'tableRowTones' => null,
     'showSearch' => true,
     /** When false, toolbar slot renders as-is (e.g. x-property.filter-toolbar) without legacy mobile drawer wrapper */
     'legacyToolbar' => true,
@@ -49,6 +51,18 @@
     $slotHasContent = isset($slot) && ! $slot->isEmpty();
     $customRowFilters = is_array($tableRowFilters ?? null)
         && count($tableRowFilters) === count($tableRows);
+    $customRowTones = is_array($tableRowTones ?? null)
+        && count($tableRowTones) === count($tableRows);
+    $resolvedRowTones = [];
+    foreach ($tableRows as $__toneIndex => $__toneRow) {
+        $resolvedRowTones[] = \App\Support\Property\WorkspaceRowAlert::resolve(
+            is_array($__toneRow) ? $__toneRow : [],
+            $customRowTones ? (string) ($tableRowTones[$__toneIndex] ?? '') : null
+        );
+    }
+    $showRowToneLegend = collect($resolvedRowTones)->contains(
+        static fn ($tone) => $tone !== ''
+    );
     $canShowDefaultSearch = (bool) $showSearch && $hasTable;
     $useResponsiveCards = ($responsiveCards ?? true) !== false && $hasTable;
     $routeColumnPreset = ResponsiveTableColumns::forRoute($routeName);
@@ -243,6 +257,26 @@
 
                 @if ($hasTable)
                     <div class="w-full min-w-0 space-y-2.5">
+                    @if ($showRowToneLegend)
+                        <div class="property-row-alert-legend print-hide px-0.5" aria-label="Row color key">
+                            <span class="property-row-alert-legend__item">
+                                <span class="property-row-alert-swatch property-row-alert-swatch--vacant" aria-hidden="true"></span>
+                                Vacant / empty
+                            </span>
+                            <span class="property-row-alert-legend__item">
+                                <span class="property-row-alert-swatch property-row-alert-swatch--vacant-long" aria-hidden="true"></span>
+                                Aging 90+ days
+                            </span>
+                            <span class="property-row-alert-legend__item">
+                                <span class="property-row-alert-swatch property-row-alert-swatch--notice" aria-hidden="true"></span>
+                                Notice / pending
+                            </span>
+                            <span class="property-row-alert-legend__item">
+                                <span class="property-row-alert-swatch property-row-alert-swatch--attention" aria-hidden="true"></span>
+                                Needs attention
+                            </span>
+                        </div>
+                    @endif
                     <div @class([
                         'property-erp-panel rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm w-full min-w-0 overflow-visible',
                         'hidden md:block' => $useResponsiveCards,
@@ -275,9 +309,12 @@
                                                         }
                                                     }
                                                 }
+                                                $__rowToneClass = \App\Support\Property\WorkspaceRowAlert::trClass(
+                                                    (string) ($resolvedRowTones[$rowIndex] ?? '')
+                                                );
                                             @endphp
                                             <tr
-                                                class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 {{ $__rowHref ? 'cursor-pointer' : '' }}"
+                                                class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 {{ $__rowHref ? 'cursor-pointer' : '' }} {{ $__rowToneClass }}"
                                                 data-filter-text="{{ e($__filterText) }}"
                                                 @if ($__rowHref)
                                                     data-row-href="{{ $__rowHref }}"
@@ -344,6 +381,7 @@
                             :column-config="$resolvedColumnConfig"
                             :rows="$tableRows"
                             :row-filters="$customRowFilters ? $tableRowFilters : null"
+                            :row-tones="$resolvedRowTones"
                             :empty-title="$emptyTitle"
                             :empty-hint="$emptyHint"
                         />

@@ -5,6 +5,8 @@
     'rows' => [],
     /** @var list<string>|null $rowFilters */
     'rowFilters' => null,
+    /** @var list<string>|null $rowTones Optional per-row alert tones (same length as rows) */
+    'rowTones' => null,
     /** @var list<array<string, mixed>>|null $columnConfig */
     'columnConfig' => null,
     'emptyTitle' => 'No records yet',
@@ -15,6 +17,8 @@
     use App\Support\Property\ResponsiveTableColumns;
 
     $customRowFilters = is_array($rowFilters ?? null) && count($rowFilters) === count($rows);
+    $rowToneAllowlist = \App\Support\Property\UnitListPresentation::allowedTones();
+    $customRowTones = is_array($rowTones ?? null) && count($rowTones) === count($rows);
     $configs = ResponsiveTableColumns::normalize(
         is_array($columnConfig) && count($columnConfig) > 0
             ? $columnConfig
@@ -107,9 +111,13 @@
                 $subtitleCell = $subtitleIdx !== null ? ($row[$subtitleIdx] ?? '') : '';
                 $bulkCell = $bulkIdx !== null ? ($row[$bulkIdx] ?? '') : '';
                 $actionCell = $actionIdx !== null ? ($row[$actionIdx] ?? '') : '';
+                $__rowTone = $customRowTones ? (string) ($rowTones[$rowIndex] ?? '') : '';
+                $__rowToneClass = in_array($__rowTone, $rowToneAllowlist, true)
+                    ? 'property-row-alert-'.$__rowTone
+                    : '';
             @endphp
             <article
-                class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm overflow-hidden {{ $__rowHref ? 'active:bg-slate-50 dark:active:bg-slate-800/60' : '' }}"
+                class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm overflow-hidden {{ $__rowHref ? 'active:bg-slate-50 dark:active:bg-slate-800/60' : '' }} {{ $__rowToneClass }}"
                 data-filter-text="{{ e($__filterText) }}"
                 @if ($__rowHref)
                     data-row-href="{{ $__rowHref }}"

@@ -12,6 +12,7 @@ import './property-lease-row-actions';
 import './property-dropdown-cleanup';
 import './property-export-dropdowns';
 import './property-workspace-ui';
+import './property-row-alerts';
 import './property-workspace-tabs';
 import './property-bulk-actions';
 import './lease-form-modals';

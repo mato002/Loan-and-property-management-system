@@ -142,6 +142,254 @@
     z-index: 50;
   }
 
+  /* Unit / occupancy row alerts — vacant and exception rows scan like other property ERPs */
+  .property-row-alert-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    font-size: 0.6875rem;
+    line-height: 1.25;
+    color: #475569;
+  }
+
+  .property-row-alert-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  .property-row-alert-swatch {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.2rem;
+    border: 1px solid transparent;
+    flex-shrink: 0;
+  }
+
+  .property-row-alert-swatch--vacant {
+    background: #fde68a;
+    border-color: #d97706;
+  }
+
+  .property-row-alert-swatch--vacant-long {
+    background: #fdba74;
+    border-color: #ea580c;
+  }
+
+  .property-row-alert-swatch--notice {
+    background: #7dd3fc;
+    border-color: #0284c7;
+  }
+
+  .property-row-alert-swatch--attention {
+    background: #fda4af;
+    border-color: #e11d48;
+  }
+
+  .property-status-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9999px;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+  }
+
+  .property-status-pill--occupied {
+    background: #d1fae5;
+    color: #065f46;
+  }
+
+  .property-status-pill--vacant {
+    background: #fde68a;
+    color: #92400e;
+  }
+
+  .property-status-pill--vacant-long {
+    background: #fdba74;
+    color: #9a3412;
+  }
+
+  .property-status-pill--notice {
+    background: #bae6fd;
+    color: #075985;
+  }
+
+  .property-status-pill--attention {
+    background: #fecdd3;
+    color: #9f1239;
+  }
+
+  .property-row-alert-text {
+    color: #be123c;
+    font-weight: 600;
+  }
+
+  tr.property-row-alert-vacant > td {
+    background-color: #fef3c7 !important;
+  }
+
+  tr.property-row-alert-vacant:hover > td {
+    background-color: #fde68a !important;
+  }
+
+  tr.property-row-alert-vacant > td:first-child {
+    box-shadow: inset 4px 0 0 #d97706;
+  }
+
+  tr.property-row-alert-vacant-long > td {
+    background-color: #ffedd5 !important;
+  }
+
+  tr.property-row-alert-vacant-long:hover > td {
+    background-color: #fed7aa !important;
+  }
+
+  tr.property-row-alert-vacant-long > td:first-child {
+    box-shadow: inset 4px 0 0 #ea580c;
+  }
+
+  tr.property-row-alert-notice > td {
+    background-color: #e0f2fe !important;
+  }
+
+  tr.property-row-alert-notice:hover > td {
+    background-color: #bae6fd !important;
+  }
+
+  tr.property-row-alert-notice > td:first-child {
+    box-shadow: inset 4px 0 0 #0284c7;
+  }
+
+  tr.property-row-alert-attention > td {
+    background-color: #fecdd3 !important;
+  }
+
+  tr.property-row-alert-attention:hover > td {
+    background-color: #fda4af !important;
+  }
+
+  tr.property-row-alert-attention > td:first-child {
+    box-shadow: inset 4px 0 0 #e11d48;
+  }
+
+  [data-mobile-record-list] .property-row-alert-vacant {
+    background-color: #fef3c7;
+    border-color: #f59e0b;
+  }
+
+  [data-mobile-record-list] .property-row-alert-vacant-long {
+    background-color: #ffedd5;
+    border-color: #ea580c;
+  }
+
+  [data-mobile-record-list] .property-row-alert-notice {
+    background-color: #e0f2fe;
+    border-color: #0ea5e9;
+  }
+
+  [data-mobile-record-list] .property-row-alert-attention {
+    background-color: #fecdd3;
+    border-color: #e11d48;
+  }
+
+  .dark .property-row-alert-legend {
+    color: #94a3b8;
+  }
+
+  .dark .property-status-pill--occupied {
+    background: rgba(16, 185, 129, 0.22);
+    color: #6ee7b7;
+  }
+
+  .dark .property-status-pill--vacant {
+    background: rgba(245, 158, 11, 0.28);
+    color: #fcd34d;
+  }
+
+  .dark .property-status-pill--vacant-long {
+    background: rgba(234, 88, 12, 0.32);
+    color: #fdba74;
+  }
+
+  .dark .property-status-pill--notice {
+    background: rgba(14, 165, 233, 0.28);
+    color: #7dd3fc;
+  }
+
+  .dark .property-status-pill--attention {
+    background: rgba(225, 29, 72, 0.3);
+    color: #fda4af;
+  }
+
+  .dark .property-row-alert-text {
+    color: #fb7185;
+  }
+
+  .dark tr.property-row-alert-vacant > td {
+    background-color: rgba(120, 53, 15, 0.28);
+  }
+
+  .dark tr.property-row-alert-vacant:hover > td {
+    background-color: rgba(120, 53, 15, 0.42);
+  }
+
+  .dark tr.property-row-alert-vacant-long > td {
+    background-color: rgba(154, 52, 18, 0.32);
+  }
+
+  .dark tr.property-row-alert-vacant-long:hover > td {
+    background-color: rgba(154, 52, 18, 0.46);
+  }
+
+  .dark tr.property-row-alert-notice > td {
+    background-color: rgba(7, 89, 133, 0.32);
+  }
+
+  .dark tr.property-row-alert-notice:hover > td {
+    background-color: rgba(7, 89, 133, 0.46);
+  }
+
+  .dark tr.property-row-alert-attention > td {
+    background-color: rgba(159, 18, 57, 0.32);
+  }
+
+  .dark tr.property-row-alert-attention:hover > td {
+    background-color: rgba(159, 18, 57, 0.46);
+  }
+
+  .dark [data-mobile-record-list] .property-row-alert-vacant {
+    background-color: rgba(120, 53, 15, 0.32);
+    border-color: rgba(245, 158, 11, 0.55);
+  }
+
+  .dark [data-mobile-record-list] .property-row-alert-vacant-long {
+    background-color: rgba(154, 52, 18, 0.36);
+    border-color: rgba(234, 88, 12, 0.55);
+  }
+
+  .dark [data-mobile-record-list] .property-row-alert-notice {
+    background-color: rgba(7, 89, 133, 0.36);
+    border-color: rgba(14, 165, 233, 0.5);
+  }
+
+  .dark [data-mobile-record-list] .property-row-alert-attention {
+    background-color: rgba(159, 18, 57, 0.36);
+    border-color: rgba(225, 29, 72, 0.55);
+  }
+
+  @media print {
+    .property-erp-table tbody tr[class*="property-row-alert-"] > td {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+
   #property-workspace-main {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: auto;

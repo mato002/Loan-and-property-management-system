@@ -21,6 +21,7 @@
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
+    :table-row-tones="$tableRowTones ?? []"
     :show-search="false"
     empty-title="No units"
     empty-hint="Add units per property; vacant units can be attached when creating a lease."

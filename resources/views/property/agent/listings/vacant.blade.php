@@ -67,6 +67,9 @@
                 @forelse ($vacantUnits as $u)
                     @php
                         $statusWord = $u->public_listing_published ? 'featured' : 'standard';
+                        $rowToneClass = \App\Support\Property\WorkspaceRowAlert::trClass(
+                            \App\Support\Property\WorkspaceRowAlert::forUnit($u, false)
+                        );
                         $filterText = mb_strtolower(
                             implode(' ', [
                                 (string) $u->label,
@@ -80,7 +83,7 @@
                         );
                     @endphp
                     <tr
-                        class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                        class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 {{ $rowToneClass }}"
                         data-filter-text="{{ e($filterText) }}"
                     >
                         <td class="px-3 sm:px-4 py-3 text-slate-900 dark:text-white font-medium">{{ $u->label }}</td>

@@ -5,6 +5,7 @@
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
+    :table-row-tones="$tableRowTones ?? []"
     :show-search="false"
     empty-title="No units"
     empty-hint="Add properties and units to see occupancy across the portfolio."

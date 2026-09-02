@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Support\CsvExport;
 use App\Support\Property\LandlordWorkspaceScope;
 use App\Support\Property\ResponsiveTableColumns;
+use App\Support\Property\UnitListPresentation;
 use App\Support\TabularExport;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\Property\FinancialReportingFormulaService;
@@ -2083,41 +2084,54 @@ class PropertyPortfolioController extends Controller
         }
         $query->orderBy($sort, $dir)->orderBy('label');
 
+        $statusCounts = (clone $query)
+            ->setEagerLoads([])
+            ->reorder()
+            ->toBase()
+            ->selectRaw('status, COUNT(*) as c')
+            ->groupBy('status')
+            ->pluck('c', 'status');
+        $avgRent = (float) ((clone $query)->setEagerLoads([])->reorder()->avg('rent_amount') ?? 0);
+
         $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
         $units = $query->paginate($perPage)->withQueryString();
         $unitCollection = $units->getCollection();
 
         $stats = [
-            ['label' => 'Units', 'value' => (string) $units->total(), 'hint' => 'Total'],
-            ['label' => 'Occupied', 'value' => (string) $unitCollection->where('status', PropertyUnit::STATUS_OCCUPIED)->count(), 'hint' => 'This page'],
-            ['label' => 'Vacant', 'value' => (string) $unitCollection->where('status', PropertyUnit::STATUS_VACANT)->count(), 'hint' => 'This page'],
-            ['label' => 'Listed rent (avg)', 'value' => $unitCollection->count() ? PropertyMoney::kes($unitCollection->avg('rent_amount')) : PropertyMoney::kes(0), 'hint' => 'This page'],
+            ['label' => 'Units', 'value' => (string) $units->total(), 'hint' => 'Matching filters'],
+            ['label' => 'Occupied', 'value' => (string) (int) ($statusCounts[PropertyUnit::STATUS_OCCUPIED] ?? 0), 'hint' => 'All matching'],
+            ['label' => 'Vacant', 'value' => (string) (int) ($statusCounts[PropertyUnit::STATUS_VACANT] ?? 0), 'hint' => 'All matching'],
+            ['label' => 'Notice', 'value' => (string) (int) ($statusCounts[PropertyUnit::STATUS_NOTICE] ?? 0), 'hint' => 'All matching'],
+            ['label' => 'Listed rent (avg)', 'value' => PropertyMoney::kes($avgRent), 'hint' => 'All matching'],
         ];
 
-        $rows = $unitCollection->map(function (PropertyUnit $u) {
+        $rows = [];
+        $tableRowTones = [];
+        foreach ($unitCollection as $u) {
             $activeLease = $u->leases->first();
+            $hasActiveLease = $activeLease !== null;
             $activeTenantName = (string) ($activeLease?->pmTenant?->name ?? '');
             $action = new HtmlString(view('property.agent.partials.units_list_row_actions', ['unit' => $u])->render());
 
-            return [
+            $rows[] = [
                 $u->label,
                 $u->property->name,
                 $u->unitTypeLabel(),
                 $u->bedroomsLabel(),
                 PropertyMoney::kes((float) $u->rent_amount),
-                ucfirst($u->status),
-                $activeTenantName !== ''
-                    ? $activeTenantName
-                    : ($u->status === PropertyUnit::STATUS_OCCUPIED ? 'No active lease' : '—'),
+                UnitListPresentation::statusBadge($u, $hasActiveLease),
+                UnitListPresentation::tenantCell($u, $activeTenantName, $hasActiveLease),
                 $u->vacant_since?->format('Y-m-d') ?? '—',
                 $action,
             ];
-        })->all();
+            $tableRowTones[] = UnitListPresentation::tone($u, $hasActiveLease);
+        }
 
         return view('property.agent.properties.units', [
             'stats' => $stats,
             'columns' => ['Unit', 'Property', 'Type', 'Beds', 'Rent', 'Status', 'Tenant', 'Vacant since', 'Actions'],
             'tableRows' => $rows,
+            'tableRowTones' => $tableRowTones,
             'unitFields' => $this->unitFieldConfig(),
             'paginator' => $units,
             'perPage' => $perPage,
@@ -3599,8 +3613,11 @@ class PropertyPortfolioController extends Controller
             ['label' => 'Notice', 'value' => (string) $notice, 'hint' => 'Move-out pipeline'],
         ];
 
-        $rows = $unitsPage->getCollection()->map(function (PropertyUnit $u) {
+        $rows = [];
+        $tableRowTones = [];
+        foreach ($unitsPage->getCollection() as $u) {
             $lease = $u->leases->first();
+            $hasActiveLease = $lease !== null;
             $tenant = $lease?->pmTenant;
             $actions = [
                 '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View property</a>',
@@ -3633,17 +3650,18 @@ class PropertyPortfolioController extends Controller
             );
             $select = new HtmlString('<input form="occupancy-bulk-form" type="checkbox" name="unit_ids[]" value="'.$u->id.'" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />');
 
-            return [
+            $rows[] = [
                 $select,
                 $u->label,
                 $u->property->name,
-                ucfirst($u->status),
-                $tenant?->name ?? '—',
+                UnitListPresentation::statusBadge($u, $hasActiveLease),
+                UnitListPresentation::tenantCell($u, (string) ($tenant?->name ?? ''), $hasActiveLease),
                 PropertyMoney::kes((float) $u->rent_amount),
                 $u->vacant_since?->format('Y-m-d') ?? '—',
                 $actionHtml,
             ];
-        })->all();
+            $tableRowTones[] = UnitListPresentation::tone($u, $hasActiveLease);
+        }
 
         $unitIds = $units->pluck('id')->map(fn ($id) => (int) $id)->all();
         $activityTrend = collect();
@@ -3673,6 +3691,7 @@ class PropertyPortfolioController extends Controller
             'stats' => $stats,
             'columns' => ['Select', 'Unit', 'Property', 'Status', 'Active tenant', 'List rent', 'Vacant since', 'Actions'],
             'tableRows' => $rows,
+            'tableRowTones' => $tableRowTones,
             'filters' => [
                 'preset' => $preset,
                 'status' => $status,

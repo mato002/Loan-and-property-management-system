@@ -543,7 +543,7 @@
             <tbody>
                 @foreach (($units ?? []) as $unitModel)
                     @php $lease = $unitModel->leases->first(); @endphp
-                    <tr class="border-t border-slate-100 hover:bg-slate-50/70">
+                    <tr class="border-t border-slate-100 hover:bg-slate-50/70 {{ \App\Support\Property\WorkspaceRowAlert::trClass(\App\Support\Property\WorkspaceRowAlert::forUnit($unitModel, $lease !== null)) }}">
                         <td class="px-4 py-3">
                             <a href="{{ route('property.units.show', $unitModel, false) }}" data-turbo-frame="property-main" class="font-medium text-indigo-600 hover:text-indigo-700">{{ $unitModel->label }}</a>
                         </td>
@@ -630,7 +630,7 @@
                     @php
                         $unitModel = $unitsById->get((int) $u->id);
                     @endphp
-                    <tr class="border-t border-slate-100 hover:bg-slate-50/70">
+                    <tr class="border-t border-slate-100 hover:bg-slate-50/70 {{ \App\Support\Property\WorkspaceRowAlert::trClass(\App\Support\Property\WorkspaceRowAlert::forSnapshot((string) $u->status, filled($u->tenant_name), (float) ($u->arrears ?? 0))) }}">
                         <td class="px-4 py-3 font-medium text-slate-900">
                             @if ($unitModel)
                                 <a href="{{ route('property.units.show', $unitModel, false) }}" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700">{{ $u->label }}</a>
