@@ -200,6 +200,28 @@ php artisan property:import-passion-leases storage/passion-legacy/leases.txt --a
 
 Expected dashboard after cleanup: ~380 units, ~396 active leases, ~35 vacant units.
 
+### Reconcile extras / wrong links (recommended)
+
+When duplicate cleanup still leaves ~445 units or occupied counts do not match leases:
+
+```bash
+git pull origin passion-homes
+php artisan property:reconcile-passion-import --agent-user-id=2 --dry-run
+php artisan property:reconcile-passion-import --agent-user-id=2
+```
+
+Uses `property_unit_register.txt` + `leases.txt` as source of truth to:
+- dedupe units on the same property + label
+- relink active leases to the correct property/unit from the lease register
+- remove orphan/extra units not in the unit register
+- sync vacant/occupied status from the unit register
+
+Then import the 3 missing tenants/leases:
+
+```bash
+php artisan property:import-passion-leases storage/passion-legacy/leases.txt --agent-user-id=2
+```
+
 ---
 
 ## Expected warnings (not errors)

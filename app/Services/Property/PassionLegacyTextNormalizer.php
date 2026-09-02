@@ -36,6 +36,74 @@ final class PassionLegacyTextNormalizer
         return $collapseLetterNumberGap($a) === $collapseLetterNumberGap($b);
     }
 
+    public static function registerUnitLabelMatch(?string $leaseLabel, ?string $registerLabel): bool
+    {
+        if (self::unitLabelsMatch($leaseLabel, $registerLabel)) {
+            return true;
+        }
+
+        $lease = self::normalizeUnitLabel($leaseLabel);
+        $register = self::normalizeUnitLabel($registerLabel);
+
+        if ($register !== '' && (str_ends_with($lease, $register) || str_ends_with($lease, ' '.$register))) {
+            return true;
+        }
+
+        $leaseCore = self::extractCoreUnitToken($lease);
+        $registerCore = self::extractCoreUnitToken($register);
+
+        if ($leaseCore !== '' && $leaseCore === $registerCore) {
+            return true;
+        }
+
+        $leaseTail = self::stripHousePrefix($leaseCore);
+        $registerTail = self::stripHousePrefix($registerCore);
+
+        if ($leaseTail !== '' && $leaseTail === $registerTail) {
+            return true;
+        }
+
+        if ($register !== '' && str_starts_with($register, $lease) && strlen($lease) >= 4) {
+            return true;
+        }
+
+        if ($lease !== '' && str_starts_with($lease, $register) && strlen($register) >= 4) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static function stripHousePrefix(string $label): string
+    {
+        return self::normalizeUnitLabel(preg_replace('/^HSE\s+/i', '', $label) ?? $label);
+    }
+
+    public static function extractCoreUnitToken(string $label): string
+    {
+        if (preg_match('/\b(HSE\s+[A-Z]?\d+[A-Z]?)\b/i', $label, $match)) {
+            return self::normalizeUnitLabel($match[1]);
+        }
+
+        if (preg_match('/\b(SHOP\s+[A-Z]?\d+[A-Z]?)\b/i', $label, $match)) {
+            return self::normalizeUnitLabel($match[1]);
+        }
+
+        if (preg_match('/\b(S\s*\d+[A-Z]?)\b/i', $label, $match)) {
+            return self::normalizeUnitLabel(preg_replace('/\s+/', '', $match[1]) ?? $match[1]);
+        }
+
+        if (preg_match('/\b([A-Z]\d+[A-Z]?)\b/', $label, $match)) {
+            return self::normalizeUnitLabel($match[1]);
+        }
+
+        if (preg_match('/^(\d+)$/', $label, $match)) {
+            return $match[1];
+        }
+
+        return self::normalizeUnitLabel($label);
+    }
+
     public static function parseMoney(?string $value): ?float
     {
         if ($value === null || trim($value) === '') {
