@@ -1,22 +1,22 @@
+@php
+    use App\Support\Property\PropertyWorkspaceBranding;
+
+    $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
+    $brandName = $publicBrand['company_name'];
+    $contactEmail = $publicBrand['contact_email_primary'];
+    $contactPhone = $publicBrand['contact_phone'];
+    $publicStats = $publicStats ?? [
+        'properties' => 0,
+        'vacant_listings' => 0,
+        'landlords' => 0,
+        'tenants' => 0,
+    ];
+@endphp
+
 <x-public-layout
     :page-title="$publicPageTitle ?? 'About Us'"
     :page-description="$publicPageDescription ?? null"
 >
-    @php
-        use App\Support\Property\PropertyWorkspaceBranding;
-
-        $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
-        $brandName = $publicBrand['company_name'];
-        $contactEmail = $publicBrand['contact_email_primary'];
-        $contactPhone = $publicBrand['contact_phone'];
-        $publicStats = $publicStats ?? [
-            'properties' => 0,
-            'vacant_listings' => 0,
-            'landlords' => 0,
-            'tenants' => 0,
-        ];
-    @endphp
-
     <x-public.page-hero
         eyebrow="Property management + marketplace"
         :title="$brandName"

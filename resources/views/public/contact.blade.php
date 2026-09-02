@@ -1,28 +1,28 @@
+@php
+    use App\Support\Property\PropertyWorkspaceBranding;
+
+    $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
+    $brandName = $publicBrand['company_name'];
+    $contactEmailPrimary = $publicBrand['contact_email_primary'];
+    $contactEmailSupport = $publicBrand['contact_email_support'] ?: $contactEmailPrimary;
+    $contactPhone = $publicBrand['contact_phone'];
+    $contactWhatsapp = $publicBrand['contact_whatsapp'];
+    $contactAddress = $publicBrand['contact_address'];
+    $contactMapEmbedUrl = $publicBrand['contact_map_embed_url'];
+    $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp);
+    $intent = $contactIntent ?? 'general';
+    $intentLabel = match ($intent) {
+        'viewing' => 'Schedule a viewing',
+        'landlord' => 'Landlord inquiry',
+        'callback' => 'Request a callback',
+        default => 'Get in touch',
+    };
+@endphp
+
 <x-public-layout
     :page-title="$publicPageTitle ?? 'Contact Us'"
     :page-description="$publicPageDescription ?? null"
 >
-    @php
-        use App\Support\Property\PropertyWorkspaceBranding;
-
-        $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
-        $brandName = $publicBrand['company_name'];
-        $contactEmailPrimary = $publicBrand['contact_email_primary'];
-        $contactEmailSupport = $publicBrand['contact_email_support'] ?: $contactEmailPrimary;
-        $contactPhone = $publicBrand['contact_phone'];
-        $contactWhatsapp = $publicBrand['contact_whatsapp'];
-        $contactAddress = $publicBrand['contact_address'];
-        $contactMapEmbedUrl = $publicBrand['contact_map_embed_url'];
-        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp);
-        $intent = $contactIntent ?? 'general';
-        $intentLabel = match ($intent) {
-            'viewing' => 'Schedule a viewing',
-            'landlord' => 'Landlord inquiry',
-            'callback' => 'Request a callback',
-            default => 'Get in touch',
-        };
-    @endphp
-
     <x-public.page-hero
         :eyebrow="$brandName"
         :title="$intentLabel"

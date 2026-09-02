@@ -1,7 +1,7 @@
 <x-property.workspace
     title="Tenant advance credits"
     subtitle="Unapplied tenant funds held as credit liability (not suspense)."
-    back-route="property.revenue.payments"
+    back-route="property.revenue.overview"
     :stats="[
         ['label' => 'Total unapplied', 'value' => \App\Services\Property\PropertyMoney::kes((float) $totalUnapplied), 'hint' => 'All tenants'],
         ['label' => 'Tenants with credit', 'value' => (string) $balances->total(), 'hint' => 'This page'],

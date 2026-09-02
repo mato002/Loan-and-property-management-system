@@ -243,6 +243,7 @@ final class PropertyNavigation
                     ['label' => 'Bulk messaging', 'route' => 'property.communications.bulk', 'active' => ['property.communications.bulk', 'property.communications.bulk.*']],
                     ['label' => 'Matched payments', 'route' => 'property.equity.matched', 'active' => ['property.equity.matched', 'property.equity.matched.*']],
                     ['label' => 'Unmatched payments', 'route' => 'property.equity.unmatched', 'active' => ['property.equity.unmatched', 'property.equity.unmatched.*']],
+                    ['label' => 'Tenant credits', 'route' => 'property.revenue.tenant_credits', 'active' => ['property.revenue.tenant_credits', 'property.tenants.credit.*']],
                 ],
             ],
             'maintenance' => [

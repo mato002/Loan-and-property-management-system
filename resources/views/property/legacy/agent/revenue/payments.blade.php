@@ -9,39 +9,6 @@
     empty-hint="Record a payment for the paying tenant and choose an invoice with an open balance."
 >
     <x-slot name="above">
-        <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm">
-            <p class="text-lg font-semibold text-slate-900">Rent flow (Step 3 of 3): Collect payment</p>
-            <p class="mt-1 text-sm text-slate-600">Record the tenant payment and select the invoice with an open balance. The invoice updates automatically (Partial / Paid).</p>
-            <div class="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                <span class="font-semibold">Trust accounting controls:</span>
-                Completed payments can be submitted for reversal with a reason, then approved by a different checker (maker/checker rule).
-            </div>
-            <div class="mt-3 flex flex-wrap gap-2">
-                <a href="{{ route('property.revenue.invoices', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
-                    Back: Create rent bill
-                </a>
-                <a href="{{ route('property.revenue.receipts', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    View receipts
-                    <i class="fa-solid fa-receipt" aria-hidden="true"></i>
-                </a>
-                @if (auth()->user()?->hasPmPermission('payments.settle'))
-                    <a href="{{ route('property.equity.matched', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100">
-                        Matched payments
-                        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
-                    </a>
-                    <a href="{{ route('property.equity.unmatched', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100">
-                        Unmatched bank payments
-                        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
-                    </a>
-                    <a href="{{ route('property.equity.all', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                        All equity payments
-                        <i class="fa-solid fa-building-columns" aria-hidden="true"></i>
-                    </a>
-                @endif
-            </div>
-        </div>
-
         @php
             $showPaymentFormByDefault = $errors->hasAny(['pm_tenant_id','channel','pm_invoice_id','amount','paid_at','external_ref']);
         @endphp
