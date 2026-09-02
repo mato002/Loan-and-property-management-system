@@ -190,7 +190,7 @@ final class PassionLegacyUnitRegisterParser
 
     private function unitLabelPattern(): string
     {
-        return '(?:CARWASH|SHOP(?:\s+[A-Z0-9&]+)+|RENTAL\s+HOUSE(?:\s+[A-Z]+)?|HSE\s+[A-Z]?\d+(?:\s*\(\d+BR\))?|HSE\s+[A-Z]\d+|[A-Z]\d+(?:\s*\(\d+BR\))?)';
+        return '(?:CARWASH|SHOP(?:\s+[A-Z0-9&]+)+|RENTAL\s+HOUSE(?:\s+[A-Z]+)?|HSE\s+[A-Z]?\d+(?:\s*\(\d+BR\))?|HSE\s+[A-Z]\d+|[A-Z]\d+(?:\s*\(\d+BR\))?|\d+)';
     }
 
     private function looksLikeTenantTail(string $line): bool
