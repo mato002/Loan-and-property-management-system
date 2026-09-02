@@ -165,14 +165,14 @@ php scripts/extract_passion_pdf.php storage/passion-legacy/property_unit_registe
 
 ## Production re-run (after a partial import)
 
-If units failed but leases ran (many “creating stub” warnings):
+If units import shows `Parsed=380` but `Units created=0`, property names in the DB likely came from a bad PDF import. Either:
 
 ```bash
-git pull origin passion-homes
+php artisan property:import-passion-register storage/passion-legacy/property_register.txt --agent-user-id=2
 php artisan property:import-passion-units storage/passion-legacy/property_unit_register.txt --agent-user-id=2
 ```
 
-Re-running is safe — existing properties/tenants/leases are matched and updated, not duplicated.
+Or pull the latest code (units import falls back to property register **codes** when names do not match).
 
 ---
 
@@ -206,3 +206,5 @@ Re-running is safe — existing properties/tenants/leases are matched and update
 | Duplicate properties on re-run | Safe — matches on `properties.code` |
 | Unit not found during lease import | Run phase 3 first; lease import creates stubs if needed |
 | Landlord code shorter than property code | Resolver matches prefix (`A00039` → `A00039A`) |
+| PDF parses too few rows on server | Use `.txt` from `storage/passion-legacy/` instead of `.pdf` |
+| Property name mismatch (e.g. WINTA END vs WINTA END APARTMENT) | Pull latest code; re-run units import with `.txt` |

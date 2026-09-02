@@ -6,10 +6,14 @@ use App\Models\PropertyUnit;
 
 final class PassionLegacyUnitImportService
 {
+    /** @var list<array<string, mixed>>|null */
+    private ?array $propertyRegisterRecords = null;
+
     public function __construct(
         private PassionLegacyUnitRegisterParser $parser,
         private PassionLegacyRegisterPdfTextExtractor $extractor,
         private PassionPropertyCodeResolver $codeResolver,
+        private PassionLegacyRegisterParser $propertyRegisterParser,
     ) {}
 
     /**
@@ -64,7 +68,10 @@ final class PassionLegacyUnitImportService
      */
     private function importRecord(array $record, bool $updateExisting, array &$summary, int $rowNum): void
     {
-        $property = $this->codeResolver->resolveByName($record['property_name']);
+        $property = $this->codeResolver->resolveByNameViaRegister(
+            $record['property_name'],
+            $this->propertyRegisterRecords(),
+        );
         if (! $property) {
             $summary['warnings'][] = "Row {$rowNum} ({$record['unit_label']}): property not found — {$record['property_name']}";
 
@@ -105,5 +112,37 @@ final class PassionLegacyUnitImportService
 
         PropertyUnit::query()->create($payload);
         $summary['units_created']++;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function propertyRegisterRecords(): array
+    {
+        if ($this->propertyRegisterRecords !== null) {
+            return $this->propertyRegisterRecords;
+        }
+
+        $this->propertyRegisterRecords = [];
+
+        foreach ([
+            storage_path('passion-legacy/property_register.txt'),
+            storage_path('passion-legacy/property_register.pdf'),
+        ] as $path) {
+            if (! is_file($path)) {
+                continue;
+            }
+
+            try {
+                $this->propertyRegisterRecords = $this->propertyRegisterParser->parse(
+                    $this->extractor->extract($path),
+                );
+                break;
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return $this->propertyRegisterRecords;
     }
 }

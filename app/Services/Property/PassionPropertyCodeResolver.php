@@ -70,6 +70,54 @@ final class PassionPropertyCodeResolver
         return $bestScore >= 20 ? $best : null;
     }
 
+    public function scoreNameMatch(string $needle, string $candidate): int
+    {
+        return $this->nameMatchScore(
+            $this->normalizeName($needle),
+            $this->normalizeName($candidate),
+        );
+    }
+
+    /**
+     * Resolve using property register canonical names, then match DB by code.
+     *
+     * @param  list<array{name: string, code: string}>  $registerRecords
+     */
+    public function resolveByNameViaRegister(?string $name, array $registerRecords): ?Property
+    {
+        $property = $this->resolveByName($name);
+        if ($property) {
+            return $property;
+        }
+
+        $needle = $this->normalizeName($name);
+        if ($needle === '') {
+            return null;
+        }
+
+        $bestCode = null;
+        $bestScore = 0;
+
+        foreach ($registerRecords as $record) {
+            $registerName = $this->normalizeName($record['name'] ?? '');
+            if ($registerName === '') {
+                continue;
+            }
+
+            $score = $this->nameMatchScore($needle, $registerName);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestCode = $record['code'] ?? null;
+            }
+        }
+
+        if ($bestCode === null || $bestScore < 20) {
+            return null;
+        }
+
+        return $this->resolveOne($bestCode);
+    }
+
     private function nameMatchScore(string $needle, string $candidate): int
     {
         if ($candidate === $needle) {
