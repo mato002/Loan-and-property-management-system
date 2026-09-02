@@ -144,16 +144,45 @@ Additional unit fields (floor, market rent, available from) are stored on `prope
 
 ## PDF text extraction
 
-If a command cannot read a PDF:
+Pre-extracted `.txt` copies live beside the PDFs in `storage/passion-legacy/`. **Use these on production if a PDF import parses far fewer rows than expected** (e.g. units `Parsed=178` instead of ~380):
+
+```bash
+php artisan property:import-passion-units storage/passion-legacy/property_unit_register.txt --agent-user-id=2
+php artisan property:import-passion-leases storage/passion-legacy/leases.txt --agent-user-id=2
+```
+
+If a command cannot read a PDF at all:
 
 1. Linux: `apt install poppler-utils` (`pdftotext`)
 2. Or: `pip install pypdf`
-3. Or: extract text manually and pass the `.txt` file
+3. Or: pass the matching `.txt` file from `storage/passion-legacy/`
 
 ```bash
-php scripts/extract_passion_pdf.php property_unit_register.pdf
-# creates storage/property_unit_register_extracted.txt
+php scripts/extract_passion_pdf.php storage/passion-legacy/property_unit_register.pdf
 ```
+
+---
+
+## Production re-run (after a partial import)
+
+If units failed but leases ran (many “creating stub” warnings):
+
+```bash
+git pull origin passion-homes
+php artisan property:import-passion-units storage/passion-legacy/property_unit_register.txt --agent-user-id=2
+```
+
+Re-running is safe — existing properties/tenants/leases are matched and updated, not duplicated.
+
+---
+
+## Expected warnings (not errors)
+
+| Warning | Meaning |
+|---------|---------|
+| Landlord `J00041`, `M00008`, etc. — no matching property | Those landlord codes are **not** in the 38-property register PDF; 28/36 landlords linked is correct |
+| `property not found — WINTA END APARTMENT` | Property was saved as truncated name `WINTA END`; fixed in latest code — re-run units with `.txt` |
+| Lease import “unit not found — creating stub” | Units phase did not complete; re-run units import first |
 
 ---
 

@@ -60,16 +60,47 @@ final class PassionPropertyCodeResolver
                 continue;
             }
 
-            if ($candidate === $needle || str_contains($candidate, $needle) || str_contains($needle, $candidate)) {
-                $score = similar_text($candidate, $needle);
-                if ($score > $bestScore) {
-                    $bestScore = $score;
-                    $best = $property;
-                }
+            $score = $this->nameMatchScore($needle, $candidate);
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $best = $property;
             }
         }
 
-        return $best;
+        return $bestScore >= 20 ? $best : null;
+    }
+
+    private function nameMatchScore(string $needle, string $candidate): int
+    {
+        if ($candidate === $needle) {
+            return 1000;
+        }
+
+        if (str_contains($candidate, $needle) || str_contains($needle, $candidate)) {
+            return 500 + similar_text($candidate, $needle);
+        }
+
+        $needleWords = array_values(array_filter(explode(' ', $needle)));
+        $candidateWords = array_values(array_filter(explode(' ', $candidate)));
+
+        if ($needleWords !== [] && $candidateWords !== []) {
+            $shorter = count($needleWords) <= count($candidateWords) ? $needleWords : $candidateWords;
+            $longer = count($needleWords) <= count($candidateWords) ? $candidateWords : $needleWords;
+            $longerSet = array_flip($longer);
+            $matched = 0;
+
+            foreach ($shorter as $word) {
+                if (isset($longerSet[$word])) {
+                    $matched++;
+                }
+            }
+
+            if ($matched > 0 && $matched === count($shorter)) {
+                return 300 + ($matched * 10) + similar_text($candidate, $needle);
+            }
+        }
+
+        return similar_text($candidate, $needle);
     }
 
     public function normalizeCode(?string $code): string
