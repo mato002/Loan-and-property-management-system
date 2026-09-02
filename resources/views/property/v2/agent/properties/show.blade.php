@@ -545,7 +545,11 @@
                     @php $lease = $unitModel->leases->first(); @endphp
                     <tr class="border-t border-slate-100 hover:bg-slate-50/70 {{ \App\Support\Property\WorkspaceRowAlert::trClass(\App\Support\Property\WorkspaceRowAlert::forUnit($unitModel, $lease !== null)) }}">
                         <td class="px-4 py-3">
-                            <a href="{{ route('property.units.show', $unitModel, false) }}" data-turbo-frame="property-main" class="font-medium text-indigo-600 hover:text-indigo-700">{{ $unitModel->label }}</a>
+                            @if (auth()->user()?->hasPmPermission('properties.manage'))
+                                <a href="{{ route('property.units.edit', $unitModel, false) }}" data-turbo="false" class="font-medium text-indigo-600 hover:text-indigo-700">{{ $unitModel->label }}</a>
+                            @else
+                                <span class="font-medium text-slate-900">{{ $unitModel->label }}</span>
+                            @endif
                         </td>
                         <td class="px-4 py-3 capitalize">{{ $unitModel->status }}</td>
                         <td class="px-4 py-3">{{ $lease?->pmTenant?->name ?? '—' }}</td>

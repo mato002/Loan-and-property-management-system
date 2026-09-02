@@ -77,8 +77,8 @@
             @endphp
             <tr class="border-t border-slate-100 {{ WorkspaceRowAlert::trClass($rowTone) }}">
                 <td class="px-4 py-3 font-medium text-slate-900">
-                    @if ($unitModel)
-                        <a href="{{ route('property.units.show', $unitModel, false) }}" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700">{{ $u->label }}</a>
+                    @if ($unitModel && auth()->user()?->hasPmPermission('properties.manage'))
+                        <a href="{{ route('property.units.edit', $unitModel, false) }}" data-turbo="false" class="text-indigo-600 hover:text-indigo-700">{{ $u->label }}</a>
                     @else
                         {{ $u->label }}
                     @endif

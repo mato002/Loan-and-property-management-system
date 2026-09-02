@@ -15,7 +15,9 @@
 @endphp
 
 <x-property.action-menu>
+    @if (\Illuminate\Support\Facades\Route::has('property.units.show'))
     <a href="{{ route('property.units.show', ['unit' => $unit->id], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-slate-700/50">Open unit hub</a>
+    @endif
     <a href="{{ route('property.units.edit', ['unit' => $unit->id], false) }}" data-turbo="false" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-slate-700/50">Edit unit</a>
 
     @if ($status === PropertyUnit::STATUS_VACANT)
