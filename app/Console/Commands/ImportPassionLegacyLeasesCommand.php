@@ -47,13 +47,14 @@ class ImportPassionLegacyLeasesCommand extends Command
         }
 
         $this->info(sprintf(
-            '%sParsed=%d | Tenants created=%d updated=%d | Leases created=%d updated=%d | Units linked=%d',
+            '%sParsed=%d | Tenants created=%d updated=%d | Leases created=%d updated=%d terminated=%d | Units linked=%d',
             $result['dry_run'] ? '[DRY RUN] ' : '',
             $result['parsed'],
             $result['tenants_created'],
             $result['tenants_updated'],
             $result['leases_created'],
             $result['leases_updated'],
+            $result['leases_terminated'],
             $result['units_linked'],
         ));
 

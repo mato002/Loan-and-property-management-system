@@ -31,6 +31,7 @@ final class PassionLegacyLeasesImportService
             'tenants_updated' => 0,
             'leases_created' => 0,
             'leases_updated' => 0,
+            'leases_terminated' => 0,
             'units_linked' => 0,
             'warnings' => [],
             'errors' => [],
@@ -85,10 +86,16 @@ final class PassionLegacyLeasesImportService
         }
 
         $tenant = $this->resolveTenant($record, $agentUserId, $updateExisting, $summary);
-        $lease = PmLease::query()
+
+        $activeLeases = PmLease::query()
             ->withoutGlobalScopes()
             ->where('pm_tenant_id', $tenant->id)
-            ->whereHas('units', fn ($q) => $q->where('property_units.id', $unit->id))
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->with('units')
+            ->get();
+
+        $lease = $activeLeases
+            ->sortByDesc(fn (PmLease $candidate) => $this->leasePreferScore($candidate))
             ->first();
 
         $payload = array_filter([
@@ -119,6 +126,30 @@ final class PassionLegacyLeasesImportService
             $summary['units_linked']++;
         }
 
+        foreach ($activeLeases as $duplicate) {
+            if ($duplicate->id === $lease->id) {
+                continue;
+            }
+
+            $duplicate->update(['status' => PmLease::STATUS_TERMINATED]);
+            $summary['leases_terminated']++;
+        }
+
+        foreach ($activeLeases as $duplicate) {
+            if ($duplicate->id === $lease->id) {
+                continue;
+            }
+
+            foreach ($duplicate->units as $orphanUnit) {
+                if ($this->isLikelyImportStub($orphanUnit) && ! $this->unitHasActiveLease($orphanUnit->id, $lease->id)) {
+                    $orphanUnit->update([
+                        'status' => PropertyUnit::STATUS_VACANT,
+                        'vacant_since' => now()->toDateString(),
+                    ]);
+                }
+            }
+        }
+
         $unit->update([
             'status' => PropertyUnit::STATUS_OCCUPIED,
             'rent_amount' => $record['monthly_rent'] ?? $unit->rent_amount,
@@ -137,7 +168,7 @@ final class PassionLegacyLeasesImportService
             ->withoutGlobalScopes()
             ->where('property_id', $propertyId)
             ->get()
-            ->first(fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::normalizeUnitLabel($candidate->label) === $normalized);
+            ->first(fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::unitLabelsMatch($candidate->label, $unitLabel));
 
         if ($unit) {
             return $unit;
@@ -196,5 +227,35 @@ final class PassionLegacyLeasesImportService
         $summary['tenants_created']++;
 
         return $tenant;
+    }
+
+    private function isLikelyImportStub(PropertyUnit $unit): bool
+    {
+        return $unit->legacy_area === null
+            && $unit->floor === null
+            && $unit->market_rent === null
+            && $unit->available_from === null;
+    }
+
+    private function leasePreferScore(PmLease $lease): int
+    {
+        $score = 0;
+        foreach ($lease->units as $unit) {
+            if (! $this->isLikelyImportStub($unit)) {
+                $score += 10;
+            }
+        }
+
+        return $score + (int) $lease->id;
+    }
+
+    private function unitHasActiveLease(int $unitId, int $exceptLeaseId): bool
+    {
+        return PmLease::query()
+            ->withoutGlobalScopes()
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->where('id', '!=', $exceptLeaseId)
+            ->whereHas('units', fn ($q) => $q->where('property_units.id', $unitId))
+            ->exists();
     }
 }

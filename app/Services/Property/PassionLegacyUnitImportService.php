@@ -83,7 +83,7 @@ final class PassionLegacyUnitImportService
             ->withoutGlobalScopes()
             ->where('property_id', $property->id)
             ->get()
-            ->first(fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::normalizeUnitLabel($candidate->label) === $label);
+            ->first(fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::unitLabelsMatch($candidate->label, $record['unit_label']));
 
         $payload = array_filter([
             'property_id' => $property->id,

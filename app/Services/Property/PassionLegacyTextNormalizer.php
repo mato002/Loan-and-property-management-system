@@ -17,6 +17,25 @@ final class PassionLegacyTextNormalizer
         return trim($label);
     }
 
+    public static function unitLabelsMatch(?string $a, ?string $b): bool
+    {
+        $a = self::normalizeUnitLabel($a);
+        $b = self::normalizeUnitLabel($b);
+
+        if ($a === $b) {
+            return true;
+        }
+
+        $compact = static fn (string $value): string => preg_replace('/\s+/', '', $value) ?? $value;
+        if ($compact($a) === $compact($b)) {
+            return true;
+        }
+
+        $collapseLetterNumberGap = static fn (string $value): string => preg_replace('/(?<=[A-Z])\s+(?=\d)/', '', $value) ?? $value;
+
+        return $collapseLetterNumberGap($a) === $collapseLetterNumberGap($b);
+    }
+
     public static function parseMoney(?string $value): ?float
     {
         if ($value === null || trim($value) === '') {

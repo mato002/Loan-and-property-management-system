@@ -174,6 +174,29 @@ php artisan property:import-passion-units storage/passion-legacy/property_unit_r
 
 Or pull the latest code (units import falls back to property register **codes** when names do not match).
 
+### Duplicate leases / inflated unit counts
+
+If leases were imported **before** units, the first run created stub units and active leases. Re-running leases then created **second** active leases on real units (763 leases, 812 units).
+
+```bash
+git pull origin passion-homes
+composer install --no-dev --optimize-autoloader
+
+# Preview cleanup
+php artisan property:cleanup-passion-import-duplicates --dry-run
+
+# Terminate duplicate active leases; vacate orphan stub units
+php artisan property:cleanup-passion-import-duplicates
+
+# Remove stub units with no active lease (optional)
+php artisan property:cleanup-passion-import-duplicates --delete-orphan-stubs
+
+# Re-run leases once more (updates + relinks; safe to repeat)
+php artisan property:import-passion-leases storage/passion-legacy/leases.txt --agent-user-id=2
+```
+
+Expected dashboard after cleanup: ~380 units, ~396 active leases, ~35 vacant units.
+
 ---
 
 ## Expected warnings (not errors)
