@@ -62,6 +62,8 @@ final class PassionLegacyUnitRegisterParser
 
     private function preprocess(string $text): string
     {
+        $text = preg_replace('/(\d{2}\/\d{2}\/\d{4})Sep[^\n]*/i', '$1', $text) ?? $text;
+        $text = preg_replace('/\s*Sep \d+, \d{4}[^\n]*/mi', '', $text) ?? $text;
         $text = preg_replace('/(HSE\s+[A-Z]?\d+)\s*\n\s*(\(\d+BR\))/i', '$1 $2', $text) ?? $text;
         $text = preg_replace('/(HSE\s+\d+)\s*\n\s*(\(\d+BR\))/i', '$1 $2', $text) ?? $text;
 
@@ -139,7 +141,7 @@ final class PassionLegacyUnitRegisterParser
         if (preg_match('/^(.+?\([^)]+\))\s+(.+)$/', $beforeAmounts, $split)) {
             $propertyName = trim($split[1]);
             $tenantName = PassionLegacyTextNormalizer::cleanTenantName($split[2]);
-        } elseif (preg_match('/^(.+?\bAPARTMENTS?|\bAPPARTMENT [AB]|\bCOMPLEX|\bGOSHEN APARTMENT|\bZ - HOUSE|\bKIAMUNYI)\s+(.+)$/i', $beforeAmounts, $split)) {
+        } elseif (preg_match('/^(.+?\bAPPARTMENTS?|\bAPPARTMENT\s+[AB]|\bCOMPLEX|\bGOSHEN APARTMENT|\bZ - HOUSE|\bKIAMUNYI)\s+(.+)$/i', $beforeAmounts, $split)) {
             $propertyName = trim($split[1]);
             $tenantName = PassionLegacyTextNormalizer::cleanTenantName($split[2]);
         } elseif ($fallbackProperty !== '') {
@@ -185,7 +187,7 @@ final class PassionLegacyUnitRegisterParser
 
     private function unitLabelPattern(): string
     {
-        return '(?:CARWASH|SHOP(?:\s+[A-Z0-9&]+)+|RENTAL\s+HOUSE(?:\s+[A-Z]+)?|HSE\s+[A-Z]?\d+(?:\s*\(\d+BR\))?|[A-Z]\d+(?:\s*\(\d+BR\))?)';
+        return '(?:CARWASH|SHOP(?:\s+[A-Z0-9&]+)+|RENTAL\s+HOUSE(?:\s+[A-Z]+)?|HSE\s+[A-Z]?\d+(?:\s*\(\d+BR\))?|HSE\s+[A-Z]\d+|[A-Z]\d+(?:\s*\(\d+BR\))?)';
     }
 
     private function looksLikeTenantTail(string $line): bool
