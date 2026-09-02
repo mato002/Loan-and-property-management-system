@@ -21,12 +21,15 @@ class CleanupPassionImportDuplicatesCommand extends Command
     {
         $dryRun = (bool) $this->option('dry-run');
         $deleteOrphans = (bool) $this->option('delete-orphan-stubs');
+        $deleteDuplicateStubs = (bool) $this->option('delete-duplicate-stubs');
 
         $leasesTerminated = 0;
         $unitsVacated = 0;
         $unitsDeleted = 0;
+        $duplicateStubsDeleted = 0;
+        $leasesRelinked = 0;
 
-        $run = function () use ($dryRun, $deleteOrphans, &$leasesTerminated, &$unitsVacated, &$unitsDeleted): void {
+        $run = function () use ($dryRun, $deleteOrphans, $deleteDuplicateStubs, &$leasesTerminated, &$unitsVacated, &$unitsDeleted, &$duplicateStubsDeleted, &$leasesRelinked): void {
             $tenantIds = PmLease::query()
                 ->withoutGlobalScopes()
                 ->where('status', PmLease::STATUS_ACTIVE)
@@ -97,6 +100,70 @@ class CleanupPassionImportDuplicatesCommand extends Command
                     $unitsDeleted++;
                 }
             }
+
+            if ($deleteDuplicateStubs) {
+                $units = PropertyUnit::query()
+                    ->withoutGlobalScopes()
+                    ->orderBy('property_id')
+                    ->orderBy('id')
+                    ->get()
+                    ->groupBy('property_id');
+
+                foreach ($units as $propertyUnits) {
+                    $keepers = $propertyUnits->filter(fn (PropertyUnit $unit) => ! $this->isLikelyImportStub($unit));
+                    if ($keepers->isEmpty()) {
+                        continue;
+                    }
+
+                    foreach ($propertyUnits as $unit) {
+                        if (! $this->isLikelyImportStub($unit)) {
+                            continue;
+                        }
+
+                        $hasRegisterTwin = $keepers->contains(
+                            fn (PropertyUnit $keeper) => PassionLegacyTextNormalizer::unitLabelsMatch($keeper->label, $unit->label),
+                        );
+
+                        if (! $hasRegisterTwin) {
+                            continue;
+                        }
+
+                        $registerTwin = $keepers->first(
+                            fn (PropertyUnit $keeper) => PassionLegacyTextNormalizer::unitLabelsMatch($keeper->label, $unit->label),
+                        );
+
+                        if (! $registerTwin) {
+                            continue;
+                        }
+
+                        $activeLeases = PmLease::query()
+                            ->withoutGlobalScopes()
+                            ->where('status', PmLease::STATUS_ACTIVE)
+                            ->whereHas('units', fn ($q) => $q->where('property_units.id', $unit->id))
+                            ->get();
+
+                        foreach ($activeLeases as $lease) {
+                            if (! $dryRun) {
+                                $lease->units()->sync([$registerTwin->id]);
+                                $registerTwin->update([
+                                    'status' => PropertyUnit::STATUS_OCCUPIED,
+                                    'vacant_since' => null,
+                                ]);
+                            }
+                        }
+
+                        if ($this->unitHasActiveLease($unit->id, 0)) {
+                            continue;
+                        }
+
+                        if (! $dryRun) {
+                            DB::table('pm_lease_unit')->where('property_unit_id', $unit->id)->delete();
+                            $unit->delete();
+                        }
+                        $duplicateStubsDeleted++;
+                    }
+                }
+            }
         };
 
         if ($dryRun) {
@@ -111,7 +178,7 @@ class CleanupPassionImportDuplicatesCommand extends Command
         }
 
         $prefix = $dryRun ? '[DRY RUN] ' : '';
-        $this->info("{$prefix}Duplicate leases terminated={$leasesTerminated} | Stub units vacated={$unitsVacated} | Orphan stubs deleted={$unitsDeleted}");
+        $this->info("{$prefix}Duplicate leases terminated={$leasesTerminated} | Stub units vacated={$unitsVacated} | Orphan stubs deleted={$unitsDeleted} | Duplicate stubs deleted={$duplicateStubsDeleted}");
 
         return self::SUCCESS;
     }
@@ -138,10 +205,15 @@ class CleanupPassionImportDuplicatesCommand extends Command
 
     private function unitHasOtherActiveLease(int $unitId, int $exceptLeaseId): bool
     {
+        return $this->unitHasActiveLease($unitId, $exceptLeaseId);
+    }
+
+    private function unitHasActiveLease(int $unitId, int $exceptLeaseId): bool
+    {
         return PmLease::query()
             ->withoutGlobalScopes()
             ->where('status', PmLease::STATUS_ACTIVE)
-            ->where('id', '!=', $exceptLeaseId)
+            ->when($exceptLeaseId > 0, fn ($q) => $q->where('id', '!=', $exceptLeaseId))
             ->whereHas('units', fn ($q) => $q->where('property_units.id', $unitId))
             ->exists();
     }
