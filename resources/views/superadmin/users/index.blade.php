@@ -81,6 +81,7 @@
                         <span class="sr-only">Select</span>
                         <input type="checkbox" id="users-select-page" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" title="Select all on this page" aria-label="Select all users on this page">
                     </th>
+                    <th class="px-5 py-3 text-left font-bold">ID</th>
                     <th class="px-5 py-3 text-left font-bold">User</th>
                     <th class="px-5 py-3 text-left font-bold">Flags</th>
                     <th class="px-5 py-3 text-right font-bold">Actions</th>
@@ -91,6 +92,9 @@
                     <tr class="hover:bg-slate-50/60">
                         <td class="px-3 py-4 align-middle">
                             <input type="checkbox" value="{{ $u->id }}" class="users-row-cb rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" aria-label="Select {{ $u->name }}">
+                        </td>
+                        <td class="px-5 py-4 font-mono text-xs font-semibold text-slate-600 tabular-nums">
+                            {{ $u->id }}
                         </td>
                         <td class="px-5 py-4">
                             <div class="font-semibold text-slate-900">{{ $u->name }}</div>
@@ -120,7 +124,7 @@
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="4" class="px-5 py-10 text-center text-slate-500">No users found.</td>
+                        <td colspan="5" class="px-5 py-10 text-center text-slate-500">No users found.</td>
                     </tr>
                 @endforelse
             </tbody>

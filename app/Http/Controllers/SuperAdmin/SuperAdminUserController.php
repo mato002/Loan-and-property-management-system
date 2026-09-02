@@ -83,14 +83,15 @@ class SuperAdminUserController extends Controller
                 })
                 ->orderByDesc('id')
                 ->limit(5000)
-                ->get(['name', 'email', 'is_super_admin', 'property_portal_role', 'loan_role', 'created_at']);
+                ->get(['id', 'name', 'email', 'is_super_admin', 'property_portal_role', 'loan_role', 'created_at']);
 
             return TabularExport::stream(
                 'superadmin-users-'.now()->format('Ymd_His'),
-                ['Name', 'Email', 'Super admin', 'Property role', 'Loan role', 'Created'],
+                ['ID', 'Name', 'Email', 'Super admin', 'Property role', 'Loan role', 'Created'],
                 function () use ($rows) {
                     foreach ($rows as $u) {
                         yield [
+                            (string) $u->id,
                             (string) $u->name,
                             (string) $u->email,
                             (bool) $u->is_super_admin ? 'Yes' : 'No',
