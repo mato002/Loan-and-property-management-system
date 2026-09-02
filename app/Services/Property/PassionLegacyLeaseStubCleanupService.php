@@ -47,7 +47,6 @@ final class PassionLegacyLeaseStubCleanupService
                     ->withoutGlobalScopes()
                     ->where('status', PmLease::STATUS_ACTIVE)
                     ->whereHas('units', fn ($q) => $q->where('property_units.id', $stub->id))
-                    ->with('tenant')
                     ->first();
 
                 if (! $lease) {
