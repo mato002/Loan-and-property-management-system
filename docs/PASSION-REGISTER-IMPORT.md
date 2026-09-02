@@ -2,6 +2,36 @@
 
 Import data from the old Passion Shelters system in **strict order**. Each phase uses its own register export.
 
+## Fresh start (recommended after duplicate imports)
+
+When re-imports created duplicate landlords, units, or leases, wipe the agent portfolio and import once in the correct order. **Super admins and the agent staff account are kept.**
+
+```bash
+cd /home/passion/passion
+git pull origin passion-homes
+composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+
+# Preview what will be removed
+php artisan property:wipe-passion-portfolio --agent-user-id=2 --dry-run
+
+# Wipe portfolio data for agent #2 (Passion Homes)
+php artisan property:wipe-passion-portfolio --agent-user-id=2 --force
+```
+
+Then run phases **1 → 5** below using `.txt` register files (most reliable on production). **Do not** run cleanup or reconcile on a fresh import.
+
+Expected dashboard after a clean run:
+
+| Card | Target |
+|------|--------|
+| Properties | 38 |
+| Landlords | 36 |
+| Units/Spaces | ~442–445 |
+| Tenants/Residents | 396 |
+
+---
+
 ## Migration order
 
 | Phase | Register file | Command | What imports |
@@ -9,15 +39,16 @@ Import data from the old Passion Shelters system in **strict order**. Each phase
 | **1** | Property register PDF | `property:import-passion-register` | Properties + commission % |
 | **2** | Landlords register PDF | `property:import-passion-landlords` | Landlord users + property links |
 | **3** | Property units listing PDF | `property:import-passion-units` | Units (rent, floor, status, market rent) |
-| **4** | Active tenants & leases PDF | `property:import-passion-leases` | Tenants (TNT account, balance) + active leases |
+| **4** | Property register (spaces) | `property:fill-passion-register-spaces` | Generic spaces to match register totals (~442) |
+| **5** | Active tenants & leases PDF | `property:import-passion-leases` | Tenants (TNT account, balance) + active leases |
 
-Run phases **in order**. Phase 4 matches units by property code + unit label.
+Run phases **in order**. Phase 5 matches units by property code + unit label.
 
 ---
 
-## Full production sequence
+## Full production sequence (fresh import)
 
-The legacy PDF exports are committed in the repo at `storage/passion-legacy/` — after `git pull` you do **not** need to upload them manually.
+Use this after `property:wipe-passion-portfolio` or on a new agent account. Prefer `.txt` files on production.
 
 ```bash
 cd /home/passion/passion
@@ -26,35 +57,43 @@ composer install --no-dev --optimize-autoloader
 php artisan migrate --force
 
 # 1 — Properties
-php artisan property:import-passion-register storage/passion-legacy/property_register.pdf \
+php artisan property:import-passion-register storage/passion-legacy/property_register.txt \
   --dry-run --agent-user-id=2
-php artisan property:import-passion-register storage/passion-legacy/property_register.pdf \
+php artisan property:import-passion-register storage/passion-legacy/property_register.txt \
   --agent-user-id=2
 
-# 2 — Landlords
-php artisan property:import-passion-landlords storage/passion-legacy/landlord_register.pdf \
+# 2 — Landlords (all 36)
+php artisan property:import-passion-landlords storage/passion-legacy/landlord_register.txt \
   --dry-run --agent-user-id=2
-php artisan property:import-passion-landlords storage/passion-legacy/landlord_register.pdf \
+php artisan property:import-passion-landlords storage/passion-legacy/landlord_register.txt \
   --agent-user-id=2
 
-# 3 — Units
-php artisan property:import-passion-units storage/passion-legacy/property_unit_register.pdf \
+# 3 — Units (~380 detailed rows)
+php artisan property:import-passion-units storage/passion-legacy/property_unit_register.txt \
   --dry-run --agent-user-id=2
-php artisan property:import-passion-units storage/passion-legacy/property_unit_register.pdf \
+php artisan property:import-passion-units storage/passion-legacy/property_unit_register.txt \
   --agent-user-id=2
 
-# 4 — Tenants + leases
-php artisan property:import-passion-leases storage/passion-legacy/leases.pdf \
+# 4 — Fill register spaces (~442 total)
+php artisan property:fill-passion-register-spaces --dry-run
+php artisan property:fill-passion-register-spaces
+
+# 5 — Tenants + leases (396) — run ONCE
+php artisan property:import-passion-leases storage/passion-legacy/leases.txt \
   --dry-run --agent-user-id=2
-php artisan property:import-passion-leases storage/passion-legacy/leases.pdf \
+php artisan property:import-passion-leases storage/passion-legacy/leases.txt \
   --agent-user-id=2
 ```
 
-Replace `YOUR_AGENT_ID` with the Passion staff user id.
+Replace `--agent-user-id=2` if your Passion agent account uses a different id.
 
 ---
 
-## Phase 1 — Properties
+## Full production sequence (PDF files)
+
+The legacy PDF exports live in `storage/passion-legacy/`. If PDF parsing returns too few rows on the server, use the `.txt` fresh-import sequence above instead.
+
+---
 
 ```bash
 php artisan property:import-passion-register "property_register pdf.pdf" \
@@ -242,6 +281,7 @@ php artisan property:fill-passion-register-spaces
 ```
 
 This adds generic `Unit N` spaces where the property register counts more units than the unit listing export (owner-occupied, caretaker, unlisted bays, etc.). **Do not run reconcile after fill** — it treats those as extras.
+
 | Tenants | 396 | 396 leases | 396 |
 
 ---
