@@ -63,9 +63,9 @@
                 @forelse ($vacantUnits as $u)
                     @php
                         $statusWord = $u->public_listing_published ? 'featured' : 'standard';
-                        $rowToneClass = \App\Support\Property\WorkspaceRowAlert::trClass(
-                            \App\Support\Property\WorkspaceRowAlert::forUnit($u, false)
-                        );
+                        $rowTone = \App\Support\Property\WorkspaceRowAlert::forUnit($u, false);
+                        $rowToneClass = \App\Support\Property\WorkspaceRowAlert::trClass($rowTone);
+                        $rowToneStyle = \App\Support\Property\WorkspaceRowAlert::cellStyle($rowTone);
                         $filterText = mb_strtolower(
                             implode(' ', [
                                 (string) $u->label,
@@ -79,22 +79,25 @@
                         );
                     @endphp
                     <tr
-                        class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 {{ $rowToneClass }}"
+                        class="border-t border-slate-100 dark:border-slate-700/80 {{ $rowToneClass === '' ? 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40' : '' }} {{ $rowToneClass }}"
                         data-filter-text="{{ e($filterText) }}"
+                        @if ($rowToneStyle !== '')
+                            data-row-tone="{{ $rowTone }}"
+                        @endif
                     >
-                        <td class="px-3 sm:px-4 py-3 text-slate-900 dark:text-white font-medium">{{ $u->label }}</td>
-                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200">{{ $u->property->name }}</td>
-                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($u->listedRentAmount()) }}</td>
-                        <td class="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-400">{{ $u->vacant_since?->format('Y-m-d') ?? '—' }}</td>
-                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 tabular-nums">{{ $u->publicImages->count() }}</td>
-                        <td class="px-3 sm:px-4 py-3">
+                        <td class="px-3 sm:px-4 py-3 text-slate-900 dark:text-white font-medium" @if ($rowToneStyle !== '') style="{{ $rowToneStyle }}" @endif>{{ $u->label }}</td>
+                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200" @if ($rowToneStyle !== '') style="{{ $rowToneStyle }}" @endif>{{ $u->property->name }}</td>
+                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 tabular-nums" @if ($rowToneStyle !== '') style="{{ $rowToneStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes($u->listedRentAmount()) }}</td>
+                        <td class="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-400" @if ($rowToneStyle !== '') style="{{ $rowToneStyle }}" @endif>{{ $u->vacant_since?->format('Y-m-d') ?? '—' }}</td>
+                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 tabular-nums" @if ($rowToneStyle !== '') style="{{ $rowToneStyle }}" @endif>{{ $u->publicImages->count() }}</td>
+                        <td class="px-3 sm:px-4 py-3" @if ($rowToneStyle !== '') style="{{ $rowToneStyle }}" @endif>
                             @if ($u->public_listing_published)
                                 <span class="inline-flex rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 text-xs font-semibold">Featured</span>
                             @else
                                 <span class="inline-flex rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 text-xs font-semibold">On Discover</span>
                             @endif
                         </td>
-                        <td class="px-3 sm:px-4 py-3">
+                        <td class="px-3 sm:px-4 py-3" @if ($rowToneStyle !== '') style="{{ $rowToneStyle }}" @endif>
                             <a href="{{ route('property.listings.create', ['selected_unit' => $u->id], absolute: false) }}#listing-publish" data-turbo-frame="property-main" data-property-nav="property.listings.create" class="text-blue-600 dark:text-blue-400 font-medium hover:underline">Photos &amp; publish</a>
                         </td>
                     </tr>

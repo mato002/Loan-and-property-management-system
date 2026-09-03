@@ -17,7 +17,6 @@
     use App\Support\Property\ResponsiveTableColumns;
 
     $customRowFilters = is_array($rowFilters ?? null) && count($rowFilters) === count($rows);
-    $rowToneAllowlist = \App\Support\Property\UnitListPresentation::allowedTones();
     $customRowTones = is_array($rowTones ?? null) && count($rowTones) === count($rows);
     $configs = ResponsiveTableColumns::normalize(
         is_array($columnConfig) && count($columnConfig) > 0
@@ -111,14 +110,20 @@
                 $subtitleCell = $subtitleIdx !== null ? ($row[$subtitleIdx] ?? '') : '';
                 $bulkCell = $bulkIdx !== null ? ($row[$bulkIdx] ?? '') : '';
                 $actionCell = $actionIdx !== null ? ($row[$actionIdx] ?? '') : '';
-                $__rowTone = $customRowTones ? (string) ($rowTones[$rowIndex] ?? '') : '';
-                $__rowToneClass = in_array($__rowTone, $rowToneAllowlist, true)
-                    ? 'property-row-alert-'.$__rowTone
-                    : '';
+                $__rowTone = \App\Support\Property\WorkspaceRowAlert::resolve(
+                    is_array($row) ? $row : [],
+                    $customRowTones ? (string) ($rowTones[$rowIndex] ?? '') : null
+                );
+                $__rowToneClass = \App\Support\Property\WorkspaceRowAlert::trClass($__rowTone);
+                $__rowToneStyle = \App\Support\Property\WorkspaceRowAlert::cellStyle($__rowTone);
             @endphp
             <article
-                class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/90 shadow-sm overflow-hidden {{ $__rowHref ? 'active:bg-slate-50 dark:active:bg-slate-800/60' : '' }} {{ $__rowToneClass }}"
+                class="rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden {{ $__rowToneClass === '' ? 'bg-white dark:bg-gray-800/90' : '' }} {{ $__rowHref ? 'active:bg-slate-50 dark:active:bg-slate-800/60' : '' }} {{ $__rowToneClass }}"
                 data-filter-text="{{ e($__filterText) }}"
+                @if ($__rowToneStyle !== '')
+                    style="{{ $__rowToneStyle }}"
+                    data-row-tone="{{ $__rowTone }}"
+                @endif
                 @if ($__rowHref)
                     data-row-href="{{ $__rowHref }}"
                     tabindex="0"

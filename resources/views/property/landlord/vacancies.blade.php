@@ -9,11 +9,15 @@
                 </thead>
                 <tbody>
                     @forelse ($units as $u)
-                        <tr class="border-t border-slate-100 {{ \App\Support\Property\WorkspaceRowAlert::trClass(\App\Support\Property\WorkspaceRowAlert::inferFromRow([(string) ($u['status'] ?? '')])) }}">
-                            <td class="px-4 py-3">{{ $u['property'] }}</td>
-                            <td class="px-4 py-3">{{ $u['unit'] }}</td>
-                            <td class="px-4 py-3">{{ $u['status'] }}</td>
-                            <td class="px-4 py-3 tabular-nums">{{ $u['rent'] }}</td>
+                        @php
+                            $rowTone = \App\Support\Property\WorkspaceRowAlert::inferFromRow([(string) ($u['status'] ?? '')]);
+                            $cellStyle = \App\Support\Property\WorkspaceRowAlert::cellStyle($rowTone);
+                        @endphp
+                        <tr class="border-t border-slate-100 {{ \App\Support\Property\WorkspaceRowAlert::trClass($rowTone) }}" @if ($cellStyle !== '') data-row-tone="{{ $rowTone }}" @endif>
+                            <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u['property'] }}</td>
+                            <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u['unit'] }}</td>
+                            <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u['status'] }}</td>
+                            <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u['rent'] }}</td>
                         </tr>
                     @empty
                         <tr><td colspan="4" class="px-4 py-8 text-center text-slate-500">No vacant or notice units.</td></tr>

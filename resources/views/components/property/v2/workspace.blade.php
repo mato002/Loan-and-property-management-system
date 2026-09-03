@@ -313,12 +313,15 @@
                                                         }
                                                     }
                                                 }
-                                                $__rowToneClass = \App\Support\Property\WorkspaceRowAlert::trClass(
-                                                    (string) ($resolvedRowTones[$rowIndex] ?? '')
-                                                );
+                                                $__rowTone = (string) ($resolvedRowTones[$rowIndex] ?? '');
+                                                $__rowToneClass = \App\Support\Property\WorkspaceRowAlert::trClass($__rowTone);
+                                                $__rowToneStyle = \App\Support\Property\WorkspaceRowAlert::cellStyle($__rowTone);
                                             @endphp
                                             <tr
                                                 class="border-t border-slate-100 dark:border-slate-700/80 {{ $__rowToneClass === '' ? 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40' : '' }} {{ $__rowHref ? 'cursor-pointer' : '' }} {{ $__rowToneClass }}"
+                                                @if ($__rowToneStyle !== '')
+                                                    data-row-tone="{{ $__rowTone }}"
+                                                @endif
                                                 data-filter-text="{{ e($__filterText) }}"
                                                 @if ($__rowHref)
                                                     data-row-href="{{ $__rowHref }}"
@@ -332,7 +335,12 @@
                                                         $cellHtml = (string) $cell;
                                                         $containsDropdown = str_contains(strtolower($cellHtml), '<details');
                                                     @endphp
-                                                    <td class="px-2 sm:px-4 py-2 sm:py-3 text-slate-700 dark:text-slate-200 align-top text-xs sm:text-sm {{ $containsDropdown ? 'whitespace-normal overflow-visible' : 'whitespace-normal break-words min-w-[5rem]' }}">
+                                                    <td
+                                                        class="px-2 sm:px-4 py-2 sm:py-3 text-slate-700 dark:text-slate-200 align-top text-xs sm:text-sm {{ $containsDropdown ? 'whitespace-normal overflow-visible' : 'whitespace-normal break-words min-w-[5rem]' }}"
+                                                        @if ($__rowToneStyle !== '')
+                                                            style="{{ $__rowToneStyle }}"
+                                                        @endif
+                                                    >
                                                         @if ($cell instanceof \Illuminate\Support\HtmlString)
                                                             {!! $cell !!}
                                                         @else

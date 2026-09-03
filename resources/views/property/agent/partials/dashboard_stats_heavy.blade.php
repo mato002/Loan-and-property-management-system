@@ -171,10 +171,11 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100 dark:divide-slate-700">
                         @forelse (($occupiedNoLease ?? []) as $u)
-                            <tr class="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 property-row-alert-attention">
-                                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $u['property'] }}</td>
-                                <td class="px-4 py-3 text-slate-700 dark:text-slate-300">{{ $u['unit'] }}</td>
-                                <td class="px-4 py-3">
+                            @php $cellStyle = \App\Support\Property\WorkspaceRowAlert::cellStyle(\App\Support\Property\WorkspaceRowAlert::TONE_ATTENTION); @endphp
+                            <tr class="property-row-alert-attention" data-row-tone="attention">
+                                <td class="px-4 py-3 text-slate-700 dark:text-slate-300" style="{{ $cellStyle }}">{{ $u['property'] }}</td>
+                                <td class="px-4 py-3 text-slate-700 dark:text-slate-300" style="{{ $cellStyle }}">{{ $u['unit'] }}</td>
+                                <td class="px-4 py-3" style="{{ $cellStyle }}">
                                     <a href="{{ $u['action_url'] }}" class="inline-flex items-center justify-center rounded-lg bg-emerald-600 text-white text-xs font-semibold px-3 py-1.5 hover:bg-emerald-700 transition-colors">Add lease</a>
                                 </td>
                             </tr>

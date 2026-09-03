@@ -57,6 +57,14 @@ const TOKEN_MAP = {
 
 const TONE_CLASSES = ['property-row-alert-occupied', 'property-row-alert-vacant', 'property-row-alert-vacant-long', 'property-row-alert-notice', 'property-row-alert-attention'];
 
+const FILL = {
+    occupied: '#bbf7d0',
+    vacant: '#facc15',
+    'vacant-long': '#fb923c',
+    notice: '#38bdf8',
+    attention: '#fb7185',
+};
+
 function normalizeLine(value) {
     return String(value || '')
         .replace(/[_-]+/g, ' ')
@@ -120,10 +128,13 @@ function applyRowTone(row) {
         return;
     }
 
+    const fromAttr = row.getAttribute('data-row-tone') || '';
     const already = TONE_CLASSES.some((name) => row.classList.contains(name));
-    const tone = already
-        ? TONE_CLASSES.find((name) => row.classList.contains(name))?.replace('property-row-alert-', '') ?? ''
-        : inferToneFromRow(row);
+    const tone = TONE_RANK[fromAttr]
+        ? fromAttr
+        : already
+            ? TONE_CLASSES.find((name) => row.classList.contains(name))?.replace('property-row-alert-', '') ?? ''
+            : inferToneFromRow(row);
 
     if (!tone || !TONE_RANK[tone]) {
         return;
@@ -131,6 +142,20 @@ function applyRowTone(row) {
 
     TONE_CLASSES.forEach((name) => row.classList.remove(name));
     row.classList.add(`property-row-alert-${tone}`);
+    row.setAttribute('data-row-tone', tone);
+    paintFill(row, tone);
+}
+
+function paintFill(row, tone) {
+    const color = FILL[tone];
+    if (!color) {
+        return;
+    }
+
+    row.style.setProperty('background-color', color, 'important');
+    row.querySelectorAll(':scope > td, :scope > th').forEach((cell) => {
+        cell.style.setProperty('background-color', color, 'important');
+    });
 }
 
 export function applyPropertyRowAlerts(scopeRoot = document) {

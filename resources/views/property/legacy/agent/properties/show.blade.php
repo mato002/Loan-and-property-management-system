@@ -525,15 +525,19 @@
             </thead>
             <tbody>
                 @forelse($unitSnapshots as $u)
-                    <tr class="border-t border-slate-100 hover:bg-slate-50/70 {{ \App\Support\Property\WorkspaceRowAlert::trClass(\App\Support\Property\WorkspaceRowAlert::forSnapshot((string) $u->status, filled($u->tenant_name), (float) ($u->arrears ?? 0))) }}">
-                        <td class="px-4 py-3 font-medium text-slate-900">{{ $u->label }}</td>
-                        <td class="px-4 py-3 capitalize text-slate-700">{{ $u->status }}</td>
-                        <td class="px-4 py-3 text-slate-700">{{ $u->tenant_name ?: '—' }}</td>
-                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap">{{ $u->tenant_phone ?: '—' }}</td>
-                        <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($u->listedRentAmount()) }}</td>
-                        <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
+                    @php
+                        $rowTone = \App\Support\Property\WorkspaceRowAlert::forSnapshot((string) $u->status, filled($u->tenant_name), (float) ($u->arrears ?? 0));
+                        $cellStyle = \App\Support\Property\WorkspaceRowAlert::cellStyle($rowTone);
+                    @endphp
+                    <tr class="border-t border-slate-100 {{ $cellStyle === '' ? 'hover:bg-slate-50/70' : '' }} {{ \App\Support\Property\WorkspaceRowAlert::trClass($rowTone) }}" @if ($cellStyle !== '') data-row-tone="{{ $rowTone }}" @endif>
+                        <td class="px-4 py-3 font-medium text-slate-900" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->label }}</td>
+                        <td class="px-4 py-3 capitalize text-slate-700" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->status }}</td>
+                        <td class="px-4 py-3 text-slate-700" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->tenant_name ?: '—' }}</td>
+                        <td class="px-4 py-3 text-slate-600 whitespace-nowrap" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->tenant_phone ?: '—' }}</td>
+                        <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes($u->listedRentAmount()) }}</td>
+                        <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
                         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
-                            <td class="px-4 py-3">
+                            <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>
                                 <form
                                     method="post"
                                     action="{{ route('property.units.destroy', ['unit' => $u->id], false) }}"

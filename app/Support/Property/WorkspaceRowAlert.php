@@ -104,6 +104,25 @@ final class WorkspaceRowAlert
         return $tone !== '' ? 'property-row-alert-'.$tone : '';
     }
 
+    public static function fillColor(?string $tone): string
+    {
+        return match (self::sanitizeTone($tone)) {
+            self::TONE_OCCUPIED => '#bbf7d0',
+            self::TONE_VACANT => '#facc15',
+            self::TONE_VACANT_LONG => '#fb923c',
+            self::TONE_NOTICE => '#38bdf8',
+            self::TONE_ATTENTION => '#fb7185',
+            default => '',
+        };
+    }
+
+    public static function cellStyle(?string $tone): string
+    {
+        $color = self::fillColor($tone);
+
+        return $color === '' ? '' : 'background-color: '.$color.' !important';
+    }
+
     /**
      * @param  list<mixed>  $row
      */

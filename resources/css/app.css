@@ -238,11 +238,11 @@
   }
 
   tr.property-row-alert-occupied > td {
-    background-color: #ecfdf5 !important;
+    background-color: #bbf7d0 !important;
   }
 
   tr.property-row-alert-occupied:hover > td {
-    background-color: #d1fae5 !important;
+    background-color: #86efac !important;
   }
 
   tr.property-row-alert-occupied > td:first-child {
@@ -250,7 +250,7 @@
   }
 
   tr.property-row-alert-vacant > td {
-    background-color: #fef08a !important;
+    background-color: #facc15 !important;
   }
 
   tr.property-row-alert-vacant:hover > td {
@@ -298,13 +298,13 @@
   }
 
   [data-mobile-record-list] .property-row-alert-occupied {
-    background-color: #ecfdf5;
+    background-color: #bbf7d0;
     border-color: #22c55e;
   }
 
   [data-mobile-record-list] .property-row-alert-vacant {
-    background-color: #fef3c7;
-    border-color: #f59e0b;
+    background-color: #facc15;
+    border-color: #ca8a04;
   }
 
   [data-mobile-record-list] .property-row-alert-vacant-long {
@@ -2155,4 +2155,88 @@
   .property-sidebar-hybrid[data-collapsed='1'] .property-hybrid-group-panel {
     display: none !important;
   }
+}
+
+/* Unlayered so Tailwind utilities cannot hide occupancy fills on collapsed tables */
+html body tr.property-row-alert-occupied > td,
+html body tr.property-row-alert-occupied > th {
+  background-color: #bbf7d0 !important;
+}
+html body tr.property-row-alert-occupied:hover > td,
+html body tr.property-row-alert-occupied:hover > th {
+  background-color: #86efac !important;
+}
+html body tr.property-row-alert-occupied > td:first-child {
+  box-shadow: inset 4px 0 0 #16a34a;
+}
+html body tr.property-row-alert-vacant > td,
+html body tr.property-row-alert-vacant > th {
+  background-color: #facc15 !important;
+}
+html body tr.property-row-alert-vacant:hover > td,
+html body tr.property-row-alert-vacant:hover > th {
+  background-color: #eab308 !important;
+}
+html body tr.property-row-alert-vacant > td:first-child {
+  box-shadow: inset 5px 0 0 #ca8a04;
+}
+html body tr.property-row-alert-vacant-long > td,
+html body tr.property-row-alert-vacant-long > th {
+  background-color: #fb923c !important;
+}
+html body tr.property-row-alert-vacant-long:hover > td,
+html body tr.property-row-alert-vacant-long:hover > th {
+  background-color: #f97316 !important;
+}
+html body tr.property-row-alert-vacant-long > td:first-child {
+  box-shadow: inset 5px 0 0 #ea580c;
+}
+html body tr.property-row-alert-notice > td,
+html body tr.property-row-alert-notice > th {
+  background-color: #38bdf8 !important;
+}
+html body tr.property-row-alert-notice:hover > td,
+html body tr.property-row-alert-notice:hover > th {
+  background-color: #0ea5e9 !important;
+}
+html body tr.property-row-alert-notice > td:first-child {
+  box-shadow: inset 4px 0 0 #0284c7;
+}
+html body tr.property-row-alert-attention > td,
+html body tr.property-row-alert-attention > th {
+  background-color: #fb7185 !important;
+}
+html body tr.property-row-alert-attention:hover > td,
+html body tr.property-row-alert-attention:hover > th {
+  background-color: #f43f5e !important;
+}
+html body tr.property-row-alert-attention > td:first-child {
+  box-shadow: inset 4px 0 0 #e11d48;
+}
+html body [data-mobile-record-list] .property-row-alert-occupied {
+  background-color: #bbf7d0 !important;
+  border-color: #16a34a;
+}
+html body [data-mobile-record-list] .property-row-alert-vacant {
+  background-color: #facc15 !important;
+  border-color: #ca8a04;
+}
+html body [data-mobile-record-list] .property-row-alert-vacant-long {
+  background-color: #fb923c !important;
+  border-color: #ea580c;
+}
+html body [data-mobile-record-list] .property-row-alert-notice {
+  background-color: #38bdf8 !important;
+  border-color: #0284c7;
+}
+html body [data-mobile-record-list] .property-row-alert-attention {
+  background-color: #fb7185 !important;
+  border-color: #e11d48;
+}
+
+html body tr[class*="property-row-alert-"] > td,
+html body tr[class*="property-row-alert-"] > th,
+html body [data-mobile-record-list] [class*="property-row-alert-"] {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }

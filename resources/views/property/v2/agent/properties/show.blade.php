@@ -542,18 +542,22 @@
             </thead>
             <tbody>
                 @foreach (($units ?? []) as $unitModel)
-                    @php $lease = $unitModel->leases->first(); @endphp
-                    <tr class="border-t border-slate-100 hover:bg-slate-50/70 {{ \App\Support\Property\WorkspaceRowAlert::trClass(\App\Support\Property\WorkspaceRowAlert::forUnit($unitModel, $lease !== null)) }}">
-                        <td class="px-4 py-3">
+                    @php
+                        $lease = $unitModel->leases->first();
+                        $rowTone = \App\Support\Property\WorkspaceRowAlert::forUnit($unitModel, $lease !== null);
+                        $cellStyle = \App\Support\Property\WorkspaceRowAlert::cellStyle($rowTone);
+                    @endphp
+                    <tr class="border-t border-slate-100 {{ $cellStyle === '' ? 'hover:bg-slate-50/70' : '' }} {{ \App\Support\Property\WorkspaceRowAlert::trClass($rowTone) }}" @if ($cellStyle !== '') data-row-tone="{{ $rowTone }}" @endif>
+                        <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>
                             @if (auth()->user()?->hasPmPermission('properties.manage'))
                                 <a href="{{ route('property.units.edit', $unitModel, false) }}" data-turbo="false" class="font-medium text-indigo-600 hover:text-indigo-700">{{ $unitModel->label }}</a>
                             @else
                                 <span class="font-medium text-slate-900">{{ $unitModel->label }}</span>
                             @endif
                         </td>
-                        <td class="px-4 py-3 capitalize">{{ $unitModel->status }}</td>
-                        <td class="px-4 py-3">{{ $lease?->pmTenant?->name ?? '—' }}</td>
-                        <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($unitModel->listedRentAmount()) }}</td>
+                        <td class="px-4 py-3 capitalize" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $unitModel->status }}</td>
+                        <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $lease?->pmTenant?->name ?? '—' }}</td>
+                        <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes($unitModel->listedRentAmount()) }}</td>
                     </tr>
                 @endforeach
             </tbody>

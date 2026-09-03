@@ -82,22 +82,23 @@
                 $listedRent = $unitModel
                     ? $unitModel->listedRentAmount()
                     : (float) ($u->rent_amount ?? 0);
+                $cellStyle = WorkspaceRowAlert::cellStyle($rowTone);
             @endphp
-            <tr class="border-t border-slate-100 {{ WorkspaceRowAlert::trClass($rowTone) }}">
-                <td class="px-4 py-3 font-medium text-slate-900">
+            <tr class="border-t border-slate-100 {{ WorkspaceRowAlert::trClass($rowTone) }}" @if ($cellStyle !== '') data-row-tone="{{ $rowTone }}" @endif>
+                <td class="px-4 py-3 font-medium text-slate-900" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>
                     @if ($unitModel && auth()->user()?->hasPmPermission('properties.manage'))
                         <a href="{{ route('property.units.edit', $unitModel, false) }}" data-turbo="false" class="text-indigo-600 hover:text-indigo-700">{{ $u->label }}</a>
                     @else
                         {{ $u->label }}
                     @endif
                 </td>
-                <td class="px-4 py-3">{!! $statusCell !!}</td>
-                <td class="px-4 py-3 text-slate-700">{!! is_string($tenantCell) ? e($tenantCell) : $tenantCell !!}</td>
-                <td class="px-4 py-3 text-slate-600 whitespace-nowrap">{{ $u->tenant_phone ?: '—' }}</td>
-                <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($listedRent) }}</td>
-                <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
+                <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{!! $statusCell !!}</td>
+                <td class="px-4 py-3 text-slate-700" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{!! is_string($tenantCell) ? e($tenantCell) : $tenantCell !!}</td>
+                <td class="px-4 py-3 text-slate-600 whitespace-nowrap" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->tenant_phone ?: '—' }}</td>
+                <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes($listedRent) }}</td>
+                <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
                 @if ($hasManage)
-                    <td class="px-4 py-3 overflow-visible">
+                    <td class="px-4 py-3 overflow-visible" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>
                         @if ($unitModel)
                             @include('property.agent.partials.unit_row_actions', [
                                 'unit' => $unitModel,

@@ -136,6 +136,19 @@ final class PassionLegacyTextNormalizer
 
     private static function suffixTokenMatch(string $haystack, string $token): bool
     {
+        if ($token === '') {
+            return false;
+        }
+
+        // Bare numbers like "8" must not match prefixed labels like "SHOP 8".
+        if (preg_match('/^\d+[A-Z]?$/', $token) === 1) {
+            if (strcasecmp($haystack, $token) === 0) {
+                return true;
+            }
+
+            return preg_match('/^(?:HSE|UNIT)\s+'.preg_quote($token, '/').'$/i', $haystack) === 1;
+        }
+
         return preg_match('/(?:^|\s)'.preg_quote($token, '/').'$/i', $haystack) === 1;
     }
 

@@ -79,11 +79,7 @@ final class PassionLegacyUnitImportService
         }
 
         $label = PassionLegacyTextNormalizer::normalizeUnitLabel($record['unit_label']);
-        $unit = PropertyUnit::query()
-            ->withoutGlobalScopes()
-            ->where('property_id', $property->id)
-            ->get()
-            ->first(fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::registerUnitLabelMatch($record['unit_label'], $candidate->label));
+        $unit = $this->findUnitOnProperty($property->id, $label, $record['unit_label']);
 
         $payload = array_filter([
             'property_id' => $property->id,
@@ -107,8 +103,7 @@ final class PassionLegacyUnitImportService
 
         if ($unit) {
             if ($updateExisting) {
-                $unit->update($payload);
-                $summary['units_updated']++;
+                $this->updateUnitFromRegister($unit, $payload, $label, $summary);
             }
 
             return;
@@ -116,6 +111,49 @@ final class PassionLegacyUnitImportService
 
         PropertyUnit::query()->create($payload);
         $summary['units_created']++;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $summary
+     */
+    private function updateUnitFromRegister(PropertyUnit $unit, array $payload, string $label, array &$summary): void
+    {
+        $conflict = PropertyUnit::query()
+            ->withoutGlobalScopes()
+            ->where('property_id', $unit->property_id)
+            ->where('label', $label)
+            ->where('id', '!=', $unit->id)
+            ->first();
+
+        if ($conflict) {
+            $conflict->update($payload);
+            $summary['units_updated']++;
+
+            return;
+        }
+
+        $unit->update($payload);
+        $summary['units_updated']++;
+    }
+
+    private function findUnitOnProperty(int $propertyId, string $normalizedLabel, string $registerLabel): ?PropertyUnit
+    {
+        $units = PropertyUnit::query()
+            ->withoutGlobalScopes()
+            ->where('property_id', $propertyId)
+            ->get();
+
+        $exact = $units->first(
+            fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::unitLabelsMatch($normalizedLabel, $candidate->label),
+        );
+        if ($exact) {
+            return $exact;
+        }
+
+        return $units->first(
+            fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::registerUnitLabelMatch($registerLabel, $candidate->label),
+        );
     }
 
     /**

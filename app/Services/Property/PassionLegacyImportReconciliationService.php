@@ -289,10 +289,13 @@ final class PassionLegacyImportReconciliationService
             return $existing;
         }
 
-        if (! PassionLegacyTextNormalizer::unitLabelsMatch($canonical->label, $expectedLabel) && ! $dryRun) {
+        if (! PassionLegacyTextNormalizer::unitLabelsMatch($canonical->label, $expectedLabel)
+            && ! $this->labelTakenOnProperty($propertyId, $expectedLabel, $canonical->id)
+            && ! $dryRun) {
             $canonical->update(['label' => $expectedLabel]);
             $summary['labels_aligned']++;
-        } elseif ($dryRun && ! PassionLegacyTextNormalizer::unitLabelsMatch($canonical->label, $expectedLabel)) {
+        } elseif ($dryRun && ! PassionLegacyTextNormalizer::unitLabelsMatch($canonical->label, $expectedLabel)
+            && ! $this->labelTakenOnProperty($propertyId, $expectedLabel, $canonical->id)) {
             $summary['labels_aligned']++;
         }
 
@@ -355,6 +358,10 @@ final class PassionLegacyImportReconciliationService
             }
 
             if (! PassionLegacyTextNormalizer::unitLabelsMatch($unit->label, $expected['label'])) {
+                if ($this->labelTakenOnProperty($expected['property_id'], $expected['label'], $unit->id)) {
+                    continue;
+                }
+
                 $updates['label'] = $expected['label'];
                 $summary['labels_aligned']++;
             }
@@ -485,11 +492,23 @@ final class PassionLegacyImportReconciliationService
 
     private function findUnitOnProperty(int $propertyId, string $label): ?PropertyUnit
     {
-        return PropertyUnit::query()
+        $units = PropertyUnit::query()
             ->withoutGlobalScopes()
             ->where('property_id', $propertyId)
-            ->get()
-            ->first(fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::registerUnitLabelMatch($label, $unit->label));
+            ->get();
+
+        $normalized = PassionLegacyTextNormalizer::normalizeUnitLabel($label);
+
+        $exact = $units->first(
+            fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::unitLabelsMatch($normalized, $unit->label),
+        );
+        if ($exact) {
+            return $exact;
+        }
+
+        return $units->first(
+            fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::registerUnitLabelMatch($label, $unit->label),
+        );
     }
 
     /**
@@ -558,10 +577,10 @@ final class PassionLegacyImportReconciliationService
                 if ($existing && $existing->id !== $keeper->id) {
                     $this->relinkActiveLeases($keeper, $existing, $dryRun, $summary);
                     $this->removeUnitIfSafe($keeper, $dryRun, $summary, 'duplicate_units_removed');
-                } elseif (! $dryRun) {
+                } elseif (! $this->labelTakenOnProperty($expected['property_id'], $expected['label'], $keeper->id) && ! $dryRun) {
                     $keeper->update(['label' => $expected['label']]);
                     $summary['labels_aligned']++;
-                } elseif ($dryRun) {
+                } elseif ($dryRun && ! $this->labelTakenOnProperty($expected['property_id'], $expected['label'], $keeper->id)) {
                     $summary['labels_aligned']++;
                 }
             }
@@ -659,6 +678,16 @@ final class PassionLegacyImportReconciliationService
             && $unit->floor === null
             && $unit->market_rent === null
             && $unit->available_from === null;
+    }
+
+    private function labelTakenOnProperty(int $propertyId, string $label, int $exceptUnitId): bool
+    {
+        return PropertyUnit::query()
+            ->withoutGlobalScopes()
+            ->where('property_id', $propertyId)
+            ->where('label', PassionLegacyTextNormalizer::normalizeUnitLabel($label))
+            ->where('id', '!=', $exceptUnitId)
+            ->exists();
     }
 
     /**

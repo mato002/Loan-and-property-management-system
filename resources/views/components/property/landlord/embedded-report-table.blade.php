@@ -52,13 +52,13 @@
                     @forelse ($tableRows as $row)
                         @php
                             $__filterText = mb_strtolower(implode(' ', array_map(static fn ($c) => strip_tags((string) $c), $row)));
-                            $__rowToneClass = \App\Support\Property\WorkspaceRowAlert::trClass(
-                                \App\Support\Property\WorkspaceRowAlert::inferFromRow(is_array($row) ? $row : [])
-                            );
+                            $__rowTone = \App\Support\Property\WorkspaceRowAlert::inferFromRow(is_array($row) ? $row : []);
+                            $__rowToneClass = \App\Support\Property\WorkspaceRowAlert::trClass($__rowTone);
+                            $__rowToneStyle = \App\Support\Property\WorkspaceRowAlert::cellStyle($__rowTone);
                         @endphp
-                        <tr class="border-t border-slate-100 dark:border-slate-700/80 {{ $__rowToneClass }}" data-filter-text="{{ e($__filterText) }}">
+                        <tr class="border-t border-slate-100 dark:border-slate-700/80 {{ $__rowToneClass }}" data-filter-text="{{ e($__filterText) }}" @if ($__rowToneStyle !== '') data-row-tone="{{ $__rowTone }}" @endif>
                             @foreach ($row as $cell)
-                                <td class="px-3 py-3 text-slate-700 dark:text-slate-200 align-top whitespace-normal break-words">
+                                <td class="px-3 py-3 text-slate-700 dark:text-slate-200 align-top whitespace-normal break-words" @if ($__rowToneStyle !== '') style="{{ $__rowToneStyle }}" @endif>
                                     @if ($cell instanceof \Illuminate\Support\HtmlString)
                                         {!! $cell !!}
                                     @else
