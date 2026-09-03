@@ -85,7 +85,7 @@ class LoanBookOperationsController extends Controller
             });
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $query)->orderByDesc('disbursed_at')->orderByDesc('id')->limit(5000)->get();
 
             return TabularExport::stream(
@@ -510,7 +510,7 @@ class LoanBookOperationsController extends Controller
         $this->scopeByAssignedLoanClient($entriesQuery, $request->user(), 'loan.loanClient');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $entriesQuery)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -897,7 +897,7 @@ class LoanBookOperationsController extends Controller
             ->pluck('branch');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             if ($reportMode === 'branch') {
                 $rows = (clone $byBranchQuery)->limit(5000)->get();
 
@@ -1009,7 +1009,7 @@ class LoanBookOperationsController extends Controller
         );
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $branchLabel = $selectedBranch ? (string) $selectedBranch->name : 'All branches';
 
             return TabularExport::stream(
@@ -1128,7 +1128,7 @@ class LoanBookOperationsController extends Controller
             ->keyBy('employee_id');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $agentsQuery)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -1271,7 +1271,7 @@ class LoanBookOperationsController extends Controller
             ->orderBy('branch');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $ratesQuery)->limit(5000)->get();
 
             return TabularExport::stream(

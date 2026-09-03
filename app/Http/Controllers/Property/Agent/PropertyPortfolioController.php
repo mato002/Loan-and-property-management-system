@@ -364,9 +364,13 @@ class PropertyPortfolioController extends Controller
 
         $rows = $q->orderBy('name')->get();
         $propertyChargeTemplatesByPropertyId = $this->allPropertyChargeTemplates();
+        $format = TabularExport::requestedFormat(
+            $request->query('export'),
+            $request->query('format'),
+        );
 
-        return CsvExport::stream(
-            'properties_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'properties_'.now()->format('Ymd_His'),
             ['ID', 'Name', 'Code', 'Address', 'City', 'Total Units', 'Occupied Units', 'Vacant Units', 'Utility charges', 'Landlords', 'Status'],
             function () use ($rows, $propertyChargeTemplatesByPropertyId) {
                 foreach ($rows as $p) {
@@ -392,7 +396,8 @@ class PropertyPortfolioController extends Controller
                         $status,
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 
@@ -1310,9 +1315,11 @@ class PropertyPortfolioController extends Controller
             ['label' => 'Your earnings ('.$periodLabel.')', 'value' => PropertyMoney::kes($agentEarningTotal), 'hint' => 'Commission estimate'],
         ];
 
-        if ((string) $request->query('export', '') === 'csv') {
-            return CsvExport::stream(
-                'landlords_'.now()->format('Ymd_His').'.csv',
+        if (in_array((string) $request->query('export', ''), ['csv', 'pdf', 'word'], true)) {
+            $format = TabularExport::requestedFormat($request->query('export'));
+
+            return TabularExport::stream(
+                'landlords_'.now()->format('Ymd_His'),
                 ['ID', 'Name', 'Email', 'Properties Linked', 'Ownership %', 'Owner Share', 'Pending Share', 'Agent Earning', 'Last Collection', 'Buildings'],
                 function () use ($landlords) {
                     foreach ($landlords as $u) {
@@ -1329,7 +1336,8 @@ class PropertyPortfolioController extends Controller
                             $u->landlordProperties->pluck('name')->join(', '),
                         ];
                     }
-                }
+                },
+                $format,
             );
         }
 
@@ -2134,7 +2142,7 @@ class PropertyPortfolioController extends Controller
                 $u->property->name,
                 $u->unitTypeLabel(),
                 $u->bedroomsLabel(),
-                PropertyMoney::kes((float) $u->rent_amount),
+                PropertyMoney::kes($u->listedRentAmount()),
                 UnitListPresentation::statusBadge($u, $hasActiveLease),
                 UnitListPresentation::tenantCell($u, $activeTenantName, $hasActiveLease),
                 $u->vacant_since?->format('Y-m-d') ?? '—',
@@ -2659,16 +2667,21 @@ class PropertyPortfolioController extends Controller
 
     public function unitListExport(Request $request)
     {
+        $format = strtolower(trim((string) $request->query('export', TabularExport::FORMAT_CSV)));
+        if (! in_array($format, [TabularExport::FORMAT_CSV, TabularExport::FORMAT_PDF, TabularExport::FORMAT_WORD], true)) {
+            $format = TabularExport::FORMAT_CSV;
+        }
+
         $includeArchived = $request->boolean('include_archived');
         $filters = $request->only([
             'q', 'property_id', 'status', 'unit_type', 'beds_min', 'beds_max', 'rent_min', 'rent_max',
         ]);
 
         $query = $this->applyOperationalUnitScope(PropertyUnit::query(), $includeArchived)->with([
-            'property',
+            'property:id,name,code',
             'leases' => function ($q) {
-                $q->where('pm_leases.status', \App\Models\PmLease::STATUS_ACTIVE)
-                    ->with('pmTenant:id,name')
+                $q->where('pm_leases.status', PmLease::STATUS_ACTIVE)
+                    ->with('pmTenant:id,name,phone,account_number')
                     ->orderBy('pm_leases.start_date')
                     ->orderBy('pm_leases.id');
             },
@@ -2706,28 +2719,44 @@ class PropertyPortfolioController extends Controller
             $query->where('rent_amount', '<=', (float) $filters['rent_max']);
         }
 
-        $rows = $query->orderBy('property_id')->orderBy('label')->get();
+        $rows = $query->get()->sortBy([
+            ['property_id', 'asc'],
+            fn (PropertyUnit $unit) => strtoupper((string) $unit->label),
+        ], SORT_NATURAL)->values();
 
-        return CsvExport::stream(
-            'property_units_'.now()->format('Ymd_His').'.csv',
-            ['ID', 'Property', 'Unit', 'Type', 'Bedrooms', 'Rent', 'Status', 'Tenant', 'Vacant Since'],
+        $headers = [
+            'Unit ID', 'Property Code', 'Property', 'Unit', 'Type', 'Bedrooms', 'Listed Rent',
+            'Status', 'Tenant', 'Tenant Phone', 'Tenant Account', 'Lease Rent', 'Vacant Since',
+        ];
+
+        return TabularExport::stream(
+            'property_units_'.now()->format('Ymd_His'),
+            $headers,
             function () use ($rows) {
                 foreach ($rows as $u) {
                     $activeLease = $u->leases->first();
-                    $activeTenantName = (string) ($activeLease?->pmTenant?->name ?? '');
+                    $tenant = $activeLease?->pmTenant;
+                    $activeTenantName = (string) ($tenant?->name ?? '');
+
                     yield [
                         $u->id,
-                        $u->property->name,
-                        $u->label,
+                        (string) ($u->property->code ?? ''),
+                        (string) ($u->property->name ?? ''),
+                        (string) $u->label,
                         $u->unitTypeLabel(),
                         $u->bedroomsLabel(),
-                        (float) $u->rent_amount,
-                        $u->status,
+                        number_format($u->listedRentAmount(), 2, '.', ''),
+                        (string) $u->status,
                         $activeTenantName !== '' ? $activeTenantName : ($u->status === PropertyUnit::STATUS_OCCUPIED ? 'No active lease' : ''),
-                        optional($u->vacant_since)->format('Y-m-d'),
+                        (string) ($tenant?->phone ?? ''),
+                        (string) ($tenant?->account_number ?? ''),
+                        $activeLease ? number_format((float) $activeLease->monthly_rent, 2, '.', '') : '',
+                        $u->vacant_since?->format('Y-m-d') ?? '',
                     ];
                 }
-            }
+            },
+            $format,
+            ['title' => 'Unit status export'],
         );
     }
 

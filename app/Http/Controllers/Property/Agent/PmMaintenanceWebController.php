@@ -12,6 +12,7 @@ use App\Models\Property;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Support\CsvExport;
+use App\Support\TabularExport;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
 use Illuminate\Database\Eloquent\Builder;
@@ -120,9 +121,10 @@ class PmMaintenanceWebController extends Controller
     {
         $filters = $request->only(['q', 'status', 'urgency', 'unit_id', 'from', 'to', 'sort', 'dir']);
         $rows = $this->requestsQuery($filters)->get();
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
-        return CsvExport::stream(
-            'maintenance_requests_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'maintenance_requests_'.now()->format('Ymd_His'),
             ['ID', 'Unit', 'Category', 'Description', 'Urgency', 'Status', 'Reported By', 'Created At'],
             function () use ($rows) {
                 foreach ($rows as $r) {
@@ -137,7 +139,8 @@ class PmMaintenanceWebController extends Controller
                         optional($r->created_at)->format('Y-m-d H:i:s'),
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 
@@ -358,9 +361,10 @@ class PmMaintenanceWebController extends Controller
     {
         $filters = $request->only(['q', 'status', 'vendor_id', 'from', 'to', 'sort', 'dir']);
         $rows = $this->jobsQuery($filters)->get();
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
-        return CsvExport::stream(
-            'maintenance_jobs_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'maintenance_jobs_'.now()->format('Ymd_His'),
             ['ID', 'Unit', 'Vendor', 'Quote', 'Status', 'Completed At', 'Notes'],
             function () use ($rows) {
                 foreach ($rows as $j) {
@@ -374,7 +378,8 @@ class PmMaintenanceWebController extends Controller
                         $j->notes,
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 

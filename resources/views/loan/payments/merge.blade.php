@@ -44,10 +44,9 @@
                 <button type="submit" class="h-10 rounded-lg bg-[#2f4f4f] px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#264040] transition-colors">Filter</button>
                 <a href="{{ route('loan.payments.merge') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
                 <div class="ml-auto flex flex-wrap items-center gap-2">
-                    <a href="{{ route('loan.payments.merge', array_merge(request()->except('export'), ['export' => 'csv'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                    @include('partials.export_dropdown')
                     <a href="{{ route('loan.payments.merge', array_merge(request()->except('export'), ['export' => 'xls'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
-                    <a href="{{ route('loan.payments.merge', array_merge(request()->except('export'), ['export' => 'pdf'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
-                </div>
+                    </div>
             </div>
         </form>
 

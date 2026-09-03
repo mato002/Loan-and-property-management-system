@@ -10,9 +10,7 @@
 >
     <x-slot name="actions">
         <button type="button" onclick="window.print()" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Print</button>
-        <a href="{{ url()->current().'?'.http_build_query(array_filter(array_merge(request()->query(), ['export' => 'csv']))) }}" data-turbo="false" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Export CSV</a>
-        <a href="{{ url()->current().'?'.http_build_query(array_filter(array_merge(request()->query(), ['export' => 'xls']))) }}" data-turbo="false" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Export XLS</a>
-        <a href="{{ url()->current().'?'.http_build_query(array_filter(array_merge(request()->query(), ['export' => 'pdf']))) }}" data-turbo="false" class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700">Export PDF</a>
+        @include('property.agent.partials.table_export_dropdown', ['current' => true, 'formats' => \App\Support\TableExportLinks::STANDARD_FORMATS])
     </x-slot>
 
     @php

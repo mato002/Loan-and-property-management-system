@@ -39,7 +39,7 @@ class PropertyActivityLogController extends Controller
         }
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $items = $queryService->collectForExport($filters);
 
             return TabularExport::stream(

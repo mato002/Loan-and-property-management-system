@@ -30,7 +30,7 @@
         <span class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Export</span>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-4 md:flex md:flex-wrap md:items-center md:gap-2">
             @if ($canExportCommunications ?? true)
-                <a href="{{ route('loan.communications.messages.export', array_merge($exportQuery, ['format' => 'csv']), absolute: false) }}" data-turbo="false" class="{{ $quickFilterLinkClass }} border-indigo-300 text-indigo-700 hover:bg-indigo-50">CSV</a>
+                @include('partials.export_dropdown')
                 <a href="{{ route('loan.communications.messages.export', array_merge($exportQuery, ['format' => 'xls']), absolute: false) }}" data-turbo="false" class="{{ $quickFilterLinkClass }} border-indigo-300 text-indigo-700 hover:bg-indigo-50">Excel</a>
                 <a href="{{ route('loan.communications.messages.export', array_merge($exportQuery, ['format' => 'pdf']), absolute: false) }}" data-turbo="false" class="{{ $quickFilterLinkClass }} border-indigo-300 text-indigo-700 hover:bg-indigo-50">PDF</a>
             @else

@@ -64,7 +64,7 @@ class SuperAdminUserController extends Controller
         ];
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = User::query()
                 ->when($q !== '', fn ($query) => $query->where(function ($qq) use ($q) {
                     $qq->where('name', 'like', "%{$q}%")

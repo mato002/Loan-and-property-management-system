@@ -134,7 +134,7 @@ class LoanEmployeesController extends Controller
             ->orderBy('first_name');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $employeesQuery)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -641,7 +641,7 @@ class LoanEmployeesController extends Controller
             ->orderByDesc('start_date');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $leavesQuery)->limit(5000)->get();
             $baseHeadings = ['Employee', 'Employee #', 'Type', 'Start date', 'End date', 'Days', 'Status', 'Notes'];
             $dynamicHeadings = collect($custom)
@@ -777,7 +777,7 @@ class LoanEmployeesController extends Controller
             ->orderBy('name');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $groupsQuery)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -958,7 +958,7 @@ class LoanEmployeesController extends Controller
             ->orderBy('portfolio_code');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $portfoliosQuery)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -1092,7 +1092,7 @@ class LoanEmployeesController extends Controller
             ->orderByDesc('created_at');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $applicationsQuery)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -1205,7 +1205,7 @@ class LoanEmployeesController extends Controller
             ->orderByDesc('created_at');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $loansQuery)->limit(5000)->get();
 
             return TabularExport::stream(

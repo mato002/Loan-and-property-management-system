@@ -111,7 +111,7 @@
             <a href="{{ route('property.landlords.index', absolute: false) }}" class="inline-flex min-h-[40px] items-center rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All landlords</a>
             <a href="{{ route('property.landlords.index', array_merge((array) ($filters ?? []), ['linked' => 'linked']), absolute: false) }}" class="inline-flex min-h-[40px] items-center rounded-lg border border-indigo-300 px-3 py-2 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Linked only</a>
             <a href="{{ route('property.landlords.index', array_merge((array) ($filters ?? []), ['linked' => 'unlinked']), absolute: false) }}" class="inline-flex min-h-[40px] items-center rounded-lg border border-amber-300 px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50">Unlinked only</a>
-            <a href="{{ route('property.landlords.index', array_merge(request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="inline-flex min-h-[40px] items-center rounded-lg border border-emerald-300 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Export CSV</a>
+            @include('property.agent.partials.table_export_dropdown', ['route' => 'property.landlords.index', 'query' => request()->query()])
         </div>
     </x-slot>
 

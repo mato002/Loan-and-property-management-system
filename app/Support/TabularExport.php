@@ -16,6 +16,19 @@ class TabularExport
     public const FORMAT_PDF = 'pdf';
     public const FORMAT_WORD = 'word';
 
+    /** @var list<string> */
+    public const TABLE_FORMATS = [self::FORMAT_CSV, self::FORMAT_PDF, self::FORMAT_WORD];
+
+    /** @var list<string> */
+    public const REVENUE_FORMATS = [self::FORMAT_CSV, 'xls', self::FORMAT_PDF, self::FORMAT_WORD];
+
+    public static function requestedFormat(?string $export, ?string $format = null, string $default = self::FORMAT_CSV): string
+    {
+        $resolved = strtolower(trim((string) ($export ?: $format ?: $default)));
+
+        return in_array($resolved, self::REVENUE_FORMATS, true) ? $resolved : $default;
+    }
+
     /**
      * @param  list<string>  $headers
      * @param  Closure(): iterable<array<int, scalar|null>>  $rows

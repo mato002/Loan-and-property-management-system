@@ -87,7 +87,7 @@ class LoanClientsController extends Controller
         }
 
         $export = strtolower(trim((string) $request->query('export', '')));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $q)->limit(5000)->get();
             $requestedCols = collect(explode(',', (string) $request->query('cols', '')))
                 ->map(fn (string $col): string => trim($col))
@@ -863,7 +863,7 @@ class LoanClientsController extends Controller
             ->get();
 
         $export = strtolower(trim((string) $request->query('export', '')));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             return TabularExport::stream(
                 'loan-client-transfers-'.now()->format('Ymd_His'),
                 ['Date', 'Client', 'Client Number', 'From Branch', 'To Branch', 'From Officer', 'To Officer', 'Transferred By', 'Reason'],
@@ -1094,7 +1094,7 @@ class LoanClientsController extends Controller
         $members = $memberQuery->paginate(30)->withQueryString();
 
         $export = strtolower(trim((string) $request->query('export', '')));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $memberQuery)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -1264,7 +1264,7 @@ class LoanClientsController extends Controller
             ->orderByDesc('interacted_at');
 
         $export = strtolower(trim((string) $request->query('export', '')));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $q)->limit(5000)->get();
 
             return TabularExport::stream(

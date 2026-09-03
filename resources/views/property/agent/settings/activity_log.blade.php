@@ -64,10 +64,7 @@
                     </select>
                 </div>
                 <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Apply</button>
-                <a
-                    href="{{ route('property.settings.activity_log', array_merge($filters ?? [], ['export' => 'csv'])) }}"
-                    class="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                >Export CSV</a>
+                @include('property.agent.partials.table_export_dropdown', ['current' => true, 'formats' => \App\Support\TableExportLinks::STANDARD_FORMATS])
             </form>
             <p class="mt-2 text-xs text-slate-500">
                 Includes portal actions, finance/accounting audits, utility billing, invoice lifecycle events, login records, and new activity entries (lease edits, settings changes).

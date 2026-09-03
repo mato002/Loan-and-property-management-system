@@ -183,7 +183,7 @@ class LoanBookLoansController extends Controller
         );
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $requestedCols = array_values(array_filter(array_map(
                 'trim',
                 explode(',', (string) $request->query('cols', ''))
@@ -360,7 +360,7 @@ class LoanBookLoansController extends Controller
                 ->when($to !== '', fn (Builder $builder) => $builder->whereDate('disbursed_at', '<=', $to));
 
             $export = strtolower((string) $request->query('export', ''));
-            if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+            if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
                 $rows = (clone $query)->orderByDesc('dpd')->limit(5000)->get();
 
                 return TabularExport::stream(
@@ -636,7 +636,7 @@ class LoanBookLoansController extends Controller
             ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch));
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $query)->orderByDesc('balance')->limit(5000)->get();
 
             return TabularExport::stream(

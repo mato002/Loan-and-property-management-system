@@ -11,6 +11,7 @@ use App\Models\PmPayment;
 use App\Models\PmTenant;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
+use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -55,37 +56,31 @@ class PmTenantDirectoryController extends Controller
         $tenants = $this->buildTenantDirectoryQuery($request)
             ->orderBy('name')
             ->get();
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
-        $filename = 'tenant_directory_'.now()->format('Ymd_His').'.csv';
-        $headers = ['Content-Type' => 'text/csv; charset=UTF-8'];
+        return TabularExport::stream(
+            'tenant_directory_'.now()->format('Ymd_His'),
+            ['name', 'phone', 'email', 'national_id', 'risk_level', 'portal_login', 'leases_count', 'lease_end'],
+            function () use ($tenants): \Generator {
+                foreach ($tenants as $tenant) {
+                    $leaseEnd = $tenant->leases_max_end_date
+                        ? (string) Carbon::parse((string) $tenant->leases_max_end_date)->format('Y-m-d')
+                        : '';
 
-        return response()->streamDownload(function () use ($tenants): void {
-            $out = fopen('php://output', 'wb');
-            if ($out === false) {
-                return;
-            }
-
-            fputcsv($out, ['name', 'phone', 'email', 'national_id', 'risk_level', 'portal_login', 'leases_count', 'lease_end']);
-
-            foreach ($tenants as $tenant) {
-                $leaseEnd = $tenant->leases_max_end_date
-                    ? (string) Carbon::parse((string) $tenant->leases_max_end_date)->format('Y-m-d')
-                    : '';
-
-                fputcsv($out, [
-                    (string) $tenant->name,
-                    (string) ($tenant->phone ?? ''),
-                    (string) ($tenant->email ?? ''),
-                    (string) ($tenant->national_id ?? ''),
-                    (string) ($tenant->risk_level ?? 'normal'),
-                    $tenant->user_id ? 'yes' : 'no',
-                    (string) ($tenant->leases_count ?? 0),
-                    $leaseEnd,
-                ]);
-            }
-
-            fclose($out);
-        }, $filename, $headers);
+                    yield [
+                        (string) $tenant->name,
+                        (string) ($tenant->phone ?? ''),
+                        (string) ($tenant->email ?? ''),
+                        (string) ($tenant->national_id ?? ''),
+                        (string) ($tenant->risk_level ?? 'normal'),
+                        $tenant->user_id ? 'yes' : 'no',
+                        (string) ($tenant->leases_count ?? 0),
+                        $leaseEnd,
+                    ];
+                }
+            },
+            $format,
+        );
     }
 
     public function importForm(): View

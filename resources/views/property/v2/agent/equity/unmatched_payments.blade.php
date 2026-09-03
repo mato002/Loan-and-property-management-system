@@ -56,15 +56,11 @@
                     Auto re-match all
                 </button>
             </form>
-            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'csv'])) }}" data-turbo="false" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                Export CSV
-            </a>
-            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'xls'])) }}" data-turbo="false" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                Export XLS
-            </a>
-            <a href="{{ route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'pdf'])) }}" data-turbo="false" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-                Export PDF
-            </a>
+            @include('property.agent.partials.export_dropdown', [
+                'csvUrl' => route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'csv'])),
+                'xlsUrl' => route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'xls'])),
+                'pdfUrl' => route('property.equity.unmatched.export', array_merge(request()->query(), ['format' => 'pdf'])),
+            ])
             <a href="{{ route('property.equity.matched', request()->only(['q', 'name', 'from', 'to', 'source'])) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                 View Matched Payments
             </a>

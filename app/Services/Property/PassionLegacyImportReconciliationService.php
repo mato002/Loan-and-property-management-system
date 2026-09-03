@@ -64,7 +64,11 @@ final class PassionLegacyImportReconciliationService
                 'property_id' => $property->id,
                 'label' => $label,
                 'status' => $record['status'],
-                'rent_amount' => (float) ($record['current_rent'] ?? 0),
+                'rent_amount' => PassionLegacyTextNormalizer::resolveImportedRentAmount(
+                    $record['market_rent'] ?? null,
+                    $record['current_rent'] ?? null,
+                    $record['status'],
+                ),
                 'market_rent' => isset($record['market_rent']) ? (float) $record['market_rent'] : null,
                 'bedrooms' => (int) ($record['bedrooms'] ?? 0),
                 'unit_type' => PassionLegacyTextNormalizer::inferUnitType($record['unit_type_text'] ?? null, (int) ($record['bedrooms'] ?? 0))
@@ -330,17 +334,37 @@ final class PassionLegacyImportReconciliationService
     {
         foreach ($expectedUnits as $expected) {
             $unit = $this->findUnitOnProperty($expected['property_id'], $expected['label']);
-            if (! $unit || $unit->status === $expected['status']) {
+            if (! $unit) {
+                continue;
+            }
+
+            $updates = [];
+            if ($unit->status !== $expected['status']) {
+                $updates['status'] = $expected['status'];
+                $updates['vacant_since'] = $expected['status'] === PropertyUnit::STATUS_VACANT
+                    ? ($unit->vacant_since ?? now()->toDateString())
+                    : null;
+            }
+
+            if ((float) $unit->rent_amount !== (float) $expected['rent_amount']) {
+                $updates['rent_amount'] = $expected['rent_amount'];
+            }
+
+            if ($expected['market_rent'] !== null && (float) ($unit->market_rent ?? 0) !== (float) $expected['market_rent']) {
+                $updates['market_rent'] = $expected['market_rent'];
+            }
+
+            if (! PassionLegacyTextNormalizer::unitLabelsMatch($unit->label, $expected['label'])) {
+                $updates['label'] = $expected['label'];
+                $summary['labels_aligned']++;
+            }
+
+            if ($updates === []) {
                 continue;
             }
 
             if (! $dryRun) {
-                $unit->update([
-                    'status' => $expected['status'],
-                    'vacant_since' => $expected['status'] === PropertyUnit::STATUS_VACANT
-                        ? ($unit->vacant_since ?? now()->toDateString())
-                        : null,
-                ]);
+                $unit->update($updates);
             }
 
             $summary['statuses_synced']++;
@@ -465,7 +489,7 @@ final class PassionLegacyImportReconciliationService
             ->withoutGlobalScopes()
             ->where('property_id', $propertyId)
             ->get()
-            ->first(fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::unitLabelsMatch($unit->label, $label));
+            ->first(fn (PropertyUnit $unit) => PassionLegacyTextNormalizer::registerUnitLabelMatch($label, $unit->label));
     }
 
     /**

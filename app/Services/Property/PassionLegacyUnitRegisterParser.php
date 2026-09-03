@@ -158,7 +158,7 @@ final class PassionLegacyUnitRegisterParser
         $unitLabel = PassionLegacyTextNormalizer::normalizeUnitLabel($match[1]);
         $rest = trim($match[2]);
 
-        if (! preg_match('/^(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(.*?)\s+(\d+)\s+(Occupied|Vacant|Owner\s*Occupied)\s*(\d{2}\/\d{2}\/\d{4})?\s*$/i', $rest, $tail)) {
+        if (! preg_match('/^(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+([\d,]+\.\d{2}))?\s+(.*?)\s+(\d+)\s+(Occupied|Vacant|Owner\s*Occupied)\s*(\d{2}\/\d{2}\/\d{4})?\s*$/i', $rest, $tail)) {
             return null;
         }
 
@@ -166,7 +166,9 @@ final class PassionLegacyUnitRegisterParser
         $propertyName = $fallbackProperty;
         $tenantName = null;
 
-        if (preg_match('/^(.+?\([^)]+\))\s+(.+)$/', $beforeAmounts, $split)) {
+        if (preg_match('/^(.+?\([^)]+\))$/', trim($beforeAmounts))) {
+            $propertyName = trim($beforeAmounts);
+        } elseif (preg_match('/^(.+?\([^)]+\))\s+(.+)$/', $beforeAmounts, $split)) {
             $propertyName = trim($split[1]);
             $tenantName = PassionLegacyTextNormalizer::cleanTenantName($split[2]);
         } elseif (preg_match('/^(.+?APPARTMENT\s+[AB])\s+(.+)$/i', $beforeAmounts, $split)) {
@@ -183,8 +185,9 @@ final class PassionLegacyUnitRegisterParser
             $tenantName = isset($parts[1]) ? PassionLegacyTextNormalizer::cleanTenantName($parts[1]) : null;
         }
 
-        $meta = trim($tail[4]);
-        $bedrooms = (int) $tail[5];
+        $amounts = $this->parseRegisterAmounts($tail);
+        $meta = trim($tail[5]);
+        $bedrooms = (int) $tail[6];
         $floor = null;
         $typeText = $meta;
         if (preg_match('/^(\d+)\s+(.*)$/', $meta, $metaMatch)) {
@@ -195,7 +198,7 @@ final class PassionLegacyUnitRegisterParser
             $typeText = '';
         }
 
-        if (preg_match('/owner/i', (string) $tail[6])) {
+        if (preg_match('/owner/i', (string) $tail[7])) {
             $tenantName = null;
         }
 
@@ -203,15 +206,66 @@ final class PassionLegacyUnitRegisterParser
             'property_name' => trim($propertyName),
             'unit_label' => $unitLabel,
             'tenant_name' => $tenantName !== '' ? $tenantName : null,
-            'legacy_area' => PassionLegacyTextNormalizer::parseMoney($tail[2]),
-            'market_rent' => PassionLegacyTextNormalizer::parseMoney($tail[3]),
-            'current_rent' => PassionLegacyTextNormalizer::parseMoney($tail[3]),
+            'legacy_area' => $amounts['legacy_area'],
+            'market_rent' => $amounts['market_rent'],
+            'current_rent' => $amounts['current_rent'],
             'floor' => $floor !== '' ? $floor : null,
             'unit_type_text' => $typeText !== '' ? $typeText : null,
             'bedrooms' => $bedrooms,
             'furnished' => false,
-            'status' => PassionLegacyTextNormalizer::mapUnitStatus($tail[6]),
-            'available_from' => PassionLegacyTextNormalizer::parseLegacyDate($tail[7] ?? null),
+            'status' => PassionLegacyTextNormalizer::mapUnitStatus($tail[7]),
+            'available_from' => PassionLegacyTextNormalizer::parseLegacyDate($tail[8] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $tail
+     * @return array{legacy_area: ?float, market_rent: ?float, current_rent: ?float}
+     */
+    private function parseRegisterAmounts(array $tail): array
+    {
+        $first = PassionLegacyTextNormalizer::parseMoney($tail[2]);
+        $second = PassionLegacyTextNormalizer::parseMoney($tail[3]);
+        $third = isset($tail[4]) && preg_match('/^[\d,]+\.\d{2}$/', trim((string) $tail[4])) === 1
+            ? PassionLegacyTextNormalizer::parseMoney($tail[4])
+            : null;
+
+        if ($third !== null) {
+            return [
+                'legacy_area' => $first,
+                'market_rent' => $second,
+                'current_rent' => $third,
+            ];
+        }
+
+        if ($first === 0.0) {
+            return [
+                'legacy_area' => 0.0,
+                'market_rent' => $second,
+                'current_rent' => $second,
+            ];
+        }
+
+        if ($first === $second) {
+            return [
+                'legacy_area' => $first,
+                'market_rent' => $second,
+                'current_rent' => $second,
+            ];
+        }
+
+        if ($first > $second) {
+            return [
+                'legacy_area' => 0.0,
+                'market_rent' => $first,
+                'current_rent' => $second,
+            ];
+        }
+
+        return [
+            'legacy_area' => $first,
+            'market_rent' => $second,
+            'current_rent' => $second,
         ];
     }
 

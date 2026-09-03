@@ -553,7 +553,7 @@
                         </td>
                         <td class="px-4 py-3 capitalize">{{ $unitModel->status }}</td>
                         <td class="px-4 py-3">{{ $lease?->pmTenant?->name ?? '—' }}</td>
-                        <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $unitModel->rent_amount) }}</td>
+                        <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($unitModel->listedRentAmount()) }}</td>
                     </tr>
                 @endforeach
             </tbody>

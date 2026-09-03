@@ -178,7 +178,7 @@ class PropertyReportsController extends Controller
         }
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             return $this->exportTenantStatements($exportRows, $export);
         }
 
@@ -500,7 +500,7 @@ class PropertyReportsController extends Controller
         }
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             return $this->exportLandlordStatements($exportRows, $export);
         }
 
@@ -674,7 +674,7 @@ class PropertyReportsController extends Controller
         }
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true) && (! empty($payload['exportRows']) || ! empty($payload['tableRows']))) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true) && (! empty($payload['exportRows']) || ! empty($payload['tableRows']))) {
             $columns = (array) ($payload['exportColumns'] ?? $payload['columns'] ?? []);
             $rows = (array) ($payload['exportRows'] ?? $payload['tableRows'] ?? []);
             $safeTitle = preg_replace('/[^a-z0-9\-]+/i', '-', (string) ($report['title'] ?? 'report'));
@@ -759,13 +759,22 @@ class PropertyReportsController extends Controller
 
         $report = $reports[$reportKey];
         $payload = ($report['builder'])();
-        $columns = $payload['columns'] ?? [];
-        $rows = $payload['tableRows'] ?? [];
+        $columns = array_values((array) ($payload['exportColumns'] ?? $payload['columns'] ?? []));
+        $rows = array_values((array) ($payload['exportRows'] ?? $payload['tableRows'] ?? []));
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
         $safeTitle = preg_replace('/[^a-z0-9\-]+/i', '-', (string) ($report['title'] ?? 'report'));
-        $filename = strtolower(trim((string) $safeTitle, '-')).'.csv';
 
-		return $this->csvExporter->stream($columns, $rows, $filename);
+        return TabularExport::stream(
+            strtolower(trim((string) $safeTitle, '-')),
+            $columns,
+            function () use ($rows) {
+                foreach ($rows as $row) {
+                    yield array_values((array) $row);
+                }
+            },
+            $format,
+        );
     }
 
     /**

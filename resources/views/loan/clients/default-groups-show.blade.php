@@ -10,10 +10,9 @@
             <a href="{{ route('loan.clients.default_groups') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
                 All groups
             </a>
-            <a href="{{ route('loan.clients.default_groups.show', array_merge(['default_client_group' => $default_client_group->id], request()->query(), ['export' => 'csv'])) }}" class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
-            <a href="{{ route('loan.clients.default_groups.show', array_merge(['default_client_group' => $default_client_group->id], request()->query(), ['export' => 'xls'])) }}" class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
-            <a href="{{ route('loan.clients.default_groups.show', array_merge(['default_client_group' => $default_client_group->id], request()->query(), ['export' => 'pdf'])) }}" class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
-        </x-slot>
+            @include('partials.export_dropdown')
+                    <a href="{{ route('loan.clients.default_groups.show', array_merge(['default_client_group' => $default_client_group->id], request()->query(), ['export' => 'xls'])) }}" class="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+            </x-slot>
 
         @if ($default_client_group->description)
             <p class="text-sm text-slate-600 max-w-3xl">{{ $default_client_group->description }}</p>

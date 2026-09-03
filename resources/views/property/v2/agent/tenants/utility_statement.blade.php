@@ -22,7 +22,10 @@
             <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[44px]" aria-label="From date" />
             <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-h-[44px]" aria-label="To date" />
             <button type="submit" class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 min-h-[44px]">Apply range</button>
-            <a href="{{ route('property.tenants.utility.statement', array_merge(['tenant' => $tenant->id], request()->query(), ['export' => 'csv']), false) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 min-h-[44px] inline-flex items-center">Export CSV</a>
+            @include('property.agent.partials.export_dropdown', [
+                'csvUrl' => route('property.tenants.utility.statement', array_merge(['tenant' => $tenant->id], request()->query(), ['export' => 'csv']), false),
+                'pdfUrl' => route('property.tenants.utility.statement', array_merge(['tenant' => $tenant->id], request()->query(), ['export' => 'pdf']), false),
+            ])
         </form>
     </x-slot>
 

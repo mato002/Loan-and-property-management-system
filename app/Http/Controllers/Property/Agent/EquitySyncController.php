@@ -78,7 +78,7 @@ class EquitySyncController extends Controller
         $query->orderBy($sortBy, $sortDir)->orderByDesc('id');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $query)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -202,33 +202,36 @@ class EquitySyncController extends Controller
         $hasPaymentMethod = Schema::hasColumn('unassigned_payments', 'payment_method');
         $query = $this->buildUnmatchedQuery($request, $hasPaymentMethod);
         $messageMaps = $this->loadUnmatchedMessageMaps((clone $query)->pluck('transaction_id')->all());
-        $format = strtolower((string) $request->query('format', 'csv'));
-        if ($format === 'pdf') {
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
+        $headers = ['Date', 'Transaction', 'Payer name', 'Amount', 'Account', 'Phone', 'Source', 'Message', 'Reason'];
+        $rowsClosure = function () use ($query, $hasPaymentMethod, $messageMaps) {
+            foreach ($query->cursor() as $item) {
+                $this->enrichUnmatchedItem(
+                    $item,
+                    $hasPaymentMethod,
+                    $messageMaps['ingests'],
+                    $messageMaps['payment_messages']
+                );
+                yield [
+                    optional($item->created_at)->format('Y-m-d H:i:s'),
+                    (string) $item->transaction_id,
+                    (string) ($item->payer_name ?? ''),
+                    number_format((float) $item->amount, 2, '.', ''),
+                    (string) ($item->account_number ?? ''),
+                    (string) ($item->phone ?? ''),
+                    (string) ($item->source_label ?? 'Equity'),
+                    (string) ($item->display_message ?? ''),
+                    (string) ($item->reason ?? ''),
+                ];
+            }
+        };
+
+        if (in_array($format, [TabularExport::FORMAT_PDF, TabularExport::FORMAT_WORD], true)) {
             return TabularExport::stream(
                 'unmatched-payments-'.now()->format('Ymd_His'),
-                ['Date', 'Transaction', 'Payer name', 'Amount', 'Account', 'Phone', 'Source', 'Message', 'Reason'],
-                function () use ($query, $hasPaymentMethod, $messageMaps) {
-                    foreach ($query->cursor() as $item) {
-                        $this->enrichUnmatchedItem(
-                            $item,
-                            $hasPaymentMethod,
-                            $messageMaps['ingests'],
-                            $messageMaps['payment_messages']
-                        );
-                        yield [
-                            optional($item->created_at)->format('Y-m-d H:i:s'),
-                            (string) $item->transaction_id,
-                            (string) ($item->payer_name ?? ''),
-                            number_format((float) $item->amount, 2, '.', ''),
-                            (string) ($item->account_number ?? ''),
-                            (string) ($item->phone ?? ''),
-                            (string) ($item->source_label ?? 'Equity'),
-                            (string) ($item->display_message ?? ''),
-                            (string) ($item->reason ?? ''),
-                        ];
-                    }
-                },
-                'pdf'
+                $headers,
+                $rowsClosure,
+                $format,
             );
         }
 
@@ -704,7 +707,7 @@ class EquitySyncController extends Controller
         $query->orderBy($sortBy, $sortDir)->orderByDesc('id');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $query)->limit(10000)->get();
 
             return TabularExport::stream(

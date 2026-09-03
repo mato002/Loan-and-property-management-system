@@ -1493,7 +1493,7 @@ SQL;
         ];
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             return $this->leaseListExportResponse($activeTab, $filters, $export);
         }
 

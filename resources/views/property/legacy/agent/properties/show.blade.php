@@ -530,7 +530,7 @@
                         <td class="px-4 py-3 capitalize text-slate-700">{{ $u->status }}</td>
                         <td class="px-4 py-3 text-slate-700">{{ $u->tenant_name ?: '—' }}</td>
                         <td class="px-4 py-3 text-slate-600 whitespace-nowrap">{{ $u->tenant_phone ?: '—' }}</td>
-                        <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->rent_amount) }}</td>
+                        <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($u->listedRentAmount()) }}</td>
                         <td class="px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
                         @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
                             <td class="px-4 py-3">

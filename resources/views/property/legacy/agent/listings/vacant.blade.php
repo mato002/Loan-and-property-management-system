@@ -70,8 +70,8 @@
                             implode(' ', [
                                 (string) $u->label,
                                 (string) $u->property->name,
-                                (string) $u->rent_amount,
-                                \App\Services\Property\PropertyMoney::kes((float) $u->rent_amount),
+                                (string) $u->listedRentAmount(),
+                                \App\Services\Property\PropertyMoney::kes($u->listedRentAmount()),
                                 $u->vacant_since?->format('Y-m-d') ?? '',
                                 (string) $u->publicImages->count(),
                                 $statusWord,
@@ -84,7 +84,7 @@
                     >
                         <td class="px-3 sm:px-4 py-3 text-slate-900 dark:text-white font-medium">{{ $u->label }}</td>
                         <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200">{{ $u->property->name }}</td>
-                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $u->rent_amount) }}</td>
+                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes($u->listedRentAmount()) }}</td>
                         <td class="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-400">{{ $u->vacant_since?->format('Y-m-d') ?? '—' }}</td>
                         <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 tabular-nums">{{ $u->publicImages->count() }}</td>
                         <td class="px-3 sm:px-4 py-3">

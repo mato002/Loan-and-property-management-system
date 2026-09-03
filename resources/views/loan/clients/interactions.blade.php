@@ -44,10 +44,9 @@
                 <x-primary-button type="submit" class="h-10">{{ __('Filter') }}</x-primary-button>
                 <a href="{{ route('loan.clients.interactions') }}" class="inline-flex h-10 items-center rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors">Reset</a>
                 <div class="flex items-center gap-2">
-                    <a href="{{ route('loan.clients.interactions', array_merge(request()->query(), ['export' => 'csv'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
+                    @include('partials.export_dropdown')
                     <a href="{{ route('loan.clients.interactions', array_merge(request()->query(), ['export' => 'xls'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
-                    <a href="{{ route('loan.clients.interactions', array_merge(request()->query(), ['export' => 'pdf'])) }}" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
-                </div>
+                    </div>
             </div>
         </form>
 

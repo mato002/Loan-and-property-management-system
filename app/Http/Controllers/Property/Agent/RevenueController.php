@@ -129,7 +129,7 @@ class RevenueController extends Controller
         });
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             return TabularExport::stream(
                 'rent-roll-'.now()->format('Ymd_His'),
                 ['Unit', 'Tenant', 'Period', 'Rent due', 'Other charges', 'Paid', 'Balance', 'Status'],
@@ -237,7 +237,7 @@ class RevenueController extends Controller
 
         $rows = $rows->values();
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             return TabularExport::stream(
                 'uninvoiced-leases-'.$month.'-'.now()->format('Ymd_His'),
                 ['Tenant', 'Property', 'Unit', 'Lease rent (unit share)', 'Invoiced', 'To bill', 'Due date', 'Status', 'Lease'],
@@ -650,7 +650,7 @@ class RevenueController extends Controller
             ->values();
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $exportRows = $this->hydrateArrearsTenantRows($aggregated, $tableQuery);
 
             return TabularExport::stream(
@@ -968,7 +968,7 @@ class RevenueController extends Controller
         })->all();
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $exportInvoices = $invoices;
 
             return TabularExport::stream(
@@ -1551,7 +1551,7 @@ class RevenueController extends Controller
         $query->orderBy($sortBy, $dir)->orderByDesc('id');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $exportRows = (clone $query)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -1709,7 +1709,7 @@ class RevenueController extends Controller
         $query->orderBy($sortBy, $dir)->orderByDesc('id');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $items = (clone $query)->limit(5000)->get();
 
             return TabularExport::stream(

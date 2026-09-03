@@ -53,10 +53,9 @@
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
                         <span class="text-[11px] font-semibold uppercase text-slate-500 mr-1">Export</span>
-                        <a href="{{ route('loan.payments.report', array_merge(request()->except('export'), ['export' => 'csv'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">CSV</a>
-                        <a href="{{ route('loan.payments.report', array_merge(request()->except('export'), ['export' => 'xls'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
-                        <a href="{{ route('loan.payments.report', array_merge(request()->except('export'), ['export' => 'pdf'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">PDF</a>
-                    </div>
+                        @include('partials.export_dropdown')
+                    <a href="{{ route('loan.payments.report', array_merge(request()->except('export'), ['export' => 'xls'])) }}" data-turbo="false" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Excel</a>
+                        </div>
                 </div>
             </form>
         </div>

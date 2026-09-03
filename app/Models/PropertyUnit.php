@@ -122,6 +122,22 @@ class PropertyUnit extends Model
         return $this->belongsTo(Property::class);
     }
 
+    public function listedRentAmount(): float
+    {
+        $current = (float) ($this->rent_amount ?? 0);
+        $market = (float) ($this->market_rent ?? 0);
+
+        if ($this->status === self::STATUS_VACANT) {
+            return $market > 0 ? $market : $current;
+        }
+
+        if ($market <= 0) {
+            return $current;
+        }
+
+        return max($current, $market);
+    }
+
     public function leases(): BelongsToMany
     {
         return $this->belongsToMany(PmLease::class, 'pm_lease_unit', 'property_unit_id', 'pm_lease_id');

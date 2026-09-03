@@ -18,7 +18,7 @@
                 <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['status' => 'closed']), absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">Closed</a>
                 <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['risk' => 'denied']), absolute: false) }}" class="rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">Denied actions</a>
                 <a href="{{ route('property.tenants.notices', array_merge((array) ($filters ?? []), ['risk' => 'escalated']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">Escalations</a>
-                <a href="{{ route('property.tenants.notices.export', (array) ($filters ?? []), absolute: false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
+                @include('property.agent.partials.table_export_dropdown', ['route' => 'property.tenants.notices.export', 'query' => (array) ($filters ?? [])])
             </div>
         </div>
 

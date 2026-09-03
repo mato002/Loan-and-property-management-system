@@ -121,6 +121,16 @@ final class PassionLegacyTextNormalizer
             return true;
         }
 
+        if (preg_match('/^UNIT\s+(\d+)$/i', $lease, $unitNumber)
+            && preg_match('/^HSE\s+(?:M)?(\d+)$/i', $register, $registerNumber)) {
+            return $unitNumber[1] === $registerNumber[1];
+        }
+
+        if (preg_match('/^HSE\s+(?:M)?(\d+)$/i', $lease, $registerNumber)
+            && preg_match('/^UNIT\s+(\d+)$/i', $register, $unitNumber)) {
+            return $unitNumber[1] === $registerNumber[1];
+        }
+
         return false;
     }
 
@@ -280,6 +290,22 @@ final class PassionLegacyTextNormalizer
             str_contains($status, 'occupied') => \App\Models\PropertyUnit::STATUS_OCCUPIED,
             default => \App\Models\PropertyUnit::STATUS_VACANT,
         };
+    }
+
+    public static function resolveImportedRentAmount(mixed $marketRent, mixed $currentRent, string $status): float
+    {
+        $market = (float) ($marketRent ?? 0);
+        $current = (float) ($currentRent ?? 0);
+
+        if ($status === \App\Models\PropertyUnit::STATUS_VACANT) {
+            return $market > 0 ? $market : $current;
+        }
+
+        if ($current > 0) {
+            return $current;
+        }
+
+        return $market;
     }
 
     public static function inferUnitType(?string $typeText, int $bedrooms): ?string

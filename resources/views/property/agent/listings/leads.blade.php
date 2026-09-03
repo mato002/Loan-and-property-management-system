@@ -103,7 +103,7 @@
             <a href="{{ route('property.listings.leads', array_merge((array) ($filters ?? []), ['stage' => 'new']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">New</a>
             <a href="{{ route('property.listings.leads', array_merge((array) ($filters ?? []), ['stage' => 'contacted']), absolute: false) }}" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Contacted</a>
             <a href="{{ route('property.listings.leads', array_merge((array) ($filters ?? []), ['stage' => 'won']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Won</a>
-            <a href="{{ route('property.listings.leads.export', (array) ($filters ?? []), absolute: false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
+            @include('property.agent.partials.table_export_dropdown', ['route' => 'property.listings.leads.export', 'query' => (array) ($filters ?? [])])
         </div>
     </x-slot>
 

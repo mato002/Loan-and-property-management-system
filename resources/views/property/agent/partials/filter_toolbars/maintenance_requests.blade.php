@@ -48,10 +48,9 @@
     </x-slot>
 
     <x-slot name="export">
-        <a
-            href="{{ route('property.maintenance.requests.export', (array) ($filters ?? [])) }}"
-            data-turbo="false"
-            class="inline-flex min-h-[38px] items-center rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 shrink-0"
-        >Export CSV</a>
+        @include('property.agent.partials.table_export_dropdown', [
+            'route' => 'property.maintenance.requests.export',
+            'query' => (array) ($filters ?? []),
+        ])
     </x-slot>
 </x-property.filter-toolbar>

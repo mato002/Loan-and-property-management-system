@@ -979,10 +979,16 @@ class LoanDashboardController extends Controller
             return 0.0;
         }
 
-        return (float) AccountingJournalLine::query()
+        $query = AccountingJournalLine::query()
             ->join('accounting_journal_entries as je', 'je.id', '=', 'accounting_journal_lines.accounting_journal_entry_id')
-            ->where('je.status', AccountingJournalEntry::STATUS_POSTED)
-            ->where('accounting_journal_lines.accounting_chart_account_id', $accountId)
+            ->where('accounting_journal_lines.accounting_chart_account_id', $accountId);
+
+        // Legacy DBs may predate the status/reversal columns migration.
+        if (Schema::hasColumn('accounting_journal_entries', 'status')) {
+            $query->where('je.status', AccountingJournalEntry::STATUS_POSTED);
+        }
+
+        return (float) $query
             ->selectRaw('COALESCE(SUM(accounting_journal_lines.debit - accounting_journal_lines.credit), 0) as outstanding')
             ->value('outstanding');
     }

@@ -11,6 +11,7 @@ use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Services\BulkSmsService;
 use App\Support\CsvExport;
+use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -79,9 +80,10 @@ class PropertyListingsPipelineController extends Controller
     {
         $filters = $request->only(['q', 'stage', 'unit_id', 'from', 'to', 'sort', 'dir']);
         $rows = $this->leadsQuery($filters)->get();
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
-        return CsvExport::stream(
-            'property_leads_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'property_leads_'.now()->format('Ymd_His'),
             ['ID', 'Name', 'Phone', 'Email', 'Source', 'Stage', 'Unit', 'Updated At', 'Notes'],
             function () use ($rows) {
                 foreach ($rows as $l) {
@@ -97,7 +99,8 @@ class PropertyListingsPipelineController extends Controller
                         $l->notes,
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 
@@ -259,9 +262,10 @@ class PropertyListingsPipelineController extends Controller
     {
         $filters = $request->only(['q', 'status', 'unit_id', 'from', 'to', 'sort', 'dir']);
         $rows = $this->applicationsQuery($filters)->get();
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
-        return CsvExport::stream(
-            'property_applications_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'property_applications_'.now()->format('Ymd_His'),
             ['ID', 'Applicant', 'Phone', 'Email', 'Unit', 'Status', 'Submitted At', 'Notes'],
             function () use ($rows) {
                 foreach ($rows as $a) {
@@ -276,7 +280,8 @@ class PropertyListingsPipelineController extends Controller
                         $a->notes,
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 

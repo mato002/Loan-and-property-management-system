@@ -72,7 +72,7 @@ class SuperAdminAgentWorkspaceController extends Controller
         })->values();
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             return $this->workspaces->exportAgents($agents, $propertyCounts, $unitCounts, $export);
         }
 

@@ -2020,7 +2020,7 @@ class LoanSystemHelpController extends Controller
         }
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $logsQuery)->limit(10000)->get();
 
             return TabularExport::stream(

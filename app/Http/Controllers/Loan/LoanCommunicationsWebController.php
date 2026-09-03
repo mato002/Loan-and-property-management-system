@@ -23,6 +23,7 @@ use App\Services\Property\SmsDeliveryErrorPresenter;
 use App\Services\Loan\LoanClientCommunicationStageService;
 use App\Support\CsvExport;
 use App\Support\TabularExport;
+use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -1174,10 +1175,11 @@ class LoanCommunicationsWebController extends Controller
         $filters = $request->only(['q', 'channel', 'status', 'from', 'to', 'sort', 'dir']);
         $rows = $this->bulkLogsQuery($filters)->get();
         $canViewBody = $this->canViewMessageBody($request);
-        $this->logExportAudit($request, 'bulk', 'csv', (int) $rows->count(), $filters);
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
+        $this->logExportAudit($request, 'bulk', $format, (int) $rows->count(), $filters);
 
-        return CsvExport::stream(
-            'communications_bulk_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'communications_bulk_'.now()->format('Ymd_His'),
             ['ID', 'When', 'Channel', 'Status', 'Segment Label', 'Subject', 'Notes', 'By'],
             function () use ($rows, $canViewBody) {
                 foreach ($rows as $l) {
@@ -1192,7 +1194,8 @@ class LoanCommunicationsWebController extends Controller
                         $l->user?->name,
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 

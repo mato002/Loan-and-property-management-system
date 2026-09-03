@@ -83,7 +83,7 @@ final class PassionLegacyUnitImportService
             ->withoutGlobalScopes()
             ->where('property_id', $property->id)
             ->get()
-            ->first(fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::unitLabelsMatch($candidate->label, $record['unit_label']));
+            ->first(fn (PropertyUnit $candidate) => PassionLegacyTextNormalizer::registerUnitLabelMatch($record['unit_label'], $candidate->label));
 
         $payload = array_filter([
             'property_id' => $property->id,
@@ -91,7 +91,11 @@ final class PassionLegacyUnitImportService
             'unit_type' => PassionLegacyTextNormalizer::inferUnitType($record['unit_type_text'] ?? null, (int) $record['bedrooms'])
                 ?? PropertyUnit::TYPE_APARTMENT,
             'bedrooms' => (int) $record['bedrooms'],
-            'rent_amount' => $record['current_rent'],
+            'rent_amount' => PassionLegacyTextNormalizer::resolveImportedRentAmount(
+                $record['market_rent'],
+                $record['current_rent'],
+                $record['status'],
+            ),
             'market_rent' => $record['market_rent'],
             'status' => $record['status'],
             'available_from' => $record['available_from'],

@@ -99,13 +99,9 @@
             </div>
             <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
             <a href="{{ url()->current() }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
-            <a
-                href="{{ route('property.reports.export.csv', array_filter(['reportKey' => 'landlord_detailed_statement', 'landlord_id' => request('landlord_id'), 'from' => request('from'), 'to' => request('to')]), false) }}"
-                data-turbo="false"
-                class="rounded-lg border border-emerald-300 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
-            >
-                Export CSV
-            </a>
+            @include('property.agent.partials.export_dropdown', [
+                'csvUrl' => route('property.reports.export.csv', array_merge(['reportKey' => 'landlord_detailed_statement'], array_filter(['landlord_id' => request('landlord_id'), 'from' => request('from'), 'to' => request('to'), 'export' => 'csv'])), false),
+            ])
         </form>
     </x-slot>
 

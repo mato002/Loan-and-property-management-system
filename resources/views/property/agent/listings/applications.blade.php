@@ -98,7 +98,7 @@
             <a href="{{ route('property.listings.applications', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">All applications</a>
             <a href="{{ route('property.listings.applications', array_merge((array) ($filters ?? []), ['status' => 'review']), absolute: false) }}" class="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50">In review</a>
             <a href="{{ route('property.listings.applications', array_merge((array) ($filters ?? []), ['status' => 'approved']), absolute: false) }}" class="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Approved</a>
-            <a href="{{ route('property.listings.applications.export', (array) ($filters ?? []), absolute: false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
+            @include('property.agent.partials.table_export_dropdown', ['route' => 'property.listings.applications.export', 'query' => (array) ($filters ?? [])])
         </div>
     </x-slot>
 

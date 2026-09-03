@@ -5,7 +5,7 @@
     :back-route-params="['property' => $property->id, 'tab' => 'units']"
     :stats="[
         ['label' => 'Status', 'value' => ucfirst((string) $unit->status), 'hint' => 'Current'],
-        ['label' => 'Rent', 'value' => \App\Services\Property\PropertyMoney::kes((float) $unit->rent_amount), 'hint' => 'Listed'],
+        ['label' => 'Rent', 'value' => \App\Services\Property\PropertyMoney::kes($unit->listedRentAmount()), 'hint' => 'Listed'],
         ['label' => 'Arrears', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($arrears ?? 0)), 'hint' => 'Outstanding'],
         ['label' => 'Type', 'value' => ucfirst(str_replace('_', ' ', (string) ($unit->unit_type ?? 'unit'))), 'hint' => (string) ($unit->bedrooms ?? 0).' bed'],
     ]"
@@ -36,7 +36,7 @@
                     <p><span class="text-slate-500">Type:</span> {{ ucfirst(str_replace('_', ' ', (string) ($unit->unit_type ?? '—'))) }}</p>
                     <p><span class="text-slate-500">Bedrooms:</span> {{ (int) ($unit->bedrooms ?? 0) }}</p>
                     <p><span class="text-slate-500">Status:</span> {{ ucfirst((string) $unit->status) }}</p>
-                    <p><span class="text-slate-500">Listed rent:</span> {{ \App\Services\Property\PropertyMoney::kes((float) $unit->rent_amount) }}</p>
+                    <p><span class="text-slate-500">Listed rent:</span> {{ \App\Services\Property\PropertyMoney::kes($unit->listedRentAmount()) }}</p>
                 </div>
             </div>
             <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

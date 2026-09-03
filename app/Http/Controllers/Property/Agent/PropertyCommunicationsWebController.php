@@ -95,9 +95,9 @@ class PropertyCommunicationsWebController extends Controller
             abort(403, 'You do not have permission to export communications.');
         }
         $filters = $request->only(['q', 'channel', 'status', 'read', 'from', 'to', 'sort', 'dir']);
-        $format = strtolower((string) $request->query('format', 'csv'));
-        if (! in_array($format, ['csv', 'xls', 'pdf'], true)) {
-            $format = 'csv';
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format', 'csv'));
+        if (! in_array($format, TabularExport::REVENUE_FORMATS, true)) {
+            $format = TabularExport::FORMAT_CSV;
         }
         $uid = (int) $request->user()->id;
         $rows = $this->notificationLogsQuery($filters)->get();
@@ -579,9 +579,9 @@ class PropertyCommunicationsWebController extends Controller
         $filters = $this->normalizeMessageFilters($request->only([
             'q', 'channel', 'status', 'from', 'to', 'sort', 'dir', 'sender', 'has_error', 'period', 'duplicates',
         ]));
-        $format = strtolower((string) $request->query('format', 'csv'));
-        if (! in_array($format, ['csv', 'xls', 'pdf'], true)) {
-            $format = 'csv';
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format', 'csv'));
+        if (! in_array($format, TabularExport::REVENUE_FORMATS, true)) {
+            $format = TabularExport::FORMAT_CSV;
         }
         $rows = $this->messageLogsQuery($filters)->with('user')->get();
         $canViewBody = $this->canViewMessageBody($request);
@@ -1136,10 +1136,11 @@ class PropertyCommunicationsWebController extends Controller
         $filters = $request->only(['q', 'channel', 'status', 'from', 'to', 'sort', 'dir']);
         $rows = $this->bulkLogsQuery($filters)->get();
         $canViewBody = $this->canViewMessageBody($request);
-        $this->logExportAudit($request, 'bulk', 'csv', (int) $rows->count(), $filters);
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
+        $this->logExportAudit($request, 'bulk', $format, (int) $rows->count(), $filters);
 
-        return CsvExport::stream(
-            'communications_bulk_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'communications_bulk_'.now()->format('Ymd_His'),
             ['ID', 'When', 'Channel', 'Status', 'Segment Label', 'Subject', 'Notes', 'By'],
             function () use ($rows, $canViewBody) {
                 foreach ($rows as $l) {
@@ -1154,7 +1155,8 @@ class PropertyCommunicationsWebController extends Controller
                         $l->user?->name,
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 

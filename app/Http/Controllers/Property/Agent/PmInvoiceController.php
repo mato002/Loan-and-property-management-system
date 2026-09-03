@@ -596,7 +596,7 @@ class PmInvoiceController extends Controller
         $baseQuery->orderBy($sortBy, $dir)->orderByDesc('id');
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $items = (clone $baseQuery)->limit(5000)->get();
             return TabularExport::stream(
                 'invoices-'.now()->format('Ymd_His'),

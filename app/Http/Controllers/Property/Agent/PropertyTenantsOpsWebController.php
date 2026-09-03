@@ -282,9 +282,10 @@ class PropertyTenantsOpsWebController extends Controller
     {
         $filters = $request->only(['q', 'movement_type', 'status', 'unit_id', 'from', 'to', 'sort', 'dir']);
         $rows = $this->movementsQuery($filters)->get();
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
-        return CsvExport::stream(
-            'tenant_movements_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'tenant_movements_'.now()->format('Ymd_His'),
             ['ID', 'Unit', 'Type', 'Status', 'Scheduled On', 'Completed On', 'Owner', 'Notes'],
             function () use ($rows) {
                 foreach ($rows as $m) {
@@ -301,7 +302,8 @@ class PropertyTenantsOpsWebController extends Controller
                         $m->notes,
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 
@@ -473,9 +475,10 @@ class PropertyTenantsOpsWebController extends Controller
     {
         $filters = $request->only(['q', 'notice_type', 'status', 'tenant_id', 'unit_id', 'from', 'to', 'sort', 'dir', 'event_type', 'risk']);
         $rows = $this->noticesQuery($filters)->get();
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
-        return CsvExport::stream(
-            'tenant_notices_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'tenant_notices_'.now()->format('Ymd_His'),
             ['ID', 'Tenant', 'Unit', 'Notice Type', 'Status', 'Due On', 'Created By', 'Last Event', 'Last Event By', 'Last Event At', 'Notes'],
             function () use ($rows) {
                 foreach ($rows as $n) {
@@ -500,7 +503,8 @@ class PropertyTenantsOpsWebController extends Controller
                         $n->notes,
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 

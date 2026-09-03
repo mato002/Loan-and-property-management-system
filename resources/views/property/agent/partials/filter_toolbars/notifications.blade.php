@@ -40,9 +40,11 @@
 
     @if ($canExportCommunications ?? false)
         <x-slot name="export">
-            <a href="{{ route('property.notifications.export', array_merge((array) ($filters ?? []), ['format' => 'csv']), absolute: false) }}" data-turbo="false" class="inline-flex min-h-[38px] items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 shrink-0">Export CSV</a>
-            <a href="{{ route('property.notifications.export', array_merge((array) ($filters ?? []), ['format' => 'xls']), absolute: false) }}" data-turbo="false" class="inline-flex min-h-[38px] items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 shrink-0">Export XLS</a>
-            <a href="{{ route('property.notifications.export', array_merge((array) ($filters ?? []), ['format' => 'pdf']), absolute: false) }}" data-turbo="false" class="inline-flex min-h-[38px] items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 shrink-0">Export PDF</a>
+            @include('property.agent.partials.export_dropdown', [
+                'csvUrl' => route('property.notifications.export', array_merge((array) ($filters ?? []), ['format' => 'csv']), false),
+                'xlsUrl' => route('property.notifications.export', array_merge((array) ($filters ?? []), ['format' => 'xls']), false),
+                'pdfUrl' => route('property.notifications.export', array_merge((array) ($filters ?? []), ['format' => 'pdf']), false),
+            ])
         </x-slot>
     @endif
 </x-property.filter-toolbar>

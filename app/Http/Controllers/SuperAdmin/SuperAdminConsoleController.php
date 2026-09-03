@@ -163,7 +163,7 @@ class SuperAdminConsoleController extends Controller
             $query->latest('id');
         }
         $export = strtolower((string) $request->query('export', ''));
-        if ($query && in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if ($query && in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $query)->limit(5000)->get();
 
             return TabularExport::stream(
@@ -365,7 +365,7 @@ class SuperAdminConsoleController extends Controller
             : collect();
 
         $export = strtolower((string) $request->query('export', ''));
-        if (Schema::hasTable('pm_portal_actions') && in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (Schema::hasTable('pm_portal_actions') && in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = PmPortalAction::query()
                 ->with('user:id,name,email')
                 ->when($role !== '', fn ($query) => $query->where('portal_role', $role))
@@ -504,7 +504,7 @@ class SuperAdminConsoleController extends Controller
             : null;
 
         $export = strtolower((string) $request->query('export', ''));
-        if ($query && in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if ($query && in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $query)->limit(5000)->get();
 
             return TabularExport::stream(

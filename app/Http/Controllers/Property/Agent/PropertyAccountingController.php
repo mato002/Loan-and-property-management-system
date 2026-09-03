@@ -322,7 +322,7 @@ class PropertyAccountingController extends Controller
             ->groupBy('batch_id')
             ->get()
             ->keyBy('batch_id');
-        $format = strtolower((string) $request->query('format', 'csv'));
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
         $headers = ['Date', 'Reference', 'Description', 'Total Debit', 'Total Credit', 'Source', 'Status', 'Reversal Link'];
         $rowsClosure = function () use ($rowsData, $lineTotals) {
@@ -462,7 +462,7 @@ class PropertyAccountingController extends Controller
     {
         $rowsData = $this->buildAuditTrailBatchQuery($request)->limit(5000)->get();
         $lineMap = $this->loadBatchLineSummaries($rowsData->pluck('id')->all());
-        $format = strtolower((string) $request->query('format', 'csv'));
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
         $headers = ['Date', 'User', 'Action', 'Entity', 'Reference', 'Source Type', 'Financial Impact', 'Status', 'Reversal Link'];
         $rowsClosure = function () use ($rowsData, $lineMap) {
             foreach ($rowsData as $e) {
@@ -1444,7 +1444,7 @@ class PropertyAccountingController extends Controller
             $entries->where('account_name', 'like', '%'.$q.'%');
         }
         $grouped = $entries->get()->groupBy('account_name');
-        $format = strtolower((string) $request->query('format', 'csv'));
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
         $headers = ['Account', 'Type', 'Debit', 'Credit', 'Balance'];
         $rowsClosure = function () use ($grouped, $category) {
             foreach ($grouped as $accountName => $group) {
@@ -1495,7 +1495,7 @@ class PropertyAccountingController extends Controller
             ->groupBy('account_name')
             ->orderByDesc('total')
             ->get();
-        $format = strtolower((string) $request->query('format', 'csv'));
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
         $headers = ['Section', 'Line', 'Amount'];
         $rowsClosure = function () use ($from, $to, $income, $expenses, $incomeLines, $expenseLines) {
             yield ['Period', $from.' to '.$to, ''];
@@ -1531,7 +1531,7 @@ class PropertyAccountingController extends Controller
             ->orderBy('entry_date')
             ->orderBy('id')
             ->get();
-        $format = strtolower((string) $request->query('format', 'csv'));
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
         $headers = ['Date', 'Account', 'Description', 'Debit', 'Credit', 'Running balance'];
         $rowsClosure = function () use ($rowsRaw) {
             $running = 0.0;
@@ -1691,7 +1691,7 @@ class PropertyAccountingController extends Controller
             ->orderByDesc('id')
             ->limit(5000)
             ->get();
-        $format = strtolower((string) $request->query('format', 'csv'));
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
         $headers = ['Payslip', 'Employee', 'Period', 'Gross', 'Deductions', 'Net', 'Run Status', 'Payment Status', 'Payment Date', 'Payment Reference'];
         $rowsClosure = function () use ($items) {
             foreach ($items as $line) {
@@ -2391,7 +2391,7 @@ class PropertyAccountingController extends Controller
         $view = $this->chartOfAccounts($dataRequest);
         $payload = $view->getData();
         $groups = collect($payload['groups'] ?? []);
-        $format = strtolower((string) $request->query('format', 'csv'));
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
         return TabularExport::stream(
             'property-chart-of-accounts',

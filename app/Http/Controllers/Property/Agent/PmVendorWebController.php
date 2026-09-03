@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Property\PropertyChartSeries;
 use App\Services\Property\PropertyMoney;
 use App\Support\CsvExport;
+use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -91,9 +92,10 @@ class PmVendorWebController extends Controller
     {
         $filters = $request->only(['q', 'status', 'category', 'sort', 'dir']);
         $rows = $this->directoryQuery($filters)->orderBy('name')->get();
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
 
-        return CsvExport::stream(
-            'vendors_directory_'.now()->format('Ymd_His').'.csv',
+        return TabularExport::stream(
+            'vendors_directory_'.now()->format('Ymd_His'),
             ['ID', 'Name', 'Category', 'Phone', 'Email', 'Status', 'Rating'],
             function () use ($rows) {
                 foreach ($rows as $vendor) {
@@ -107,7 +109,8 @@ class PmVendorWebController extends Controller
                         $vendor->rating,
                     ];
                 }
-            }
+            },
+            $format,
         );
     }
 

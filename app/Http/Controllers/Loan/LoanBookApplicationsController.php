@@ -123,7 +123,7 @@ class LoanBookApplicationsController extends Controller
             ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch));
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $query)->orderByDesc('created_at')->limit(5000)->get();
             $requestedCols = collect(explode(',', (string) $request->query('cols', '')))
                 ->map(fn (string $col): string => trim($col))
@@ -311,7 +311,7 @@ class LoanBookApplicationsController extends Controller
             ->when($branch !== '', fn (Builder $builder) => $builder->where('branch', $branch));
 
         $export = strtolower((string) $request->query('export', ''));
-        if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $query)->orderByDesc('created_at')->limit(5000)->get();
 
             return TabularExport::stream(

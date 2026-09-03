@@ -46,7 +46,7 @@ class UtilityLedgerController extends Controller
         );
 
         $export = strtolower((string) ($validated['export'] ?? $request->query('export', '')));
-        if (in_array($export, ['csv', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
             return $this->exportAging($data['aging_rows'] ?? [], $export);
         }
 
@@ -90,7 +90,7 @@ class UtilityLedgerController extends Controller
         $summaries = $this->ledgerService->tenantSummaries($q, $propertyId, 30);
 
         $export = strtolower((string) ($validated['export'] ?? $request->query('export', '')));
-        if (in_array($export, ['csv', 'pdf'], true)) {
+        if (in_array($export, ['csv', 'pdf', 'word'], true)) {
             return TabularExport::stream(
                 'utility-ledger-tenants-'.now()->format('Ymd_His'),
                 ['Tenant', 'Phone', 'Open utility balance', 'Open invoices'],
@@ -149,7 +149,7 @@ class UtilityLedgerController extends Controller
         ];
 
         $export = strtolower((string) ($validated['export'] ?? $request->query('export', '')));
-        if ($export === 'csv') {
+        if (in_array($export, [TabularExport::FORMAT_CSV, TabularExport::FORMAT_WORD], true)) {
             return TabularExport::stream(
                 'utility-statement-'.$tenant->id.'-'.now()->format('Ymd_His'),
                 ['Date', 'Type', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'],
@@ -166,7 +166,7 @@ class UtilityLedgerController extends Controller
                         ];
                     }
                 },
-                TabularExport::FORMAT_CSV,
+                $export,
             );
         }
 
