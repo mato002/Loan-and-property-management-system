@@ -6,11 +6,15 @@
     $unitsById = collect($units ?? [])->keyBy('id');
     $snapshots = $unitSnapshots ?? collect();
     $hasManage = auth()->check() && auth()->user()?->hasPmPermission('properties.manage');
-    $hasVacantRows = $snapshots->contains(fn ($row) => (string) ($row->status ?? '') === PropertyUnit::STATUS_VACANT);
+    $hasToneRows = $snapshots->isNotEmpty();
 @endphp
 
-@if ($hasVacantRows)
+@if ($hasToneRows)
     <div class="property-row-alert-legend print-hide px-4 py-2 border-b border-slate-100 bg-slate-50/80" aria-label="Row color key">
+        <span class="property-row-alert-legend__item">
+            <span class="property-row-alert-swatch property-row-alert-swatch--occupied" aria-hidden="true"></span>
+            Occupied
+        </span>
         <span class="property-row-alert-legend__item">
             <span class="property-row-alert-swatch property-row-alert-swatch--vacant" aria-hidden="true"></span>
             Vacant
@@ -67,6 +71,7 @@
                                 WorkspaceRowAlert::TONE_VACANT_LONG => 'vacant-long',
                                 WorkspaceRowAlert::TONE_VACANT => 'vacant',
                                 WorkspaceRowAlert::TONE_NOTICE => 'notice',
+                                WorkspaceRowAlert::TONE_OCCUPIED => 'occupied',
                                 default => 'occupied',
                             }
                         ).'">'.e(ucfirst((string) ($u->status ?? '—'))).'</span>'

@@ -7,6 +7,8 @@ use Illuminate\Support\HtmlString;
 
 final class WorkspaceRowAlert
 {
+    public const TONE_OCCUPIED = 'occupied';
+
     public const TONE_VACANT = 'vacant';
 
     public const TONE_VACANT_LONG = 'vacant-long';
@@ -57,6 +59,8 @@ final class WorkspaceRowAlert
             'vacant' => self::TONE_VACANT,
             'vacancy' => self::TONE_VACANT,
 
+            'occupied' => self::TONE_OCCUPIED,
+
             'notice' => self::TONE_NOTICE,
             'pending' => self::TONE_NOTICE,
             'draft' => self::TONE_NOTICE,
@@ -78,6 +82,7 @@ final class WorkspaceRowAlert
     public static function allowedTones(): array
     {
         return [
+            self::TONE_OCCUPIED,
             self::TONE_VACANT,
             self::TONE_VACANT_LONG,
             self::TONE_NOTICE,
@@ -118,10 +123,11 @@ final class WorkspaceRowAlert
     public static function inferFromRow(array $row): string
     {
         $rank = [
-            self::TONE_ATTENTION => 4,
-            self::TONE_VACANT_LONG => 3,
-            self::TONE_VACANT => 2,
-            self::TONE_NOTICE => 1,
+            self::TONE_ATTENTION => 5,
+            self::TONE_VACANT_LONG => 4,
+            self::TONE_VACANT => 3,
+            self::TONE_NOTICE => 2,
+            self::TONE_OCCUPIED => 1,
         ];
         $best = '';
         $bestRank = 0;
@@ -170,6 +176,10 @@ final class WorkspaceRowAlert
             return self::TONE_NOTICE;
         }
 
+        if ($status === PropertyUnit::STATUS_OCCUPIED) {
+            return self::TONE_OCCUPIED;
+        }
+
         return '';
     }
 
@@ -200,6 +210,10 @@ final class WorkspaceRowAlert
 
         if ($status === PropertyUnit::STATUS_NOTICE) {
             return self::TONE_NOTICE;
+        }
+
+        if ($status === PropertyUnit::STATUS_OCCUPIED && $hasTenant) {
+            return self::TONE_OCCUPIED;
         }
 
         return self::inferFromRow([$status]);

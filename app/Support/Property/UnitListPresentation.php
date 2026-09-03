@@ -7,6 +7,8 @@ use Illuminate\Support\HtmlString;
 
 final class UnitListPresentation
 {
+    public const TONE_OCCUPIED = WorkspaceRowAlert::TONE_OCCUPIED;
+
     public const TONE_VACANT = WorkspaceRowAlert::TONE_VACANT;
 
     public const TONE_VACANT_LONG = WorkspaceRowAlert::TONE_VACANT_LONG;
@@ -38,6 +40,7 @@ final class UnitListPresentation
             self::TONE_VACANT_LONG => 'vacant-long',
             self::TONE_VACANT => 'vacant',
             self::TONE_NOTICE => 'notice',
+            self::TONE_OCCUPIED => 'occupied',
             default => 'occupied',
         };
 

@@ -260,6 +260,10 @@
                     @if ($showRowToneLegend)
                         <div class="property-row-alert-legend print-hide px-0.5" aria-label="Row color key">
                             <span class="property-row-alert-legend__item">
+                                <span class="property-row-alert-swatch property-row-alert-swatch--occupied" aria-hidden="true"></span>
+                                Occupied
+                            </span>
+                            <span class="property-row-alert-legend__item">
                                 <span class="property-row-alert-swatch property-row-alert-swatch--vacant" aria-hidden="true"></span>
                                 Vacant / empty
                             </span>
@@ -314,7 +318,7 @@
                                                 );
                                             @endphp
                                             <tr
-                                                class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40 {{ $__rowHref ? 'cursor-pointer' : '' }} {{ $__rowToneClass }}"
+                                                class="border-t border-slate-100 dark:border-slate-700/80 {{ $__rowToneClass === '' ? 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40' : '' }} {{ $__rowHref ? 'cursor-pointer' : '' }} {{ $__rowToneClass }}"
                                                 data-filter-text="{{ e($__filterText) }}"
                                                 @if ($__rowHref)
                                                     data-row-href="{{ $__rowHref }}"

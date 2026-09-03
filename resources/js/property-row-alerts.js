@@ -4,10 +4,11 @@
  */
 
 const TONE_RANK = {
-    attention: 4,
-    'vacant-long': 3,
-    vacant: 2,
-    notice: 1,
+    attention: 5,
+    'vacant-long': 4,
+    vacant: 3,
+    notice: 2,
+    occupied: 1,
 };
 
 const TOKEN_MAP = {
@@ -39,6 +40,7 @@ const TOKEN_MAP = {
     '90 plus days': 'vacant-long',
     vacant: 'vacant',
     vacancy: 'vacant',
+    occupied: 'occupied',
     notice: 'notice',
     pending: 'notice',
     draft: 'notice',
@@ -53,7 +55,7 @@ const TOKEN_MAP = {
     expiring: 'notice',
 };
 
-const TONE_CLASSES = ['property-row-alert-vacant', 'property-row-alert-vacant-long', 'property-row-alert-notice', 'property-row-alert-attention'];
+const TONE_CLASSES = ['property-row-alert-occupied', 'property-row-alert-vacant', 'property-row-alert-vacant-long', 'property-row-alert-notice', 'property-row-alert-attention'];
 
 function normalizeLine(value) {
     return String(value || '')
@@ -119,15 +121,15 @@ function applyRowTone(row) {
     }
 
     const already = TONE_CLASSES.some((name) => row.classList.contains(name));
-    if (already) {
-        return;
-    }
+    const tone = already
+        ? TONE_CLASSES.find((name) => row.classList.contains(name))?.replace('property-row-alert-', '') ?? ''
+        : inferToneFromRow(row);
 
-    const tone = inferToneFromRow(row);
     if (!tone || !TONE_RANK[tone]) {
         return;
     }
 
+    TONE_CLASSES.forEach((name) => row.classList.remove(name));
     row.classList.add(`property-row-alert-${tone}`);
 }
 
