@@ -12,22 +12,49 @@
     :show-search="false"
     table-min-width="960px"
     empty-title="No field officers yet"
-    empty-hint="Run property:import-passion-field-officers after importing properties from the legacy register."
+    empty-hint="Field officers are managed as employees in HR. Enable the field officer role when adding staff, then assign properties from the portfolio tab."
 >
-    <x-slot name="filters">
-        <form method="get" action="{{ route('property.field_officers.index', absolute: false) }}" class="flex flex-wrap items-end gap-2">
-            <div class="min-w-[14rem] flex-1">
-                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Search</label>
-                <input
-                    type="search"
-                    name="q"
-                    value="{{ $filters['q'] ?? '' }}"
-                    placeholder="Name or phone..."
-                    class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2"
-                />
-            </div>
-            <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
-            <a href="{{ route('property.field_officers.index', absolute: false) }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800">Reset</a>
-        </form>
+    <x-slot name="actions">
+        @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+            <a href="{{ route('property.hr.employees.create', ['field_officer' => 1, 'job_title' => 'Field Officer'], false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-800">Add employee</a>
+            <a href="{{ route('property.hr.employees.index', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">HR directory</a>
+        @endif
+    </x-slot>
+
+    @if (session('status'))
+        <div class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{{ session('status') }}</div>
+    @endif
+
+    <x-slot name="tabs">
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{{ route('property.field_officers.index', absolute: false) }}" @class([
+                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
+                (($filters['portfolio'] ?? 'all') === 'all' && ($filters['portal_access'] ?? 'all') === 'all')
+                    ? 'border-indigo-300 bg-indigo-50 text-indigo-800'
+                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
+            ])>All officers</a>
+            <a href="{{ route('property.field_officers.index', array_merge((array) ($filters ?? []), ['portfolio' => 'assigned', 'portal_access' => 'all']), absolute: false) }}" @class([
+                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
+                ($filters['portfolio'] ?? 'all') === 'assigned'
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
+            ])>With properties</a>
+            <a href="{{ route('property.field_officers.index', array_merge((array) ($filters ?? []), ['portfolio' => 'unassigned', 'portal_access' => 'all']), absolute: false) }}" @class([
+                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
+                ($filters['portfolio'] ?? 'all') === 'unassigned'
+                    ? 'border-amber-300 bg-amber-50 text-amber-800'
+                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
+            ])>No properties yet</a>
+            <a href="{{ route('property.field_officers.index', array_merge((array) ($filters ?? []), ['portal_access' => 'yes', 'portfolio' => 'all']), absolute: false) }}" @class([
+                'inline-flex min-h-[40px] items-center rounded-lg border px-3 py-2 text-xs font-medium',
+                ($filters['portal_access'] ?? 'all') === 'yes'
+                    ? 'border-blue-300 bg-blue-50 text-blue-800'
+                    : 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50',
+            ])>Portal enabled</a>
+        </div>
+    </x-slot>
+
+    <x-slot name="toolbar">
+        @include('property.agent.partials.filter_toolbars.field_officers')
     </x-slot>
 </x-property.workspace>

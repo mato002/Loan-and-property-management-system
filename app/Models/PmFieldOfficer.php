@@ -16,6 +16,7 @@ class PmFieldOfficer extends Model
 
     protected $fillable = [
         'agent_user_id',
+        'employee_id',
         'name',
         'phone',
         'portal_access',
@@ -48,6 +49,11 @@ class PmFieldOfficer extends Model
     public function agentUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'agent_user_id');
+    }
+
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class, 'employee_id');
     }
 
     public function portalUser(): BelongsTo

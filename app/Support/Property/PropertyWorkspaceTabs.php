@@ -30,6 +30,7 @@ final class PropertyWorkspaceTabs
             'tenants',
             'collections',
             'maintenance',
+            'hr',
             'vendors',
             'listings',
             'communications',
@@ -57,6 +58,7 @@ final class PropertyWorkspaceTabs
             'property.communications.index',
             'property.performance.index',
             'property.settings.index',
+            'property.hr.index',
         ];
     }
 
@@ -231,8 +233,7 @@ final class PropertyWorkspaceTabs
                 ['key' => 'properties', 'label' => 'Properties', 'route' => 'property.properties.list', 'active' => ['property.properties.list', 'property.properties.store', 'property.properties.store_json', 'property.properties.update', 'property.properties.destroy', 'property.properties.offboarding', 'property.properties.offboarding.*']],
                 ['key' => 'units', 'label' => 'Units', 'route' => 'property.properties.units', 'active' => ['property.properties.units', 'property.units.*']],
                 ['key' => 'occupancy', 'label' => 'Occupancy', 'route' => 'property.properties.occupancy', 'active' => ['property.properties.occupancy', 'property.properties.occupancy.*']],
-                ['key' => 'landlords', 'label' => 'Landlords', 'route' => 'property.landlords.index', 'active' => ['property.landlords.*']],
-                ['key' => 'field_officers', 'label' => 'Field officers', 'route' => 'property.field_officers.index', 'active' => ['property.field_officers.*']],
+                    ['key' => 'landlords', 'label' => 'Landlords', 'route' => 'property.landlords.index', 'active' => ['property.landlords.*']],
                 ['key' => 'amenities', 'label' => 'Amenities', 'route' => 'property.properties.amenities', 'active' => ['property.properties.amenities', 'property.properties.amenities.*']],
                 ['key' => 'performance', 'label' => 'Performance', 'route' => 'property.properties.performance', 'active' => ['property.properties.performance']],
             ],
@@ -263,6 +264,11 @@ final class PropertyWorkspaceTabs
                 ['key' => 'history', 'label' => 'History', 'route' => 'property.maintenance.history', 'active' => ['property.maintenance.history']],
                 ['key' => 'costs', 'label' => 'Costs', 'route' => 'property.maintenance.costs', 'active' => ['property.maintenance.costs']],
                 ['key' => 'frequency', 'label' => 'Issue frequency', 'route' => 'property.maintenance.frequency', 'active' => ['property.maintenance.frequency']],
+            ],
+            'hr' => [
+                ['key' => 'employees', 'label' => 'Employees', 'route' => 'property.hr.employees.index', 'active' => ['property.hr.employees.*']],
+                ['key' => 'leaves', 'label' => 'Leave', 'route' => 'property.hr.leaves.index', 'active' => ['property.hr.leaves.*']],
+                ['key' => 'payroll', 'label' => 'Payroll', 'route' => 'property.accounting.payroll', 'active' => ['property.accounting.payroll', 'property.accounting.payroll.*']],
             ],
             'vendors' => [
                 ['key' => 'hub', 'label' => 'Hub', 'route' => 'property.vendors.index', 'active' => ['property.vendors.index']],

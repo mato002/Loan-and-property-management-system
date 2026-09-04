@@ -9,6 +9,18 @@ use Illuminate\Http\Request;
  */
 final class PropertyEntityHub
 {
+    public const LANDLORD_TABS = [
+        ['key' => 'overview', 'label' => 'Overview'],
+        ['key' => 'properties', 'label' => 'Properties'],
+        ['key' => 'units', 'label' => 'Units'],
+        ['key' => 'collections', 'label' => 'Collections'],
+        ['key' => 'commission', 'label' => 'Commission'],
+        ['key' => 'settlements', 'label' => 'Settlements'],
+        ['key' => 'ledger', 'label' => 'Ledger'],
+        ['key' => 'statement', 'label' => 'Statement'],
+        ['key' => 'portal', 'label' => 'Portal'],
+    ];
+
     public const TENANT_TABS = [
         ['key' => 'overview', 'label' => 'Overview'],
         ['key' => 'leases', 'label' => 'Leases'],
@@ -40,15 +52,40 @@ final class PropertyEntityHub
         ['key' => 'history', 'label' => 'Occupancy'],
     ];
 
+    public const FIELD_OFFICER_TABS = [
+        ['key' => 'overview', 'label' => 'Overview'],
+        ['key' => 'properties', 'label' => 'Properties'],
+    ];
+
+    public const EMPLOYEE_TABS = [
+        ['key' => 'overview', 'label' => 'Overview'],
+        ['key' => 'portfolio', 'label' => 'Portfolio'],
+    ];
+
+    /**
+     * @return list<array{key: string, label: string}>
+     */
+    public static function employeeTabsFor(bool $isFieldOfficer): array
+    {
+        if (! $isFieldOfficer) {
+            return [['key' => 'overview', 'label' => 'Overview']];
+        }
+
+        return self::EMPLOYEE_TABS;
+    }
+
     /**
      * @return list<array{key: string, label: string}>
      */
     public static function tabsFor(string $entity): array
     {
         return match ($entity) {
+            'landlord' => self::LANDLORD_TABS,
             'tenant' => self::TENANT_TABS,
             'property' => self::PROPERTY_TABS,
             'unit' => self::UNIT_TABS,
+            'field_officer' => self::FIELD_OFFICER_TABS,
+            'employee' => self::EMPLOYEE_TABS,
             default => [],
         };
     }
@@ -56,6 +93,9 @@ final class PropertyEntityHub
     public static function normalizeTab(string $entity, ?string $tab): string
     {
         $tab = trim((string) $tab);
+        if ($entity === 'field_officer' && $tab === 'properties') {
+            $tab = 'portfolio';
+        }
         $keys = array_column(self::tabsFor($entity), 'key');
 
         return in_array($tab, $keys, true) ? $tab : 'overview';

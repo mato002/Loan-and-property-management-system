@@ -3,79 +3,109 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employee;
 use App\Models\PmFieldOfficer;
-use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyHrEmployeeService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\HtmlString;
-use Illuminate\View\View;
 
+/**
+ * Legacy URLs — field officers are managed as HR employees.
+ */
 class FieldOfficerController extends Controller
 {
-    public function index(Request $request): View
+    public function __construct(
+        private readonly PropertyHrEmployeeService $hr,
+    ) {}
+
+    public function index(Request $request): RedirectResponse
     {
-        $search = trim((string) $request->query('q', ''));
+        $this->hr->backfillFieldOfficerEmployees();
 
-        $officers = PmFieldOfficer::query()
-            ->orderBy('name')
-            ->when($search !== '', fn ($q) => $q->where(function ($inner) use ($search) {
-                $inner->where('name', 'like', '%'.$search.'%')
-                    ->orWhere('phone', 'like', '%'.$search.'%');
-            }))
-            ->get();
+        $params = $request->query();
+        $params['role_type'] = 'field_officer';
 
-        $tableRows = [];
-        $tableRowFilters = [];
-        $totalProperties = 0;
-        $totalUnits = 0;
-        $totalTenants = 0;
-        $totalRent = 0.0;
+        return redirect()->route('property.hr.employees.index', $params);
+    }
 
-        foreach ($officers as $officer) {
-            $stats = $officer->portfolioStats();
-            $totalProperties += (int) $stats['properties'];
-            $totalUnits += (int) $stats['units'];
-            $totalTenants += (int) $stats['tenants'];
-            $totalRent += (float) $stats['rent_portfolio'];
+    public function create(Request $request): RedirectResponse
+    {
+        return redirect()->route('property.hr.employees.create', array_merge($request->query(), [
+            'field_officer' => 1,
+            'job_title' => PropertyHrEmployeeService::FIELD_OFFICER_JOB_TITLE,
+        ]));
+    }
 
-            $tableRows[] = [
-                $officer->name,
-                $officer->phone ?: '—',
-                (string) $stats['landlords'],
-                (string) $stats['properties'],
-                (string) $stats['units'],
-                (string) $stats['tenants'],
-                PropertyMoney::kes((float) $stats['rent_portfolio']),
-                new HtmlString(
-                    $officer->portal_access
-                        ? '<span class="property-status-pill property-status-pill--occupied">Yes</span>'
-                        : '<span class="property-status-pill property-status-pill--vacant">No</span>'
-                ),
-            ];
-            $tableRowFilters[] = mb_strtolower($officer->name.' '.$officer->phone);
+    public function store(Request $request): RedirectResponse
+    {
+        return redirect()->route('property.hr.employees.create', [
+            'field_officer' => 1,
+            'job_title' => PropertyHrEmployeeService::FIELD_OFFICER_JOB_TITLE,
+        ]);
+    }
+
+    public function show(Request $request, PmFieldOfficer $fieldOfficer): RedirectResponse
+    {
+        $employee = $this->resolveEmployee($fieldOfficer);
+        $tab = (string) $request->query('tab', 'overview');
+        if ($tab === 'properties') {
+            $tab = 'portfolio';
         }
 
-        return property_view('property.agent.field_officers.index', [
-            'filters' => ['q' => $search],
-            'stats' => [
-                ['label' => 'Field officers', 'value' => (string) $officers->count(), 'hint' => 'Matching filters'],
-                ['label' => 'Properties', 'value' => (string) $totalProperties, 'hint' => 'Assigned portfolio'],
-                ['label' => 'Units', 'value' => (string) $totalUnits, 'hint' => 'Assigned portfolio'],
-                ['label' => 'Active tenants', 'value' => (string) $totalTenants, 'hint' => 'On active leases'],
-                ['label' => 'Rent portfolio', 'value' => PropertyMoney::kes($totalRent), 'hint' => 'Active lease rent'],
-            ],
-            'columns' => [
-                'Name',
-                'Phone #',
-                'Landlord portfolio',
-                'Property portfolio',
-                'Units portfolio',
-                'Tenants portfolio',
-                'Rent portfolio',
-                'Portal access',
-            ],
-            'tableRows' => $tableRows,
-            'tableRowFilters' => $tableRowFilters,
-            'columnConfig' => [],
+        return redirect()->route('property.hr.employees.show', array_merge(
+            $request->except('tab'),
+            ['employee' => $employee->id, 'tab' => $tab],
+        ));
+    }
+
+    public function edit(Request $request, PmFieldOfficer $fieldOfficer): RedirectResponse
+    {
+        $employee = $this->resolveEmployee($fieldOfficer);
+
+        return redirect()->route('property.hr.employees.edit', ['employee' => $employee->id] + $request->query());
+    }
+
+    public function update(Request $request, PmFieldOfficer $fieldOfficer): RedirectResponse
+    {
+        $employee = $this->resolveEmployee($fieldOfficer);
+
+        return redirect()->route('property.hr.employees.edit', ['employee' => $employee->id]);
+    }
+
+    public function assignProperty(Request $request, PmFieldOfficer $fieldOfficer): RedirectResponse
+    {
+        $employee = $this->resolveEmployee($fieldOfficer);
+        $data = $request->validate([
+            'property_id' => ['required', 'integer', 'exists:properties,id'],
         ]);
+
+        $property = $this->hr->assignPropertyToEmployee($employee, (int) $data['property_id']);
+
+        return redirect()
+            ->route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'portfolio'])
+            ->with('status', 'Property "'.$property->name.'" assigned.');
+    }
+
+    public function detachProperty(Request $request, PmFieldOfficer $fieldOfficer): RedirectResponse
+    {
+        $employee = $this->resolveEmployee($fieldOfficer);
+        $data = $request->validate([
+            'property_id' => ['required', 'integer', 'exists:properties,id'],
+        ]);
+
+        $property = $this->hr->detachPropertyFromEmployee($employee, (int) $data['property_id']);
+
+        return redirect()
+            ->route('property.hr.employees.show', ['employee' => $employee->id, 'tab' => 'portfolio'])
+            ->with('status', 'Property "'.$property->name.'" unassigned.');
+    }
+
+    private function resolveEmployee(PmFieldOfficer $fieldOfficer): Employee
+    {
+        if ($fieldOfficer->employee_id) {
+            return Employee::query()->findOrFail((int) $fieldOfficer->employee_id);
+        }
+
+        return $this->hr->ensureEmployeeForFieldOfficer($fieldOfficer);
     }
 }

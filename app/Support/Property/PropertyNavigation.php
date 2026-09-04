@@ -134,6 +134,7 @@ final class PropertyNavigation
             'tenants',
             'collections',
             'maintenance',
+            'hr',
             'listings',
             'reports',
             'accounting',
@@ -174,14 +175,12 @@ final class PropertyNavigation
                 'active' => [
                     'property.properties.*',
                     'property.landlords.*',
-                    'property.field_officers.*',
                     'property.units.*',
                 ],
                 'flyout' => [
                     ['label' => 'All properties', 'route' => 'property.properties.list', 'active' => ['property.properties.list', 'property.properties.show', 'property.properties.edit']],
                     ['label' => 'Units', 'route' => 'property.properties.units', 'active' => ['property.properties.units', 'property.units.*']],
                     ['label' => 'Landlords', 'route' => 'property.landlords.index', 'active' => ['property.landlords.*']],
-                    ['label' => 'Field officers', 'route' => 'property.field_officers.index', 'active' => ['property.field_officers.*']],
                     ['label' => 'Occupancy', 'route' => 'property.properties.occupancy', 'active' => ['property.properties.occupancy']],
                 ],
             ],
@@ -266,6 +265,22 @@ final class PropertyNavigation
                     ['label' => 'Issue frequency', 'route' => 'property.maintenance.frequency', 'active' => ['property.maintenance.frequency']],
                     ['label' => 'Vendor directory', 'route' => 'property.vendors.directory', 'active' => ['property.vendors.directory', 'property.vendors.store', 'property.vendors.show', 'property.vendors.edit']],
                     ['label' => 'RFQ & bidding', 'route' => 'property.vendors.bidding', 'active' => ['property.vendors.bidding', 'property.vendors.bidding.*']],
+                ],
+            ],
+            'hr' => [
+                'key' => 'hr',
+                'label' => 'HR',
+                'sublabel' => 'Employees, leave, payroll',
+                'icon' => 'fa-id-badge',
+                'route' => 'property.hr.index',
+                'sidebar' => true,
+                'active' => [
+                    'property.hr.*',
+                ],
+                'flyout' => [
+                    ['label' => 'Employees', 'route' => 'property.hr.employees.index', 'active' => ['property.hr.employees.*']],
+                    ['label' => 'Leave', 'route' => 'property.hr.leaves.index', 'active' => ['property.hr.leaves.*']],
+                    ['label' => 'Payroll', 'route' => 'property.accounting.payroll', 'active' => ['property.accounting.payroll', 'property.accounting.payroll.*']],
                 ],
             ],
             'listings' => [

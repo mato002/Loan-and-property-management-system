@@ -51,5 +51,21 @@
         <input type="number" name="commission_percent" value="{{ old('commission_percent', $propertyCommissionPercent ?? null) }}" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional (uses default if empty)" />
         @error('commission_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
     </div>
+    @if (($fieldOfficers ?? []) !== [])
+        <div>
+            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Field officer (employee)</label>
+            <select name="field_officer_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                <option value="">None</option>
+                @foreach ($fieldOfficers as $officer)
+                    <option value="{{ $officer['id'] }}" @selected((string) old('field_officer_id', $property->field_officer_id) === (string) $officer['id'])>{{ $officer['label'] }}</option>
+                @endforeach
+            </select>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Field officers are managed as employees in
+                <a href="{{ route('property.hr.employees.index', ['role_type' => 'field_officer'], false) }}" data-turbo-frame="property-main" class="font-medium text-blue-600 hover:underline">HR → Employees</a>.
+            </p>
+            @error('field_officer_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+        </div>
+    @endif
     <button type="submit" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">Save changes</button>
 </form>

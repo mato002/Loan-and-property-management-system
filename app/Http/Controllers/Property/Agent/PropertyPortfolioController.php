@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\DepositDefinition;
 use App\Models\ExpenseDefinition;
+use App\Models\PmFieldOfficer;
 use App\Models\PmLease;
 use App\Models\PmInvoice;
 use App\Models\PmPayment;
@@ -15,6 +16,8 @@ use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Support\CsvExport;
 use App\Support\Property\LandlordWorkspaceScope;
+use App\Support\Property\PropertyEntityHub;
+use App\Services\Property\LandlordHubDataService;
 use App\Support\Property\ResponsiveTableColumns;
 use App\Support\Property\UnitListPresentation;
 use App\Support\Property\WorkspaceRowAlert;
@@ -22,6 +25,7 @@ use App\Support\TabularExport;
 use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\LandlordPortalOnboardingService;
+use App\Services\Property\PropertyHrEmployeeService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyRegisterImportService;
 use Illuminate\Validation\ValidationException;
@@ -765,6 +769,7 @@ class PropertyPortfolioController extends Controller
             'propertyCommissionPercent' => $this->propertyCommissionPercent((int) $property->id),
             'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(),
             'propertyChargeTemplates' => $this->propertyChargeTemplates((int) $property->id),
+            'fieldOfficers' => app(PropertyHrEmployeeService::class)->fieldOfficerSelectOptions((int) $property->agent_user_id),
         ], $this->propertyFormModalViewData($request)));
     }
 
@@ -780,6 +785,7 @@ class PropertyPortfolioController extends Controller
             'city' => ['nullable', 'string', 'max:128'],
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
             'charge_templates' => ['nullable', 'array', 'max:50'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
@@ -825,6 +831,15 @@ class PropertyPortfolioController extends Controller
         unset($data['charge_templates']);
         unset($data['expense_definitions']);
         unset($data['deposit_definitions']);
+
+        if (array_key_exists('field_officer_id', $data) && ($data['field_officer_id'] === null || $data['field_officer_id'] === '')) {
+            $data['field_officer_id'] = null;
+        } elseif (isset($data['field_officer_id'])) {
+            $officer = PmFieldOfficer::query()->findOrFail((int) $data['field_officer_id']);
+            if ((int) $officer->agent_user_id !== (int) $property->agent_user_id) {
+                return back()->withErrors(['field_officer_id' => 'The selected employee must belong to the same agent workspace as this property.'])->withInput();
+            }
+        }
 
         $property->update($data);
         $this->setPropertyCommissionOverride((int) $property->id, $commissionPercent);
@@ -1634,6 +1649,8 @@ class PropertyPortfolioController extends Controller
 
         return [
             'periodLabel' => $periodLabel,
+            'periodStart' => $periodStart,
+            'periodEnd' => $periodEnd,
             'monthValue' => $month,
             'fyValue' => $fy,
             'commissionPct' => $this->displayCommissionPercent(
@@ -1683,25 +1700,40 @@ class PropertyPortfolioController extends Controller
             );
         }
 
+        $activeTab = PropertyEntityHub::activeTabFromRequest($request, 'landlord');
+        $propertyIds = $snapshot['propertyBreakdown']->pluck('property_id')->map(fn ($id) => (int) $id)->all();
+        $periodMonth = preg_match('/^\d{4}-\d{2}$/', (string) ($snapshot['monthValue'] ?? ''))
+            ? (string) $snapshot['monthValue']
+            : $snapshot['periodStart']->format('Y-m');
+
+        $tabData = app(LandlordHubDataService::class)->forTab(
+            $activeTab,
+            $landlord,
+            $propertyIds,
+            $snapshot['periodStart'],
+            $snapshot['periodEnd'],
+            $periodMonth,
+        );
+
         return view('property.agent.landlords.show', [
             'landlord' => $landlord,
             'portalCredentials' => $this->resolveLandlordPortalCredentialsForShow($landlord),
+            'activeTab' => $activeTab,
+            ...$tabData,
             ...$snapshot,
         ]);
     }
 
-    public function landlordsStatement(Request $request, User $landlord): View
+    public function landlordsStatement(Request $request, User $landlord): RedirectResponse
     {
         $this->ensureLandlordVisibleForActor($request->user(), $landlord);
 
-        $month = (string) $request->query('month', '');
-        $fy = (int) $request->query('fy', now()->year);
-        $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
-
-        return view('property.agent.landlords.statement', [
-            'landlord' => $landlord,
-            ...$snapshot,
-        ]);
+        return redirect()->route('property.landlords.show', array_filter([
+            'landlord' => $landlord->id,
+            'tab' => 'statement',
+            'month' => $request->query('month'),
+            'fy' => $request->query('fy'),
+        ]));
     }
 
     public function resendLandlordPortalLogin(Request $request, User $landlord): RedirectResponse
