@@ -708,6 +708,8 @@ class PropertySettingsStoreWebController extends Controller
             ['key' => 'city', 'label' => 'City', 'type' => 'select', 'required' => false, 'enabled' => true, 'help_text' => 'Town/city where property is located.', 'options' => 'Nairobi, Nakuru, Mombasa, Kisumu'],
             ['key' => 'address_line', 'label' => 'Address line', 'type' => 'textarea', 'required' => false, 'enabled' => true, 'help_text' => 'Street/building description.', 'options' => ''],
             ['key' => 'commission_percent', 'label' => 'Commission %', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'Override commission for this property.', 'options' => ''],
+            ['key' => 'rent_due_day', 'label' => 'Rent due day', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'Day of month rent is due (1–31).', 'options' => ''],
+            ['key' => 'field_officer_id', 'label' => 'Field officer', 'type' => 'select', 'required' => false, 'enabled' => true, 'help_text' => 'Assigned portfolio manager.', 'options' => ''],
         ];
     }
 
@@ -723,6 +725,11 @@ class PropertySettingsStoreWebController extends Controller
             ['key' => 'bedrooms', 'label' => 'Bedrooms', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'No. of bedrooms where applicable.', 'options' => ''],
             ['key' => 'rent_amount', 'label' => 'Rent amount', 'type' => 'number', 'required' => true, 'enabled' => true, 'help_text' => 'Monthly rent amount.', 'options' => ''],
             ['key' => 'status', 'label' => 'Status', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Current occupancy status.', 'options' => 'vacant, occupied, notice, owner_occupied'],
+            ['key' => 'market_rent', 'label' => 'Market rent', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'Listing / target rent amount.', 'options' => ''],
+            ['key' => 'legacy_area', 'label' => 'Legacy area (sq ft)', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'Imported floor area.', 'options' => ''],
+            ['key' => 'floor', 'label' => 'Floor', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Floor level or block.', 'options' => ''],
+            ['key' => 'furnished', 'label' => 'Furnished', 'type' => 'checkbox', 'required' => false, 'enabled' => true, 'help_text' => 'Unit includes furniture.', 'options' => ''],
+            ['key' => 'available_from', 'label' => 'Available from', 'type' => 'date', 'required' => false, 'enabled' => true, 'help_text' => 'When the unit becomes available.', 'options' => ''],
         ];
     }
 
@@ -749,6 +756,9 @@ class PropertySettingsStoreWebController extends Controller
             ['key' => 'email', 'label' => 'Email', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Primary email address.', 'options' => ''],
             ['key' => 'phone', 'label' => 'Phone', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Primary contact number.', 'options' => ''],
             ['key' => 'id_number', 'label' => 'ID / registration', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'National ID or company registration.', 'options' => ''],
+            ['key' => 'legacy_landlord_code', 'label' => 'Legacy landlord code', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Import reference code.', 'options' => ''],
+            ['key' => 'kra_pin', 'label' => 'KRA PIN', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Tax PIN for settlements.', 'options' => ''],
+            ['key' => 'address_line', 'label' => 'Postal / physical address', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Landlord mailing address.', 'options' => ''],
         ];
     }
 
@@ -791,6 +801,7 @@ class PropertySettingsStoreWebController extends Controller
             ['key' => 'phone', 'label' => 'Phone', 'type' => 'text', 'required' => true, 'enabled' => true, 'help_text' => 'Primary mobile number.', 'options' => ''],
             ['key' => 'id_number', 'label' => 'ID number', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'National ID / passport.', 'options' => ''],
             ['key' => 'emergency_contact', 'label' => 'Emergency contact', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Next of kin details.', 'options' => ''],
+            ['key' => 'account_number', 'label' => 'Account number', 'type' => 'text', 'required' => false, 'enabled' => true, 'help_text' => 'Tenant payment reference (auto-generated if blank).', 'options' => ''],
         ];
     }
 

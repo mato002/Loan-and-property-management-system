@@ -3,6 +3,8 @@
         || $errors->has('code')
         || $errors->has('city')
         || $errors->has('commission_percent')
+        || $errors->has('rent_due_day')
+        || $errors->has('field_officer_id')
         || $errors->has('address_line')
         || $errors->has('charge_templates');
     $linkLandlordFormHasErrors = $errors->has('property_id')
@@ -160,6 +162,23 @@
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Commission %</label>
                     <input type="number" name="commission_percent" value="{{ old('commission_percent') }}" min="0" max="100" step="0.01" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Optional (uses default if empty)" />
                     @error('commission_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent due day</label>
+                        <input type="number" name="rent_due_day" value="{{ old('rent_due_day') }}" min="1" max="31" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Blank = system default" />
+                        @error('rent_due_day')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Field officer</label>
+                        <select name="field_officer_id" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                            <option value="">Unassigned</option>
+                            @foreach (($fieldOfficers ?? []) as $officer)
+                                <option value="{{ $officer['id'] }}" @selected((string) old('field_officer_id') === (string) $officer['id'])>{{ $officer['label'] }}</option>
+                            @endforeach
+                        </select>
+                        @error('field_officer_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    </div>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Address</label>

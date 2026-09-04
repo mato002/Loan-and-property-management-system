@@ -328,6 +328,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/landlords/{landlord}/edit', [PropertyPortfolioController::class, 'editLandlord'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.edit');
     Route::put('/landlords/{landlord}', [PropertyPortfolioController::class, 'updateLandlord'])->whereNumber('landlord')->middleware('property.permission:properties.manage')->name('landlords.update');
     Route::get('/landlords/{landlord}/statement', [PropertyPortfolioController::class, 'landlordsStatement'])->whereNumber('landlord')->name('landlords.statement');
+    Route::get('/landlords/{landlord}/statement/print', [PropertyPortfolioController::class, 'landlordsStatementPrint'])->whereNumber('landlord')->name('landlords.statement.print');
     Route::post('/landlords/{landlord}/resend-portal-login', [PropertyPortfolioController::class, 'resendLandlordPortalLogin'])
         ->whereNumber('landlord')
         ->middleware('property.permission:properties.manage')
@@ -422,6 +423,10 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/accounting/payables/landlord-advances/schedule', [PropertyAccountingController::class, 'updateLandlordAgreedPaySchedule'])->name('accounting.payables.landlord_advances.schedule');
     Route::post('/accounting/payables/landlord-advances/{item}/recover', [PropertyAccountingController::class, 'markLandlordAdvanceRecovered'])->whereNumber('item')->name('accounting.payables.landlord_advances.recover');
     Route::post('/accounting/payables/landlord-advances/{item}/write-off', [PropertyAccountingController::class, 'writeOffLandlordAdvance'])->whereNumber('item')->name('accounting.payables.landlord_advances.write_off');
+    Route::get('/accounting/payables/property-takeon-balances', [PropertyAccountingController::class, 'propertyTakeonBalances'])->name('accounting.payables.property_takeon_balances');
+    Route::post('/accounting/payables/property-takeon-balances', [PropertyAccountingController::class, 'storePropertyTakeonBalance'])->name('accounting.payables.property_takeon_balances.store');
+    Route::post('/accounting/payables/property-takeon-balances/import', [PropertyAccountingController::class, 'importPropertyTakeonBalances'])->name('accounting.payables.property_takeon_balances.import');
+    Route::delete('/accounting/payables/property-takeon-balances/{takeon}', [PropertyAccountingController::class, 'destroyPropertyTakeonBalance'])->whereNumber('takeon')->name('accounting.payables.property_takeon_balances.destroy');
     Route::get('/accounting/payables/landlord-remittances', [\App\Http\Controllers\Property\Agent\LandlordRemittanceAgentController::class, 'index'])->name('accounting.payables.landlord_remittances');
     Route::post('/accounting/payables/landlord-remittances/{remittance}/acknowledge', [\App\Http\Controllers\Property\Agent\LandlordRemittanceAgentController::class, 'acknowledge'])->name('accounting.payables.landlord_remittances.acknowledge');
     Route::post('/accounting/payables/landlord-remittances/{remittance}/paid', [\App\Http\Controllers\Property\Agent\LandlordRemittanceAgentController::class, 'markPaid'])->name('accounting.payables.landlord_remittances.paid');

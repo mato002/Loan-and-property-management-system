@@ -9,6 +9,11 @@ import { recoverPropertyScrollState } from './property-modal-manager';
 import { setupPropertyPaymentReversal } from './property-payment-reversal';
 import { setupPropertyWorkspaceTabs } from './property-workspace-tabs';
 import { setupPropertyWorkspaceUi } from './property-workspace-ui';
+import {
+    isEntityHubTabOnlyNavigation,
+    scrollPropertyEntityHubIntoView,
+    setupPropertyEntityHubTabs,
+} from './property-entity-hub-scroll';
 
 import { bootPropertyDashboard } from './property-dashboard';
 import { ensurePropertyPageModalsInitialized } from './property-page-modals';
@@ -171,6 +176,7 @@ function runDeferredHydrationTasks(frame, hooks) {
         schedulePropertyFrameReconciliation = () => {},
         wirePropertyFrameNavigation = () => {},
         setupPropertyWorkspaceTabs: setupTabs = () => {},
+        setupPropertyEntityHubTabs: setupEntityHubTabs = () => {},
         setupPropertyPaymentReversal: setupReversal = () => {},
         onHydrationComplete = () => {},
     } = hooks;
@@ -180,6 +186,7 @@ function runDeferredHydrationTasks(frame, hooks) {
 
     if (isNewNavigation) {
         setupTabs(frame);
+        setupEntityHubTabs(frame);
         lastScrollResetNavigationKey = navigationKey;
     }
 
@@ -243,6 +250,7 @@ export function runPropertyWorkspaceHydration(frame, source, hooks = {}) {
         recoverPropertyScrollState(source);
 
         const navigationKey = propertyNavigationKey();
+        const previousNavigationKey = lastScrollResetNavigationKey;
         const isNewNavigation = navigationKey !== '' && navigationKey !== lastScrollResetNavigationKey;
 
         syncPropertyPortalNav(frame);
@@ -250,7 +258,22 @@ export function runPropertyWorkspaceHydration(frame, source, hooks = {}) {
 
         const hasListingPublishEditor = focusListingPublishEditor(frame);
         if (isNewNavigation && !hasListingPublishEditor) {
-            scrollPropertyMainToTop(frame);
+            const entityHubTabSwitch = isEntityHubTabOnlyNavigation(
+                previousNavigationKey,
+                navigationKey,
+                frame,
+            );
+
+            if (entityHubTabSwitch) {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        scrollPropertyEntityHubIntoView(frame);
+                        setupPropertyEntityHubTabs(frame);
+                    });
+                });
+            } else {
+                scrollPropertyMainToTop(frame);
+            }
         }
 
         hydratePropertyMainAlpine(frame);
@@ -260,6 +283,7 @@ export function runPropertyWorkspaceHydration(frame, source, hooks = {}) {
             reconcilePropertyFrameWithBrowserUrl,
             wirePropertyFrameNavigation,
             setupPropertyWorkspaceTabs,
+            setupPropertyEntityHubTabs,
             setupPropertyPaymentReversal,
             onHydrationComplete,
         });

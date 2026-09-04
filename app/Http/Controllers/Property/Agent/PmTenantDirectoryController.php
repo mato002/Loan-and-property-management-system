@@ -535,6 +535,19 @@ class PmTenantDirectoryController extends Controller
             'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'create_portal_login' => ['sometimes', 'boolean'],
+            'emergency_contact' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'emergency_contact')),
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'account_number' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'account_number')),
+                'nullable',
+                'string',
+                'max:32',
+                Rule::unique('pm_tenants', 'account_number')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+            ],
         ]);
         $openingArrearsPayload = $this->buildOpeningArrearsPayload($data);
 
@@ -573,6 +586,8 @@ class PmTenantDirectoryController extends Controller
             'phone' => $data['phone'] ?? null,
             'email' => $createPortal ? Str::lower($data['email']) : ($data['email'] ?? null),
             'national_id' => $data['national_id'] ?? null,
+            'emergency_contact' => $this->normalizeTenantEmergencyContact($data['emergency_contact'] ?? null),
+            'account_number' => $this->normalizeTenantAccountNumber($data['account_number'] ?? null),
             'risk_level' => $data['risk_level'],
             ...$openingArrearsPayload,
             'notes' => $data['notes'] ?? null,
@@ -676,6 +691,19 @@ class PmTenantDirectoryController extends Controller
             'risk_level' => ['nullable', 'in:normal,medium,high'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'create_portal_login' => ['nullable'],
+            'emergency_contact' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'emergency_contact')),
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'account_number' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'account_number')),
+                'nullable',
+                'string',
+                'max:32',
+                Rule::unique('pm_tenants', 'account_number')->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id())),
+            ],
         ]);
 
         $user = null;
@@ -703,6 +731,8 @@ class PmTenantDirectoryController extends Controller
             'phone' => $data['phone'] ?? null,
             'email' => isset($data['email']) && trim((string) $data['email']) !== '' ? Str::lower((string) $data['email']) : null,
             'national_id' => $data['national_id'] ?? null,
+            'emergency_contact' => $this->normalizeTenantEmergencyContact($data['emergency_contact'] ?? null),
+            'account_number' => $this->normalizeTenantAccountNumber($data['account_number'] ?? null),
             'risk_level' => $data['risk_level'] ?? 'normal',
             'notes' => $data['notes'] ?? null,
         ]);
@@ -1109,11 +1139,33 @@ class PmTenantDirectoryController extends Controller
             'opening_arrears_as_of' => ['nullable', 'date'],
             'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'emergency_contact' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'emergency_contact')),
+                'nullable',
+                'string',
+                'max:255',
+            ],
+            'account_number' => [
+                Rule::requiredIf($this->isFieldRequired($cfg, 'account_number')),
+                'nullable',
+                'string',
+                'max:32',
+                Rule::unique('pm_tenants', 'account_number')
+                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
+                    ->ignore($tenant->id),
+            ],
         ]);
         $openingArrearsPayload = $this->buildOpeningArrearsPayload($data, $tenant);
 
         $tenant->update([
-            ...$data,
+            'name' => $data['name'],
+            'phone' => $data['phone'] ?? null,
+            'email' => $data['email'] ?? null,
+            'national_id' => $data['national_id'] ?? null,
+            'emergency_contact' => $this->normalizeTenantEmergencyContact($data['emergency_contact'] ?? null),
+            'account_number' => $this->normalizeTenantAccountNumber($data['account_number'] ?? null),
+            'risk_level' => $data['risk_level'],
+            'notes' => $data['notes'] ?? null,
             ...$openingArrearsPayload,
         ]);
 
@@ -1163,6 +1215,7 @@ class PmTenantDirectoryController extends Controller
             'email' => ['enabled' => true, 'required' => false],
             'id_number' => ['enabled' => true, 'required' => false],
             'emergency_contact' => ['enabled' => true, 'required' => false],
+            'account_number' => ['enabled' => true, 'required' => false],
         ];
         $raw = PropertyPortalSetting::getValue('system_setup_tenant_fields_json', '');
         if (! is_string($raw) || trim($raw) === '') {
@@ -1193,6 +1246,20 @@ class PmTenantDirectoryController extends Controller
     private function isFieldRequired(array $config, string $field): bool
     {
         return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
+    }
+
+    private function normalizeTenantEmergencyContact(mixed $value): ?string
+    {
+        $text = trim((string) ($value ?? ''));
+
+        return $text !== '' ? $text : null;
+    }
+
+    private function normalizeTenantAccountNumber(mixed $value): ?string
+    {
+        $account = strtoupper(str_replace(' ', '', trim((string) ($value ?? ''))));
+
+        return $account !== '' ? $account : null;
     }
 
     /**

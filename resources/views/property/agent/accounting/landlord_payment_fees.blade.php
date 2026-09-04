@@ -161,7 +161,7 @@
                                     <div>{{ $row['next_agreed_pay_label'] ?? '—' }}</div>
                                     <div class="text-xs text-slate-500">Day {{ $row['agreed_pay_day'] }}</div>
                                 @else
-                                    <a href="{{ route('property.accounting.payables.landlord_advances', ['property_id' => $row['property_id'], 'landlord_id' => $row['landlord_id']]) }}" class="text-xs text-indigo-700 hover:text-indigo-800">Set schedule</a>
+                                    <a href="{{ route('property.accounting.payables.landlord_advances', ['property_id' => $row['property_id'], 'landlord_id' => $row['landlord_id'], 'open' => 'schedule']) }}" class="text-xs text-indigo-700 hover:text-indigo-800">Set schedule</a>
                                 @endif
                             </td>
                             <td class="px-3 py-3 text-right tabular-nums">

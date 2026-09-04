@@ -18,6 +18,7 @@ final class LandlordLedger
         ?string $referenceType = null,
         ?int $referenceId = null,
         ?\DateTimeInterface $occurredAt = null,
+        ?int $agentUserId = null,
     ): PmLandlordLedgerEntry {
         if ($amount <= 0) {
             throw new RuntimeException('Ledger amount must be greater than zero.');
@@ -38,6 +39,7 @@ final class LandlordLedger
         $entry = PmLandlordLedgerEntry::query()->create([
             'user_id' => $user->id,
             'property_id' => $property?->id,
+            'agent_user_id' => $agentUserId ?? $property?->agent_user_id,
             'direction' => $direction,
             'amount' => $amount,
             'balance_after' => $balance,

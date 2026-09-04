@@ -1,3 +1,8 @@
+@php
+    $showAdvanceModal = old('landlord_form') === 'advance';
+    $showScheduleModal = old('landlord_form') === 'schedule'
+        || request()->query('open') === 'schedule';
+@endphp
 <x-property.workspace
     title="Landlord advances & pay dates"
     subtitle="Record advance payments to landlords, set agreed pay days, and review all payment schedules."
@@ -8,8 +13,154 @@
     :show-search="false"
     :compact-list="true"
 >
+    <x-slot name="pageModalsAttributes"
+        x-data="{!! \Illuminate\Support\Js::from([
+            'showAdvanceModal' => $showAdvanceModal,
+            'showScheduleModal' => $showScheduleModal,
+        ]) !!}"
+    ></x-slot>
+
     <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+            data-property-modal-open="showAdvanceModal"
+            @click="showAdvanceModal = true"
+        >
+            <i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i>
+            <span>Record advance payment</span>
+        </button>
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+            data-property-modal-open="showScheduleModal"
+            @click="showScheduleModal = true"
+        >
+            <i class="fa-solid fa-calendar-day" aria-hidden="true"></i>
+            <span>Set agreed pay day</span>
+        </button>
         <a href="{{ route('property.accounting.payables.landlord_payouts') }}" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">View payouts</a>
+    </x-slot>
+
+    <x-slot name="modals">
+        <x-property.modal
+            show="showAdvanceModal"
+            close="showAdvanceModal = false"
+            name="landlord-advance-payment"
+            title="Record advance payment"
+            max-width="3xl"
+        >
+            <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">Pay a landlord before full collections are received. Posts to landlord ledger when marked paid.</p>
+            <form method="post" action="{{ route('property.accounting.payables.landlord_advances.store') }}" class="space-y-3">
+                @csrf
+                <input type="hidden" name="landlord_form" value="advance" />
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
+                        <select name="property_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                            <option value="">Select property</option>
+                            @foreach ($properties as $property)
+                                <option value="{{ $property->id }}" @selected((int) old('property_id', $filters['property_id'] ?? 0) === (int) $property->id)>{{ $property->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('property_id')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Landlord</label>
+                        <select name="landlord_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                            <option value="">Select landlord</option>
+                            @foreach ($landlords as $landlord)
+                                <option value="{{ $landlord->id }}" @selected((int) old('landlord_id', $filters['landlord_id'] ?? 0) === (int) $landlord->id)>{{ $landlord->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('landlord_id')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
+                        <input type="number" name="amount" step="0.01" min="0.01" value="{{ old('amount') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                        @error('amount')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Agreed pay date</label>
+                        <input type="date" name="agreed_pay_date" value="{{ old('agreed_pay_date') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                        @error('agreed_pay_date')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Payment reference</label>
+                        <input type="text" name="payment_reference" value="{{ old('payment_reference') }}" placeholder="M-Pesa / bank ref" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                        @error('payment_reference')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                        <input type="text" name="notes" value="{{ old('notes') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                        @error('notes')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                    <input type="checkbox" name="mark_paid" value="1" @checked(old('mark_paid', '1')) class="rounded border-slate-300" />
+                    Mark paid &amp; post to ledger immediately
+                </label>
+                <div class="flex flex-wrap justify-end gap-2 pt-2">
+                    <button type="button" class="rounded-lg border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="showAdvanceModal = false">Cancel</button>
+                    <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Record advance</button>
+                </div>
+            </form>
+        </x-property.modal>
+
+        <x-property.modal
+            show="showScheduleModal"
+            close="showScheduleModal = false"
+            name="landlord-agreed-pay-day"
+            title="Set agreed pay day"
+            max-width="2xl"
+        >
+            <p class="mb-4 text-xs text-slate-500 dark:text-slate-400">Recurring day of month when landlord expects remittance (1–28).</p>
+            <form method="post" action="{{ route('property.accounting.payables.landlord_advances.schedule') }}" class="space-y-3">
+                @csrf
+                <input type="hidden" name="landlord_form" value="schedule" />
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
+                        <select name="property_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                            <option value="">Select property</option>
+                            @foreach ($properties as $property)
+                                <option value="{{ $property->id }}" @selected((int) old('property_id', $filters['property_id'] ?? 0) === (int) $property->id)>{{ $property->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('property_id')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Landlord</label>
+                        <select name="landlord_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                            <option value="">Select landlord</option>
+                            @foreach ($landlords as $landlord)
+                                <option value="{{ $landlord->id }}" @selected((int) old('landlord_id', $filters['landlord_id'] ?? 0) === (int) $landlord->id)>{{ $landlord->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('landlord_id')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Agreed pay day</label>
+                        <select name="agreed_pay_day" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
+                            <option value="">Not set</option>
+                            @for ($day = 1; $day <= 28; $day++)
+                                <option value="{{ $day }}" @selected((int) old('agreed_pay_day') === $day)>{{ $day }}{{ in_array($day % 10, [1, 2, 3], true) && ! in_array($day, [11, 12, 13], true) ? match ($day % 10) { 1 => 'st', 2 => 'nd', 3 => 'rd' } : 'th' }} of month</option>
+                            @endfor
+                        </select>
+                        @error('agreed_pay_day')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
+                        <input type="text" name="agreed_pay_notes" value="{{ old('agreed_pay_notes') }}" placeholder="e.g. Pay after 5th once rent collected" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
+                        @error('agreed_pay_notes')<p class="mt-1 text-xs text-rose-600">{{ $message }}</p>@enderror
+                    </div>
+                </div>
+                <div class="flex flex-wrap justify-end gap-2 pt-2">
+                    <button type="button" class="rounded-lg border border-slate-200 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50" @click="showScheduleModal = false">Cancel</button>
+                    <button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">Save schedule</button>
+                </div>
+            </form>
+        </x-property.modal>
     </x-slot>
 
     <x-slot name="toolbar">
@@ -54,107 +205,22 @@
         <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">{{ session('status') }}</div>
     @endif
 
-    @if ($errors->any())
+    @if ($errors->any() && ! in_array(old('landlord_form'), ['advance', 'schedule'], true))
         <div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{{ $errors->first() }}</div>
     @endif
 
-    <div class="grid gap-6 lg:grid-cols-2">
-        <section class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 p-4 shadow-sm">
-            <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Record advance payment</h2>
-            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Pay a landlord before full collections are received. Posts to landlord ledger when marked paid.</p>
-            <form method="post" action="{{ route('property.accounting.payables.landlord_advances.store') }}" class="mt-4 space-y-3">
-                @csrf
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
-                        <select name="property_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
-                            <option value="">Select property</option>
-                            @foreach ($properties as $property)
-                                <option value="{{ $property->id }}" @selected((int) old('property_id', $filters['property_id'] ?? 0) === (int) $property->id)>{{ $property->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Landlord</label>
-                        <select name="landlord_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
-                            <option value="">Select landlord</option>
-                            @foreach ($landlords as $landlord)
-                                <option value="{{ $landlord->id }}" @selected((int) old('landlord_id', $filters['landlord_id'] ?? 0) === (int) $landlord->id)>{{ $landlord->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Amount (KES)</label>
-                        <input type="number" name="amount" step="0.01" min="0.01" value="{{ old('amount') }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Agreed pay date</label>
-                        <input type="date" name="agreed_pay_date" value="{{ old('agreed_pay_date') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Payment reference</label>
-                        <input type="text" name="payment_reference" value="{{ old('payment_reference') }}" placeholder="M-Pesa / bank ref" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
-                        <input type="text" name="notes" value="{{ old('notes') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                    </div>
-                </div>
-                <label class="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                    <input type="checkbox" name="mark_paid" value="1" @checked(old('mark_paid', '1')) class="rounded border-slate-300" />
-                    Mark paid &amp; post to ledger immediately
-                </label>
-                <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">Record advance</button>
-            </form>
-        </section>
-
-        <section class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 p-4 shadow-sm">
-            <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Set agreed pay day</h2>
-            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Recurring day of month when landlord expects remittance (1–28).</p>
-            <form method="post" action="{{ route('property.accounting.payables.landlord_advances.schedule') }}" class="mt-4 space-y-3">
-                @csrf
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Property</label>
-                        <select name="property_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
-                            <option value="">Select property</option>
-                            @foreach ($properties as $property)
-                                <option value="{{ $property->id }}">{{ $property->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Landlord</label>
-                        <select name="landlord_id" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
-                            <option value="">Select landlord</option>
-                            @foreach ($landlords as $landlord)
-                                <option value="{{ $landlord->id }}">{{ $landlord->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Agreed pay day</label>
-                        <select name="agreed_pay_day" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm">
-                            <option value="">Not set</option>
-                            @for ($day = 1; $day <= 28; $day++)
-                                <option value="{{ $day }}">{{ $day }}{{ in_array($day % 10, [1, 2, 3], true) && ! in_array($day, [11, 12, 13], true) ? match ($day % 10) { 1 => 'st', 2 => 'nd', 3 => 'rd' } : 'th' }} of month</option>
-                            @endfor
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Notes</label>
-                        <input type="text" name="agreed_pay_notes" placeholder="e.g. Pay after 5th once rent collected" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm" />
-                    </div>
-                </div>
-                <button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">Save schedule</button>
-            </form>
-        </section>
-    </div>
-
-    <section class="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-        <div class="border-b border-slate-200 dark:border-slate-700 px-4 py-3">
-            <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Agreed pay schedules</h2>
-            <p class="text-xs text-slate-500 dark:text-slate-400">All property × landlord links and their next agreed pay date.</p>
+    <section class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+        <div class="border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+                <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Agreed pay schedules</h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400">All property × landlord links and their next agreed pay date.</p>
+            </div>
+            <button
+                type="button"
+                class="text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+                data-property-modal-open="showScheduleModal"
+                @click="showScheduleModal = true"
+            >+ Set pay day</button>
         </div>
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">
@@ -195,9 +261,17 @@
     </section>
 
     <section class="mt-6 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
-        <div class="border-b border-slate-200 dark:border-slate-700 px-4 py-3">
-            <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Advance payment records</h2>
-            <p class="text-xs text-slate-500 dark:text-slate-400">All logged advance payments with agreed dates and recovery status.</p>
+        <div class="border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+                <h2 class="text-sm font-semibold text-slate-900 dark:text-white">Advance payment records</h2>
+                <p class="text-xs text-slate-500 dark:text-slate-400">All logged advance payments with agreed dates and recovery status.</p>
+            </div>
+            <button
+                type="button"
+                class="text-xs font-semibold text-indigo-700 hover:text-indigo-800"
+                data-property-modal-open="showAdvanceModal"
+                @click="showAdvanceModal = true"
+            >+ Record advance</button>
         </div>
         <div class="overflow-x-auto">
             <table class="min-w-full text-sm">

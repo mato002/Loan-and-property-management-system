@@ -7,8 +7,10 @@ use App\Models\Concerns\AgentWorkspaceScope;
 use App\Models\DepositDefinition;
 use App\Models\ExpenseDefinition;
 use App\Models\PmFieldOfficer;
+use App\Models\PmLandlordPortalProfile;
 use App\Models\PmLease;
 use App\Models\PmInvoice;
+use App\Models\PmMaintenanceRequest;
 use App\Models\PmPayment;
 use App\Models\Property;
 use App\Models\PropertyPortalSetting;
@@ -332,6 +334,7 @@ class PropertyPortfolioController extends Controller
             'filters' => array_merge($filters, ['per_page' => (string) $perPage, 'include_archived' => $includeArchived ? '1' : '0']),
             'perPage' => $perPage,
             'cities' => Property::query()->whereNotNull('city')->where('city', '!=', '')->distinct()->orderBy('city')->pluck('city'),
+            'fieldOfficers' => app(PropertyHrEmployeeService::class)->fieldOfficerSelectOptions((int) $request->user()->id),
         ]);
     }
 
@@ -715,6 +718,76 @@ class PropertyPortfolioController extends Controller
             );
         }
 
+        $activeTab = PropertyEntityHub::activeTabFromRequest($request, 'property');
+
+        $maintenanceRequests = collect();
+        if ($unitIds !== [] && in_array($activeTab, ['maintenance', 'overview'], true)) {
+            $maintenanceRequests = PmMaintenanceRequest::query()
+                ->whereIn('property_unit_id', $unitIds)
+                ->with(['unit:id,label,property_id', 'pmTenant:id,name'])
+                ->orderByDesc('created_at')
+                ->limit(25)
+                ->get();
+        }
+
+        $firstVacantUnit = $units->firstWhere('status', PropertyUnit::STATUS_VACANT);
+        $quickActions = [];
+        if ($request->user()?->hasPmPermission('properties.manage') && ! $property->isManagementReadOnly()) {
+            $quickActions[] = [
+                'label' => 'Edit property',
+                'route' => 'property.properties.edit',
+                'params' => ['property' => $property->id],
+                'icon' => 'fa-pen-to-square',
+            ];
+            $quickActions[] = [
+                'label' => 'Manage units',
+                'route' => 'property.properties.units',
+                'params' => ['property_id' => $property->id],
+                'icon' => 'fa-building',
+            ];
+            if ($firstVacantUnit) {
+                $quickActions[] = [
+                    'label' => 'Assign tenant',
+                    'route' => 'property.tenants.leases',
+                    'params' => ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id],
+                    'icon' => 'fa-key',
+                    'tone' => 'primary',
+                ];
+            }
+            if (($property->landlords?->count() ?? 0) === 0) {
+                $quickActions[] = [
+                    'label' => 'Link landlord',
+                    'route' => 'property.properties.list',
+                    'params' => ['property_id' => $property->id],
+                    'icon' => 'fa-user-tie',
+                ];
+            }
+        }
+
+        $alerts = [];
+        if (($property->landlords?->count() ?? 0) === 0) {
+            $alerts[] = [
+                'label' => 'No landlord linked',
+                'tone' => 'amber',
+                'href' => route('property.properties.list', ['property_id' => $property->id], false).'#link-landlord-form',
+            ];
+        }
+        if ($vacantUnits > 0) {
+            $alerts[] = [
+                'label' => $vacantUnits.' vacant unit'.($vacantUnits === 1 ? '' : 's'),
+                'tone' => 'slate',
+                'href' => PropertyEntityHub::tabUrl(
+                    'property.properties.show',
+                    ['property' => $property->id],
+                    'units',
+                    array_filter([
+                        'month' => $month !== '' ? $month : null,
+                        'fy' => $request->has('fy') && $month === '' ? $fy : null,
+                    ])
+                ),
+            ];
+        }
+
         return view('property.agent.properties.show', [
             'property' => $property,
             'units' => $units,
@@ -722,6 +795,12 @@ class PropertyPortfolioController extends Controller
             'periodLabel' => $periodLabel,
             'monthValue' => $month,
             'fyValue' => $fy,
+            'activeTab' => $activeTab,
+            'quickActions' => $quickActions,
+            'alerts' => $alerts,
+            'maintenanceRequests' => $maintenanceRequests,
+            'unitTypes' => $this->propertyUnitTypeOptions(),
+            'bedroomOptionsByType' => $this->propertyBedroomOptionsByType(),
             'stats' => [
                 ['label' => 'Units', 'value' => (string) $totalUnits, 'hint' => 'Total doors'],
                 ['label' => 'Occupied', 'value' => (string) $occupiedUnits, 'hint' => 'Current'],
@@ -1736,6 +1815,40 @@ class PropertyPortfolioController extends Controller
         ]));
     }
 
+    public function landlordsStatementPrint(Request $request, User $landlord): View
+    {
+        $this->ensureLandlordVisibleForActor($request->user(), $landlord);
+
+        $month = (string) $request->query('month', '');
+        $fy = (int) $request->query('fy', now()->year);
+        $snapshot = $this->buildLandlordSnapshot($landlord, $month, $fy);
+
+        return view('property.agent.landlords.landlord_statement_print', [
+            'landlord' => $landlord,
+            'branding' => $this->landlordStatementBranding(),
+            'generatedAt' => now()->format('Y-m-d H:i'),
+            'autoPrint' => $request->boolean('print'),
+            ...$snapshot,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function landlordStatementBranding(): array
+    {
+        $brandingRaw = PropertyPortalSetting::query()->where('key', 'branding')->value('value');
+        $decoded = is_string($brandingRaw) ? json_decode($brandingRaw, true) : (is_array($brandingRaw) ? $brandingRaw : []);
+
+        return array_merge([
+            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
+            'address' => '',
+            'phone' => '',
+            'email' => '',
+            'colour' => '#0f766e',
+        ], is_array($decoded) ? $decoded : []);
+    }
+
     public function resendLandlordPortalLogin(Request $request, User $landlord): RedirectResponse
     {
         $this->ensureLandlordVisibleForActor($request->user(), $landlord);
@@ -1780,6 +1893,7 @@ class PropertyPortfolioController extends Controller
         return view('property.agent.landlords.edit', array_merge([
             'landlord' => $landlord,
             'landlordFields' => $this->landlordFieldConfig(),
+            'landlordProfile' => PmLandlordPortalProfile::forUser($landlord),
         ], $this->propertyFormModalViewData($request)));
     }
 
@@ -1813,6 +1927,7 @@ class PropertyPortfolioController extends Controller
                 'max:32',
                 Rule::unique('users', 'phone')->ignore($landlord->id),
             ],
+            ...$this->landlordProfileFieldRules($landlordFields),
         ]);
 
         $email = $data['email'] ?? null;
@@ -1839,6 +1954,8 @@ class PropertyPortfolioController extends Controller
 
         $landlord->update($updates);
 
+        app(LandlordPortalOnboardingService::class)->syncLandlordProfile($landlord, $data);
+
         return $this->redirectOrPropertyFormModalSuccess(
             $request,
             redirect()
@@ -1858,14 +1975,15 @@ class PropertyPortfolioController extends Controller
             fn (string $field) => $this->isFieldRequired($landlordFields, $field),
         );
 
-        $extra = $request->validate([
+        $extra = $request->validate(array_merge([
             'property_id' => ['nullable', 'exists:properties,id'],
             'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ]);
+        ], $this->landlordProfileFieldRules($landlordFields)));
 
         $plainPassword = $data['password'];
         $agentUserId = LandlordWorkspaceScope::creatingAgentUserId($request->user());
         $landlord = $onboarding->createLandlordUser($data, $agentUserId);
+        $onboarding->syncLandlordProfile($landlord, $extra);
 
         if (! empty($extra['property_id'])) {
             $property = Property::query()->findOrFail((int) $extra['property_id']);
@@ -1960,6 +2078,7 @@ class PropertyPortfolioController extends Controller
             'city' => ['nullable', 'string', 'max:128'],
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
             'charge_templates' => ['nullable', 'array', 'max:50'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
@@ -1977,6 +2096,15 @@ class PropertyPortfolioController extends Controller
         }
         unset($data['commission_percent']);
         unset($data['charge_templates']);
+
+        if (array_key_exists('field_officer_id', $data) && ($data['field_officer_id'] === null || $data['field_officer_id'] === '')) {
+            $data['field_officer_id'] = null;
+        } elseif (isset($data['field_officer_id'])) {
+            $officer = PmFieldOfficer::query()->findOrFail((int) $data['field_officer_id']);
+            if ((int) $officer->agent_user_id !== (int) $request->user()->id) {
+                return back()->withErrors(['field_officer_id' => 'The selected employee must belong to your agent workspace.'])->withInput();
+            }
+        }
 
         if (!isset($data['code']) || trim((string) $data['code']) === '') {
             $data['code'] = $this->generateUniquePropertyCode($data['name']);
@@ -2029,6 +2157,7 @@ class PropertyPortfolioController extends Controller
             'city' => ['nullable', 'string', 'max:128'],
             'rent_due_day' => ['nullable', 'integer', 'min:1', 'max:31'],
             'commission_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'field_officer_id' => ['nullable', 'integer', 'exists:pm_field_officers,id'],
             'charge_templates' => ['nullable', 'array', 'max:50'],
             'charge_templates.*.property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             'charge_templates.*.charge_type' => ['nullable', 'string', 'max:64'],
@@ -2046,6 +2175,18 @@ class PropertyPortfolioController extends Controller
         }
         unset($data['commission_percent']);
         unset($data['charge_templates']);
+
+        if (array_key_exists('field_officer_id', $data) && ($data['field_officer_id'] === null || $data['field_officer_id'] === '')) {
+            $data['field_officer_id'] = null;
+        } elseif (isset($data['field_officer_id'])) {
+            $officer = PmFieldOfficer::query()->findOrFail((int) $data['field_officer_id']);
+            if ((int) $officer->agent_user_id !== (int) $request->user()->id) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'The selected employee must belong to your agent workspace.',
+                ], 422);
+            }
+        }
 
         if (!isset($data['code']) || trim((string) $data['code']) === '') {
             $data['code'] = $this->generateUniquePropertyCode($data['name']);
@@ -2812,6 +2953,7 @@ class PropertyPortfolioController extends Controller
                 'in:vacant,occupied,notice,owner_occupied',
             ],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
+            ...$this->unitExtendedFieldRules($unitFields),
         ]);
 
         $property = Property::query()->findOrFail((int) $data['property_id']);
@@ -2822,6 +2964,7 @@ class PropertyPortfolioController extends Controller
         $desc = isset($data['public_listing_description']) && trim((string) $data['public_listing_description']) !== ''
             ? $data['public_listing_description']
             : null;
+        $extendedAttrs = $this->extractUnitExtendedAttributes($data, $request);
         $noBedroomTypes = [PropertyUnit::TYPE_SINGLE_ROOM, PropertyUnit::TYPE_BEDSITTER, PropertyUnit::TYPE_STUDIO];
         $requiresNoBedroom = in_array($data['unit_type'], $noBedroomTypes, true);
         if ($requiresNoBedroom) {
@@ -2939,6 +3082,7 @@ class PropertyPortfolioController extends Controller
                 'status' => $rowStatus,
                 'public_listing_description' => $desc,
                 'vacant_since' => $rowStatus === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
+                ...$extendedAttrs,
             ]);
         }
         $unit = $created[0];
@@ -3054,6 +3198,7 @@ class PropertyPortfolioController extends Controller
             'rent_amount' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
             'status' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'status')), 'nullable', 'in:vacant,occupied,notice,owner_occupied'],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
+            ...$this->unitExtendedFieldRules($unitFields),
         ]);
 
         $data['label'] = (string) ($data['label'] ?? $unit->label);
@@ -3087,7 +3232,7 @@ class PropertyPortfolioController extends Controller
             ? ($unit->vacant_since?->toDateString() ?? now()->toDateString())
             : null;
 
-        $unit->update($data);
+        $unit->update(array_merge($data, $this->extractUnitExtendedAttributes($data, $request)));
 
         if ($status !== PropertyUnit::STATUS_VACANT && $unit->public_listing_published) {
             $unit->update(['public_listing_published' => false]);
@@ -3112,6 +3257,7 @@ class PropertyPortfolioController extends Controller
             'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'rent_amount' => ['nullable', 'numeric', 'min:0'],
             'status' => ['nullable', 'in:vacant,occupied,notice,owner_occupied'],
+            ...$this->unitExtendedFieldRules($unitFields),
         ]);
 
         $propertyId = (int) ($data['property_id'] ?? 0);
@@ -3148,6 +3294,7 @@ class PropertyPortfolioController extends Controller
             'rent_amount' => $rentAmount,
             'status' => $status,
             'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,
+            ...$this->extractUnitExtendedAttributes($data, $request),
         ]);
 
         $unit->loadMissing('property');
@@ -3173,6 +3320,8 @@ class PropertyPortfolioController extends Controller
             'city' => ['enabled' => true, 'required' => false],
             'address_line' => ['enabled' => true, 'required' => false],
             'commission_percent' => ['enabled' => true, 'required' => false],
+            'rent_due_day' => ['enabled' => true, 'required' => false],
+            'field_officer_id' => ['enabled' => true, 'required' => false],
         ];
 
         return $this->configuredFieldMap('system_setup_property_onboarding_fields_json', $defaults, ['name']);
@@ -3188,6 +3337,9 @@ class PropertyPortfolioController extends Controller
             'email' => ['enabled' => true, 'required' => false],
             'phone' => ['enabled' => true, 'required' => false],
             'id_number' => ['enabled' => true, 'required' => false],
+            'legacy_landlord_code' => ['enabled' => true, 'required' => false],
+            'kra_pin' => ['enabled' => true, 'required' => false],
+            'address_line' => ['enabled' => true, 'required' => false],
         ];
 
         return $this->configuredFieldMap('system_setup_landlord_fields_json', $defaults, ['name']);
@@ -3205,6 +3357,11 @@ class PropertyPortfolioController extends Controller
             'bedrooms' => ['enabled' => true, 'required' => false],
             'rent_amount' => ['enabled' => true, 'required' => true],
             'status' => ['enabled' => true, 'required' => true],
+            'market_rent' => ['enabled' => true, 'required' => false],
+            'legacy_area' => ['enabled' => true, 'required' => false],
+            'floor' => ['enabled' => true, 'required' => false],
+            'furnished' => ['enabled' => true, 'required' => false],
+            'available_from' => ['enabled' => true, 'required' => false],
         ];
 
         return $this->configuredFieldMap('system_setup_unit_fields_json', $defaults, ['property_id', 'label']);
@@ -3253,6 +3410,107 @@ class PropertyPortfolioController extends Controller
     private function isFieldRequired(array $config, string $field): bool
     {
         return (bool) (($config[$field]['enabled'] ?? false) && ($config[$field]['required'] ?? false));
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $landlordFields
+     * @return array<string, mixed>
+     */
+    private function landlordProfileFieldRules(array $landlordFields): array
+    {
+        return [
+            'legacy_landlord_code' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'legacy_landlord_code')),
+                'nullable',
+                'string',
+                'max:64',
+            ],
+            'id_number' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'id_number')),
+                'nullable',
+                'string',
+                'max:64',
+            ],
+            'kra_pin' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'kra_pin')),
+                'nullable',
+                'string',
+                'max:32',
+            ],
+            'address_line' => [
+                Rule::requiredIf($this->isFieldRequired($landlordFields, 'address_line')),
+                'nullable',
+                'string',
+                'max:255',
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string,array{enabled:bool,required:bool}>  $unitFields
+     * @return array<string, mixed>
+     */
+    private function unitExtendedFieldRules(array $unitFields): array
+    {
+        return [
+            'market_rent' => [
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'market_rent')),
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'legacy_area' => [
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'legacy_area')),
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+            'floor' => [
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'floor')),
+                'nullable',
+                'string',
+                'max:32',
+            ],
+            'available_from' => [
+                Rule::requiredIf($this->isFieldRequired($unitFields, 'available_from')),
+                'nullable',
+                'date',
+            ],
+            'furnished' => ['sometimes', 'boolean'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function extractUnitExtendedAttributes(array $data, Request $request): array
+    {
+        $attrs = [];
+
+        foreach (['market_rent', 'legacy_area'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $value = $data[$key];
+            $attrs[$key] = ($value === null || $value === '') ? null : $value;
+        }
+
+        if (array_key_exists('floor', $data)) {
+            $floor = trim((string) ($data['floor'] ?? ''));
+            $attrs['floor'] = $floor !== '' ? $floor : null;
+        }
+
+        if (array_key_exists('available_from', $data)) {
+            $availableFrom = $data['available_from'];
+            $attrs['available_from'] = ($availableFrom === null || $availableFrom === '') ? null : $availableFrom;
+        }
+
+        if ($request->has('furnished')) {
+            $attrs['furnished'] = $request->boolean('furnished');
+        }
+
+        return $attrs;
     }
 
     /**

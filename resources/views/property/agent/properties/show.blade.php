@@ -1,36 +1,47 @@
 <x-property.workspace :compact-list="false"
     :title="'Property: '.$property->name"
-    :subtitle="'Full property intelligence view · '.$periodLabel"
+    :subtitle="'360° property workspace — units, occupancy, utilities, revenue, and offboarding. Period: '.$periodLabel"
     back-route="property.properties.list"
     :stats="$stats"
     :columns="[]"
 >
     @php
         $firstVacantUnit = collect($units ?? [])->firstWhere('status', \App\Models\PropertyUnit::STATUS_VACANT);
+        $activeTab = $activeTab ?? 'overview';
+        $preserveQuery = array_filter([
+            'month' => $monthValue ?? null,
+            'fy' => $fyValue ?? null,
+            'unit_status' => $filters['unit_status'] ?? null,
+            'collection_channel' => $filters['collection_channel'] ?? null,
+            'collection_q' => $filters['collection_q'] ?? null,
+            'export_report' => $filters['export_report'] ?? null,
+        ], static fn ($value) => $value !== null && $value !== '');
     @endphp
 
-    <x-slot name="actions">
-        <x-property.form-modal-link
-            :href="route('property.properties.edit', ['property' => $property->id], false)"
-            title="Edit property"
-            class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
-        >Edit property</x-property.form-modal-link>
-        <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Units</a>
-        @if (count($units ?? []) === 0)
-            <a href="{{ route('property.properties.units', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Add units</a>
-        @endif
-        <a href="{{ route('property.tenants.leases', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Add lease</a>
-        @if ($firstVacantUnit)
-            <a href="{{ route('property.tenants.leases', ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id], false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">Assign tenant</a>
-            <a href="{{ route('property.listings.create', ['selected_unit' => $firstVacantUnit->id], false) }}#listing-publish" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-blue-300 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50">Publish vacant unit</a>
-        @endif
-        @if (($property->landlords?->count() ?? 0) === 0)
-            <a href="{{ route('property.properties.list', ['property_id' => $property->id], false) }}#link-landlord-form" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Link landlord</a>
-        @endif
-    </x-slot>
+    @if ($property->isManagementReadOnly())
+        <div class="mb-4 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-800">
+            <span class="font-semibold">{{ $managementStatusLabel ?? $property->managementStatusLabel() }}</span>
+            — This property is read-only. Operational actions are disabled; history, statements, and accounting remain available.
+            @if (auth()->user()?->hasPmPermission('properties.manage') || auth()->user()?->hasPmPermission('property.archive.view'))
+                <a href="{{ route('property.properties.offboarding', $property, false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-indigo-700 hover:underline">View offboarding</a>
+            @endif
+        </div>
+    @elseif ($property->isOffboarding())
+        <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <span class="font-semibold">Offboarding in progress</span>
+            — New leases, tenants, and utility setup are blocked. Settle balances then archive when ready.
+            <a href="{{ route('property.properties.offboarding', $property, false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-amber-800 hover:underline">Continue offboarding</a>
+        </div>
+    @elseif ($property->isManagementActive() && auth()->user()?->hasPmPermission('properties.manage'))
+        <div class="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 flex flex-wrap items-center justify-between gap-2">
+            <span>Landlord quit or stopping management? Use offboarding to wind down without deleting financial history.</span>
+            <a href="{{ route('property.properties.offboarding', $property, false) }}" class="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">Start offboarding</a>
+        </div>
+    @endif
 
     <x-slot name="above">
-        <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-end gap-2">
+        <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-3 sm:p-4 shadow-sm flex flex-wrap items-end gap-2 w-full min-w-0">
+            <input type="hidden" name="tab" value="{{ $activeTab }}" />
             <div>
                 <label class="block text-xs font-medium text-slate-600">Month</label>
                 <input type="month" name="month" value="{{ $monthValue ?? '' }}" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
@@ -43,9 +54,9 @@
                 <label class="block text-xs font-medium text-slate-600">Unit status</label>
                 <select name="unit_status" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
                     <option value="">All</option>
-                    <option value="vacant" @selected(($filters['unit_status'] ?? '') === 'vacant')>Vacant</option>
-                    <option value="occupied" @selected(($filters['unit_status'] ?? '') === 'occupied')>Occupied</option>
-                    <option value="notice" @selected(($filters['unit_status'] ?? '') === 'notice')>Notice</option>
+                    @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                        <option value="{{ $value }}" @selected(($filters['unit_status'] ?? '') === $value)>{{ $label }}</option>
+                    @endforeach
                 </select>
             </div>
             <div>
@@ -71,15 +82,25 @@
                 </select>
             </div>
             <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply period</button>
-            <a href="{{ route('property.properties.show', ['property' => $property->id], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
+            <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => $activeTab], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
             <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'csv']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export CSV</a>
             <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'pdf']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export PDF</a>
             <a href="{{ route('property.properties.show', array_merge(['property' => $property->id], request()->query(), ['export' => 'word']), false) }}" data-turbo="false" class="rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Export Word</a>
         </form>
     </x-slot>
 
+    <x-property.entity-hub
+        entity="property"
+        route-name="property.properties.show"
+        :route-params="['property' => $property->id]"
+        :active-tab="$activeTab"
+        :preserve-query="$preserveQuery"
+        :quick-actions="$quickActions ?? []"
+        :alerts="$alerts ?? []"
+    />
+
     <div x-data="{ addUnitOpen: false }">
-    @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+    @if ($activeTab === 'units' && auth()->check() && auth()->user()?->hasPmPermission('properties.manage') && ! ($isManagementReadOnly ?? false))
         <div class="mt-1 mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center justify-between gap-2">
             <p class="text-sm text-slate-700">
                 <span class="font-semibold">Units:</span> {{ count($units ?? []) }}
@@ -95,7 +116,9 @@
         </div>
     @endif
 
+    @if (in_array($activeTab, ['overview', 'landlords'], true))
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        @if ($activeTab === 'overview')
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 class="text-sm font-semibold text-slate-900">Property profile</h3>
             <div class="mt-2 text-sm text-slate-700 space-y-1">
@@ -114,7 +137,9 @@
                 <p><span class="text-slate-500">Active leases:</span> {{ (int) ($activeLeasesCount ?? 0) }} ({{ \App\Services\Property\PropertyMoney::kes((float) ($activeLeaseRent ?? 0)) }} / month)</p>
             </div>
         </div>
-        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        @endif
+        @if ($activeTab === 'landlords')
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
             <h3 class="text-sm font-semibold text-slate-900">Landlord ownership & earnings</h3>
             <div class="mt-3 overflow-x-auto">
                 <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
@@ -147,6 +172,11 @@
             </div>
             <p class="mt-2 text-xs text-slate-500">Commission rate used: {{ number_format((float) ($commissionPct ?? 0), 2) }}%</p>
         </div>
+        @endif
+    </div>
+    @endif
+
+    @if ($activeTab === 'utilities')
         <div class="mt-5 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         <form
             method="post"
@@ -475,7 +505,9 @@
             </div>
         </div>
         </div>
+    @endif
 
+    @if (in_array($activeTab, ['overview', 'occupancy', 'performance'], true))
     <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Occupancy rate</p>
@@ -493,7 +525,83 @@
             <p class="mt-1 text-xs text-slate-500">Across all units in this property</p>
         </div>
     </div>
+    @endif
 
+    @if ($activeTab === 'occupancy')
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+        <div class="px-4 py-3 border-b border-slate-100">
+            <h3 class="text-sm font-semibold text-slate-900">Occupancy snapshot</h3>
+        </div>
+        <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
+            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                <tr>
+                    <th class="px-4 py-3">Unit</th>
+                    <th class="px-4 py-3">Status</th>
+                    <th class="px-4 py-3">Tenant</th>
+                    <th class="px-4 py-3">Rent</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (($units ?? []) as $unitModel)
+                    @php
+                        $lease = $unitModel->leases->first();
+                        $rowTone = \App\Support\Property\WorkspaceRowAlert::forUnit($unitModel, $lease !== null);
+                        $cellStyle = \App\Support\Property\WorkspaceRowAlert::cellStyle($rowTone);
+                    @endphp
+                    <tr class="border-t border-slate-100 {{ $cellStyle === '' ? 'hover:bg-slate-50/70' : '' }} {{ \App\Support\Property\WorkspaceRowAlert::trClass($rowTone) }}" @if ($cellStyle !== '') data-row-tone="{{ $rowTone }}" @endif>
+                        <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>
+                            @if (auth()->user()?->hasPmPermission('properties.manage'))
+                                <a href="{{ route('property.units.edit', $unitModel, false) }}" data-turbo="false" class="font-medium text-indigo-600 hover:text-indigo-700">{{ $unitModel->label }}</a>
+                            @else
+                                <span class="font-medium text-slate-900">{{ $unitModel->label }}</span>
+                            @endif
+                        </td>
+                        <td class="px-4 py-3 capitalize" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $unitModel->status }}</td>
+                        <td class="px-4 py-3" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $lease?->pmTenant?->name ?? '—' }}</td>
+                        <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes($unitModel->listedRentAmount()) }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+    @endif
+
+    @if ($activeTab === 'maintenance')
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
+        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold text-slate-900">Maintenance requests</h3>
+            <a href="{{ route('property.maintenance.requests', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-700 hover:underline">Open maintenance workspace</a>
+        </div>
+        <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
+            <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
+                <tr>
+                    <th class="px-4 py-3">Date</th>
+                    <th class="px-4 py-3">Unit</th>
+                    <th class="px-4 py-3">Tenant</th>
+                    <th class="px-4 py-3">Category</th>
+                    <th class="px-4 py-3">Urgency</th>
+                    <th class="px-4 py-3">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse(($maintenanceRequests ?? []) as $requestItem)
+                    <tr class="border-t border-slate-100 hover:bg-slate-50/70">
+                        <td class="px-4 py-3">{{ $requestItem->created_at?->format('Y-m-d') ?? '—' }}</td>
+                        <td class="px-4 py-3">{{ $requestItem->unit?->label ?? '—' }}</td>
+                        <td class="px-4 py-3">{{ $requestItem->pmTenant?->name ?? '—' }}</td>
+                        <td class="px-4 py-3 capitalize">{{ str_replace('_', ' ', (string) ($requestItem->category ?? 'general')) }}</td>
+                        <td class="px-4 py-3 capitalize">{{ $requestItem->urgency ?? '—' }}</td>
+                        <td class="px-4 py-3 capitalize">{{ $requestItem->status ?? '—' }}</td>
+                    </tr>
+                @empty
+                    <tr><td colspan="6" class="px-4 py-10 text-center text-slate-500">No maintenance requests for this property.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+    @endif
+
+    @if ($activeTab === 'units')
     <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto overflow-y-visible">
         <div class="px-4 py-3 border-b border-slate-100">
             <div class="flex items-center justify-between gap-3">
@@ -577,9 +685,9 @@
                                 <div>
                                 <label class="block text-xs font-medium text-slate-600">Status</label>
                                 <select name="status" @required($unitRequired('status', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                                    <option value="vacant" @selected(old('status', 'vacant') === 'vacant')>Vacant</option>
-                                    <option value="occupied" @selected(old('status') === 'occupied')>Occupied</option>
-                                    <option value="notice" @selected(old('status') === 'notice')>Notice</option>
+                                    @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('status', 'vacant') === $value)>{{ $label }}</option>
+                                    @endforeach
                                 </select>
                                 @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                                 </div>
@@ -811,7 +919,9 @@
             });
         })();
     </script>
+    @endif
 
+    @if ($activeTab === 'revenue')
     <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
         <div class="px-4 py-3 border-b border-slate-100">
             <h3 class="text-sm font-semibold text-slate-900">Recent collections ({{ $periodLabel }})</h3>
@@ -867,6 +977,20 @@
             </tbody>
         </table>
     </div>
+    @endif
+
+    @if ($activeTab === 'offboarding')
+    <div class="mt-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 class="text-sm font-semibold text-slate-900">Property offboarding</h3>
+        <p class="mt-2 text-sm text-slate-600">Safely wind down management without deleting invoices, payments, leases, or accounting history.</p>
+        <p class="mt-1 text-sm text-slate-600">Current status: <span class="font-semibold">{{ $managementStatusLabel ?? $property->managementStatusLabel() }}</span></p>
+        @if (auth()->user()?->hasPmPermission('properties.manage') || auth()->user()?->hasPmPermission('property.archive.view'))
+            <a href="{{ route('property.properties.offboarding', $property, false) }}" class="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                Open offboarding wizard
+            </a>
+        @endif
+    </div>
+    @endif
     </div>
 </x-property.workspace>
 

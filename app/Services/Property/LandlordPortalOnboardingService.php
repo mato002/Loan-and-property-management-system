@@ -102,6 +102,36 @@ class LandlordPortalOnboardingService
         return $landlord;
     }
 
+    /**
+     * @param  array{
+     *     legacy_landlord_code?: ?string,
+     *     id_number?: ?string,
+     *     kra_pin?: ?string,
+     *     address_line?: ?string
+     * }  $data
+     */
+    public function syncLandlordProfile(User $landlord, array $data): void
+    {
+        if (! Schema::hasTable('pm_landlord_portal_profiles')) {
+            return;
+        }
+
+        $profile = \App\Models\PmLandlordPortalProfile::forUser($landlord);
+        $payload = [];
+
+        foreach (['legacy_landlord_code', 'id_number', 'kra_pin', 'address_line'] as $key) {
+            if (! array_key_exists($key, $data)) {
+                continue;
+            }
+            $value = trim((string) ($data[$key] ?? ''));
+            $payload[$key] = $value !== '' ? $value : null;
+        }
+
+        if ($payload !== []) {
+            $profile->update($payload);
+        }
+    }
+
     public function recordAgentOnboarding(User $landlord, int $agentUserId): void
     {
         if (! Schema::hasTable('pm_portal_actions')) {

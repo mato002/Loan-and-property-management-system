@@ -4,6 +4,7 @@ namespace App\Services\Property;
 
 use App\Models\PmAccountingAuditLog;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Unified finance integrity scans for continuous drift detection (Batch D).
@@ -70,6 +71,52 @@ final class FinanceIntegrityService
     public function dashboard(?int $tenantId = null, int $limit = 100): array
     {
         return $this->scan(self::SCOPE_ALL, $tenantId, $limit, persist: false, alert: false);
+    }
+
+    /**
+     * Lightweight summary for dashboards — reads the latest scheduled integrity scan
+     * instead of running a live full-portfolio reconciliation on every page view.
+     *
+     * @return array{
+     *     total_issues:int,
+     *     critical:int,
+     *     warning:int,
+     *     info:int,
+     *     stale:bool,
+     *     last_scan_at:?string
+     * }
+     */
+    public function cachedSummaryForDashboard(int $maxAgeMinutes = 360): array
+    {
+        $empty = [
+            'total_issues' => 0,
+            'critical' => 0,
+            'warning' => 0,
+            'info' => 0,
+            'stale' => true,
+            'last_scan_at' => null,
+        ];
+
+        if (! Schema::hasTable('pm_accounting_audit_logs')) {
+            return $empty;
+        }
+
+        $log = PmAccountingAuditLog::query()
+            ->where('action', PmAccountingAuditLog::ACTION_FINANCE_INTEGRITY_SCAN)
+            ->orderByDesc('occurred_at')
+            ->first(['payload', 'occurred_at']);
+
+        if ($log === null || ! is_array($log->payload)) {
+            return $empty;
+        }
+
+        $occurredAt = $log->occurred_at;
+        $stale = $occurredAt === null || $occurredAt->lt(now()->subMinutes($maxAgeMinutes));
+
+        return array_merge($empty, $log->payload, [
+            'stale' => $stale,
+            'last_scan_at' => $occurredAt?->toIso8601String(),
+        ]);
     }
 
     /**

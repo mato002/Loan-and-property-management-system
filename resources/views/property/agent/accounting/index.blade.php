@@ -63,7 +63,16 @@
         <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50 shadow-sm">
             <h3 class="text-sm font-semibold text-amber-900">Alerts</h3>
             <ul class="mt-3 space-y-2 text-sm">
-                <li><a href="{{ route('property.accounting.finance_integrity') }}" class="{{ ((int) ($alerts['finance_drift_critical'] ?? 0)) > 0 ? 'text-rose-800 font-semibold hover:underline' : 'text-amber-900 hover:underline' }}">⚠ Finance drift: {{ (int) ($alerts['finance_drift_total'] ?? 0) }} ({{ (int) ($alerts['finance_drift_critical'] ?? 0) }} critical)</a></li>
+                <li>
+                    <a href="{{ route('property.accounting.finance_integrity') }}" data-turbo-frame="property-main" class="{{ ((int) ($alerts['finance_drift_critical'] ?? 0)) > 0 ? 'text-rose-800 font-semibold hover:underline' : 'text-amber-900 hover:underline' }}">
+                        ⚠ Finance drift: {{ (int) ($alerts['finance_drift_total'] ?? 0) }} ({{ (int) ($alerts['finance_drift_critical'] ?? 0) }} critical)
+                        @if (($alerts['finance_drift_stale'] ?? true))
+                            <span class="text-xs font-normal">· open for live scan</span>
+                        @elseif (! empty($alerts['finance_drift_last_scan']))
+                            <span class="text-xs font-normal">· last scan {{ $alerts['finance_drift_last_scan'] }}</span>
+                        @endif
+                    </a>
+                </li>
                 <li><a href="{{ route('property.revenue.arrears') }}" class="text-amber-900 hover:underline">⚠ Overdue tenant balances: {{ (int) ($alerts['overdue_tenants'] ?? 0) }}</a></li>
                 <li><a href="{{ route('property.accounting.cash_bank.reconciliation') }}" class="text-amber-900 hover:underline">⚠ Unreconciled bank transactions: {{ (int) ($alerts['unreconciled_bank'] ?? 0) }}</a></li>
                 <li><a href="{{ route('property.accounting.payables.landlord_payouts') }}" class="text-amber-900 hover:underline">⚠ Pending landlord payouts: {{ (int) ($alerts['pending_payouts'] ?? 0) }}</a></li>

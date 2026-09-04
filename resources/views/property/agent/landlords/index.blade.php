@@ -75,6 +75,7 @@
                         @error('phone')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
+                @include('property.agent.landlords.partials.profile_fields')
                 <div>
                         <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Link to property (optional)</label>
                         <x-property.quick-create-select

@@ -22,6 +22,7 @@ class PmTenant extends Model
         'phone',
         'email',
         'national_id',
+        'emergency_contact',
         'account_number',
         'risk_level',
         'opening_arrears_rent',

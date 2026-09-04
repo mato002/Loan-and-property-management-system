@@ -41,6 +41,7 @@ Expected dashboard after a clean run:
 | **3** | Property units listing PDF | `property:import-passion-units` | Units (rent, floor, status, market rent) |
 | **4** | Property register (spaces) | `property:fill-passion-register-spaces` | Generic spaces to match register totals (~442) |
 | **5** | Active tenants & leases PDF | `property:import-passion-leases` | Tenants (TNT account, balance) + active leases |
+| **6** | Property take-on balances CSV | `property:import-takeon-balances` | Landlord ledger opening balances (Balance b/f) |
 
 Run phases **in order**. Phase 5 matches units by property code + unit label.
 
@@ -174,6 +175,37 @@ Imports all **396** active lease rows from the legacy system:
 | Period / days to expire | `pm_leases.lease_period_days`, `days_to_expire` |
 
 Units are linked via `pm_lease_unit`. Missing units get a stub created from the lease row.
+
+---
+
+## Phase 6 — Property take-on balances (landlord opening ledger)
+
+After register import (phases 1–5), load Ezen **Property Take-on Balance** rows so **Balance b/f** is correct in landlord settlements and payment & fees.
+
+**UI:** Accounting → Payables → **Property take-on balances**
+
+**CSV columns:** `property_code`, `balance_date`, `balance` (optional: `landlord_id`, `notes`)
+
+Sample file: `storage/passion-legacy/property_takeon_balances.sample.csv`
+
+```bash
+php artisan migrate --force
+
+# Dry run
+php artisan property:import-takeon-balances storage/passion-legacy/property_takeon_balances.csv \
+  --dry-run --agent-user-id=2
+
+# Import
+php artisan property:import-takeon-balances storage/passion-legacy/property_takeon_balances.csv \
+  --agent-user-id=2
+```
+
+| Balance sign | Meaning | Ledger posting |
+|--------------|---------|----------------|
+| Positive | Agent owes landlord | Credit |
+| Negative | Overdrawn / landlord owes | Debit |
+
+Verify: Accounting → Payables → Landlord settlements → **Balance b/f** matches Ezen for sample properties.
 
 ---
 

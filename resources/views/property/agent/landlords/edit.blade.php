@@ -46,6 +46,8 @@
             </div>
         </div>
 
+        @include('property.agent.landlords.partials.profile_fields', ['landlordProfile' => $landlordProfile ?? null])
+
         <div class="flex flex-col sm:flex-row gap-2 pt-1">
             <button type="submit" class="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">Save changes</button>
             <a href="{{ route('property.landlords.show', $landlord, false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Cancel</a>

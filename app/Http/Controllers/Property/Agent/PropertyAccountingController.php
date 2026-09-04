@@ -20,7 +20,8 @@ use App\Models\PmMaintenanceJob;
 use App\Models\PmMessageDelivery;
 use App\Models\PmAccountingEntry;
 use App\Models\PmTenant;
-use App\Models\PmPayment;
+use App\Models\UnassignedPayment;
+use App\Models\PmPropertyTakeonBalance;
 use App\Models\Property;
 use App\Models\User;
 use App\Models\PropertyPortalSetting;
@@ -30,8 +31,10 @@ use App\Services\Property\LandlordAdvanceService;
 use App\Services\Property\LandlordPaymentFeesService;
 use App\Services\Property\LandlordSettlementService;
 use App\Services\Property\FinancialReportingFormulaService;
+use App\Services\Property\FinanceIntegrityService;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
+use App\Services\Property\PropertyTakeonBalanceService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -52,11 +55,14 @@ class PropertyAccountingController extends Controller
 {
     public function index(): View
     {
-        $monthBase = PmAccountingEntry::query()
+        $monthTotals = PmAccountingEntry::query()
             ->whereYear('entry_date', now()->year)
-            ->whereMonth('entry_date', now()->month);
-        $income = (float) (clone $monthBase)->where('category', PmAccountingEntry::CATEGORY_INCOME)->where('entry_type', PmAccountingEntry::TYPE_CREDIT)->sum('amount');
-        $expenses = (float) (clone $monthBase)->where('category', PmAccountingEntry::CATEGORY_EXPENSE)->where('entry_type', PmAccountingEntry::TYPE_DEBIT)->sum('amount');
+            ->whereMonth('entry_date', now()->month)
+            ->selectRaw('COALESCE(SUM(CASE WHEN category = ? AND entry_type = ? THEN amount ELSE 0 END), 0) as income_total', [PmAccountingEntry::CATEGORY_INCOME, PmAccountingEntry::TYPE_CREDIT])
+            ->selectRaw('COALESCE(SUM(CASE WHEN category = ? AND entry_type = ? THEN amount ELSE 0 END), 0) as expense_total', [PmAccountingEntry::CATEGORY_EXPENSE, PmAccountingEntry::TYPE_DEBIT])
+            ->first();
+        $income = (float) ($monthTotals->income_total ?? 0);
+        $expenses = (float) ($monthTotals->expense_total ?? 0);
 
         $cashBalance = (float) PmAccountingEntry::query()
             ->where(function ($q) {
@@ -96,18 +102,17 @@ class PropertyAccountingController extends Controller
             ];
         })->all();
 
-        $rentBilled = (float) PmInvoice::query()
+        $rentSnapshot = PmInvoice::query()
             ->where('invoice_type', PmInvoice::TYPE_RENT)
             ->whereYear('issue_date', now()->year)
             ->whereMonth('issue_date', now()->month)
-            ->sum('amount');
-        $rentCollected = (float) PmInvoice::query()
-            ->where('invoice_type', PmInvoice::TYPE_RENT)
-            ->whereYear('issue_date', now()->year)
-            ->whereMonth('issue_date', now()->month)
-            ->sum('amount_paid');
+            ->selectRaw('COALESCE(SUM(amount), 0) as billed_total')
+            ->selectRaw('COALESCE(SUM(amount_paid), 0) as collected_total')
+            ->first();
+        $rentBilled = (float) ($rentSnapshot->billed_total ?? 0);
+        $rentCollected = (float) ($rentSnapshot->collected_total ?? 0);
 
-        $integritySummary = app(FinanceIntegrityService::class)->dashboard(null, 50)['summary'] ?? [];
+        $integritySummary = app(FinanceIntegrityService::class)->cachedSummaryForDashboard();
 
         $alerts = [
             'overdue_tenants' => PmInvoice::countPastDueTenants(),
@@ -117,6 +122,10 @@ class PropertyAccountingController extends Controller
             'negative_cash' => $cashBalance < 0 ? 1 : 0,
             'finance_drift_critical' => (int) ($integritySummary['critical'] ?? 0),
             'finance_drift_total' => (int) ($integritySummary['total_issues'] ?? 0),
+            'finance_drift_stale' => (bool) ($integritySummary['stale'] ?? true),
+            'finance_drift_last_scan' => ! empty($integritySummary['last_scan_at'])
+                ? Carbon::parse((string) $integritySummary['last_scan_at'])->diffForHumans()
+                : null,
         ];
 
         return property_view('property.agent.accounting.index', [
@@ -2973,7 +2982,7 @@ class PropertyAccountingController extends Controller
     {
         $status = strtolower(trim($request->string('status')->toString()));
         $rows = PmLandlordPayout::query()
-            ->with(['items.property'])
+            ->with(['items.property', 'items.landlord'])
             ->when(in_array($status, ['draft', 'approved', 'paid'], true), fn ($q) => $q->where('status', $status))
             ->orderByDesc('id')
             ->paginate(50)
@@ -3072,6 +3081,91 @@ class PropertyAccountingController extends Controller
         $advances->markAdvanceWrittenOff($item, $request->user());
 
         return back()->with('status', 'Advance #'.$item->id.' written off.');
+    }
+
+    public function propertyTakeonBalances(Request $request, PropertyTakeonBalanceService $takeons): View
+    {
+        $filters = [
+            'property_id' => (int) $request->integer('property_id'),
+            'landlord_id' => (int) $request->integer('landlord_id'),
+            'search' => trim($request->string('search')->toString()),
+        ];
+
+        $index = $takeons->buildIndex($filters);
+
+        $properties = Property::query()->orderBy('name')->get(['id', 'name', 'code']);
+        $landlords = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->distinct()
+            ->orderBy('u.name')
+            ->get(['u.id', 'u.name']);
+
+        return property_view('property.agent.accounting.property_takeon_balances', [
+            'rows' => $index['rows'],
+            'stats' => $index['stats'],
+            'properties' => $properties,
+            'landlords' => $landlords,
+            'filters' => $filters,
+        ]);
+    }
+
+    public function storePropertyTakeonBalance(Request $request, PropertyTakeonBalanceService $takeons): RedirectResponse
+    {
+        $validated = $request->validate([
+            'property_id' => ['required', 'integer', 'min:1'],
+            'landlord_id' => ['required', 'integer', 'min:1'],
+            'balance' => ['required', 'numeric', 'not_in:0'],
+            'balance_date' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:500'],
+            'takeon_form' => ['nullable', 'string'],
+        ]);
+
+        $takeon = $takeons->recordTakeon(
+            (int) $validated['property_id'],
+            (int) $validated['landlord_id'],
+            (float) $validated['balance'],
+            Carbon::parse($validated['balance_date']),
+            $request->user(),
+            $validated['notes'] ?? null,
+        );
+
+        return back()->with('status', 'Take-on balance saved for '.($takeon->property?->name ?? 'property').' — '.PropertyMoney::kes((float) $takeon->balance).' as at '.$takeon->balance_date?->format('d M Y').'.');
+    }
+
+    public function importPropertyTakeonBalances(Request $request, PropertyTakeonBalanceService $takeons): RedirectResponse
+    {
+        $validated = $request->validate([
+            'import_file' => ['required', 'file', 'mimes:csv,txt', 'max:5120'],
+        ]);
+
+        $summary = $takeons->importFromUpload($validated['import_file'], $request->user());
+
+        $message = sprintf(
+            'Import complete: %d created, %d updated, %d skipped.',
+            (int) ($summary['created'] ?? 0),
+            (int) ($summary['updated'] ?? 0),
+            (int) ($summary['skipped'] ?? 0),
+        );
+
+        if (($summary['errors'] ?? []) !== []) {
+            return back()->withErrors(['import_file' => implode(' ', $summary['errors'])]);
+        }
+
+        if (($summary['warnings'] ?? []) !== []) {
+            $message .= ' '.count($summary['warnings']).' warning(s) — check logs or re-import with dry-run.';
+        }
+
+        return back()->with('status', $message);
+    }
+
+    public function destroyPropertyTakeonBalance(Request $request, PmPropertyTakeonBalance $takeon, PropertyTakeonBalanceService $takeons): RedirectResponse
+    {
+        $label = $takeon->property?->name ?? 'property #'.$takeon->property_id;
+        $takeons->deleteTakeon($takeon, $request->user());
+
+        return back()->with('status', 'Take-on balance removed for '.$label.'. Ledger reversal posted.');
     }
 
     public function accountsPayable(Request $request): View

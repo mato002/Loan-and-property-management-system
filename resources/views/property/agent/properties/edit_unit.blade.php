@@ -61,6 +61,7 @@
                 @error('rent_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
             @endif
+            @include('property.agent.properties.partials.unit_extended_fields', ['unit' => $unit])
             @if ($unitEnabled('status', true))
                 <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status @if($unitRequired('status', true))<span class="text-red-600">*</span>@endif</label>

@@ -15,19 +15,19 @@
     }
 @endphp
 
-<style>
-    @media print {
-        .statement-no-print { display: none !important; }
-    }
-</style>
-
 <div class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-4 sm:p-5 shadow-sm w-full min-w-0">
-    <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start statement-no-print">
+    <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
         <div class="min-w-0">
             <h2 class="text-lg font-semibold text-slate-900 dark:text-white break-words">{{ $landlord->name }}</h2>
             <p class="text-sm text-slate-600 dark:text-slate-300 break-all">{{ $landlord->email ?: ($landlord->phone ?: '—') }}</p>
         </div>
-        <button type="button" onclick="window.print()" class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">Print statement</button>
+        <a
+            href="{{ route('property.landlords.statement.print', array_filter(['landlord' => $landlord->id, 'month' => $monthValue ?? null, 'fy' => $fyValue ?? null, 'print' => 1]), false) }}"
+            target="_blank"
+            rel="noopener"
+            data-turbo="false"
+            class="inline-flex min-h-[44px] items-center justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+        >Print statement</a>
     </div>
 
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 mt-4">

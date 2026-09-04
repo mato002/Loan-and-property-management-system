@@ -482,6 +482,7 @@ final class PropertyWorkspaceTabs
                     ['key' => 'landlord_payables', 'label' => 'Landlord payables', 'route' => 'property.accounting.payables.landlord_payables', 'active' => ['property.accounting.payables.landlord_payables']],
                     ['key' => 'landlord_payouts', 'label' => 'Landlord payouts', 'route' => 'property.accounting.payables.landlord_payouts', 'active' => ['property.accounting.payables.landlord_payouts']],
                     ['key' => 'landlord_advances', 'label' => 'Advances & pay dates', 'route' => 'property.accounting.payables.landlord_advances', 'active' => ['property.accounting.payables.landlord_advances', 'property.accounting.payables.landlord_advances.*']],
+                    ['key' => 'property_takeon_balances', 'label' => 'Property take-on balances', 'route' => 'property.accounting.payables.property_takeon_balances', 'active' => ['property.accounting.payables.property_takeon_balances', 'property.accounting.payables.property_takeon_balances.*']],
                     ['key' => 'accounts_payable', 'label' => 'Accounts payable', 'route' => 'property.accounting.payables.accounts_payable', 'active' => ['property.accounting.payables.accounts_payable']],
                 ],
             ],

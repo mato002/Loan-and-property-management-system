@@ -101,6 +101,18 @@
                     @error('national_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
                 <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Account number</label>
+                    <input type="text" name="account_number" value="{{ old('account_number') }}" @required($tenantRequired('account_number', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Auto-generated if blank" />
+                    @error('account_number')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Emergency contact</label>
+                <input type="text" name="emergency_contact" value="{{ old('emergency_contact') }}" @required($tenantRequired('emergency_contact', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Next of kin name & phone" />
+                @error('emergency_contact')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Risk</label>
                     <select name="risk_level" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
                         <option value="normal" @selected(old('risk_level', 'normal') === 'normal')>Normal</option>
