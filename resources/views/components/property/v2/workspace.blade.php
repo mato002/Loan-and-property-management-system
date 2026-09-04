@@ -187,7 +187,9 @@
         </div>
 
         @if (count($stats) > 0)
-            <x-property.responsive.stat-card-grid :stats="$stats" />
+            <x-property.collapsible-stats>
+                <x-property.responsive.stat-card-grid :stats="$stats" />
+            </x-property.collapsible-stats>
         @endif
         @endif
 
@@ -243,7 +245,9 @@
                 @endif
 
                 @if ($compactList && count($stats) > 0)
-                    <x-property.compact-stat-strip :stats="$stats" class="print-hide" />
+                    <x-property.collapsible-stats>
+                        <x-property.compact-stat-strip :stats="$stats" />
+                    </x-property.collapsible-stats>
                 @endif
 
                 @if ($hasTableActions)

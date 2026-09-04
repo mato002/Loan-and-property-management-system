@@ -9,6 +9,7 @@ import { recoverPropertyScrollState } from './property-modal-manager';
 import { setupPropertyPaymentReversal } from './property-payment-reversal';
 import { setupPropertyWorkspaceTabs } from './property-workspace-tabs';
 import { setupPropertyWorkspaceUi } from './property-workspace-ui';
+import { setupPropertyWorkspaceStatsToggle } from './property-workspace-stats-toggle';
 import {
     isEntityHubTabOnlyNavigation,
     scrollPropertyEntityHubIntoView,
@@ -255,6 +256,7 @@ export function runPropertyWorkspaceHydration(frame, source, hooks = {}) {
 
         syncPropertyPortalNav(frame);
         setupPropertyWorkspaceUi({ target: frame });
+        setupPropertyWorkspaceStatsToggle(frame);
 
         const hasListingPublishEditor = focusListingPublishEditor(frame);
         if (isNewNavigation && !hasListingPublishEditor) {

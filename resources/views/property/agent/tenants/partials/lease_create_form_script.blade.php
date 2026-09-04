@@ -19,7 +19,7 @@
             const leaseFormEndpoints = @json($leaseFormEndpoints ?? []);
             const leaseFormSelectedTenantId = @json((int) ($leaseFormSelectedTenantId ?? 0));
             const leaseFormSelectedUnitId = @json((int) ($leaseFormSelectedUnitId ?? 0));
-            const leaseFormSelectedPropertyId = @json((string) ($selectedPropertyId ?? ''));
+            const leaseFormSelectedPropertyId = @json((string) ($selectedPropertyId ?? $leaseFormSelectedPropertyId ?? ''));
             let utilityTemplatesByProperty = {};
             let depositDefinitionsByProperty = {};
             const canCustomDepositOverride = @js((bool) ((auth()->user()?->is_super_admin ?? false) || (auth()->user()?->hasPmPermission('settings.manage') ?? false) || (\App\Models\PropertyPortalSetting::getValue('lease_deposit_allow_custom_types', '0') === '1')));
@@ -695,7 +695,8 @@
             const bootstrapLeaseFormContext = async () => {
                 try {
                     await loadTenants();
-                    await loadVacantUnits((propertySelect.value || '').toString(), true);
+                    const initialPropertyId = leaseFormSelectedPropertyId || (propertySelect.value || '').toString();
+                    await loadVacantUnits(initialPropertyId, true);
                     const propertyId = getCurrentPropertyId();
                     if (propertyId !== '') {
                         await loadPropertyRules(propertyId);

@@ -12,6 +12,8 @@
             'month' => $monthValue ?? null,
             'fy' => $fyValue ?? null,
             'unit_status' => $filters['unit_status'] ?? null,
+            'unit_q' => $filters['unit_q'] ?? null,
+            'unit_arrears' => $filters['unit_arrears'] ?? null,
             'collection_channel' => $filters['collection_channel'] ?? null,
             'collection_q' => $filters['collection_q'] ?? null,
             'export_report' => $filters['export_report'] ?? null,
@@ -50,6 +52,7 @@
                 <label class="block text-xs font-medium text-slate-600">FY</label>
                 <input type="number" name="fy" value="{{ $fyValue ?? now()->year }}" min="2000" max="2100" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 w-28" />
             </div>
+            @if ($activeTab !== 'units')
             <div>
                 <label class="block text-xs font-medium text-slate-600">Unit status</label>
                 <select name="unit_status" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
@@ -72,6 +75,7 @@
                 <label class="block text-xs font-medium text-slate-600">Collection search</label>
                 <input type="text" name="collection_q" value="{{ $filters['collection_q'] ?? '' }}" placeholder="Tenant or reference" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2" />
             </div>
+            @endif
             <div>
                 <label class="block text-xs font-medium text-slate-600">Export report</label>
                 <select name="export_report" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
@@ -100,22 +104,6 @@
     />
 
     <div x-data="{ addUnitOpen: false }">
-    @if ($activeTab === 'units' && auth()->check() && auth()->user()?->hasPmPermission('properties.manage') && ! ($isManagementReadOnly ?? false))
-        <div class="mt-1 mb-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm flex flex-wrap items-center justify-between gap-2">
-            <p class="text-sm text-slate-700">
-                <span class="font-semibold">Units:</span> {{ count($units ?? []) }}
-                <span class="text-slate-500">· Manage additions/demolitions from here.</span>
-            </p>
-            <button
-                type="button"
-                class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                @click="addUnitOpen = true"
-            >
-                + Add unit
-            </button>
-        </div>
-    @endif
-
     @if (in_array($activeTab, ['overview', 'landlords'], true))
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         @if ($activeTab === 'overview')
@@ -603,19 +591,50 @@
 
     @if ($activeTab === 'units')
     <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto overflow-y-visible">
-        <div class="px-4 py-3 border-b border-slate-100">
-            <div class="flex items-center justify-between gap-3">
-                <h3 class="text-sm font-semibold text-slate-900">Unit status & arrears</h3>
-                @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage'))
+        <div class="px-4 py-3 border-b border-slate-100 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-slate-900">Unit status &amp; arrears</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">{{ count($unitSnapshots ?? []) }} of {{ count($units ?? []) }} units shown</p>
+                </div>
+                @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage') && ! ($isManagementReadOnly ?? false))
                     <button
                         type="button"
                         class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                         @click="addUnitOpen = true"
                     >
-                        Add unit
+                        + Add unit
                     </button>
                 @endif
             </div>
+            <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="tab" value="units" />
+                <input type="hidden" name="month" value="{{ $monthValue ?? '' }}" />
+                <input type="hidden" name="fy" value="{{ $fyValue ?? now()->year }}" />
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Status</label>
+                    <select name="unit_status" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-[8rem]">
+                        <option value="">All statuses</option>
+                        @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                            <option value="{{ $value }}" @selected(($filters['unit_status'] ?? '') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Arrears</label>
+                    <select name="unit_arrears" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-[8rem]">
+                        <option value="">All</option>
+                        <option value="has_arrears" @selected(($filters['unit_arrears'] ?? '') === 'has_arrears')>Has arrears</option>
+                        <option value="no_arrears" @selected(($filters['unit_arrears'] ?? '') === 'no_arrears')>No arrears</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600">Search</label>
+                    <input type="search" name="unit_q" value="{{ $filters['unit_q'] ?? '' }}" placeholder="Unit, tenant, phone…" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 w-44" />
+                </div>
+                <button type="submit" class="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800">Filter</button>
+                <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => 'units', 'month' => $monthValue ?? null, 'fy' => $fyValue ?? null], false) }}" data-turbo-frame="property-main" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
+            </form>
         </div>
         @include('property.agent.partials.property_unit_snapshots_table', [
             'property' => $property,

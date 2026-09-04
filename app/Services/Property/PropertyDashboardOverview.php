@@ -574,7 +574,7 @@ final class PropertyDashboardOverview
                     'id' => (int) $u->id,
                     'unit' => (string) $u->label,
                     'property' => (string) ($u->property?->name ?? 'â€”'),
-                    'action_url' => route('property.tenants.leases', ['property_id' => $u->property_id]),
+                    'action_url' => route('property.tenants.leases', array_filter(['property_id' => $u->property_id, 'unit_id' => $u->id, 'open_create' => 1])),
                 ];
             })
             ->all();

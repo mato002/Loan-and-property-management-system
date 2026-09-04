@@ -416,6 +416,11 @@ class PropertyPortfolioController extends Controller
         if (! in_array($unitStatus, PropertyUnit::statuses(), true)) {
             $unitStatus = '';
         }
+        $unitSearch = trim((string) $request->query('unit_q', ''));
+        $unitArrearsFilter = trim((string) $request->query('unit_arrears', ''));
+        if (! in_array($unitArrearsFilter, ['', 'has_arrears', 'no_arrears'], true)) {
+            $unitArrearsFilter = '';
+        }
         $collectionChannel = trim((string) $request->query('collection_channel', ''));
         $collectionSearch = trim((string) $request->query('collection_q', ''));
         $exportReport = trim((string) $request->query('export_report', 'full'));
@@ -554,6 +559,21 @@ class PropertyPortfolioController extends Controller
 
                     return $u;
                 });
+
+            if ($unitSearch !== '') {
+                $needle = strtolower($unitSearch);
+                $unitSnapshots = $unitSnapshots->filter(function ($u) use ($needle) {
+                    return str_contains(strtolower((string) ($u->label ?? '')), $needle)
+                        || str_contains(strtolower((string) ($u->tenant_name ?? '')), $needle)
+                        || str_contains(strtolower((string) ($u->tenant_phone ?? '')), $needle);
+                })->values();
+            }
+
+            if ($unitArrearsFilter === 'has_arrears') {
+                $unitSnapshots = $unitSnapshots->filter(fn ($u) => (float) ($u->arrears ?? 0) > 0)->values();
+            } elseif ($unitArrearsFilter === 'no_arrears') {
+                $unitSnapshots = $unitSnapshots->filter(fn ($u) => (float) ($u->arrears ?? 0) <= 0)->values();
+            }
         }
 
         $commissionDefaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
@@ -820,6 +840,8 @@ class PropertyPortfolioController extends Controller
             'commissionPct' => $propertyCommissionPct,
             'filters' => [
                 'unit_status' => $unitStatus,
+                'unit_q' => $unitSearch,
+                'unit_arrears' => $unitArrearsFilter,
                 'collection_channel' => $collectionChannel,
                 'collection_q' => $collectionSearch,
                 'export_report' => $exportReport,
@@ -1162,7 +1184,7 @@ class PropertyPortfolioController extends Controller
                 '<a href="'.route('property.properties.show', $u->property_id, absolute: false).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View property</a>',
             ];
             if ($u->status === PropertyUnit::STATUS_VACANT) {
-                $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
+                $actions[] = '<a href="'.route('property.tenants.leases', array_filter(['property_id' => $u->property_id, 'unit_id' => $u->id, 'open_create' => 1]), absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
                 $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($lease) {
                 $actions[] = '<a href="'.route('property.leases.edit', $lease, absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Open lease</a>';
@@ -3953,7 +3975,7 @@ class PropertyPortfolioController extends Controller
             ];
 
             if ($u->status === PropertyUnit::STATUS_VACANT) {
-                $actions[] = '<a href="'.route('property.tenants.leases', ['property_id' => $u->property_id, 'unit_id' => $u->id], absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
+                $actions[] = '<a href="'.route('property.tenants.leases', array_filter(['property_id' => $u->property_id, 'unit_id' => $u->id, 'open_create' => 1]), absolute: false).'" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">Assign tenant</a>';
                 $actions[] = '<a href="'.route('property.listings.create', ['selected_unit' => $u->id], absolute: false).'#listing-publish" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50">Publish listing</a>';
             } elseif ($u->status === PropertyUnit::STATUS_OCCUPIED) {
                 if ($lease) {

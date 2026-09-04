@@ -323,11 +323,16 @@ SQL;
     private function leaseFormPageContext(Request $request): array
     {
         $selectedUnitId = max(0, (int) $request->query('unit_id', 0));
+        $selectedPropertyId = max(0, (int) $request->query('property_id', 0));
+        if ($selectedPropertyId <= 0 && $selectedUnitId > 0) {
+            $selectedPropertyId = (int) PropertyUnit::query()->whereKey($selectedUnitId)->value('property_id');
+        }
 
         return array_merge($this->leaseFormStaticContext(), [
             'leaseFormEndpoints' => $this->leaseFormEndpointUrls(),
             'leaseFormSelectedTenantId' => max(0, (int) $request->query('pm_tenant_id', 0)),
             'leaseFormSelectedUnitId' => $selectedUnitId,
+            'leaseFormSelectedPropertyId' => $selectedPropertyId,
         ]);
     }
 
@@ -1549,6 +1554,10 @@ SQL;
         if ($selectedUnitId <= 0) {
             $selectedUnitId = max(0, (int) $request->query('unit_id', 0));
         }
+        $selectedPropertyId = max(0, (int) old('property_id', $request->query('property_id', 0)));
+        if ($selectedPropertyId <= 0 && $selectedUnitId > 0) {
+            $selectedPropertyId = (int) PropertyUnit::query()->whereKey($selectedUnitId)->value('property_id');
+        }
 
         return array_merge($this->leaseFormStaticContext(), [
             'tenants' => collect(),
@@ -1559,6 +1568,7 @@ SQL;
             'leaseFormEndpoints' => $this->leaseFormEndpointUrls(),
             'leaseFormSelectedTenantId' => $selectedTenantId,
             'leaseFormSelectedUnitId' => $selectedUnitId,
+            'leaseFormSelectedPropertyId' => $selectedPropertyId,
         ]);
     }
 

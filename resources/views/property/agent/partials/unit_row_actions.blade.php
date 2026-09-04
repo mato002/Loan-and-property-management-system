@@ -18,7 +18,7 @@
     <a href="{{ route('property.units.edit', ['unit' => $unit->id], false) }}" data-turbo="false" class="block px-3 py-2 text-xs text-blue-700 hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-slate-700/50">Edit unit</a>
 
     @if ($status === PropertyUnit::STATUS_VACANT)
-        <a href="{{ route('property.tenants.leases', ['property_id' => $propertyId, 'unit_id' => $unit->id], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-slate-700/50">Assign tenant</a>
+        <a href="{{ route('property.tenants.leases', array_filter(['property_id' => $propertyId, 'unit_id' => $unit->id, 'open_create' => 1]), false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-slate-700/50">Assign tenant</a>
         <a href="{{ route('property.listings.create', ['selected_unit' => $unit->id], false) }}#listing-publish" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-slate-700/50">Publish listing</a>
     @elseif ($status !== PropertyUnit::STATUS_OWNER_OCCUPIED)
         @if ($activeLease)
@@ -29,7 +29,7 @@
         @elseif ($status === PropertyUnit::STATUS_OCCUPIED)
             <span class="block px-3 py-2 text-xs text-amber-700 dark:text-amber-300">No active lease linked</span>
         @endif
-        <a href="{{ route('property.tenants.leases', ['property_id' => $propertyId, 'unit_id' => $unit->id], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">Add / change lease</a>
+        <a href="{{ route('property.tenants.leases', array_filter(['property_id' => $propertyId, 'unit_id' => $unit->id, 'open_create' => 1]), false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">Add / change lease</a>
     @endif
 
     @if ($unitArrears > 0)

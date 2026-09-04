@@ -6,7 +6,7 @@
             $openingArrearsRows = old('opening_arrears', []);
             $openingDepositArrearsRows = old('opening_deposit_arrears', []);
             $selectedUnitId = (int) ($leaseFormSelectedUnitId ?? 0);
-            $selectedPropertyId = (string) old('property_id', request('property_id', ''));
+            $selectedPropertyId = (string) old('property_id', request('property_id', $leaseFormSelectedPropertyId ?? ''));
             $leaseFormAlpineOnParent = (bool) ($leaseFormAlpineOnParent ?? false);
         @endphp
         @if (! $leaseFormAlpineOnParent)
