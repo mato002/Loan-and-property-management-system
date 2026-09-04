@@ -20,7 +20,7 @@
         \App\Services\Property\PropertyMoney::kes($commission),
         \App\Services\Property\PropertyMoney::kes($net),
         $lastPayout ? \Carbon\Carbon::parse($lastPayout)->format('Y-m-d') : '—',
-        new \Illuminate\Support\HtmlString('<div class=\'flex gap-2\'><a class=\'text-indigo-600 hover:text-indigo-700\' href=\''.route('property.landlords.statement', ['landlord' => $r->user_id]).'\'>View statement</a><a class=\'text-emerald-700 hover:text-emerald-800\' href=\''.route('property.accounting.payables.landlord_payouts').'\'>Create payout</a><a class=\'text-slate-700 hover:text-slate-900\' href=\''.route('property.reports.landlord.balance_summary').'\'>Export</a></div>'),
+        new \Illuminate\Support\HtmlString('<div class=\'flex gap-2\'><a class=\'text-indigo-600 hover:text-indigo-700\' href=\''.route('property.landlords.statement', ['landlord' => $r->user_id]).'\'>View statement</a><a class=\'text-emerald-700 hover:text-emerald-800\' href=\''.route('property.accounting.payables.landlord_settlements', ['property_id' => $r->property_id, 'landlord_id' => $r->user_id]).'\'>Settlement</a><a class=\'text-slate-700 hover:text-slate-900\' href=\''.route('property.reports.landlord.balance_summary').'\'>Export</a></div>'),
     ];
     })->all()"
 >

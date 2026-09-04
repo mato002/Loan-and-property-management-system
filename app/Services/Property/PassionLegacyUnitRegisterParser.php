@@ -88,6 +88,15 @@ final class PassionLegacyUnitRegisterParser
                 continue;
             }
 
+            if ($buffer !== '' && ! $this->bufferLooksComplete($buffer) && $this->looksLikeRegisterAmountContinuation($line)) {
+                $buffer .= ' '.$line;
+                if ($this->bufferLooksComplete($buffer)) {
+                    $merged[] = $buffer;
+                    $buffer = '';
+                }
+                continue;
+            }
+
             if ($buffer !== '' && $this->looksLikeStatusTail($line)) {
                 $buffer .= ' '.$line;
                 if ($this->bufferLooksComplete($buffer)) {
@@ -133,6 +142,10 @@ final class PassionLegacyUnitRegisterParser
 
             if ($buffer !== '') {
                 $buffer .= ' '.$line;
+                if ($this->bufferLooksComplete($buffer)) {
+                    $merged[] = $buffer;
+                    $buffer = '';
+                }
                 continue;
             }
 
@@ -158,15 +171,19 @@ final class PassionLegacyUnitRegisterParser
         $unitLabel = PassionLegacyTextNormalizer::normalizeUnitLabel($match[1]);
         $rest = trim($match[2]);
 
-        if (! preg_match('/^(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+([\d,]+\.\d{2}))?\s+(.*?)\s+(\d+)\s+(Occupied|Vacant|Owner\s*Occupied)\s*(\d{2}\/\d{2}\/\d{4})?\s*$/i', $rest, $tail)) {
+        if (! preg_match('/^(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})(?:\s+([\d,]+\.\d{2}))?\s+(.*?)\s+(\d+)\s+'.$this->legacyStatusPattern().'\s*(\d{2}\/\d{2}\/\d{4})?\s*$/i', $rest, $tail)) {
             return null;
         }
 
         $beforeAmounts = trim($tail[1]);
         $propertyName = $fallbackProperty;
         $tenantName = null;
+        $floor = null;
 
-        if (preg_match('/^(.+?\([^)]+\))$/', trim($beforeAmounts))) {
+        if (preg_match('/^(.+?\([^)]+\))\s+(\d+)$/', trim($beforeAmounts), $split)) {
+            $propertyName = trim($split[1]);
+            $floor = $split[2];
+        } elseif (preg_match('/^(.+?\([^)]+\))$/', trim($beforeAmounts))) {
             $propertyName = trim($beforeAmounts);
         } elseif (preg_match('/^(.+?\([^)]+\))\s+(.+)$/', $beforeAmounts, $split)) {
             $propertyName = trim($split[1]);
@@ -188,12 +205,11 @@ final class PassionLegacyUnitRegisterParser
         $amounts = $this->parseRegisterAmounts($tail);
         $meta = trim($tail[5]);
         $bedrooms = (int) $tail[6];
-        $floor = null;
         $typeText = $meta;
-        if (preg_match('/^(\d+)\s+(.*)$/', $meta, $metaMatch)) {
+        if ($floor === null && preg_match('/^(\d+)\s+(.*)$/', $meta, $metaMatch)) {
             $floor = $metaMatch[1];
             $typeText = trim($metaMatch[2]);
-        } elseif (preg_match('/^\d+$/', $meta)) {
+        } elseif ($floor === null && preg_match('/^\d+$/', $meta)) {
             $floor = $meta;
             $typeText = '';
         }
@@ -280,17 +296,27 @@ final class PassionLegacyUnitRegisterParser
 
     private function unitLabelPattern(): string
     {
-        return '(?:CARWASH|SHOP(?:\s+(?:[A-Z]?\d+(?:\s*&\s*\d+)?|[A-Z]\d+))|RENTAL\s+HOUSE(?:\s+[A-Z]+)?|HSE\s+[A-Z]?\d+[A-Z]?(?:\s*&\s*\d+)?(?:\s*\(\d+BR\))?|HSE\s+[A-Z]\d+|[A-Z]\d+(?:\s*\(\d+BR\))?|\d+)';
+        return '(?:CARWASH|SHOP(?:\s+(?:[A-Z]?\d+(?:\s*&\s*\d+)?|[A-Z]\d+))|RENTAL\s+HOUSE(?:\s+[A-Z]+)?|HSE\s+[A-Z]?\d+[A-Z]?(?:\s*&\s*\d+)?(?:\s*\(\d+BR\))?|HSE\s+[A-Z]\d+|[A-Z]\s+\d+(?:\s*\(\d+BR\))?|[A-Z]\d+(?:\s*\(\d+BR\))?|SINGLE|\d+)';
+    }
+
+    private function legacyStatusPattern(): string
+    {
+        return '(Owner(?:\s+Occupied)?|Occupied|Vacant)';
+    }
+
+    private function legacyStatusTailPattern(): string
+    {
+        return $this->legacyStatusPattern();
     }
 
     private function looksLikeTenantTail(string $line): bool
     {
-        return (bool) preg_match('/[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s+.*\s+(Occupied|Vacant|Owner\s*Occupied)/i', $line);
+        return (bool) preg_match('/[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s+.*\s+'.$this->legacyStatusTailPattern().'/i', $line);
     }
 
     private function looksLikeStatusTail(string $line): bool
     {
-        return (bool) preg_match('/^\d+\s+(Occupied|Vacant|Owner\s*Occupied)\b/i', $line);
+        return (bool) preg_match('/^(?:\d+\s+)?'.$this->legacyStatusTailPattern().'\b/i', $line);
     }
 
     private function looksLikeUnitTypeContinuation(string $line): bool
@@ -300,7 +326,14 @@ final class PassionLegacyUnitRegisterParser
 
     private function looksLikeTenantAmountLine(string $line): bool
     {
-        return (bool) preg_match('/^\d+\s+[A-Z].+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}/i', $line);
+        return (bool) preg_match('/^\d+\s+[A-Z].+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}/i', $line)
+            || $this->looksLikeRegisterAmountContinuation($line);
+    }
+
+    private function looksLikeRegisterAmountContinuation(string $line): bool
+    {
+        return (bool) preg_match('/^(?:\d+\s+)?[\d,]+\.\d{2}\s+[\d,]+\.\d{2}/', trim($line))
+            && (bool) preg_match('/\b(?:Vacant|Occupied|Owner(?:\s+Occupied)?)\b/i', $line);
     }
 
     private function looksLikePropertyNameContinuation(string $line): bool
@@ -311,7 +344,7 @@ final class PassionLegacyUnitRegisterParser
 
     private function bufferLooksComplete(string $buffer): bool
     {
-        return (bool) preg_match('/\s+(Occupied|Vacant|Owner\s*Occupied)\b/i', $buffer);
+        return (bool) preg_match('/\s+'.$this->legacyStatusTailPattern().'\b/i', $buffer);
     }
 
     private function isPropertySectionHeader(string $line): bool

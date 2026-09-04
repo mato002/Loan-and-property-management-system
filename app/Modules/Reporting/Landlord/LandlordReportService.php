@@ -616,12 +616,14 @@ class LandlordReportService
                 COALESCE(SUM(CASE WHEN i.invoice_type = 'rent' THEN i.amount ELSE 0 END),0) as rent_invoices,
                 COALESCE(SUM(CASE
                     WHEN (i.invoice_type = 'mixed' AND LOWER(COALESCE(i.description, '')) LIKE '%penalty%')
-                      OR (i.invoice_type NOT IN ('rent', 'water', 'mixed'))
+                      OR (i.invoice_type NOT IN ('rent', 'water', 'garbage', 'mixed'))
                     THEN i.amount ELSE 0 END),0) as penalties_invoices,
+                COALESCE(SUM(CASE WHEN i.invoice_type = 'garbage' THEN i.amount ELSE 0 END),0) as garbage_invoices,
+                COALESCE(SUM(CASE WHEN i.invoice_type = 'water' THEN i.amount ELSE 0 END),0) as water_invoices,
                 COALESCE(SUM(CASE
-                    WHEN i.invoice_type = 'water'
-                      OR (i.invoice_type = 'mixed' AND LOWER(COALESCE(i.description, '')) NOT LIKE '%penalty%')
-                    THEN i.amount ELSE 0 END),0) as bills_invoices,
+                    WHEN i.invoice_type = 'mixed' AND LOWER(COALESCE(i.description, '')) NOT LIKE '%penalty%'
+                      OR i.invoice_type IN ('electricity', 'service', 'other')
+                    THEN i.amount ELSE 0 END),0) as other_bills_invoices,
                 COALESCE(SUM(i.amount),0) as invoices_total
             ")
 			->groupBy('i.pm_tenant_id', 'i.property_unit_id');
@@ -650,6 +652,9 @@ class LandlordReportService
                 MAX(t.name) as tenant_name,
                 MAX(u.label) as unit_label,
                 MAX(p.name) as property_name,
+                COALESCE(SUM(CASE WHEN i.invoice_type = 'rent' THEN a.amount ELSE 0 END),0) as rent_received,
+                COALESCE(SUM(CASE WHEN i.invoice_type = 'garbage' THEN a.amount ELSE 0 END),0) as garbage_received,
+                COALESCE(SUM(CASE WHEN i.invoice_type = 'water' THEN a.amount ELSE 0 END),0) as water_received,
                 COALESCE(SUM(a.amount),0) as payments_received
             ")
 			->groupBy('pay.pm_tenant_id', 'i.property_unit_id');
@@ -668,8 +673,13 @@ class LandlordReportService
 				'opening_balance' => 0.0,
 				'rent_invoices' => 0.0,
 				'penalties_invoices' => 0.0,
-				'bills_invoices' => 0.0,
+				'garbage_invoices' => 0.0,
+				'water_invoices' => 0.0,
+				'other_bills_invoices' => 0.0,
 				'invoices_total' => 0.0,
+				'rent_received' => 0.0,
+				'garbage_received' => 0.0,
+				'water_received' => 0.0,
 				'payments_received' => 0.0,
 			], $payload);
 		};
@@ -689,7 +699,9 @@ class LandlordReportService
 				'property_name' => (string) ($r->property_name ?? '—'),
 				'rent_invoices' => (float) ($r->rent_invoices ?? 0),
 				'penalties_invoices' => (float) ($r->penalties_invoices ?? 0),
-				'bills_invoices' => (float) ($r->bills_invoices ?? 0),
+				'garbage_invoices' => (float) ($r->garbage_invoices ?? 0),
+				'water_invoices' => (float) ($r->water_invoices ?? 0),
+				'other_bills_invoices' => (float) ($r->other_bills_invoices ?? 0),
 				'invoices_total' => (float) ($r->invoices_total ?? 0),
 			]);
 		}
@@ -699,6 +711,9 @@ class LandlordReportService
 				'unit_label' => (string) ($r->unit_label ?? '—'),
 				'property_name' => (string) ($r->property_name ?? '—'),
 				'payments_received' => (float) ($r->payments_received ?? 0),
+				'rent_received' => (float) ($r->rent_received ?? 0),
+				'garbage_received' => (float) ($r->garbage_received ?? 0),
+				'water_received' => (float) ($r->water_received ?? 0),
 			]);
 		}
 
@@ -707,9 +722,14 @@ class LandlordReportService
 				$opening = (float) ($r['opening_balance'] ?? 0);
 				$rent = (float) ($r['rent_invoices'] ?? 0);
 				$pen = (float) ($r['penalties_invoices'] ?? 0);
-				$bills = (float) ($r['bills_invoices'] ?? 0);
-				$invTotal = $rent + $pen + $bills;
+				$garbage = (float) ($r['garbage_invoices'] ?? 0);
+				$water = (float) ($r['water_invoices'] ?? 0);
+				$otherBills = (float) ($r['other_bills_invoices'] ?? 0);
+				$invTotal = $rent + $pen + $garbage + $water + $otherBills;
 				$paid = (float) ($r['payments_received'] ?? 0);
+				$rentPaid = (float) ($r['rent_received'] ?? 0);
+				$garbagePaid = (float) ($r['garbage_received'] ?? 0);
+				$waterPaid = (float) ($r['water_received'] ?? 0);
 				$closing = max(0.0, $opening + $invTotal - $paid);
 
 				return [
@@ -719,7 +739,12 @@ class LandlordReportService
 					'closing' => $closing,
 					'rent' => $rent,
 					'penalty' => $pen,
-					'bills' => $bills,
+					'garbage' => $garbage,
+					'water' => $water,
+					'other_bills' => $otherBills,
+					'rent_paid' => $rentPaid,
+					'garbage_paid' => $garbagePaid,
+					'water_paid' => $waterPaid,
 					'paid' => $paid,
 					'opening' => $opening,
 				];
@@ -751,8 +776,13 @@ class LandlordReportService
 			$r['unit_label'],
 			$this->money((float) $r['closing']),
 			$this->money((float) $r['rent']),
+			$this->money((float) $r['garbage']),
+			$this->money((float) $r['water']),
 			$this->money((float) $r['penalty']),
-			$this->money((float) $r['bills']),
+			$this->money((float) $r['other_bills']),
+			$this->money((float) $r['rent_paid']),
+			$this->money((float) $r['garbage_paid']),
+			$this->money((float) $r['water_paid']),
 			$this->money((float) $r['paid']),
 			$this->money((float) $r['opening']),
 			$this->money((float) $r['closing']),
@@ -796,8 +826,13 @@ class LandlordReportService
 				'Unit number',
 				'Balance (owes us)',
 				'Invoices: Rent',
+				'Invoices: Garbage',
+				'Invoices: Water',
 				'Invoices: Penalties',
-				'Invoices: Bills',
+				'Invoices: Other bills',
+				'Received: Rent',
+				'Received: Garbage',
+				'Received: Water',
 				'Payments received',
 				'Opening balance',
 				'Total balance',
@@ -809,8 +844,13 @@ class LandlordReportService
 				'UnitNumber',
 				'BalanceOwesUs',
 				'InvoicesRent',
+				'InvoicesGarbage',
+				'InvoicesWater',
 				'InvoicesPenalties',
-				'InvoicesBills',
+				'InvoicesOtherBills',
+				'ReceivedRent',
+				'ReceivedGarbage',
+				'ReceivedWater',
 				'PaymentsReceived',
 				'OpeningBalance',
 				'TotalBalance',
@@ -821,8 +861,13 @@ class LandlordReportService
 				$r['unit_label'],
 				number_format((float) $r['closing'], 2, '.', ''),
 				number_format((float) $r['rent'], 2, '.', ''),
+				number_format((float) $r['garbage'], 2, '.', ''),
+				number_format((float) $r['water'], 2, '.', ''),
 				number_format((float) $r['penalty'], 2, '.', ''),
-				number_format((float) $r['bills'], 2, '.', ''),
+				number_format((float) $r['other_bills'], 2, '.', ''),
+				number_format((float) $r['rent_paid'], 2, '.', ''),
+				number_format((float) $r['garbage_paid'], 2, '.', ''),
+				number_format((float) $r['water_paid'], 2, '.', ''),
 				number_format((float) $r['paid'], 2, '.', ''),
 				number_format((float) $r['opening'], 2, '.', ''),
 				number_format((float) $r['closing'], 2, '.', ''),

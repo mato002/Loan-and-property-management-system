@@ -319,6 +319,10 @@ final class PassionLegacyRegisterImportService
             }
         }
 
+        if (Schema::hasTable('pm_field_officers') && Schema::hasColumn('properties', 'field_officer_id')) {
+            app(PassionLegacyFieldOfficerImportService::class)->linkProperty($property, $record, $agentUserId);
+        }
+
         if (! $withUnits) {
             return;
         }

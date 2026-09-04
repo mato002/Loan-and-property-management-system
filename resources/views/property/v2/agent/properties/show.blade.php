@@ -53,9 +53,9 @@
                 <label class="block text-xs font-medium text-slate-600">Unit status</label>
                 <select name="unit_status" class="mt-1 rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
                     <option value="">All</option>
-                    <option value="vacant" @selected(($filters['unit_status'] ?? '') === 'vacant')>Vacant</option>
-                    <option value="occupied" @selected(($filters['unit_status'] ?? '') === 'occupied')>Occupied</option>
-                    <option value="notice" @selected(($filters['unit_status'] ?? '') === 'notice')>Notice</option>
+                    @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                        <option value="{{ $value }}" @selected(($filters['unit_status'] ?? '') === $value)>{{ $label }}</option>
+                    @endforeach
                 </select>
             </div>
             <div>
@@ -684,9 +684,9 @@
                                 <div>
                                 <label class="block text-xs font-medium text-slate-600">Status</label>
                                 <select name="status" @required($unitRequired('status', true)) class="mt-1 w-full rounded-lg border border-slate-200 bg-white text-sm px-3 py-2">
-                                    <option value="vacant" @selected(old('status', 'vacant') === 'vacant')>Vacant</option>
-                                    <option value="occupied" @selected(old('status') === 'occupied')>Occupied</option>
-                                    <option value="notice" @selected(old('status') === 'notice')>Notice</option>
+                                    @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                                        <option value="{{ $value }}" @selected(old('status', 'vacant') === $value)>{{ $label }}</option>
+                                    @endforeach
                                 </select>
                                 @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                                 </div>

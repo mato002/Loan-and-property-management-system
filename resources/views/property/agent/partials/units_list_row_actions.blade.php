@@ -17,12 +17,12 @@
             <a href="{{ route('property.listings.create', ['selected_unit' => $unit->id], absolute: false) }}#listing-publish" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-slate-700/50">Edit listing</a>
         @endif
 
-        @foreach ([PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE] as $targetStatus)
+        @foreach (PropertyUnit::statuses() as $targetStatus)
             @if ($targetStatus !== $unit->status)
                 <form method="post" action="{{ route('property.units.status', $unit, absolute: false) }}" data-turbo-frame="property-main">
                     @csrf
                     <input type="hidden" name="status" value="{{ $targetStatus }}" />
-                    <button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">Mark {{ ucfirst($targetStatus) }}</button>
+                    <button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">Mark {{ PropertyUnit::statusLabel($targetStatus) }}</button>
                 </form>
             @endif
         @endforeach

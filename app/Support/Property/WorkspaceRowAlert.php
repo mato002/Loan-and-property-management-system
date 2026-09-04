@@ -13,6 +13,8 @@ final class WorkspaceRowAlert
 
     public const TONE_VACANT_LONG = 'vacant-long';
 
+    public const TONE_OWNER_OCCUPIED = 'owner-occupied';
+
     public const TONE_NOTICE = 'notice';
 
     public const TONE_ATTENTION = 'attention';
@@ -61,6 +63,9 @@ final class WorkspaceRowAlert
 
             'occupied' => self::TONE_OCCUPIED,
 
+            'owner occupied' => self::TONE_OWNER_OCCUPIED,
+            'owner_occupied' => self::TONE_OWNER_OCCUPIED,
+
             'notice' => self::TONE_NOTICE,
             'pending' => self::TONE_NOTICE,
             'draft' => self::TONE_NOTICE,
@@ -83,6 +88,7 @@ final class WorkspaceRowAlert
     {
         return [
             self::TONE_OCCUPIED,
+            self::TONE_OWNER_OCCUPIED,
             self::TONE_VACANT,
             self::TONE_VACANT_LONG,
             self::TONE_NOTICE,
@@ -108,6 +114,7 @@ final class WorkspaceRowAlert
     {
         return match (self::sanitizeTone($tone)) {
             self::TONE_OCCUPIED => '#bbf7d0',
+            self::TONE_OWNER_OCCUPIED => '#fdba74',
             self::TONE_VACANT => '#facc15',
             self::TONE_VACANT_LONG => '#fb923c',
             self::TONE_NOTICE => '#38bdf8',
@@ -147,6 +154,7 @@ final class WorkspaceRowAlert
             self::TONE_VACANT => 3,
             self::TONE_NOTICE => 2,
             self::TONE_OCCUPIED => 1,
+            self::TONE_OWNER_OCCUPIED => 1,
         ];
         $best = '';
         $bestRank = 0;
@@ -195,6 +203,10 @@ final class WorkspaceRowAlert
             return self::TONE_NOTICE;
         }
 
+        if ($status === PropertyUnit::STATUS_OWNER_OCCUPIED) {
+            return self::TONE_OWNER_OCCUPIED;
+        }
+
         if ($status === PropertyUnit::STATUS_OCCUPIED) {
             return self::TONE_OCCUPIED;
         }
@@ -229,6 +241,10 @@ final class WorkspaceRowAlert
 
         if ($status === PropertyUnit::STATUS_NOTICE) {
             return self::TONE_NOTICE;
+        }
+
+        if ($status === PropertyUnit::STATUS_OWNER_OCCUPIED) {
+            return self::TONE_OWNER_OCCUPIED;
         }
 
         if ($status === PropertyUnit::STATUS_OCCUPIED && $hasTenant) {

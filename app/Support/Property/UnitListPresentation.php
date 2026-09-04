@@ -13,6 +13,8 @@ final class UnitListPresentation
 
     public const TONE_VACANT_LONG = WorkspaceRowAlert::TONE_VACANT_LONG;
 
+    public const TONE_OWNER_OCCUPIED = WorkspaceRowAlert::TONE_OWNER_OCCUPIED;
+
     public const TONE_NOTICE = WorkspaceRowAlert::TONE_NOTICE;
 
     public const TONE_ATTENTION = WorkspaceRowAlert::TONE_ATTENTION;
@@ -40,12 +42,13 @@ final class UnitListPresentation
             self::TONE_VACANT_LONG => 'vacant-long',
             self::TONE_VACANT => 'vacant',
             self::TONE_NOTICE => 'notice',
+            self::TONE_OWNER_OCCUPIED => 'owner-occupied',
             self::TONE_OCCUPIED => 'occupied',
             default => 'occupied',
         };
 
         return new HtmlString(
-            '<span class="property-status-pill property-status-pill--'.$modifier.'">'.e(ucfirst((string) $unit->status)).'</span>'
+            '<span class="property-status-pill property-status-pill--'.$modifier.'">'.e(PropertyUnit::statusLabel((string) $unit->status)).'</span>'
         );
     }
 

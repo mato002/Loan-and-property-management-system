@@ -174,12 +174,14 @@ final class PropertyNavigation
                 'active' => [
                     'property.properties.*',
                     'property.landlords.*',
+                    'property.field_officers.*',
                     'property.units.*',
                 ],
                 'flyout' => [
                     ['label' => 'All properties', 'route' => 'property.properties.list', 'active' => ['property.properties.list', 'property.properties.show', 'property.properties.edit']],
                     ['label' => 'Units', 'route' => 'property.properties.units', 'active' => ['property.properties.units', 'property.units.*']],
                     ['label' => 'Landlords', 'route' => 'property.landlords.index', 'active' => ['property.landlords.*']],
+                    ['label' => 'Field officers', 'route' => 'property.field_officers.index', 'active' => ['property.field_officers.*']],
                     ['label' => 'Occupancy', 'route' => 'property.properties.occupancy', 'active' => ['property.properties.occupancy']],
                 ],
             ],
@@ -317,6 +319,7 @@ final class PropertyNavigation
                 ],
                 'flyout' => [
                     ['label' => 'Dashboard', 'route' => 'property.accounting.index', 'active' => ['property.accounting.index']],
+                    ['label' => 'Landlord payment & fees', 'route' => 'property.accounting.payables.landlord_payment_fees', 'active' => ['property.accounting.payables.landlord_payment_fees', 'property.accounting.payables.landlord_payment_fees.*']],
                     ['label' => 'Journal entries', 'route' => 'property.accounting.entries', 'active' => ['property.accounting.entries', 'property.accounting.entries.*']],
                     ['label' => 'Chart of accounts', 'route' => 'property.accounting.gl.chart_accounts', 'active' => ['property.accounting.gl.chart_accounts', 'property.accounting.gl.chart_accounts.*']],
                     ['label' => 'Payroll', 'route' => 'property.accounting.payroll', 'active' => ['property.accounting.payroll', 'property.accounting.payroll.*']],

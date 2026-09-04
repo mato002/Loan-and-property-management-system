@@ -721,7 +721,7 @@ class PropertySettingsStoreWebController extends Controller
             ['key' => 'unit_type', 'label' => 'Unit type', 'type' => 'select', 'required' => false, 'enabled' => true, 'help_text' => 'Bedsitter, 1BR, shop, office, etc.', 'options' => 'Bedsitter, 1BR, 2BR, 3BR, Shop, Office'],
             ['key' => 'bedrooms', 'label' => 'Bedrooms', 'type' => 'number', 'required' => false, 'enabled' => true, 'help_text' => 'No. of bedrooms where applicable.', 'options' => ''],
             ['key' => 'rent_amount', 'label' => 'Rent amount', 'type' => 'number', 'required' => true, 'enabled' => true, 'help_text' => 'Monthly rent amount.', 'options' => ''],
-            ['key' => 'status', 'label' => 'Status', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Current occupancy status.', 'options' => 'vacant, occupied, notice'],
+            ['key' => 'status', 'label' => 'Status', 'type' => 'select', 'required' => true, 'enabled' => true, 'help_text' => 'Current occupancy status.', 'options' => 'vacant, occupied, notice, owner_occupied'],
         ];
     }
 

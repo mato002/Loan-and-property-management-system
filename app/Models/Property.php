@@ -46,6 +46,7 @@ class Property extends Model
         'address_line',
         'city',
         'agent_user_id',
+        'field_officer_id',
         'rent_due_day',
         'management_status',
         'management_ended_at',
@@ -161,6 +162,11 @@ class Property extends Model
     public function agentUser(): BelongsTo
     {
         return $this->belongsTo(User::class, 'agent_user_id');
+    }
+
+    public function fieldOfficer(): BelongsTo
+    {
+        return $this->belongsTo(PmFieldOfficer::class, 'field_officer_id');
     }
 
     /**

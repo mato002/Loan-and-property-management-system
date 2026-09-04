@@ -232,6 +232,7 @@ final class PropertyWorkspaceTabs
                 ['key' => 'units', 'label' => 'Units', 'route' => 'property.properties.units', 'active' => ['property.properties.units', 'property.units.*']],
                 ['key' => 'occupancy', 'label' => 'Occupancy', 'route' => 'property.properties.occupancy', 'active' => ['property.properties.occupancy', 'property.properties.occupancy.*']],
                 ['key' => 'landlords', 'label' => 'Landlords', 'route' => 'property.landlords.index', 'active' => ['property.landlords.*']],
+                ['key' => 'field_officers', 'label' => 'Field officers', 'route' => 'property.field_officers.index', 'active' => ['property.field_officers.*']],
                 ['key' => 'amenities', 'label' => 'Amenities', 'route' => 'property.properties.amenities', 'active' => ['property.properties.amenities', 'property.properties.amenities.*']],
                 ['key' => 'performance', 'label' => 'Performance', 'route' => 'property.properties.performance', 'active' => ['property.properties.performance']],
             ],
@@ -315,7 +316,7 @@ final class PropertyWorkspaceTabs
                 ['key' => 'overview', 'label' => 'Overview', 'route' => 'property.accounting.index', 'active' => ['property.accounting.index']],
                 ['key' => 'gl', 'label' => 'GL', 'route' => 'property.accounting.entries', 'active' => ['property.accounting.entries', 'property.accounting.entries.*', 'property.accounting.gl.*']],
                 ['key' => 'receivables', 'label' => 'Receivables', 'route' => 'property.accounting.receivables.accounts', 'active' => ['property.accounting.receivables.*']],
-                ['key' => 'payables', 'label' => 'Payables', 'route' => 'property.accounting.payables.landlord_payables', 'active' => ['property.accounting.payables.*']],
+                ['key' => 'payables', 'label' => 'Payables', 'route' => 'property.accounting.payables.landlord_payment_fees', 'active' => ['property.accounting.payables.*']],
                 ['key' => 'cash_bank', 'label' => 'Cash & Bank', 'route' => 'property.accounting.cash_bank.reconciliation', 'active' => ['property.accounting.cash_bank.*', 'property.accounting.reports.cash_book', 'property.accounting.reports.cash_book.*']],
                 ['key' => 'reports', 'label' => 'Reports', 'route' => 'property.accounting.reports.trial_balance', 'active' => ['property.accounting.reports.trial_balance', 'property.accounting.reports.trial_balance.*', 'property.accounting.reports.income_statement', 'property.accounting.reports.income_statement.*', 'property.accounting.reports.balance_sheet', 'property.accounting.reports.aged_receivables', 'property.accounting.reports.aged_payables', 'property.accounting.reports.deposit_liability']],
                 ['key' => 'controls', 'label' => 'Controls', 'route' => 'property.accounting.audit_trail', 'active' => ['property.accounting.audit_trail', 'property.accounting.audit_trail.*', 'property.accounting.controls.*']],
@@ -470,8 +471,11 @@ final class PropertyWorkspaceTabs
             [
                 'label' => 'Payables',
                 'tabs' => [
+                    ['key' => 'landlord_payment_fees', 'label' => 'Landlord payment & fees', 'route' => 'property.accounting.payables.landlord_payment_fees', 'active' => ['property.accounting.payables.landlord_payment_fees', 'property.accounting.payables.landlord_payment_fees.*']],
+                    ['key' => 'landlord_settlements', 'label' => 'Landlord settlements', 'route' => 'property.accounting.payables.landlord_settlements', 'active' => ['property.accounting.payables.landlord_settlements', 'property.accounting.payables.landlord_settlements.*']],
                     ['key' => 'landlord_payables', 'label' => 'Landlord payables', 'route' => 'property.accounting.payables.landlord_payables', 'active' => ['property.accounting.payables.landlord_payables']],
                     ['key' => 'landlord_payouts', 'label' => 'Landlord payouts', 'route' => 'property.accounting.payables.landlord_payouts', 'active' => ['property.accounting.payables.landlord_payouts']],
+                    ['key' => 'landlord_advances', 'label' => 'Advances & pay dates', 'route' => 'property.accounting.payables.landlord_advances', 'active' => ['property.accounting.payables.landlord_advances', 'property.accounting.payables.landlord_advances.*']],
                     ['key' => 'accounts_payable', 'label' => 'Accounts payable', 'route' => 'property.accounting.payables.accounts_payable', 'active' => ['property.accounting.payables.accounts_payable']],
                 ],
             ],

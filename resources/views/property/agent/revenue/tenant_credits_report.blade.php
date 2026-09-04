@@ -1,3 +1,8 @@
+@php
+    $showAdvanceFormByDefault = old('payment_form') === 'advance'
+        || $errors->has('advance')
+        || (old('payment_form') === 'advance' && $errors->hasAny(['pm_tenant_id', 'channel', 'amount', 'paid_at', 'external_ref', 'notes']));
+@endphp
 <x-property.workspace
     title="Tenant advance credits"
     subtitle="Unapplied tenant funds held as credit liability (not suspense)."
@@ -7,19 +12,43 @@
         ['label' => 'Tenants with credit', 'value' => (string) $balances->total(), 'hint' => 'This page'],
     ]"
 >
+    <x-slot name="pageModalsAttributes"
+        x-data="{!! \Illuminate\Support\Js::from(['showAdvancePaymentForm' => $showAdvanceFormByDefault]) !!}"
+    ></x-slot>
 
-    <div class="mb-6">
-        <h2 class="text-sm font-semibold text-slate-900 mb-2">Record advance payment</h2>
-        <p class="text-xs text-slate-600 mb-3">
-            Use this when a tenant pays cash upfront with <span class="font-medium">no open invoice</span>. Credit auto-applies when invoices are raised.
-        </p>
-        @include('property.agent.revenue.partials.advance_payment_form', [
-            'tenantsForAdvance' => $tenantsForAdvance ?? collect(),
-            'advanceCreditsEnabled' => $advanceCreditsEnabled ?? false,
-            'returnTo' => 'tenant_credits',
-            'alwaysOpen' => true,
-        ])
-    </div>
+    <x-slot name="actions">
+        <button
+            type="button"
+            class="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            data-property-modal-open="showAdvancePaymentForm"
+            @click="showAdvancePaymentForm = true"
+        >
+            <i class="fa-solid fa-piggy-bank" aria-hidden="true"></i>
+            <span>Record advance payment</span>
+        </button>
+    </x-slot>
+
+    <x-slot name="modals">
+        <x-property.modal
+            show="showAdvancePaymentForm"
+            close="showAdvancePaymentForm = false"
+            name="tenant-credits-advance-payment"
+            title="Record advance payment"
+            max-width="3xl"
+        >
+            @error('advance')<p class="mb-3 text-xs text-red-600">{{ $message }}</p>@enderror
+            @if (! ($advanceCreditsEnabled ?? false))
+                <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    Tenant advance credits are not enabled on this database. Run migrations for <code class="text-xs">pm_tenant_credit_*</code> tables, then retry.
+                </div>
+            @else
+                @include('property.agent.revenue.partials.advance_payment_form_fields', [
+                    'tenantsForAdvance' => $tenantsForAdvance ?? collect(),
+                    'returnTo' => 'tenant_credits',
+                ])
+            @endif
+        </x-property.modal>
+    </x-slot>
 
     <form method="get" class="mb-4 flex flex-wrap gap-2 items-end" data-turbo-frame="property-main">
         <div>

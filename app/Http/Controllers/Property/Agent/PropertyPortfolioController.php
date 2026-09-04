@@ -406,11 +406,7 @@ class PropertyPortfolioController extends Controller
         $month = trim((string) $request->query('month', ''));
         $fy = (int) $request->query('fy', now()->year);
         $unitStatus = (string) $request->query('unit_status', '');
-        if (! in_array($unitStatus, [
-            PropertyUnit::STATUS_VACANT,
-            PropertyUnit::STATUS_OCCUPIED,
-            PropertyUnit::STATUS_NOTICE,
-        ], true)) {
+        if (! in_array($unitStatus, PropertyUnit::statuses(), true)) {
             $unitStatus = '';
         }
         $collectionChannel = trim((string) $request->query('collection_channel', ''));
@@ -946,7 +942,7 @@ class PropertyPortfolioController extends Controller
     {
         $preset = trim((string) $request->query('preset', ''));
         $status = trim((string) $request->query('status', ''));
-        if (! in_array($status, [PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_NOTICE], true)) {
+        if (! in_array($status, PropertyUnit::statuses(), true)) {
             $status = '';
         }
         $trendFilter = trim((string) $request->query('trend', ''));
@@ -1541,20 +1537,7 @@ class PropertyPortfolioController extends Controller
         $unitStatsByProperty = collect();
         $tenantCountByProperty = collect();
         if ($propertyIds !== []) {
-            $unitStatsByProperty = PropertyUnit::query()
-                ->whereIn('property_id', $propertyIds)
-                ->selectRaw('property_id')
-                ->selectRaw('COUNT(*) as units_total')
-                ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as units_occupied', [PropertyUnit::STATUS_OCCUPIED])
-                ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as units_vacant', [PropertyUnit::STATUS_VACANT])
-                ->groupBy('property_id')
-                ->get()
-                ->keyBy('property_id')
-                ->map(fn ($row) => [
-                    'units_total' => (int) $row->units_total,
-                    'units_occupied' => (int) $row->units_occupied,
-                    'units_vacant' => (int) $row->units_vacant,
-                ]);
+            $unitStatsByProperty = \App\Support\Property\PropertyUnitOccupancyStats::byPropertyIds($propertyIds);
 
             $tenantCountByProperty = DB::table('pm_lease_unit as lu')
                 ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
@@ -1575,7 +1558,13 @@ class PropertyPortfolioController extends Controller
             $pendingShare = $grossPending * $pct;
             $commissionPct = $this->propertyCommissionPercent($pid);
             $agentEarning = $ownerShare * ($commissionPct / 100);
-            $unitStats = $unitStatsByProperty[$pid] ?? ['units_total' => 0, 'units_occupied' => 0, 'units_vacant' => 0];
+            $unitStats = $unitStatsByProperty[$pid] ?? [
+                'units_total' => 0,
+                'units_occupied' => 0,
+                'units_vacant' => 0,
+                'units_owner_occupied' => 0,
+                'units_notice' => 0,
+            ];
 
             return [
                 'property_id' => $pid,
@@ -1589,6 +1578,8 @@ class PropertyPortfolioController extends Controller
                 'units_total' => (int) ($unitStats['units_total'] ?? 0),
                 'units_occupied' => (int) ($unitStats['units_occupied'] ?? 0),
                 'units_vacant' => (int) ($unitStats['units_vacant'] ?? 0),
+                'units_owner_occupied' => (int) ($unitStats['units_owner_occupied'] ?? 0),
+                'units_notice' => (int) ($unitStats['units_notice'] ?? 0),
                 'active_tenants' => (int) ($tenantCountByProperty[$pid] ?? 0),
             ];
         })->values();
@@ -1624,6 +1615,8 @@ class PropertyPortfolioController extends Controller
             'agent_earning' => (float) $propertyBreakdown->sum('agent_earning'),
             'units_total' => (int) $propertyBreakdown->sum('units_total'),
             'units_occupied' => (int) $propertyBreakdown->sum('units_occupied'),
+            'units_vacant' => (int) $propertyBreakdown->sum('units_vacant'),
+            'units_owner_occupied' => (int) $propertyBreakdown->sum('units_owner_occupied'),
             'active_tenants' => (int) $propertyBreakdown->sum('active_tenants'),
         ];
 
@@ -2073,7 +2066,7 @@ class PropertyPortfolioController extends Controller
         }
 
         $status = trim((string) ($filters['status'] ?? ''));
-        if (in_array($status, [PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE], true)) {
+        if (in_array($status, PropertyUnit::statuses(), true)) {
             $query->where('status', $status);
         }
 
@@ -2126,6 +2119,7 @@ class PropertyPortfolioController extends Controller
             ['label' => 'Occupied', 'value' => (string) (int) ($statusCounts[PropertyUnit::STATUS_OCCUPIED] ?? 0), 'hint' => 'All matching'],
             ['label' => 'Vacant', 'value' => (string) (int) ($statusCounts[PropertyUnit::STATUS_VACANT] ?? 0), 'hint' => 'All matching'],
             ['label' => 'Notice', 'value' => (string) (int) ($statusCounts[PropertyUnit::STATUS_NOTICE] ?? 0), 'hint' => 'All matching'],
+            ['label' => 'Owner occupied', 'value' => (string) (int) ($statusCounts[PropertyUnit::STATUS_OWNER_OCCUPIED] ?? 0), 'hint' => 'All matching'],
             ['label' => 'Listed rent (avg)', 'value' => PropertyMoney::kes($avgRent), 'hint' => 'All matching'],
         ];
 
@@ -2699,7 +2693,7 @@ class PropertyPortfolioController extends Controller
             $query->where('property_id', $propertyId);
         }
         $status = trim((string) ($filters['status'] ?? ''));
-        if (in_array($status, [PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE], true)) {
+        if (in_array($status, PropertyUnit::statuses(), true)) {
             $query->where('status', $status);
         }
         $unitType = trim((string) ($filters['unit_type'] ?? ''));
@@ -2783,7 +2777,7 @@ class PropertyPortfolioController extends Controller
             'rent_amount' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
             'status' => [
                 Rule::requiredIf(fn () => $this->isFieldRequired($unitFields, 'status') && (string) $request->input('status_mode', 'single') !== 'split'),
-                'in:vacant,occupied,notice',
+                'in:vacant,occupied,notice,owner_occupied',
             ],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
@@ -2971,7 +2965,7 @@ class PropertyPortfolioController extends Controller
     public function updateUnitStatus(Request $request, PropertyUnit $unit): RedirectResponse
     {
         $data = $request->validate([
-            'status' => ['required', 'in:vacant,occupied,notice'],
+            'status' => ['required', 'in:vacant,occupied,notice,owner_occupied'],
         ]);
 
         $status = (string) ($data['status'] ?? PropertyUnit::STATUS_VACANT);
@@ -3026,7 +3020,7 @@ class PropertyPortfolioController extends Controller
             'unit_type' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'unit_type')), 'nullable', 'string', 'max:64'],
             'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'rent_amount' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'rent_amount')), 'nullable', 'numeric', 'min:0'],
-            'status' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'status')), 'nullable', 'in:vacant,occupied,notice'],
+            'status' => [Rule::requiredIf($this->isFieldRequired($unitFields, 'status')), 'nullable', 'in:vacant,occupied,notice,owner_occupied'],
             'public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
 
@@ -3085,7 +3079,7 @@ class PropertyPortfolioController extends Controller
             'unit_type' => ['nullable', 'string', 'max:64'],
             'bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'rent_amount' => ['nullable', 'numeric', 'min:0'],
-            'status' => ['nullable', 'in:vacant,occupied,notice'],
+            'status' => ['nullable', 'in:vacant,occupied,notice,owner_occupied'],
         ]);
 
         $propertyId = (int) ($data['property_id'] ?? 0);
@@ -3297,7 +3291,7 @@ class PropertyPortfolioController extends Controller
             'unit_groups.*.unit_type' => ['required', 'string', 'max:64'],
             'unit_groups.*.bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'unit_groups.*.rent_amount' => ['required', 'numeric', 'min:0'],
-            'unit_groups.*.status' => ['required', 'in:vacant,occupied,notice'],
+            'unit_groups.*.status' => ['required', 'in:vacant,occupied,notice,owner_occupied'],
             'unit_groups.*.public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
 
@@ -3547,7 +3541,7 @@ class PropertyPortfolioController extends Controller
     {
         $preset = trim((string) $request->query('preset', ''));
         $status = trim((string) $request->query('status', ''));
-        if (! in_array($status, [PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_NOTICE], true)) {
+        if (! in_array($status, PropertyUnit::statuses(), true)) {
             $status = '';
         }
         $ageBucket = trim((string) $request->query('age_bucket', ''));

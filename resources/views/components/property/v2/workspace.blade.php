@@ -264,6 +264,10 @@
                                 Occupied
                             </span>
                             <span class="property-row-alert-legend__item">
+                                <span class="property-row-alert-swatch property-row-alert-swatch--owner-occupied" aria-hidden="true"></span>
+                                Owner occupied
+                            </span>
+                            <span class="property-row-alert-legend__item">
                                 <span class="property-row-alert-swatch property-row-alert-swatch--vacant" aria-hidden="true"></span>
                                 Vacant / empty
                             </span>

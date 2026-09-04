@@ -18,6 +18,8 @@ class PropertyUnit extends Model
     public const STATUS_OCCUPIED = 'occupied';
 
     public const STATUS_NOTICE = 'notice';
+
+    public const STATUS_OWNER_OCCUPIED = 'owner_occupied';
     public const TYPE_APARTMENT = 'apartment';
     public const TYPE_SINGLE_ROOM = 'single_room';
     public const TYPE_BEDSITTER = 'bedsitter';
@@ -254,5 +256,43 @@ class PropertyUnit extends Model
         }
 
         return $count.' '.\Illuminate\Support\Str::plural('bedroom', $count);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function statuses(): array
+    {
+        return [
+            self::STATUS_VACANT,
+            self::STATUS_OCCUPIED,
+            self::STATUS_NOTICE,
+            self::STATUS_OWNER_OCCUPIED,
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function statusOptions(): array
+    {
+        return [
+            self::STATUS_VACANT => 'Vacant',
+            self::STATUS_OCCUPIED => 'Occupied',
+            self::STATUS_NOTICE => 'Notice',
+            self::STATUS_OWNER_OCCUPIED => 'Owner occupied',
+        ];
+    }
+
+    public static function statusValidationRule(): string
+    {
+        return 'in:'.implode(',', self::statuses());
+    }
+
+    public static function statusLabel(?string $status): string
+    {
+        $status = (string) $status;
+
+        return self::statusOptions()[$status] ?? \Illuminate\Support\Str::title(str_replace('_', ' ', $status));
     }
 }

@@ -59,6 +59,8 @@ class AgentCommissionService
                 'pl.user_id',
                 'pl.property_id',
                 'pl.ownership_percent',
+                'pl.agreed_pay_day',
+                'pl.agreed_pay_notes',
                 'u.name as owner_name',
                 'p.name as property_name',
             ])

@@ -8,7 +8,7 @@ use App\Models\PmLandlordRemittanceRequest;
 use App\Models\PmLease;
 use App\Models\PmPayment;
 use App\Models\PropertyPortalSetting;
-use App\Models\PropertyUnit;
+use App\Support\Property\PropertyUnitOccupancyStats;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -89,20 +89,7 @@ final class LandlordPortalSnapshotService
         $unitStatsByProperty = collect();
         $tenantCountByProperty = collect();
         if ($propertyIds !== []) {
-            $unitStatsByProperty = PropertyUnit::query()
-                ->whereIn('property_id', $propertyIds)
-                ->selectRaw('property_id')
-                ->selectRaw('COUNT(*) as units_total')
-                ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as units_occupied', [PropertyUnit::STATUS_OCCUPIED])
-                ->selectRaw('SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as units_vacant', [PropertyUnit::STATUS_VACANT])
-                ->groupBy('property_id')
-                ->get()
-                ->keyBy('property_id')
-                ->map(fn ($row) => [
-                    'units_total' => (int) $row->units_total,
-                    'units_occupied' => (int) $row->units_occupied,
-                    'units_vacant' => (int) $row->units_vacant,
-                ]);
+            $unitStatsByProperty = PropertyUnitOccupancyStats::byPropertyIds($propertyIds);
 
             $tenantCountByProperty = DB::table('pm_lease_unit as lu')
                 ->join('pm_leases as l', 'l.id', '=', 'lu.pm_lease_id')
@@ -125,7 +112,13 @@ final class LandlordPortalSnapshotService
             $commissionPct = $commissionOverrides[$pid] ?? $commissionDefaultPct;
             $managementFee = $ownerShare * ($commissionPct / 100);
             $netToOwner = $ownerShare - $managementFee;
-            $unitStats = $unitStatsByProperty[$pid] ?? ['units_total' => 0, 'units_occupied' => 0, 'units_vacant' => 0];
+            $unitStats = $unitStatsByProperty[$pid] ?? [
+                'units_total' => 0,
+                'units_occupied' => 0,
+                'units_vacant' => 0,
+                'units_owner_occupied' => 0,
+                'units_notice' => 0,
+            ];
 
             return [
                 'property_id' => $pid,
@@ -141,6 +134,8 @@ final class LandlordPortalSnapshotService
                 'units_total' => (int) ($unitStats['units_total'] ?? 0),
                 'units_occupied' => (int) ($unitStats['units_occupied'] ?? 0),
                 'units_vacant' => (int) ($unitStats['units_vacant'] ?? 0),
+                'units_owner_occupied' => (int) ($unitStats['units_owner_occupied'] ?? 0),
+                'units_notice' => (int) ($unitStats['units_notice'] ?? 0),
                 'active_tenants' => (int) ($tenantCountByProperty[$pid] ?? 0),
             ];
         })->values();
@@ -178,6 +173,8 @@ final class LandlordPortalSnapshotService
             'net_to_owner' => (float) $propertyBreakdown->sum('net_to_owner'),
             'units_total' => (int) $propertyBreakdown->sum('units_total'),
             'units_occupied' => (int) $propertyBreakdown->sum('units_occupied'),
+            'units_vacant' => (int) $propertyBreakdown->sum('units_vacant'),
+            'units_owner_occupied' => (int) $propertyBreakdown->sum('units_owner_occupied'),
             'active_tenants' => (int) $propertyBreakdown->sum('active_tenants'),
         ];
 

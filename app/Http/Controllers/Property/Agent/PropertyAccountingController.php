@@ -15,17 +15,20 @@ use App\Models\Employee;
 use App\Models\PmInvoice;
 use App\Models\PmLandlordLedgerEntry;
 use App\Models\PmLandlordPayout;
+use App\Models\PmLandlordPayoutItem;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMessageDelivery;
 use App\Models\PmAccountingEntry;
 use App\Models\PmTenant;
 use App\Models\PmPayment;
 use App\Models\Property;
-use App\Models\UnassignedPayment;
+use App\Models\User;
 use App\Models\PropertyPortalSetting;
 use App\Services\Property\AccountingPeriodService;
 use App\Services\Property\FinanceBalanceSnapshotService;
-use App\Services\Property\FinanceIntegrityService;
+use App\Services\Property\LandlordAdvanceService;
+use App\Services\Property\LandlordPaymentFeesService;
+use App\Services\Property\LandlordSettlementService;
 use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
@@ -41,6 +44,9 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Support\TabularExport;
+use Dompdf\Dompdf;
+use Dompdf\Options;
+use Illuminate\Http\Response;
 
 class PropertyAccountingController extends Controller
 {
@@ -2661,10 +2667,313 @@ class PropertyAccountingController extends Controller
         ]);
     }
 
+    public function landlordPaymentFees(Request $request, LandlordPaymentFeesService $paymentFees): View|StreamedResponse
+    {
+        $month = trim($request->string('month')->toString());
+        if ($month === '') {
+            $month = now()->format('Y-m');
+        }
+
+        $filters = [
+            'property_id' => (int) $request->integer('property_id'),
+            'landlord_id' => (int) $request->integer('landlord_id'),
+            'month' => $month,
+            'status' => trim($request->string('status')->toString()),
+            'search' => trim($request->string('search')->toString()),
+            'show_zero' => $request->boolean('show_zero'),
+        ];
+
+        $grid = $paymentFees->buildGrid($filters);
+
+        $format = TabularExport::requestedFormat($request->query('export'), $request->query('format'));
+        if ($request->has('export') || $request->has('format')) {
+            $headers = [
+                'Property',
+                'Landlord',
+                'Type',
+                'On',
+                'Date prepared',
+                'Period',
+                'Mgt fees',
+                'Mgt fees tax',
+                'Amt payable',
+                'Paid/posted',
+                'Paid/posted on',
+                'Agreed pay date',
+                'Open advances',
+                'Status',
+                'Fees posted',
+            ];
+
+            return TabularExport::stream(
+                'landlord-payment-fees-'.$grid['period_month'],
+                $headers,
+                fn () => $paymentFees->exportRows($grid['rows']),
+                $format,
+                ['title' => 'Landlord Payment & Fees — '.$grid['period_label']],
+            );
+        }
+
+        $properties = Property::query()->orderBy('name')->get(['id', 'name']);
+        $landlords = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->distinct()
+            ->orderBy('u.name')
+            ->get(['u.id', 'u.name']);
+
+        return property_view('property.agent.accounting.landlord_payment_fees', [
+            'rows' => $grid['rows'],
+            'stats' => $grid['stats'],
+            'properties' => $properties,
+            'landlords' => $landlords,
+            'filters' => $filters,
+            'period_label' => $grid['period_label'],
+            'period_month' => $grid['period_month'],
+        ]);
+    }
+
+    public function batchLandlordPaymentFees(Request $request, LandlordPaymentFeesService $paymentFees): RedirectResponse
+    {
+        $validated = $request->validate([
+            'action' => ['required', 'in:create_draft,approve,pay_post,post_fees_only'],
+            'month' => ['required', 'date_format:Y-m'],
+            'selection' => ['required', 'array', 'min:1'],
+            'selection.*' => ['string'],
+        ]);
+
+        $selections = [];
+        foreach ($validated['selection'] as $token) {
+            if (! preg_match('/^(\d+)\|(\d+)$/', (string) $token, $matches)) {
+                continue;
+            }
+
+            $selections[] = [
+                'property_id' => (int) $matches[1],
+                'landlord_id' => (int) $matches[2],
+            ];
+        }
+
+        if ($selections === []) {
+            return back()->withErrors(['selection' => 'Select at least one property row.']);
+        }
+
+        $summary = $paymentFees->processBatch(
+            $validated['action'],
+            $validated['month'],
+            $selections,
+            $request->user(),
+        );
+
+        $parts = array_filter([
+            $summary['created'] > 0 ? $summary['created'].' draft payout(s) created' : null,
+            $summary['approved'] > 0 ? $summary['approved'].' approved' : null,
+            $summary['paid'] > 0 ? $summary['paid'].' paid & posted' : null,
+            $summary['fees_posted'] > 0 ? $summary['fees_posted'].' fee journal(s) posted' : null,
+            $summary['skipped'] > 0 ? $summary['skipped'].' skipped' : null,
+        ]);
+
+        $message = $parts !== [] ? implode('; ', $parts).'.' : 'No changes were made.';
+        if ($summary['errors'] !== []) {
+            $message .= ' Errors: '.implode(' | ', array_slice($summary['errors'], 0, 3));
+        }
+
+        return back()->with('status', $message);
+    }
+
+    public function landlordSettlements(Request $request, LandlordSettlementService $settlements): View|StreamedResponse|Response
+    {
+        $propertyId = (int) $request->integer('property_id');
+        $landlordId = (int) $request->integer('landlord_id');
+        $month = trim($request->string('month')->toString());
+        if ($month === '') {
+            $month = now()->format('Y-m');
+        }
+
+        $periodStart = Carbon::createFromFormat('Y-m', $month)?->startOfMonth() ?? now()->startOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+
+        $properties = Property::query()->orderBy('name')->get(['id', 'name']);
+        $landlords = collect();
+        if ($propertyId > 0) {
+            $landlords = DB::table('property_landlord as pl')
+                ->join('users as u', 'u.id', '=', 'pl.user_id')
+                ->where('pl.property_id', $propertyId)
+                ->orderBy('u.name')
+                ->get(['u.id', 'u.name', 'pl.ownership_percent']);
+        }
+
+        $settlement = null;
+        $settlementError = null;
+        if ($propertyId > 0 && $landlordId > 0) {
+            try {
+                $settlement = $settlements->buildSettlement($propertyId, $landlordId, $periodStart, $periodEnd);
+
+                $export = strtolower(trim($request->string('export')->toString()));
+                if ($export === 'pdf') {
+                    return $this->streamLandlordSettlementPdf($settlement);
+                }
+                if (in_array($export, ['csv', 'xls'], true)) {
+                    return $this->streamLandlordSettlementCsv($settlement);
+                }
+            } catch (\Throwable $e) {
+                $settlementError = $e->getMessage();
+            }
+        }
+
+        return property_view('property.agent.accounting.landlord_settlements', [
+            'properties' => $properties,
+            'landlords' => $landlords,
+            'settlement' => $settlement,
+            'settlementError' => $settlementError,
+            'filters' => [
+                'property_id' => $propertyId,
+                'landlord_id' => $landlordId,
+                'month' => $month,
+            ],
+        ]);
+    }
+
+    public function storeLandlordSettlementPayout(Request $request, LandlordSettlementService $settlements): RedirectResponse
+    {
+        $validated = $request->validate([
+            'property_id' => ['required', 'integer', 'min:1'],
+            'landlord_id' => ['required', 'integer', 'min:1'],
+            'month' => ['required', 'date_format:Y-m'],
+        ]);
+
+        $periodStart = Carbon::createFromFormat('Y-m', $validated['month'])->startOfMonth();
+        $periodEnd = $periodStart->copy()->endOfMonth();
+
+        $settlement = $settlements->buildSettlement(
+            (int) $validated['property_id'],
+            (int) $validated['landlord_id'],
+            $periodStart,
+            $periodEnd,
+        );
+
+        $payout = $settlements->createPayoutFromSettlement($settlement, $request->user());
+
+        return redirect()
+            ->route('property.accounting.payables.landlord_payouts')
+            ->with('status', 'Draft payout #'.$payout->id.' created for '.PropertyMoney::kes((float) $payout->total_amount).'.');
+    }
+
+    public function approveLandlordPayout(Request $request, PmLandlordPayout $payout, LandlordSettlementService $settlements): RedirectResponse
+    {
+        $settlements->approvePayout($payout, $request->user());
+
+        return back()->with('status', 'Payout #'.$payout->id.' approved.');
+    }
+
+    public function payLandlordPayout(Request $request, PmLandlordPayout $payout, LandlordSettlementService $settlements): RedirectResponse
+    {
+        $settlements->markPayoutPaid($payout, $request->user());
+
+        return back()->with('status', 'Payout #'.$payout->id.' marked as paid.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $settlement
+     */
+    private function streamLandlordSettlementPdf(array $settlement): StreamedResponse|Response
+    {
+        $html = view('property.agent.accounting.landlord_settlement_print', [
+            'settlement' => $settlement,
+            'branding' => $this->settlementBranding(),
+            'generatedAt' => now()->format('d M Y H:i'),
+        ])->render();
+
+        $slug = \Illuminate\Support\Str::slug((string) ($settlement['property_name'] ?? 'property'));
+        $filename = 'landlord-settlement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m'))).'.pdf';
+
+        try {
+            $options = new Options;
+            $options->set('isRemoteEnabled', false);
+            $options->set('defaultFont', 'DejaVu Sans');
+            $dompdf = new Dompdf($options);
+            $dompdf->loadHtml($html, 'UTF-8');
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+
+            return response($dompdf->output(), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="'.$filename.'"',
+            ]);
+        } catch (\Throwable) {
+            return response($html, 200, [
+                'Content-Type' => 'text/html; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="'.str_replace('.pdf', '.html', $filename).'"',
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $settlement
+     */
+    private function streamLandlordSettlementCsv(array $settlement): StreamedResponse
+    {
+        $slug = \Illuminate\Support\Str::slug((string) ($settlement['property_name'] ?? 'property'));
+        $filename = 'landlord-settlement-'.$slug.'-'.((string) ($settlement['period_month'] ?? now()->format('Y-m')));
+
+        return TabularExport::stream(
+            $filename,
+            ['Section', 'Label', 'Value'],
+            function () use ($settlement) {
+                yield ['Summary', 'Property', (string) ($settlement['property_name'] ?? '')];
+                yield ['Summary', 'Landlord', (string) ($settlement['landlord_name'] ?? '')];
+                yield ['Summary', 'Period', (string) ($settlement['period_label'] ?? '')];
+                yield ['Summary', 'Ownership %', (string) ($settlement['ownership_percent'] ?? 0)];
+                yield ['Summary', 'Commission %', (string) ($settlement['commission_percent'] ?? 0)];
+                yield ['Collections', 'Rent (owner share)', number_format((float) ($settlement['owner_collected']['rent'] ?? 0), 2, '.', '')];
+                yield ['Collections', 'Garbage (owner share)', number_format((float) ($settlement['owner_collected']['garbage'] ?? 0), 2, '.', '')];
+                yield ['Collections', 'Water (owner share)', number_format((float) ($settlement['owner_collected']['water'] ?? 0), 2, '.', '')];
+                yield ['Collections', 'Management fee', number_format((float) ($settlement['management_fee'] ?? 0), 2, '.', '')];
+                yield ['Ledger', 'Balance b/f', number_format((float) ($settlement['balance_brought_forward'] ?? 0), 2, '.', '')];
+                yield ['Ledger', 'Period credits', number_format((float) ($settlement['period_credits'] ?? 0), 2, '.', '')];
+                yield ['Ledger', 'Period debits', number_format((float) ($settlement['period_debits'] ?? 0), 2, '.', '')];
+                yield ['Ledger', 'Net amount due', number_format((float) ($settlement['net_amount_due'] ?? 0), 2, '.', '')];
+
+                foreach ($settlement['deductions'] ?? [] as $deduction) {
+                    yield [
+                        'Deduction',
+                        (string) ($deduction['description'] ?? 'Deduction'),
+                        number_format((float) ($deduction['amount'] ?? 0), 2, '.', ''),
+                    ];
+                }
+
+                foreach ($settlement['unit_lines'] ?? [] as $line) {
+                    yield [
+                        'Unit',
+                        ((string) ($line['unit_label'] ?? '')).' — '.((string) ($line['tenant_name'] ?? '')),
+                        number_format((float) ($line['total_received'] ?? 0), 2, '.', ''),
+                    ];
+                }
+            },
+            TabularExport::FORMAT_CSV,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function settlementBranding(): array
+    {
+        $raw = PropertyPortalSetting::query()->where('key', 'branding')->value('value');
+        $decoded = is_string($raw) ? json_decode($raw, true) : (is_array($raw) ? $raw : []);
+
+        return array_merge([
+            'company_name' => PropertyPortalSetting::getValue('company_name', 'Property Manager'),
+            'colour' => '#0f766e',
+        ], is_array($decoded) ? $decoded : []);
+    }
+
     public function landlordPayouts(Request $request): View
     {
         $status = strtolower(trim($request->string('status')->toString()));
         $rows = PmLandlordPayout::query()
+            ->with(['items.property'])
             ->when(in_array($status, ['draft', 'approved', 'paid'], true), fn ($q) => $q->where('status', $status))
             ->orderByDesc('id')
             ->paginate(50)
@@ -2674,6 +2983,95 @@ class PropertyAccountingController extends Controller
             'rows' => $rows,
             'filters' => compact('status'),
         ]);
+    }
+
+    public function landlordAdvances(Request $request, LandlordAdvanceService $advances): View
+    {
+        $filters = [
+            'property_id' => (int) $request->integer('property_id'),
+            'landlord_id' => (int) $request->integer('landlord_id'),
+            'status' => trim($request->string('status')->toString()),
+            'search' => trim($request->string('search')->toString()),
+        ];
+
+        $index = $advances->buildIndex($filters);
+
+        $properties = Property::query()->orderBy('name')->get(['id', 'name']);
+        $landlords = DB::table('property_landlord as pl')
+            ->join('users as u', 'u.id', '=', 'pl.user_id')
+            ->when($filters['property_id'] > 0, fn ($q) => $q->where('pl.property_id', $filters['property_id']))
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->join('properties as p', 'p.id', '=', 'pl.property_id')->where('p.agent_user_id', (int) $request->user()->id))
+            ->distinct()
+            ->orderBy('u.name')
+            ->get(['u.id', 'u.name']);
+
+        return property_view('property.agent.accounting.landlord_advances', [
+            'schedules' => $index['schedules'],
+            'advances' => $index['advances'],
+            'stats' => $index['stats'],
+            'properties' => $properties,
+            'landlords' => $landlords,
+            'filters' => $filters,
+        ]);
+    }
+
+    public function storeLandlordAdvance(Request $request, LandlordAdvanceService $advances): RedirectResponse
+    {
+        $validated = $request->validate([
+            'property_id' => ['required', 'integer', 'min:1'],
+            'landlord_id' => ['required', 'integer', 'min:1'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'agreed_pay_date' => ['nullable', 'date'],
+            'payment_reference' => ['nullable', 'string', 'max:128'],
+            'notes' => ['nullable', 'string', 'max:255'],
+            'mark_paid' => ['nullable', 'boolean'],
+        ]);
+
+        $payout = $advances->recordAdvance(
+            (int) $validated['property_id'],
+            (int) $validated['landlord_id'],
+            (float) $validated['amount'],
+            $request->user(),
+            isset($validated['agreed_pay_date']) ? Carbon::parse($validated['agreed_pay_date']) : null,
+            $validated['payment_reference'] ?? null,
+            $validated['notes'] ?? null,
+            (bool) ($validated['mark_paid'] ?? true),
+        );
+
+        return back()->with('status', 'Advance recorded as payout #'.$payout->id.' for '.PropertyMoney::kes((float) $payout->total_amount).'.');
+    }
+
+    public function updateLandlordAgreedPaySchedule(Request $request, LandlordAdvanceService $advances): RedirectResponse
+    {
+        $validated = $request->validate([
+            'property_id' => ['required', 'integer', 'min:1'],
+            'landlord_id' => ['required', 'integer', 'min:1'],
+            'agreed_pay_day' => ['nullable', 'integer', 'min:1', 'max:28'],
+            'agreed_pay_notes' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $advances->updateAgreedPaySchedule(
+            (int) $validated['property_id'],
+            (int) $validated['landlord_id'],
+            isset($validated['agreed_pay_day']) ? (int) $validated['agreed_pay_day'] : null,
+            $validated['agreed_pay_notes'] ?? null,
+        );
+
+        return back()->with('status', 'Agreed pay schedule updated.');
+    }
+
+    public function markLandlordAdvanceRecovered(Request $request, PmLandlordPayoutItem $item, LandlordAdvanceService $advances): RedirectResponse
+    {
+        $advances->markAdvanceRecovered($item);
+
+        return back()->with('status', 'Advance #'.$item->id.' marked as recovered.');
+    }
+
+    public function writeOffLandlordAdvance(Request $request, PmLandlordPayoutItem $item, LandlordAdvanceService $advances): RedirectResponse
+    {
+        $advances->markAdvanceWrittenOff($item, $request->user());
+
+        return back()->with('status', 'Advance #'.$item->id.' written off.');
     }
 
     public function accountsPayable(Request $request): View

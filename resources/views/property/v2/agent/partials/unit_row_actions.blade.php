@@ -23,7 +23,7 @@
     @if ($status === PropertyUnit::STATUS_VACANT)
         <a href="{{ route('property.tenants.leases', ['property_id' => $propertyId, 'unit_id' => $unit->id], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-slate-700/50">Assign tenant</a>
         <a href="{{ route('property.listings.create', ['selected_unit' => $unit->id], false) }}#listing-publish" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-slate-700/50">Publish listing</a>
-    @else
+    @elseif ($status !== PropertyUnit::STATUS_OWNER_OCCUPIED)
         @if ($activeLease)
             <a href="{{ route('property.leases.edit', ['lease' => $activeLease->id], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-slate-700/50">Open lease</a>
         @endif
@@ -39,12 +39,12 @@
         <a href="{{ route('property.revenue.arrears', ['q' => $unit->label], false) }}" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-rose-700 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-slate-700/50">View arrears ({{ \App\Services\Property\PropertyMoney::kes($unitArrears) }})</a>
     @endif
 
-    @foreach ([PropertyUnit::STATUS_VACANT, PropertyUnit::STATUS_OCCUPIED, PropertyUnit::STATUS_NOTICE] as $targetStatus)
+    @foreach (PropertyUnit::statuses() as $targetStatus)
         @if ($targetStatus !== $status)
             <form method="post" action="{{ route('property.units.status', ['unit' => $unit->id], false) }}" data-turbo-frame="property-main">
                 @csrf
                 <input type="hidden" name="status" value="{{ $targetStatus }}" />
-                <button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">Mark {{ ucfirst($targetStatus) }}</button>
+                <button type="submit" class="block w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-700/50">Mark {{ PropertyUnit::statusLabel($targetStatus) }}</button>
             </form>
         @endif
     @endforeach

@@ -9,6 +9,7 @@ const TONE_RANK = {
     vacant: 3,
     notice: 2,
     occupied: 1,
+    'owner-occupied': 1,
 };
 
 const TOKEN_MAP = {
@@ -41,6 +42,8 @@ const TOKEN_MAP = {
     vacant: 'vacant',
     vacancy: 'vacant',
     occupied: 'occupied',
+    'owner occupied': 'owner-occupied',
+    owner_occupied: 'owner-occupied',
     notice: 'notice',
     pending: 'notice',
     draft: 'notice',
@@ -55,10 +58,11 @@ const TOKEN_MAP = {
     expiring: 'notice',
 };
 
-const TONE_CLASSES = ['property-row-alert-occupied', 'property-row-alert-vacant', 'property-row-alert-vacant-long', 'property-row-alert-notice', 'property-row-alert-attention'];
+const TONE_CLASSES = ['property-row-alert-occupied', 'property-row-alert-owner-occupied', 'property-row-alert-vacant', 'property-row-alert-vacant-long', 'property-row-alert-notice', 'property-row-alert-attention'];
 
 const FILL = {
     occupied: '#bbf7d0',
+    'owner-occupied': '#fdba74',
     vacant: '#facc15',
     'vacant-long': '#fb923c',
     notice: '#38bdf8',

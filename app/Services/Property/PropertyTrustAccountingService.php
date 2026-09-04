@@ -2,17 +2,88 @@
 
 namespace App\Services\Property;
 
+use App\Models\AccountingJournalBatch;
 use App\Models\PmLandlordPayout;
 use App\Models\PmPayment;
 use App\Models\PmTenantDeposit;
+use Carbon\Carbon;
 use RuntimeException;
 
 class PropertyTrustAccountingService
 {
     private const ACC_CASH_BANK = '1100';
     private const ACC_AR = '1200';
+    private const ACC_LANDLORD_CLEARING = '1300';
     private const ACC_LANDLORD_PAYABLE = '2100';
     private const ACC_TENANT_DEPOSIT_LIABILITY = '2200';
+    private const ACC_MANAGEMENT_FEE_INCOME = '4200';
+
+    public static function periodManagementFeeSourceKey(int $propertyId, int $landlordId, string $periodMonth): string
+    {
+        return 'landlord_fee:'.$propertyId.':'.$landlordId.':'.$periodMonth;
+    }
+
+    public function periodManagementFeePosted(int $propertyId, int $landlordId, string $periodMonth): bool
+    {
+        return AccountingJournalBatch::query()
+            ->where('source_type', 'landlord_settlement')
+            ->where('event_type', 'period_management_fee')
+            ->where('source_key', self::periodManagementFeeSourceKey($propertyId, $landlordId, $periodMonth))
+            ->where('status', AccountingJournalBatch::STATUS_POSTED)
+            ->exists();
+    }
+
+    public function postPeriodManagementFee(
+        int $propertyId,
+        int $landlordId,
+        string $periodMonth,
+        float $feeAmount,
+        int $agentUserId,
+        ?int $actorId = null,
+        ?string $propertyName = null,
+    ): void {
+        if ($feeAmount <= 0) {
+            throw new RuntimeException('Management fee amount must be greater than zero.');
+        }
+
+        $sourceKey = self::periodManagementFeeSourceKey($propertyId, $landlordId, $periodMonth);
+        if ($this->periodManagementFeePosted($propertyId, $landlordId, $periodMonth)) {
+            throw new RuntimeException('Management fees already posted for this period.');
+        }
+
+        $journal = app(PropertyJournalService::class);
+        $reference = 'LFEE-'.$propertyId.'-'.$periodMonth;
+        $label = $propertyName !== null && $propertyName !== '' ? $propertyName : 'Property '.$propertyId;
+
+        $journal->postBatch([
+            'date' => Carbon::createFromFormat('Y-m', $periodMonth)?->endOfMonth()->toDateString() ?? now()->toDateString(),
+            'description' => 'Period management fee — '.$label.' ('.$periodMonth.')',
+            'source_type' => 'landlord_settlement',
+            'source_id' => $propertyId,
+            'event_type' => 'period_management_fee',
+            'source_key' => $sourceKey,
+            'agent_user_id' => $agentUserId,
+            'created_by' => $actorId,
+            'posted_by' => $actorId,
+        ], [
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_LANDLORD_CLEARING),
+                'debit' => $feeAmount,
+                'credit' => 0,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'agent_user_id' => $agentUserId,
+            ],
+            [
+                'account_id' => $journal->accountIdByCode(self::ACC_MANAGEMENT_FEE_INCOME),
+                'debit' => 0,
+                'credit' => $feeAmount,
+                'reference' => $reference,
+                'property_id' => $propertyId,
+                'agent_user_id' => $agentUserId,
+            ],
+        ]);
+    }
 
     public function postLandlordPayout(PmLandlordPayout $payout, ?int $actorId = null): void
     {
@@ -78,6 +149,8 @@ class PropertyTrustAccountingService
             'description' => 'Tenant deposit refunded',
             'actor_id' => $actorId,
         ]);
+
+        app(LandlordDepositRefundSettlementService::class)->postDeductionForDepositRefund($deposit, $actorId);
     }
 
     /**

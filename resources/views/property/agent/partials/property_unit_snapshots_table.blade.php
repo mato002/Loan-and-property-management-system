@@ -71,10 +71,11 @@
                                 WorkspaceRowAlert::TONE_VACANT_LONG => 'vacant-long',
                                 WorkspaceRowAlert::TONE_VACANT => 'vacant',
                                 WorkspaceRowAlert::TONE_NOTICE => 'notice',
+                                WorkspaceRowAlert::TONE_OWNER_OCCUPIED => 'owner-occupied',
                                 WorkspaceRowAlert::TONE_OCCUPIED => 'occupied',
                                 default => 'occupied',
                             }
-                        ).'">'.e(ucfirst((string) ($u->status ?? '—'))).'</span>'
+                        ).'">'.e(\App\Models\PropertyUnit::statusLabel((string) ($u->status ?? '—'))).'</span>'
                     );
                 $tenantCell = $unitModel
                     ? UnitListPresentation::tenantCell($unitModel, (string) ($u->tenant_name ?? ''), $hasActiveLease)

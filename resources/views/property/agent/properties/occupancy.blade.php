@@ -36,9 +36,9 @@
             </select>
             <select name="status" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-0 lg:col-span-2">
                 <option value="">All statuses</option>
-                <option value="occupied" @selected(($filters['status'] ?? '') === 'occupied')>Occupied</option>
-                <option value="vacant" @selected(($filters['status'] ?? '') === 'vacant')>Vacant</option>
-                <option value="notice" @selected(($filters['status'] ?? '') === 'notice')>Notice</option>
+                @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                    <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ $label }}</option>
+                @endforeach
             </select>
             <select name="age_bucket" class="rounded-lg border border-slate-200 bg-white text-sm px-3 py-2 min-w-0 lg:col-span-2">
                 <option value="">Vacancy age: All</option>

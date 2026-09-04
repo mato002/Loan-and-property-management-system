@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\AgentWorkspaceScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PmTenantDeposit extends Model
 {
@@ -30,5 +31,9 @@ class PmTenantDeposit extends Model
             AgentWorkspaceScope::applyByCreator($query, 'pm_tenant_deposits', 'agent_user_id');
         });
     }
-}
 
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(PmTenant::class, 'tenant_id');
+    }
+}

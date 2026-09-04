@@ -65,9 +65,9 @@
                 <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status @if($unitRequired('status', true))<span class="text-red-600">*</span>@endif</label>
                 <select name="status" @required($unitRequired('status', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                    <option value="vacant" @selected(old('status', $unit->status) === 'vacant')>Vacant</option>
-                    <option value="occupied" @selected(old('status', $unit->status) === 'occupied')>Occupied</option>
-                    <option value="notice" @selected(old('status', $unit->status) === 'notice')>Notice</option>
+                    @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                        <option value="{{ $value }}" @selected(old('status', $unit->status) === $value)>{{ $label }}</option>
+                    @endforeach
                 </select>
                 @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>

@@ -10,6 +10,7 @@ final class PassionLegacyTextNormalizer
     public static function normalizeUnitLabel(?string $label): string
     {
         $label = Str::upper(trim((string) $label));
+        $label = preg_replace('/^([A-Z])\s+(\d+(?:\s*&\s*\d+)?)/', '$1$2', $label) ?? $label;
         $label = preg_replace('/\s+/', ' ', $label) ?? $label;
         $label = preg_replace('/\s*\(\s*/', ' (', $label) ?? $label;
         $label = preg_replace('/\s*\)/', ')', $label) ?? $label;
@@ -299,7 +300,7 @@ final class PassionLegacyTextNormalizer
         $status = Str::lower(trim((string) $status));
 
         return match (true) {
-            str_contains($status, 'owner') => \App\Models\PropertyUnit::STATUS_OCCUPIED,
+            str_contains($status, 'owner') => \App\Models\PropertyUnit::STATUS_OWNER_OCCUPIED,
             str_contains($status, 'occupied') => \App\Models\PropertyUnit::STATUS_OCCUPIED,
             default => \App\Models\PropertyUnit::STATUS_VACANT,
         };
@@ -310,7 +311,7 @@ final class PassionLegacyTextNormalizer
         $market = (float) ($marketRent ?? 0);
         $current = (float) ($currentRent ?? 0);
 
-        if ($status === \App\Models\PropertyUnit::STATUS_VACANT) {
+        if (in_array($status, [\App\Models\PropertyUnit::STATUS_VACANT, \App\Models\PropertyUnit::STATUS_OWNER_OCCUPIED], true)) {
             return $market > 0 ? $market : $current;
         }
 

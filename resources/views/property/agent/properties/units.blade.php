@@ -155,9 +155,9 @@
                 <div id="status_single_wrapper" x-show="statusMode !== 'split'">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status @if($unitRequired('status', true))<span class="text-red-600">*</span>@endif</label>
                     <select id="status_single" name="status" x-bind:required="statusMode !== 'split'" x-bind:disabled="statusMode === 'split'" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
-                        <option value="vacant" @selected(old('status') === 'vacant')>Vacant</option>
-                        <option value="occupied" @selected(old('status') === 'occupied')>Occupied</option>
-                        <option value="notice" @selected(old('status') === 'notice')>Notice</option>
+                        @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                            <option value="{{ $value }}" @selected(old('status') === $value)>{{ $label }}</option>
+                        @endforeach
                     </select>
                     @error('status')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
@@ -382,9 +382,9 @@
             </select>
             <select name="status" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="">Status: All</option>
-                <option value="vacant" @selected(($filters['status'] ?? '') === 'vacant')>Vacant</option>
-                <option value="occupied" @selected(($filters['status'] ?? '') === 'occupied')>Occupied</option>
-                <option value="notice" @selected(($filters['status'] ?? '') === 'notice')>Notice</option>
+                @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
+                    <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ $label }}</option>
+                @endforeach
             </select>
             <select name="unit_type" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
                 <option value="">Type: All</option>
