@@ -24,6 +24,16 @@
                 </div>
 
                 <div>
+                    <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Portal color theme</label>
+                    <select name="portal_color_theme" class="mt-1 w-full min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                        <option value="light" @selected(old('portal_color_theme', $portalColorTheme ?? 'light') === 'light')>Light (default)</option>
+                        <option value="dark" @selected(old('portal_color_theme', $portalColorTheme ?? 'light') === 'dark')>Dark</option>
+                    </select>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Controls the property portal appearance for this workspace. This does not follow each user&apos;s browser theme.</p>
+                    @error('portal_color_theme')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                </div>
+
+                <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Public website domain</label>
                     <input type="text" name="public_website_domain" value="{{ old('public_website_domain', $publicWebsiteDomain ?? '') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. gaithoproperties.co.ke" />
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">When visitors open this domain, they see this workspace’s name, logo, favicon, and contact details. Leave blank if you use env mapping or a single-tenant deployment.</p>

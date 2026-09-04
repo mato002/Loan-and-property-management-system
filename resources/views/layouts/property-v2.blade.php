@@ -1,6 +1,12 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full" data-pwa-context="portal">
+@php
+    use App\Support\Property\PropertyPortalTheme;
+
+    $propertyPortalThemeClass = PropertyPortalTheme::htmlClass();
+@endphp
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full {{ $propertyPortalThemeClass }}" data-pwa-context="portal">
     <head>
+        @include('layouts.partials.property-portal-theme')
         @php
             $siteFaviconUrl = \App\Models\PropertyPortalSetting::getValue('site_favicon_url', '');
             $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');

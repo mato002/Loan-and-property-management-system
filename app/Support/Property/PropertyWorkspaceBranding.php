@@ -22,6 +22,7 @@ final class PropertyWorkspaceBranding
         'contact_address',
         'contact_reg_no',
         'contact_map_embed_url',
+        'portal_color_theme',
         'branding',
     ];
 

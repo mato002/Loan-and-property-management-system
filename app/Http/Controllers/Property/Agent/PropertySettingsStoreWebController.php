@@ -11,6 +11,7 @@ use App\Models\Property;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Models\User;
+use App\Support\Property\PropertyPortalTheme;
 use App\Support\Property\PropertyWorkspaceBranding;
 use App\Services\Property\PropertyActivityLogger;
 use Illuminate\Http\RedirectResponse;
@@ -1436,6 +1437,7 @@ class PropertySettingsStoreWebController extends Controller
             'contactRegNo' => PropertyWorkspaceBranding::getForSettings('contact_reg_no', ''),
             'contactMapEmbedUrl' => PropertyWorkspaceBranding::getForSettings('contact_map_embed_url', ''),
             'publicWebsiteDomain' => PropertyWorkspaceBranding::getForSettings('public_website_domain', ''),
+            'portalColorTheme' => PropertyPortalTheme::normalize(PropertyWorkspaceBranding::getForSettings('portal_color_theme', PropertyPortalTheme::LIGHT)),
             'brandingEditorAgentUserId' => PropertyWorkspaceBranding::settingsEditorAgentUserId(),
         ]);
     }
@@ -1462,6 +1464,7 @@ class PropertySettingsStoreWebController extends Controller
             'contact_reg_no' => ['nullable', 'string', 'max:128'],
             'contact_map_embed_url' => ['nullable', 'url', 'max:2048'],
             'public_website_domain' => ['nullable', 'string', 'max:255'],
+            'portal_color_theme' => ['nullable', Rule::in(PropertyPortalTheme::OPTIONS)],
             'remove_logo' => ['nullable', 'in:0,1'],
             'remove_favicon' => ['nullable', 'in:0,1'],
         ]);
@@ -1477,6 +1480,11 @@ class PropertySettingsStoreWebController extends Controller
         PropertyWorkspaceBranding::setForSettings(
             'public_website_domain',
             PropertyWorkspaceBranding::normalizePublicHost((string) ($data['public_website_domain'] ?? '')),
+            $request->user()
+        );
+        PropertyWorkspaceBranding::setForSettings(
+            'portal_color_theme',
+            PropertyPortalTheme::normalize($data['portal_color_theme'] ?? PropertyPortalTheme::LIGHT),
             $request->user()
         );
 

@@ -1,5 +1,8 @@
 @php
+    use App\Support\Property\PropertyPortalTheme;
+
     $isTenant = $portal === 'tenant';
+    $propertyPortalThemeClass = PropertyPortalTheme::htmlClass();
     $companyName = \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Application');
     $companyLogoUrl = trim((string) \App\Models\PropertyPortalSetting::getValue('company_logo_url', ''));
     $displayName = strtolower($companyName) === 'laravel' ? 'Property Management System' : $companyName;
@@ -15,8 +18,9 @@
         : 'inline-flex items-center rounded-full bg-[#6a9f97]/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#386f66] ring-1 ring-[#6a9f97]/35';
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-pwa-context="portal-guest" data-turbo="false" class="h-dvh overflow-hidden">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-pwa-context="portal-guest" data-turbo="false" class="h-dvh overflow-hidden {{ $propertyPortalThemeClass }}">
     <head>
+        @include('layouts.partials.property-portal-theme')
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
