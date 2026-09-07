@@ -10,6 +10,7 @@
     empty-hint="Use the workspace tabs to capture readings and manage charge lines."
 >
     <x-slot name="actions">
+        <a href="{{ route('property.revenue.utilities', array_merge(request()->query(), ['ops_tab' => 'standing']), false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 min-h-[44px]">Register</a>
         <a href="{{ route('property.revenue.utilities.ledger', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 min-h-[44px]">Ledger</a>
         <a href="{{ route('property.revenue.utilities.reconciliation', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-xl border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-900 hover:bg-teal-100 min-h-[44px]">Reconciliation</a>
         <a href="{{ route('property.revenue.utilities.periods', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-900 hover:bg-indigo-100 min-h-[44px]">Period closing</a>

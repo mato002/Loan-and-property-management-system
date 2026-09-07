@@ -100,6 +100,14 @@
     </x-slot>
 
     <x-slot name="actions">
+        <a
+            href="{{ route('property.revenue.utilities', array_merge(request()->query(), ['ops_tab' => 'standing']), false) }}"
+            data-turbo-frame="property-main"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+            <i class="fa-solid fa-clipboard-list" aria-hidden="true"></i>
+            <span>Register</span>
+        </a>
         <button
             type="button"
             class="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"

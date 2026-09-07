@@ -1,6 +1,6 @@
 <div
             x-data="{
-                activeTab: @js($utilityCreateFormHasErrors ? 'readings' : 'overview'),
+                activeTab: @js($utilityCreateFormHasErrors ? 'readings' : ((((int) ($standingLeaseCount ?? 0) > 0) || ((float) ($standingMonthlyTotal ?? 0) > 0)) ? 'standing' : 'overview')),
                 penaltyModalOpen: false,
                 penaltyLoading: false,
                 penaltyRows: [],
@@ -241,7 +241,7 @@
                     return ids.includes(Number(unitId));
                 },
             }"
-            x-init="try { const allowed = ['overview','readings','billing','standing','charges']; const q = @js($filters['ops_tab'] ?? ''); if (q && allowed.includes(q)) activeTab = q; else { const s = sessionStorage.getItem('utility_ops_tab'); if (s && allowed.includes(s)) activeTab = s; } } catch (e) {} $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
+            x-init="try { const allowed = ['overview','readings','billing','standing','charges']; const q = @js($filters['ops_tab'] ?? ''); const hasStanding = @json(((int) ($standingLeaseCount ?? 0) > 0) || ((float) ($standingMonthlyTotal ?? 0) > 0)); if (q && allowed.includes(q)) activeTab = q; else if (hasStanding) activeTab = 'standing'; else { const s = sessionStorage.getItem('utility_ops_tab'); if (s && allowed.includes(s)) activeTab = s; } } catch (e) {} $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
             class="utility-ops-shell space-y-4"
         >
             @if (! empty($opsKpis))
@@ -249,13 +249,14 @@
             @endif
 
             <nav class="utility-ops-tabbar" aria-label="Utility operations">
+                <button type="button" class="utility-ops-tab" :class="activeTab === 'standing' ? 'is-active' : ''" @click="setTab('standing')"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Register</button>
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'overview' ? 'is-active' : ''" @click="setTab('overview')"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Overview</button>
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'readings' ? 'is-active' : ''" @click="setTab('readings')"><i class="fa-solid fa-droplet" aria-hidden="true"></i> Readings</button>
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'billing' ? 'is-active' : ''" @click="setTab('billing')"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Billing</button>
-                <button type="button" class="utility-ops-tab" :class="activeTab === 'standing' ? 'is-active' : ''" @click="setTab('standing')"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Standing charges</button>
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'charges' ? 'is-active' : ''" @click="setTab('charges')"><i class="fa-solid fa-list" aria-hidden="true"></i> Charge lines</button>
             </nav>
             <div x-show="activeTab === 'overview'" x-cloak class="space-y-4">
+                @include('property.agent.revenue.utilities._standing_register')
                 @include('property.agent.revenue.utilities._tab_overview')
                 <x-property.responsive.quick-action-grid>
                     <a href="{{ route('property.revenue.utilities.ledger', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">Ledger</a>
