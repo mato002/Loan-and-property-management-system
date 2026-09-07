@@ -7,6 +7,7 @@ use App\Models\Concerns\AgentWorkspaceScope;
 use App\Modules\Reporting\Services\CsvExporter;
 use App\Modules\Reporting\Landlord\LandlordReportService;
 use App\Modules\Reporting\Support\ReportFilters;
+use App\Modules\Reporting\Support\ReportScope;
 use App\Modules\Reporting\Tenant\AgingBalanceReportBuilder;
 use App\Modules\Reporting\Tenant\TenantReportService;
 use App\Support\TabularExport;
@@ -72,8 +73,9 @@ class PropertyReportsController extends Controller
     {
         $from = $this->filterDateFrom();
         $to = $this->filterDateTo();
-        $tenantId = (int) $request->query('tenant_id', 0);
-        $search = trim((string) $request->query('q', ''));
+        $scope = ReportScope::fromRequest();
+        $tenantId = (int) $scope['tenant_id'];
+        $search = (string) $scope['q'];
 
         $tenantsQuery = PmTenant::query()
             ->with([
@@ -92,6 +94,15 @@ class PropertyReportsController extends Controller
 
         if ($tenantId > 0) {
             $tenantsQuery->where('id', $tenantId);
+        }
+        if ((int) $scope['unit_id'] > 0) {
+            $tenantsQuery->whereHas('leases.units', fn ($q) => $q->where('property_units.id', (int) $scope['unit_id']));
+        } elseif ((int) $scope['property_id'] > 0) {
+            $tenantsQuery->whereHas('leases.units', fn ($q) => $q->where('property_id', (int) $scope['property_id']));
+        }
+        if ((int) $scope['landlord_id'] > 0) {
+            $landlordId = (int) $scope['landlord_id'];
+            $tenantsQuery->whereHas('leases.units.property.landlords', fn ($q) => $q->where('users.id', $landlordId));
         }
         if ($search !== '') {
             $tenantsQuery->where(function ($q) use ($search) {
@@ -182,7 +193,7 @@ class PropertyReportsController extends Controller
             return $this->exportTenantStatements($exportRows, $export);
         }
 
-        return property_view('property.agent.reports.tenant.statements', [
+        return property_view('property.agent.reports.tenant.statements', array_merge(ReportScope::toolbar($scope), [
             'title' => 'Tenant Statements',
             'subtitle' => 'Tenant Reports',
             'backRoute' => 'property.reports.tenant',
@@ -197,14 +208,10 @@ class PropertyReportsController extends Controller
             'tableRows' => $rows,
             'emptyTitle' => 'No tenant statement records',
             'emptyHint' => 'Tenant statement data will appear once invoices and payments are recorded.',
-            'filters' => [
-                'from' => $from,
-                'to' => $to,
-                'tenant_id' => $tenantId > 0 ? (string) $tenantId : '',
-                'q' => $search,
-            ],
+            'filters' => $scope,
+            'reportFilterPreset' => 'tenant',
             'tenantOptions' => PmTenant::query()->orderBy('name')->limit(500)->get(['id', 'name']),
-        ]);
+        ]));
     }
 
     /**
@@ -263,7 +270,8 @@ class PropertyReportsController extends Controller
     {
         $from = $this->filterDateFrom();
         $to = $this->filterDateTo();
-        $landlordId = (int) $request->query('landlord_id', 0);
+        $scope = ReportScope::fromRequest();
+        $landlordId = (int) $scope['landlord_id'];
         $propertySearch = $this->filterPropertySearch();
 
         $commissionDefaultRaw = trim((string) PropertyPortalSetting::getValue('commission_default_percent', '10'));
@@ -353,6 +361,9 @@ class PropertyReportsController extends Controller
         }
         if ($propertySearch !== null) {
             $links->where('p.name', 'like', '%'.$propertySearch.'%');
+        }
+        if ((int) $scope['property_id'] > 0) {
+            $links->where('p.id', (int) $scope['property_id']);
         }
 
         $linkRows = $links->get();
@@ -504,7 +515,7 @@ class PropertyReportsController extends Controller
             return $this->exportLandlordStatements($exportRows, $export);
         }
 
-        return property_view('property.agent.reports.landlord.statements', [
+        return property_view('property.agent.reports.landlord.statements', array_merge(ReportScope::toolbar($scope), [
             'title' => 'Landlord Statements',
             'subtitle' => 'Landlord Reports',
             'backRoute' => 'property.reports.landlord',
@@ -520,18 +531,14 @@ class PropertyReportsController extends Controller
             'tableRows' => $rows,
             'emptyTitle' => 'No landlord statement records',
             'emptyHint' => 'Landlord statement data will appear once rent is collected.',
-            'filters' => [
-                'from' => $from,
-                'to' => $to,
-                'landlord_id' => $landlordId > 0 ? (string) $landlordId : '',
-                'property' => $propertySearch,
-            ],
+            'filters' => $scope,
+            'reportFilterPreset' => 'landlord',
             'landlordOptions' => \App\Models\User::query()
                 ->where('property_portal_role', 'landlord')
                 ->orderBy('name')
                 ->limit(500)
                 ->get(['id', 'name']),
-        ]);
+        ]));
     }
 
     /**
@@ -716,21 +723,30 @@ class PropertyReportsController extends Controller
         }
 
         $viewName = $report['view'] ?? 'property.agent.reports.table';
+        $scope = ReportScope::fromRequest();
+        $filters = array_merge($scope, (array) ($payload['filters'] ?? []), [
+            'q' => $q !== '' ? $q : (string) (($payload['filters']['q'] ?? '') ?: $scope['q']),
+            'per_page' => (string) $perPage,
+        ]);
 
-        return view($viewName, array_merge([
-            'title' => $report['title'],
-            'subtitle' => $report['group'],
-            'backRoute' => $report['back_route'],
-            'emptyTitle' => 'No records found',
-            'emptyHint' => 'This report will populate once there is transactional data.',
-            'filters' => [
-                'from' => $this->filterDateFrom(),
-                'to' => $this->filterDateTo(),
-                'property' => $this->filterPropertySearch(),
-                'q' => $q,
-                'per_page' => (string) $perPage,
-            ],
-        ], $payload));
+        return property_view($viewName, array_merge(
+            ReportScope::toolbar($filters),
+            $payload,
+            [
+                'title' => $report['title'],
+                'subtitle' => $report['group'],
+                'backRoute' => $report['back_route'],
+                'emptyTitle' => $payload['emptyTitle'] ?? 'No records found',
+                'emptyHint' => $payload['emptyHint'] ?? 'This report will populate once there is transactional data.',
+                'filters' => $filters,
+                'reportFilterPreset' => $payload['reportFilterPreset'] ?? ReportScope::presetFromGroup((string) $report['group'], $reportKey),
+                'reportFilterExtrasView' => $payload['reportFilterExtrasView'] ?? (
+                    $reportKey === 'tenant_deposits'
+                        ? 'property.agent.partials.filter_toolbars.tenant_deposits_extras'
+                        : null
+                ),
+            ]
+        ));
     }
 
     /**
@@ -809,6 +825,7 @@ class PropertyReportsController extends Controller
                 'group' => 'Tenant Reports',
                 'back_route' => 'property.reports.tenant',
                 'builder' => fn () => $this->tenantReports->buildLeaseDepositReport(),
+                'view' => 'property.agent.reports.tenant.deposits',
             ],
             'tenant_aging_balance' => [
                 'title' => 'Tenant Aging Balance Summary',
@@ -986,7 +1003,8 @@ class PropertyReportsController extends Controller
             ->with('unit.property')
             ->where('movement_type', $movementType);
         $this->applyDateRange($query, 'scheduled_on');
-        $rows = $query->latest('scheduled_on')->latest('id')->limit(250)->get();
+        ReportScope::applyToUnitModel($query, ReportScope::fromRequest());
+        $rows = $query->latest('scheduled_on')->latest('id')->limit(2000)->get();
 
         return [
             'stats' => [
@@ -1014,6 +1032,7 @@ class PropertyReportsController extends Controller
             ->whereIn('category', [PmAccountingEntry::CATEGORY_INCOME, PmAccountingEntry::CATEGORY_EXPENSE])
             ->groupBy('category');
         $this->applyDateRange($query, 'entry_date');
+        ReportScope::applyToPropertyId($query, ReportScope::fromRequest());
         $rows = $query->get();
 
         $income = (float) ($rows->firstWhere('category', PmAccountingEntry::CATEGORY_INCOME)->total_amount ?? 0);
@@ -1038,7 +1057,8 @@ class PropertyReportsController extends Controller
     {
         $query = PmMaintenanceJob::query()->with(['vendor', 'request.unit.property']);
         $this->applyDateRange($query, 'created_at');
-        $jobs = $query->latest('id')->limit(250)->get();
+        ReportScope::applyToMaintenanceJob($query, ReportScope::fromRequest());
+        $jobs = $query->latest('id')->limit(2000)->get();
 
         return [
             'stats' => [
@@ -1070,8 +1090,11 @@ class PropertyReportsController extends Controller
 
     private function buildUtilityAgingReport(): array
     {
+        $scope = ReportScope::fromRequest();
+        $propertyId = (int) $scope['property_id'] ?: null;
+
         return app(\App\Services\Property\UtilityReconciliationService::class)
-            ->agingReport(null);
+            ->agingReport($propertyId);
     }
 
     private function buildVendorExpenseReport(): array
@@ -1103,7 +1126,8 @@ class PropertyReportsController extends Controller
     {
         $query = PmAccountingEntry::query()->with('property');
         $this->applyDateRange($query, 'entry_date');
-        $entries = $query->latest('entry_date')->latest('id')->limit(300)->get();
+        ReportScope::applyToPropertyId($query, ReportScope::fromRequest());
+        $entries = $query->latest('entry_date')->latest('id')->limit(2000)->get();
 
         return [
             'stats' => [
@@ -1128,7 +1152,8 @@ class PropertyReportsController extends Controller
     {
         $query = PmMaintenanceRequest::query()->with('unit.property');
         $this->applyDateRange($query, 'created_at');
-        $requests = $query->latest('id')->limit(250)->get();
+        ReportScope::applyToMaintenanceRequest($query, ReportScope::fromRequest());
+        $requests = $query->latest('id')->limit(2000)->get();
 
         return [
             'stats' => [
@@ -1154,6 +1179,7 @@ class PropertyReportsController extends Controller
             ->orderByDesc('issues')
             ->limit(100);
         $this->applyDateRange($query, 'created_at');
+        ReportScope::applyToMaintenanceRequest($query, ReportScope::fromRequest());
         $rows = $query->get();
 
         return [
@@ -1226,6 +1252,7 @@ class PropertyReportsController extends Controller
             ->orderBy('account_name')
             ->limit(300);
         $this->applyDateRange($query, 'entry_date');
+        ReportScope::applyToPropertyId($query, ReportScope::fromRequest());
         $rows = $query->get();
 
         return [
@@ -1250,6 +1277,7 @@ class PropertyReportsController extends Controller
             ->orderByDesc('period')
             ->limit(240);
         $this->applyDateRange($query, 'entry_date');
+        ReportScope::applyToPropertyId($query, ReportScope::fromRequest());
         $rows = $query->get();
 
         return [
@@ -1273,6 +1301,7 @@ class PropertyReportsController extends Controller
             ->orderBy('account_name')
             ->limit(300);
         $this->applyDateRange($query, 'entry_date');
+        ReportScope::applyToPropertyId($query, ReportScope::fromRequest());
         $rows = $query->get();
 
         return [
@@ -1299,6 +1328,7 @@ class PropertyReportsController extends Controller
             ])
             ->groupBy('category');
         $this->applyDateRange($query, 'entry_date');
+        ReportScope::applyToPropertyId($query, ReportScope::fromRequest());
         $rows = $query->get();
 
         return [

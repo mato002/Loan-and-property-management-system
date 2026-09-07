@@ -7,6 +7,7 @@ use App\Models\PmLease;
 use App\Models\PmPenaltyRule;
 use App\Models\PmUnitMovement;
 use App\Modules\Reporting\Support\ReportFilters;
+use App\Modules\Reporting\Support\ReportScope;
 
 class TenantReportService
 {
@@ -28,7 +29,8 @@ class TenantReportService
 			->where('invoice_type', PmInvoice::TYPE_RENT)
 			->whereColumn('amount_paid', '<', 'amount');
 		$this->applyDateRange($invoiceQuery, 'due_date');
-		$invoices = $invoiceQuery->orderBy('due_date')->limit(300)->get();
+		ReportScope::applyToInvoice($invoiceQuery, ReportScope::fromRequest());
+		$invoices = $invoiceQuery->orderBy('due_date')->limit(2000)->get();
 
 		$today = now()->startOfDay();
 		$rows = collect();
@@ -111,7 +113,8 @@ class TenantReportService
 			])
 			->where('movement_type', 'move_out');
 		$this->applyDateRange($query, 'completed_on');
-		$movements = $query->latest('completed_on')->latest('id')->limit(250)->get();
+		ReportScope::applyToUnitModel($query, ReportScope::fromRequest());
+		$movements = $query->latest('completed_on')->latest('id')->limit(2000)->get();
 
 		return [
 			'stats' => [
@@ -148,7 +151,8 @@ class TenantReportService
 			])
 			->where('movement_type', 'move_in');
 		$this->applyDateRange($query, 'completed_on');
-		$movements = $query->latest('completed_on')->latest('id')->limit(250)->get();
+		ReportScope::applyToUnitModel($query, ReportScope::fromRequest());
+		$movements = $query->latest('completed_on')->latest('id')->limit(2000)->get();
 
 		return [
 			'stats' => [
@@ -176,39 +180,139 @@ class TenantReportService
 	 */
 	public function buildLeaseDepositReport(): array
 	{
+		$scope = ReportScope::fromRequest();
+		$filters = array_merge($scope, $this->depositReportExtraFilters());
+
 		$query = PmLease::query()->with(['pmTenant', 'units.property']);
 		$this->applyDateRange($query, 'start_date');
-		$leases = $query->latest('start_date')->limit(250)->get();
-		$totalDepositPaid = (float) $leases->sum(fn (PmLease $lease) => (float) ($lease->deposit_amount ?? 0));
-		$totalRefunded = 0.0;
-		$totalBalance = max(0.0, $totalDepositPaid - $totalRefunded);
+		ReportScope::applyToLease($query, $filters);
+
+		if ($filters['status'] !== '') {
+			$query->where('status', $filters['status']);
+		}
+
+		$leases = $query->get();
+
+		if ($filters['q'] !== '') {
+			$needle = mb_strtolower($filters['q']);
+			$leases = $leases->filter(function (PmLease $lease) use ($needle): bool {
+				$haystack = mb_strtolower(trim(implode(' ', [
+					(string) ($lease->pmTenant?->name ?? ''),
+					(string) ($lease->pmTenant?->account_number ?? ''),
+					(string) ($lease->pmTenant?->phone ?? ''),
+					$lease->units->map(fn ($unit) => $unit->property?->name)->filter()->implode(' '),
+					$lease->units->map(fn ($unit) => $unit->label)->filter()->implode(' '),
+				])));
+
+				return str_contains($haystack, $needle);
+			});
+		}
+
+		$rows = $leases->map(function (PmLease $lease) {
+			$units = $lease->units;
+			$propertyNames = $units->map(fn ($u) => $u->property?->name)->filter()->unique()->implode(', ');
+			$unitNames = $units->map(fn ($u) => $u->label)->filter()->implode(', ');
+			$depositPaid = $this->leaseDepositHeld($lease);
+			$refundedAmount = 0.0;
+			$balance = max(0.0, $depositPaid - $refundedAmount);
+
+			return [
+				'tenant' => (string) ($lease->pmTenant?->name ?? '—'),
+				'property' => $propertyNames !== '' ? $propertyNames : '—',
+				'unit' => $unitNames !== '' ? $unitNames : '—',
+				'deposit' => $depositPaid,
+				'refunded' => $refundedAmount,
+				'balance' => $balance,
+			];
+		});
+
+		if ($filters['deposit'] === 'held') {
+			$rows = $rows->filter(fn (array $row) => $row['balance'] > 0.009);
+		} elseif ($filters['deposit'] === 'zero') {
+			$rows = $rows->filter(fn (array $row) => $row['balance'] <= 0.009);
+		}
+
+		$rows = $rows->sort(function (array $a, array $b) use ($filters): int {
+			$dir = $filters['dir'] === 'asc' ? 1 : -1;
+
+			return match ($filters['sort']) {
+				'property' => $dir * strcasecmp($a['property'], $b['property']),
+				'unit' => $dir * strcasecmp($a['unit'], $b['unit']),
+				'deposit' => $dir * ($a['deposit'] <=> $b['deposit']),
+				'balance' => $dir * ($a['balance'] <=> $b['balance']),
+				default => $dir * strcasecmp($a['tenant'], $b['tenant']),
+			};
+		})->values();
+
+		$totalDepositPaid = (float) $rows->sum('deposit');
+		$totalRefunded = (float) $rows->sum('refunded');
+		$totalBalance = (float) $rows->sum('balance');
+		$heldCount = $rows->filter(fn (array $row) => $row['balance'] > 0.009)->count();
 
 		return [
 			'stats' => [
-				['label' => 'Tenants', 'value' => (string) $leases->pluck('pm_tenant_id')->filter()->unique()->count(), 'hint' => 'With leases'],
-				['label' => 'Deposit paid', 'value' => $this->money($totalDepositPaid), 'hint' => 'Recorded'],
+				['label' => 'Tenants', 'value' => (string) $rows->count(), 'hint' => 'Matching leases'],
+				['label' => 'With deposit held', 'value' => (string) $heldCount, 'hint' => 'Balance > 0'],
+				['label' => 'Deposit paid', 'value' => $this->money($totalDepositPaid), 'hint' => 'Rent + additional'],
 				['label' => 'Refunded amount', 'value' => $this->money($totalRefunded), 'hint' => 'Recorded'],
-				['label' => 'Balance', 'value' => $this->money($totalBalance), 'hint' => 'Deposit - refunded'],
+				['label' => 'Balance', 'value' => $this->money($totalBalance), 'hint' => 'Still held'],
 			],
 			'columns' => ['Tenant', 'Property', 'Unit', 'Deposit Paid', 'Refunded Amount', 'Balance'],
-			'tableRows' => $leases->map(function (PmLease $lease) {
-				$units = $lease->units;
-				$propertyNames = $units->map(fn ($u) => $u->property?->name)->filter()->unique()->implode(', ');
-				$unitNames = $units->map(fn ($u) => $u->label)->filter()->implode(', ');
-				$depositPaid = (float) ($lease->deposit_amount ?? 0);
-				$refundedAmount = 0.0;
-				$balance = max(0.0, $depositPaid - $refundedAmount);
-
-				return [
-					(string) ($lease->pmTenant?->name ?? '—'),
-					$propertyNames !== '' ? $propertyNames : '—',
-					$unitNames !== '' ? $unitNames : '—',
-					$this->money($depositPaid),
-					$this->money($refundedAmount),
-					$this->money($balance),
-				];
-			})->all(),
+			'tableRows' => $rows->map(fn (array $row) => [
+				$row['tenant'],
+				$row['property'],
+				$row['unit'],
+				$this->money($row['deposit']),
+				$this->money($row['refunded']),
+				$this->money($row['balance']),
+			])->all(),
+			'filters' => $filters,
+			'reportFilterPreset' => 'tenant',
+			'reportFilterExtrasView' => 'property.agent.partials.filter_toolbars.tenant_deposits_extras',
 		];
+	}
+
+	/**
+	 * @return array{status: string, deposit: string, sort: string, dir: string}
+	 */
+	private function depositReportExtraFilters(): array
+	{
+		$sort = (string) request()->query('sort', 'tenant');
+		if (! in_array($sort, ['tenant', 'property', 'unit', 'deposit', 'balance'], true)) {
+			$sort = 'tenant';
+		}
+
+		$dir = strtolower((string) request()->query('dir', 'asc'));
+		if (! in_array($dir, ['asc', 'desc'], true)) {
+			$dir = 'asc';
+		}
+
+		$status = (string) request()->query('status', '');
+		if (! in_array($status, ['', 'active', 'expired', 'terminated', 'draft'], true)) {
+			$status = '';
+		}
+
+		$deposit = (string) request()->query('deposit', '');
+		if (! in_array($deposit, ['', 'held', 'zero'], true)) {
+			$deposit = '';
+		}
+
+		return [
+			'status' => $status,
+			'deposit' => $deposit,
+			'sort' => $sort,
+			'dir' => $dir,
+		];
+	}
+
+	private function leaseDepositHeld(PmLease $lease): float
+	{
+		$rent = (float) ($lease->deposit_amount ?? 0);
+		$extra = collect($lease->additional_deposits ?? [])
+			->filter(fn ($row) => is_array($row))
+			->sum(fn (array $row) => (float) ($row['amount'] ?? 0));
+
+		return round($rent + $extra, 2);
 	}
 
 	/**
@@ -221,7 +325,8 @@ class TenantReportService
 			->withSum('invoices as invoices_amount_sum', 'amount')
 			->withSum('invoices as invoices_paid_sum', 'amount_paid');
 		$this->applyDateRange($query, 'start_date');
-		$leases = $query->latest('start_date')->limit(250)->get();
+		ReportScope::applyToLease($query, ReportScope::fromRequest());
+		$leases = $query->latest('start_date')->limit(2000)->get();
 
 		return [
 			'stats' => [

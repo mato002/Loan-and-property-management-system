@@ -102,6 +102,7 @@
                     <input type="number" name="ownership_percent" value="{{ old('ownership_percent', '100') }}" min="0" max="100" step="0.01" class="mt-1 w-full sm:max-w-xs min-h-[44px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('ownership_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                @include('property.agent.properties.partials.agreed_pay_fields')
                 <button type="submit" class="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700">Create landlord account</button>
             </form>
             </x-property.modal>

@@ -376,6 +376,7 @@
                     @error('ownership_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Co-owners on the same property cannot exceed 100% in total.</p>
                 </div>
+                @include('property.agent.properties.partials.agreed_pay_fields')
                 <button type="submit" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80">Attach</button>
 
             </form>
@@ -395,7 +396,7 @@
                                 <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Property</th>
                                 <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Landlord</th>
                                 <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Email</th>
-                                <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Ownership %</th>
+                                <th class="sticky top-0 z-10 py-2 pr-4 bg-white dark:bg-gray-800/95">Ownership &amp; pay schedule</th>
                                 <th class="sticky top-0 z-10 py-2 bg-white dark:bg-gray-800/95"></th>
                             </tr>
                         </thead>
@@ -411,21 +412,29 @@
                                             action="{{ route('property.properties.landlords.ownership') }}"
                                             data-turbo-frame="property-main"
                                             data-turbo="false"
-                                            class="flex flex-wrap items-center gap-2"
+                                            class="space-y-2 min-w-[14rem]"
                                         >
                                             @csrf
                                             <input type="hidden" name="property_id" value="{{ $link->property_id }}" />
                                             <input type="hidden" name="user_id" value="{{ $link->user_id }}" />
-                                            <input
-                                                type="number"
-                                                name="ownership_percent"
-                                                value="{{ old('ownership_percent', $link->ownership_percent) }}"
-                                                min="0"
-                                                max="100"
-                                                step="0.01"
-                                                class="w-24 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2 py-1 text-sm"
-                                            />
-                                            <button type="submit" class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">Save</button>
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <input
+                                                    type="number"
+                                                    name="ownership_percent"
+                                                    value="{{ old('ownership_percent', $link->ownership_percent) }}"
+                                                    min="0"
+                                                    max="100"
+                                                    step="0.01"
+                                                    class="w-24 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2 py-1 text-sm"
+                                                />
+                                                <span class="text-xs text-slate-500">%</span>
+                                                <button type="submit" class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">Save</button>
+                                            </div>
+                                            @include('property.agent.properties.partials.agreed_pay_fields', [
+                                                'agreedPayDay' => $link->agreed_pay_day ?? null,
+                                                'agreedPayNotes' => $link->agreed_pay_notes ?? null,
+                                                'compact' => true,
+                                            ])
                                         </form>
                                     </td>
                                     <td class="py-2">

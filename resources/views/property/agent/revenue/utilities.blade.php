@@ -65,8 +65,8 @@
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
-    title="Utility Charge Lines Ledger"
-    subtitle="Monthly-style charge lines per unit (water, service charge, etc.). Invoice integration can follow; rent stays on the rent roll."
+    title="Utilities"
+    subtitle="Standing extras live on each lease. Readings, billing, and charge lines are the monthly operational work."
     back-route="property.revenue.index"
     :stats="$stats"
     :columns="[]"
@@ -501,7 +501,7 @@
                             <tr class="border-t border-slate-100 dark:border-slate-700/80">
                                 <td class="px-3 py-2"><input type="checkbox" name="reading_ids[]" value="{{ (int) $r->id }}" @disabled($r->pm_invoice_id !== null) /></td>
                                 <td class="px-3 py-2">{{ $r->billing_month }}</td>
-                                <td class="px-3 py-2">{{ $r->unit->property->name ?? '—' }} / {{ $r->unit->label ?? '—' }}</td>
+                                <td class="px-3 py-2">{{ $r->unit?->property?->name ?? '—' }} / {{ $r->unit?->label ?? '—' }}</td>
                                 <td class="px-3 py-2 tabular-nums">{{ number_format((float) $r->previous_reading, 3) }}</td>
                                 <td class="px-3 py-2 tabular-nums">{{ number_format((float) $r->current_reading, 3) }}</td>
                                 <td class="px-3 py-2">{{ number_format((float) $r->units_used, 3) }}</td>
@@ -539,14 +539,16 @@
             <tbody>
                 @forelse ($charges as $c)
                     @php
-                        $ft = mb_strtolower($c->label.' '.$c->unit->property->name.' '.$c->unit->label.' '.$c->created_at->format('Y-m'));
+                        $unitName = (string) ($c->unit?->property?->name ?? '—');
+                        $unitLabel = (string) ($c->unit?->label ?? '—');
+                        $ft = mb_strtolower($c->label.' '.$unitName.' '.$unitLabel.' '.optional($c->created_at)->format('Y-m'));
                     @endphp
                     <tr
                         class="border-t border-slate-100 dark:border-slate-700/80 hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
                         data-filter-text="{{ e($ft) }}"
                     >
                         <td class="px-3 sm:px-4 py-3 font-medium text-slate-900 dark:text-white">{{ $c->label }}</td>
-                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200">{{ $c->unit->property->name }} / {{ $c->unit->label }}</td>
+                        <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200">{{ $unitName }} / {{ $unitLabel }}</td>
                         <td class="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
                             @if (($c->units_consumed ?? null) !== null || ($c->rate_per_unit ?? null) !== null || ($c->fixed_charge ?? null) !== null)
                                 U: {{ number_format((float) ($c->units_consumed ?? 0), 3) }} |
@@ -556,7 +558,7 @@
                                 —
                             @endif
                         </td>
-                        <td class="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">{{ $c->created_at->format('Y-m-d') }}</td>
+                        <td class="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">{{ optional($c->created_at)->format('Y-m-d') ?? '—' }}</td>
                         <td class="px-3 sm:px-4 py-3 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $c->amount) }}</td>
                         <td class="px-3 sm:px-4 py-3 text-slate-600 dark:text-slate-400 max-w-xs truncate">{{ $c->notes ?? '—' }}</td>
                         <td class="px-3 sm:px-4 py-3">

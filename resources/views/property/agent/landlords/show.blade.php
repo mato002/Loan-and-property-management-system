@@ -7,7 +7,7 @@
     $periodQuery = array_filter(['month' => $monthValue ?? '', 'fy' => $fyValue ?? '', 'tab' => $activeTab ?? 'overview']);
     $activeTab = $activeTab ?? 'overview';
 
-    $portfolioColumns = ['Property', 'Ownership', 'Commission', 'Units', 'Tenants', 'Owner share', 'Pending', 'Your earnings', 'Last collection', 'Actions'];
+    $portfolioColumns = ['Property', 'Ownership', 'Agreed pay', 'Commission', 'Units', 'Tenants', 'Owner share', 'Pending', 'Your earnings', 'Last collection', 'Actions'];
     $portfolioRows = [];
     foreach ($propertyBreakdown as $row) {
         $propertyUrl = route('property.properties.show', ['property' => $row['property_id']], false);
@@ -17,6 +17,7 @@
         $portfolioRows[] = [
             new HtmlString('<a href="'.e($propertyUrl).'" data-turbo-frame="property-main" class="font-medium text-slate-900 dark:text-white hover:text-blue-700 break-words">'.e((string) $row['property_name']).'</a>'),
             number_format((float) $row['ownership_percent'], 2).'%',
+            ! empty($row['agreed_pay_day']) ? 'Day '.((int) $row['agreed_pay_day']) : '—',
             number_format((float) ($row['commission_percent'] ?? 0), 2).'%',
             ($row['units_occupied'] ?? 0).'/'.($row['units_total'] ?? 0).' occ.',
             (string) ($row['active_tenants'] ?? 0),

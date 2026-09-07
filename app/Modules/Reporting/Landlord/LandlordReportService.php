@@ -10,6 +10,7 @@ use App\Models\PmPayment;
 use App\Models\PropertyPortalSetting;
 use App\Models\User;
 use App\Modules\Reporting\Support\ReportFilters;
+use App\Modules\Reporting\Support\ReportScope;
 use App\Services\Property\FinanceBalanceSnapshotService;
 use App\Services\Property\FinancialReportingFormulaService;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -31,7 +32,8 @@ class LandlordReportService
 			->withSum('invoices as invoices_total', 'amount')
 			->withSum('invoices as invoices_paid_total', 'amount_paid');
 		$this->applyDateRange($leaseQuery, 'start_date');
-		$leases = $leaseQuery->latest('start_date')->limit(300)->get();
+		ReportScope::applyToLease($leaseQuery, ReportScope::fromRequest());
+		$leases = $leaseQuery->latest('start_date')->limit(2000)->get();
 
 		$leaseIds = $leases->pluck('id')->all();
 		$formulas = app(FinancialReportingFormulaService::class);
@@ -101,6 +103,7 @@ class LandlordReportService
 			->orderBy('occurred_at')
 			->orderBy('id');
 		$this->applyDateRange($query, 'occurred_at');
+		ReportScope::applyToPropertyId($query, ReportScope::fromRequest(), 'property_id');
 		$entries = $query->limit(2000)->get();
 
 		$invoiceIds = $entries
@@ -192,6 +195,10 @@ class LandlordReportService
 			$baseQuery->where('users.name', 'like', '%'.$search.'%');
 		}
 		$this->applyDateRange($baseQuery, 'pm_landlord_ledger_entries.occurred_at');
+		$scope = ReportScope::fromRequest();
+		if ((int) $scope['property_id'] > 0) {
+			$baseQuery->where('pm_landlord_ledger_entries.property_id', (int) $scope['property_id']);
+		}
 
 		$statsRows = (clone $baseQuery)->get();
 		$totalCredits = (float) $statsRows->sum(static fn ($row) => (float) ($row->total_credits ?? 0));
@@ -325,6 +332,9 @@ class LandlordReportService
 		if ($selectedLandlordId !== null) {
 			$links->where('pl.user_id', $selectedLandlordId);
 		}
+		if ((int) ReportScope::fromRequest()['property_id'] > 0) {
+			$links->where('p.id', (int) ReportScope::fromRequest()['property_id']);
+		}
 		if ($propertyQ !== null) {
 			$links->where('p.name', 'like', '%'.$propertyQ.'%');
 		}
@@ -410,17 +420,7 @@ class LandlordReportService
 		$perPage = min(200, max(10, (int) request()->integer('per_page', 30)));
 
 		$query = PmPayment::query()->with(['tenant', 'invoices.unit.property', 'allocations']);
-		if ($landlordId !== null) {
-			$query->whereExists(function ($sub) use ($landlordId) {
-				$sub->selectRaw('1')
-					->from('pm_payment_allocations as a')
-					->join('pm_invoices as i', 'i.id', '=', 'a.pm_invoice_id')
-					->join('property_units as u', 'u.id', '=', 'i.property_unit_id')
-					->join('property_landlord as pl', 'pl.property_id', '=', 'u.property_id')
-					->whereColumn('a.pm_payment_id', 'pm_payments.id')
-					->where('pl.user_id', $landlordId);
-			});
-		}
+		ReportScope::applyToPayment($query, ReportScope::fromRequest());
 		if ($q !== '') {
 			$query->where(function ($sub) use ($q) {
 				$sub->where('external_ref', 'like', '%'.$q.'%')
@@ -567,6 +567,7 @@ class LandlordReportService
 
 		$propertyQ = $this->filterPropertySearch();
 		$q = trim((string) request()->query('q', ''));
+		$scope = ReportScope::fromRequest();
 
 		$openingQ = DB::table('pm_invoices as i')
 			->join('pm_tenants as t', 't.id', '=', 'i.pm_tenant_id')
@@ -593,6 +594,7 @@ class LandlordReportService
 		if ($propertyQ !== null) {
 			$openingQ->where('p.name', 'like', '%'.$propertyQ.'%');
 		}
+		ReportScope::applyToJoinedPropertyUnit($openingQ, $scope, 'p.id', 'u.id', 'i.pm_tenant_id');
 		$openingRows = $openingQ->get();
 
 		$periodInvQ = DB::table('pm_invoices as i')
@@ -630,6 +632,7 @@ class LandlordReportService
 		if ($propertyQ !== null) {
 			$periodInvQ->where('p.name', 'like', '%'.$propertyQ.'%');
 		}
+		ReportScope::applyToJoinedPropertyUnit($periodInvQ, $scope, 'p.id', 'u.id', 'i.pm_tenant_id');
 		$periodInvRows = $periodInvQ->get();
 
 		$payQ = DB::table('pm_payment_allocations as a')
@@ -661,6 +664,7 @@ class LandlordReportService
 		if ($propertyQ !== null) {
 			$payQ->where('p.name', 'like', '%'.$propertyQ.'%');
 		}
+		ReportScope::applyToJoinedPropertyUnit($payQ, $scope, 'p.id', 'u.id', 'pay.pm_tenant_id');
 		$paymentRows = $payQ->get();
 
 		$index = [];

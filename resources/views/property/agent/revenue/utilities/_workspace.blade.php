@@ -241,8 +241,7 @@
                     return ids.includes(Number(unitId));
                 },
             }"
-            }"
-            x-init="try { const s = sessionStorage.getItem('utility_ops_tab'); if (s && ['overview','readings','billing','charges'].includes(s)) activeTab = s; } catch (e) {} $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
+            x-init="try { const allowed = ['overview','readings','billing','standing','charges']; const q = @js($filters['ops_tab'] ?? ''); if (q && allowed.includes(q)) activeTab = q; else { const s = sessionStorage.getItem('utility_ops_tab'); if (s && allowed.includes(s)) activeTab = s; } } catch (e) {} $watch('selectedReadingUnitId', () => { autofillWaterRates(); scheduleFetchWaterPrevious(); }); $watch('selectedWaterMonth', () => scheduleFetchWaterPrevious()); $watch('selectedChargeUnitId', () => syncChargeDefaults()); if (this.waterPrevAutofillOnMount) { $nextTick(() => scheduleFetchWaterPrevious()); }"
             class="utility-ops-shell space-y-4"
         >
             @if (! empty($opsKpis))
@@ -253,7 +252,8 @@
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'overview' ? 'is-active' : ''" @click="setTab('overview')"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i> Overview</button>
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'readings' ? 'is-active' : ''" @click="setTab('readings')"><i class="fa-solid fa-droplet" aria-hidden="true"></i> Readings</button>
                 <button type="button" class="utility-ops-tab" :class="activeTab === 'billing' ? 'is-active' : ''" @click="setTab('billing')"><i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i> Billing</button>
-                <button type="button" class="utility-ops-tab" :class="activeTab === 'charges' ? 'is-active' : ''" @click="setTab('charges')"><i class="fa-solid fa-list" aria-hidden="true"></i> Charges</button>
+                <button type="button" class="utility-ops-tab" :class="activeTab === 'standing' ? 'is-active' : ''" @click="setTab('standing')"><i class="fa-solid fa-clipboard-list" aria-hidden="true"></i> Standing charges</button>
+                <button type="button" class="utility-ops-tab" :class="activeTab === 'charges' ? 'is-active' : ''" @click="setTab('charges')"><i class="fa-solid fa-list" aria-hidden="true"></i> Charge lines</button>
             </nav>
             <div x-show="activeTab === 'overview'" x-cloak class="space-y-4">
                 @include('property.agent.revenue.utilities._tab_overview')
@@ -262,6 +262,7 @@
                     <a href="{{ route('property.revenue.utilities.reconciliation', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-teal-200 bg-teal-50 text-teal-900 hover:bg-teal-100">Reconcile</a>
                     <a href="{{ route('property.revenue.utilities.periods', absolute: false) }}" data-turbo-frame="property-main" class="quick-action-btn border border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100">Periods</a>
                     <button type="button" @click="setTab('readings')" class="quick-action-btn bg-cyan-600 text-white hover:bg-cyan-700">Capture readings</button>
+                    <button type="button" @click="setTab('standing')" class="quick-action-btn bg-slate-800 text-white hover:bg-slate-900">Standing register</button>
                 </x-property.responsive.quick-action-grid>
             </div>
             <div x-show="activeTab === 'readings'" x-cloak class="space-y-4">
@@ -437,10 +438,13 @@
         </div>
     </div>
             </div>
+            <div x-show="activeTab === 'standing'" x-cloak class="space-y-4">
+                @include('property.agent.revenue.utilities._standing_register')
+            </div>
             <div x-show="activeTab === 'charges'" x-cloak class="space-y-4">
                 <form method="post" action="{{ route('property.revenue.utilities.store') }}" x-ref="addChargeForm" class="property-compact-panel rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm space-y-3">
             @csrf
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add charge line</h3>
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Add monthly charge line</h3>
             <div class="grid gap-3 sm:grid-cols-2">
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Charge type</label>
@@ -528,7 +532,8 @@
                     <button type="button" @click="setTab('readings')" class="utility-sticky-btn bg-cyan-600 text-white">Readings</button>
                     <button type="button" @click="setTab('billing')" class="utility-sticky-btn bg-emerald-600 text-white">Bill</button>
                     <button type="button" @click="openPenaltyPreview()" class="utility-sticky-btn bg-amber-600 text-white">Penalties</button>
-                    <button type="button" @click="setTab('charges')" class="utility-sticky-btn bg-slate-700 text-white">Charges</button>
+                    <button type="button" @click="setTab('standing')" class="utility-sticky-btn bg-slate-800 text-white">Register</button>
+                    <button type="button" @click="setTab('charges')" class="utility-sticky-btn bg-slate-700 text-white">Lines</button>
                 </div>
             </div>
 

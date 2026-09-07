@@ -13,6 +13,7 @@ use App\Models\PmWaterReading;
 use App\Models\PropertyUnit;
 use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\Property\UtilityWorkspaceViewData;
+use App\Support\TabularExport;
 use App\Exceptions\Property\UtilityPeriodClosedException;
 use App\Jobs\RefreshUtilityIntelligenceCacheJob;
 use App\Services\Property\AttachedUtilityChargeService;
@@ -24,6 +25,7 @@ use App\Services\Property\WaterPenaltyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -47,12 +49,21 @@ class PropertyUtilityChargeController extends Controller
             'wr_status' => strtolower(trim((string) $request->query('wr_status', ''))),
             'wr_property_id' => (int) $request->query('wr_property_id', 0),
             'rr_month' => trim((string) $request->query('rr_month', '')),
+            'ops_tab' => strtolower(trim((string) $request->query('ops_tab', ''))),
         ];
+        $allowedOpsTabs = ['overview', 'readings', 'billing', 'standing', 'charges'];
+        if (! in_array($filters['ops_tab'], $allowedOpsTabs, true)) {
+            $filters['ops_tab'] = '';
+        }
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
         $wrPerPage = min(200, max(10, (int) $request->query('wr_per_page', 20)));
 
         $query = PmUnitUtilityCharge::query()
-            ->with(['unit.property'])
+            ->with(['unit' => function ($q): void {
+                $q->withoutGlobalScopes()->with(['property' => function ($pq): void {
+                    $pq->withoutGlobalScopes();
+                }]);
+            }])
             ->whereNotNull('id');
         $query = app(PropertyFilterCascadeCatalog::class)->applyToUtilityChargeQuery($query, $filters);
         if ($filters['q'] !== '') {
@@ -76,7 +87,31 @@ class PropertyUtilityChargeController extends Controller
         $dir = in_array($filters['dir'], ['asc', 'desc'], true) ? $filters['dir'] : 'desc';
         $query->orderBy($sortBy, $dir)->orderByDesc('id');
 
+        $standingRegister = $this->standingChargeRegister($request, $filters, $perPage);
+
         $export = strtolower((string) $request->query('export', ''));
+        if ($export === 'standing') {
+            $rows = $standingRegister['rows'];
+
+            return TabularExport::stream(
+                'utility-standing-charges-'.now()->format('Ymd_His'),
+                ['Tenant', 'Account', 'Property', 'Unit', 'Charge type', 'Monthly amount', 'Lease'],
+                function () use ($rows) {
+                    foreach ($rows as $row) {
+                        yield [
+                            (string) ($row['tenant_name'] ?? ''),
+                            (string) ($row['account_number'] ?? ''),
+                            (string) ($row['property_name'] ?? ''),
+                            (string) ($row['unit_label'] ?? ''),
+                            (string) ($row['type_label'] ?? ''),
+                            (string) PropertyMoney::kes((float) ($row['amount'] ?? 0)),
+                            (string) ($row['lease_id'] ?? ''),
+                        ];
+                    }
+                },
+                'csv'
+            );
+        }
         if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
             $rows = (clone $query)->limit(5000)->get();
 
@@ -90,7 +125,7 @@ class PropertyUtilityChargeController extends Controller
                             : '';
                         yield [
                             (string) $c->label,
-                            (string) (($c->unit->property->name ?? '').' / '.($c->unit->label ?? '')),
+                            (string) (($c->unit?->property?->name ?? '').' / '.($c->unit?->label ?? '')),
                             (string) ($c->charge_type ?? ''),
                             (string) ($c->billing_month ?? ''),
                             $usage,
@@ -106,7 +141,11 @@ class PropertyUtilityChargeController extends Controller
 
         $charges = (clone $query)->paginate($perPage)->withQueryString();
         $waterReadingsQuery = PmWaterReading::query()
-            ->with(['unit.property', 'invoice.allocations'])
+            ->with(['unit' => function ($q): void {
+                $q->withoutGlobalScopes()->with(['property' => function ($pq): void {
+                    $pq->withoutGlobalScopes();
+                }]);
+            }, 'invoice.allocations'])
             ->when($filters['wr_q'] !== '', function ($q) use ($filters): void {
                 $term = $filters['wr_q'];
                 $q->where(function ($inner) use ($term): void {
@@ -218,14 +257,21 @@ class PropertyUtilityChargeController extends Controller
             ->values();
 
         $monthReadings = PmWaterReading::query()
-            ->with('unit.property')
+            ->with(['unit' => function ($q): void {
+                $q->withoutGlobalScopes()->with(['property' => function ($pq): void {
+                    $pq->withoutGlobalScopes();
+                }]);
+            }])
             ->where('billing_month', $readinessMonth)
             ->whereIn('property_unit_id', $waterEnabledUnitIds)
             ->get()
             ->keyBy('property_unit_id');
 
         $missingWaterReadings = PropertyUnit::query()
-            ->with('property')
+            ->withoutGlobalScopes()
+            ->with(['property' => function ($q): void {
+                $q->withoutGlobalScopes();
+            }])
             ->whereIn('id', $waterEnabledUnitIds)
             ->whereNotIn('id', $monthReadings->keys()->map(fn ($id) => (int) $id)->values())
             ->orderBy('property_id')
@@ -261,8 +307,8 @@ class PropertyUtilityChargeController extends Controller
 
             $usageAnomalies->push([
                 'unit_id' => (int) $reading->property_unit_id,
-                'property_name' => (string) ($reading->unit->property->name ?? '—'),
-                'unit_label' => (string) ($reading->unit->label ?? '—'),
+                'property_name' => (string) ($reading->unit?->property?->name ?? '—'),
+                'unit_label' => (string) ($reading->unit?->label ?? '—'),
                 'units_used' => $unitsUsed,
                 'avg_units_used' => $historyAvg,
                 'reason' => $reason,
@@ -294,13 +340,14 @@ class PropertyUtilityChargeController extends Controller
             ->count();
 
         $stats = [
-            ['label' => 'Readings (page)', 'value' => (string) $waterReadings->count(), 'hint' => 'Current filter'],
+            ['label' => 'Standing extras', 'value' => PropertyMoney::kes((float) $standingRegister['monthly_total']), 'hint' => ((int) $standingRegister['lease_count']).' leases'],
             ['label' => 'Month progress', 'value' => ((int) $billingReadiness['recorded_units']).'/'.((int) $billingReadiness['water_enabled_units']), 'hint' => $readinessMonth.' captured'],
             ['label' => 'Missing meters', 'value' => (string) collect($billingReadiness['missing'])->count(), 'hint' => 'Need readings'],
-            ['label' => 'Charge lines', 'value' => (string) $charges->total(), 'hint' => 'Filtered ledger'],
+            ['label' => 'Charge lines', 'value' => (string) $charges->total(), 'hint' => 'Posted this ledger'],
         ];
 
         $opsKpis = [
+            ['label' => 'Standing extras / mo', 'value' => PropertyMoney::kes((float) $standingRegister['monthly_total']), 'hint' => ((int) $standingRegister['line_count']).' lines', 'tone' => 'info'],
             ['label' => 'Open utility AR', 'value' => PropertyMoney::kes($openWaterAr), 'hint' => 'Water & mixed', 'tone' => $openWaterAr > 0 ? 'warning' : 'success'],
             ['label' => 'Readings captured', 'value' => ((int) $billingReadiness['recorded_units']).'/'.((int) $billingReadiness['water_enabled_units']), 'hint' => $readinessMonth, 'tone' => 'info'],
             ['label' => 'Uninvoiced', 'value' => (string) $uninvoicedReadings, 'hint' => 'Readings pending invoice', 'tone' => $uninvoicedReadings > 0 ? 'warning' : 'success'],
@@ -322,6 +369,9 @@ class PropertyUtilityChargeController extends Controller
         return property_view('property.agent.revenue.utilities', [
             'stats' => $stats,
             'opsKpis' => $opsKpis,
+            'standingCharges' => $standingRegister['paginator'],
+            'standingMonthlyTotal' => $standingRegister['monthly_total'],
+            'standingLeaseCount' => $standingRegister['lease_count'],
             'charges' => $charges,
             'waterReadings' => $waterReadings,
             'readingAnomalies' => $readingAnomalies,
@@ -329,7 +379,9 @@ class PropertyUtilityChargeController extends Controller
             'units' => $cascade->unitsForProperty($propertyId),
             'properties' => $cascade->properties(),
             'filterCascadeCatalog' => $cascade->fromUtilityCharges(),
-            'wrProperties' => PropertyUnit::query()->with('property:id,name')->select(['id', 'property_id'])->get()
+            'wrProperties' => PropertyUnit::query()->withoutGlobalScopes()->with(['property' => function ($q): void {
+                $q->withoutGlobalScopes()->select(['id', 'name']);
+            }])->select(['id', 'property_id'])->get()
                 ->pluck('property')
                 ->filter()
                 ->unique('id')
@@ -1036,5 +1088,147 @@ class PropertyUtilityChargeController extends Controller
 
         app(UtilityIntelligenceService::class)->forgetCache($agentUserId);
         RefreshUtilityIntelligenceCacheJob::dispatch($agentUserId);
+    }
+
+    /**
+     * Recurring extras on active leases (EZEN-style standing charges register).
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{rows: list<array<string, mixed>>, paginator: LengthAwarePaginator, monthly_total: float, lease_count: int, line_count: int}
+     */
+    private function standingChargeRegister(Request $request, array $filters, int $perPage): array
+    {
+        $leases = PmLease::query()
+            ->with([
+                'pmTenant:id,name,account_number',
+                'units' => function ($q): void {
+                    $q->withoutGlobalScopes()->with(['property' => function ($pq): void {
+                        $pq->withoutGlobalScopes()->select(['id', 'name', 'code']);
+                    }]);
+                },
+            ])
+            ->where('status', PmLease::STATUS_ACTIVE)
+            ->where(function ($q): void {
+                $q->where('utility_expense_amount', '>', 0)
+                    ->orWhereNotNull('utility_expenses');
+            })
+            ->when((int) ($filters['property_id'] ?? 0) > 0, function ($q) use ($filters): void {
+                $q->whereHas('units', fn ($uq) => $uq->where('property_units.property_id', (int) $filters['property_id']));
+            })
+            ->when((int) ($filters['unit_id'] ?? 0) > 0, function ($q) use ($filters): void {
+                $q->whereHas('units', fn ($uq) => $uq->where('property_units.id', (int) $filters['unit_id']));
+            })
+            ->when(trim((string) ($filters['q'] ?? '')) !== '', function ($q) use ($filters): void {
+                $term = trim((string) $filters['q']);
+                $q->where(function ($inner) use ($term): void {
+                    $inner->whereHas('pmTenant', function ($tq) use ($term): void {
+                        $tq->where('name', 'like', '%'.$term.'%')
+                            ->orWhere('account_number', 'like', '%'.$term.'%');
+                    })->orWhereHas('units', function ($uq) use ($term): void {
+                        $uq->where('label', 'like', '%'.$term.'%')
+                            ->orWhereHas('property', fn ($pq) => $pq->where('name', 'like', '%'.$term.'%'));
+                    });
+                });
+            })
+            ->orderByDesc('utility_expense_amount')
+            ->limit(4000)
+            ->get();
+
+        $wantedType = $this->normalizeUtilityTypeForRules((string) ($filters['charge_type'] ?? ''));
+        if ($wantedType === 'service') {
+            $wantedType = 'service_charge';
+        }
+
+        $rows = [];
+        $leaseIds = [];
+        foreach ($leases as $lease) {
+            $unit = $lease->units->first();
+            $property = $unit?->property;
+            foreach ($this->leaseStandingChargeLines($lease) as $line) {
+                $typeKey = $this->normalizeUtilityTypeForRules((string) ($line['type'] ?? ''));
+                if ($wantedType !== '' && $typeKey !== $wantedType && ! ($wantedType === 'service_charge' && $typeKey === 'service')) {
+                    continue;
+                }
+                $leaseIds[(int) $lease->id] = true;
+                $rows[] = [
+                    'lease_id' => (int) $lease->id,
+                    'tenant_id' => (int) ($lease->pm_tenant_id ?? 0),
+                    'tenant_name' => (string) ($lease->pmTenant?->name ?? '—'),
+                    'account_number' => (string) ($lease->pmTenant?->account_number ?? '—'),
+                    'property_name' => (string) ($property?->name ?? '—'),
+                    'unit_label' => (string) ($unit?->label ?? '—'),
+                    'type_key' => $typeKey !== '' ? $typeKey : 'other',
+                    'type_label' => $this->utilityExpenseTypeLabel($typeKey !== '' ? $typeKey : (string) ($line['type'] ?? 'other')),
+                    'amount' => (float) ($line['amount'] ?? 0),
+                ];
+            }
+        }
+
+        $query = $request->query();
+        $query['ops_tab'] = 'standing';
+        unset($query['export']);
+
+        $monthlyTotal = (float) collect($rows)->sum('amount');
+        $page = max(1, (int) $request->query('standing_page', 1));
+        $paginator = new LengthAwarePaginator(
+            collect($rows)->forPage($page, $perPage)->values(),
+            count($rows),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $query,
+                'pageName' => 'standing_page',
+            ]
+        );
+
+        return [
+            'rows' => $rows,
+            'paginator' => $paginator,
+            'monthly_total' => $monthlyTotal,
+            'lease_count' => count($leaseIds),
+            'line_count' => count($rows),
+        ];
+    }
+
+    /**
+     * @return list<array{type: string, amount: float}>
+     */
+    private function leaseStandingChargeLines(PmLease $lease): array
+    {
+        $lines = [];
+        foreach (is_array($lease->utility_expenses) ? $lease->utility_expenses : [] as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $type = trim((string) ($row['type'] ?? ''));
+            $amount = (float) ($row['amount'] ?? 0);
+            if ($type === '' || $amount <= 0) {
+                continue;
+            }
+            $lines[] = ['type' => $type, 'amount' => $amount];
+        }
+        if ($lines !== []) {
+            return $lines;
+        }
+
+        $amount = (float) ($lease->utility_expense_amount ?? 0);
+        if ($amount <= 0) {
+            return [];
+        }
+
+        $type = trim((string) ($lease->utility_expense_type ?? ''));
+
+        return [['type' => $type !== '' ? $type : 'other', 'amount' => $amount]];
+    }
+
+    private function utilityExpenseTypeLabel(?string $value): string
+    {
+        $type = trim((string) $value);
+        if ($type === '') {
+            return 'Other';
+        }
+
+        return ucwords(str_replace('_', ' ', $type));
     }
 }

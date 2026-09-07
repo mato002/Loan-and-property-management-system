@@ -1,6 +1,6 @@
 <x-property.workspace
     title="Water & Utility Operations"
-    subtitle="Capture meter readings, run billing, and manage charge lines — utility AR stays separate from core rent."
+    subtitle="Standing extras on leases, plus readings, billing, and posted charge lines — utility AR stays separate from core rent."
     back-route="property.revenue.index"
     :legacy-toolbar="false"
     :show-search="false"

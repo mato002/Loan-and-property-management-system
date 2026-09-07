@@ -4,6 +4,7 @@ namespace App\Modules\Reporting\Tenant;
 
 use App\Models\PmInvoice;
 use App\Modules\Reporting\Support\ReportFilters;
+use App\Modules\Reporting\Support\ReportScope;
 
 class AgingBalanceReportBuilder
 {
@@ -18,10 +19,11 @@ class AgingBalanceReportBuilder
 	{
 		$query = PmInvoice::query()->with(['tenant', 'unit.property']);
 		$this->applyDateRange($query, 'due_date');
+		ReportScope::applyToInvoice($query, ReportScope::fromRequest());
 		$invoices = $query
 			->whereColumn('amount_paid', '<', 'amount')
 			->latest('due_date')
-			->limit(500)
+			->limit(2000)
 			->get();
 
 		$today = now()->startOfDay();

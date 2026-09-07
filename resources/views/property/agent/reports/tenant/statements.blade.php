@@ -2,6 +2,8 @@
     title="Tenant Statements"
     subtitle="Tenant Reports"
     back-route="property.reports.tenant"
+    :legacy-toolbar="false"
+    :show-search="false"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
@@ -13,52 +15,9 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        <form method="get" class="flex flex-wrap items-end gap-2 w-full">
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Tenant</label>
-                <select
-                    name="tenant_id"
-                    class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm min-w-[220px]"
-                >
-                    <option value="">All tenants</option>
-                    @foreach ($tenantOptions as $tenantOption)
-                        <option value="{{ $tenantOption->id }}" @selected((string) $tenantOption->id === (string) ($filters['tenant_id'] ?? ''))>
-                            {{ $tenantOption->name }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">Search</label>
-                <input
-                    type="search"
-                    name="q"
-                    value="{{ $filters['q'] ?? request('q') }}"
-                    placeholder="Name, phone, email, account..."
-                    class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm min-w-[240px]"
-                />
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">From</label>
-                <input
-                    type="date"
-                    name="from"
-                    value="{{ $filters['from'] ?? request('from') }}"
-                    class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                />
-            </div>
-            <div>
-                <label class="block text-xs font-medium text-slate-600">To</label>
-                <input
-                    type="date"
-                    name="to"
-                    value="{{ $filters['to'] ?? request('to') }}"
-                    class="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                />
-            </div>
-            <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
-            <a href="{{ url()->current() }}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Reset</a>
-        </form>
+        @include('property.agent.partials.filter_toolbars.reports', [
+            'searchPlaceholder' => 'Name, phone, email, account…',
+        ])
     </x-slot>
 
     @php

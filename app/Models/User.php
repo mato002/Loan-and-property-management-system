@@ -29,7 +29,7 @@ class User extends Authenticatable
     public function landlordProperties(): BelongsToMany
     {
         return $this->belongsToMany(Property::class, 'property_landlord')
-            ->withPivot('ownership_percent')
+            ->withPivot('ownership_percent', 'agreed_pay_day', 'agreed_pay_notes')
             ->withTimestamps();
     }
 

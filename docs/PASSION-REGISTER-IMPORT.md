@@ -207,6 +207,118 @@ php artisan property:import-takeon-balances storage/passion-legacy/property_take
 
 Verify: Accounting → Payables → Landlord settlements → **Balance b/f** matches Ezen for sample properties.
 
+**Do not** also load a freeze closing balance (e.g. Pazuri 349,534) if you replay the 2026 ledger below — the opening B/F is the first BAL line only.
+
+---
+
+## Phase 6b — EZEN landlord account statement (full year replay)
+
+Use this when you have an EZEN **Account Statement** (INV / PMT / DBN / BAL), not only a freeze snapshot.
+
+Pazuri 2026 extract: `storage/passion-legacy/pazuri_ezen_ledger_2026.csv`  
+Property code **A00039A**. Opening BAL **224,610** on 1 Jan 2026. EZEN close **349,534** (importer may differ by KES 1 from rounding).
+
+This file is **landlord payable history**. It does **not** import tenant receipts. Tenant B/F still needs a property account statement (Winta-style) via `property:import-ezen-statement-balances`.
+
+```bash
+php artisan property:import-ezen-landlord-ledger storage/passion-legacy/pazuri_ezen_ledger_2026.csv \
+  --dry-run --agent-user-id=2
+php artisan property:import-ezen-landlord-ledger storage/passion-legacy/pazuri_ezen_ledger_2026.csv \
+  --agent-user-id=2
+```
+
+CSV columns: `property_name`, `date` (dd/mm/YYYY), `type`, `txn_no`, `ref_no`, `description`, `debit`, `credit`, `balance`. Optional `property_code` (preferred).
+
+Safe to re-run: existing `[EZEN INV…]` ledger lines are skipped. Do not mix this replay with a later take-on of the same closing figure.
+
+---
+
+## Phase 6c — EZEN property statement tenant B/F
+
+Per-unit rent / garbage / water Balance b/f from **Property Account Statement – Final**:
+
+```bash
+php artisan property:import-ezen-statement-balances storage/passion-legacy/winta_end_m00034b_tenant_bf.csv \
+  --takeon=storage/passion-legacy/winta_end_m00034b_takeon.csv \
+  --dry-run --agent-user-id=2
+php artisan property:import-ezen-statement-balances storage/passion-legacy/winta_end_m00034b_tenant_bf.csv \
+  --takeon=storage/passion-legacy/winta_end_m00034b_takeon.csv \
+  --agent-user-id=2 --sync-invoices
+```
+
+As further statements arrive: convert to the same CSV shapes and run the matching command. Keep **1 Oct 2026** (or your chosen freeze) as the date new operational posting starts in this ERP.
+
+Only properties with an EZEN **Monthly Statement – Final** were imported. The rest have no freeze print — leave lease-list A/c balances.
+
+```bash
+# Z-HOUSE (E00043A) — July rent B/F; no landlord take-on page
+php artisan property:import-ezen-statement-balances storage/passion-legacy/z_house_e00043a_tenant_bf.csv \
+  --dry-run --agent-user-id=2
+php artisan property:import-ezen-statement-balances storage/passion-legacy/z_house_e00043a_tenant_bf.csv \
+  --agent-user-id=2 --sync-invoices
+
+# Sunrise Kiamunyi (M00044B) — August, all zeros
+php artisan property:import-ezen-statement-balances storage/passion-legacy/sunrise_kiamunyi_m00044b_tenant_bf.csv \
+  --dry-run --agent-user-id=2
+php artisan property:import-ezen-statement-balances storage/passion-legacy/sunrise_kiamunyi_m00044b_tenant_bf.csv \
+  --agent-user-id=2
+
+# Sunrise Apartment (M00044A) — August + landlord take-on 7,476
+php artisan property:import-ezen-statement-balances storage/passion-legacy/sunrise_apartment_m00044a_tenant_bf.csv \
+  --takeon=storage/passion-legacy/sunrise_apartment_m00044a_takeon.csv \
+  --dry-run --agent-user-id=2
+php artisan property:import-ezen-statement-balances storage/passion-legacy/sunrise_apartment_m00044a_tenant_bf.csv \
+  --takeon=storage/passion-legacy/sunrise_apartment_m00044a_takeon.csv \
+  --agent-user-id=2 --sync-invoices
+
+# Pazuri (A00039A) — June tenant B/F only. Do not pass --takeon (2026 landlord ledger already replayed).
+php artisan property:import-ezen-statement-balances storage/passion-legacy/pazuri_a00039a_tenant_bf.csv \
+  --dry-run --agent-user-id=2
+php artisan property:import-ezen-statement-balances storage/passion-legacy/pazuri_a00039a_tenant_bf.csv \
+  --agent-user-id=2 --sync-invoices
+```
+
+---
+
+## Phase 6d — EZEN rent / security deposits (current tenants only)
+
+Source: EZEN **Rent Deposit** register. Sample: `storage/passion-legacy/ezen_rent_security_deposits.csv`.
+
+Applies **only** to tenants who already exist with an active lease. Former occupants (vacated TNT codes) are skipped. Three register accounts map to the live lease TNT (`TNT001169`→`TNT001170`, `TNT001000`→`TNT001001`, `TNT000982`→`TNT000983`).
+
+Does **not** post agency cash: EZEN `RECEIVED` is 0; many rows are **Held by Landlord**.
+
+```bash
+php artisan property:import-ezen-rent-deposits storage/passion-legacy/ezen_rent_security_deposits.csv \
+  --dry-run --agent-user-id=2
+php artisan property:import-ezen-rent-deposits storage/passion-legacy/ezen_rent_security_deposits.csv \
+  --agent-user-id=2
+```
+
+Expected: **12** current tenants updated, **9** former skipped, held applied **89,500**.
+
+---
+
+## Phase 6e — EZEN September billing extras (S. Charge / Utility)
+
+Standing-charges screen has no export. Use **Reports → Rental Billing Schedule** for one month (September 2026).
+
+Source PDF: `rental_period_billing_schedule_total.pdf`  
+Extracted text: `storage/passion-legacy/ezen_sep2026_billing.txt`
+
+Imports the **S. Charge/Utility** column onto current leases (`utility_expenses`). Rent is left as already imported. Amounts under KES 1,000 are stored as garbage; KES 1,000 and above as service charge. Rows with 0 extra are skipped. Match is by tenant name + rent.
+
+The property arrears PDF is a **control total only** (not imported).
+
+```bash
+php artisan property:import-ezen-billing-schedule storage/passion-legacy/ezen_sep2026_billing.txt \
+  --dry-run --agent-user-id=2
+php artisan property:import-ezen-billing-schedule storage/passion-legacy/ezen_sep2026_billing.txt \
+  --agent-user-id=2
+```
+
+Expected: ~222 extras, ~213 leases updated, ~KES 49,654 applied. Unmatched OCCP placeholders are skipped.
+
 ---
 
 ## UI columns (after import)

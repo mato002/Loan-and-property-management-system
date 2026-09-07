@@ -55,7 +55,7 @@
                         <tr class="border-t border-slate-100 {{ collect($signals)->contains(fn ($s) => ($s['severity'] ?? '') === 'critical') ? 'bg-red-50/40' : (collect($signals)->contains(fn ($s) => ($s['severity'] ?? '') === 'warning') ? 'bg-amber-50/30' : '') }}">
                             <td class="px-3 py-2"><input type="checkbox" name="reading_ids[]" value="{{ (int) $r->id }}" @disabled($r->pm_invoice_id !== null) class="h-4 w-4 rounded" /></td>
                             <td class="px-3 py-2">{{ $r->billing_month }}</td>
-                            <td class="px-3 py-2">{{ $r->unit->property->name ?? '—' }} / {{ $r->unit->label ?? '—' }}</td>
+                            <td class="px-3 py-2">{{ $r->unit?->property?->name ?? '—' }} / {{ $r->unit?->label ?? '—' }}</td>
                             <td class="px-3 py-2 tabular-nums">{{ number_format((float) $r->previous_reading, 3) }}</td>
                             <td class="px-3 py-2 tabular-nums">{{ number_format((float) $r->current_reading, 3) }}</td>
                             <td class="px-3 py-2 tabular-nums">{{ number_format((float) $r->units_used, 3) }}</td>

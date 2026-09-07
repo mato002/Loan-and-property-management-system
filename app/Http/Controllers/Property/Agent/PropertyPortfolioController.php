@@ -307,6 +307,8 @@ class PropertyPortfolioController extends Controller
                 'users.name as user_name',
                 'users.email as user_email',
                 'property_landlord.ownership_percent',
+                'property_landlord.agreed_pay_day',
+                'property_landlord.agreed_pay_notes',
             ]);
         if ($actor && $this->isAgentActor($actor)) {
             $landlordLinks->where('properties.agent_user_id', (int) $actor->id);
@@ -1019,11 +1021,11 @@ class PropertyPortfolioController extends Controller
             'user_id' => $request->input('user_id'),
             'ownership_percent' => $request->input('ownership_percent'),
         ]);
-        $data = $request->validate([
+        $data = $request->validate(array_merge([
             'property_id' => ['required', 'exists:properties,id'],
             'user_id' => ['required', 'exists:users,id'],
             'ownership_percent' => ['required', 'numeric', 'min:0', 'max:100'],
-        ]);
+        ], $this->agreedPayScheduleRules()));
 
         $property = Property::query()->findOrFail($data['property_id']);
         if (! $property->landlords()->whereKey($data['user_id'])->exists()) {
@@ -1045,9 +1047,10 @@ class PropertyPortfolioController extends Controller
                 ->withInput();
         }
 
-        $property->landlords()->updateExistingPivot($data['user_id'], [
-            'ownership_percent' => $newPct,
-        ]);
+        $property->landlords()->updateExistingPivot($data['user_id'], array_merge(
+            ['ownership_percent' => $newPct],
+            $this->agreedPayPivotFromRequest($data),
+        ));
 
         return redirect()
             ->route('property.properties.edit', $property->id)
@@ -1592,6 +1595,8 @@ class PropertyPortfolioController extends Controller
             ->select([
                 'pl.property_id',
                 'pl.ownership_percent',
+                'pl.agreed_pay_day',
+                'pl.agreed_pay_notes',
                 'p.name as property_name',
             ])
             ->orderBy('p.name');
@@ -1686,6 +1691,8 @@ class PropertyPortfolioController extends Controller
                 'property_id' => $pid,
                 'property_name' => (string) $link->property_name,
                 'ownership_percent' => (float) $link->ownership_percent,
+                'agreed_pay_day' => $link->agreed_pay_day !== null ? (int) $link->agreed_pay_day : null,
+                'agreed_pay_notes' => (string) ($link->agreed_pay_notes ?? ''),
                 'owner_share' => $ownerShare,
                 'pending_share' => $pendingShare,
                 'agent_earning' => $agentEarning,
@@ -2000,7 +2007,7 @@ class PropertyPortfolioController extends Controller
         $extra = $request->validate(array_merge([
             'property_id' => ['nullable', 'exists:properties,id'],
             'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ], $this->landlordProfileFieldRules($landlordFields)));
+        ], $this->agreedPayScheduleRules(), $this->landlordProfileFieldRules($landlordFields)));
 
         $plainPassword = $data['password'];
         $agentUserId = LandlordWorkspaceScope::creatingAgentUserId($request->user());
@@ -2020,7 +2027,10 @@ class PropertyPortfolioController extends Controller
                 ])->withInput();
             }
 
-            $property->landlords()->attach($landlord->id, ['ownership_percent' => $pct]);
+            $property->landlords()->attach($landlord->id, array_merge(
+                ['ownership_percent' => $pct],
+                $this->agreedPayPivotFromRequest($extra),
+            ));
         }
 
         $delivery = $onboarding->deliverCredentials($landlord, $plainPassword, $agentUserId);
@@ -3774,6 +3784,30 @@ class PropertyPortfolioController extends Controller
         return trim($normalized, '_');
     }
 
+    private function agreedPayScheduleRules(): array
+    {
+        return [
+            'agreed_pay_day' => ['nullable', 'integer', 'min:1', 'max:28'],
+            'agreed_pay_notes' => ['nullable', 'string', 'max:255'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{agreed_pay_day: int|null, agreed_pay_notes: string|null}
+     */
+    private function agreedPayPivotFromRequest(array $data): array
+    {
+        $day = $data['agreed_pay_day'] ?? null;
+
+        return [
+            'agreed_pay_day' => $day !== null && $day !== '' ? (int) $day : null,
+            'agreed_pay_notes' => isset($data['agreed_pay_notes']) && trim((string) $data['agreed_pay_notes']) !== ''
+                ? trim((string) $data['agreed_pay_notes'])
+                : null,
+        ];
+    }
+
     public function attachLandlord(Request $request): RedirectResponse
     {
         Log::warning('attachLandlord_debug: attachLandlord called', [
@@ -3781,11 +3815,11 @@ class PropertyPortfolioController extends Controller
             'user_id' => $request->input('user_id'),
             'ownership_percent' => $request->input('ownership_percent'),
         ]);
-        $data = $request->validate([
+        $data = $request->validate(array_merge([
             'property_id' => ['required', 'exists:properties,id'],
             'user_id' => ['required', 'exists:users,id'],
             'ownership_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ]);
+        ], $this->agreedPayScheduleRules()));
 
         $property = Property::query()->findOrFail($data['property_id']);
         if ($property->landlords()->exists()) {
@@ -3814,7 +3848,10 @@ class PropertyPortfolioController extends Controller
         }
 
         $property->landlords()->syncWithoutDetaching([
-            $data['user_id'] => ['ownership_percent' => $pct],
+            $data['user_id'] => array_merge(
+                ['ownership_percent' => $pct],
+                $this->agreedPayPivotFromRequest($data),
+            ),
         ]);
 
         return redirect()

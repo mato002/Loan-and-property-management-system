@@ -91,6 +91,7 @@
                     <input type="number" name="ownership_percent" value="{{ old('ownership_percent', '100') }}" min="0" max="100" step="0.01" class="mt-1 w-full max-w-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                     @error('ownership_percent')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
+                @include('property.agent.properties.partials.agreed_pay_fields')
                 <button type="submit" class="rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm font-medium text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80">Attach landlord</button>
             </form>
         </div>
@@ -102,7 +103,7 @@
                 <tr>
                     <th class="px-3 sm:px-4 py-3 whitespace-nowrap">Landlord</th>
                     <th class="px-3 sm:px-4 py-3 whitespace-nowrap">Email</th>
-                    <th class="px-3 sm:px-4 py-3 whitespace-nowrap">Ownership %</th>
+                    <th class="px-3 sm:px-4 py-3 whitespace-nowrap">Ownership &amp; pay schedule</th>
                     <th class="px-3 sm:px-4 py-3"></th>
                 </tr>
             </thead>
@@ -117,13 +118,19 @@
                             action="{{ route('property.properties.landlords.ownership') }}"
                             data-turbo-frame="property-main"
                             data-turbo="false"
-                            class="flex flex-wrap items-center gap-2"
+                            class="space-y-2"
                         >
                                 @csrf
                                 <input type="hidden" name="property_id" value="{{ $property->id }}" />
                                 <input type="hidden" name="user_id" value="{{ $u->id }}" />
-                                <input type="number" name="ownership_percent" value="{{ (float) ($u->pivot->ownership_percent ?? 0) }}" min="0" max="100" step="0.01" class="w-24 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2 py-1 text-sm" />
-                                <button type="submit" class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">Save</button>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <input type="number" name="ownership_percent" value="{{ (float) ($u->pivot->ownership_percent ?? 0) }}" min="0" max="100" step="0.01" class="w-24 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 px-2 py-1 text-sm" />
+                                    <button type="submit" class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">Save</button>
+                                </div>
+                                @include('property.agent.properties.partials.agreed_pay_fields', [
+                                    'agreedPayDay' => $u->pivot->agreed_pay_day ?? null,
+                                    'agreedPayNotes' => $u->pivot->agreed_pay_notes ?? null,
+                                ])
                             </form>
                         </td>
                         <td class="px-3 sm:px-4 py-3">
