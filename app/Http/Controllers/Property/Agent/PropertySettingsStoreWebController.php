@@ -11,8 +11,11 @@ use App\Models\Property;
 use App\Models\PropertyPortalSetting;
 use App\Models\PropertyUnit;
 use App\Models\User;
+use App\Support\Property\BankIntegrationConfig;
+use App\Support\Property\BankIntegrationRegistry;
 use App\Support\Property\PropertyPortalTheme;
 use App\Support\Property\PropertyWorkspaceBranding;
+use App\Services\EquityBankService;
 use App\Services\Property\PropertyActivityLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -1238,6 +1241,178 @@ class PropertySettingsStoreWebController extends Controller
         $this->logSettingsActivity('payments', 'Payment settings updated');
 
         return back()->with('success', __('Payment settings saved (store secrets carefully — encryption not enabled in this build).'));
+    }
+
+    public function bank(Request $request): View
+    {
+        $provider = trim((string) $request->query('provider', BankIntegrationConfig::selectedProvider()));
+        if (! BankIntegrationRegistry::isValidProvider($provider)) {
+            $provider = BankIntegrationConfig::selectedProvider();
+        }
+
+        $config = BankIntegrationConfig::resolve($provider);
+        $meta = BankIntegrationRegistry::provider($provider) ?? [];
+
+        return property_view('property.agent.settings.bank', [
+            'banks' => BankIntegrationRegistry::optionsForUi(),
+            'provider' => $provider,
+            'providerLabel' => BankIntegrationRegistry::label($provider),
+            'authType' => (string) ($meta['auth_type'] ?? 'api_key'),
+            'hasAutoSync' => BankIntegrationRegistry::syncDriver($provider) !== null,
+            'supportsWebhook' => BankIntegrationRegistry::supportsWebhook($provider),
+            'baseUrl' => $config['base_url'] ?? '',
+            'username' => $config['username'] ?? '',
+            'apiKey' => $config['api_key'] ?? '',
+            'merchantCode' => $config['merchant_code'] ?? '',
+            'authEndpoint' => $config['auth_endpoint'] ?? '',
+            'transactionsEndpoint' => $config['transactions_endpoint'] ?? '',
+            'balanceEndpoint' => $config['balance_endpoint'] ?? '',
+            'paybillNumber' => $config['paybill_number'] ?? '',
+            'syncEnabled' => (bool) ($config['sync_enabled'] ?? false),
+            'syncIntervalMinutes' => (string) ($config['sync_interval_minutes'] ?? 5),
+            'notes' => $config['notes'] ?? '',
+            'hasPassword' => BankIntegrationConfig::hasStoredSecret($provider, 'password'),
+            'hasApiSecret' => BankIntegrationConfig::hasStoredSecret($provider, 'api_secret'),
+            'hasWebhookSecret' => BankIntegrationConfig::hasStoredSecret($provider, 'webhook_secret'),
+            'isConfigured' => BankIntegrationConfig::isConfigured($provider),
+            'isActiveProvider' => BankIntegrationConfig::selectedProvider() === $provider,
+            'configSource' => $config['source'] ?? 'none',
+            'webhookUrl' => BankIntegrationConfig::webhookUrl($provider),
+        ]);
+    }
+
+    /** @deprecated Use bank() — kept for old bookmarks. */
+    public function equity(Request $request): RedirectResponse
+    {
+        return redirect()->route('property.settings.bank', ['provider' => 'equity']);
+    }
+
+    public function storeBank(Request $request, EquityBankService $equityBankService): RedirectResponse
+    {
+        $provider = trim((string) $request->input('collection_bank_provider', BankIntegrationConfig::selectedProvider()));
+        if (! BankIntegrationRegistry::isValidProvider($provider)) {
+            return back()->with('error', __('Unknown bank provider.'));
+        }
+
+        if ($request->boolean('test_connection')) {
+            return $this->testBankConnection($request, $equityBankService, $provider);
+        }
+
+        $authType = BankIntegrationRegistry::authType($provider);
+        $rules = [
+            'collection_bank_provider' => ['required', 'string', Rule::in(array_keys(BankIntegrationRegistry::providers()))],
+            'bank_base_url' => ['nullable', 'string', 'max:500'],
+            'bank_api_key' => ['nullable', 'string', 'max:255'],
+            'bank_api_secret' => ['nullable', 'string', 'max:255'],
+            'bank_merchant_code' => ['nullable', 'string', 'max:128'],
+            'bank_paybill_number' => ['nullable', 'string', 'max:64'],
+            'bank_webhook_secret' => ['nullable', 'string', 'max:255'],
+            'bank_sync_interval_minutes' => ['nullable', 'integer', 'min:1', 'max:60'],
+            'bank_notes' => ['nullable', 'string', 'max:2000'],
+        ];
+        if ($authType === 'oauth') {
+            $rules['bank_username'] = ['nullable', 'string', 'max:255'];
+            $rules['bank_password'] = ['nullable', 'string', 'max:255'];
+            $rules['bank_auth_endpoint'] = ['nullable', 'string', 'max:255'];
+            $rules['bank_transactions_endpoint'] = ['nullable', 'string', 'max:255'];
+            $rules['bank_balance_endpoint'] = ['nullable', 'string', 'max:255'];
+        }
+
+        $data = $request->validate($rules);
+
+        BankIntegrationConfig::setSelectedProvider($provider);
+
+        $fieldMap = [
+            'bank_base_url' => 'base_url',
+            'bank_username' => 'username',
+            'bank_password' => 'password',
+            'bank_api_key' => 'api_key',
+            'bank_api_secret' => 'api_secret',
+            'bank_merchant_code' => 'merchant_code',
+            'bank_auth_endpoint' => 'auth_endpoint',
+            'bank_transactions_endpoint' => 'transactions_endpoint',
+            'bank_balance_endpoint' => 'balance_endpoint',
+            'bank_paybill_number' => 'paybill_number',
+            'bank_webhook_secret' => 'webhook_secret',
+            'bank_notes' => 'notes',
+        ];
+        $secretFields = ['password', 'api_secret', 'webhook_secret'];
+
+        foreach ($fieldMap as $input => $field) {
+            if (! array_key_exists($input, $data)) {
+                continue;
+            }
+            $portalKey = BankIntegrationConfig::providerKey($provider, $field);
+            if (in_array($field, $secretFields, true)) {
+                if ($request->filled($input)) {
+                    PropertyPortalSetting::setValue($portalKey, (string) $data[$input]);
+                }
+                continue;
+            }
+            PropertyPortalSetting::setValue($portalKey, $data[$input] ?? '');
+        }
+
+        PropertyPortalSetting::setValue(BankIntegrationConfig::SYNC_ENABLED_KEY, $request->boolean('bank_sync_enabled') ? '1' : '0');
+        if ($request->filled('bank_sync_interval_minutes')) {
+            PropertyPortalSetting::setValue(BankIntegrationConfig::SYNC_INTERVAL_KEY, (string) $data['bank_sync_interval_minutes']);
+        }
+
+        BankIntegrationConfig::forgetCachedToken($provider);
+
+        $this->logSettingsActivity('bank', BankIntegrationRegistry::label($provider).' collection bank settings updated', ['provider' => $provider]);
+
+        return redirect()
+            ->route('property.settings.bank', ['provider' => $provider])
+            ->with('success', __(':bank settings saved.', ['bank' => BankIntegrationRegistry::label($provider)]));
+    }
+
+    /** @deprecated */
+    public function storeEquity(Request $request, EquityBankService $equityBankService): RedirectResponse
+    {
+        return redirect()->route('property.settings.bank', ['provider' => 'equity']);
+    }
+
+    public function testBankConnection(Request $request, EquityBankService $equityBankService, ?string $provider = null): RedirectResponse
+    {
+        $provider = $provider ?? trim((string) $request->input('collection_bank_provider', BankIntegrationConfig::selectedProvider()));
+        if (! BankIntegrationRegistry::isValidProvider($provider)) {
+            return back()->with('error', __('Unknown bank provider.'));
+        }
+
+        if (BankIntegrationRegistry::syncDriver($provider) !== 'equity') {
+            return back()->with('error', __('Live connection test is not available for :bank yet. Save credentials and register the webhook URL with your bank.', [
+                'bank' => BankIntegrationRegistry::label($provider),
+            ]));
+        }
+
+        $data = $request->validate([
+            'bank_base_url' => ['nullable', 'string', 'max:500'],
+            'bank_username' => ['nullable', 'string', 'max:255'],
+            'bank_password' => ['nullable', 'string', 'max:255'],
+            'bank_api_key' => ['nullable', 'string', 'max:255'],
+            'bank_api_secret' => ['nullable', 'string', 'max:255'],
+            'bank_auth_endpoint' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $config = BankIntegrationConfig::mergeForTest($provider, [
+            'base_url' => $data['bank_base_url'] ?? '',
+            'username' => $data['bank_username'] ?? '',
+            'password' => $request->filled('bank_password')
+                ? (string) $data['bank_password']
+                : (string) BankIntegrationConfig::resolve($provider)['password'],
+            'api_key' => $data['bank_api_key'] ?? '',
+            'api_secret' => $request->filled('bank_api_secret')
+                ? (string) $data['bank_api_secret']
+                : (string) BankIntegrationConfig::resolve($provider)['api_secret'],
+            'auth_endpoint' => $data['bank_auth_endpoint'] ?? '',
+        ]);
+
+        $result = $equityBankService->testConnection($config);
+
+        return back()->with(
+            $result['ok'] ? 'success' : 'error',
+            (string) ($result['message'] ?? ($result['ok'] ? 'Connection OK' : 'Connection failed'))
+        );
     }
 
     public function rules(): View

@@ -13,6 +13,8 @@ use App\Repositories\Equity\PaymentAuditLogRepository;
 use App\Jobs\FetchEquityTransactionsJob;
 use App\Services\EquityBankService;
 use App\Services\PaymentMatchingService;
+use App\Support\Property\BankIntegrationConfig;
+use App\Support\Property\BankIntegrationRegistry;
 use App\Support\MpesaSmsForwarderParser;
 use App\Support\TabularExport;
 use Illuminate\Database\Eloquent\Builder;
@@ -136,6 +138,10 @@ class EquitySyncController extends Controller
             'latest' => $latest,
             'latestSuccess' => $latestSuccess,
             'liveStats' => $liveStats,
+            'bankConfigured' => BankIntegrationConfig::isConfigured(),
+            'bankSyncEnabled' => BankIntegrationConfig::syncEnabled(),
+            'bankSettingsUrl' => route('property.settings.bank', [], false),
+            'activeBankLabel' => BankIntegrationRegistry::label(BankIntegrationConfig::selectedProvider()),
             'filters' => [
                 'q' => $q,
                 'status' => $status,
@@ -157,7 +163,7 @@ class EquitySyncController extends Controller
 
         if (! $equityBankService->isConfigured()) {
             return back()->withErrors([
-                'equity' => 'Equity API is not configured. Set EQUITY_API_BASE_URL, EQUITY_API_USERNAME, EQUITY_API_PASSWORD, EQUITY_API_KEY and EQUITY_API_SECRET in your .env, then run `php artisan config:clear`.',
+                'equity' => 'Collection bank API is not configured. Open Settings → Bank sync to enter your paybill credentials.',
             ]);
         }
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Property\BankIntegrationConfig;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -35,16 +36,11 @@ scheduleAutomation('communications:dispatch-scheduled', overlapMinutes: 15)->eve
 scheduleAutomation('communications:retry-failed-sms', overlapMinutes: 10)->everyFifteenMinutes();
 scheduleAutomation('sms:monitor-wallet', overlapMinutes: 10)->everyFifteenMinutes();
 
-// Equity Bank API sync: only register the schedule when the integration is
-// actually configured. SMS-forwarder-only deployments leave EQUITY_API_*
-// blank in .env and the scheduler never touches Equity at all (no HTTP call,
-// no failed sync rows, no log noise).
-if (trim((string) config('equity.base_url')) !== ''
-    && trim((string) config('equity.username')) !== ''
-    && trim((string) config('equity.api_key')) !== ''
-) {
+// Collection bank API sync: only register when the active bank supports auto sync and is configured.
+if (BankIntegrationConfig::syncEnabled()) {
+    $bankInterval = max(1, min(60, (int) BankIntegrationConfig::resolve()['sync_interval_minutes']));
     scheduleAutomation('fetch:equity-transactions', oneServer: true, overlapMinutes: 10)
-        ->everyFiveMinutes();
+        ->cron('*/'.$bankInterval.' * * * *');
 }
 
 // Property rent/water automation: PropertyPortalSetting granular flags + legacy workflow_auto_reminders;

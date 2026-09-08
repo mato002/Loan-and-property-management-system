@@ -13,6 +13,8 @@ use App\Repositories\Equity\EquityPaymentRepository;
 use App\Repositories\Equity\PaymentAuditLogRepository;
 use App\Services\PaymentMatchingService;
 use App\Services\Property\PropertyPaymentSettlementService;
+use App\Support\Property\BankIntegrationConfig;
+use App\Support\Property\BankIntegrationRegistry;
 use App\Support\MpesaSmsForwarderParser;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -454,6 +456,9 @@ class PropertyPaymentWebhookController extends Controller
     {
         $providerConfig = (array) config('services.property_banks.providers.'.$provider, []);
         $secret = (string) ($providerConfig['webhook_secret'] ?? '');
+        if ($secret === '' && BankIntegrationRegistry::isValidProvider($provider)) {
+            $secret = (string) (BankIntegrationConfig::resolve($provider)['webhook_secret'] ?? '');
+        }
         $providedSecret = (string) $request->header('X-Property-Bank-Webhook-Secret', '');
 
         if ($secret === '' || ! hash_equals($secret, $providedSecret)) {

@@ -560,6 +560,9 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::post('/settings/commission', [PropertySettingsStoreWebController::class, 'storeCommission'])->middleware('property.permission:settings.manage')->name('settings.commission.store');
     Route::get('/settings/payments', [PropertySettingsStoreWebController::class, 'payments'])->name('settings.payments');
     Route::post('/settings/payments', [PropertySettingsStoreWebController::class, 'storePayments'])->middleware('property.permission:settings.manage')->name('settings.payments.store');
+    Route::get('/settings/bank', [PropertySettingsStoreWebController::class, 'bank'])->name('settings.bank');
+    Route::post('/settings/bank', [PropertySettingsStoreWebController::class, 'storeBank'])->middleware('property.permission:settings.manage')->name('settings.bank.store');
+    Route::get('/settings/equity', [PropertySettingsStoreWebController::class, 'equity'])->name('settings.equity');
     Route::get('/settings/branding', [PropertySettingsStoreWebController::class, 'branding'])->name('settings.branding');
     Route::post('/settings/branding', [PropertySettingsStoreWebController::class, 'storeBranding'])->middleware('property.permission:settings.manage')->name('settings.branding.store');
 
