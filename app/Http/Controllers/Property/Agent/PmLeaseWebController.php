@@ -1202,6 +1202,65 @@ SQL;
             : \App\Services\Property\RentDueDayResolver::normalizeDueDay((int) $raw);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function leaseRegisterFieldRules(): array
+    {
+        return [
+            'lease_variation_type' => ['nullable', 'string', 'max:64'],
+            'lease_period_days' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            'days_to_expire' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            'escalation_review_start' => ['nullable', 'date'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $data
+     */
+    private function applyLeaseRegisterFieldsToPayload(array &$payload, array $data): void
+    {
+        if (Schema::hasColumn('pm_leases', 'lease_variation_type')) {
+            $variation = trim((string) ($data['lease_variation_type'] ?? ''));
+            $payload['lease_variation_type'] = $variation !== '' ? $variation : null;
+        }
+
+        if (Schema::hasColumn('pm_leases', 'lease_period_days')) {
+            $period = $data['lease_period_days'] ?? null;
+            $payload['lease_period_days'] = ($period === null || $period === '') ? null : (int) $period;
+        }
+
+        if (Schema::hasColumn('pm_leases', 'escalation_review_start')) {
+            $review = $data['escalation_review_start'] ?? null;
+            $payload['escalation_review_start'] = ($review === null || $review === '') ? null : $review;
+        }
+
+        if (! Schema::hasColumn('pm_leases', 'days_to_expire')) {
+            return;
+        }
+
+        $days = $data['days_to_expire'] ?? null;
+        if ($days !== null && $days !== '') {
+            $payload['days_to_expire'] = (int) $days;
+
+            return;
+        }
+
+        $endDate = $data['end_date'] ?? ($payload['end_date'] ?? null);
+        if ($endDate === null || $endDate === '') {
+            $payload['days_to_expire'] = null;
+
+            return;
+        }
+
+        try {
+            $payload['days_to_expire'] = max(0, (int) now()->startOfDay()->diffInDays(\Illuminate\Support\Carbon::parse((string) $endDate), false));
+        } catch (\Throwable) {
+            $payload['days_to_expire'] = null;
+        }
+    }
+
     private function applyOpeningArrearsToPayload(array &$payload, Request $request, array $data, ?PmLease $lease, array $unitIds): void
     {
         if (! Schema::hasColumn('pm_leases', 'opening_arrears')) {
@@ -1625,6 +1684,7 @@ SQL;
             'utility_expenses.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
             'status' => [Rule::requiredIf($this->isFieldRequired($cfg, 'status')), 'nullable', 'in:draft,active,expired,terminated'],
             'terms_summary' => ['nullable', 'string', 'max:5000'],
+            ...$this->leaseRegisterFieldRules(),
             'property_unit_ids' => [Rule::requiredIf($this->isFieldRequired($cfg, 'property_unit_id')), 'nullable', 'array', 'max:1'],
             'property_unit_ids.*' => ['integer', 'exists:property_units,id'],
             'additional_deposits' => ['nullable', 'array', 'max:20'],
@@ -1685,6 +1745,7 @@ SQL;
                     : PropertyPortalSetting::getValue('template_lease_text', null),
             ];
             $this->applyRentDueDayToPayload($payload, $data);
+            $this->applyLeaseRegisterFieldsToPayload($payload, $data);
 
             if (Schema::hasColumn('pm_leases', 'additional_deposits')) {
                 $payload['additional_deposits'] = $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []));
@@ -1918,6 +1979,7 @@ SQL;
             'utility_expenses.*.fixed_charge' => ['nullable', 'numeric', 'min:0'],
             'status' => ['required', 'in:draft,active,expired,terminated'],
             'terms_summary' => ['nullable', 'string', 'max:5000'],
+            ...$this->leaseRegisterFieldRules(),
             'property_unit_ids' => ['nullable', 'array', 'max:1'],
             'property_unit_ids.*' => ['integer', 'exists:property_units,id'],
             'additional_deposits' => ['nullable', 'array', 'max:20'],
@@ -1985,6 +2047,7 @@ SQL;
                     : PropertyPortalSetting::getValue('template_lease_text', null),
             ];
             $this->applyRentDueDayToPayload($payload, $data);
+            $this->applyLeaseRegisterFieldsToPayload($payload, $data);
             if (Schema::hasColumn('pm_leases', 'additional_deposits')) {
                 $payload['additional_deposits'] = $this->normalizeAdditionalDeposits((array) ($data['additional_deposits'] ?? []));
             }

@@ -1,8 +1,9 @@
 <x-property.workspace :compact-list="false"
-    :title="'Tenant: '.$tenant->name"
+    :title="\App\Support\Property\TenantProfileStatus::pageTitle($tenant)"
     subtitle="Tenant profile, leases, and billing snapshot."
     back-route="property.tenants.directory"
     :stats="[
+        ['label' => 'Status', 'value' => ($profileStatus['label'] ?? 'Inactive'), 'hint' => ($profileStatus['hint'] ?? 'Occupancy')],
         ['label' => 'Risk', 'value' => ucfirst($tenant->risk_level), 'hint' => 'Current'],
         ['label' => 'Leases', 'value' => (string) ($tenant->leases_count ?? 0), 'hint' => 'Linked'],
         ['label' => 'Invoices', 'value' => (string) ($tenant->invoices_count ?? 0), 'hint' => 'Recent snapshot'],
@@ -26,6 +27,10 @@
             <h3 class="text-sm font-semibold text-slate-900">Profile</h3>
             <div class="mt-2 text-sm text-slate-700 space-y-1">
                 <p><span class="text-slate-500">Name:</span> {{ $tenant->name }}</p>
+                <p class="flex flex-wrap items-center gap-2">
+                    <span class="text-slate-500">Status:</span>
+                    {!! \App\Support\Property\TenantProfileStatus::badge($tenant) !!}
+                </p>
                 <p><span class="text-slate-500">Phone:</span> {{ $tenant->phone ?: '—' }}</p>
                 <p><span class="text-slate-500">Email:</span> {{ $tenant->email ?: '—' }}</p>
                 <p><span class="text-slate-500">National ID / ref:</span> {{ $tenant->national_id ?: '—' }}</p>

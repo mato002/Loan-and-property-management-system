@@ -277,16 +277,22 @@ final class ResponsiveTableColumns
     public static function tenants(): array
     {
         return self::build(
-            ['Tenant', 'Phone', 'Email', 'ID / ref', 'Leases', 'Lease end', 'Risk', 'Actions'],
+            ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk', 'Actions'],
             [
                 0 => ['is_primary' => true, 'priority' => 1],
-                1 => ['priority' => 4, 'mobile_label' => 'Phone'],
-                2 => ['is_subtitle' => true, 'priority' => 2, 'hide_on_mobile' => true],
-                3 => ['priority' => 6, 'hide_on_mobile' => true],
-                4 => ['priority' => 5, 'mobile_label' => 'Leases'],
-                5 => ['priority' => 7, 'mobile_label' => 'Lease end'],
-                6 => ['is_status' => true, 'priority' => 3],
-                7 => ['is_action' => true],
+                1 => ['priority' => 8, 'hide_on_mobile' => true],
+                2 => ['priority' => 4, 'mobile_label' => 'Phone'],
+                3 => ['is_subtitle' => true, 'priority' => 2, 'hide_on_mobile' => true],
+                4 => ['priority' => 5, 'mobile_label' => 'Unit'],
+                5 => ['priority' => 9, 'hide_on_mobile' => true],
+                6 => ['priority' => 6, 'mobile_label' => 'Rent'],
+                7 => ['priority' => 7, 'mobile_label' => 'Charges', 'hide_on_mobile' => true],
+                8 => ['priority' => 10, 'hide_on_mobile' => true],
+                9 => ['priority' => 11, 'hide_on_mobile' => true],
+                10 => ['priority' => 12, 'hide_on_mobile' => true],
+                11 => ['is_status' => true, 'priority' => 3],
+                12 => ['priority' => 13, 'hide_on_mobile' => true],
+                13 => ['is_action' => true],
             ]
         );
     }

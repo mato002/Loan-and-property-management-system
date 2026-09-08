@@ -4,6 +4,7 @@
     back-route="property.tenants.directory"
     :in-property-form-modal="$inPropertyFormModal ?? false"
     :stats="[
+        ['label' => 'Status', 'value' => ($profileStatus['label'] ?? 'Inactive'), 'hint' => ($profileStatus['hint'] ?? 'Occupancy')],
         ['label' => 'Tenant', 'value' => $tenant->name, 'hint' => $tenant->email ?: 'No email'],
         ['label' => 'Risk', 'value' => ucfirst($tenant->risk_level), 'hint' => 'Current'],
     ]"
@@ -45,39 +46,43 @@
     }" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
         @csrf
         @method('PUT')
+        @php
+            $tenantCfg = $tenantFields ?? [];
+            $tenantRequired = fn (string $k, bool $d = false) => (bool) (($tenantCfg[$k]['required'] ?? $d) && ($tenantCfg[$k]['enabled'] ?? true));
+        @endphp
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Tenant details</h3>
         <div>
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Name</label>
-            <input type="text" name="name" value="{{ old('name', $tenant->name) }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+            <input type="text" name="name" value="{{ old('name', $tenant->name) }}" @required($tenantRequired('name', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
             @error('name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
         <div class="grid gap-3 sm:grid-cols-2">
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Phone</label>
-                <input type="text" name="phone" value="{{ old('phone', $tenant->phone) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="text" name="phone" value="{{ old('phone', $tenant->phone) }}" @required($tenantRequired('phone', true)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('phone')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Email</label>
-                <input type="email" name="email" value="{{ old('email', $tenant->email) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="email" name="email" value="{{ old('email', $tenant->email) }}" @required($tenantRequired('email', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('email')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
         </div>
         <div class="grid gap-3 sm:grid-cols-2">
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">National ID / ref</label>
-                <input type="text" name="national_id" value="{{ old('national_id', $tenant->national_id) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="text" name="national_id" value="{{ old('national_id', $tenant->national_id) }}" @required($tenantRequired('id_number', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('national_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Account number</label>
-                <input type="text" name="account_number" value="{{ old('account_number', $tenant->account_number) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                <input type="text" name="account_number" value="{{ old('account_number', $tenant->account_number) }}" @required($tenantRequired('account_number', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
                 @error('account_number')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
         </div>
         <div>
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Emergency contact</label>
-            <input type="text" name="emergency_contact" value="{{ old('emergency_contact', $tenant->emergency_contact) }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Next of kin name & phone" />
+            <input type="text" name="emergency_contact" value="{{ old('emergency_contact', $tenant->emergency_contact) }}" @required($tenantRequired('emergency_contact', false)) class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Next of kin name & phone" />
             @error('emergency_contact')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
         </div>
         <div class="grid gap-3 sm:grid-cols-2">

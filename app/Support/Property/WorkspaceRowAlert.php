@@ -60,8 +60,12 @@ final class WorkspaceRowAlert
 
             'vacant' => self::TONE_VACANT,
             'vacancy' => self::TONE_VACANT,
+            'inactive' => self::TONE_VACANT,
+            'former' => self::TONE_VACANT,
+            'terminated' => self::TONE_VACANT,
 
             'occupied' => self::TONE_OCCUPIED,
+            'active' => self::TONE_OCCUPIED,
 
             'owner occupied' => self::TONE_OWNER_OCCUPIED,
             'owner_occupied' => self::TONE_OWNER_OCCUPIED,

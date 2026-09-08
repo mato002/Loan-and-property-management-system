@@ -332,18 +332,7 @@
                         name="property_id"
                         :required="true"
                         :options="collect($linkableProperties ?? [])->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id', request('property_id')) === (string) $p->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create property',
-                            'endpoint' => route('property.properties.store_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
-                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
-                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
-                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
-                                ['name' => 'commission_percent', 'label' => 'Commission % (optional)', 'required' => false, 'type' => 'number', 'step' => '0.01', 'min' => '0', 'max' => '100', 'span' => '2', 'placeholder' => 'Uses default if blank'],
-                            ],
-                        ]"
+                        :create="\App\Support\Property\PmPropertyQuickCreateFields::config($fieldOfficers ?? [])"
                     />
                     @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     @if (collect($linkableProperties ?? [])->isEmpty())
@@ -357,16 +346,7 @@
                         :required="true"
                         select-id="landlord-user-select"
                         :options="collect($landlordUsers)->map(fn($u) => ['value' => $u->id, 'label' => $u->name.' ('.($u->email ?: ($u->phone ?: 'no contact')).')', 'selected' => (string) old('user_id') === (string) $u->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create landlord',
-                            'endpoint' => route('property.landlords.onboard_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Full name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Jane Landlord'],
-                                ['name' => 'email', 'label' => 'Email (optional if phone provided)', 'type' => 'email', 'required' => false, 'span' => '2', 'placeholder' => 'name@example.com'],
-                                ['name' => 'phone', 'label' => 'Phone (optional if email provided)', 'required' => false, 'span' => '2', 'placeholder' => 'e.g. 0712345678'],
-                            ],
-                        ]"
+                        :create="\App\Support\Property\PmLandlordQuickCreateFields::config()"
                     />
                     @error('user_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>

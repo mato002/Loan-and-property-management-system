@@ -16,10 +16,6 @@
         <a href="{{ route('property.revenue.utilities.periods', absolute: false) }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-900 hover:bg-indigo-100 min-h-[44px]">Period closing</a>
     </x-slot>
 
-    <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.utilities', get_defined_vars())
-    </x-slot>
-
     <x-slot name="above">
         @include('property.agent.revenue.utilities._workspace')
     </x-slot>

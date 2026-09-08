@@ -126,6 +126,7 @@
                 <p id="rent-deposit-meta" class="mt-1 text-xs text-slate-500">—</p>
                 @error('deposit_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
+            @include('property.agent.tenants.partials.lease_register_fields', ['lease' => $lease])
             <div>
                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status</label>
                 <select name="status" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">

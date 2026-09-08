@@ -22,10 +22,11 @@ final class PropertyEntityHub
     ];
 
     public const TENANT_TABS = [
-        ['key' => 'overview', 'label' => 'Overview'],
+        ['key' => 'overview', 'label' => '360 view'],
         ['key' => 'leases', 'label' => 'Leases'],
         ['key' => 'invoices', 'label' => 'Invoices'],
         ['key' => 'payments', 'label' => 'Payments'],
+        ['key' => 'deposits', 'label' => 'Deposits'],
         ['key' => 'notices', 'label' => 'Notices'],
         ['key' => 'utilities', 'label' => 'Utilities'],
         ['key' => 'statement', 'label' => 'Statement'],

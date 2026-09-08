@@ -28,6 +28,7 @@ import './utility-analytics';
 import './utility-operations';
 import './utility-revenue-page-modals';
 import './amount-input-safety';
+import './form-field-requirements';
 import { registerLoanWorkspaceAlpine } from './loan-workspace';
 
 import Alpine from 'alpinejs';

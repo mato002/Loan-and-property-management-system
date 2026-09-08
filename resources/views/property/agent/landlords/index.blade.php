@@ -3,7 +3,11 @@
         || $errors->has('email')
         || $errors->has('phone')
         || $errors->has('property_id')
-        || $errors->has('ownership_percent');
+        || $errors->has('ownership_percent')
+        || $errors->has('legacy_landlord_code')
+        || $errors->has('id_number')
+        || $errors->has('kra_pin')
+        || $errors->has('address_line');
     $landlordFieldCfg = $landlordFields ?? [];
     $landlordRequired = fn (string $k, bool $d = false) => (bool) (($landlordFieldCfg[$k]['required'] ?? $d) && ($landlordFieldCfg[$k]['enabled'] ?? true));
     $onboardLandlord = null;
@@ -83,17 +87,7 @@
                             :required="false"
                             placeholder="Not now"
                             :options="collect($properties)->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id') === (string) $p->id])->all()"
-                            :create="[
-                                'mode' => 'ajax',
-                                'title' => 'Create property',
-                                'endpoint' => route('property.properties.store_json'),
-                                'fields' => [
-                                    ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
-                                    ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
-                                    ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
-                                    ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
-                                ],
-                            ]"
+                            :create="\App\Support\Property\PmPropertyQuickCreateFields::config($fieldOfficers ?? [])"
                         />
                         @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>

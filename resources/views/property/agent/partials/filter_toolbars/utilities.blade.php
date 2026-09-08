@@ -21,6 +21,7 @@
 >
     <x-slot name="primary">
         <x-property.filter-field type="search" name="q" placeholder="Search tenant, TNT, unit, or charge label…" :value="$filters['q'] ?? ''" wide />
+        <input type="hidden" name="ops_tab" x-bind:value="typeof activeTab === 'string' ? activeTab : @js($filters['ops_tab'] ?? '')" value="{{ $filters['ops_tab'] ?? '' }}" />
         @include('property.agent.partials.filter_toolbars.partials.property_unit_fields', [
             'filters' => $filters,
             'properties' => $properties ?? [],

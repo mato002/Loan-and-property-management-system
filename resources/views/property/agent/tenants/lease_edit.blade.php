@@ -74,6 +74,12 @@
                 <p id="rent-deposit-meta" class="mt-1 text-xs text-slate-500">—</p>
                 @error('deposit_amount')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
             </div>
+            <div>
+                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent due day override</label>
+                <input type="number" name="rent_due_day" value="{{ old('rent_due_day', $lease->rent_due_day) }}" min="1" max="31" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Blank = property / system default" />
+                @error('rent_due_day')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+            </div>
+            @include('property.agent.tenants.partials.lease_register_fields', ['lease' => $lease])
             <div class="sm:col-span-2">
                 <button type="button" id="open-optional-fields-edit-modal" class="inline-flex items-center gap-2 rounded-lg border border-emerald-700 bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:border-emerald-300 disabled:bg-emerald-400/90 disabled:text-white/95 disabled:shadow-none dark:border-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:disabled:bg-emerald-800/80" disabled>
                     <i class="fa-solid fa-clipboard-list" aria-hidden="true"></i>

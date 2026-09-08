@@ -2082,6 +2082,8 @@ class PropertyPortfolioController extends Controller
         $plainPassword = $data['password'];
         $agentUserId = LandlordWorkspaceScope::creatingAgentUserId($request->user());
         $landlord = $onboarding->createLandlordUser($data, $agentUserId);
+        $profile = $request->validate($this->landlordProfileFieldRules($landlordFields));
+        $onboarding->syncLandlordProfile($landlord, $profile);
         $delivery = $onboarding->deliverCredentials($landlord, $plainPassword, $agentUserId);
 
         $contactLabel = $landlord->email
@@ -3538,8 +3540,9 @@ class PropertyPortfolioController extends Controller
             $attrs['available_from'] = ($availableFrom === null || $availableFrom === '') ? null : $availableFrom;
         }
 
-        if ($request->has('furnished')) {
-            $attrs['furnished'] = $request->boolean('furnished');
+        if (array_key_exists('furnished', $data) || $request->has('furnished')) {
+            $raw = $data['furnished'] ?? $request->input('furnished');
+            $attrs['furnished'] = in_array($raw, [true, 1, '1', 'true', 'on', 'yes'], true);
         }
 
         return $attrs;
@@ -3613,6 +3616,11 @@ class PropertyPortfolioController extends Controller
             'unit_groups.*.unit_type' => ['required', 'string', 'max:64'],
             'unit_groups.*.bedrooms' => ['nullable', 'integer', 'min:0', 'max:20'],
             'unit_groups.*.rent_amount' => ['required', 'numeric', 'min:0'],
+            'unit_groups.*.market_rent' => ['nullable', 'numeric', 'min:0'],
+            'unit_groups.*.legacy_area' => ['nullable', 'numeric', 'min:0'],
+            'unit_groups.*.floor' => ['nullable', 'string', 'max:32'],
+            'unit_groups.*.available_from' => ['nullable', 'date'],
+            'unit_groups.*.furnished' => ['nullable', 'boolean'],
             'unit_groups.*.status' => ['required', 'in:vacant,occupied,notice,owner_occupied'],
             'unit_groups.*.public_listing_description' => ['nullable', 'string', 'max:20000'],
         ]);
@@ -3635,6 +3643,11 @@ class PropertyPortfolioController extends Controller
             $unitType = $this->normalizeUnitTypeValue((string) ($group['unit_type'] ?? ''));
             $status = (string) ($group['status'] ?? '');
             $rentAmount = (float) ($group['rent_amount'] ?? 0);
+            $floor = trim((string) ($group['floor'] ?? ''));
+            $availableFrom = $group['available_from'] ?? null;
+            $marketRent = $group['market_rent'] ?? null;
+            $legacyArea = $group['legacy_area'] ?? null;
+            $furnished = ! empty($group['furnished']);
             $desc = isset($group['public_listing_description']) && trim((string) $group['public_listing_description']) !== ''
                 ? (string) $group['public_listing_description']
                 : null;
@@ -3670,6 +3683,11 @@ class PropertyPortfolioController extends Controller
                     'unit_type' => $unitType,
                     'bedrooms' => (int) $bedrooms,
                     'rent_amount' => $rentAmount,
+                    'market_rent' => ($marketRent === null || $marketRent === '') ? null : $marketRent,
+                    'legacy_area' => ($legacyArea === null || $legacyArea === '') ? null : $legacyArea,
+                    'floor' => $floor !== '' ? $floor : null,
+                    'available_from' => ($availableFrom === null || $availableFrom === '') ? null : $availableFrom,
+                    'furnished' => $furnished,
                     'status' => $status,
                     'public_listing_description' => $desc,
                     'vacant_since' => $status === PropertyUnit::STATUS_VACANT ? now()->toDateString() : null,

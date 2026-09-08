@@ -70,17 +70,7 @@
                         name="property_id"
                         :required="true"
                         :options="collect($properties)->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id', request('property_id')) === (string) $p->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create property',
-                            'endpoint' => route('property.properties.store_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
-                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
-                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
-                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
-                            ],
-                        ]"
+                        :create="\App\Support\Property\PmPropertyQuickCreateFields::config($fieldOfficers ?? [])"
                     />
                     @error('property_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Only properties without units are shown to prevent duplicate allocation.</p>
@@ -203,7 +193,7 @@
         <div
             x-data="{
                 rows: [
-                    { unit_count: 1, label_prefix: 'A', label_start: 1, unit_type: '', bedrooms: '', rent_amount: '', status: 'vacant', public_listing_description: '' }
+                    { unit_count: 1, label_prefix: 'A', label_start: 1, unit_type: '', bedrooms: '', rent_amount: '', market_rent: '', floor: '', legacy_area: '', available_from: '', furnished: '0', status: 'vacant', public_listing_description: '' }
                 ],
                 addRow() {
                     const last = this.rows[this.rows.length - 1] || { label_prefix: '', label_start: 1, unit_count: 1 };
@@ -215,6 +205,11 @@
                         unit_type: '',
                         bedrooms: '',
                         rent_amount: '',
+                        market_rent: '',
+                        floor: '',
+                        legacy_area: '',
+                        available_from: '',
+                        furnished: '0',
                         status: 'vacant',
                         public_listing_description: ''
                     });
@@ -254,17 +249,7 @@
                         name="property_id"
                         :required="true"
                         :options="collect($properties)->map(fn($p) => ['value' => $p->id, 'label' => $p->name, 'selected' => (string) old('property_id', request('property_id')) === (string) $p->id])->all()"
-                        :create="[
-                            'mode' => 'ajax',
-                            'title' => 'Create property',
-                            'endpoint' => route('property.properties.store_json'),
-                            'fields' => [
-                                ['name' => 'name', 'label' => 'Property name', 'required' => true, 'span' => '2', 'placeholder' => 'e.g. Prady Court'],
-                                ['name' => 'code', 'label' => 'Code (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Auto if blank'],
-                                ['name' => 'address_line', 'label' => 'Address (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Street / building'],
-                                ['name' => 'city', 'label' => 'City (optional)', 'required' => false, 'span' => '2', 'placeholder' => 'Nairobi'],
-                            ],
-                        ]"
+                        :create="\App\Support\Property\PmPropertyQuickCreateFields::config($fieldOfficers ?? [])"
                     />
                 </div>
 
@@ -312,6 +297,29 @@
                             <div>
                                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Rent (KES) <span class="text-red-600">*</span></label>
                                 <input x-model="row.rent_amount" :name="'unit_groups['+idx+'][rent_amount]'" type="number" step="0.01" min="0" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Market rent (KES)</label>
+                                <input x-model="row.market_rent" :name="'unit_groups['+idx+'][market_rent]'" type="number" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Floor</label>
+                                <input x-model="row.floor" :name="'unit_groups['+idx+'][floor]'" type="text" maxlength="32" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="Ground, 1, 2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Area (sq ft)</label>
+                                <input x-model="row.legacy_area" :name="'unit_groups['+idx+'][legacy_area]'" type="number" step="0.01" min="0" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Available from</label>
+                                <input x-model="row.available_from" :name="'unit_groups['+idx+'][available_from]'" type="date" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Furnished</label>
+                                <select x-model="row.furnished" :name="'unit_groups['+idx+'][furnished]'" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2">
+                                    <option value="0">No</option>
+                                    <option value="1">Yes</option>
+                                </select>
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Status <span class="text-red-600">*</span></label>

@@ -7,6 +7,7 @@ document.addEventListener('alpine:init', () => {
     window.Alpine.data('utilityRevenuePageModals', (config = {}) => ({
         showAddChargeForm: Boolean(config.showAddChargeForm),
         showWaterReadingForm: Boolean(config.showWaterReadingForm),
+        showBillingActionsForm: Boolean(config.showBillingActionsForm),
         allUnits: config.allUnits ?? [],
         properties: config.properties ?? [],
         waterUnits: config.waterUnits ?? [],
