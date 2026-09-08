@@ -8,6 +8,8 @@ use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
 use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\PmPaymentPresentation;
+use App\Support\Property\ResponsiveTableColumns;
 use App\Support\TabularExport;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
@@ -35,6 +37,7 @@ class PmPaymentController extends Controller
             'status' => strtolower(trim((string) $request->query('status', ''))),
             'reversal_status' => strtolower(trim((string) $request->query('reversal_status', ''))),
             'channel' => strtolower(trim((string) $request->query('channel', ''))),
+            'ref' => strtolower(trim((string) $request->query('ref', ''))),
             'property_id' => max(0, (int) $request->query('property_id', 0)),
             'unit_id' => max(0, (int) $request->query('unit_id', 0)),
             'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
@@ -52,7 +55,11 @@ class PmPaymentController extends Controller
         $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
 
         $baseQuery = $this->applyPaymentListFilters(
-            PmPayment::query()->with(['tenant.user', 'allocations.invoice.tenant.user']),
+            PmPayment::query()->with([
+                'tenant.user',
+                'allocations.invoice.tenant.user',
+                'allocations.invoice.unit.property',
+            ]),
             $filters
         );
         if ($filters['q'] !== '') {
@@ -83,7 +90,7 @@ class PmPaymentController extends Controller
             $rows = (clone $baseQuery)->limit(5000)->get();
             return TabularExport::stream(
                 'property-payments-'.now()->format('Ymd_His'),
-                ['Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status'],
+                ['Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status'],
                 function () use ($rows) {
                     foreach ($rows as $p) {
                         $allocatedTo = $p->allocations->pluck('invoice.invoice_no')->filter()->implode(', ');
@@ -99,11 +106,13 @@ class PmPaymentController extends Controller
                         };
                         yield [
                             'PAY-'.$p->id,
-                            $sourceLabel,
-                            $this->channelLabel($p->channel),
+                            strip_tags((string) PmPaymentPresentation::propertyUnit($p, '')),
+                            PmPaymentPresentation::payerPhone($p, ''),
+                            PmPaymentPresentation::transactionRef($p, ''),
+                            PmPaymentPresentation::paymentMethod($p, ''),
                             number_format((float) $p->amount, 2, '.', ''),
                             $p->paid_at?->format('Y-m-d H:i:s') ?? '',
-                            $this->payerPhoneOrRef($p, ''),
+                            $sourceLabel,
                             $allocatedTo,
                             ucfirst((string) $p->status),
                         ];
@@ -229,11 +238,13 @@ class PmPaymentController extends Controller
             return [
                 new HtmlString('<label class="inline-flex items-center" data-row-ignore-click><input type="checkbox" name="ids[]" value="'.$p->id.'" form="property-payments-bulk-form" class="property-bulk-row-checkbox h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="sr-only">Select</span></label>'),
                 'PAY-'.$p->id,
-                $source,
-                $this->channelLabel($p->channel),
+                PmPaymentPresentation::propertyUnit($p),
+                PmPaymentPresentation::payerPhone($p),
+                PmPaymentPresentation::transactionRef($p),
+                PmPaymentPresentation::paymentMethod($p),
                 number_format((float) $p->amount, 2),
                 $p->paid_at?->format('Y-m-d H:i') ?? '—',
-                $this->payerPhoneOrRef($p),
+                $source,
                 $allocatedTo !== '' ? $allocatedTo : '—',
                 $statusLabel,
                 $actions,
@@ -251,7 +262,9 @@ class PmPaymentController extends Controller
             'statsPrimary' => $statsPrimary,
             'statsTable' => $statsTable,
             'receivedRangeLabel' => $receivedRangeLabel,
-            'columns' => ['Select', 'Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status', 'Actions'],
+            'columns' => ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status', 'Actions'],
+            'columnConfig' => ResponsiveTableColumns::payments(),
+            'tableMinWidth' => '1280px',
             'tableRows' => $rows,
             'paginator' => $payments,
             'perPage' => $perPage,
@@ -571,34 +584,6 @@ class PmPaymentController extends Controller
     }
 
     /**
-     * Payer phone from ingest/meta, else payment reference, else allocated tenant phone.
-     */
-    private function payerPhoneOrRef(PmPayment $payment, string $empty = '—'): string
-    {
-        $metaPhone = trim((string) (data_get($payment->meta, 'payer_phone') ?? data_get($payment->meta, 'phone') ?? ''));
-        if ($metaPhone !== '') {
-            return $metaPhone;
-        }
-
-        $externalRef = trim((string) ($payment->external_ref ?? ''));
-        if ($externalRef !== '') {
-            return $externalRef;
-        }
-
-        $tenant = $payment->tenant;
-        if (! $tenant && $payment->relationLoaded('allocations')) {
-            $tenant = $payment->allocations->first()?->invoice?->tenant;
-        }
-
-        $tenantPhone = trim((string) ($tenant?->phone ?? $tenant?->user?->phone ?? ''));
-        if ($tenantPhone !== '') {
-            return $tenantPhone;
-        }
-
-        return $empty;
-    }
-
-    /**
      * @param  array<string, mixed>  $filters
      */
     private function applyPaymentListFilters(\Illuminate\Database\Eloquent\Builder $query, array $filters): \Illuminate\Database\Eloquent\Builder
@@ -620,6 +605,16 @@ class PmPaymentController extends Controller
         }
         if (($filters['channel'] ?? '') !== '') {
             $query->where('channel', $filters['channel']);
+        }
+        if (($filters['ref'] ?? '') === 'missing') {
+            $query->where('channel', 'ezen_import')
+                ->where(function (\Illuminate\Database\Eloquent\Builder $inner): void {
+                    $inner->whereNull('meta->mpesa_ref')
+                        ->orWhere('meta->mpesa_ref', '');
+                });
+        } elseif (($filters['ref'] ?? '') === 'has_ref') {
+            $query->whereNotNull('meta->mpesa_ref')
+                ->where('meta->mpesa_ref', '!=', '');
         }
 
         $from = (string) ($filters['from'] ?? '');

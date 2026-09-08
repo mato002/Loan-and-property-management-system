@@ -1,17 +1,23 @@
 <x-property.workspace
     :legacy-toolbar="false"
     :show-search="false"
-    title="Receipts (KRA eTIMS)"
-    subtitle="Paid invoice stubs — eTIMS integration can extend this list later."
+    title="{{ ($ezenReceiptRegister ?? false) ? 'Rent receipts (EZEN legacy)' : 'Receipts (KRA eTIMS)' }}"
+    subtitle="{{ ($ezenReceiptRegister ?? false) ? 'Full receipt register imported from EZEN — kept even when tenant is not in the system yet.' : 'Paid invoice stubs — eTIMS integration can extend this list later.' }}"
     back-route="property.revenue.index"
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
-    empty-title="No paid-invoice receipts listed"
-    empty-hint="Shows invoices marked paid; link eTIMS when your integration is ready."
+    :table-min-width="($ezenReceiptRegister ?? false) ? '1280px' : '720px'"
+    empty-title="{{ ($ezenReceiptRegister ?? false) ? 'No EZEN receipts imported' : 'No paid-invoice receipts listed' }}"
+    empty-hint="{{ ($ezenReceiptRegister ?? false) ? 'Run property:import-ezen-rent-receipts with --register-only to load the PDF receipt listing.' : 'Shows invoices marked paid; link eTIMS when your integration is ready.' }}"
 >
     <x-slot name="secondary">
-        <div class="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-5 shadow-sm max-w-3xl">
+        @if ($ezenReceiptRegister ?? false)
+            <div class="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-5 shadow-sm max-w-3xl">
+                <p class="text-lg font-semibold text-slate-900">Legacy EZEN receipt register</p>
+                <p class="mt-1 text-sm text-slate-600">Every row from your EZEN receipt PDF is stored here with receipt #, M-Pesa ref, and payment method. Re-run the register import after adding tenants to refresh links to Payments.</p>
+            </div>
+        @else
             <p class="text-lg font-semibold text-slate-900">Receipts</p>
             <p class="mt-1 text-sm text-slate-600">Receipts appear after invoices are fully paid. Normal flow: Lease → Invoice → Payment → Receipt.</p>
             <div class="mt-3 flex flex-wrap gap-2">
@@ -28,7 +34,7 @@
                     <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
                 </a>
             </div>
-        </div>
+        @endif
     </x-slot>
 
     <x-slot name="toolbar">

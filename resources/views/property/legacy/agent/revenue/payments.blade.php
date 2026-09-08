@@ -4,6 +4,8 @@
     back-route="property.revenue.index"
     :stats="$stats ?? $statsPrimary ?? []"
     :columns="$columns"
+    :column-config="$columnConfig ?? null"
+    :table-min-width="$tableMinWidth ?? '1280px'"
     :table-rows="$tableRows"
     empty-title="No payment events"
     empty-hint="Record a payment for the paying tenant and choose an invoice with an open balance."

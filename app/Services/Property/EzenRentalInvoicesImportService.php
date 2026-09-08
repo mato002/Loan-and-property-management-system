@@ -255,6 +255,12 @@ final class EzenRentalInvoicesImportService
                 }
 
                 if ($paid > 0.009) {
+                    $tenantPhone = trim((string) (
+                        $lease->pmTenant?->phone
+                        ?? $lease->pmTenant?->user?->phone
+                        ?? ''
+                    ));
+
                     $this->payments->recordPaymentToInvoice(
                         $invoice->fresh(),
                         min($paid, $amount),
@@ -265,6 +271,9 @@ final class EzenRentalInvoicesImportService
                         [
                             'source' => 'ezen_rental_invoice_import',
                             'ezen_invoice_no' => $ezenNo,
+                            'payer_phone' => $tenantPhone,
+                            'property_code' => strtoupper(trim((string) ($unit->property?->code ?? ''))),
+                            'unit_label' => trim((string) ($unit->label ?? '')),
                         ],
                         $unit->property?->agent_user_id ? (int) $unit->property->agent_user_id : null,
                         $postGl,

@@ -257,18 +257,20 @@ final class ResponsiveTableColumns
     public static function payments(): array
     {
         return self::build(
-            ['Select', 'Ref', 'Source', 'Channel', 'Amount', 'Received at', 'Payer phone / ref', 'Allocated to', 'Status', 'Actions'],
+            ['Select', 'Payment #', 'Property / unit', 'Payer phone', 'Ref. no', 'Payment method', 'Amount', 'Received at', 'Source', 'Allocated to', 'Status', 'Actions'],
             [
                 0 => ['is_bulk_select' => true],
-                1 => ['is_primary' => true, 'priority' => 1],
-                2 => ['priority' => 8, 'hide_on_mobile' => true],
-                3 => ['priority' => 7, 'hide_on_mobile' => true],
-                4 => ['is_amount' => true, 'priority' => 3],
-                5 => ['priority' => 6, 'mobile_label' => 'Received'],
-                6 => ['priority' => 9, 'hide_on_mobile' => true],
-                7 => ['is_subtitle' => true, 'priority' => 4],
-                8 => ['is_status' => true, 'priority' => 5],
-                9 => ['is_action' => true],
+                1 => ['priority' => 8, 'hide_on_mobile' => true],
+                2 => ['is_subtitle' => true, 'priority' => 2, 'mobile_label' => 'Property / unit'],
+                3 => ['is_primary' => true, 'priority' => 1, 'mobile_label' => 'Payer phone'],
+                4 => ['priority' => 4, 'mobile_label' => 'Ref. no'],
+                5 => ['priority' => 5, 'mobile_label' => 'Payment method'],
+                6 => ['is_amount' => true, 'priority' => 3],
+                7 => ['priority' => 6, 'mobile_label' => 'Received'],
+                8 => ['priority' => 10, 'hide_on_mobile' => true],
+                9 => ['priority' => 7, 'mobile_label' => 'Invoice'],
+                10 => ['is_status' => true, 'priority' => 9],
+                11 => ['is_action' => true],
             ]
         );
     }
@@ -397,6 +399,26 @@ final class ResponsiveTableColumns
 
     /** @return list<ColumnMeta> */
     public static function receipts(): array
+    {
+        return self::build(
+            ['Receipt #', 'Ref. no', 'Property / unit', 'Tenant', 'Phone', 'Payment method', 'Amount', 'Banking date', 'Link status', 'Payment'],
+            [
+                0 => ['is_primary' => true, 'priority' => 1],
+                1 => ['priority' => 4, 'mobile_label' => 'Ref. no'],
+                2 => ['is_subtitle' => true, 'priority' => 2],
+                3 => ['priority' => 3],
+                4 => ['priority' => 5, 'hide_on_mobile' => true],
+                5 => ['priority' => 6, 'mobile_label' => 'Method'],
+                6 => ['is_amount' => true, 'priority' => 7],
+                7 => ['priority' => 8, 'mobile_label' => 'Banked'],
+                8 => ['is_status' => true, 'priority' => 9],
+                9 => ['is_action' => true, 'label' => 'Payment', 'mobile_label' => 'Payment'],
+            ]
+        );
+    }
+
+    /** @return list<ColumnMeta> */
+    public static function receiptStubs(): array
     {
         return self::build(
             ['Receipt #', 'Invoice', 'Tenant', 'Amount', 'Tax', 'Submitted', 'eTIMS status', 'Actions'],

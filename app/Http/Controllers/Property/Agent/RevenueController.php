@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Property\Agent;
 
 use App\Http\Controllers\Controller;
+use App\Models\PmEzenReceiptRegister;
 use App\Models\PmInvoice;
 use App\Models\PmMessageLog;
 use App\Models\PmPayment;
@@ -28,6 +29,7 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -1666,6 +1668,199 @@ class RevenueController extends Controller
     }
 
     public function receipts(Request $request): View|StreamedResponse
+    {
+        if (Schema::hasTable('pm_ezen_receipt_register') && PmEzenReceiptRegister::query()->exists()) {
+            return $this->ezenReceiptRegisterIndex($request);
+        }
+
+        return $this->paidInvoiceReceiptStubs($request);
+    }
+
+    public function ezenReceiptRegisterIndex(Request $request): View|StreamedResponse
+    {
+        $filters = [
+            'q' => trim((string) $request->query('q', '')),
+            'property_id' => max(0, (int) $request->query('property_id', 0)),
+            'unit_id' => max(0, (int) $request->query('unit_id', 0)),
+            'tenant_id' => max(0, (int) $request->query('tenant_id', 0)),
+            'from' => (string) $request->query('from', ''),
+            'to' => (string) $request->query('to', ''),
+            'match' => strtolower(trim((string) $request->query('match', ''))),
+            'sort' => strtolower(trim((string) $request->query('sort', 'banking_date'))),
+            'dir' => strtolower(trim((string) $request->query('dir', 'desc'))),
+        ];
+        $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
+
+        $query = PmEzenReceiptRegister::query()->with(['tenant', 'payment']);
+        if ($filters['q'] !== '') {
+            $q = $filters['q'];
+            $query->where(function ($inner) use ($q): void {
+                $inner->where('ezen_receipt_no', 'like', '%'.$q.'%')
+                    ->orWhere('ref_no', 'like', '%'.$q.'%')
+                    ->orWhere('register_tenant_name', 'like', '%'.$q.'%')
+                    ->orWhere('tnt_account', 'like', '%'.$q.'%')
+                    ->orWhere('phone', 'like', '%'.$q.'%')
+                    ->orWhere('unit_label', 'like', '%'.$q.'%')
+                    ->orWhere('property_code', 'like', '%'.$q.'%');
+            });
+        }
+        if ($filters['tenant_id'] > 0) {
+            $query->where('pm_tenant_id', $filters['tenant_id']);
+        }
+        if ($filters['from'] !== '') {
+            $query->whereDate('banking_date', '>=', $filters['from']);
+        }
+        if ($filters['to'] !== '') {
+            $query->whereDate('banking_date', '<=', $filters['to']);
+        }
+        if ($filters['property_id'] > 0) {
+            $propertyCode = \App\Models\Property::query()->whereKey($filters['property_id'])->value('code');
+            if (is_string($propertyCode) && trim($propertyCode) !== '') {
+                $query->where('property_code', strtoupper(trim($propertyCode)));
+            }
+        }
+        if ($filters['unit_id'] > 0) {
+            $unitLabel = \App\Models\PropertyUnit::query()->whereKey($filters['unit_id'])->value('label');
+            if (is_string($unitLabel) && trim($unitLabel) !== '') {
+                $query->where('unit_label', trim($unitLabel));
+            }
+        }
+
+        match ($filters['match']) {
+            'linked' => $query->whereNotNull('pm_payment_id'),
+            'unmatched' => $query->whereNull('pm_payment_id'),
+            'tenant_missing' => $query->where('link_status', PmEzenReceiptRegister::LINK_NO_TENANT),
+            'in_system' => $query->whereNotNull('pm_tenant_id'),
+            'tenant_unlinked' => $query->whereNotNull('pm_tenant_id')->whereNull('pm_payment_id'),
+            default => null,
+        };
+
+        $sortMap = [
+            'banking_date' => 'banking_date',
+            'amount' => 'amount',
+            'ezen_receipt_no' => 'ezen_receipt_no',
+            'ref_no' => 'ref_no',
+            'link_status' => 'link_status',
+            'id' => 'id',
+        ];
+        $sortBy = $sortMap[$filters['sort']] ?? 'banking_date';
+        $dir = in_array($filters['dir'], ['asc', 'desc'], true) ? $filters['dir'] : 'desc';
+
+        // In-system / linked receipts first; tenant-not-imported rows sink to the bottom.
+        $query->orderByRaw(
+            'CASE pm_ezen_receipt_register.link_status
+                WHEN ? THEN 0
+                WHEN ? THEN 1
+                WHEN ? THEN 2
+                WHEN ? THEN 3
+                ELSE 4
+            END ASC',
+            [
+                PmEzenReceiptRegister::LINK_PAYMENT,
+                PmEzenReceiptRegister::LINK_TENANT,
+                PmEzenReceiptRegister::LINK_IMPORTED,
+                PmEzenReceiptRegister::LINK_NO_TENANT,
+            ]
+        );
+
+        if ($sortBy === 'link_status') {
+            $query->orderBy('link_status', $dir);
+        } else {
+            $query->orderBy($sortBy, $dir);
+        }
+        $query->orderByDesc('id');
+
+        $export = strtolower((string) $request->query('export', ''));
+        if (in_array($export, ['csv', 'xls', 'pdf', 'word'], true)) {
+            $items = (clone $query)->limit(5000)->get();
+
+            return TabularExport::stream(
+                'ezen-receipt-register-'.now()->format('Ymd_His'),
+                ['Receipt #', 'Ref. no', 'Property / unit', 'Tenant', 'Phone', 'Payment method', 'Amount', 'Banking date', 'Link status'],
+                function () use ($items) {
+                    foreach ($items as $receipt) {
+                        yield [
+                            $receipt->ezen_receipt_no,
+                            (string) ($receipt->ref_no ?? ''),
+                            trim(($receipt->property_code ?? '').' '.($receipt->unit_label ?? '')),
+                            $receipt->displayTenantName(),
+                            (string) ($receipt->phone ?? ''),
+                            $receipt->displayPaymentMethod(),
+                            number_format((float) $receipt->amount, 2, '.', ''),
+                            $receipt->banking_date?->format('Y-m-d') ?? '',
+                            $receipt->link_status,
+                        ];
+                    }
+                },
+                $export
+            );
+        }
+
+        $receipts = (clone $query)->paginate($perPage)->withQueryString();
+        $totalAmount = (clone $query)->sum('amount');
+        $linkedCount = (clone $query)->whereNotNull('pm_payment_id')->count();
+        $missingTenantCount = (clone $query)->where('link_status', PmEzenReceiptRegister::LINK_NO_TENANT)->count();
+        $unmatchedPaymentCount = (clone $query)->whereNull('pm_payment_id')->count();
+
+        $stats = [
+            ['label' => 'EZEN receipts', 'value' => (string) $receipts->total(), 'hint' => 'Imported from legacy receipt listing', 'emphasis' => true],
+            ['label' => 'Total amount', 'value' => PropertyMoney::kes((float) $totalAmount), 'hint' => 'Filtered register total'],
+            ['label' => 'Linked to payment', 'value' => (string) $linkedCount, 'hint' => 'Matched in Collections → Payments'],
+            ['label' => 'Unmatched payment', 'value' => (string) $unmatchedPaymentCount, 'hint' => 'Receipt with no PAY- row yet — use Match filter'],
+            ['label' => 'Tenant missing', 'value' => (string) $missingTenantCount, 'hint' => 'Receipt kept — link when tenant is added'],
+        ];
+
+        $rows = $receipts->getCollection()->map(function (PmEzenReceiptRegister $receipt) {
+            $propertyUnit = trim(($receipt->property_code ?? '').' · '.($receipt->unit_label ?? ''), ' ·');
+            $linkLabel = match ($receipt->link_status) {
+                PmEzenReceiptRegister::LINK_PAYMENT => 'Linked',
+                PmEzenReceiptRegister::LINK_TENANT => 'Tenant only',
+                PmEzenReceiptRegister::LINK_NO_TENANT => 'Tenant missing',
+                default => 'Imported',
+            };
+            $paymentLink = $receipt->pm_payment_id
+                ? new HtmlString('<a href="'.route('property.revenue.payments', ['q' => 'PAY-'.$receipt->pm_payment_id], false).'" data-turbo-frame="property-main" class="text-indigo-600 hover:text-indigo-700 font-medium">PAY-'.$receipt->pm_payment_id.'</a>')
+                : '—';
+
+            return [
+                $receipt->ezen_receipt_no,
+                $receipt->ref_no !== null && $receipt->ref_no !== '' ? $receipt->ref_no : '—',
+                $propertyUnit !== '' ? $propertyUnit : '—',
+                $receipt->displayTenantName() !== '' ? $receipt->displayTenantName() : ($receipt->tnt_account ?? '—'),
+                $receipt->phone !== null && $receipt->phone !== '' ? $receipt->phone : '—',
+                $receipt->displayPaymentMethod(),
+                number_format((float) $receipt->amount, 2),
+                $receipt->banking_date?->format('Y-m-d') ?? '—',
+                $linkLabel,
+                $paymentLink,
+            ];
+        })->all();
+
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $propertyId = (int) $filters['property_id'];
+        $unitId = (int) $filters['unit_id'];
+        $tenantId = (int) $filters['tenant_id'];
+
+        return property_view('property.agent.revenue.receipts', [
+            'stats' => $stats,
+            'columns' => ['Receipt #', 'Ref. no', 'Property / unit', 'Tenant', 'Phone', 'Payment method', 'Amount', 'Banking date', 'Link status', 'Payment'],
+            'tableRows' => $rows,
+            'paginator' => $receipts,
+            'filters' => [
+                ...$filters,
+                'sort' => $sortBy,
+                'dir' => $dir,
+                'per_page' => (string) $perPage,
+            ],
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
+            'filterCascadeCatalog' => $cascade->fromPayments(),
+            'ezenReceiptRegister' => true,
+        ]);
+    }
+
+    private function paidInvoiceReceiptStubs(Request $request): View|StreamedResponse
     {
         $filters = [
             'q' => trim((string) $request->query('q', '')),
