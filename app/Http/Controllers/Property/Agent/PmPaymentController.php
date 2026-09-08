@@ -561,9 +561,9 @@ class PmPaymentController extends Controller
     private function resolvePaymentReceivedRange(Request $request): array
     {
         $allowed = [0, 1, 2, 3, 6, 12];
-        $rangeMonths = (int) $request->query('range_months', 1);
+        $rangeMonths = (int) $request->query('range_months', 0);
         if (! in_array($rangeMonths, $allowed, true)) {
-            $rangeMonths = 1;
+            $rangeMonths = 0;
         }
 
         $rangeEndYm = trim((string) $request->query('range_end', now()->format('Y-m')));
