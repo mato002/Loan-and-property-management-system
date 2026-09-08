@@ -16,21 +16,19 @@
 
 @php
     $rangeMonthOptions = [
+        ['value' => '0', 'label' => 'All dates'],
         ['value' => '1', 'label' => '1 month'],
         ['value' => '2', 'label' => '2 months'],
         ['value' => '3', 'label' => '3 months'],
         ['value' => '6', 'label' => '6 months'],
         ['value' => '12', 'label' => '12 months'],
     ];
-    if ($mode === 'payments') {
-        array_unshift($rangeMonthOptions, ['value' => '0', 'label' => 'All dates']);
-    }
 @endphp
 <x-property.filter-field
     type="select"
     name="range_months"
     label="Quick range" :options="$rangeMonthOptions"
-    :value="(string) ($filters['range_months'] ?? 1)"
+    :value="(string) ($filters['range_months'] ?? 0)"
 />
 
 <x-property.filter-field
