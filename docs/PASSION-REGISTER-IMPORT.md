@@ -352,7 +352,36 @@ php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_inv
 
 Safe to re-run: existing `[EZEN INV…]` rows are skipped.
 
-**Note:** PDF layout varies by page; the parser currently extracts ~2,600+ invoice rows from the attached export. Re-export or pass a fresh `.txt` if EZEN changes format. Spot-check tenant balances against EZEN after import.
+**Note:** Spot-check tenant balances against EZEN after import.
+
+---
+
+## Phase 8 — EZEN rent receipt listing (payments)
+
+Source: EZEN **Tenant/Resident Receipt Batch → Rent Receipt Listing** export PDF.
+
+Place file at `storage/passion-legacy/rent_receipt_listing.pdf` (or extracted `.txt`).
+
+Creates **Collections → Payments** for tenants matched by **TNT account** (`pm_tenants.account_number`). Allocates to **open invoices** oldest-first; remainder becomes tenant credit.
+
+```bash
+# Dry run — all receipts
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipt_listing.txt --dry-run --agent-user-id=2
+
+# Import all receipts
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipt_listing.txt --agent-user-id=2
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Parse + match only |
+| `--property=A00039A` | Limit to one property code |
+| `--limit=100` | Test first N parsed rows |
+| `--include-already-paid` | Import even when tenant has no open invoice balance |
+
+**Important:** If you already imported invoice **PAID** amounts in Phase 7, leave the default behaviour (skip tenants with no open balance) to avoid **double-counting** receipts. Use `--include-already-paid` only when invoices were imported without payments.
+
+Safe to re-run: skips existing `EZEN-RCxxxxx` or duplicate M-Pesa/bank refs.
 
 ---
 
