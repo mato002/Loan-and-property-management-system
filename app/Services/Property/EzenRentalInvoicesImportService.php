@@ -8,6 +8,7 @@ use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -203,77 +204,92 @@ final class EzenRentalInvoicesImportService
         $paid = round((float) ($row['paid'] ?? 0), 2);
 
         $paymentsPosted = 0;
-        DB::transaction(function () use (
-            $lease,
-            $unit,
-            $amount,
-            $issueDate,
-            $dueDate,
-            $billingPeriod,
-            $invoiceType,
-            $description,
-            $ezenNo,
-            $memo,
-            $paid,
-            $postGl,
-            $actor,
-            &$paymentsPosted,
-        ): void {
-            $invoiceNo = PmInvoice::nextInvoiceNumber();
-            $invoice = PmInvoice::query()->create([
-                'pm_lease_id' => $lease->id,
-                'property_unit_id' => $unit->id,
-                'pm_tenant_id' => $lease->pm_tenant_id,
-                'agent_user_id' => $unit->property?->agent_user_id,
-                'invoice_no' => $invoiceNo,
-                'issue_date' => $issueDate,
-                'due_date' => $dueDate,
-                'amount' => $amount,
-                'amount_paid' => 0,
-                'subtotal_amount' => $amount,
-                'total_amount' => $amount,
-                'status' => PmInvoice::STATUS_SENT,
-                'sent_at' => Carbon::parse($issueDate)->startOfDay(),
-                'invoice_type' => $invoiceType,
-                'billing_period' => $billingPeriod,
-                'description' => $description,
-                'carry_forward_origin' => [
-                    'source' => 'ezen_rental_invoice_import',
-                    'ezen_invoice_no' => $ezenNo,
-                    'memo' => $memo,
-                ],
-            ]);
-
-            if ($invoiceType === PmInvoice::TYPE_RENT) {
-                $invoice->ensureDefaultRentLineItem($amount);
-            }
-
-            if ($postGl) {
-                PropertyAccountingPostingService::postInvoiceIssued($invoice->fresh(), $actor);
-            }
-
-            if ($paid > 0.009) {
-                $this->payments->recordPaymentToInvoice(
-                    $invoice->fresh(),
-                    min($paid, $amount),
-                    'ezen_import',
-                    'EZEN-'.$ezenNo,
-                    Carbon::parse($issueDate)->startOfDay(),
-                    $actor,
-                    [
+        try {
+            DB::transaction(function () use (
+                $lease,
+                $unit,
+                $amount,
+                $issueDate,
+                $dueDate,
+                $billingPeriod,
+                $invoiceType,
+                $description,
+                $ezenNo,
+                $memo,
+                $paid,
+                $postGl,
+                $actor,
+                &$paymentsPosted,
+            ): void {
+                $invoiceNo = PmInvoice::nextInvoiceNumber();
+                $invoice = PmInvoice::query()->create([
+                    'pm_lease_id' => $lease->id,
+                    'property_unit_id' => $unit->id,
+                    'pm_tenant_id' => $lease->pm_tenant_id,
+                    'agent_user_id' => $unit->property?->agent_user_id,
+                    'invoice_no' => $invoiceNo,
+                    'issue_date' => $issueDate,
+                    'due_date' => $dueDate,
+                    'amount' => $amount,
+                    'amount_paid' => 0,
+                    'subtotal_amount' => $amount,
+                    'total_amount' => $amount,
+                    'status' => PmInvoice::STATUS_SENT,
+                    'sent_at' => Carbon::parse($issueDate)->startOfDay(),
+                    'invoice_type' => $invoiceType,
+                    'billing_period' => $billingPeriod,
+                    'description' => $description,
+                    'carry_forward_origin' => [
                         'source' => 'ezen_rental_invoice_import',
                         'ezen_invoice_no' => $ezenNo,
+                        'memo' => $memo,
                     ],
-                    $unit->property?->agent_user_id ? (int) $unit->property->agent_user_id : null,
-                    $postGl,
-                );
-                $paymentsPosted = 1;
+                ]);
+
+                if ($invoiceType === PmInvoice::TYPE_RENT) {
+                    $invoice->ensureDefaultRentLineItem($amount);
+                }
+
+                if ($postGl) {
+                    PropertyAccountingPostingService::postInvoiceIssued($invoice->fresh(), $actor);
+                }
+
+                if ($paid > 0.009) {
+                    $this->payments->recordPaymentToInvoice(
+                        $invoice->fresh(),
+                        min($paid, $amount),
+                        'ezen_import',
+                        'EZEN-'.$ezenNo,
+                        Carbon::parse($issueDate)->startOfDay(),
+                        $actor,
+                        [
+                            'source' => 'ezen_rental_invoice_import',
+                            'ezen_invoice_no' => $ezenNo,
+                        ],
+                        $unit->property?->agent_user_id ? (int) $unit->property->agent_user_id : null,
+                        $postGl,
+                    );
+                    $paymentsPosted = 1;
+                }
+
+                $invoice->refresh();
+                $invoice->syncAmountPaidFromAllocations();
+                $invoice->refreshComputedStatus();
+            });
+        } catch (QueryException $e) {
+            if ($this->isDuplicateImportException($e, $ezenNo)) {
+                return [
+                    'imported' => false,
+                    'skipped_existing' => true,
+                    'skipped_deposit' => false,
+                    'skipped_unmatched' => false,
+                    'payments_posted' => 0,
+                    'warnings' => $warnings,
+                ];
             }
 
-            $invoice->refresh();
-            $invoice->syncAmountPaidFromAllocations();
-            $invoice->refreshComputedStatus();
-        });
+            throw $e;
+        }
 
         return [
             'imported' => true,
@@ -287,15 +303,42 @@ final class EzenRentalInvoicesImportService
 
     private function findExistingInvoice(string $ezenNo): ?PmInvoice
     {
-        return PmInvoice::query()
+        $invoice = PmInvoice::query()
             ->withoutGlobalScopes()
             ->where(function ($query) use ($ezenNo): void {
-                $query->where('description', 'like', '[EZEN '.$ezenNo.']%');
+                $query->where('description', 'like', '[EZEN '.$ezenNo.']%')
+                    ->orWhere('description', 'like', '%[EZEN '.$ezenNo.']%');
                 if (Schema::hasColumn('pm_invoices', 'carry_forward_origin')) {
                     $query->orWhere('carry_forward_origin->ezen_invoice_no', $ezenNo);
                 }
             })
             ->first();
+
+        if ($invoice !== null) {
+            return $invoice;
+        }
+
+        return PmInvoice::query()
+            ->withoutGlobalScopes()
+            ->whereHas('allocations.payment', fn ($paymentQuery) => $paymentQuery
+                ->withoutGlobalScopes()
+                ->where('external_ref', 'EZEN-'.$ezenNo))
+            ->first();
+    }
+
+    private function isDuplicateImportException(QueryException $exception, string $ezenNo): bool
+    {
+        $message = $exception->getMessage();
+        if (! str_contains($message, '1062') && ! str_contains($message, 'Duplicate entry')) {
+            return false;
+        }
+
+        if ($this->findExistingInvoice($ezenNo) !== null) {
+            return true;
+        }
+
+        return str_contains($message, 'pm_invoices_invoice_no_unique')
+            || str_contains($message, 'external_ref');
     }
 
     private function resolveProperty(string $code, int $agentUserId): ?Property
