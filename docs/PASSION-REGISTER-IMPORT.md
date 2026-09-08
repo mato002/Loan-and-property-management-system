@@ -321,6 +321,47 @@ Expected: ~222 extras, ~213 leases updated, ~KES 49,654 applied. Unmatched OCCP 
 
 ---
 
+## Phase 7 — EZEN rental invoice history (full)
+
+Source: EZEN **Rental Invoicing → Billing Schedule / Print List** export PDF.
+
+Project files:
+- `rent_invoices_listing.pdf` (full portfolio, ~6k invoice lines)
+- Extracted text (auto-generated): `storage/rent_invoices_listing_extracted.txt`
+
+Creates tenant invoices in **Collections → Invoices** with EZEN reference `[EZEN INVxxxxx]`, and posts **PAID** amounts as `ezen_import` receipts. Deposits are skipped by default (use `property:import-ezen-rent-deposits` for deposit register).
+
+```bash
+# Extract text once (optional — command also reads PDF directly)
+php scripts/extract_passion_pdf.php rent_invoices_listing.pdf
+
+# Dry run — one property
+php artisan property:import-ezen-rental-invoices rent_invoices_listing.pdf \
+  --property=A00039A --dry-run --agent-user-id=2
+
+# Import Pazuri full history
+php artisan property:import-ezen-rental-invoices rent_invoices_listing.pdf \
+  --property=A00039A --agent-user-id=2
+
+# Import all parsed properties (omit --property)
+php artisan property:import-ezen-rental-invoices rent_invoices_listing.pdf \
+  --agent-user-id=2
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Parse + match only |
+| `--property=A00039A` | Limit to one property code |
+| `--limit=100` | Test first N parsed rows |
+| `--include-deposits` | Also import RENT/WATER/ELECTRICITY DEPOSIT rows |
+| `--post-gl` | Post trust GL on invoice issue (off by default for bulk history) |
+
+Safe to re-run: existing `[EZEN INV…]` rows are skipped.
+
+**Note:** PDF layout varies by page; the parser currently extracts ~2,600+ invoice rows from the attached export. Re-export or pass a fresh `.txt` if EZEN changes format. Spot-check tenant balances against EZEN after import.
+
+---
+
 ## UI columns (after import)
 
 The agent portal now shows legacy fields in:

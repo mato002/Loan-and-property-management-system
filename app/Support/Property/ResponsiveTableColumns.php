@@ -274,6 +274,27 @@ final class ResponsiveTableColumns
     }
 
     /** @return list<ColumnMeta> */
+    public static function tenantCompliance(): array
+    {
+        return self::build(
+            ['Tenant', 'Ac/No', 'National ID', 'Phone', 'Email', 'Emergency contact', 'Risk', 'Portal', 'Status', 'Gaps', 'Actions'],
+            [
+                0 => ['is_primary' => true, 'priority' => 1],
+                1 => ['priority' => 8, 'hide_on_mobile' => true],
+                2 => ['priority' => 4, 'mobile_label' => 'National ID'],
+                3 => ['priority' => 5, 'mobile_label' => 'Phone'],
+                4 => ['is_subtitle' => true, 'priority' => 2, 'hide_on_mobile' => true],
+                5 => ['priority' => 9, 'hide_on_mobile' => true],
+                6 => ['is_status' => true, 'priority' => 3],
+                7 => ['priority' => 10, 'hide_on_mobile' => true],
+                8 => ['is_status' => true, 'priority' => 6, 'hide_on_mobile' => true],
+                9 => ['priority' => 7, 'mobile_label' => 'Gaps'],
+                10 => ['is_action' => true],
+            ]
+        );
+    }
+
+    /** @return list<ColumnMeta> */
     public static function tenants(): array
     {
         return self::build(
@@ -426,6 +447,7 @@ final class ResponsiveTableColumns
             $routeName === 'property.properties.list' => self::propertyList(),
             $routeName === 'property.properties.units' => self::units(),
             $routeName === 'property.tenants.directory' => self::tenants(),
+            $routeName === 'property.tenants.profiles' => self::tenantCompliance(),
             $routeName === 'property.tenants.leases' => self::leases('leases'),
             $routeName === 'property.tenants.expiry' => self::leases('expiry'),
             $routeName === 'property.revenue.invoices' => self::invoices(),

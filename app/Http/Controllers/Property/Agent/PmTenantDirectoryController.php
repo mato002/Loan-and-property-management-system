@@ -36,6 +36,7 @@ use App\Services\Property\PropertyPaymentAllocationRepairService;
 use App\Services\Property\TenantCreditService;
 use App\Support\Property\PropertyEntityHub;
 use App\Support\Property\LeaseStandingCharges;
+use App\Support\Property\TenantCompliancePresentation;
 use App\Support\Property\TenantProfileStatus;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
 
@@ -52,9 +53,9 @@ class PmTenantDirectoryController extends Controller
         ));
     }
 
-    public function profiles(): RedirectResponse
+    public function profiles(): View
     {
-        return redirect()->route('property.tenants.directory');
+        return property_view('property.agent.tenants.profiles', $this->tenantCompliancePayload());
     }
 
     public function exportDirectoryCsv(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
@@ -406,6 +407,161 @@ class PmTenantDirectoryController extends Controller
             'columns' => ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk', 'Actions'],
             'tableRows' => $rows,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function tenantCompliancePayload(): array
+    {
+        $request = request();
+        $tenantQuery = $this->buildTenantComplianceQuery($request);
+        $stats = $this->tenantComplianceStatsFromQuery($request);
+        $perPage = $this->directoryPerPage($request);
+        $tenants = $tenantQuery
+            ->orderBy('name')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $rows = $tenants->getCollection()->map(function (PmTenant $t) {
+            $actions = new HtmlString(
+                '<div class="relative inline-block text-left">'.
+                '<details>'.
+                '<summary class="list-none cursor-pointer rounded border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50">Actions <span class="text-slate-400">▼</span></summary>'.
+                '<div class="absolute right-0 z-30 mt-1 w-40 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">'.
+                '<a href="'.route('property.tenants.show', $t).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">View</a>'.
+                '<a href="'.route('property.tenants.edit', $t).'" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50">Edit profile</a>'.
+                '</div>'.
+                '</details>'.
+                '</div>'
+            );
+
+            return [
+                new HtmlString('<a href="'.route('property.tenants.show', $t).'" class="font-medium text-slate-800 hover:text-indigo-700 hover:underline">'.$t->name.'</a>'),
+                $t->account_number ?? '—',
+                $t->national_id ?: '—',
+                $t->phone ?? '—',
+                $t->email ?? '—',
+                $t->emergency_contact ?: '—',
+                TenantCompliancePresentation::riskCell($t),
+                TenantCompliancePresentation::portalCell($t),
+                TenantProfileStatus::badge($t),
+                TenantCompliancePresentation::gapsCell($t),
+                $actions,
+            ];
+        })->all();
+
+        return [
+            'pageTitle' => 'Tenant compliance',
+            'pageSubtitle' => 'Profile completeness — ID, contacts, risk flags, and portal access.',
+            'stats' => $stats,
+            'filters' => [
+                'q' => (string) request()->string('q'),
+                'risk' => (string) request()->string('risk'),
+                'status' => (string) request()->string('status'),
+                'portal' => (string) request()->string('portal'),
+                'compliance' => (string) request()->string('compliance'),
+                'per_page' => $perPage,
+            ],
+            'tenantPager' => $tenants,
+            'columns' => ['Tenant', 'Ac/No', 'National ID', 'Phone', 'Email', 'Emergency contact', 'Risk', 'Portal', 'Status', 'Gaps', 'Actions'],
+            'tableRows' => $rows,
+        ];
+    }
+
+    private function buildTenantComplianceQuery(Request $request): Builder
+    {
+        $query = PmTenant::query();
+        TenantProfileStatus::addCounts($query);
+        $this->applyTenantDirectoryFilters($query, $request);
+        $this->applyTenantComplianceFilters($query, $request);
+
+        return $query;
+    }
+
+    /**
+     * @return array<int, array{label: string, value: string, hint: string}>
+     */
+    private function tenantComplianceStatsFromQuery(Request $request): array
+    {
+        $filteredTenants = PmTenant::query();
+        $this->applyTenantDirectoryFilters($filteredTenants, $request);
+        $this->applyTenantComplianceFilters($filteredTenants, $request);
+
+        $aggregates = (clone $filteredTenants)
+            ->selectRaw('COUNT(*) as total_count')
+            ->selectRaw("COALESCE(SUM(CASE WHEN TRIM(COALESCE(national_id, '')) = '' THEN 1 ELSE 0 END), 0) as missing_id_count")
+            ->selectRaw("COALESCE(SUM(CASE WHEN TRIM(COALESCE(phone, '')) = '' THEN 1 ELSE 0 END), 0) as missing_phone_count")
+            ->selectRaw("COALESCE(SUM(CASE WHEN pm_tenants.risk_level = 'high' THEN 1 ELSE 0 END), 0) as high_risk_count")
+            ->selectRaw('COALESCE(SUM(CASE WHEN pm_tenants.user_id IS NOT NULL THEN 1 ELSE 0 END), 0) as portal_count')
+            ->first();
+
+        $totalTenants = (int) ($aggregates->total_count ?? 0);
+        $missingId = (int) ($aggregates->missing_id_count ?? 0);
+        $missingPhone = (int) ($aggregates->missing_phone_count ?? 0);
+        $highRisk = (int) ($aggregates->high_risk_count ?? 0);
+        $withPortal = (int) ($aggregates->portal_count ?? 0);
+
+        return [
+            ['label' => 'Profiles', 'value' => (string) $totalTenants, 'hint' => 'Matching filters'],
+            ['label' => 'Missing ID', 'value' => (string) $missingId, 'hint' => 'Needs KYC update'],
+            ['label' => 'Missing phone', 'value' => (string) $missingPhone, 'hint' => 'Contact gap'],
+            ['label' => 'High risk', 'value' => (string) $highRisk, 'hint' => 'Manual flag'],
+            ['label' => 'Portal login', 'value' => (string) $withPortal, 'hint' => 'With access'],
+        ];
+    }
+
+    private function applyTenantComplianceFilters(Builder $query, Request $request): void
+    {
+        $compliance = trim((string) $request->string('compliance'));
+        if ($compliance === '') {
+            return;
+        }
+
+        match ($compliance) {
+            'missing_id' => $query->where(function (Builder $builder): void {
+                $builder->whereNull('national_id')->orWhere('national_id', '');
+            }),
+            'missing_phone' => $query->where(function (Builder $builder): void {
+                $builder->whereNull('phone')->orWhere('phone', '');
+            }),
+            'missing_email' => $query->where(function (Builder $builder): void {
+                $builder->whereNull('email')->orWhere('email', '');
+            }),
+            'missing_emergency' => $query->where(function (Builder $builder): void {
+                $builder->whereNull('emergency_contact')->orWhere('emergency_contact', '');
+            }),
+            'high_risk' => $query->where('risk_level', 'high'),
+            'no_portal' => $query->whereNull('user_id'),
+            'complete' => $query
+                ->whereNotNull('national_id')
+                ->where('national_id', '!=', '')
+                ->whereNotNull('phone')
+                ->where('phone', '!=', '')
+                ->whereNotNull('email')
+                ->where('email', '!=', '')
+                ->whereNotNull('emergency_contact')
+                ->where('emergency_contact', '!=', '')
+                ->where('risk_level', '!=', 'high'),
+            'any' => $query->where(function (Builder $builder): void {
+                $builder
+                    ->where(function (Builder $inner): void {
+                        $inner->whereNull('national_id')->orWhere('national_id', '');
+                    })
+                    ->orWhere(function (Builder $inner): void {
+                        $inner->whereNull('phone')->orWhere('phone', '');
+                    })
+                    ->orWhere(function (Builder $inner): void {
+                        $inner->whereNull('email')->orWhere('email', '');
+                    })
+                    ->orWhere(function (Builder $inner): void {
+                        $inner->whereNull('emergency_contact')->orWhere('emergency_contact', '');
+                    })
+                    ->orWhere('risk_level', 'high')
+                    ->orWhereNull('user_id');
+            }),
+            default => null,
+        };
     }
 
     /**
