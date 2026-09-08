@@ -159,7 +159,7 @@ final class EzenRentalInvoicesImportService
         $propertyCode = strtoupper(trim((string) ($row['property_code'] ?? '')));
         $property = $this->resolveProperty($propertyCode, $agentUserId);
         if ($property === null) {
-            throw new RuntimeException('Property '.$propertyCode.' not found.');
+            throw new RuntimeException($this->propertyResolutionError($propertyCode, $agentUserId));
         }
 
         $units = $unitsByProperty[$propertyCode] ?? collect();
@@ -312,6 +312,29 @@ final class EzenRentalInvoicesImportService
 
             return (int) $property->agent_user_id === $agentUserId;
         });
+    }
+
+    private function propertyResolutionError(string $code, int $agentUserId): string
+    {
+        $matches = $this->codeResolver->resolveMany($code);
+        if ($matches->isEmpty()) {
+            return 'Property '.$code.' not found in DB — run Phase 1 property register import so properties.code matches the EZEN code.';
+        }
+
+        if (! Schema::hasColumn('properties', 'agent_user_id')) {
+            return 'Property '.$code.' not found.';
+        }
+
+        $owners = $matches
+            ->pluck('agent_user_id')
+            ->filter(static fn ($id): bool => $id !== null && (int) $id > 0)
+            ->unique()
+            ->values()
+            ->implode(', ');
+
+        return 'Property '.$code.' exists but belongs to agent user(s) '
+            .($owners !== '' ? $owners : 'unknown')
+            .', not #'.$agentUserId.' — use the correct --agent-user-id.';
     }
 
     /**
