@@ -2,6 +2,7 @@
 
 namespace App\Support\Property;
 
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -224,9 +225,12 @@ final class PropertyWorkspaceTabs
      *     active: list<string>,
      *     query?: array<string, mixed>|null,
      *     query_exclude?: array<string, mixed>|null,
+     *     requires_any_pm_permission?: list<string>,
+     *     hub_title?: string,
+     *     hub_description?: string,
      * }>
      */
-    public static function tabsFor(string $workspaceKey): array
+    public static function tabsFor(string $workspaceKey, ?User $user = null): array
     {
         return match ($workspaceKey) {
             'portfolio' => [
@@ -328,21 +332,213 @@ final class PropertyWorkspaceTabs
                 ['key' => 'controls', 'label' => 'Controls', 'route' => 'property.accounting.audit_trail', 'active' => ['property.accounting.audit_trail', 'property.accounting.audit_trail.*', 'property.accounting.controls.*']],
                 ['key' => 'setup', 'label' => 'Setup', 'route' => 'property.accounting.settings.account_mapping', 'active' => ['property.accounting.settings.*', 'property.accounting.payroll.settings', 'property.accounting.payroll.settings.*']],
             ],
-            'settings' => [
-                ['key' => 'hub', 'label' => 'Overview', 'route' => 'property.settings.index', 'active' => ['property.settings.index']],
-                ['key' => 'roles', 'label' => 'Users & roles', 'route' => 'property.settings.roles', 'active' => ['property.settings.roles']],
-                ['key' => 'permissions', 'label' => 'Permissions', 'route' => 'property.settings.permissions', 'active' => ['property.settings.permissions']],
-                ['key' => 'commission', 'label' => 'Commission', 'route' => 'property.settings.commission', 'active' => ['property.settings.commission', 'property.settings.commission.*']],
-                ['key' => 'payments', 'label' => 'Payment config', 'route' => 'property.settings.payments', 'active' => ['property.settings.payments', 'property.settings.payments.*']],
-                ['key' => 'branding', 'label' => 'Branding', 'route' => 'property.settings.branding', 'active' => ['property.settings.branding', 'property.settings.branding.*']],
-                ['key' => 'rules', 'label' => 'Automation rules', 'route' => 'property.settings.rules', 'active' => ['property.settings.rules', 'property.settings.rules.*']],
-                ['key' => 'deposits', 'label' => 'Deposit rules', 'route' => 'property.settings.deposits', 'active' => ['property.settings.deposits', 'property.settings.deposits.*']],
-                ['key' => 'expenses', 'label' => 'Expense rules', 'route' => 'property.settings.expenses', 'active' => ['property.settings.expenses', 'property.settings.expenses.*']],
-                ['key' => 'forwarder', 'label' => 'SMS forwarder', 'route' => 'property.settings.forwarder', 'active' => ['property.settings.forwarder', 'property.settings.forwarder.*']],
-                ['key' => 'system_setup', 'label' => 'System setup', 'route' => 'property.settings.system_setup', 'active' => ['property.settings.system_setup', 'property.settings.system_setup.*']],
-            ],
+            'settings' => self::filterTabsForUser(self::settingsTabsCatalog(), $user),
             default => [],
         };
+    }
+
+    /**
+     * Sidebar flyout items — same destinations as workspace tabs.
+     *
+     * @return list<array{label: string, route: string, active: list<string>, route_params?: array<string, mixed>}>
+     */
+    public static function flyoutFor(string $workspaceKey, ?User $user = null): array
+    {
+        $items = [];
+        foreach (self::tabsFor($workspaceKey, $user) as $tab) {
+            $item = [
+                'label' => (string) ($tab['label'] ?? ''),
+                'route' => (string) ($tab['route'] ?? ''),
+                'active' => $tab['active'] ?? [],
+            ];
+            if (! empty($tab['route_params']) && is_array($tab['route_params'])) {
+                $item['route_params'] = $tab['route_params'];
+            }
+            $items[] = $item;
+        }
+
+        return $items;
+    }
+
+    /**
+     * Settings overview cards — derived from the same tab catalog.
+     *
+     * @return list<array{route: string, title: string, description: string}>
+     */
+    public static function settingsHubItems(?User $user = null): array
+    {
+        $items = [];
+        foreach (self::tabsFor('settings', $user) as $tab) {
+            if (($tab['key'] ?? '') === 'hub') {
+                continue;
+            }
+            $description = trim((string) ($tab['hub_description'] ?? ''));
+            if ($description === '') {
+                continue;
+            }
+            $items[] = [
+                'route' => (string) ($tab['route'] ?? ''),
+                'title' => (string) ($tab['hub_title'] ?? $tab['label'] ?? ''),
+                'description' => $description,
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * True when the workspace tab strip already renders Settings destinations.
+     * Page-level copies (subnav, hub_nav, field_nav) must not duplicate that row.
+     */
+    public static function settingsPageNavIsRedundant(?string $routeName = null): bool
+    {
+        $routeName = trim((string) ($routeName ?? Route::currentRouteName() ?? ''));
+
+        return PropertyNavMode::showShellWorkspaceTabs()
+            && self::shouldShow($routeName)
+            && self::resolveWorkspaceKey($routeName) === 'settings';
+    }
+
+    /**
+     * Canonical Settings destinations. Workspace tabs, sidebar flyout, hub cards,
+     * and classic-mode page subnav all read this list.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function settingsTabsCatalog(): array
+    {
+        return [
+            ['key' => 'hub', 'label' => 'Overview', 'route' => 'property.settings.index', 'active' => ['property.settings.index']],
+            [
+                'key' => 'roles',
+                'label' => 'Users & roles',
+                'route' => 'property.settings.roles',
+                'active' => ['property.settings.roles', 'property.settings.team_users.*'],
+                'requires_any_pm_permission' => ['team.users.manage'],
+                'hub_title' => 'Users & roles',
+                'hub_description' => 'Add staff logins and review assignments.',
+            ],
+            [
+                'key' => 'permissions',
+                'label' => 'Permissions',
+                'route' => 'property.settings.permissions',
+                'active' => ['property.settings.permissions'],
+                'requires_any_pm_permission' => ['settings.access.manage'],
+                'hub_title' => 'Permissions',
+                'hub_description' => 'View all permission keys and usage.',
+            ],
+            [
+                'key' => 'commission',
+                'label' => 'Commission',
+                'route' => 'property.settings.commission',
+                'active' => ['property.settings.commission', 'property.settings.commission.*'],
+                'hub_title' => 'Commission settings',
+                'hub_description' => 'Plans and overrides.',
+            ],
+            [
+                'key' => 'payments',
+                'label' => 'Payment config',
+                'route' => 'property.settings.payments',
+                'active' => ['property.settings.payments', 'property.settings.payments.*'],
+                'hub_title' => 'Payment config (M-Pesa)',
+                'hub_description' => 'Paybill, STK, settlement.',
+            ],
+            [
+                'key' => 'bank',
+                'label' => 'Bank sync',
+                'route' => 'property.settings.bank',
+                'active' => ['property.settings.bank', 'property.settings.bank.*'],
+                'hub_title' => 'Collection bank sync',
+                'hub_description' => 'Choose your bank (Equity, KCB, Co-op, I&M) and configure paybill API credentials.',
+            ],
+            [
+                'key' => 'branding',
+                'label' => 'Branding',
+                'route' => 'property.settings.branding',
+                'active' => ['property.settings.branding', 'property.settings.branding.*'],
+                'hub_title' => 'Branding',
+                'hub_description' => 'Company name and logo used in printable docs.',
+            ],
+            [
+                'key' => 'rules',
+                'label' => 'Automation rules',
+                'route' => 'property.settings.rules',
+                'active' => ['property.settings.rules', 'property.settings.rules.*'],
+                'hub_title' => 'Automation rules',
+                'hub_description' => 'Penalties, reminders, guardrails.',
+            ],
+            [
+                'key' => 'deposits',
+                'label' => 'Deposit rules',
+                'route' => 'property.settings.deposits',
+                'active' => ['property.settings.deposits', 'property.settings.deposits.*'],
+                'hub_title' => 'Deposit rules',
+                'hub_description' => 'Deposit types, required flags, formulas, ledger mapping.',
+            ],
+            [
+                'key' => 'expenses',
+                'label' => 'Expense rules',
+                'route' => 'property.settings.expenses',
+                'active' => ['property.settings.expenses', 'property.settings.expenses.*'],
+                'hub_title' => 'Expense charge rules',
+                'hub_description' => 'Charge lines, required flags, formulas, and ledger mapping.',
+            ],
+            [
+                'key' => 'forwarder',
+                'label' => 'SMS forwarder',
+                'route' => 'property.settings.forwarder',
+                'active' => ['property.settings.forwarder', 'property.settings.forwarder.*'],
+                'hub_title' => 'SMS forwarder',
+                'hub_description' => 'Generate the personal token your office phone uses to forward M-Pesa SMS so payments are tagged to you.',
+            ],
+            [
+                'key' => 'system_setup',
+                'label' => 'System setup',
+                'route' => 'property.settings.system_setup',
+                'active' => ['property.settings.system_setup', 'property.settings.system_setup.*'],
+                'requires_any_pm_permission' => ['settings.manage'],
+                'hub_title' => 'System setup',
+                'hub_description' => 'Adjust forms, workflows, and templates.',
+            ],
+            [
+                'key' => 'activity',
+                'label' => 'Activity log',
+                'route' => 'property.settings.activity_log',
+                'active' => ['property.settings.activity_log'],
+                'requires_any_pm_permission' => ['settings.manage', 'settings.access.manage'],
+                'hub_title' => 'Activity log',
+                'hub_description' => 'Who changed settings, leases, invoices, and other system records.',
+            ],
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $tabs
+     * @return list<array<string, mixed>>
+     */
+    private static function filterTabsForUser(array $tabs, ?User $user = null): array
+    {
+        $user ??= auth()->user();
+
+        return array_values(array_filter(
+            $tabs,
+            static function (array $tab) use ($user): bool {
+                $required = $tab['requires_any_pm_permission'] ?? null;
+                if (! is_array($required) || $required === []) {
+                    return true;
+                }
+                if (! $user instanceof User) {
+                    return false;
+                }
+                foreach ($required as $permission) {
+                    if ($user->hasPmPermission((string) $permission)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        ));
     }
 
     /**
@@ -350,9 +546,9 @@ final class PropertyWorkspaceTabs
      *
      * @return list<array{label: string, tabs: list<array<string, mixed>>}>
      */
-    public static function subTabGroupsFor(string $workspaceKey): array
+    public static function subTabGroupsFor(string $workspaceKey, ?User $user = null): array
     {
-        return match ($workspaceKey) {
+        $groups = match ($workspaceKey) {
             'collections' => self::collectionsSubTabGroups(),
             'tenants' => self::tenantsSubTabGroups(),
             'settings' => self::settingsSubTabGroups(),
@@ -360,6 +556,30 @@ final class PropertyWorkspaceTabs
             'reports' => self::reportsSubTabGroups(),
             default => [],
         };
+
+        if ($workspaceKey !== 'settings') {
+            return $groups;
+        }
+
+        return array_values(array_map(static function (array $group) use ($user): array {
+            $group['tabs'] = self::filterTabsForUser($group['tabs'] ?? [], $user);
+
+            return $group;
+        }, $groups));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function settingsSubNavGroupTabs(string $label, ?User $user = null): array
+    {
+        foreach (self::subTabGroupsFor('settings', $user) as $group) {
+            if (($group['label'] ?? '') === $label) {
+                return $group['tabs'] ?? [];
+            }
+        }
+
+        return [];
     }
 
     /**
@@ -404,7 +624,13 @@ final class PropertyWorkspaceTabs
                     ['key' => 'forms', 'label' => 'Form switches', 'route' => 'property.settings.system_setup.forms', 'active' => ['property.settings.system_setup.forms', 'property.settings.system_setup.forms.*']],
                     ['key' => 'workflows', 'label' => 'Workflows', 'route' => 'property.settings.system_setup.workflows', 'active' => ['property.settings.system_setup.workflows', 'property.settings.system_setup.workflows.*']],
                     ['key' => 'templates', 'label' => 'Templates', 'route' => 'property.settings.system_setup.templates', 'active' => ['property.settings.system_setup.templates', 'property.settings.system_setup.templates.*']],
-                    ['key' => 'access', 'label' => 'Access control', 'route' => 'property.settings.system_setup.access', 'active' => ['property.settings.system_setup.access', 'property.settings.system_setup.access.*']],
+                    [
+                        'key' => 'access',
+                        'label' => 'Access control',
+                        'route' => 'property.settings.system_setup.access',
+                        'active' => ['property.settings.system_setup.access', 'property.settings.system_setup.access.*'],
+                        'requires_any_pm_permission' => ['settings.access.manage'],
+                    ],
                 ],
             ],
             [
@@ -412,12 +638,17 @@ final class PropertyWorkspaceTabs
                 'tabs' => [
                     ['key' => 'property_fields', 'label' => 'Property', 'route' => 'property.settings.system_setup.property_onboarding_fields', 'active' => ['property.settings.system_setup.property_onboarding_fields', 'property.settings.system_setup.property_onboarding_fields.*']],
                     ['key' => 'unit_fields', 'label' => 'Units', 'route' => 'property.settings.system_setup.unit_fields', 'active' => ['property.settings.system_setup.unit_fields', 'property.settings.system_setup.unit_fields.*']],
+                    ['key' => 'amenity_fields', 'label' => 'Amenities', 'route' => 'property.settings.system_setup.amenity_fields', 'active' => ['property.settings.system_setup.amenity_fields', 'property.settings.system_setup.amenity_fields.*']],
+                    ['key' => 'landlord_fields', 'label' => 'Landlords', 'route' => 'property.settings.system_setup.landlord_fields', 'active' => ['property.settings.system_setup.landlord_fields', 'property.settings.system_setup.landlord_fields.*']],
+                    ['key' => 'lead_fields', 'label' => 'Leads', 'route' => 'property.settings.system_setup.lead_fields', 'active' => ['property.settings.system_setup.lead_fields', 'property.settings.system_setup.lead_fields.*']],
+                    ['key' => 'rental_application_fields', 'label' => 'Applications', 'route' => 'property.settings.system_setup.rental_application_fields', 'active' => ['property.settings.system_setup.rental_application_fields', 'property.settings.system_setup.rental_application_fields.*']],
                     ['key' => 'tenant_fields', 'label' => 'Tenants', 'route' => 'property.settings.system_setup.tenant_fields', 'active' => ['property.settings.system_setup.tenant_fields', 'property.settings.system_setup.tenant_fields.*']],
                     ['key' => 'lease_fields', 'label' => 'Leases', 'route' => 'property.settings.system_setup.lease_fields', 'active' => ['property.settings.system_setup.lease_fields', 'property.settings.system_setup.lease_fields.*']],
-                    ['key' => 'landlord_fields', 'label' => 'Landlords', 'route' => 'property.settings.system_setup.landlord_fields', 'active' => ['property.settings.system_setup.landlord_fields', 'property.settings.system_setup.landlord_fields.*']],
-                    ['key' => 'invoice_fields', 'label' => 'Invoices', 'route' => 'property.settings.system_setup.invoice_fields', 'active' => ['property.settings.system_setup.invoice_fields', 'property.settings.system_setup.invoice_fields.*']],
                     ['key' => 'maintenance_fields', 'label' => 'Maintenance', 'route' => 'property.settings.system_setup.maintenance_fields', 'active' => ['property.settings.system_setup.maintenance_fields', 'property.settings.system_setup.maintenance_fields.*']],
                     ['key' => 'vendor_fields', 'label' => 'Vendors', 'route' => 'property.settings.system_setup.vendor_fields', 'active' => ['property.settings.system_setup.vendor_fields', 'property.settings.system_setup.vendor_fields.*']],
+                    ['key' => 'invoice_fields', 'label' => 'Invoices', 'route' => 'property.settings.system_setup.invoice_fields', 'active' => ['property.settings.system_setup.invoice_fields', 'property.settings.system_setup.invoice_fields.*']],
+                    ['key' => 'tenant_notice_fields', 'label' => 'Notices', 'route' => 'property.settings.system_setup.tenant_notice_fields', 'active' => ['property.settings.system_setup.tenant_notice_fields', 'property.settings.system_setup.tenant_notice_fields.*']],
+                    ['key' => 'movement_fields', 'label' => 'Movements', 'route' => 'property.settings.system_setup.movement_fields', 'active' => ['property.settings.system_setup.movement_fields', 'property.settings.system_setup.movement_fields.*']],
                 ],
             ],
         ];

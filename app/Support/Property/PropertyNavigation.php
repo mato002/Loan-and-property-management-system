@@ -117,6 +117,10 @@ final class PropertyNavigation
                 unset($workspace['route_query']);
             }
 
+            if ($key === 'settings') {
+                $workspace['flyout'] = PropertyWorkspaceTabs::flyoutFor('settings');
+            }
+
             return $workspace;
         }, $workspaces);
     }
@@ -351,16 +355,7 @@ final class PropertyNavigation
                     'property.settings.*',
                 ],
                 'requires_pm_permission' => null,
-                'flyout' => [
-                    ['label' => 'Settings hub', 'route' => 'property.settings.index', 'active' => ['property.settings.index']],
-                    ['label' => 'Users & roles', 'route' => 'property.settings.roles', 'active' => ['property.settings.roles']],
-                    ['label' => 'Permissions', 'route' => 'property.settings.permissions', 'active' => ['property.settings.permissions']],
-                    ['label' => 'Commission', 'route' => 'property.settings.commission', 'active' => ['property.settings.commission', 'property.settings.commission.*']],
-                    ['label' => 'Payment config', 'route' => 'property.settings.payments', 'active' => ['property.settings.payments', 'property.settings.payments.*']],
-                    ['label' => 'Branding', 'route' => 'property.settings.branding', 'active' => ['property.settings.branding', 'property.settings.branding.*']],
-                    ['label' => 'Automation rules', 'route' => 'property.settings.rules', 'active' => ['property.settings.rules', 'property.settings.rules.*']],
-                    ['label' => 'System setup', 'route' => 'property.settings.system_setup', 'active' => ['property.settings.system_setup', 'property.settings.system_setup.*']],
-                ],
+                'flyout' => [],
             ],
             'vendors' => [
                 'key' => 'vendors',
