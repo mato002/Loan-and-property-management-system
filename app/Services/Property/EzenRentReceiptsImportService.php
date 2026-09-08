@@ -245,29 +245,45 @@ final class EzenRentReceiptsImportService
 
     private function resolveTenant(string $account, int $agentUserId): ?PmTenant
     {
-        $account = strtoupper(trim($account));
-        if ($account === '') {
-            return null;
-        }
+        foreach ($this->tntAccountCandidates($account) as $candidate) {
+            $matches = PmTenant::query()
+                ->withoutGlobalScopes()
+                ->where('account_number', $candidate)
+                ->orderByDesc('id')
+                ->get();
 
-        $matches = PmTenant::query()
-            ->withoutGlobalScopes()
-            ->where('account_number', $account)
-            ->orderByDesc('id')
-            ->get();
-
-        if ($matches->isEmpty()) {
-            return null;
-        }
-
-        if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
-            $scoped = $matches->first(fn (PmTenant $tenant) => (int) $tenant->agent_user_id === $agentUserId);
-            if ($scoped) {
-                return $scoped;
+            if ($matches->isEmpty()) {
+                continue;
             }
+
+            if (Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+                $scoped = $matches->first(fn (PmTenant $tenant) => (int) $tenant->agent_user_id === $agentUserId);
+                if ($scoped) {
+                    return $scoped;
+                }
+            }
+
+            return $matches->first();
         }
 
-        return $matches->first();
+        return null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function tntAccountCandidates(string $account): array
+    {
+        $account = strtoupper(trim($account));
+        $candidates = [$account];
+        if (preg_match('/^TNT0*(\d+)$/', $account, $match) === 1) {
+            $number = (int) $match[1];
+            $candidates[] = 'TNT'.str_pad((string) $number, 5, '0', STR_PAD_LEFT);
+            $candidates[] = 'TNT'.str_pad((string) $number, 6, '0', STR_PAD_LEFT);
+            $candidates[] = 'TNT'.$number;
+        }
+
+        return array_values(array_unique($candidates));
     }
 
     private function channelFromReceiptedTo(string $receiptedTo): string
@@ -275,6 +291,9 @@ final class EzenRentReceiptsImportService
         $upper = strtoupper(trim($receiptedTo));
         if (str_contains($upper, 'M-PESA') || str_contains($upper, 'MPESA')) {
             return 'mpesa';
+        }
+        if (str_contains($upper, 'CASH')) {
+            return 'cash';
         }
         if (str_contains($upper, 'BANK') || str_contains($upper, 'CO-OPERATIVE') || str_contains($upper, 'EQUITY') || str_contains($upper, 'KCB')) {
             return 'bank_transfer';

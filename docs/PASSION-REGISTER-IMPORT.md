@@ -360,16 +360,16 @@ Safe to re-run: existing `[EZEN INV…]` rows are skipped.
 
 Source: EZEN **Tenant/Resident Receipt Batch → Rent Receipt Listing** export PDF.
 
-Place file at `storage/passion-legacy/rent_receipt_listing.pdf` (or extracted `.txt`).
+Place file at `storage/passion-legacy/rent_receipts_listing.pdf` (or extracted `.txt`).
 
 Creates **Collections → Payments** for tenants matched by **TNT account** (`pm_tenants.account_number`). Allocates to **open invoices** oldest-first; remainder becomes tenant credit.
 
 ```bash
 # Dry run — all receipts
-php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipt_listing.txt --dry-run --agent-user-id=2
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.txt --dry-run --agent-user-id=2
 
 # Import all receipts
-php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipt_listing.txt --agent-user-id=2
+php artisan property:import-ezen-rent-receipts storage/passion-legacy/rent_receipts_listing.txt --agent-user-id=2
 ```
 
 | Flag | Purpose |
