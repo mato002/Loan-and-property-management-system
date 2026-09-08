@@ -325,27 +325,21 @@ Expected: ~222 extras, ~213 leases updated, ~KES 49,654 applied. Unmatched OCCP 
 
 Source: EZEN **Rental Invoicing → Billing Schedule / Print List** export PDF.
 
-Project files:
-- `rent_invoices_listing.pdf` (full portfolio, ~6k invoice lines)
-- Extracted text (auto-generated): `storage/rent_invoices_listing_extracted.txt`
+Project files (committed in repo):
+- `storage/passion-legacy/rent_invoices_listing.pdf` (full portfolio, ~6k invoice lines)
+- `storage/passion-legacy/rent_invoices_listing.txt` (extracted text — faster on servers without PDF tools)
 
 Creates tenant invoices in **Collections → Invoices** with EZEN reference `[EZEN INVxxxxx]`, and posts **PAID** amounts as `ezen_import` receipts. Deposits are skipped by default (use `property:import-ezen-rent-deposits` for deposit register).
 
 ```bash
-# Extract text once (optional — command also reads PDF directly)
-php scripts/extract_passion_pdf.php rent_invoices_listing.pdf
-
-# Dry run — one property
-php artisan property:import-ezen-rental-invoices rent_invoices_listing.pdf \
-  --property=A00039A --dry-run --agent-user-id=2
+# Dry run — one property (use .txt on server if PDF extract is slow)
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.pdf --property=A00039A --dry-run --agent-user-id=2
 
 # Import Pazuri full history
-php artisan property:import-ezen-rental-invoices rent_invoices_listing.pdf \
-  --property=A00039A --agent-user-id=2
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.pdf --property=A00039A --agent-user-id=2
 
 # Import all parsed properties (omit --property)
-php artisan property:import-ezen-rental-invoices rent_invoices_listing.pdf \
-  --agent-user-id=2
+php artisan property:import-ezen-rental-invoices storage/passion-legacy/rent_invoices_listing.pdf --agent-user-id=2
 ```
 
 | Flag | Purpose |
