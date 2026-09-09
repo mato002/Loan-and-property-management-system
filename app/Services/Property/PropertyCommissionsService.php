@@ -272,4 +272,33 @@ final class PropertyCommissionsService
             ['label' => 'Total commission', 'value' => PropertyMoney::kes($commission + $vat), 'hint' => $accrued.' still accrued'],
         ];
     }
+
+    /**
+     * @param  list<array<string, mixed>>  $rows
+     * @return \Generator<int, list<string>>
+     */
+    public function exportRows(array $rows): \Generator
+    {
+        foreach ($rows as $row) {
+            $code = trim((string) ($row['property_code'] ?? ''));
+            $property = ($code !== '' ? '['.$code.'] ' : '').(string) ($row['property_name'] ?? '');
+
+            yield [
+                $property,
+                (string) ($row['city'] ?? ''),
+                (string) ($row['landlord_name'] ?? ''),
+                (string) ($row['on'] ?? ''),
+                (string) ($row['date_prepared'] ?? ''),
+                (string) ($row['period'] ?? ''),
+                number_format((float) ($row['collected'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['rate_pct'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['commission_amount'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['commission_vat'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['total_commission'] ?? 0), 2, '.', ''),
+                (string) ($row['invoice_no'] ?? ''),
+                (string) ($row['invoice_date'] ?? ''),
+                ucfirst((string) ($row['status'] ?? '')),
+            ];
+        }
+    }
 }

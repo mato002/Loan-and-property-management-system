@@ -4,7 +4,7 @@
 <x-property.workspace
     :legacy-toolbar="false"
     title="Vendor directory"
-    subtitle="Active suppliers for maintenance and projects."
+    subtitle="Maintenance contractors for jobs and quotes. EZEN supplier bills (TOSHIA, ZURI WORLD, garbage collection) are on Accounting → Bills listing."
     :show-search="false"
     back-route="property.vendors.index"
     :stats="$stats"
@@ -24,6 +24,15 @@
             <i class="fa-solid fa-user-tie" aria-hidden="true"></i>
             <span>Add vendor</span>
         </button>
+        <a href="{{ route('property.accounting.payables.accounts_payable') }}" data-turbo-frame="property-main" class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">EZEN bills listing</a>
+    </x-slot>
+
+    <x-slot name="secondary">
+        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950 max-w-3xl">
+            This directory is for <strong>maintenance vendors</strong> (plumbing, jobs, quotes). The EZEN garbage-collection suppliers and their invoices live under
+            <a href="{{ route('property.accounting.payables.accounts_payable') }}" class="font-semibold underline">Accounting → Payables → Bills listing</a>.
+            Importing bills also adds those supplier names here so you can assign them to jobs.
+        </div>
     </x-slot>
 
     <x-slot name="modals">

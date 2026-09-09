@@ -10,6 +10,7 @@
         <a href="{{ route('property.accounting.entries') }}" class="inline-flex justify-center items-center rounded-xl bg-blue-600 px-4 py-2.5 min-h-[44px] text-sm font-medium text-white hover:bg-blue-700 w-full sm:w-auto">+ New Journal Entry</a>
         <a href="{{ route('property.revenue.payments') }}" class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2.5 min-h-[44px] text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto">+ Record Payment</a>
         <a href="{{ route('property.accounting.payables.landlord_payouts') }}" class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2.5 min-h-[44px] text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto">+ Create Landlord Payout</a>
+        <a href="{{ route('property.accounting.payables.property_commissions') }}" class="inline-flex justify-center items-center rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 min-h-[44px] text-sm font-medium text-amber-900 hover:bg-amber-100 w-full sm:w-auto">Property commissions</a>
         <a href="{{ route('property.accounting.payroll') }}" class="inline-flex justify-center items-center rounded-xl border border-slate-200 dark:border-slate-600 px-4 py-2.5 min-h-[44px] text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 w-full sm:w-auto">+ Run Payroll</a>
     </x-slot>
 

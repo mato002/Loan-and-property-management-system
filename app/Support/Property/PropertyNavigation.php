@@ -339,6 +339,9 @@ final class PropertyNavigation
                 'flyout' => [
                     ['label' => 'Dashboard', 'route' => 'property.accounting.index', 'active' => ['property.accounting.index']],
                     ['label' => 'Landlord payment & fees', 'route' => 'property.accounting.payables.landlord_payment_fees', 'active' => ['property.accounting.payables.landlord_payment_fees', 'property.accounting.payables.landlord_payment_fees.*']],
+                    ['label' => 'Property commissions', 'route' => 'property.accounting.payables.property_commissions', 'active' => ['property.accounting.payables.property_commissions']],
+                    ['label' => 'Payment vouchers', 'route' => 'property.accounting.payables.payment_vouchers', 'active' => ['property.accounting.payables.payment_vouchers']],
+                    ['label' => 'Bills listing', 'route' => 'property.accounting.payables.accounts_payable', 'active' => ['property.accounting.payables.accounts_payable']],
                     ['label' => 'Journal entries', 'route' => 'property.accounting.entries', 'active' => ['property.accounting.entries', 'property.accounting.entries.*']],
                     ['label' => 'Chart of accounts', 'route' => 'property.accounting.gl.chart_accounts', 'active' => ['property.accounting.gl.chart_accounts', 'property.accounting.gl.chart_accounts.*']],
                     ['label' => 'Payroll', 'route' => 'property.accounting.payroll', 'active' => ['property.accounting.payroll', 'property.accounting.payroll.*']],

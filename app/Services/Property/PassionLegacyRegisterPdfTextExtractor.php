@@ -102,6 +102,8 @@ PY;
             '/ACTIVE TENANT & LEASES/i',
             '/\bTNT\d{4,}\b/',
             '/UNIT NO PROPERTY TENANT/i',
+            '/BILLS LISTING/i',
+            '/PAYMENT VOUCHER LISTING/i',
         ];
 
         foreach ($markers as $pattern) {

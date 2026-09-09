@@ -1089,6 +1089,7 @@ class PropertySettingsStoreWebController extends Controller
 
         return property_view('property.agent.settings.commission', [
             'defaultPercent' => PropertyPortalSetting::getValue('commission_default_percent', ''),
+            'vatPercent' => PropertyPortalSetting::getValue('commission_vat_percent', '0'),
             'notes' => PropertyPortalSetting::getValue('commission_notes', ''),
             'properties' => Property::query()->orderBy('name')->get(['id', 'name']),
             'propertyCommissionOverrides' => $overrides,
@@ -1099,12 +1100,14 @@ class PropertySettingsStoreWebController extends Controller
     {
         $data = $request->validate([
             'commission_default_percent' => ['nullable', 'string', 'max:32'],
+            'commission_vat_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'commission_notes' => ['nullable', 'string', 'max:2000'],
             'property_commission_overrides' => ['nullable', 'array'],
             'property_commission_overrides.*' => ['nullable', 'numeric', 'min:0', 'max:100'],
         ]);
 
         PropertyPortalSetting::setValue('commission_default_percent', $data['commission_default_percent'] ?? '');
+        PropertyPortalSetting::setValue('commission_vat_percent', isset($data['commission_vat_percent']) ? (string) $data['commission_vat_percent'] : '0');
         PropertyPortalSetting::setValue('commission_notes', $data['commission_notes'] ?? '');
 
         $overrides = [];

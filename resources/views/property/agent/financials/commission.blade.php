@@ -22,6 +22,10 @@
 
     <x-slot name="actions">
         <a
+            href="{{ route('property.accounting.payables.property_commissions', request()->only(['property_id', 'landlord_id'])) }}"
+            class="inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+        >Property commissions</a>
+        <a
             href="{{ route('property.workspace.form.show', 'financials-invoice-commission') }}"
             class="inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
         >Invoice owners</a>

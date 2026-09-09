@@ -42,8 +42,11 @@ Expected dashboard after a clean run:
 | **4** | Property register (spaces) | `property:fill-passion-register-spaces` | Generic spaces to match register totals (~442) |
 | **5** | Active tenants & leases PDF | `property:import-passion-leases` | Tenants (TNT account, balance) + active leases |
 | **6** | Property take-on balances CSV | `property:import-takeon-balances` | Landlord ledger opening balances (Balance b/f) |
+| **8** | EZEN rent receipt listing | `property:import-ezen-rent-receipts` | Tenant receipts (incoming) |
+| **9** | EZEN payment voucher listing | `property:import-ezen-payment-vouchers` | Outgoing payments: remittances, commissions, expenses |
+| **10** | EZEN bills listing | `property:import-ezen-bills` | Vendor bills (garbage, cleaning, etc.) into Accounts payable |
 
-Run phases **in order**. Phase 5 matches units by property code + unit label.
+Run phases **in order**. Phase 5 matches units by property code + unit label. Phase 8 and 9 are money movements from EZEN and are not interchangeable. Phase 10 is the **Bills & Vendors** register, not payment vouchers.
 
 ---
 
@@ -385,12 +388,95 @@ Safe to re-run: skips existing `EZEN-RCxxxxx` or duplicate M-Pesa/bank refs.
 
 ---
 
+## Phase 9 — EZEN payment voucher listing (outgoing payments)
+
+Source: EZEN **Receipts & Payments → Payment Voucher Listing** (the “Payment Vouchers Grouped & Summarized” grid).
+
+These are **not** tenant rent receipts (Phase 8). They are money the agency **paid out**:
+
+| Particulars | Imported as |
+|-------------|-------------|
+| Rent remittance / rental remittance | Paid landlord payout + landlord ledger debit (voucher date) |
+| COMMISSION … | Expense entry (`Commission Expense`) |
+| KRA / MRI / tax | Expense entry (`Tax / statutory`) |
+| Airtime, water, garbage, other | Operating expense entry |
+
+Export the listing from EZEN as **CSV** (preferred) or PDF. Place it at `storage/passion-legacy/payment_vouchers_listing.csv` (or `.txt` / `.pdf`).
+
+A sample file is at `storage/passion-legacy/payment_vouchers_listing.sample.csv`.
+
+```bash
+# Dry run — parse and match only
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.txt --dry-run --agent-user-id=2
+
+# Register only — store every voucher for review, no payouts/expenses
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.csv --register-only --agent-user-id=2
+
+# Import remittances + expenses
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.csv --agent-user-id=2
+
+# Remittances only (skip airtime / KRA / commission)
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.csv --remittances-only --agent-user-id=2
+
+# Expenses only (if landlord remittances were already posted from an EZEN ledger)
+php artisan property:import-ezen-payment-vouchers storage/passion-legacy/payment_vouchers_listing.csv --expenses-only --agent-user-id=2
+```
+
+| Flag | Purpose |
+|------|---------|
+| `--dry-run` | Parse + match only |
+| `--register-only` | Save the voucher register without posting |
+| `--remittances-only` | Landlord rent remittances only |
+| `--expenses-only` | Operating expenses, commissions, and tax only |
+| `--property=M00044B` | Limit to one property code on **Paid to** |
+| `--category=remittance` | `remittance`, `commission`, `tax`, or `expense` |
+| `--limit=50` | Test first N parsed rows |
+| `--post-gl` | Also post trust GL for remittance payouts (off by default) |
+
+Payee matching:
+
+- `[M00044B] SUNRISE KIAMUNYI` → property code, then that property’s landlord
+- A person name (`DAVID NJOROGE MUNIU`) → landlord by name
+
+Unmatched remittances stay on **Accounting → Payables → Payment vouchers** with status **Unmatched payee**. Re-run the import after linking the landlord.
+
+Safe to re-run: unique on voucher number (`PM04789`). Existing `[EZEN PMxxxxx]` ledger lines are skipped so Phase 6 landlord-ledger imports are not double-counted.
+
+**Do not** use Phase 8 (`property:import-ezen-rent-receipts`) for this file.
+
+After import, review **Accounting → Payables → Payment vouchers**.
+
+---
+
+## Phase 10 — EZEN bills listing (vendor bills / accounts payable)
+
+Source: EZEN **Bills & Vendors → Bills Listing** (`bills_list.pdf`).
+
+These are **not** tenant invoices and **not** payment vouchers. They are supplier bills (TOSHIA, ZURI WORLD, SCOVITECH, garbage collection, …) with bill #, vendor invoice #, dates, total / paid / due.
+
+Place the export at `storage/passion-legacy/bills_list.txt` (preferred) or `storage/passion-legacy/bills_list.pdf`.
+
+```bash
+php artisan property:import-ezen-bills storage/passion-legacy/bills_list.txt --dry-run --agent-user-id=2
+php artisan property:import-ezen-bills storage/passion-legacy/bills_list.txt --agent-user-id=2
+```
+
+Safe to re-run: unique per bill + vendor invoice + date + vendor + amount.
+
+After import, review **Accounting → Payables → Bills listing**.
+
+Expected from the Passion Sep 2026 listing: **60 bills**, total **250,400**, all closed/paid.
+
+---
+
 ## UI columns (after import)
 
 The agent portal now shows legacy fields in:
 
 - **Tenants → Tenant list** — Ac/No, unit, A/c balance, rent, lease dates
 - **Tenants → Lease agreements** — Ac/No, phone, email, balance, lease variation
+- **Accounting → Payables → Payment vouchers** — EZEN outgoing payments (remittances, commissions, expenses)
+- **Accounting → Payables → Bills listing** — EZEN vendor bills (garbage collection and other AP)
 
 Additional unit fields (floor, market rent, available from) are stored on `property_units` and visible on unit records.
 

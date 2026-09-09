@@ -709,12 +709,14 @@ final class PropertyWorkspaceTabs
                 'label' => 'Payables',
                 'tabs' => [
                     ['key' => 'landlord_payment_fees', 'label' => 'Landlord payment & fees', 'route' => 'property.accounting.payables.landlord_payment_fees', 'active' => ['property.accounting.payables.landlord_payment_fees', 'property.accounting.payables.landlord_payment_fees.*']],
+                    ['key' => 'property_commissions', 'label' => 'Property commissions', 'route' => 'property.accounting.payables.property_commissions', 'active' => ['property.accounting.payables.property_commissions']],
+                    ['key' => 'payment_vouchers', 'label' => 'Payment vouchers', 'route' => 'property.accounting.payables.payment_vouchers', 'active' => ['property.accounting.payables.payment_vouchers']],
                     ['key' => 'landlord_settlements', 'label' => 'Landlord settlements', 'route' => 'property.accounting.payables.landlord_settlements', 'active' => ['property.accounting.payables.landlord_settlements', 'property.accounting.payables.landlord_settlements.*']],
                     ['key' => 'landlord_payables', 'label' => 'Landlord payables', 'route' => 'property.accounting.payables.landlord_payables', 'active' => ['property.accounting.payables.landlord_payables']],
                     ['key' => 'landlord_payouts', 'label' => 'Landlord payouts', 'route' => 'property.accounting.payables.landlord_payouts', 'active' => ['property.accounting.payables.landlord_payouts']],
                     ['key' => 'landlord_advances', 'label' => 'Advances & pay dates', 'route' => 'property.accounting.payables.landlord_advances', 'active' => ['property.accounting.payables.landlord_advances', 'property.accounting.payables.landlord_advances.*']],
                     ['key' => 'property_takeon_balances', 'label' => 'Property take-on balances', 'route' => 'property.accounting.payables.property_takeon_balances', 'active' => ['property.accounting.payables.property_takeon_balances', 'property.accounting.payables.property_takeon_balances.*']],
-                    ['key' => 'accounts_payable', 'label' => 'Accounts payable', 'route' => 'property.accounting.payables.accounts_payable', 'active' => ['property.accounting.payables.accounts_payable']],
+                    ['key' => 'accounts_payable', 'label' => 'Bills listing', 'route' => 'property.accounting.payables.accounts_payable', 'active' => ['property.accounting.payables.accounts_payable']],
                 ],
             ],
             [
@@ -781,6 +783,7 @@ final class PropertyWorkspaceTabs
                     ['key' => 'detailed_statement', 'label' => 'Detailed statement', 'route' => 'property.reports.landlord.detailed_statement', 'active' => ['property.reports.landlord.detailed_statement']],
                     ['key' => 'balance_summary', 'label' => 'Balance summary', 'route' => 'property.reports.landlord.balance_summary', 'active' => ['property.reports.landlord.balance_summary']],
                     ['key' => 'rental_income_commissions', 'label' => 'Income & commissions', 'route' => 'property.reports.landlord.rental_income_commissions', 'active' => ['property.reports.landlord.rental_income_commissions']],
+                    ['key' => 'property_commissions', 'label' => 'Property commissions', 'route' => 'property.accounting.payables.property_commissions', 'active' => ['property.accounting.payables.property_commissions']],
                     ['key' => 'rent_collection', 'label' => 'Rent collection', 'route' => 'property.reports.landlord.rent_collection', 'active' => ['property.reports.landlord.rent_collection']],
                     ['key' => 'property_statement', 'label' => 'Property statement', 'route' => 'property.reports.landlord.property_statement', 'active' => ['property.reports.landlord.property_statement']],
                 ],

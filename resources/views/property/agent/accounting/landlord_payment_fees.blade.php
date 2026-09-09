@@ -14,6 +14,10 @@
             'query' => request()->except(['export', 'format', 'page']),
         ])
         <a
+            href="{{ route('property.accounting.payables.property_commissions', request()->only(['property_id', 'landlord_id'])) }}"
+            class="inline-flex items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+        >Property commissions</a>
+        <a
             href="{{ route('property.accounting.payables.landlord_advances') }}"
             class="inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800 hover:bg-indigo-100"
         >Advances &amp; pay dates</a>
