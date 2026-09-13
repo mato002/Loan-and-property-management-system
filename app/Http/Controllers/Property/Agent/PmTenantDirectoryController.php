@@ -53,7 +53,8 @@ class PmTenantDirectoryController extends Controller
     public function exportDirectoryCsv(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
     {
         $tenants = $this->buildTenantDirectoryQuery($request)
-            ->orderBy('name')
+            ->orderByDesc('pm_tenants.created_at')
+            ->orderByDesc('pm_tenants.id')
             ->get();
 
         $filename = 'tenant_directory_'.now()->format('Ymd_His').'.csv';
@@ -65,7 +66,7 @@ class PmTenantDirectoryController extends Controller
                 return;
             }
 
-            fputcsv($out, ['name', 'phone', 'email', 'national_id', 'risk_level', 'portal_login', 'leases_count', 'lease_end']);
+            fputcsv($out, ['name', 'phone', 'email', 'national_id', 'risk_level', 'portal_login', 'leases_count', 'lease_end', 'created_at', 'created_by']);
 
             foreach ($tenants as $tenant) {
                 $leaseEnd = $tenant->leases_max_end_date
@@ -81,6 +82,8 @@ class PmTenantDirectoryController extends Controller
                     $tenant->user_id ? 'yes' : 'no',
                     (string) ($tenant->leases_count ?? 0),
                     $leaseEnd,
+                    $tenant->created_at?->format('Y-m-d H:i:s') ?? '',
+                    $tenant->createdByDisplay(),
                 ]);
             }
 
@@ -314,7 +317,8 @@ class PmTenantDirectoryController extends Controller
         $stats = $this->tenantDirectoryStatsFromQuery($request);
         $perPage = $this->directoryPerPage($request);
         $tenants = $tenantQuery
-            ->orderBy('name')
+            ->orderByDesc('pm_tenants.created_at')
+            ->orderByDesc('pm_tenants.id')
             ->paginate($perPage)
             ->withQueryString();
 
@@ -351,6 +355,8 @@ class PmTenantDirectoryController extends Controller
                 (string) $t->leases_count,
                 $leaseEnd,
                 ucfirst($t->risk_level),
+                $t->createdAtDisplay(),
+                $t->createdByDisplay(),
                 $actions,
             ];
         })->all();
@@ -373,7 +379,7 @@ class PmTenantDirectoryController extends Controller
                 'per_page' => $perPage,
             ],
             'tenantPager' => $tenants,
-            'columns' => ['Tenant', 'Phone', 'Email', 'ID / ref', 'Leases', 'Lease end', 'Risk', 'Actions'],
+            'columns' => ['Tenant', 'Phone', 'Email', 'ID / ref', 'Leases', 'Lease end', 'Risk', 'Created', 'Created by', 'Actions'],
             'tableRows' => $rows,
         ];
     }
@@ -416,6 +422,7 @@ class PmTenantDirectoryController extends Controller
     private function buildTenantDirectoryQuery(Request $request): Builder
     {
         $query = PmTenant::query()
+            ->with(['createdBy:id,name'])
             ->withCount(['leases', 'invoices'])
             ->withMax('leases', 'end_date');
 
@@ -708,6 +715,7 @@ class PmTenantDirectoryController extends Controller
     public function show(PmTenant $tenant): View
     {
         $tenant->load([
+            'createdBy:id,name',
             'leases' => fn ($q) => $q->with(['units.property'])->orderByDesc('start_date'),
         ])->loadCount(['leases', 'invoices']);
 

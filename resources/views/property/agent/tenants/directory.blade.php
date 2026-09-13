@@ -6,6 +6,7 @@
     :stats="$stats"
     :columns="$columns"
     :table-rows="$tableRows"
+    table-min-width="1280px"
     empty-title="No tenants on file"
     empty-hint="Create tenants here, then add leases and invoices against them."
 >

@@ -18,6 +18,7 @@ class PmTenant extends Model
     protected $fillable = [
         'user_id',
         'agent_user_id',
+        'created_by_user_id',
         'name',
         'phone',
         'email',
@@ -65,6 +66,11 @@ class PmTenant extends Model
         });
 
         static::creating(function (PmTenant $tenant): void {
+            $user = Auth::user();
+            if (Schema::hasColumn('pm_tenants', 'created_by_user_id') && empty($tenant->created_by_user_id) && $user) {
+                $tenant->created_by_user_id = (int) $user->id;
+            }
+
             if (! Schema::hasColumn('pm_tenants', 'agent_user_id')) {
                 return;
             }
@@ -72,7 +78,6 @@ class PmTenant extends Model
                 return;
             }
 
-            $user = Auth::user();
             if ($user && ! ($user->is_super_admin ?? false) && (string) $user->property_portal_role === 'agent') {
                 $tenant->agent_user_id = (int) $user->id;
             }
@@ -119,6 +124,26 @@ class PmTenant extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function createdAtDisplay(): string
+    {
+        return $this->created_at?->format('Y-m-d H:i') ?? '—';
+    }
+
+    public function createdByDisplay(): string
+    {
+        $name = trim((string) ($this->createdBy?->name ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        return '—';
     }
 
     public function leases(): HasMany

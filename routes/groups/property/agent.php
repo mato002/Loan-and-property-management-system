@@ -208,6 +208,7 @@ Route::middleware(['property.portal:agent'])->prefix('property')->name('property
     Route::get('/leases/form/tenants', [PmLeaseWebController::class, 'formTenants'])->middleware('property.permission:leases.manage')->name('leases.form_tenants');
     Route::get('/leases/form/vacant-units', [PmLeaseWebController::class, 'formVacantUnits'])->middleware('property.permission:leases.manage')->name('leases.form_vacant_units');
     Route::get('/leases/form/property-rules', [PmLeaseWebController::class, 'formPropertyRules'])->middleware('property.permission:leases.manage')->name('leases.form_property_rules');
+    Route::get('/leases', [PmLeaseWebController::class, 'leases'])->name('leases.index');
     Route::post('/leases', [PmLeaseWebController::class, 'store'])->middleware('property.permission:leases.manage')->name('leases.store');
     Route::post('/leases/bulk', [PmLeaseWebController::class, 'bulk'])->middleware('property.permission:leases.manage')->name('leases.bulk');
     Route::post('/leases/bulk', [PmLeaseWebController::class, 'bulk'])->middleware('property.permission:leases.manage')->name('leases.bulk');

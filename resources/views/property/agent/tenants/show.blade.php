@@ -4,6 +4,7 @@
     back-route="property.tenants.directory"
     :stats="[
         ['label' => 'Risk', 'value' => ucfirst($tenant->risk_level), 'hint' => 'Current'],
+        ['label' => 'Created', 'value' => $tenant->createdAtDisplay(), 'hint' => $tenant->createdByDisplay()],
         ['label' => 'Leases', 'value' => (string) ($tenant->leases_count ?? 0), 'hint' => 'Linked'],
         ['label' => 'Invoice AR', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($totalDue['invoice_ar'] ?? 0)), 'hint' => 'Billable open balances'],
         ['label' => 'Total due', 'value' => \App\Services\Property\PropertyMoney::kes((float) ($totalDue['total_due'] ?? 0)), 'hint' => 'AR + uninvoiced CF − credit'],
