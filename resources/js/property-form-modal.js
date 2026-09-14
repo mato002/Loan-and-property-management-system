@@ -334,6 +334,9 @@ function bindTurboFrameHooks() {
             return;
         }
         if (frame.querySelector('[data-property-form-modal-success]')) {
+            if (typeof window.__runSwalFlash === 'function') {
+                window.__runSwalFlash(frame);
+            }
             closePropertyFormModal();
             reloadPropertyMain();
             return;

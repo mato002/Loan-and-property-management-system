@@ -269,6 +269,8 @@ document.addEventListener('turbo:frame-load', (e) => initKenyaAddressAutocomplet
                 showCancelButton: true,
                 confirmButtonText: 'Yes, continue',
                 cancelButtonText: 'Cancel',
+                heightAuto: false,
+                scrollbarPadding: false,
             }).then((res) => {
                 if (res.isConfirmed) {
                     form.submit();

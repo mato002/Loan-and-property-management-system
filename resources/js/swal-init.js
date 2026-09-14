@@ -110,6 +110,11 @@ function safeSwalFire(opts, source = 'unknown') {
 
     const mergedOpts = typeof opts === 'object' && opts !== null ? { ...opts } : opts;
     if (typeof mergedOpts === 'object' && mergedOpts !== null) {
+        if (isPropertyPortalShell()) {
+            mergedOpts.heightAuto = mergedOpts.heightAuto ?? false;
+            mergedOpts.scrollbarPadding = mergedOpts.scrollbarPadding ?? false;
+            mergedOpts.target = mergedOpts.target ?? document.body;
+        }
         const userDidOpen = mergedOpts.didOpen;
         mergedOpts.didOpen = (popup) => {
             elevateSwalContainer(popup);
@@ -121,6 +126,10 @@ function safeSwalFire(opts, source = 'unknown') {
 
     const watchdog = window.setTimeout(() => {
         if (settled) return;
+        const popup = document.querySelector('.swal2-popup');
+        if (popup) {
+            return;
+        }
         cleanupSwalBackdrop(`watchdog:${source}`);
     }, SWAL_RECOVERY_TIMEOUT_MS);
 
@@ -148,6 +157,11 @@ const nativeSwalFire = Swal.fire.bind(Swal);
 Swal.fire = function patchedSwalFire(...args) {
     if (args.length === 1 && typeof args[0] === 'object' && args[0] !== null) {
         const opts = { ...args[0] };
+        if (isPropertyPortalShell()) {
+            opts.heightAuto = opts.heightAuto ?? false;
+            opts.scrollbarPadding = opts.scrollbarPadding ?? false;
+            opts.target = opts.target ?? document.body;
+        }
         const userDidOpen = opts.didOpen;
         opts.didOpen = (popup) => {
             elevateSwalContainer(popup);

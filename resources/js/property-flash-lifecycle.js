@@ -53,19 +53,28 @@ export function schedulePropertyFlash(scope, source = 'unknown', options = {}) {
 
     const { force = false } = options;
     const scopeEl = resolveFlashScope(scope);
+    const retries = Number(options.retries ?? 0);
 
     window.clearTimeout(flashCoalesceTimer);
     flashCoalesceTimer = window.setTimeout(() => {
         flashCoalesceTimer = null;
+        const hasFlashNode = Boolean(scopeEl.querySelector?.('[data-swal-flash]'));
 
-        if (window.__propertyWorkspaceHydrating === true) {
-            schedulePropertyFlash(scopeEl, source, options);
+        if (window.__propertyWorkspaceHydrating === true && retries < 40) {
+            schedulePropertyFlash(scopeEl, source, { ...options, force: force || hasFlashNode, retries: retries + 1 });
+
+            return;
+        }
+
+        if (hasFlashNode || force) {
+            lastPropertyFlashKey = propertyFlashDedupeKey(scopeEl);
+            window.__runSwalFlash(scopeEl);
 
             return;
         }
 
         const key = propertyFlashDedupeKey(scopeEl);
-        if (!force && key === lastPropertyFlashKey) {
+        if (key === lastPropertyFlashKey) {
             return;
         }
 
@@ -76,8 +85,6 @@ export function schedulePropertyFlash(scope, source = 'unknown', options = {}) {
 
 export function resetPropertyFlashDedupe(reason = 'manual') {
     lastPropertyFlashKey = null;
-    window.clearTimeout(flashCoalesceTimer);
-    flashCoalesceTimer = null;
     if (window.__PROPERTY_DEBUG_NAV === true) {
         console.debug('[PropertyFlash]', { action: 'reset-dedupe', reason });
     }
@@ -92,10 +99,27 @@ function bindPropertyFlashLifecycle() {
     };
 
     document.addEventListener('DOMContentLoaded', () => scheduleFromMainFrame('dom:ready', { force: true }));
-    document.addEventListener('turbo:load', () => scheduleFromMainFrame('turbo:load'));
+    document.addEventListener('turbo:load', () => scheduleFromMainFrame('turbo:load', { force: true }));
+
+    if (document.readyState !== 'loading') {
+        scheduleFromMainFrame('bind:ready', { force: true });
+    }
 
     document.addEventListener('turbo:frame-load', (event) => {
-        if (!(event.target instanceof HTMLElement) || event.target.id !== PROPERTY_MAIN_FRAME_ID) {
+        if (!(event.target instanceof HTMLElement)) {
+            return;
+        }
+
+        if (event.target.id === 'lease-create-modal') {
+            const hasFlash = Boolean(event.target.querySelector('[data-swal-flash]'));
+            if (hasFlash) {
+                window.__runSwalFlash(event.target);
+            }
+
+            return;
+        }
+
+        if (event.target.id !== PROPERTY_MAIN_FRAME_ID) {
             return;
         }
 
