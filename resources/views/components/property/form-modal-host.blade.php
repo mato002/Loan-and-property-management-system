@@ -29,7 +29,11 @@
                 x-text="error"
                 class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
             ></p>
-            <div x-ref="frameHost" class="property-form-modal-frame-host min-h-[2rem]"></div>
+            <turbo-frame
+                id="property-form-modal"
+                x-ref="frameHost"
+                class="property-form-modal-frame-host block min-h-[2rem]"
+            ></turbo-frame>
         </div>
 
         <x-slot name="footer">

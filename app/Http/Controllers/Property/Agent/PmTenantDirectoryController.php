@@ -29,8 +29,11 @@ use App\Services\Property\CarryForwardConsolidationService;
 use App\Services\Property\FinancialReportingFormulaService;
 use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentAllocationRepairService;
+use App\Services\LoanClientIdentifierNormalizer;
 use App\Services\Property\TenantCreditService;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Validation\ValidationException;
 
 class PmTenantDirectoryController extends Controller
 {
@@ -1049,72 +1052,108 @@ class PmTenantDirectoryController extends Controller
 
     public function edit(Request $request, PmTenant $tenant): View
     {
-        $tenant->loadCount('leases');
-
-        return view('property.agent.tenants.edit', array_merge([
-            'tenant' => $tenant,
-            'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
-        ], $this->propertyFormModalViewData($request)));
+        return $this->tenantEditView($request, $tenant);
     }
 
     public function update(Request $request, PmTenant $tenant): RedirectResponse|Response
     {
-        $cfg = $this->tenantFieldConfig();
-        $data = $request->validate([
-            'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
-            'phone' => [
-                Rule::requiredIf($this->isFieldRequired($cfg, 'phone')),
-                'nullable',
-                'string',
-                'max:64',
-                Rule::unique('pm_tenants', 'phone')
-                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
-                    ->ignore($tenant->id),
-            ],
-            'email' => [
-                Rule::requiredIf($this->isFieldRequired($cfg, 'email')),
-                'nullable',
-                'email',
-                'max:255',
-                Rule::unique('pm_tenants', 'email')
-                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
-                    ->ignore($tenant->id),
-            ],
-            'national_id' => [
-                Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')),
-                'nullable',
-                'string',
-                'max:64',
-                Rule::unique('pm_tenants', 'national_id')
-                    ->where(fn ($q) => $q->where('agent_user_id', (int) auth()->id()))
-                    ->ignore($tenant->id),
-            ],
-            'risk_level' => ['required', 'in:normal,medium,high'],
-            'opening_arrears_items' => ['nullable', 'array'],
-            'opening_arrears_items.*.type' => ['required_with:opening_arrears_items', Rule::in(array_keys($this->openingArrearsTypeOptions()))],
-            'opening_arrears_items.*.period' => ['required_with:opening_arrears_items', 'date_format:Y-m'],
-            'opening_arrears_items.*.amount' => ['required_with:opening_arrears_items', 'numeric', 'min:0.01'],
-            'opening_arrears_items.*.label' => ['nullable', 'string', 'max:120'],
-            'opening_arrears_items.*.reference' => ['nullable', 'string', 'max:120'],
-            'opening_arrears_rent' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_utilities' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_penalties' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_other' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_amount' => ['nullable', 'numeric', 'min:0'],
-            'opening_arrears_as_of' => ['nullable', 'date'],
-            'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
-            'notes' => ['nullable', 'string', 'max:2000'],
-        ]);
-        $openingArrearsPayload = $this->buildOpeningArrearsPayload($data, $tenant);
-
-        $tenant->update([
-            ...$data,
-            ...$openingArrearsPayload,
-        ]);
-
-        return $this->redirectOrPropertyFormModalSuccess(
+        return $this->handlePropertyFormModalUpdate(
             $request,
-            back()->with('success', 'Tenant updated.'),
+            function () use ($request, $tenant): RedirectResponse {
+                $cfg = $this->tenantFieldConfig();
+                $agentUserId = (int) ($tenant->agent_user_id ?: auth()->id());
+                $normalizer = app(LoanClientIdentifierNormalizer::class);
+
+                $phoneRaw = trim((string) $request->input('phone', ''));
+                $emailRaw = trim((string) $request->input('email', ''));
+                $nationalIdRaw = trim((string) $request->input('national_id', ''));
+                $request->merge([
+                    'phone' => $phoneRaw !== '' ? $normalizer->normalizePhone($phoneRaw) : null,
+                    'email' => $emailRaw !== '' ? strtolower($emailRaw) : null,
+                    'national_id' => $nationalIdRaw !== '' ? $nationalIdRaw : null,
+                ]);
+
+                $uniqueForAgent = fn (string $column) => Rule::unique('pm_tenants', $column)
+                    ->where(fn ($q) => $q->where('agent_user_id', $agentUserId))
+                    ->ignore($tenant->id);
+
+                $data = $request->validate([
+                    'name' => [Rule::requiredIf($this->isFieldRequired($cfg, 'name')), 'nullable', 'string', 'max:255'],
+                    'phone' => [
+                        Rule::requiredIf($this->isFieldRequired($cfg, 'phone')),
+                        'nullable',
+                        'string',
+                        'max:64',
+                        $uniqueForAgent('phone'),
+                    ],
+                    'email' => [
+                        Rule::requiredIf($this->isFieldRequired($cfg, 'email')),
+                        'nullable',
+                        'email',
+                        'max:255',
+                        $uniqueForAgent('email'),
+                    ],
+                    'national_id' => [
+                        Rule::requiredIf($this->isFieldRequired($cfg, 'id_number')),
+                        'nullable',
+                        'string',
+                        'max:64',
+                        $uniqueForAgent('national_id'),
+                    ],
+                    'risk_level' => ['required', 'in:normal,medium,high'],
+                    'opening_arrears_items' => ['nullable', 'array'],
+                    'opening_arrears_items.*.type' => ['required_with:opening_arrears_items', Rule::in(array_keys($this->openingArrearsTypeOptions()))],
+                    'opening_arrears_items.*.period' => ['required_with:opening_arrears_items', 'date_format:Y-m'],
+                    'opening_arrears_items.*.amount' => ['required_with:opening_arrears_items', 'numeric', 'min:0.01'],
+                    'opening_arrears_items.*.label' => ['nullable', 'string', 'max:120'],
+                    'opening_arrears_items.*.reference' => ['nullable', 'string', 'max:120'],
+                    'opening_arrears_rent' => ['nullable', 'numeric', 'min:0'],
+                    'opening_arrears_utilities' => ['nullable', 'numeric', 'min:0'],
+                    'opening_arrears_penalties' => ['nullable', 'numeric', 'min:0'],
+                    'opening_arrears_other' => ['nullable', 'numeric', 'min:0'],
+                    'opening_arrears_amount' => ['nullable', 'numeric', 'min:0'],
+                    'opening_arrears_as_of' => ['nullable', 'date'],
+                    'opening_arrears_notes' => ['nullable', 'string', 'max:500'],
+                    'notes' => ['nullable', 'string', 'max:2000'],
+                ]);
+
+                $phone = $data['phone'] ?? null;
+                if (is_string($phone) && $this->tenantPhoneTakenByAnother($agentUserId, $phone, (int) $tenant->id)) {
+                    throw ValidationException::withMessages([
+                        'phone' => 'This phone number is already used by another tenant.',
+                    ]);
+                }
+
+                $openingArrearsPayload = $this->buildOpeningArrearsPayload($data, $tenant);
+                $payload = [
+                    'name' => $data['name'] ?? $tenant->name,
+                    'phone' => $phone,
+                    'email' => $data['email'] ?? null,
+                    'national_id' => $data['national_id'] ?? null,
+                    'risk_level' => $data['risk_level'],
+                    'notes' => $data['notes'] ?? null,
+                    ...$openingArrearsPayload,
+                ];
+
+                try {
+                    $tenant->forceFill($payload)->save();
+                } catch (UniqueConstraintViolationException $e) {
+                    throw ValidationException::withMessages(
+                        $this->tenantUniqueConstraintMessages($e)
+                    );
+                }
+
+                $this->syncLinkedPortalUserContact($tenant);
+
+                return redirect()
+                    ->route('property.tenants.edit', $tenant)
+                    ->with('success', 'Tenant updated.');
+            },
+            function ($validator) use ($request, $tenant): View {
+                $request->flash();
+
+                return $this->tenantEditView($request, $tenant)->withErrors($validator);
+            },
             'Tenant updated.',
         );
     }
@@ -1145,6 +1184,81 @@ class PmTenantDirectoryController extends Controller
         });
 
         return back()->with('success', "Tenant {$tenantName} deleted with all related records.");
+    }
+
+    private function tenantEditView(Request $request, PmTenant $tenant): View
+    {
+        $tenant->loadCount('leases');
+
+        return view('property.agent.tenants.edit', array_merge([
+            'tenant' => $tenant,
+            'openingArrearsTypeOptions' => $this->openingArrearsTypeOptions(),
+        ], $this->propertyFormModalViewData($request)));
+    }
+
+    private function tenantPhoneTakenByAnother(int $agentUserId, string $phone, int $ignoreTenantId): bool
+    {
+        $variants = $this->tenantPhoneVariants($phone);
+        if ($variants === []) {
+            return false;
+        }
+
+        return PmTenant::query()
+            ->withoutGlobalScopes()
+            ->where('agent_user_id', $agentUserId)
+            ->whereKeyNot($ignoreTenantId)
+            ->whereIn('phone', $variants)
+            ->exists();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function tenantPhoneVariants(string $phone): array
+    {
+        $normalizer = app(LoanClientIdentifierNormalizer::class);
+        $normalized = $normalizer->normalizePhone($phone);
+        $variants = [$phone, $normalized];
+        if (str_starts_with($normalized, '254') && strlen($normalized) >= 12) {
+            $local = substr($normalized, 3);
+            $variants[] = '0'.$local;
+            $variants[] = $local;
+        }
+
+        return array_values(array_unique(array_filter($variants, static fn ($v) => is_string($v) && $v !== '')));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function tenantUniqueConstraintMessages(UniqueConstraintViolationException $e): array
+    {
+        $haystack = strtolower($e->getMessage());
+        if (str_contains($haystack, 'phone')) {
+            return ['phone' => 'This phone number is already used by another tenant.'];
+        }
+        if (str_contains($haystack, 'email')) {
+            return ['email' => 'This email is already used by another tenant.'];
+        }
+        if (str_contains($haystack, 'national_id')) {
+            return ['national_id' => 'This ID / ref is already used by another tenant.'];
+        }
+
+        return ['phone' => 'This tenant could not be saved because the phone, email, or ID is already in use.'];
+    }
+
+    private function syncLinkedPortalUserContact(PmTenant $tenant): void
+    {
+        if (! $tenant->user_id || ! Schema::hasColumn('users', 'phone')) {
+            return;
+        }
+
+        $updates = ['phone' => $tenant->phone];
+        if (Schema::hasColumn('users', 'name') && filled($tenant->name)) {
+            $updates['name'] = $tenant->name;
+        }
+
+        User::query()->whereKey($tenant->user_id)->update($updates);
     }
 
     /**

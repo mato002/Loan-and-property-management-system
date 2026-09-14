@@ -45,7 +45,15 @@
     }" class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 max-w-2xl">
         @csrf
         @method('PUT')
+        @if ($inPropertyFormModal ?? false)
+            <input type="hidden" name="_property_form_modal" value="1" />
+        @endif
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Tenant details</h3>
+        @if ($errors->any())
+            <div class="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                {{ $errors->first() }}
+            </div>
+        @endif
         <div>
             <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Name</label>
             <input type="text" name="name" value="{{ old('name', $tenant->name) }}" required class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" />
