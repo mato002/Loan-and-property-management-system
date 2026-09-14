@@ -104,6 +104,8 @@ PY;
             '/UNIT NO PROPERTY TENANT/i',
             '/BILLS LISTING/i',
             '/PAYMENT VOUCHER LISTING/i',
+            '/STATEMENT OF ACCOUNT/i',
+            '/MPESAC2B_/i',
         ];
 
         foreach ($markers as $pattern) {

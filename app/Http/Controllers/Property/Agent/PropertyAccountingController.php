@@ -19,6 +19,8 @@ use App\Models\PmLandlordPayoutItem;
 use App\Models\PmMaintenanceJob;
 use App\Models\PmMessageDelivery;
 use App\Models\PmAccountingEntry;
+use App\Models\PmBankStatement;
+use App\Models\PmBankStatementLine;
 use App\Models\PmEzenBill;
 use App\Models\PmEzenPaymentVoucher;
 use App\Models\PmTenant;
@@ -3495,13 +3497,30 @@ class PropertyAccountingController extends Controller
             ->limit(100)
             ->get();
 
-        $bankSide = Schema::hasTable('unassigned_payments')
-            ? UnassignedPayment::query()->orderByDesc('id')->limit(100)->get()
-            : collect();
+        $statement = null;
+        $bankSide = collect();
+        if (Schema::hasTable('pm_bank_statements') && Schema::hasTable('pm_bank_statement_lines')) {
+            $statement = PmBankStatement::query()
+                ->orderByDesc('period_to')
+                ->orderByDesc('id')
+                ->first();
+            if ($statement) {
+                $bankSide = PmBankStatementLine::query()
+                    ->where('pm_bank_statement_id', $statement->id)
+                    ->orderBy('txn_date')
+                    ->orderBy('id')
+                    ->get();
+            }
+        }
+
+        if ($bankSide->isEmpty() && Schema::hasTable('unassigned_payments')) {
+            $bankSide = UnassignedPayment::query()->orderByDesc('id')->limit(100)->get();
+        }
 
         return property_view('property.agent.accounting.cash_bank_reconciliation', [
             'cashSide' => $cashSide,
             'bankSide' => $bankSide,
+            'statement' => $statement,
         ]);
     }
 

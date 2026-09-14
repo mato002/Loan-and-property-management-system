@@ -45,8 +45,9 @@ Expected dashboard after a clean run:
 | **8** | EZEN rent receipt listing | `property:import-ezen-rent-receipts` | Tenant receipts (incoming) |
 | **9** | EZEN payment voucher listing | `property:import-ezen-payment-vouchers` | Outgoing payments: remittances, commissions, expenses |
 | **10** | EZEN bills listing | `property:import-ezen-bills` | Vendor bills (garbage, cleaning, etc.) into Accounts payable |
+| **11** | Co-op bank statement | `property:import-coop-bank-statement` | Bank credits/debits into Cash & Bank reconciliation |
 
-Run phases **in order**. Phase 5 matches units by property code + unit label. Phase 8 and 9 are money movements from EZEN and are not interchangeable. Phase 10 is the **Bills & Vendors** register, not payment vouchers.
+Run phases **in order**. Phase 5 matches units by property code + unit label. Phase 8 and 9 are money movements from EZEN and are not interchangeable. Phase 10 is the **Bills & Vendors** register, not payment vouchers. Phase 11 is the **bank** statement (Co-op), not the EZEN property B/F statement.
 
 ---
 
@@ -469,6 +470,29 @@ Expected from the Passion Sep 2026 listing: **60 bills**, total **250,400**, all
 
 ---
 
+## Phase 11 — Co-operative Bank statement of account
+
+Source: Co-op **Statement of Account** PDF (`AccountStatement01100943461001_….pdf`). This is **not** an EZEN tenant/landlord statement.
+
+It is the operating bank account (example: **PASSION SHELTAZ**, account **01100943461001**): M-Pesa C2B credits, cheque out, ledger/excise charges, opening/closing balances.
+
+Place the export at `storage/passion-legacy/coop_account_statement.txt` (preferred) or the original PDF.
+
+```bash
+php artisan property:import-coop-bank-statement storage/passion-legacy/coop_account_statement.txt --dry-run --agent-user-id=2
+php artisan property:import-coop-bank-statement storage/passion-legacy/coop_account_statement.txt --agent-user-id=2
+```
+
+M-Pesa references (`UI10X4MPLS`, …) are matched to Phase 8 receipt `ref_no` / payment `external_ref`. Cheques and bank charges stay **Bank only**.
+
+Safe to re-run: unique per account + period + opening/closing, and per line reference + date + amount.
+
+After import, review **Accounting → Cash & Bank → Reconciliation**.
+
+Expected from the 01/09/2026 Co-op extract: **16 credits** totalling **86,450.00**, **3 debits** totalling **20,476.00**, opening **1,130,048.45**, closing **1,196,022.45**.
+
+---
+
 ## UI columns (after import)
 
 The agent portal now shows legacy fields in:
@@ -477,6 +501,7 @@ The agent portal now shows legacy fields in:
 - **Tenants → Lease agreements** — Ac/No, phone, email, balance, lease variation
 - **Accounting → Payables → Payment vouchers** — EZEN outgoing payments (remittances, commissions, expenses)
 - **Accounting → Payables → Bills listing** — EZEN vendor bills (garbage collection and other AP)
+- **Accounting → Cash & Bank → Reconciliation** — Co-op bank statement lines vs receipts
 
 Additional unit fields (floor, market rent, available from) are stored on `property_units` and visible on unit records.
 
