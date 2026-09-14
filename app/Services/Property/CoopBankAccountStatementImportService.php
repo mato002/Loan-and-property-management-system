@@ -204,11 +204,7 @@ final class CoopBankAccountStatementImportService
         }
 
         if (Schema::hasTable('pm_ezen_receipt_register')) {
-            $receipt = PmEzenReceiptRegister::query()
-                ->where('agent_user_id', $agentUserId)
-                ->whereRaw('UPPER(ref_no) = ?', [$reference])
-                ->orderByDesc('id')
-                ->first();
+            $receipt = $this->findReceiptByReference($agentUserId, $reference);
             if ($receipt) {
                 return [
                     'match_status' => PmBankStatementLine::MATCH_MATCHED,
@@ -221,14 +217,7 @@ final class CoopBankAccountStatementImportService
         }
 
         if (Schema::hasTable('pm_payments')) {
-            $payment = PmPayment::query()
-                ->whereRaw('UPPER(external_ref) = ?', [$reference])
-                ->when(
-                    Schema::hasColumn('pm_payments', 'agent_user_id'),
-                    fn ($q) => $q->where('agent_user_id', $agentUserId),
-                )
-                ->orderByDesc('id')
-                ->first();
+            $payment = $this->findPaymentByReference($agentUserId, $reference);
             if ($payment) {
                 return [
                     'match_status' => PmBankStatementLine::MATCH_MATCHED,
@@ -242,7 +231,11 @@ final class CoopBankAccountStatementImportService
 
         if (Schema::hasTable('unassigned_payments')) {
             $unassigned = UnassignedPayment::query()
-                ->where('transaction_id', $reference)
+                ->where(function ($q) use ($reference) {
+                    foreach ($this->referenceCandidates($reference) as $candidate) {
+                        $q->orWhere('transaction_id', $candidate);
+                    }
+                })
                 ->when(
                     Schema::hasColumn('unassigned_payments', 'agent_user_id'),
                     fn ($q) => $q->where(function ($inner) use ($agentUserId) {
@@ -263,5 +256,56 @@ final class CoopBankAccountStatementImportService
         }
 
         return $empty;
+    }
+
+    private function findReceiptByReference(int $agentUserId, string $reference): ?PmEzenReceiptRegister
+    {
+        $query = PmEzenReceiptRegister::query()->where('agent_user_id', $agentUserId);
+        $this->applyReferenceMatch($query, 'ref_no', $reference);
+
+        return $query->orderByDesc('id')->first();
+    }
+
+    private function findPaymentByReference(int $agentUserId, string $reference): ?PmPayment
+    {
+        $query = PmPayment::query()
+            ->when(
+                Schema::hasColumn('pm_payments', 'agent_user_id'),
+                fn ($q) => $q->where('agent_user_id', $agentUserId),
+            );
+        $this->applyReferenceMatch($query, 'external_ref', $reference);
+
+        return $query->orderByDesc('id')->first();
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<\Illuminate\Database\Eloquent\Model>  $query
+     */
+    private function applyReferenceMatch($query, string $column, string $reference): void
+    {
+        $candidates = $this->referenceCandidates($reference);
+        $query->where(function ($inner) use ($column, $candidates) {
+            foreach ($candidates as $candidate) {
+                $inner->orWhereRaw('UPPER('.$column.') = ?', [$candidate])
+                    ->orWhereRaw('UPPER('.$column.') LIKE ?', ['%'.$candidate.'%']);
+            }
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function referenceCandidates(string $reference): array
+    {
+        $reference = strtoupper(trim($reference));
+        $candidates = [$reference];
+        $last = substr($reference, -1);
+        if ($last === 'I') {
+            $candidates[] = substr($reference, 0, -1).'1';
+        } elseif ($last === '1') {
+            $candidates[] = substr($reference, 0, -1).'I';
+        }
+
+        return array_values(array_unique($candidates));
     }
 }

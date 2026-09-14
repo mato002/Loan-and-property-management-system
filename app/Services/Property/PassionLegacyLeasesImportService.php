@@ -212,6 +212,18 @@ final class PassionLegacyLeasesImportService
 
         if ($existing) {
             if ($updateExisting) {
+                if (! empty($payload['phone']) && Schema::hasColumn('pm_tenants', 'agent_user_id')) {
+                    $phoneTaken = PmTenant::query()
+                        ->withoutGlobalScopes()
+                        ->where('agent_user_id', $agentUserId)
+                        ->where('phone', $payload['phone'])
+                        ->where('id', '!=', $existing->id)
+                        ->exists();
+                    if ($phoneTaken) {
+                        unset($payload['phone']);
+                        $summary['warnings'][] = "Row {$rowNum} ({$accountNumber}): phone already used by another tenant — left existing phone unchanged.";
+                    }
+                }
                 $existing->update($payload);
                 $summary['tenants_updated']++;
             }
