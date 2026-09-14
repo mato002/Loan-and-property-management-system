@@ -77,8 +77,14 @@ final class CoopBankAccountStatementImportService
                 $summary['statements'] = 1;
             }
 
+            $matchesByKey = [];
             foreach ($lines as $line) {
-                $match = $this->matchLine($agentUserId, $line);
+                $matchesByKey[(string) $line['source_key']] = $this->matchLine($agentUserId, $line);
+            }
+            $this->attachSplitMpesaSiblings($lines, $matchesByKey);
+
+            foreach ($lines as $line) {
+                $match = $matchesByKey[(string) $line['source_key']];
                 if ($match['match_status'] === PmBankStatementLine::MATCH_MATCHED) {
                     $summary['matched']++;
                 } elseif ($match['match_status'] === PmBankStatementLine::MATCH_BANK_ONLY) {
@@ -256,6 +262,42 @@ final class CoopBankAccountStatementImportService
         }
 
         return $empty;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $lines
+     * @param  array<string, array{match_status:string, matched_type:?string, pm_payment_id:?int, pm_ezen_receipt_register_id:?int, unassigned_payment_id:?int}>  $matchesByKey
+     */
+    private function attachSplitMpesaSiblings(array $lines, array &$matchesByKey): void
+    {
+        foreach ($lines as $line) {
+            $key = (string) $line['source_key'];
+            $match = $matchesByKey[$key] ?? null;
+            if ($match === null || ($match['match_status'] ?? '') !== PmBankStatementLine::MATCH_UNMATCHED) {
+                continue;
+            }
+            if (($line['line_type'] ?? '') !== CoopBankAccountStatementParser::TYPE_MPESA) {
+                continue;
+            }
+            $phone = (string) ($line['phone'] ?? '');
+            $txnDate = (string) ($line['txn_date'] ?? '');
+            if ($phone === '' || $txnDate === '') {
+                continue;
+            }
+            foreach ($lines as $other) {
+                if ((string) $other['source_key'] === $key) {
+                    continue;
+                }
+                if ((string) ($other['phone'] ?? '') !== $phone || (string) ($other['txn_date'] ?? '') !== $txnDate) {
+                    continue;
+                }
+                $otherMatch = $matchesByKey[(string) $other['source_key']] ?? null;
+                if ($otherMatch && ($otherMatch['match_status'] ?? '') === PmBankStatementLine::MATCH_MATCHED) {
+                    $matchesByKey[$key] = $otherMatch;
+                    break;
+                }
+            }
+        }
     }
 
     private function findReceiptByReference(int $agentUserId, string $reference): ?PmEzenReceiptRegister
