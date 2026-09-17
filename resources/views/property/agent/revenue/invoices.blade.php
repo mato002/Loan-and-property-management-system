@@ -115,7 +115,7 @@
                         name="pm_tenant_id"
                         :required="true"
                         :searchable="true"
-                        :options="\App\Support\Property\PmTenantSelectOptions::fromCollection($tenants, old('pm_tenant_id'))"
+                        :options="\App\Support\Property\PmTenantSelectOptions::fromCollection($tenants ?? [], old('pm_tenant_id'))"
                         :create="\App\Support\Property\PmTenantQuickCreateFields::quickCreateConfig()"
                     />
                     @error('pm_tenant_id')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror

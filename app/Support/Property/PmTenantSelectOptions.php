@@ -5,22 +5,38 @@ namespace App\Support\Property;
 final class PmTenantSelectOptions
 {
     /**
+     * @param  iterable<int, mixed>|null  $tenants
      * @return list<array{value:int|string,label:string,search:string,selected?:bool}>
      */
-    public static function fromCollection(iterable $tenants, mixed $selectedId = null): array
+    public static function fromCollection(mixed $tenants, mixed $selectedId = null): array
     {
+        if (! is_iterable($tenants)) {
+            return [];
+        }
+
         $selected = trim((string) ($selectedId ?? ''));
 
-        return collect($tenants)->map(function ($tenant) use ($selected) {
-            $value = (string) ($tenant->id ?? '');
+        return collect($tenants)
+            ->map(function ($tenant) {
+                if (is_array($tenant)) {
+                    return (object) $tenant;
+                }
 
-            return [
-                'value' => $tenant->id,
-                'label' => self::label($tenant),
-                'search' => self::searchText($tenant),
-                'selected' => $selected !== '' && $selected === $value,
-            ];
-        })->values()->all();
+                return $tenant;
+            })
+            ->filter(fn ($tenant) => is_object($tenant) && ! ($tenant instanceof \__PHP_Incomplete_Class))
+            ->map(function ($tenant) use ($selected) {
+                $value = (string) ($tenant->id ?? '');
+
+                return [
+                    'value' => $tenant->id,
+                    'label' => self::label($tenant),
+                    'search' => self::searchText($tenant),
+                    'selected' => $selected !== '' && $selected === $value,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     public static function label(object $tenant): string

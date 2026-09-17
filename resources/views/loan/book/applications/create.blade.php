@@ -733,6 +733,7 @@
                     this.lockProductOwnedSelect(interestPeriodSelect, false);
                     this.lockProductOwnedField(termInput, false);
                     this.lockProductOwnedSelect(termUnitSelect, false);
+                    this.$el.querySelectorAll('[data-product-owned="1"]').forEach((wrap) => wrap.classList.remove('hidden'));
                     return;
                 }
 
@@ -783,6 +784,9 @@
                 this.lockProductOwnedSelect(interestPeriodSelect, Boolean(meta.default_interest_rate_period));
                 this.lockProductOwnedField(termInput, Boolean(meta.default_term_months));
                 this.lockProductOwnedSelect(termUnitSelect, Boolean(meta.default_term_unit));
+                this.$el.querySelectorAll('[data-product-owned="1"]').forEach((wrap) => {
+                    wrap.classList.toggle('hidden', Boolean(meta));
+                });
                 const tu = this.$el.querySelector('#term_unit');
                 if (tu) {
                     this.termUnit = tu.value || '';

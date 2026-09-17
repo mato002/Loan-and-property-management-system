@@ -1157,6 +1157,7 @@ class PmInvoiceController extends Controller
         $agentId = $agentUserId ?? (int) (auth()->id() ?? 0);
         Cache::forget('pm.invoice_create_lease_options.'.$agentId);
         Cache::forget('pm.invoice_create_tenants.'.$agentId);
+        Cache::forget('pm.invoice_create_tenants.v2.'.$agentId);
     }
 
     /**
@@ -1210,21 +1211,30 @@ class PmInvoiceController extends Controller
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, PmTenant>
+     * @return \Illuminate\Support\Collection<int, object>
      */
     private function invoiceCreateTenants()
     {
         $agentId = (int) (auth()->id() ?? 0);
 
-        return Cache::remember('pm.invoice_create_tenants.'.$agentId, 90, function () {
+        $rows = Cache::remember('pm.invoice_create_tenants.v2.'.$agentId, 90, function () {
             return PmTenant::query()
                 ->whereIn('id', PmLease::query()
                     ->where('status', PmLease::STATUS_ACTIVE)
                     ->whereNotNull('pm_tenant_id')
                     ->select('pm_tenant_id'))
                 ->orderBy('name')
-                ->get(['id', 'name', 'phone', 'email']);
+                ->get(['id', 'name', 'phone', 'email'])
+                ->map(fn (PmTenant $tenant) => [
+                    'id' => $tenant->id,
+                    'name' => $tenant->name,
+                    'phone' => $tenant->phone,
+                    'email' => $tenant->email,
+                ])
+                ->all();
         });
+
+        return collect(is_array($rows) ? $rows : [])->map(fn ($row) => (object) $row);
     }
 
     /**

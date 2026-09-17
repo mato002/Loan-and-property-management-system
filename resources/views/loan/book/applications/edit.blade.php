@@ -28,7 +28,6 @@
                             <option value="{{ $productName }}" @selected(old('product_name', $application->product_name) === $productName)>{{ $productName }}</option>
                         @endforeach
                     </select>
-                    @error('product_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     <p class="mt-1 text-xs text-slate-500" x-text="selectedProductHint"></p>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -37,6 +36,8 @@
                         <input id="amount_requested" name="amount_requested" type="number" step="0.01" min="0" value="{{ old('amount_requested', $application->amount_requested) }}" required class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                         @error('amount_requested')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
+                </div>
+                <div id="product-terms-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">Term unit</label>
                         <select id="term_unit" name="term_unit" required class="w-full rounded-lg border-slate-200 text-sm">
@@ -138,6 +139,7 @@
                     this.lockProductOwnedSelect(interestPeriodSelect, false);
                     this.lockProductOwnedField(termInput, false);
                     this.lockProductOwnedSelect(termUnitSelect, false);
+                    this.$el.querySelector('#product-terms-fields')?.classList.remove('hidden');
                     return;
                 }
 
@@ -185,6 +187,7 @@
                 this.lockProductOwnedSelect(interestPeriodSelect, Boolean(meta.default_interest_rate_period));
                 this.lockProductOwnedField(termInput, Boolean(meta.default_term_months));
                 this.lockProductOwnedSelect(termUnitSelect, Boolean(meta.default_term_unit));
+                this.$el.querySelector('#product-terms-fields')?.classList.toggle('hidden', Boolean(meta));
                 this.selectedProductHint = parts.join(' ') || 'Product terms are locked. Fill amount and the remaining application details.';
             },
             lockProductOwnedField(el, locked) {

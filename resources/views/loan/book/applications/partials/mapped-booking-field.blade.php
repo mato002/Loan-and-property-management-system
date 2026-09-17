@@ -37,7 +37,7 @@
             @break
 
         @case('term_unit')
-            <div data-field-key="{{ $mapped['term_unit']['field_key'] }}" data-is-core="{{ ($mapped['term_unit']['is_core'] ?? false) ? '1' : '0' }}">
+            <div data-field-key="{{ $mapped['term_unit']['field_key'] }}" data-is-core="{{ ($mapped['term_unit']['is_core'] ?? false) ? '1' : '0' }}" data-product-owned="1">
                 <label for="term_unit" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['term_unit']['label'] ?? 'Term unit' }}<span data-required-star class="ml-0.5 text-red-600 font-semibold hidden" aria-hidden="true">*</span></label>
                 <select id="term_unit" name="term_unit" class="w-full rounded-lg border-slate-200 text-sm" x-model="termUnit" @change="onTermUnitChange()">
                     <option value="" @selected(old('term_unit', $draftApplication?->term_unit ?? '') === '')>Select term unit…</option>
@@ -51,7 +51,7 @@
             @break
 
         @case('term_value')
-            <div data-field-key="{{ $mapped['term_value']['field_key'] }}" data-is-core="{{ ($mapped['term_value']['is_core'] ?? false) ? '1' : '0' }}">
+            <div data-field-key="{{ $mapped['term_value']['field_key'] }}" data-is-core="{{ ($mapped['term_value']['is_core'] ?? false) ? '1' : '0' }}" data-product-owned="1">
                 <label for="term_value" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['term_value']['label'] ?? 'Term length' }}<span data-required-star class="ml-0.5 text-red-600 font-semibold hidden" aria-hidden="true">*</span></label>
                 <input id="term_value" name="term_value" type="number" min="1" value="{{ old('term_value', $draftApplication?->term_value) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" placeholder="e.g. 6" />
                 @error('term_value')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -59,7 +59,7 @@
             @break
 
         @case('interest_rate')
-            <div data-field-key="{{ $mapped['interest_rate']['field_key'] }}" data-is-core="{{ ($mapped['interest_rate']['is_core'] ?? false) ? '1' : '0' }}">
+            <div data-field-key="{{ $mapped['interest_rate']['field_key'] }}" data-is-core="{{ ($mapped['interest_rate']['is_core'] ?? false) ? '1' : '0' }}" data-product-owned="1">
                 <label for="interest_rate" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['interest_rate']['label'] ?? 'Interest rate (%)' }}<span data-required-star class="ml-0.5 text-red-600 font-semibold hidden" aria-hidden="true">*</span></label>
                 <input id="interest_rate" name="interest_rate" type="number" step="0.0001" min="0" max="1000" value="{{ old('interest_rate', $draftApplication?->interest_rate) }}" class="w-full rounded-lg border-slate-200 text-sm tabular-nums" />
                 @error('interest_rate')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
@@ -67,7 +67,7 @@
             @break
 
         @case('interest_rate_period')
-            <div data-field-key="{{ $mapped['interest_rate_period']['field_key'] }}" data-is-core="{{ ($mapped['interest_rate_period']['is_core'] ?? false) ? '1' : '0' }}">
+            <div data-field-key="{{ $mapped['interest_rate_period']['field_key'] }}" data-is-core="{{ ($mapped['interest_rate_period']['is_core'] ?? false) ? '1' : '0' }}" data-product-owned="1">
                 <label for="interest_rate_period" class="block text-xs font-semibold text-slate-600 mb-1">{{ $mapped['interest_rate_period']['label'] ?? 'Interest period' }}<span data-required-star class="ml-0.5 text-red-600 font-semibold hidden" aria-hidden="true">*</span></label>
                 <select id="interest_rate_period" name="interest_rate_period" class="w-full rounded-lg border-slate-200 text-sm">
                     @foreach (['daily' => 'Per day', 'weekly' => 'Per week', 'monthly' => 'Per month', 'annual' => 'Per year'] as $v => $lab)
