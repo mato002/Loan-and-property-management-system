@@ -228,6 +228,7 @@
                     </div>
                 @endif
 
+                <turbo-frame id="property-list-results" data-turbo-action="advance">
                 @if ($compactList && count($stats) > 0)
                     <x-property.compact-stat-strip :stats="$stats" class="print-hide" />
                 @endif
@@ -354,6 +355,18 @@
                         {{ $slot }}
                     </div>
                 @endif
+
+                @isset($footer)
+                    @if (! $footer->isEmpty())
+                        <div @class([
+                            'property-compact-panel rounded-xl sm:rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/30 text-xs sm:text-sm text-slate-600 dark:text-slate-400 w-full min-w-0',
+                            $compactList ? 'mt-2' : '',
+                        ])>
+                            {{ $footer }}
+                        </div>
+                    @endif
+                @endisset
+                </turbo-frame>
             </div>
         @endif
 
@@ -362,17 +375,6 @@
                 {{ $secondary }}
             </div>
         @endif
-
-        @isset($footer)
-            @if (! $footer->isEmpty())
-                <div @class([
-                    'property-compact-panel rounded-xl sm:rounded-2xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/50 dark:bg-slate-900/30 text-xs sm:text-sm text-slate-600 dark:text-slate-400 w-full min-w-0',
-                    $compactList ? 'mt-2' : '',
-                ])>
-                    {{ $footer }}
-                </div>
-            @endif
-        @endisset
 
         @if ($hasTable && $slotHasContent)
             <div class="w-full min-w-0 mt-4 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 shadow-sm p-4 sm:p-6 overflow-visible">

@@ -42,27 +42,33 @@
                 <div class="sm:col-span-2">
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Lease (required for rent)</label>
                     @php
-                        $leaseSelectOptions = collect($leases)->map(function ($l) {
-                            $unitIds = $l->units->pluck('id')->implode(',');
-                            $rent = (float) ($l->monthly_rent ?? 0);
-                            $leaseTenantId = $l->pmTenant?->id;
-                            $leaseTenantName = $l->pmTenant?->name ?? 'Unknown tenant';
-                            $unitSummary = $l->units
+                        $leaseSelectOptions = collect($leaseSelectOptions ?? $leases ?? [])->map(function ($option) {
+                            if (is_array($option)) {
+                                $option['selected'] = (string) old('pm_lease_id') === (string) ($option['value'] ?? '');
+
+                                return $option;
+                            }
+
+                            $unitIds = $option->units->pluck('id')->implode(',');
+                            $rent = (float) ($option->monthly_rent ?? 0);
+                            $leaseTenantId = $option->pmTenant?->id;
+                            $leaseTenantName = $option->pmTenant?->name ?? 'Unknown tenant';
+                            $unitSummary = $option->units
                                 ->map(fn ($u) => trim(($u->property?->name ?? '').' / '.$u->label, ' /'))
                                 ->filter()
                                 ->implode(', ');
-                            $contact = trim((string) ($l->pmTenant?->phone ?? ''));
+                            $contact = trim((string) ($option->pmTenant?->phone ?? ''));
                             if ($contact === '') {
-                                $contact = trim((string) ($l->pmTenant?->email ?? ''));
+                                $contact = trim((string) ($option->pmTenant?->email ?? ''));
                             }
 
                             return [
-                                'value' => $l->id,
+                                'value' => $option->id,
                                 'label' => $unitSummary !== ''
                                     ? "{$leaseTenantName} · {$unitSummary}"
                                     : $leaseTenantName,
                                 'search' => mb_strtolower(trim("{$leaseTenantName} {$unitSummary} {$contact}")),
-                                'selected' => (string) old('pm_lease_id') === (string) $l->id,
+                                'selected' => (string) old('pm_lease_id') === (string) $option->id,
                                 'attrs' => [
                                     'data-tenant-id' => (string) ($leaseTenantId ?? ''),
                                     'data-unit-ids' => $unitIds,

@@ -2,6 +2,7 @@
 
 namespace App\View\Components;
 
+use App\Support\Property\PropertyTurboFrames;
 use App\Support\Property\PropertyUiVersion;
 use Illuminate\View\Component;
 use Illuminate\View\View;
@@ -11,6 +12,10 @@ class PropertyLayout extends Component
     private function inferRole(): string
     {
         $user = auth()->user();
+        if ($user?->is_super_admin ?? false) {
+            return 'agent';
+        }
+
         $role = trim((string) ($user?->property_portal_role ?? ''));
         if (in_array($role, ['agent', 'landlord', 'tenant'], true)) {
             return $role;
@@ -37,7 +42,7 @@ class PropertyLayout extends Component
     public function render(): View
     {
         $role = $this->inferRole();
-        $view = request()->header('Turbo-Frame') === 'property-main'
+        $view = PropertyTurboFrames::usesFrameLayout()
             ? PropertyUiVersion::frameLayoutView()
             : PropertyUiVersion::layoutView();
 

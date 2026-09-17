@@ -3,6 +3,7 @@
  */
 
 const PROPERTY_MAIN_FRAME_ID = 'property-main';
+const PROPERTY_LIST_RESULTS_FRAME_ID = 'property-list-results';
 const SEARCH_FOCUS_STORAGE_KEY = 'property.portal.searchFocus';
 
 function isPropertyWorkspaceHydrating() {
@@ -88,9 +89,27 @@ function formFilterControls(form) {
     return controls.filter((el) => el instanceof HTMLElement && !el.matches('[data-auto-submit="off"]'));
 }
 
+function listResultsFrameExists() {
+    return document.getElementById(PROPERTY_LIST_RESULTS_FRAME_ID) instanceof HTMLElement;
+}
+
 function ensurePropertyTurboFrame(form) {
-    if (form.method.toLowerCase() === 'get' && !form.hasAttribute('data-turbo-frame') && form.dataset.turbo !== 'false') {
+    if (form.method.toLowerCase() !== 'get' || form.dataset.turbo === 'false') {
+        return;
+    }
+
+    const current = form.getAttribute('data-turbo-frame');
+    if (current === PROPERTY_LIST_RESULTS_FRAME_ID && !listResultsFrameExists()) {
         form.setAttribute('data-turbo-frame', PROPERTY_MAIN_FRAME_ID);
+
+        return;
+    }
+
+    if (!form.hasAttribute('data-turbo-frame')) {
+        form.setAttribute(
+            'data-turbo-frame',
+            listResultsFrameExists() ? PROPERTY_LIST_RESULTS_FRAME_ID : PROPERTY_MAIN_FRAME_ID,
+        );
     }
 }
 
@@ -238,7 +257,7 @@ export function submitPropertyFilterForm(form, source = 'apply', searchInput = n
     const state = getFilterFormState(form);
     const nextQuery = serializedFormQuery(form);
 
-    if (source === 'search' && nextQuery === form.dataset.lastFilterQuery) {
+    if (nextQuery === form.dataset.lastFilterQuery) {
         return;
     }
 
@@ -321,6 +340,9 @@ export function wireAutoFilterForms(scopeRoot) {
             .filter((control) => isAutoApplyControl(control))
             .forEach((control) => {
                 control.addEventListener('change', () => {
+                    if (form.dataset.cascadeSyncing === '1') {
+                        return;
+                    }
                     scheduleControlApply(form);
                 });
             });

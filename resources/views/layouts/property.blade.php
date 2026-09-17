@@ -288,6 +288,29 @@
             turbo-frame#property-main > * {
                 max-width: 100%;
             }
+            turbo-frame#property-list-results {
+                display: block;
+                width: 100%;
+                position: relative;
+            }
+            turbo-frame#property-list-results[busy],
+            turbo-frame#property-list-results[data-property-loading] {
+                pointer-events: none;
+                opacity: 0.72;
+            }
+            turbo-frame#property-list-results[data-property-loading]::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                z-index: 30;
+                border-radius: 9999px;
+                background: linear-gradient(90deg, #059669 0%, #6ee7b7 45%, #059669 90%);
+                background-size: 200% 100%;
+                animation: property-frame-progress 0.9s ease-in-out infinite;
+            }
             @keyframes property-frame-progress {
                 0% { background-position: 100% 0; }
                 100% { background-position: -100% 0; }

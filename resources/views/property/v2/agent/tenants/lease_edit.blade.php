@@ -76,6 +76,9 @@
     >
         @csrf
         @method('PUT')
+        @if ($inPropertyFormModal ?? false)
+            <input type="hidden" name="_property_form_modal" value="1" />
+        @endif
         <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Lease details</h3>
         <div class="grid gap-3 sm:grid-cols-2">
             <div class="sm:col-span-2">

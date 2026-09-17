@@ -135,10 +135,15 @@ function clearPropertyFrameLoading() {
     if (frame) {
         hidePropertyFrameSkeleton(frame);
     }
+    const listFrame = document.getElementById('property-list-results');
+    listFrame?.removeAttribute('data-property-loading');
 }
 
 function schedulePropertyFrameLoading(frame) {
-    if (!frame || frame.id !== PROPERTY_MAIN_FRAME_ID) {
+    if (
+        !frame
+        || (frame.id !== PROPERTY_MAIN_FRAME_ID && frame.id !== 'property-list-results')
+    ) {
         return;
     }
     window.clearTimeout(frameLoadingTimer);
@@ -794,7 +799,7 @@ document.addEventListener('turbo:submit-start', (event) => {
         return;
     }
     ensurePropertyFormUsesMainFrame(form);
-    if (form.closest(`#${PROPERTY_MAIN_FRAME_ID}`)) {
+    if (form.closest(`#${PROPERTY_MAIN_FRAME_ID}`) && form.method.toLowerCase() !== 'get') {
         showWorkspaceLoading();
         queueMicrotask(() => markPropertyFormSubmitting(form));
     }
@@ -901,7 +906,19 @@ document.addEventListener('turbo:click', (event) => {
 
 document.addEventListener('turbo:frame-missing', (event) => {
     const frame = event.target;
-    if (!(frame instanceof HTMLElement) || frame.id !== PROPERTY_MAIN_FRAME_ID) {
+    if (!(frame instanceof HTMLElement)) {
+        return;
+    }
+
+    if (frame.id === 'property-list-results') {
+        event.preventDefault();
+        const responseUrl = event.detail?.response?.url || window.location.href;
+        visitPropertyMainFrame(responseUrl);
+
+        return;
+    }
+
+    if (frame.id !== PROPERTY_MAIN_FRAME_ID) {
         return;
     }
 

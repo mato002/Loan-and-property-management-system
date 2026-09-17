@@ -25,7 +25,7 @@
                 @if (! empty($resetUrl))
                     <a
                         href="{{ $resetUrl }}"
-                        @if (! empty($turboFrame)) data-turbo-frame="{{ $turboFrame }}" @endif
+                        @if (! empty($resetTurboFrame ?? null)) data-turbo-frame="{{ $resetTurboFrame }}" @elseif (! empty($turboFrame)) data-turbo-frame="{{ $turboFrame }}" @endif
                         class="inline-flex min-h-[36px] items-center rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300"
                     >Clear</a>
                 @endif
@@ -53,7 +53,7 @@
                 @if (! empty($resetUrl))
                     <a
                         href="{{ $resetUrl }}"
-                        @if (! empty($turboFrame)) data-turbo-frame="{{ $turboFrame }}" @endif
+                        @if (! empty($resetTurboFrame ?? null)) data-turbo-frame="{{ $resetTurboFrame }}" @elseif (! empty($turboFrame)) data-turbo-frame="{{ $turboFrame }}" @endif
                         class="flex w-full min-h-[44px] items-center justify-center rounded-xl border border-slate-300 dark:border-slate-600 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
                     >Reset</a>
                 @endif

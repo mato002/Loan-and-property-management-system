@@ -22,6 +22,7 @@ use App\Services\Property\PropertyMoney;
 use App\Services\Property\PropertyPaymentSettlementService;
 use App\Services\Property\PropertyReversalFinalizeService;
 use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\PropertyTurboFrames;
 use App\Exceptions\Property\UtilityPeriodClosedException;
 use App\Services\Property\TenantCreditService;
 use App\Services\Property\UtilityPeriodGuardService;
@@ -579,7 +580,14 @@ class PmInvoiceController extends Controller
         $perPage = min(200, max(10, (int) $request->query('per_page', 30)));
 
         $baseQuery = $this->applyInvoiceListFilters(
-            PmInvoice::query()->with(['tenant', 'unit.property', 'lease:id,monthly_rent', 'lease.units:id', 'items', 'events']),
+            PmInvoice::query()->with([
+                'tenant:id,name',
+                'unit:id,label,property_id',
+                'unit.property:id,name',
+                'lease:id,monthly_rent',
+                'items',
+                'events',
+            ]),
             $filters
         );
         $sortMap = [
@@ -692,7 +700,7 @@ class PmInvoiceController extends Controller
 
         $rows = $invoices->getCollection()->map(function (PmInvoice $i) use ($deliverySummaries) {
             $showAction = route('property.revenue.invoices.show', $i, false);
-            $balance = app(FinanceBalanceSnapshotService::class)->invoiceBalance($i);
+            $balance = $i->balanceFloat();
 
             $actions = new HtmlString(view('property.agent.partials.invoice_row_actions', ['invoice' => $i])->render());
 
@@ -733,7 +741,8 @@ class PmInvoiceController extends Controller
         $propertyId = (int) $filters['property_id'];
         $unitId = (int) $filters['unit_id'];
         $tenantId = (int) $filters['tenant_id'];
-        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $isListFrame = PropertyTurboFrames::isListResults($request);
+        $cascade = $isListFrame ? null : app(PropertyFilterCascadeCatalog::class);
 
         return property_view('property.agent.revenue.invoices', [
             'stats' => $stats,
@@ -747,12 +756,17 @@ class PmInvoiceController extends Controller
                 'dir' => $dir,
                 'per_page' => (string) $perPage,
             ],
-            'leases' => PmLease::query()->with(['pmTenant', 'units'])->orderByDesc('start_date')->get(),
-            'units' => $cascade->unitsForProperty($propertyId),
-            'properties' => $cascade->properties(),
-            'tenants' => PmTenant::query()->orderBy('name')->get(),
-            'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromInvoices(),
+            'leases' => collect(),
+            'leaseSelectOptions' => $isListFrame ? [] : $this->invoiceCreateLeaseOptions(),
+            'units' => (! $isListFrame && $propertyId > 0) ? $cascade->unitsForProperty($propertyId) : collect(),
+            'properties' => $isListFrame ? collect() : $cascade->properties(),
+            'tenants' => $isListFrame ? collect() : $this->invoiceCreateTenants(),
+            'tenantsForFilter' => (! $isListFrame && ($tenantId > 0 || $propertyId > 0 || $unitId > 0))
+                ? $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId)
+                : collect(),
+            'filterCascadeCatalog' => $isListFrame
+                ? ['units' => [], 'tenants' => []]
+                : $cascade->fromInvoices(),
         ]);
     }
 
@@ -1136,6 +1150,81 @@ class PmInvoiceController extends Controller
             : $rangeFrom->format('M Y').' – '.$rangeTo->format('M Y').' ('.$rangeMonths.' mo)';
 
         return [$rangeMonths, $rangeEndYm, $rangeFrom, $rangeTo, $billingRangeLabel];
+    }
+
+    public static function forgetInvoiceCreateFormCaches(?int $agentUserId = null): void
+    {
+        $agentId = $agentUserId ?? (int) (auth()->id() ?? 0);
+        Cache::forget('pm.invoice_create_lease_options.'.$agentId);
+        Cache::forget('pm.invoice_create_tenants.'.$agentId);
+    }
+
+    /**
+     * Cached lease picker for the create-invoice modal. Loaded on every invoices
+     * tab click, so it must not hydrate every historical lease + unit graph.
+     *
+     * @return list<array{value: int, label: string, search: string, selected: bool, attrs: array<string, string>}>
+     */
+    private function invoiceCreateLeaseOptions(): array
+    {
+        $agentId = (int) (auth()->id() ?? 0);
+
+        return Cache::remember('pm.invoice_create_lease_options.'.$agentId, 90, function () {
+            return PmLease::query()
+                ->select(['id', 'pm_tenant_id', 'monthly_rent', 'start_date', 'status'])
+                ->where('status', PmLease::STATUS_ACTIVE)
+                ->with([
+                    'pmTenant:id,name,phone,email',
+                    'units:id,label,property_id',
+                    'units.property:id,name',
+                ])
+                ->orderByDesc('start_date')
+                ->get()
+                ->map(function (PmLease $lease) {
+                    $unitSummary = $lease->units
+                        ->map(fn ($unit) => trim(($unit->property?->name ?? '').' / '.$unit->label, ' /'))
+                        ->filter()
+                        ->implode(', ');
+                    $tenantName = $lease->pmTenant?->name ?? 'Unknown tenant';
+                    $contact = trim((string) ($lease->pmTenant?->phone ?? ''));
+                    if ($contact === '') {
+                        $contact = trim((string) ($lease->pmTenant?->email ?? ''));
+                    }
+
+                    return [
+                        'value' => $lease->id,
+                        'label' => $unitSummary !== ''
+                            ? $tenantName.' · '.$unitSummary
+                            : $tenantName,
+                        'search' => mb_strtolower(trim($tenantName.' '.$unitSummary.' '.$contact)),
+                        'selected' => false,
+                        'attrs' => [
+                            'data-tenant-id' => (string) ($lease->pmTenant?->id ?? ''),
+                            'data-unit-ids' => $lease->units->pluck('id')->implode(','),
+                            'data-rent' => (string) (float) ($lease->monthly_rent ?? 0),
+                        ],
+                    ];
+                })
+                ->all();
+        });
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, PmTenant>
+     */
+    private function invoiceCreateTenants()
+    {
+        $agentId = (int) (auth()->id() ?? 0);
+
+        return Cache::remember('pm.invoice_create_tenants.'.$agentId, 90, function () {
+            return PmTenant::query()
+                ->whereIn('id', PmLease::query()
+                    ->where('status', PmLease::STATUS_ACTIVE)
+                    ->whereNotNull('pm_tenant_id')
+                    ->select('pm_tenant_id'))
+                ->orderBy('name')
+                ->get(['id', 'name', 'phone', 'email']);
+        });
     }
 
     /**

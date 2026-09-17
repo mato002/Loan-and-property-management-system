@@ -124,7 +124,4 @@
 @endphp
 @if (count($flashes))
     <div data-swal-flash='@json($flashes)' hidden aria-hidden="true"></div>
-    <script>
-        window.__laravelSwalFlash = @json($flashes);
-    </script>
 @endif

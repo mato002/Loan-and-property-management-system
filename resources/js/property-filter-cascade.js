@@ -121,55 +121,60 @@ function wirePropertyUnitTenantCascadeForm(form, catalog, config) {
     form.dataset.filterCascadeBound = '1';
 
     const sync = (resetUnit = false, resetTenant = false) => {
-        const propertyId = isAllValue(propertySelect.value) ? '0' : asId(propertySelect.value);
-        let unitId = resetUnit ? '0' : (isAllValue(unitSelect.value) ? '0' : asId(unitSelect.value));
+        form.dataset.cascadeSyncing = '1';
+        try {
+            const propertyId = isAllValue(propertySelect.value) ? '0' : asId(propertySelect.value);
+            let unitId = resetUnit ? '0' : (isAllValue(unitSelect.value) ? '0' : asId(unitSelect.value));
 
-        const visibleUnits = units.filter((unit) => {
-            return propertyId === '0' || asId(unit.property_id) === propertyId;
-        });
+            const visibleUnits = units.filter((unit) => {
+                return propertyId === '0' || asId(unit.property_id) === propertyId;
+            });
 
-        rebuildSelect(
-            unitSelect,
-            visibleUnits.map((unit) => ({
-                value: asId(unit.id),
-                label: propertyId !== '0'
-                    ? unit.label
-                    : (unit.property_name ? `${unit.property_name}/${unit.label}` : unit.label),
-            })),
-            'Unit: All',
-            unitId,
-        );
+            rebuildSelect(
+                unitSelect,
+                visibleUnits.map((unit) => ({
+                    value: asId(unit.id),
+                    label: propertyId !== '0'
+                        ? unit.label
+                        : (unit.property_name ? `${unit.property_name}/${unit.label}` : unit.label),
+                })),
+                'Unit: All',
+                unitId,
+            );
 
-        if (!(tenantSelect instanceof HTMLSelectElement)) {
-            return;
+            if (!(tenantSelect instanceof HTMLSelectElement)) {
+                return;
+            }
+
+            unitId = isAllValue(unitSelect.value) ? '0' : asId(unitSelect.value);
+            const visibleTenants = tenants.filter((tenant) => {
+                const unitIds = (tenant.unit_ids || []).map(asId);
+                const propertyIds = (tenant.property_ids || []).map(asId);
+
+                if (unitId !== '0') {
+                    return unitIds.includes(unitId);
+                }
+
+                if (propertyId !== '0') {
+                    return propertyIds.includes(propertyId);
+                }
+
+                return true;
+            });
+
+            const tenantValue = resetTenant ? '0' : (isAllValue(tenantSelect.value) ? '0' : asId(tenantSelect.value));
+            rebuildSelect(
+                tenantSelect,
+                visibleTenants.map((tenant) => ({
+                    value: asId(tenant.id),
+                    label: tenant.name,
+                })),
+                'Tenant: All',
+                tenantValue,
+            );
+        } finally {
+            delete form.dataset.cascadeSyncing;
         }
-
-        unitId = isAllValue(unitSelect.value) ? '0' : asId(unitSelect.value);
-        const visibleTenants = tenants.filter((tenant) => {
-            const unitIds = (tenant.unit_ids || []).map(asId);
-            const propertyIds = (tenant.property_ids || []).map(asId);
-
-            if (unitId !== '0') {
-                return unitIds.includes(unitId);
-            }
-
-            if (propertyId !== '0') {
-                return propertyIds.includes(propertyId);
-            }
-
-            return true;
-        });
-
-        const tenantValue = resetTenant ? '0' : (isAllValue(tenantSelect.value) ? '0' : asId(tenantSelect.value));
-        rebuildSelect(
-            tenantSelect,
-            visibleTenants.map((tenant) => ({
-                value: asId(tenant.id),
-                label: tenant.name,
-            })),
-            'Tenant: All',
-            tenantValue,
-        );
     };
 
     propertySelect.addEventListener('change', () => {

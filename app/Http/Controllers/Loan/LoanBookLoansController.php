@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -1203,10 +1204,10 @@ class LoanBookLoansController extends Controller
             $validated['term_unit'] = strtolower((string) $validated['term_unit']);
         }
 
-        if (! empty($validated['loan_book_application_id'])) {
+        if ($isCreate && ! empty($validated['loan_book_application_id'])) {
             $app = LoanBookApplication::query()->find($validated['loan_book_application_id']);
             if ($app) {
-                // When a loan is booked from an application, the schedule/rate-period
+                // When a loan is first booked from an application, the schedule/rate-period
                 // should follow the approved application values as source of truth.
                 if ($app->term_value !== null) {
                     $validated['term_value'] = (int) $app->term_value;
@@ -1223,6 +1224,7 @@ class LoanBookLoansController extends Controller
 
         $validated['interest_rate_period'] = strtolower((string) ($validated['interest_rate_period'] ?? 'term'));
         $validated['term_unit'] = strtolower((string) ($validated['term_unit'] ?? 'monthly'));
+        $this->applyCatalogProductTerms($validated);
         if ($isCreate) {
             $validated['dpd'] = 0;
             $this->assertProductActiveForNewLoan((string) ($validated['product_name'] ?? ''));
@@ -1255,7 +1257,15 @@ class LoanBookLoansController extends Controller
             ]);
         }
 
-        if ((string) $application->stage !== LoanBookApplication::STAGE_APPROVED) {
+        $keepingExistingLink = $ignoreLoanId !== null
+            && LoanBookLoan::query()
+                ->whereKey($ignoreLoanId)
+                ->where('loan_book_application_id', $applicationId)
+                ->exists();
+
+        // After disbursement the application stage becomes "disbursed". Keep that existing
+        // link on edit; only require "approved" when attaching a new application.
+        if (! $keepingExistingLink && (string) $application->stage !== LoanBookApplication::STAGE_APPROVED) {
             throw ValidationException::withMessages([
                 'loan_book_application_id' => 'Only an approved application can be used to book a loan. Current application stage: '.(string) ($application->stage ?? 'unknown').'.',
             ]);
@@ -1328,7 +1338,65 @@ class LoanBookLoansController extends Controller
     }
 
     /**
-     * @return array<string, array{default_interest_rate: ?float, default_interest_rate_type: string, default_term_months: int, default_term_unit: string}>
+     * Overlay rate, term, and maturity from the selected loan product so booked loans stay on catalog terms.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function applyCatalogProductTerms(array &$validated): void
+    {
+        $defaults = $this->productDefaultsByName()[trim((string) ($validated['product_name'] ?? ''))] ?? null;
+        if (! is_array($defaults)) {
+            return;
+        }
+
+        if ($defaults['default_interest_rate'] !== null) {
+            $validated['interest_rate'] = (float) $defaults['default_interest_rate'];
+        }
+
+        $period = strtolower(trim((string) ($defaults['default_interest_rate_period'] ?? '')));
+        if (in_array($period, ['term', 'daily', 'weekly', 'monthly', 'annual'], true)) {
+            $validated['interest_rate_period'] = $period;
+        }
+
+        if ((int) ($defaults['default_term_months'] ?? 0) > 0) {
+            $validated['term_value'] = (int) $defaults['default_term_months'];
+        }
+
+        $unit = strtolower(trim((string) ($defaults['default_term_unit'] ?? '')));
+        if (in_array($unit, ['daily', 'weekly', 'monthly'], true)) {
+            $validated['term_unit'] = $unit;
+        }
+
+        $this->applyMaturityFromTerm($validated);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     */
+    private function applyMaturityFromTerm(array &$validated): void
+    {
+        $term = (int) ($validated['term_value'] ?? 0);
+        $unit = strtolower((string) ($validated['term_unit'] ?? 'monthly'));
+        $disbursed = $validated['disbursed_at'] ?? null;
+        if ($term <= 0 || ! filled($disbursed)) {
+            return;
+        }
+
+        try {
+            $from = Carbon::parse($disbursed);
+        } catch (\Throwable) {
+            return;
+        }
+
+        $validated['maturity_date'] = match ($unit) {
+            'daily' => $from->copy()->addDays($term)->toDateString(),
+            'weekly' => $from->copy()->addWeeks($term)->toDateString(),
+            default => $from->copy()->addMonthsNoOverflow($term)->toDateString(),
+        };
+    }
+
+    /**
+     * @return array<string, array{default_interest_rate: ?float, default_interest_rate_type: string, default_term_months: int, default_term_unit: string, default_interest_rate_period: string}>
      */
     private function productDefaultsByName(): array
     {
@@ -1339,12 +1407,16 @@ class LoanBookLoansController extends Controller
         $hasStatus = Schema::hasColumn('loan_products', 'status');
         $hasDefaultRateType = Schema::hasColumn('loan_products', 'default_interest_rate_type');
         $hasDefaultTermUnit = Schema::hasColumn('loan_products', 'default_term_unit');
+        $hasDefaultRatePeriod = Schema::hasColumn('loan_products', 'default_interest_rate_period');
         $select = ['name', 'default_interest_rate', 'default_term_months'];
         if ($hasDefaultRateType) {
             $select[] = 'default_interest_rate_type';
         }
         if ($hasDefaultTermUnit) {
             $select[] = 'default_term_unit';
+        }
+        if ($hasDefaultRatePeriod) {
+            $select[] = 'default_interest_rate_period';
         }
 
         return LoanProduct::query()
@@ -1355,7 +1427,7 @@ class LoanBookLoansController extends Controller
             )
             ->orderBy('name')
             ->get($select)
-            ->mapWithKeys(function (LoanProduct $product) use ($hasDefaultRateType, $hasDefaultTermUnit): array {
+            ->mapWithKeys(function (LoanProduct $product) use ($hasDefaultRateType, $hasDefaultTermUnit, $hasDefaultRatePeriod): array {
                 $name = trim((string) $product->name);
                 if ($name === '') {
                     return [];
@@ -1367,6 +1439,7 @@ class LoanBookLoansController extends Controller
                         'default_interest_rate_type' => $hasDefaultRateType ? (string) ($product->default_interest_rate_type ?? 'percent') : 'percent',
                         'default_term_months' => max(0, (int) ($product->default_term_months ?? 0)),
                         'default_term_unit' => $hasDefaultTermUnit ? (string) ($product->default_term_unit ?? 'monthly') : 'monthly',
+                        'default_interest_rate_period' => $hasDefaultRatePeriod ? (string) ($product->default_interest_rate_period ?? 'annual') : 'annual',
                     ],
                 ];
             })

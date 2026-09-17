@@ -8,6 +8,7 @@ use App\Models\PmPayment;
 use App\Models\PmPaymentAllocation;
 use App\Models\PmTenant;
 use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\PropertyTurboFrames;
 use App\Support\TabularExport;
 use App\Services\Property\PropertyAccountingPostingService;
 use App\Services\Property\PropertyMoney;
@@ -52,7 +53,12 @@ class PmPaymentController extends Controller
         $perPage = min(200, max(10, (int) $request->integer('per_page', 30)));
 
         $baseQuery = $this->applyPaymentListFilters(
-            PmPayment::query()->with(['tenant.user', 'allocations.invoice.tenant.user']),
+            PmPayment::query()->with([
+                'tenant:id,name,phone',
+                'allocations:id,pm_payment_id,pm_invoice_id',
+                'allocations.invoice:id,invoice_no,pm_tenant_id',
+                'allocations.invoice.tenant:id,name,phone',
+            ]),
             $filters
         );
         if ($filters['q'] !== '') {
@@ -244,6 +250,15 @@ class PmPaymentController extends Controller
         $propertyId = (int) $filters['property_id'];
         $unitId = (int) $filters['unit_id'];
         $tenantId = (int) $filters['tenant_id'];
+        $isListFrame = PropertyTurboFrames::isListResults($request);
+
+        $openInvoices = $isListFrame
+            ? collect()
+            : PmInvoice::query()
+                ->withOutstandingBalance()
+                ->with(['tenant:id,name'])
+                ->orderBy('due_date')
+                ->get(['id', 'pm_tenant_id', 'invoice_no', 'amount', 'amount_paid', 'due_date']);
 
         return property_view('property.agent.revenue.payments', [
             // Legacy workspace view still reads `$stats`; v2 uses statsPrimary/statsTable in the above slot.
@@ -256,24 +271,27 @@ class PmPaymentController extends Controller
             'paginator' => $payments,
             'perPage' => $perPage,
             'filters' => $filters,
-            'properties' => $cascade->properties(),
-            'units' => $cascade->unitsForProperty($propertyId),
-            'tenantsForFilter' => $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromPayments(),
-            'openInvoices' => PmInvoice::query()
-                ->with('tenant')
-                ->whereColumn('amount_paid', '<', 'amount')
-                ->orderBy('due_date')
-                ->get(),
-            // Only show tenants that actually have an open invoice (this screen posts against invoices).
-            'tenants' => PmTenant::query()
-                ->whereHas('invoices', function ($q) {
-                    $q->whereColumn('amount_paid', '<', 'amount');
-                })
-                ->orderBy('name')
-                ->get(),
-            'tenantsForAdvance' => PmTenant::query()->orderBy('name')->get(['id', 'name']),
-            'advanceCreditsEnabled' => app(TenantCreditService::class)->isEnabled(),
+            'properties' => $isListFrame ? collect() : $cascade->properties(),
+            'units' => (! $isListFrame && $propertyId > 0) ? $cascade->unitsForProperty($propertyId) : collect(),
+            'tenantsForFilter' => (! $isListFrame && ($tenantId > 0 || $propertyId > 0 || $unitId > 0))
+                ? $cascade->paymentTenantsForFilter($tenantId, $propertyId, $unitId)
+                : collect(),
+            'filterCascadeCatalog' => $isListFrame
+                ? ['units' => [], 'tenants' => []]
+                : $cascade->fromPayments(),
+            'openInvoices' => $openInvoices,
+            'tenants' => $openInvoices
+                ->pluck('tenant')
+                ->filter()
+                ->unique('id')
+                ->sortBy(fn (PmTenant $tenant) => mb_strtolower((string) $tenant->name))
+                ->values(),
+            'tenantsForAdvance' => $isListFrame
+                ? collect()
+                : PmTenant::query()->orderBy('name')->get(['id', 'name']),
+            'advanceCreditsEnabled' => $isListFrame
+                ? false
+                : app(TenantCreditService::class)->isEnabled(),
         ]);
     }
 

@@ -42,7 +42,7 @@
             @if ($resetUrl)
                 <a
                     href="{{ $resetUrl }}"
-                    @if ($turboFrame) data-turbo-frame="{{ $turboFrame }}" @endif
+                    @if ($resetTurboFrame) data-turbo-frame="{{ $resetTurboFrame }}" @endif
                     class="inline-flex min-h-[38px] items-center rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 shrink-0"
                 >Reset</a>
             @endif
@@ -67,6 +67,7 @@
             'action' => $action,
             'method' => $method,
             'turboFrame' => $turboFrame,
+            'resetTurboFrame' => $resetTurboFrame ?? 'property-main',
             'revenueDateFilter' => $revenueDateFilter,
             'resetUrl' => $resetUrl,
             'showSavedFiltersUi' => true,
@@ -85,7 +86,7 @@
             @foreach ($chips as $chip)
                 <a
                     href="{{ $chip['removeUrl'] }}"
-                    @if ($turboFrame) data-turbo-frame="{{ $turboFrame }}" @endif
+                    @if ($resetTurboFrame) data-turbo-frame="{{ $resetTurboFrame }}" @endif
                     class="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-900 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-100"
                     title="Remove {{ $chip['label'] }} filter"
                 >
@@ -97,7 +98,7 @@
             @if ($resetUrl)
                 <a
                     href="{{ $resetUrl }}"
-                    @if ($turboFrame) data-turbo-frame="{{ $turboFrame }}" @endif
+                    @if ($resetTurboFrame) data-turbo-frame="{{ $resetTurboFrame }}" @endif
                     class="text-xs font-semibold text-slate-600 hover:text-emerald-700 dark:text-slate-400 dark:hover:text-emerald-300"
                 >Clear all</a>
             @endif

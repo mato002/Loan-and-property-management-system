@@ -109,20 +109,147 @@ function activateScripts(root) {
     });
 }
 
+function extractModalSource(doc) {
+    const frames = [...doc.querySelectorAll(`turbo-frame#${FRAME_ID}`)];
+    const populated = frames.find((el) =>
+        el.querySelector('form, .property-form-modal-content, [data-property-form-modal-success]'),
+    );
+    if (populated) {
+        return populated;
+    }
+
+    const content = doc.querySelector('.property-form-modal-content');
+    if (content) {
+        return content;
+    }
+
+    const main = doc.querySelector('turbo-frame#property-main');
+    if (main?.querySelector('form')) {
+        return main;
+    }
+
+    return null;
+}
+
+function showModalSuccessAlert(message) {
+    const text = String(message || 'Saved.').trim() || 'Saved.';
+    if (typeof window.Swal?.fire !== 'function') {
+        return;
+    }
+
+    window.Swal.fire({
+        icon: 'success',
+        title: 'Success',
+        text,
+        timer: 2400,
+        showConfirmButton: false,
+    });
+}
+
+function applyModalHtml(host, html) {
+    if (!(host instanceof HTMLElement)) {
+        throw new Error('Form response was invalid.');
+    }
+
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const source = extractModalSource(doc);
+    if (!source) {
+        throw new Error('Form response was invalid.');
+    }
+
+    host.innerHTML = source.innerHTML;
+
+    const successNode = host.querySelector('[data-property-form-modal-success]');
+    if (successNode) {
+        const message = (successNode.textContent || '').trim() || 'Saved.';
+        showModalSuccessAlert(message);
+        closePropertyFormModal();
+        reloadPropertyMain();
+
+        return true;
+    }
+
+    prepareForms(host);
+    activateScripts(host);
+    if (window.Alpine?.initTree) {
+        window.Alpine.initTree(host);
+    }
+    if (typeof window.__runSwalFlash === 'function') {
+        window.__runSwalFlash(host);
+    }
+
+    return false;
+}
+
 function prepareForms(root) {
     if (!(root instanceof Element)) {
         return;
     }
     root.querySelectorAll('form').forEach((form) => {
-        form.setAttribute('data-turbo-frame', FRAME_ID);
-        if (form.querySelector(`input[name="${PropertyFormModalConfig.INPUT_NAME}"]`)) {
+        form.setAttribute('data-turbo', 'false');
+        form.removeAttribute('data-turbo-frame');
+        if (!form.querySelector(`input[name="${PropertyFormModalConfig.INPUT_NAME}"]`)) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = PropertyFormModalConfig.INPUT_NAME;
+            input.value = '1';
+            form.prepend(input);
+        }
+        if (form.dataset.propertyFormModalWired === '1') {
             return;
         }
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = PropertyFormModalConfig.INPUT_NAME;
-        input.value = '1';
-        form.prepend(input);
+        form.dataset.propertyFormModalWired = '1';
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const host = document.querySelector('.property-form-modal-frame-host');
+            const submitter = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+            if (submitter) {
+                submitter.disabled = true;
+            }
+
+            try {
+                const body = new FormData(form);
+                if (submitter?.name) {
+                    body.set(submitter.name, submitter.value || '1');
+                }
+                if (!body.has(PropertyFormModalConfig.INPUT_NAME)) {
+                    body.set(PropertyFormModalConfig.INPUT_NAME, '1');
+                }
+
+                const response = await fetch(form.action, {
+                    method: (form.method || 'POST').toUpperCase() === 'GET' ? 'GET' : 'POST',
+                    body: body,
+                    headers: {
+                        Accept: 'text/html',
+                        'Turbo-Frame': FRAME_ID,
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'same-origin',
+                });
+
+                const html = await response.text();
+                if (!response.ok && response.status !== 422) {
+                    throw new Error(`Could not save (${response.status}).`);
+                }
+                applyModalHtml(host, html);
+            } catch (error) {
+                console.error('[PropertyFormModal] save failed', error);
+                if (window.Swal) {
+                    window.Swal.fire({
+                        icon: 'error',
+                        title: 'Could not save',
+                        text: error instanceof Error ? error.message : 'Please try again.',
+                        confirmButtonColor: '#dc2626',
+                    });
+                }
+            } finally {
+                if (submitter) {
+                    submitter.disabled = false;
+                }
+            }
+        });
     });
 }
 
@@ -267,23 +394,7 @@ function registerPropertyFormModalAlpine() {
                     }
 
                     const html = await response.text();
-                    const doc = new DOMParser().parseFromString(html, 'text/html');
-                    let source = doc.querySelector(`turbo-frame#${FRAME_ID}`);
-
-                    if (!source) {
-                        source = doc.querySelector('.property-form-modal-content');
-                    }
-
-                    if (!source || !(host instanceof HTMLElement)) {
-                        throw new Error('Form response was invalid.');
-                    }
-
-                    host.innerHTML = source.innerHTML;
-                    prepareForms(host);
-                    activateScripts(host);
-                    if (window.Alpine?.initTree) {
-                        window.Alpine.initTree(host);
-                    }
+                    applyModalHtml(host, html);
                 } catch (error) {
                     console.error('[PropertyFormModal] load failed', error);
                     this.error =

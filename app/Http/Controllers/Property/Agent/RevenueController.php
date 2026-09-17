@@ -23,6 +23,7 @@ use App\Services\Property\RentRollQuery;
 use App\Services\Property\TenantCommunicationStageService;
 use App\Models\PropertyPortalSetting;
 use App\Support\Property\PropertyFilterCascadeCatalog;
+use App\Support\Property\PropertyTurboFrames;
 use App\Support\TabularExport;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -600,58 +601,63 @@ class RevenueController extends Controller
         $tenantRowsQuery = DB::query()->fromSub($tenantAggSub, 'agg')
             ->join('pm_tenants as tenant', 'tenant.id', '=', 'agg.pm_tenant_id');
 
-        $aggregated = (clone $tenantRowsQuery)
-            ->orderBy(match ($sortBy) {
-                'tenant' => 'tenant.name',
-                'days_late' => 'agg.max_days_overdue',
-                'balance' => 'agg.total_balance',
-                'last_contact' => 'agg.last_contact',
-                'invoice_count' => 'agg.invoice_count',
-                default => 'agg.oldest_due',
-            }, $sortDir)
-            ->get([
-                'agg.pm_tenant_id',
-                'agg.invoice_count',
-                'agg.total_balance',
-                'agg.oldest_due',
-                'agg.max_days_overdue',
-                'agg.last_contact',
-                'tenant.name as tenant_name',
-                'tenant.phone as tenant_phone',
-                'tenant.email as tenant_email',
-                'tenant.account_number as tenant_account',
-            ])
-            ->map(function ($row) use ($today) {
-                $maxDaysOverdue = (int) ($row->max_days_overdue ?? 0);
-                $oldestDue = $row->oldest_due ? Carbon::parse((string) $row->oldest_due) : null;
+        $orderColumn = match ($sortBy) {
+            'tenant' => 'tenant.name',
+            'days_late' => 'agg.max_days_overdue',
+            'balance' => 'agg.total_balance',
+            'last_contact' => 'agg.last_contact',
+            'invoice_count' => 'agg.invoice_count',
+            default => 'agg.oldest_due',
+        };
+        $tenantAggSelect = [
+            'agg.pm_tenant_id',
+            'agg.invoice_count',
+            'agg.total_balance',
+            'agg.oldest_due',
+            'agg.max_days_overdue',
+            'agg.last_contact',
+            'tenant.name as tenant_name',
+            'tenant.phone as tenant_phone',
+            'tenant.email as tenant_email',
+            'tenant.account_number as tenant_account',
+        ];
+        $mapTenantAggRow = function ($row) use ($today) {
+            $maxDaysOverdue = (int) ($row->max_days_overdue ?? 0);
+            $oldestDue = $row->oldest_due ? Carbon::parse((string) $row->oldest_due) : null;
 
-                return [
-                    'tenant_id' => (int) $row->pm_tenant_id,
-                    'tenant_name' => (string) ($row->tenant_name ?? '—'),
-                    'tenant_phone' => (string) ($row->tenant_phone ?? ''),
-                    'tenant_email' => (string) ($row->tenant_email ?? ''),
-                    'tenant_account' => (string) ($row->tenant_account ?? ''),
-                    'invoice_count' => (int) ($row->invoice_count ?? 0),
-                    'invoice_ids' => [],
-                    'units' => collect(),
-                    'types' => [],
-                    'oldest_due' => $oldestDue,
-                    'days_late' => $maxDaysOverdue > 0
-                        ? $maxDaysOverdue
-                        : ($oldestDue ? (int) $today->diffInDays($oldestDue->copy()->startOfDay(), true) : 0),
-                    'aging_label' => $maxDaysOverdue > 0
-                        ? (string) $maxDaysOverdue
-                        : $this->arrearsAgingLabel($oldestDue, $today),
-                    'balance' => (float) ($row->total_balance ?? 0),
-                    'last_contact' => $row->last_contact ? Carbon::parse((string) $row->last_contact) : null,
-                    'workflow' => $this->arrearsWorkflowForDaysOverdue($maxDaysOverdue),
-                ];
-            })
-            ->values();
+            return [
+                'tenant_id' => (int) $row->pm_tenant_id,
+                'tenant_name' => (string) ($row->tenant_name ?? '—'),
+                'tenant_phone' => (string) ($row->tenant_phone ?? ''),
+                'tenant_email' => (string) ($row->tenant_email ?? ''),
+                'tenant_account' => (string) ($row->tenant_account ?? ''),
+                'invoice_count' => (int) ($row->invoice_count ?? 0),
+                'invoice_ids' => [],
+                'units' => collect(),
+                'types' => [],
+                'oldest_due' => $oldestDue,
+                'days_late' => $maxDaysOverdue > 0
+                    ? $maxDaysOverdue
+                    : ($oldestDue ? (int) $today->diffInDays($oldestDue->copy()->startOfDay(), true) : 0),
+                'aging_label' => $maxDaysOverdue > 0
+                    ? (string) $maxDaysOverdue
+                    : $this->arrearsAgingLabel($oldestDue, $today),
+                'balance' => (float) ($row->total_balance ?? 0),
+                'last_contact' => $row->last_contact ? Carbon::parse((string) $row->last_contact) : null,
+                'workflow' => $this->arrearsWorkflowForDaysOverdue($maxDaysOverdue),
+            ];
+        };
+
+        $orderedTenantRowsQuery = (clone $tenantRowsQuery)
+            ->orderBy($orderColumn, $sortDir)
+            ->orderBy('agg.pm_tenant_id');
 
         $export = strtolower((string) $request->query('export', ''));
         if (in_array($export, ['csv', 'xls', 'pdf'], true)) {
-            $exportRows = $this->hydrateArrearsTenantRows($aggregated, $tableQuery);
+            $exportRows = $this->hydrateArrearsTenantRows(
+                $orderedTenantRowsQuery->get($tenantAggSelect)->map($mapTenantAggRow)->values(),
+                $tableQuery
+            );
 
             return TabularExport::stream(
                 'arrears-'.now()->format('Ymd_His'),
@@ -679,9 +685,13 @@ class RevenueController extends Controller
         }
 
         $page = max(1, (int) $request->query('page', 1));
-        $total = $aggregated->count();
+        $total = (int) (clone $tenantRowsQuery)->count();
         $sliced = $this->hydrateArrearsTenantRows(
-            $aggregated->slice(($page - 1) * $perPage, $perPage)->values(),
+            $orderedTenantRowsQuery
+                ->forPage($page, $perPage)
+                ->get($tenantAggSelect)
+                ->map($mapTenantAggRow)
+                ->values(),
             $tableQuery
         );
         $paginator = new LengthAwarePaginator(
@@ -834,8 +844,11 @@ class RevenueController extends Controller
             ];
         })->all();
 
-        $grandTotalBalance = (float) $aggregated->sum(fn (array $r) => (float) $r['balance']);
-        $grandTotalInvoices = (int) $aggregated->sum(fn (array $r) => (int) $r['invoice_count']);
+        $footerAgg = (clone $tenantRowsQuery)
+            ->selectRaw('COALESCE(SUM(agg.total_balance), 0) as total_balance, COALESCE(SUM(agg.invoice_count), 0) as invoice_count')
+            ->first();
+        $grandTotalBalance = (float) ($footerAgg->total_balance ?? 0);
+        $grandTotalInvoices = (int) ($footerAgg->invoice_count ?? 0);
         $invoiceTotalLabel = $grandTotalInvoices === 1 ? '1 invoice' : $grandTotalInvoices.' invoices';
         $tenantTotalLabel = $total === 1 ? '1 tenant' : $total.' tenants';
         $tableFooterRow = [
@@ -856,20 +869,23 @@ class RevenueController extends Controller
             '',
         ];
 
-        $reminderTargets = (clone $tableQuery)
-            ->with('tenant:id,name')
-            ->orderBy('due_date')
-            ->limit(500)
-            ->get(['id', 'invoice_no', 'pm_tenant_id', 'due_date'])
-            ->filter(fn (PmInvoice $i) => (int) ($i->pm_tenant_id ?? 0) > 0)
-            ->map(fn (PmInvoice $i) => [
-                'id' => (int) $i->id,
-                'label' => (string) ($i->invoice_no.' · '.($i->tenant->name ?? 'Tenant').' · '.$i->due_date?->format('Y-m-d')),
-            ])
-            ->values()
-            ->all();
+        $isListFrame = PropertyTurboFrames::isListResults($request);
+        $reminderTargets = $isListFrame
+            ? []
+            : (clone $tableQuery)
+                ->with('tenant:id,name')
+                ->orderBy('due_date')
+                ->limit(500)
+                ->get(['id', 'invoice_no', 'pm_tenant_id', 'due_date'])
+                ->filter(fn (PmInvoice $i) => (int) ($i->pm_tenant_id ?? 0) > 0)
+                ->map(fn (PmInvoice $i) => [
+                    'id' => (int) $i->id,
+                    'label' => (string) ($i->invoice_no.' · '.($i->tenant->name ?? 'Tenant').' · '.$i->due_date?->format('Y-m-d')),
+                ])
+                ->values()
+                ->all();
 
-        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $cascade = $isListFrame ? null : app(PropertyFilterCascadeCatalog::class);
         $propertyId = (int) $filters['property_id'];
         $unitId = (int) $filters['unit_id'];
         $tenantId = (int) $filters['tenant_id'];
@@ -892,10 +908,14 @@ class RevenueController extends Controller
                 'dir' => $sortDir,
                 'per_page' => (string) $perPage,
             ],
-            'properties' => $cascade->properties(),
-            'units' => $cascade->unitsForProperty($propertyId),
-            'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromInvoices(),
+            'properties' => $isListFrame ? collect() : $cascade->properties(),
+            'units' => (! $isListFrame && $propertyId > 0) ? $cascade->unitsForProperty($propertyId) : collect(),
+            'tenantsForFilter' => (! $isListFrame && ($tenantId > 0 || $propertyId > 0 || $unitId > 0))
+                ? $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId)
+                : collect(),
+            'filterCascadeCatalog' => $isListFrame
+                ? ['units' => [], 'tenants' => []]
+                : $cascade->fromInvoices(),
         ]);
     }
 
@@ -1064,7 +1084,6 @@ class RevenueController extends Controller
         $today = now()->toDateString();
 
         $query = PmInvoice::query()
-            ->with(['tenant', 'unit.property'])
             ->withOutstandingBalance()
             ->where(function (\Illuminate\Database\Eloquent\Builder $inner) {
                 $inner->whereNull('invoice_kind')
@@ -1755,6 +1774,7 @@ class RevenueController extends Controller
         $propertyId = (int) $filters['property_id'];
         $unitId = (int) $filters['unit_id'];
         $tenantId = (int) $filters['tenant_id'];
+        $isListFrame = PropertyTurboFrames::isListResults($request);
 
         return property_view('property.agent.revenue.receipts', [
             'stats' => $stats,
@@ -1767,10 +1787,14 @@ class RevenueController extends Controller
                 'dir' => $dir,
                 'per_page' => (string) $perPage,
             ],
-            'properties' => $cascade->properties(),
-            'units' => $cascade->unitsForProperty($propertyId),
-            'tenantsForFilter' => $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId),
-            'filterCascadeCatalog' => $cascade->fromInvoices(),
+            'properties' => $isListFrame ? collect() : $cascade->properties(),
+            'units' => (! $isListFrame && $propertyId > 0) ? $cascade->unitsForProperty($propertyId) : collect(),
+            'tenantsForFilter' => (! $isListFrame && ($tenantId > 0 || $propertyId > 0 || $unitId > 0))
+                ? $cascade->invoiceTenantsForFilter($tenantId, $propertyId, $unitId)
+                : collect(),
+            'filterCascadeCatalog' => $isListFrame
+                ? ['units' => [], 'tenants' => []]
+                : $cascade->fromInvoices(),
         ]);
     }
 

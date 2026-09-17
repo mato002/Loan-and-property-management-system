@@ -48,6 +48,7 @@
                         @endforeach
                     </select>
                     @error('product_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
+                    <p class="mt-1 text-[11px] text-slate-500">Rate, term, and maturity come from this product. Change the product to change those values.</p>
                 </div>
                 <div id="section-charges" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -74,7 +75,7 @@
                                 <option value="{{ $v }}" @selected(old('interest_rate_period', $loan->interest_rate_period ?? 'annual') === $v)>{{ $lab }}</option>
                             @endforeach
                         </select>
-                        <p class="mt-1 text-[11px] text-slate-500">How the rate % is interpreted. If you change this after repayments exist, use Rebuild snapshot on the loan.</p>
+                        <p class="mt-1 text-[11px] text-slate-500">Locked to the selected product. Rebuild snapshot after save if this loan already has repayments.</p>
                         @error('interest_rate_period')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
@@ -91,7 +92,7 @@
                                 <option value="{{ $unit }}" @selected(old('term_unit', $loan->term_unit ?? 'monthly') === $unit)>{{ $label }}</option>
                             @endforeach
                         </select>
-                        <p class="mt-1 text-[11px] text-slate-500">How long the loan runs (e.g. 6 monthly = 6 months).</p>
+                        <p class="mt-1 text-[11px] text-slate-500">Locked to the selected product (e.g. 6 monthly = 6 months).</p>
                         @error('term_unit')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                     </div>
                 </div>
@@ -309,23 +310,74 @@
             return key && productDefaults[key] ? productDefaults[key] : null;
         };
 
+        const syncLockedSelect = (el, locked) => {
+            if (!el) return;
+            const hiddenId = `${el.id}_locked`;
+            let hidden = form.querySelector(`#${hiddenId}`);
+            if (locked) {
+                if (!hidden) {
+                    hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.id = hiddenId;
+                    hidden.name = el.getAttribute('name') || el.name;
+                    el.insertAdjacentElement('afterend', hidden);
+                    el.removeAttribute('name');
+                }
+                hidden.value = el.value;
+                el.disabled = true;
+            } else {
+                if (hidden) {
+                    el.setAttribute('name', hidden.name);
+                    hidden.remove();
+                }
+                el.disabled = false;
+            }
+            el.classList.toggle('bg-slate-50', locked);
+            el.classList.toggle('text-slate-600', locked);
+        };
+
+        const lockTextField = (el, locked) => {
+            if (!el) return;
+            el.readOnly = locked;
+            el.classList.toggle('bg-slate-50', locked);
+            el.classList.toggle('text-slate-600', locked);
+        };
+
         const applyProductDefaults = () => {
             const rule = selectedProductRule();
-            if (!rule) return;
+            const hasProduct = Boolean(rule);
+            if (rule) {
+                if (interestRateInput && rule.default_interest_rate !== null) {
+                    interestRateInput.value = Number(rule.default_interest_rate).toFixed(4);
+                }
+                if (interestRatePeriodSelect && rule.default_interest_rate_period) {
+                    const period = String(rule.default_interest_rate_period).toLowerCase();
+                    if ([...interestRatePeriodSelect.options].some((option) => option.value === period)) {
+                        interestRatePeriodSelect.value = period;
+                    }
+                }
+                if (termValueInput && Number(rule.default_term_months || 0) > 0) {
+                    termValueInput.value = String(rule.default_term_months);
+                }
+                if (termUnitSelect && rule.default_term_unit) {
+                    termUnitSelect.value = String(rule.default_term_unit).toLowerCase();
+                }
+            }
 
-            if (interestRateInput && rule.default_interest_rate !== null) {
-                interestRateInput.value = Number(rule.default_interest_rate).toFixed(4);
-            }
-            if (termValueInput && Number(rule.default_term_months || 0) > 0) {
-                termValueInput.value = String(rule.default_term_months);
-            }
-            if (termUnitSelect && rule.default_term_unit) {
-                termUnitSelect.value = String(rule.default_term_unit).toLowerCase();
+            lockTextField(interestRateInput, hasProduct && rule?.default_interest_rate !== null);
+            syncLockedSelect(interestRatePeriodSelect, hasProduct && Boolean(rule?.default_interest_rate_period));
+            lockTextField(termValueInput, hasProduct && Number(rule?.default_term_months || 0) > 0);
+            syncLockedSelect(termUnitSelect, hasProduct && Boolean(rule?.default_term_unit));
+            lockTextField(maturityInput, hasProduct && Number(rule?.default_term_months || 0) > 0);
+            lockTextField(balanceInput, hasProduct);
+            if (hasProduct) {
+                calculateMaturityFromSchedule();
+                recalculateBalanceFromInputs();
             }
         };
 
         const recalculateBalanceFromInputs = () => {
-            if (!balanceInput || balanceTouched) return;
+            if (!balanceInput || (balanceTouched && !selectedProductRule())) return;
             const principal = Number(principalInput?.value || 0);
             const rate = Number(interestRateInput?.value || 0);
             if (!Number.isFinite(principal) || principal <= 0) {
@@ -470,11 +522,13 @@
         };
 
         if (applicationSelect) {
-            applicationSelect.addEventListener('change', applyApplicationDefaults);
+            applicationSelect.addEventListener('change', () => {
+                applyApplicationDefaults();
+                applyProductDefaults();
+            });
         }
         productInput?.addEventListener('change', () => {
             applyProductDefaults();
-            recalculateBalanceFromInputs();
         });
         principalInput?.addEventListener('input', recalculateBalanceFromInputs);
         interestRateInput?.addEventListener('input', recalculateBalanceFromInputs);
@@ -541,6 +595,7 @@
                     }
                     productInput.value = data.product.name;
                 }
+                applyProductDefaults();
                 closeModal(productModal);
             } catch (error) {
                 modalError.textContent = error instanceof Error ? error.message : 'Failed to save product.';

@@ -203,19 +203,48 @@ function readFlashPayloadFromDom(scope) {
     return payloads;
 }
 
+function flashFingerprint(item) {
+    if (!item || typeof item !== 'object') {
+        return '';
+    }
+
+    return JSON.stringify({
+        icon: item.icon ?? '',
+        title: item.title ?? '',
+        text: item.text ?? '',
+        html: item.html ?? '',
+    });
+}
+
+function dedupeFlashQueue(items) {
+    const seen = new Set();
+    const unique = [];
+    for (const item of items) {
+        const key = flashFingerprint(item);
+        if (key === '' || seen.has(key)) {
+            continue;
+        }
+        seen.add(key);
+        unique.push(item);
+    }
+
+    return unique;
+}
+
 function runFlash(scope) {
     if (flashDrainPromise) {
         return flashDrainPromise;
     }
 
-    const queue = [];
+    const fromDom = readFlashPayloadFromDom(scope);
+    const fromWindow = Array.isArray(window.__laravelSwalFlash) && window.__laravelSwalFlash.length > 0
+        ? [...window.__laravelSwalFlash]
+        : [];
+    delete window.__laravelSwalFlash;
 
-    if (Array.isArray(window.__laravelSwalFlash) && window.__laravelSwalFlash.length > 0) {
-        queue.push(...window.__laravelSwalFlash);
-        delete window.__laravelSwalFlash;
-    }
-
-    queue.push(...readFlashPayloadFromDom(scope));
+    // Prefer the DOM node. The old inline script copied the same payload onto
+    // window.__laravelSwalFlash, which queued every alert twice.
+    const queue = dedupeFlashQueue(fromDom.length > 0 ? fromDom : fromWindow);
 
     if (queue.length === 0) {
         return Promise.resolve();

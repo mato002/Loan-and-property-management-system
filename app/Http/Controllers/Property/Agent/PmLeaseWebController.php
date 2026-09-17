@@ -1011,21 +1011,23 @@ SQL;
             $types[$type] = $type;
         }
 
-        foreach (ExpenseDefinition::query()
-            ->where('is_active', true)
-            ->where('property_id', $unit->property_id)
-            ->orderBy('sort_order')
-            ->orderBy('charge_key')
-            ->get() as $def) {
-            $scopeUnitId = $def->property_unit_id ? (int) $def->property_unit_id : null;
-            if ($scopeUnitId !== null && $scopeUnitId !== $unitId) {
-                continue;
+        if (Schema::hasTable('expense_definitions')) {
+            foreach (ExpenseDefinition::query()
+                ->where('is_active', true)
+                ->where('property_id', $unit->property_id)
+                ->orderBy('sort_order')
+                ->orderBy('charge_key')
+                ->get() as $def) {
+                $scopeUnitId = $def->property_unit_id ? (int) $def->property_unit_id : null;
+                if ($scopeUnitId !== null && $scopeUnitId !== $unitId) {
+                    continue;
+                }
+                $type = $this->normalizeUtilityType((string) $def->charge_key);
+                if ($type === '') {
+                    continue;
+                }
+                $types[$type] = $type;
             }
-            $type = $this->normalizeUtilityType((string) $def->charge_key);
-            if ($type === '') {
-                continue;
-            }
-            $types[$type] = $type;
         }
 
         return array_values($types);
@@ -1041,6 +1043,10 @@ SQL;
         $raw = (string) PropertyPortalSetting::getValue('utility_property_charge_templates_json', '{}');
         $decoded = json_decode($raw, true);
         $byProperty = is_array($decoded) ? $decoded : [];
+
+        if (! Schema::hasTable('expense_definitions')) {
+            return is_array($byProperty) ? $byProperty : [];
+        }
 
         foreach (ExpenseDefinition::query()
             ->where('is_active', true)
@@ -1694,12 +1700,14 @@ SQL;
             $this->syncLeaseRevenuePostings($lease);
         });
 
+        PmInvoiceController::forgetInvoiceCreateFormCaches();
+
         if ($fromCreateModal) {
             return $this->renderLeaseCreateSuccessResponse();
         }
 
         return redirect()
-            ->route('property.tenants.leases', absolute: false)
+            ->route('property.tenants.leases')
             ->with('success', 'Lease saved.');
     }
 
@@ -2040,10 +2048,12 @@ SQL;
             }
         }
 
+        PmInvoiceController::forgetInvoiceCreateFormCaches();
+
         return $this->redirectOrPropertyFormModalSuccess(
             $request,
             redirect()
-                ->route('property.leases.show', $lease, absolute: false)
+                ->route('property.leases.show', $lease)
                 ->with('success', $message),
             $message,
         );
@@ -2113,6 +2123,7 @@ SQL;
     public function terminate(PmLease $lease): RedirectResponse
     {
         $this->terminateLease($lease);
+        PmInvoiceController::forgetInvoiceCreateFormCaches();
 
         return back()->with('success', 'Lease terminated.');
     }
@@ -2120,6 +2131,7 @@ SQL;
     public function restore(PmLease $lease): RedirectResponse
     {
         $this->restoreLease($lease);
+        PmInvoiceController::forgetInvoiceCreateFormCaches();
 
         return back()->with('success', 'Lease restored to active.');
     }
@@ -2127,6 +2139,7 @@ SQL;
     public function destroy(PmLease $lease): RedirectResponse
     {
         $this->deleteLease($lease, draftOnly: false);
+        PmInvoiceController::forgetInvoiceCreateFormCaches();
 
         return back()->with('success', 'Lease deleted.');
     }

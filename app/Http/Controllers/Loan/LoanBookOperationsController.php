@@ -259,6 +259,7 @@ class LoanBookOperationsController extends Controller
 
         $loan = LoanBookLoan::query()->with('loanClient')->findOrFail($validated['loan_book_loan_id']);
         $this->ensureLoanClientOwner($loan->loanClient, $request->user());
+        $validated['amount'] = round(max(0.01, (float) ($loan->principal ?? 0)), 2);
         $classification = $this->borrowerClassifier->classify(
             $loan->loanClient,
             (float) ($loan->principal ?? 0),
