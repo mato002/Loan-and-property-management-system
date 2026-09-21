@@ -98,9 +98,9 @@
                             <td class="px-3 sm:px-4 py-3 text-slate-700 dark:text-slate-200 tabular-nums">{{ $u->publicImages->count() }}</td>
                             <td class="px-3 sm:px-4 py-3">
                                 @if ($u->public_listing_published)
-                                    <span class="inline-flex rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 text-xs font-semibold">Live on website</span>
+                                    <span class="inline-flex rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 text-xs font-semibold">Featured</span>
                                 @else
-                                    <span class="inline-flex rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100 px-2 py-0.5 text-xs font-semibold">Not published</span>
+                                    <span class="inline-flex rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-2 py-0.5 text-xs font-semibold">On website</span>
                                 @endif
                             </td>
                             <td class="px-3 sm:px-4 py-3">
@@ -110,7 +110,7 @@
                                     data-listing-unit-id="{{ $u->id }}"
                                     data-property-form-modal="off"
                                     class="text-blue-600 dark:text-blue-400 font-medium hover:underline"
-                                >Photos &amp; publish</a>
+                                >Add photos</a>
                             </td>
                         </tr>
                     @endforeach

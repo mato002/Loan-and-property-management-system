@@ -27,9 +27,10 @@ class PublicController extends Controller
         $featuredUnits = $this->scopePublicPropertyUnits(
             PropertyUnit::query()
         )
-            ->publicListingPublished()
+            ->publiclyListed()
             ->whereHas('property')
             ->with(['property', 'publicImages'])
+            ->orderByDesc('public_listing_published')
             ->orderByDesc('updated_at')
             ->limit(6)
             ->get();
@@ -56,7 +57,7 @@ class PublicController extends Controller
         $query = $this->scopePublicPropertyUnits(
             PropertyUnit::query()
         )
-            ->publicListingPublished()
+            ->publiclyListed()
             ->whereHas('property')
             ->with(['property', 'publicImages']);
 
@@ -162,7 +163,7 @@ class PublicController extends Controller
         $unit = $this->scopePublicPropertyUnits(
             PropertyUnit::query()
         )
-            ->publicListingPublished()
+            ->publiclyListed()
             ->whereHas('property')
             ->whereKey($id)
             ->with(['property', 'publicImages', 'amenities'])
@@ -173,11 +174,12 @@ class PublicController extends Controller
         $similarUnits = $this->scopePublicPropertyUnits(
             PropertyUnit::query()
         )
-            ->publicListingPublished()
+            ->publiclyListed()
             ->whereHas('property')
             ->where('property_id', $unit->property_id)
             ->whereKeyNot($unit->id)
             ->with(['property', 'publicImages'])
+            ->orderByDesc('public_listing_published')
             ->orderByDesc('updated_at')
             ->limit(3)
             ->get();
@@ -259,7 +261,7 @@ class PublicController extends Controller
             $propertyUnit = $this->scopePublicPropertyUnits(
                 PropertyUnit::query()
             )
-                ->publicListingPublished()
+                ->publiclyListed()
                 ->whereHas('property')
                 ->whereKey($request->integer('property_unit'))
                 ->with('property')
@@ -341,7 +343,7 @@ class PublicController extends Controller
             $applyUnit = $this->scopePublicPropertyUnits(
                 PropertyUnit::query()
             )
-                ->publicListingPublished()
+                ->publiclyListed()
                 ->whereHas('property')
                 ->whereKey($propertyUnitId)
                 ->with('property')

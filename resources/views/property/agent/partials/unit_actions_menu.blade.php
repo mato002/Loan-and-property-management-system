@@ -43,7 +43,7 @@
         @endif
 
         @if (UnitListPresentation::canPublishListing($unit, $hasActiveLease))
-            <a href="{{ route('property.listings.create', ['selected_unit' => $unit->id], absolute: false) }}#listing-publish" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-slate-700/50">{{ $unit->public_listing_published ? 'Edit listing' : 'Publish listing' }}</a>
+            <a href="{{ route('property.listings.create', ['selected_unit' => $unit->id], absolute: false) }}#listing-publish" data-turbo-frame="property-main" class="block px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-slate-700/50">Add photos / listing</a>
         @endif
 
         @if ($tenant?->name)

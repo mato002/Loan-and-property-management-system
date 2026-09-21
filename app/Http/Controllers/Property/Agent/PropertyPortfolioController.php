@@ -767,7 +767,7 @@ class PropertyPortfolioController extends Controller
                 'icon' => 'fa-key',
             ];
             $quickActions[] = [
-                'label' => 'Maintenance',
+                'label' => 'Log maintenance',
                 'modal' => 'showHubMaintenanceForm',
                 'icon' => 'fa-wrench',
             ];
@@ -785,22 +785,6 @@ class PropertyPortfolioController extends Controller
                 'icon' => 'fa-pen-to-square',
                 'tone' => 'muted',
             ];
-            $quickActions[] = [
-                'label' => 'Utilities billing',
-                'route' => 'property.revenue.utilities',
-                'params' => [],
-                'icon' => 'fa-droplet',
-                'tone' => 'muted',
-            ];
-            if ($property->isManagementActive()) {
-                $quickActions[] = [
-                    'label' => 'Offboarding',
-                    'route' => 'property.properties.offboarding',
-                    'params' => ['property' => $property->id],
-                    'icon' => 'fa-door-open',
-                    'tone' => 'muted',
-                ];
-            }
         }
 
         $alerts = [];

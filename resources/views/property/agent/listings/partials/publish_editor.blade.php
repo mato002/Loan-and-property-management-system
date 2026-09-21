@@ -5,10 +5,11 @@
 <div id="listing-publish" class="rounded-2xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/40 dark:bg-blue-950/20 p-4 sm:p-5 space-y-4">
     <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-            <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Publish editor</h2>
+            <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">Photos &amp; listing details</h2>
             <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">
                 {{ $selectedUnit->property->name }} — <span class="font-medium text-slate-800 dark:text-slate-200">{{ $selectedUnit->label }}</span>
             </p>
+            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Vacant units are already live on the website with a default image. Add photos anytime — they update online immediately.</p>
         </div>
         <button
             type="button"
@@ -23,7 +24,7 @@
         @include('property.agent.listings.partials.public_media_upload', ['unit' => $selectedUnit])
 
         <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-4">
-            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Description &amp; publish</h3>
+            <h3 class="text-sm font-semibold text-slate-900 dark:text-white">Description &amp; featured</h3>
             <form method="post" action="{{ route('property.listings.vacant.public.update', $selectedUnit) }}" class="space-y-4">
                 @csrf
                 @method('PATCH')
@@ -46,8 +47,8 @@
                         @checked(old('public_listing_published', $selectedUnit->public_listing_published))
                     />
                     <span class="text-sm text-slate-700 dark:text-slate-300">
-                        <span class="font-medium text-slate-900 dark:text-white">Published on public website</span>
-                        <span class="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">Requires at least one photo. This is what makes the unit appear on passionhomes.co.ke.</span>
+                        <span class="font-medium text-slate-900 dark:text-white">Featured on homepage</span>
+                        <span class="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">Optional. Vacant units are already on the website; this just prioritises them on the home page.</span>
                     </span>
                 </label>
                 @error('public_listing_published')<p class="text-xs text-red-600">{{ $message }}</p>@enderror

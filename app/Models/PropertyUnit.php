@@ -81,7 +81,8 @@ class PropertyUnit extends Model
 
     /**
      * Vacant units eligible for the public directory (Discover, home, details).
-     * Agents can still refine copy and photos under Listings; publish only affects ordering on the home page.
+     * Default placeholder images are used until the agent uploads photos.
+     * The featured flag only affects homepage ordering / highlighting.
      *
      * @param  Builder<PropertyUnit>  $query
      * @return Builder<PropertyUnit>
@@ -92,7 +93,7 @@ class PropertyUnit extends Model
     }
 
     /**
-     * Vacant units the agent has explicitly marked live (photos + publish toggle satisfied).
+     * Vacant units marked Featured (homepage priority). Photos are optional.
      *
      * @param  Builder<PropertyUnit>  $query
      * @return Builder<PropertyUnit>

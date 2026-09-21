@@ -64,7 +64,7 @@
                 @empty
                     <tr>
                         <td colspan="6" class="px-4 py-14 text-center align-middle">
-                            <p class="font-medium text-slate-700 dark:text-slate-200">No published listings yet</p>
+                            <p class="font-medium text-slate-700 dark:text-slate-200">No vacant units on the website yet</p>
                             <a href="{{ route('property.listings.vacant', absolute: false) }}" data-turbo-frame="property-main" data-property-nav="property.listings.vacant" class="mt-4 inline-flex text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">Open vacant units</a>
                         </td>
                     </tr>

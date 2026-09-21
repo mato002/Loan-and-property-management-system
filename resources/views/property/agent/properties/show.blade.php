@@ -30,18 +30,6 @@
 
     <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from($hubModalDefaults) !!}"></x-slot>
 
-    <x-slot name="actions">
-        @if (auth()->user()?->hasPmPermission('properties.manage') && ! $property->isManagementReadOnly())
-            <button type="button" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700" data-property-modal-open="addUnitOpen" @click="addUnitOpen = true">
-                <i class="fa-solid fa-plus" aria-hidden="true"></i> Add unit
-            </button>
-            <button type="button" class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700" onclick="window.openLeaseCreateModal && window.openLeaseCreateModal()">
-                <i class="fa-solid fa-key" aria-hidden="true"></i> Assign lease
-            </button>
-        @endif
-        <a href="{{ route('property.properties.edit', $property, false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit</a>
-    </x-slot>
-
     <x-slot name="modals">
         @include('property.agent.properties.partials.hub_modals')
     </x-slot>
@@ -51,19 +39,14 @@
             <span class="font-semibold">{{ $managementStatusLabel ?? $property->managementStatusLabel() }}</span>
             — This property is read-only. Operational actions are disabled; history, statements, and accounting remain available.
             @if (auth()->user()?->hasPmPermission('properties.manage') || auth()->user()?->hasPmPermission('property.archive.view'))
-                <a href="{{ route('property.properties.offboarding', $property, false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-indigo-700 hover:underline">View offboarding</a>
+                <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => 'offboarding'], false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-indigo-700 hover:underline">Open Offboarding tab</a>
             @endif
         </div>
     @elseif ($property->isOffboarding())
         <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <span class="font-semibold">Offboarding in progress</span>
             — New leases, tenants, and utility setup are blocked. Settle balances then archive when ready.
-            <a href="{{ route('property.properties.offboarding', $property, false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-amber-800 hover:underline">Continue offboarding</a>
-        </div>
-    @elseif ($property->isManagementActive() && auth()->user()?->hasPmPermission('properties.manage'))
-        <div class="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 flex flex-wrap items-center justify-between gap-2">
-            <span>Landlord quit or stopping management? Use offboarding to wind down without deleting financial history.</span>
-            <a href="{{ route('property.properties.offboarding', $property, false) }}" class="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">Start offboarding</a>
+            <a href="{{ route('property.properties.show', ['property' => $property->id, 'tab' => 'offboarding'], false) }}" data-turbo-frame="property-main" class="ml-2 font-medium text-amber-800 hover:underline">Continue in Offboarding tab</a>
         </div>
     @endif
 
@@ -162,9 +145,6 @@
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-sm font-semibold text-slate-900">Landlord ownership & earnings</h3>
-                @if (auth()->user()?->hasPmPermission('properties.manage') && ! $property->isManagementReadOnly() && count($ownerRows) === 0)
-                    <button type="button" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700" data-property-modal-open="showHubLinkLandlord" @click="showHubLinkLandlord = true">Link landlord</button>
-                @endif
             </div>
             <div class="mt-3 overflow-x-auto">
                 <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
@@ -652,15 +632,6 @@
                     <h3 class="text-sm font-semibold text-slate-900">Unit status &amp; arrears</h3>
                     <p class="text-xs text-slate-500 mt-0.5">{{ count($unitSnapshots ?? []) }} of {{ count($units ?? []) }} units shown</p>
                 </div>
-                @if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage') && ! ($isManagementReadOnly ?? false))
-                    <button
-                        type="button"
-                        class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                        @click="addUnitOpen = true"
-                    >
-                        + Add unit
-                    </button>
-                @endif
             </div>
             <form method="get" action="{{ route('property.properties.show', ['property' => $property->id]) }}" data-turbo-frame="property-main" class="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="tab" value="units" />

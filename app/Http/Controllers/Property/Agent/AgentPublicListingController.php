@@ -63,14 +63,16 @@ class AgentPublicListingController extends Controller
     {
         $published = PropertyUnit::query()
             ->with(['property', 'publicImages'])
-            ->publicListingPublished()
+            ->publiclyListed()
+            ->orderByDesc('public_listing_published')
             ->orderBy('property_id')
             ->orderBy('label')
             ->get();
 
         $stats = [
-            ['label' => 'Published', 'value' => (string) $published->count(), 'hint' => 'Live on website'],
-            ['label' => 'Total photos', 'value' => (string) $published->sum(fn (PropertyUnit $u) => $u->publicImages->count()), 'hint' => 'Across listings'],
+            ['label' => 'On website', 'value' => (string) $published->count(), 'hint' => 'Vacant units (default image until photos added)'],
+            ['label' => 'Featured', 'value' => (string) $published->where('public_listing_published', true)->count(), 'hint' => 'Homepage priority'],
+            ['label' => 'With photos', 'value' => (string) $published->sum(fn (PropertyUnit $u) => $u->publicImages->count() > 0 ? 1 : 0), 'hint' => 'Custom photos uploaded'],
         ];
 
         return property_view('property.agent.listings.ads', [
@@ -160,12 +162,6 @@ class AgentPublicListingController extends Controller
 
         $publish = $request->boolean('public_listing_published');
 
-        if ($publish && $property_unit->publicImages()->count() === 0) {
-            return back()
-                ->withInput()
-                ->withErrors(['public_listing_published' => __('Add at least one photo before publishing.')]);
-        }
-
         $desc = isset($data['public_listing_description']) && trim((string) $data['public_listing_description']) !== ''
             ? $data['public_listing_description']
             : null;
@@ -175,7 +171,12 @@ class AgentPublicListingController extends Controller
             'public_listing_published' => $publish,
         ]);
 
-        return back()->with('success', $publish ? __('Listing is live on the public site.') : __('Listing saved as draft.'));
+        return back()->with(
+            'success',
+            $publish
+                ? __('Saved. This vacant unit stays on the website and is marked Featured.')
+                : __('Saved. Vacant units stay on the website with the default image until you add photos.')
+        );
     }
 
     public function storePhotos(Request $request, PropertyUnit $property_unit): RedirectResponse
@@ -273,7 +274,7 @@ class AgentPublicListingController extends Controller
             });
         }
 
-        return back()->with('success', __('Photos and videos uploaded.'));
+        return back()->with('success', __('Photos updated on the live website listing.'));
     }
 
     public function destroyPhoto(PropertyUnit $property_unit, int $public_image): RedirectResponse
@@ -288,11 +289,7 @@ class AgentPublicListingController extends Controller
         Storage::disk('public')->delete($image->path);
         $image->delete();
 
-        if ($property_unit->publicImages()->count() === 0) {
-            $property_unit->update(['public_listing_published' => false]);
-        }
-
-        return back()->with('success', __('Photo removed.'));
+        return back()->with('success', __('Photo removed. The listing stays on the website with the default image if none remain.'));
     }
 
     public function makePrimaryPhoto(PropertyUnit $property_unit, int $public_image): RedirectResponse
