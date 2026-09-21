@@ -47,6 +47,7 @@
                     />
                     <span class="text-sm text-slate-700 dark:text-slate-300">
                         <span class="font-medium text-slate-900 dark:text-white">Published on public website</span>
+                        <span class="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">Requires at least one photo. This is what makes the unit appear on passionhomes.co.ke.</span>
                     </span>
                 </label>
                 @error('public_listing_published')<p class="text-xs text-red-600">{{ $message }}</p>@enderror

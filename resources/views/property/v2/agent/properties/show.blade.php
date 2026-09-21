@@ -143,7 +143,13 @@
                 <p>
                     <span class="text-slate-500">Linked landlord{{ count($ownerRows) === 1 ? '' : 's' }}:</span>
                     @if (count($ownerRows) > 0)
-                        {{ collect($ownerRows)->pluck('name')->filter()->implode(', ') }}
+                        @foreach ($ownerRows as $linkedOwner)
+                            @if (! empty($linkedOwner['id']))
+                                <a href="{{ route('property.landlords.show', $linkedOwner['id'], false) }}" class="font-medium text-indigo-600 hover:text-indigo-700 hover:underline">{{ $linkedOwner['name'] }}</a>@if (! $loop->last), @endif
+                            @else
+                                {{ $linkedOwner['name'] }}@if (! $loop->last), @endif
+                            @endif
+                        @endforeach
                     @else
                         <span class="text-amber-700">None linked</span>
                     @endif
@@ -169,22 +175,35 @@
                             <th class="px-3 py-2">Collected share</th>
                             <th class="px-3 py-2">Arrears share</th>
                             <th class="px-3 py-2">Your earnings</th>
+                            <th class="px-3 py-2">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($ownerRows as $o)
+                            @php $ownerArrears = (float) ($o['share_arrears'] ?? 0); @endphp
                             <tr class="border-t border-slate-100">
                                 <td class="px-3 py-2">
-                                    <div class="font-medium text-slate-900">{{ $o['name'] }}</div>
+                                    @if (! empty($o['id']))
+                                        <a href="{{ route('property.landlords.show', $o['id'], false) }}" class="font-medium text-indigo-600 hover:text-indigo-700 hover:underline">{{ $o['name'] }}</a>
+                                    @else
+                                        <div class="font-medium text-slate-900">{{ $o['name'] }}</div>
+                                    @endif
                                     <div class="text-xs text-slate-500">{{ $o['email'] }}</div>
                                 </td>
                                 <td class="px-3 py-2 tabular-nums">{{ number_format((float) $o['ownership_percent'], 2) }}%</td>
                                 <td class="px-3 py-2 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $o['share_collected']) }}</td>
-                                <td class="px-3 py-2 tabular-nums">{{ \App\Services\Property\PropertyMoney::kes((float) $o['share_arrears']) }}</td>
+                                <td class="px-3 py-2 tabular-nums {{ $ownerArrears > 0.009 ? 'bg-rose-100 font-semibold text-rose-800' : '' }}">{{ \App\Services\Property\PropertyMoney::kes($ownerArrears) }}</td>
                                 <td class="px-3 py-2 tabular-nums font-semibold">{{ \App\Services\Property\PropertyMoney::kes((float) $o['agent_earning_portion']) }}</td>
+                                <td class="px-3 py-2">
+                                    @if (! empty($o['id']))
+                                        <a href="{{ route('property.landlords.show', $o['id'], false) }}" class="inline-flex rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">View profile</a>
+                                    @else
+                                        <span class="text-xs text-slate-400">—</span>
+                                    @endif
+                                </td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="px-3 py-6 text-center text-slate-500">No landlords linked.</td></tr>
+                            <tr><td colspan="6" class="px-3 py-6 text-center text-slate-500">No landlords linked.</td></tr>
                         @endforelse
                     </tbody>
                 </table>

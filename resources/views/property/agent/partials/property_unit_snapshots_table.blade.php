@@ -31,6 +31,10 @@
             <span class="property-row-alert-swatch property-row-alert-swatch--attention" aria-hidden="true"></span>
             Needs attention
         </span>
+        <span class="property-row-alert-legend__item">
+            <span class="inline-block h-3 w-3 rounded-sm bg-rose-100 ring-1 ring-rose-300" aria-hidden="true"></span>
+            Arrears cell
+        </span>
     </div>
 @endif
 
@@ -84,6 +88,8 @@
                     ? $unitModel->listedRentAmount()
                     : (float) ($u->rent_amount ?? 0);
                 $cellStyle = WorkspaceRowAlert::cellStyle($rowTone);
+                $arrearsAmount = (float) ($u->arrears ?? 0);
+                $hasArrearsAlert = $arrearsAmount > 0.009;
             @endphp
             <tr class="border-t border-slate-100 {{ WorkspaceRowAlert::trClass($rowTone) }}" @if ($cellStyle !== '') data-row-tone="{{ $rowTone }}" @endif>
                 <td class="px-4 py-3 font-medium text-slate-900" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>
@@ -97,7 +103,10 @@
                 <td class="px-4 py-3 text-slate-700" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{!! is_string($tenantCell) ? e($tenantCell) : $tenantCell !!}</td>
                 <td class="px-4 py-3 text-slate-600 whitespace-nowrap" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ $u->tenant_phone ?: '—' }}</td>
                 <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes($listedRent) }}</td>
-                <td class="px-4 py-3 tabular-nums" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>{{ \App\Services\Property\PropertyMoney::kes((float) $u->arrears) }}</td>
+                <td
+                    class="px-4 py-3 tabular-nums {{ $hasArrearsAlert ? 'bg-rose-100 font-semibold text-rose-800' : '' }}"
+                    @if (! $hasArrearsAlert && $cellStyle !== '') style="{{ $cellStyle }}" @endif
+                >{{ \App\Services\Property\PropertyMoney::kes($arrearsAmount) }}</td>
                 @if ($hasManage)
                     <td class="px-4 py-3 overflow-visible" @if ($cellStyle !== '') style="{{ $cellStyle }}" @endif>
                         @if ($unitModel)
