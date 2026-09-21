@@ -256,6 +256,7 @@ final class PropertyWorkspaceTabs
                 ['key' => 'uninvoiced', 'label' => 'Uninvoiced leases', 'route' => 'property.revenue.uninvoiced_leases', 'active' => ['property.revenue.uninvoiced_leases', 'property.revenue.uninvoiced_leases.*']],
                 ['key' => 'payments', 'label' => 'Payments', 'route' => 'property.revenue.payments', 'active' => ['property.revenue.payments', 'property.payments.*']],
                 ['key' => 'mpesa_inbox', 'label' => 'M-Pesa inbox', 'route' => 'property.revenue.mpesa_inbox', 'active' => ['property.revenue.mpesa_inbox']],
+                ['key' => 'statements', 'label' => 'Statement upload', 'route' => 'property.revenue.statements.index', 'active' => ['property.revenue.statements.*']],
                 ['key' => 'utilities', 'label' => 'Utilities', 'route' => 'property.revenue.utilities', 'active' => ['property.revenue.utilities', 'property.revenue.utilities.*', 'property.tenants.utility.statement']],
                 ['key' => 'receipts', 'label' => 'Receipts', 'route' => 'property.revenue.receipts', 'active' => ['property.revenue.receipts']],
                 ['key' => 'penalties', 'label' => 'Penalties', 'route' => 'property.revenue.penalties', 'active' => ['property.revenue.penalties', 'property.revenue.penalties.*']],

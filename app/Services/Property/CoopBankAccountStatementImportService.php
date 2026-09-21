@@ -33,11 +33,32 @@ final class CoopBankAccountStatementImportService
      */
     public function importFromPath(string $path, int $agentUserId, bool $dryRun = false): array
     {
-        $parsed = $this->parser->parsePath($path);
+        return $this->importParsed($this->parser->parsePath($path), $agentUserId, $dryRun);
+    }
+
+    /**
+     * @param  array<string, mixed>  $parsed
+     * @return array{
+     *     parsed:int,
+     *     statements:int,
+     *     statement_id:int|null,
+     *     lines_upserted:int,
+     *     matched:int,
+     *     unmatched:int,
+     *     bank_only:int,
+     *     credit_total:float,
+     *     debit_total:float,
+     *     warnings:list<string>,
+     *     errors:list<string>
+     * }
+     */
+    public function importParsed(array $parsed, int $agentUserId, bool $dryRun = false): array
+    {
         $lines = $parsed['lines'] ?? [];
         $summary = [
             'parsed' => count($lines),
             'statements' => 0,
+            'statement_id' => null,
             'lines_upserted' => 0,
             'matched' => 0,
             'unmatched' => 0,
@@ -73,6 +94,7 @@ final class CoopBankAccountStatementImportService
                 $statement = $this->upsertStatement($agentUserId, $parsed);
                 $statementId = (int) $statement->id;
                 $summary['statements'] = 1;
+                $summary['statement_id'] = $statementId;
             } else {
                 $summary['statements'] = 1;
             }

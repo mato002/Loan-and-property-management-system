@@ -360,6 +360,8 @@ class EquitySyncController extends Controller
 
         $method = (string) ($unassignedPayment->payment_method ?: 'equity');
         $isSms = $method === 'sms_forwarder';
+        $isStatement = $method === 'statement_import';
+        $isC2b = $method === 'mpesa_c2b';
 
         $tx = [
             'transaction_id' => (string) $unassignedPayment->transaction_id,
@@ -378,10 +380,15 @@ class EquitySyncController extends Controller
 
         $options = [
             'payment_method' => $method,
-            'channel' => $isSms ? 'mpesa_sms_ingest' : 'equity_paybill',
-            'source' => $isSms ? 'sms_ingest' : 'equity_api',
-            'provider' => $isSms ? 'mpesa' : 'equity',
+            'channel' => $isSms
+                ? 'mpesa_sms_ingest'
+                : ($isC2b ? 'mpesa_c2b' : ($isStatement ? 'bank_statement' : 'equity_paybill')),
+            'source' => $isSms
+                ? 'sms_ingest'
+                : ($isC2b ? 'daraja_c2b' : ($isStatement ? 'statement_import' : 'equity_api')),
+            'provider' => ($isSms || $isC2b || $isStatement) ? 'mpesa' : 'equity',
             'message' => 'Manually assigned by agent from unposted payments queue.',
+            'agent_user_id' => (int) $request->user()->id,
         ];
 
         // A matching unmatched ledger row may already exist with the same transaction_id.
@@ -724,6 +731,8 @@ class EquitySyncController extends Controller
                         $source = match ((string) $item->payment_method) {
                             'equity' => 'Equity API',
                             'sms_forwarder' => 'SMS Ingest',
+                            'mpesa_c2b' => 'M-Pesa C2B',
+                            'statement_import' => 'Statement upload',
                             default => 'Manual / Legacy',
                         };
                         yield [

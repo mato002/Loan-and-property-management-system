@@ -93,7 +93,36 @@ class PropertyC2bIngestService
                 ];
             }
 
-            // No tenant match — let loan C2B handler (or equity unmatched via loan path) take over.
+            // No tenant match — park in property Unmatched so the agent can assign & settle.
+            if (Schema::hasTable('unassigned_payments') && Schema::hasTable('payments')) {
+                try {
+                    $repo = app(\App\Repositories\Equity\EquityPaymentRepository::class);
+                    if (! $repo->transactionExists($transId)) {
+                        $repo->storeUnmatched([
+                            'transaction_id' => $transId,
+                            'amount' => $amount,
+                            'account_number' => $billRef !== '' ? $billRef : null,
+                            'phone' => $msisdn !== '' ? $msisdn : null,
+                            'reference' => $billRef,
+                            'transaction_date' => $txnAt,
+                            'raw_payload' => $payload,
+                        ], 'Daraja C2B confirmation — no tenant match on BillRef/phone.', [
+                            'payment_method' => 'mpesa_c2b',
+                        ]);
+                    }
+                    $this->upsertPlatformTx($transId, $amount, $msisdn, $billRef, $payload, null, 'unmatched');
+
+                    return [
+                        'handled' => true,
+                        'duplicate' => false,
+                        'pm_payment_id' => null,
+                        'message' => 'No tenant match — parked in Unmatched for agent assignment.',
+                    ];
+                } catch (Throwable $e) {
+                    Log::warning('Property C2B unmatched park failed', ['error' => $e->getMessage()]);
+                }
+            }
+
             return [
                 'handled' => false,
                 'duplicate' => false,

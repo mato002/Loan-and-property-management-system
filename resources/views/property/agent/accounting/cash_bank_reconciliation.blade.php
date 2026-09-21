@@ -12,10 +12,15 @@
     :table-rows="[]"
 >
     <x-slot name="actions">
-        <span class="inline-flex rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700">Match transactions</span>
-        <span class="inline-flex rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700">Mark reconciled</span>
-        <span class="inline-flex rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700">Add missing entry</span>
-        <span class="inline-flex rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700">Flag discrepancy</span>
+        <a href="{{ route('property.revenue.statements.index') }}" class="inline-flex rounded-xl bg-teal-800 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-900">Upload statement</a>
+        @if (! empty($statement))
+            <a href="{{ route('property.revenue.statements.show', $statement) }}" class="inline-flex rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Review lines</a>
+            <form method="POST" action="{{ route('property.revenue.statements.recover', $statement) }}" class="inline">
+                @csrf
+                <button type="submit" class="inline-flex rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100">Recover missing</button>
+            </form>
+        @endif
+        <a href="{{ route('property.equity.unmatched') }}" class="inline-flex rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Unmatched queue</a>
     </x-slot>
 
     @if (! empty($statement))
