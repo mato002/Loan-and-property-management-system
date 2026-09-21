@@ -4,7 +4,7 @@
 
     $propertyPortalThemeClass = PropertyPortalTheme::htmlClass();
 @endphp
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full {{ $propertyPortalThemeClass }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full {{ $propertyPortalThemeClass }}" {!! \App\Support\Property\PropertyBrandPalette::htmlRootAttributes('portal') !!}>
     <head>
         @include('layouts.partials.property-portal-theme')
         @php

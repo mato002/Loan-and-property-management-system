@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Property\PropertyBrandPalette;
 use App\Support\Property\PropertyWorkspaceBranding;
 use Illuminate\Http\JsonResponse;
 
@@ -70,6 +71,11 @@ class PwaManifestController extends Controller
             ],
         ];
 
+        $themeColor = PropertyBrandPalette::color(
+            PropertyBrandPalette::resolve($usePublicSiteBranding ? 'public' : 'portal'),
+            $usePublicSiteBranding ? 'cta' : 'primary'
+        );
+
         return response()->json([
             'id' => $startUrl,
             'name' => $companyName.($shortNameSuffix !== '' ? ' — Property Portal' : ''),
@@ -80,7 +86,7 @@ class PwaManifestController extends Controller
             'display' => 'standalone',
             'display_override' => ['standalone', 'browser'],
             'background_color' => '#ffffff',
-            'theme_color' => '#059669',
+            'theme_color' => $themeColor,
             'lang' => str_replace('_', '-', app()->getLocale()),
             'categories' => ['business', 'productivity'],
             'icons' => $icons,

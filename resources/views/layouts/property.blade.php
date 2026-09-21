@@ -4,7 +4,7 @@
 
     $propertyPortalThemeClass = PropertyPortalTheme::htmlClass();
 @endphp
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full overflow-hidden {{ $propertyPortalThemeClass }}" data-pwa-context="portal">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full overflow-hidden {{ $propertyPortalThemeClass }}" data-pwa-context="portal" {!! \App\Support\Property\PropertyBrandPalette::htmlRootAttributes('portal') !!}>
     <head>
         @include('layouts.partials.property-portal-theme')
         @php
@@ -45,7 +45,7 @@
         <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
         <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
         <link rel="manifest" href="{{ route('pwa.manifest.portal') }}" />
-        <meta name="theme-color" content="#059669" />
+        <meta name="theme-color" content="{{ \App\Support\Property\PropertyBrandPalette::color(\App\Support\Property\PropertyBrandPalette::resolve('portal'), 'primary') }}" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="{{ \App\Models\PropertyPortalSetting::getValue('company_name', '') ?: config('app.name', 'Property Portal') }}" />
@@ -58,7 +58,7 @@
                 padding: 0 !important;
                 height: 100% !important;
                 overflow: hidden !important;
-                background: #047857;
+                background: var(--brand-navy, #047857);
             }
             html[data-pwa-context='portal'] body {
                 margin: 0 !important;

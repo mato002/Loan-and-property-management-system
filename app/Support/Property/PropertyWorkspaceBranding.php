@@ -23,6 +23,7 @@ final class PropertyWorkspaceBranding
         'contact_reg_no',
         'contact_map_embed_url',
         'portal_color_theme',
+        'brand_palette',
         'branding',
     ];
 
@@ -393,13 +394,14 @@ final class PropertyWorkspaceBranding
         $email = self::documentValue('contact_email_primary', $agentUserId, '');
         $address = self::documentValue('contact_address', $agentUserId, '');
         $regNo = self::documentValue('contact_reg_no', $agentUserId, '');
-        $colour = '#0f766e';
+        $paletteKey = PropertyBrandPalette::normalize(self::documentValue('brand_palette', $agentUserId, PropertyBrandPalette::PLATFORM));
+        $colour = PropertyBrandPalette::color($paletteKey, 'primary');
 
         $brandingRaw = self::documentValue('branding', $agentUserId, '');
         if ($brandingRaw !== '') {
             $decoded = json_decode($brandingRaw, true);
             if (is_array($decoded)) {
-                if (! empty($decoded['colour'])) {
+                if (! empty($decoded['colour']) && self::documentValue('brand_palette', $agentUserId, '') === '') {
                     $colour = (string) $decoded['colour'];
                 }
                 if ($companyName === '' && ! empty($decoded['company_name'])) {

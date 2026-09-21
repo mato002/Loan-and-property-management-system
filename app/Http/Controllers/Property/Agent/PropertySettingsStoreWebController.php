@@ -13,6 +13,7 @@ use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Support\Property\BankIntegrationConfig;
 use App\Support\Property\BankIntegrationRegistry;
+use App\Support\Property\PropertyBrandPalette;
 use App\Support\Property\PropertyPortalTheme;
 use App\Support\Property\PropertyWorkspaceBranding;
 use App\Services\EquityBankService;
@@ -1627,6 +1628,7 @@ class PropertySettingsStoreWebController extends Controller
             'contactMapEmbedUrl' => PropertyWorkspaceBranding::getForSettings('contact_map_embed_url', ''),
             'publicWebsiteDomain' => PropertyWorkspaceBranding::getForSettings('public_website_domain', ''),
             'portalColorTheme' => PropertyPortalTheme::normalize(PropertyWorkspaceBranding::getForSettings('portal_color_theme', PropertyPortalTheme::LIGHT)),
+            'brandPalette' => PropertyBrandPalette::normalize(PropertyWorkspaceBranding::getForSettings('brand_palette', PropertyBrandPalette::PLATFORM)),
             'brandingEditorAgentUserId' => PropertyWorkspaceBranding::settingsEditorAgentUserId(),
         ]);
     }
@@ -1654,6 +1656,7 @@ class PropertySettingsStoreWebController extends Controller
             'contact_map_embed_url' => ['nullable', 'url', 'max:2048'],
             'public_website_domain' => ['nullable', 'string', 'max:255'],
             'portal_color_theme' => ['nullable', Rule::in(PropertyPortalTheme::OPTIONS)],
+            'brand_palette' => ['nullable', Rule::in(PropertyBrandPalette::OPTIONS)],
             'remove_logo' => ['nullable', 'in:0,1'],
             'remove_favicon' => ['nullable', 'in:0,1'],
         ]);
@@ -1676,6 +1679,7 @@ class PropertySettingsStoreWebController extends Controller
             PropertyPortalTheme::normalize($data['portal_color_theme'] ?? PropertyPortalTheme::LIGHT),
             $request->user()
         );
+        PropertyBrandPalette::persist($data['brand_palette'] ?? PropertyBrandPalette::PLATFORM, null, $request->user());
 
         if (($data['remove_logo'] ?? '0') === '1') {
             PropertyWorkspaceBranding::setForSettings('company_logo_url', '', $request->user());

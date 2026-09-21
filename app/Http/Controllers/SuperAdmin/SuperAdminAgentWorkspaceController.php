@@ -8,6 +8,7 @@ use App\Models\SubscriptionPackage;
 use App\Models\User;
 use App\Services\SuperAdmin\AgentWorkspaceAdminService;
 use App\Support\Auth\StaffModuleRedirect;
+use App\Support\Property\PropertyBrandPalette;
 use App\Support\Property\PropertyPortalTheme;
 use App\Support\Property\PropertyWorkspaceBranding;
 use Illuminate\Http\RedirectResponse;
@@ -214,6 +215,9 @@ class SuperAdminAgentWorkspaceController extends Controller
             'portalColorTheme' => PropertyPortalTheme::normalize(
                 PropertyWorkspaceBranding::getForAgent('portal_color_theme', $agentId, PropertyPortalTheme::LIGHT)
             ),
+            'brandPalette' => PropertyBrandPalette::normalize(
+                PropertyWorkspaceBranding::getForAgent('brand_palette', $agentId, PropertyBrandPalette::PLATFORM)
+            ),
         ]);
     }
 
@@ -236,6 +240,7 @@ class SuperAdminAgentWorkspaceController extends Controller
             'contact_map_embed_url' => ['nullable', 'url', 'max:2048'],
             'public_website_domain' => ['nullable', 'string', 'max:255'],
             'portal_color_theme' => ['nullable', Rule::in(PropertyPortalTheme::OPTIONS)],
+            'brand_palette' => ['nullable', Rule::in(PropertyBrandPalette::OPTIONS)],
             'remove_logo' => ['nullable', 'in:0,1'],
             'remove_favicon' => ['nullable', 'in:0,1'],
         ]);
@@ -260,6 +265,7 @@ class SuperAdminAgentWorkspaceController extends Controller
             PropertyPortalTheme::normalize($data['portal_color_theme'] ?? PropertyPortalTheme::LIGHT),
             $agentId
         );
+        PropertyBrandPalette::persist($data['brand_palette'] ?? PropertyBrandPalette::PLATFORM, $agentId);
 
         if (($data['remove_logo'] ?? '0') === '1') {
             PropertyWorkspaceBranding::set('company_logo_url', '', $agentId);

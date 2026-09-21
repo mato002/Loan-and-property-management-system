@@ -53,6 +53,8 @@
                 @error('company_name')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
             </div>
 
+            @include('property.agent.settings.partials.brand_palette_field')
+
             <div>
                 <label class="block text-xs font-semibold text-slate-600">Portal color theme</label>
                 <select name="portal_color_theme" class="mt-1 w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">

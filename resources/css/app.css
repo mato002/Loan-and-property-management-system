@@ -1515,13 +1515,13 @@
   }
 
   .public-btn-primary {
-    background: rgb(5 150 105);
-    color: #fff;
-    box-shadow: 0 10px 25px -8px rgb(5 150 105 / 0.55);
+    background: var(--brand-cta, rgb(5 150 105));
+    color: var(--brand-on-primary, #fff);
+    box-shadow: 0 10px 25px -8px color-mix(in srgb, var(--brand-cta, rgb(5 150 105)) 55%, transparent);
   }
 
   .public-btn-primary:hover {
-    background: rgb(4 120 87);
+    background: var(--brand-cta-hover, rgb(4 120 87));
   }
 
   .public-btn-secondary {
@@ -1554,9 +1554,9 @@
   }
 
   .public-badge-verified {
-    background: rgb(236 253 245);
-    color: rgb(4 120 87);
-    border: 1px solid rgb(167 243 208);
+    background: var(--brand-primary-soft, rgb(236 253 245));
+    color: var(--brand-primary-hover, rgb(4 120 87));
+    border: 1px solid color-mix(in srgb, var(--brand-primary, rgb(5 150 105)) 35%, white);
   }
 
   .public-badge-featured {
@@ -2339,4 +2339,111 @@ html body tr[class*="property-row-alert-"] > th,
 html body [data-mobile-record-list] [class*="property-row-alert-"] {
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+}
+
+:root {
+  --brand-primary: #059669;
+  --brand-primary-hover: #047857;
+  --brand-primary-dark: #065f46;
+  --brand-primary-soft: #ecfdf5;
+  --brand-cta: #059669;
+  --brand-cta-hover: #047857;
+  --brand-gold: #f59e0b;
+  --brand-navy: #2f4f4f;
+  --brand-navy-hover: #406866;
+  --brand-navy-border: #264040;
+  --brand-highlight: #6ee7b7;
+  --brand-on-primary: #ffffff;
+}
+
+html[data-pwa-context='portal'] {
+  background-color: var(--brand-navy);
+}
+
+html[data-pwa-context='portal'] .property-topbar > .bg-gradient-to-r {
+  background-color: var(--brand-primary);
+  background-image: linear-gradient(
+    to right,
+    var(--brand-primary-dark),
+    var(--brand-primary),
+    var(--brand-primary-dark)
+  ) !important;
+}
+
+html[data-pwa-context='portal'] .property-sidebar {
+  background-color: var(--brand-navy) !important;
+  border-color: var(--brand-navy-border) !important;
+}
+
+.footer-portal-login .footer-login-tenant {
+  background: var(--brand-cta) !important;
+  border-color: color-mix(in srgb, var(--brand-cta) 70%, white) !important;
+}
+
+html[data-pwa-context='public'] .bg-emerald-600,
+html[data-pwa-context='public'] .hover\:bg-emerald-600:hover,
+html[data-pwa-context='portal-guest'] .bg-emerald-600 {
+  background-color: var(--brand-cta) !important;
+}
+
+html[data-pwa-context='public'] .bg-emerald-700,
+html[data-pwa-context='public'] .hover\:bg-emerald-700:hover {
+  background-color: var(--brand-cta-hover) !important;
+}
+
+html[data-pwa-context='public'] .bg-emerald-50,
+html[data-pwa-context='public'] .hover\:bg-emerald-50:hover,
+html[data-pwa-context='public'] .bg-emerald-50\/50 {
+  background-color: var(--brand-primary-soft) !important;
+}
+
+html[data-pwa-context='public'] .bg-emerald-100 {
+  background-color: color-mix(in srgb, var(--brand-primary) 14%, white) !important;
+}
+
+html[data-pwa-context='public'] .text-emerald-600,
+html[data-pwa-context='public'] .hover\:text-emerald-600:hover,
+html[data-pwa-context='public'] .hover\:text-emerald-500:hover {
+  color: var(--brand-primary) !important;
+}
+
+html[data-pwa-context='public'] .text-emerald-700,
+html[data-pwa-context='public'] .hover\:text-emerald-700:hover,
+html[data-pwa-context='public'] .text-emerald-800 {
+  color: var(--brand-primary-hover) !important;
+}
+
+html[data-pwa-context='public'] .text-emerald-300,
+html[data-pwa-context='public'] .text-emerald-400,
+html[data-pwa-context='public'] .hover\:text-emerald-400:hover {
+  color: var(--brand-highlight) !important;
+}
+
+html[data-pwa-context='public'] .text-emerald-100,
+html[data-pwa-context='public'] .text-emerald-200 {
+  color: color-mix(in srgb, var(--brand-highlight) 80%, white) !important;
+}
+
+html[data-pwa-context='public'] .border-emerald-100,
+html[data-pwa-context='public'] .hover\:border-emerald-100:hover,
+html[data-pwa-context='public'] .border-emerald-500,
+html[data-pwa-context='public'] .border-emerald-600 {
+  border-color: color-mix(in srgb, var(--brand-primary) 45%, white) !important;
+}
+
+html[data-pwa-context='public'] .focus\:border-emerald-500:focus {
+  border-color: var(--brand-primary) !important;
+}
+
+html[data-pwa-context='public'] .focus\:ring-emerald-500:focus,
+html[data-pwa-context='public'] .focus\:ring-emerald-300:focus {
+  --tw-ring-color: var(--brand-primary);
+}
+
+html[data-pwa-context='public'] .from-emerald-500 {
+  --tw-gradient-from: var(--brand-cta) var(--tw-gradient-from-position);
+}
+
+html[data-pwa-context='public'] .to-emerald-700 {
+  --tw-gradient-to: var(--brand-cta-hover) var(--tw-gradient-to-position);
 }

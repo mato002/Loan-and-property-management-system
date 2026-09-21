@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-turbo="false" class="h-dvh overflow-hidden">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" data-turbo="false" class="h-dvh overflow-hidden" {!! \App\Support\Property\PropertyBrandPalette::htmlRootAttributes('guest') !!}>
     <head>
         @php
             $companyName = \App\Support\Property\PropertyWorkspaceBranding::forGuestPage('company_name') ?: config('app.name');

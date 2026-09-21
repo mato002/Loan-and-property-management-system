@@ -17,6 +17,8 @@
                     @error('company_name')<p class="text-xs text-red-600 mt-1">{{ $message }}</p>@enderror
                 </div>
 
+                @include('property.agent.settings.partials.brand_palette_field')
+
                 <div>
                     <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Public website domain</label>
                     <input type="text" name="public_website_domain" value="{{ old('public_website_domain', $publicWebsiteDomain ?? '') }}" class="mt-1 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-900 text-sm px-3 py-2" placeholder="e.g. clientproperties.co.ke" />

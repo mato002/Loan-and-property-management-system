@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scroll-smooth" data-pwa-context="public">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scroll-smooth" data-pwa-context="public" {!! \App\Support\Property\PropertyBrandPalette::htmlRootAttributes('public') !!}>
 <head>
     @php
         use App\Support\Property\PropertyWorkspaceBranding;
@@ -18,6 +18,7 @@
         $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone);
         $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
         $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));
+        $brandThemeColor = \App\Support\Property\PropertyBrandPalette::color(\App\Support\Property\PropertyBrandPalette::resolve('public'), 'cta');
         $currentUrl = url()->current();
         $resolvedPageTitle = isset($publicPageTitle) && trim((string) $publicPageTitle) !== ''
             ? trim((string) $publicPageTitle).' | '.$companyName
@@ -83,7 +84,7 @@
     <link rel="shortcut icon" href="{{ $faviconVersioned }}" />
     <link rel="apple-touch-icon" href="{{ $faviconVersioned }}" />
     <link rel="manifest" href="{{ route('pwa.manifest') }}" />
-    <meta name="theme-color" content="#059669" />
+    <meta name="theme-color" content="{{ $brandThemeColor }}" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="{{ $companyName }}" />
@@ -102,7 +103,7 @@
             text-decoration: none; box-shadow: 0 1px 2px rgba(0,0,0,0.2); transition: filter 0.15s, transform 0.15s;
         }
         .footer-portal-login .footer-login-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
-        .footer-portal-login .footer-login-tenant { background: #059669; color: #fff !important; border: 1px solid #34d399; }
+        .footer-portal-login .footer-login-tenant { background: var(--brand-cta); color: #fff !important; border: 1px solid color-mix(in srgb, var(--brand-cta) 70%, white); }
         .footer-portal-login .footer-login-landlord { background: #f59e0b; color: #111827 !important; border: 1px solid #fcd34d; }
         .footer-portal-login .footer-login-staff { background: #374151; color: #fff !important; border: 1px solid #4b5563; }
     </style>
@@ -124,7 +125,7 @@
                 </a>
             @endif
             @if ($phoneHref !== '')
-                <a href="tel:{{ $phoneHref }}" class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 transition-transform hover:scale-105" aria-label="Call us">
+                <a href="tel:{{ $phoneHref }}" class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg transition-transform hover:scale-105" aria-label="Call us">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
                 </a>
             @endif
