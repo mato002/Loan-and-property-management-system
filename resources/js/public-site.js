@@ -128,6 +128,30 @@ document.addEventListener('alpine:init', () => {
     Alpine.data('heroSearchToggle', () => ({
         listingType: 'rent',
     }));
+
+    Alpine.data('listingShareSave', (url = '', text = '') => ({
+        copied: false,
+        async shareListing() {
+            const payload = { title: document.title, text, url };
+            try {
+                if (navigator.share) {
+                    await navigator.share(payload);
+                    return;
+                }
+            } catch (error) {
+                if (error?.name === 'AbortError') {
+                    return;
+                }
+            }
+            try {
+                await navigator.clipboard.writeText(url || window.location.href);
+                this.copied = true;
+                setTimeout(() => { this.copied = false; }, 2000);
+            } catch {
+                window.prompt('Copy this listing link', url || window.location.href);
+            }
+        },
+    }));
 });
 
 if (!window.Alpine?.started) {

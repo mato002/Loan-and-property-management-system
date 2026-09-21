@@ -35,10 +35,12 @@
                             src="{{ $companyLogoUrl }}"
                             alt="{{ $companyName }}"
                             class="h-10 w-auto max-w-[9rem] object-contain bg-white rounded-lg px-1"
-                            onerror="this.remove()"
+                            onerror="this.remove(); this.nextElementSibling?.classList.remove('hidden');"
                         >
+                        <span class="hidden text-lg font-black text-white">{{ $companyName }}</span>
+                    @else
+                        <span class="text-lg font-black text-white">{{ $companyName }}</span>
                     @endif
-                    <span class="text-lg font-black text-white">{{ $companyName }}</span>
                 </a>
                 <p class="text-xs sm:text-sm text-gray-400 leading-relaxed max-w-xs">
                     Kenya's modern property marketplace — discover verified rentals backed by professional management operations.

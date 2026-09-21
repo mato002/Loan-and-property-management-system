@@ -9,6 +9,7 @@ use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Support\Property\PropertyWorkspaceBranding;
+use App\Support\Property\PublicListingPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -169,7 +170,15 @@ class PublicController extends Controller
             ->with(['property', 'publicImages', 'amenities'])
             ->firstOrFail();
 
-        $imageUrls = $unit->publicImages->map(fn ($img) => $img->toGalleryItem())->filter(fn ($item) => ($item['url'] ?? '') !== '')->values()->all();
+        $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
+        $listing = PublicListingPage::assemble(
+            $unit,
+            url()->current(),
+            $publicBrand['company_name'],
+            $publicBrand['contact_whatsapp'],
+            $publicBrand['contact_phone'],
+        );
+        $imageUrls = $listing['gallery'];
 
         $similarUnits = $this->scopePublicPropertyUnits(
             PropertyUnit::query()
@@ -192,15 +201,12 @@ class PublicController extends Controller
         ]);
         $pageDescription = 'View '.$unit->label.' at '.$unit->property->name
             .(count($metaBits) ? ' in '.implode(', ', $metaBits) : '')
-            .'. See photos, amenities, and availability before booking a visit.';
+            .'. See photos, move-in costs, and availability before booking a visit.';
         $heroImage = ($imageUrls[0]['url'] ?? null) ?: self::LISTING_PLACEHOLDER_IMAGE;
 
-        $publicBrand = PropertyWorkspaceBranding::publicSiteSnapshot();
         $companyName = $publicBrand['company_name'];
-        $contactWhatsapp = $publicBrand['contact_whatsapp'];
-        $contactPhone = $publicBrand['contact_phone'];
-        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp);
-        $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone);
+        $whatsAppDigits = $listing['whatsappDigits'];
+        $phoneHref = preg_replace('/[^0-9\+]/', '', $publicBrand['contact_phone']);
 
         $offerSchema = [
             '@context' => 'https://schema.org',
@@ -224,6 +230,7 @@ class PublicController extends Controller
             'whatsAppDigits' => $whatsAppDigits,
             'phoneHref' => $phoneHref,
             'offerSchema' => $offerSchema,
+            'listing' => $listing,
         ]);
     }
 
@@ -366,6 +373,11 @@ class PublicController extends Controller
             'full_name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:64'],
             'email' => ['nullable', 'email', 'max:255'],
+            'id_number' => ['nullable', 'string', 'max:64'],
+            'employer' => ['nullable', 'string', 'max:255'],
+            'monthly_income' => ['nullable', 'string', 'max:64'],
+            'occupants' => ['nullable', 'integer', 'min:1', 'max:20'],
+            'viewing_slot' => ['nullable', 'string', 'max:64'],
             'move_in_date' => ['nullable', 'date'],
             'property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
             // Only present when no unit id is provided
@@ -375,6 +387,21 @@ class PublicController extends Controller
         $notesParts = [];
         if (! empty($data['move_in_date'] ?? null)) {
             $notesParts[] = 'Move-in: '.$data['move_in_date'];
+        }
+        if (! empty($data['id_number'] ?? null)) {
+            $notesParts[] = 'ID: '.$data['id_number'];
+        }
+        if (! empty($data['employer'] ?? null)) {
+            $notesParts[] = 'Employer: '.$data['employer'];
+        }
+        if (! empty($data['monthly_income'] ?? null)) {
+            $notesParts[] = 'Income: '.$data['monthly_income'];
+        }
+        if (! empty($data['occupants'] ?? null)) {
+            $notesParts[] = 'Occupants: '.$data['occupants'];
+        }
+        if (! empty($data['viewing_slot'] ?? null)) {
+            $notesParts[] = 'Viewing: '.$data['viewing_slot'];
         }
         if (empty($data['property_unit_id'] ?? null) && ! empty($data['property'] ?? null)) {
             $notesParts[] = 'Property/Unit entered: '.$data['property'];
@@ -406,7 +433,8 @@ class PublicController extends Controller
             'body' => 'Applicant: '.$application->applicant_name
                 .' | Phone: '.($application->applicant_phone ?: '—')
                 .' | Email: '.($application->applicant_email ?: '—')
-                .' | Unit: '.($unitLabel ?: 'Not specified'),
+                .' | Unit: '.($unitLabel ?: 'Not specified')
+                .' | '.$application->notes,
             'delivery_status' => 'new',
             'delivery_error' => null,
             'sent_at' => now(),

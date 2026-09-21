@@ -14,7 +14,7 @@
         $contactAddress = $publicBrand['contact_address'];
         $contactRegNo = $publicBrand['contact_reg_no'];
         $contactMapEmbedUrl = $publicBrand['contact_map_embed_url'];
-        $whatsAppDigits = preg_replace('/\D+/', '', $contactWhatsapp);
+        $whatsAppDigits = PropertyWorkspaceBranding::whatsappDigitsForWeb($contactWhatsapp, $contactPhone);
         $phoneHref = preg_replace('/[^0-9\+]/', '', $contactPhone);
         $faviconHref = $siteFaviconUrl !== '' ? $siteFaviconUrl : asset('favicon.ico');
         $faviconVersioned = $faviconHref.'?v='.rawurlencode(substr(md5($faviconHref), 0, 12));

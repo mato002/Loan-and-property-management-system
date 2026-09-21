@@ -328,6 +328,41 @@ final class PropertyWorkspaceBranding
     }
 
     /**
+     * WhatsApp wa.me digits. Falls back to the public phone when WhatsApp is empty.
+     */
+    public static function whatsappDigitsForWeb(?string $whatsapp = null, ?string $phone = null): string
+    {
+        $raw = trim((string) $whatsapp);
+        if ($raw === '') {
+            $raw = trim((string) $phone);
+        }
+
+        return self::normalizeKenyanMobileDigits($raw);
+    }
+
+    public static function normalizeKenyanMobileDigits(string $value): string
+    {
+        $digits = preg_replace('/\D+/', '', $value) ?? '';
+        if ($digits === '') {
+            return '';
+        }
+
+        if (str_starts_with($digits, '254') && strlen($digits) >= 12) {
+            return $digits;
+        }
+
+        if (str_starts_with($digits, '0') && strlen($digits) === 10) {
+            return '254'.substr($digits, 1);
+        }
+
+        if (strlen($digits) === 9 && str_starts_with($digits, '7')) {
+            return '254'.$digits;
+        }
+
+        return $digits;
+    }
+
+    /**
      * Branding for receipts, prints, PDF exports, and browser print letterheads.
      * Prefers the viewing agent's workspace, then Settings branding / login tenant, then global.
      *

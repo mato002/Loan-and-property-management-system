@@ -24,15 +24,15 @@
                 <div class="p-5 sm:p-8 space-y-5">
                     <div>
                         <label for="full_name" class="block text-xs font-bold text-gray-700 mb-1">Full name</label>
-                        <input id="full_name" name="full_name" type="text" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500" required>
+                        <input id="full_name" name="full_name" type="text" value="{{ old('full_name') }}" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500" required>
                     </div>
                     <div>
                         <label for="phone" class="block text-xs font-bold text-gray-700 mb-1">Phone number</label>
-                        <input id="phone" name="phone" type="tel" placeholder="07XXXXXXXX" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500" required>
+                        <input id="phone" name="phone" type="tel" placeholder="07XXXXXXXX" value="{{ old('phone') }}" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500" required>
                     </div>
                     <div>
                         <label for="email" class="block text-xs font-bold text-gray-700 mb-1">Email <span class="text-gray-400 font-medium">(optional)</span></label>
-                        <input id="email" name="email" type="email" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
+                        <input id="email" name="email" type="email" value="{{ old('email') }}" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
                     </div>
 
                     @if ($applyUnit ?? null)
@@ -48,9 +48,43 @@
                         </div>
                     @endif
 
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label for="id_number" class="block text-xs font-bold text-gray-700 mb-1">National ID / passport</label>
+                            <input id="id_number" name="id_number" type="text" value="{{ old('id_number') }}" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
+                        </div>
+                        <div>
+                            <label for="occupants" class="block text-xs font-bold text-gray-700 mb-1">People moving in</label>
+                            <input id="occupants" name="occupants" type="number" min="1" max="20" value="{{ old('occupants', 1) }}" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
+                        </div>
+                    </div>
                     <div>
-                        <label for="move_in_date" class="block text-xs font-bold text-gray-700 mb-1">Preferred move-in date</label>
-                        <input id="move_in_date" name="move_in_date" type="date" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
+                        <label for="employer" class="block text-xs font-bold text-gray-700 mb-1">Employer / occupation</label>
+                        <input id="employer" name="employer" type="text" value="{{ old('employer') }}" placeholder="Company or self-employed" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
+                    </div>
+                    <div>
+                        <label for="monthly_income" class="block text-xs font-bold text-gray-700 mb-1">Monthly income band</label>
+                        <select id="monthly_income" name="monthly_income" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
+                            <option value="">Prefer not to say</option>
+                            @foreach (['Under KES 30,000', 'KES 30,000 – 50,000', 'KES 50,000 – 80,000', 'KES 80,000 – 120,000', 'Over KES 120,000'] as $band)
+                                <option value="{{ $band }}" @selected(old('monthly_income') === $band)>{{ $band }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label for="move_in_date" class="block text-xs font-bold text-gray-700 mb-1">Preferred move-in date</label>
+                            <input id="move_in_date" name="move_in_date" type="date" value="{{ old('move_in_date') }}" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
+                        </div>
+                        <div>
+                            <label for="viewing_slot" class="block text-xs font-bold text-gray-700 mb-1">Preferred viewing</label>
+                            <select id="viewing_slot" name="viewing_slot" class="w-full min-h-[2.75rem] rounded-xl border-gray-200 text-sm focus:border-emerald-500 focus:ring-emerald-500">
+                                <option value="">Not sure yet</option>
+                                @foreach (['Weekday morning', 'Weekday afternoon', 'Weekday evening', 'Saturday morning', 'Saturday afternoon'] as $slot)
+                                    <option value="{{ $slot }}" @selected(old('viewing_slot') === $slot)>{{ $slot }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                     </div>
                 </div>
                 <div class="bg-gray-50 px-5 sm:px-8 py-5 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

@@ -2,6 +2,7 @@
     'images' => [],
     'title' => 'Property gallery',
     'placeholder' => null,
+    'hasUploadedMedia' => true,
 ])
 
 @php
@@ -24,14 +25,32 @@
         ->values()
         ->all();
 
-    if ($items === []) {
+    $usingPlaceholder = $items === [];
+    if ($usingPlaceholder) {
         $items = [['url' => $placeholder, 'type' => 'image']];
     }
+
+    $count = count($items);
+    $sideCount = min(4, max(0, $count - 1));
 @endphp
 
 <div {{ $attributes->merge(['class' => 'mb-6 sm:mb-8']) }} x-data="propertyGallery(@js($items))">
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-2 sm:gap-3 md:h-[28rem] lg:h-[32rem]">
-        <button type="button" @click="openAt(0)" class="md:col-span-2 relative rounded-2xl overflow-hidden group h-56 md:h-full focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-100">
+    @if ($usingPlaceholder || ! $hasUploadedMedia)
+        <p class="mb-3 text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+            Photos of this unit are coming soon. Book a viewing to see it in person.
+        </p>
+    @endif
+
+    <div @class([
+        'grid gap-2 sm:gap-3',
+        'grid-cols-1' => $sideCount === 0,
+        'grid-cols-1 md:grid-cols-3 md:h-[28rem] lg:h-[32rem]' => $sideCount > 0 && $sideCount <= 2,
+        'grid-cols-1 md:grid-cols-4 md:h-[28rem] lg:h-[32rem]' => $sideCount >= 3,
+    ])>
+        <button type="button" @click="openAt(0)" @class([
+            'relative rounded-2xl overflow-hidden group h-56 md:h-full focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-100',
+            'md:col-span-2' => $sideCount > 0,
+        ])>
             <template x-if="items[0]?.type === 'video'">
                 <video :src="items[0].url" class="absolute inset-0 w-full h-full object-cover" muted playsinline preload="metadata"></video>
             </template>
@@ -43,55 +62,55 @@
                 <span class="absolute bottom-3 left-3 rounded-md bg-black/70 px-2 py-1 text-xs font-semibold text-white">Video</span>
             </template>
         </button>
-        <div class="hidden md:grid grid-rows-2 gap-2 sm:gap-3 md:col-span-1 h-full">
-            @for ($i = 1; $i <= 2; $i++)
-                <button type="button" @click="openAt({{ $i }})" class="relative rounded-2xl overflow-hidden group h-full focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-100">
-                    @if (isset($items[$i]))
+
+        @if ($sideCount > 0)
+            <div class="hidden md:grid grid-rows-2 gap-2 sm:gap-3 md:col-span-1 h-full">
+                @foreach (range(1, min(2, $sideCount)) as $i)
+                    <button type="button" @click="openAt({{ $i }})" class="relative rounded-2xl overflow-hidden group h-full focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-100">
                         @if (($items[$i]['type'] ?? 'image') === 'video')
                             <video src="{{ $items[$i]['url'] }}" class="absolute inset-0 w-full h-full object-cover" muted playsinline preload="metadata"></video>
                             <span class="absolute bottom-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">Video</span>
                         @else
                             <img src="{{ $items[$i]['url'] }}" alt="{{ $title }} photo {{ $i + 1 }}" class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" loading="lazy">
                         @endif
-                    @else
-                        <div class="public-image-placeholder !rounded-2xl"><span>Gallery</span></div>
-                    @endif
-                </button>
-            @endfor
-        </div>
-        <div class="hidden md:grid grid-rows-2 gap-2 sm:gap-3 md:col-span-1 h-full">
-            @for ($i = 3; $i <= 4; $i++)
-                <button type="button" @click="openAt({{ min($i, count($items) - 1) }})" class="relative rounded-2xl overflow-hidden group h-full focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-100">
-                    @if (isset($items[$i]))
+                    </button>
+                @endforeach
+            </div>
+        @endif
+
+        @if ($sideCount >= 3)
+            <div class="hidden md:grid grid-rows-2 gap-2 sm:gap-3 md:col-span-1 h-full">
+                @foreach (range(3, $sideCount) as $i)
+                    <button type="button" @click="openAt({{ $i }})" class="relative rounded-2xl overflow-hidden group h-full focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-100">
                         @if (($items[$i]['type'] ?? 'image') === 'video')
                             <video src="{{ $items[$i]['url'] }}" class="absolute inset-0 w-full h-full object-cover" muted playsinline preload="metadata"></video>
                         @else
                             <img src="{{ $items[$i]['url'] }}" alt="{{ $title }} photo {{ $i + 1 }}" class="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" loading="lazy">
                         @endif
-                        @if ($i === 4 && count($items) > 5)
+                        @if ($i === 4 && $count > 5)
                             <div class="absolute inset-0 bg-black/55 flex items-center justify-center">
-                                <span class="text-white font-black text-lg">+{{ count($items) - 5 }} more</span>
+                                <span class="text-white font-black text-lg">+{{ $count - 5 }} more</span>
                             </div>
                         @endif
-                    @else
-                        <div class="public-image-placeholder !rounded-2xl"><span>Gallery</span></div>
-                    @endif
-                </button>
-            @endfor
-        </div>
+                    </button>
+                @endforeach
+            </div>
+        @endif
     </div>
 
-    <div class="md:hidden flex gap-2 overflow-x-auto snap-x snap-mandatory pb-1 -mx-1 px-1">
-        @foreach ($items as $idx => $item)
-            <button type="button" @click="openAt({{ $idx }})" class="snap-start shrink-0 w-[85%] h-48 rounded-xl overflow-hidden relative bg-slate-100">
-                @if (($item['type'] ?? 'image') === 'video')
-                    <video src="{{ $item['url'] }}" class="w-full h-full object-cover" muted playsinline preload="metadata"></video>
-                @else
-                    <img src="{{ $item['url'] }}" alt="{{ $title }}" class="w-full h-full object-cover" loading="lazy">
-                @endif
-            </button>
-        @endforeach
-    </div>
+    @if ($count > 1)
+        <div class="md:hidden flex gap-2 overflow-x-auto snap-x snap-mandatory pb-1 -mx-1 px-1 mt-2">
+            @foreach ($items as $idx => $item)
+                <button type="button" @click="openAt({{ $idx }})" class="snap-start shrink-0 w-[85%] h-48 rounded-xl overflow-hidden relative bg-slate-100">
+                    @if (($item['type'] ?? 'image') === 'video')
+                        <video src="{{ $item['url'] }}" class="w-full h-full object-cover" muted playsinline preload="metadata"></video>
+                    @else
+                        <img src="{{ $item['url'] }}" alt="{{ $title }}" class="w-full h-full object-cover" loading="lazy">
+                    @endif
+                </button>
+            @endforeach
+        </div>
+    @endif
 
     <template x-teleport="body">
         <div x-show="lightboxOpen" x-cloak class="public-lightbox" @keydown.escape.window="close()" @keydown.arrow-right.window="next()" @keydown.arrow-left.window="prev()">

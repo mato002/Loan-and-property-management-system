@@ -262,7 +262,7 @@ class PropertyUnit extends Model
                 self::TYPE_SINGLE_ROOM => 'Single room',
                 self::TYPE_BEDSITTER => 'Bedsitter',
                 self::TYPE_STUDIO => 'Studio',
-                default => 'No separate bedroom',
+                default => 'Studio / bedsitter',
             };
         }
 
