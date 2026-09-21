@@ -89,7 +89,9 @@
                 </dd>
             </div>
             <div class="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt class="text-slate-500">Credit ledger</dt>
-                <dd><a href="{{ route('property.tenants.credit.ledger', $tenant, false) }}" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">Open →</a></dd>
+                <dd>
+                    <a href="{{ route('property.tenants.show', ['tenant' => $tenant->id, 'tab' => 'credit'], false) }}" data-turbo-frame="property-main" class="font-semibold text-indigo-700 hover:underline">Open credit tab →</a>
+                </dd>
             </div>
         </dl>
         <p class="mt-3 text-sm text-slate-600 whitespace-pre-wrap">{{ trim((string) ($tenant->notes ?? '')) !== '' ? $tenant->notes : 'No notes added.' }}</p>

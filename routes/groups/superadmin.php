@@ -14,6 +14,9 @@ Route::middleware('superadmin')->prefix('superadmin')->name('superadmin.')->grou
     Route::get('/roles-permissions', [SuperAdminConsoleController::class, 'rolesPermissions'])->name('roles_permissions');
     Route::get('/agent-workspaces', [SuperAdminAgentWorkspaceController::class, 'index'])->name('agent_workspaces');
     Route::post('/agent-workspaces/bulk', [SuperAdminAgentWorkspaceController::class, 'bulk'])->name('agent_workspaces.bulk');
+    Route::get('/agent-branding', [SuperAdminAgentWorkspaceController::class, 'brandingIndex'])->name('agent_branding');
+    Route::get('/agent-workspaces/{agent}/branding', [SuperAdminAgentWorkspaceController::class, 'branding'])->name('agent_workspaces.branding');
+    Route::post('/agent-workspaces/{agent}/branding', [SuperAdminAgentWorkspaceController::class, 'storeBranding'])->name('agent_workspaces.branding.store');
     Route::get('/agent-workspaces/{agent}', [SuperAdminAgentWorkspaceController::class, 'show'])->name('agent_workspaces.show');
     Route::post('/agent-workspaces/{agent}/impersonate', [SuperAdminAgentWorkspaceController::class, 'impersonate'])->name('agent_workspaces.impersonate');
     Route::post('/agent-workspaces/{agent}/transfer', [SuperAdminAgentWorkspaceController::class, 'transfer'])->name('agent_workspaces.transfer');

@@ -295,7 +295,7 @@
     </x-slot>
 
     <x-slot name="toolbar">
-        @include('property.agent.partials.filter_toolbars.tenants_directory', ['filters' => $filters])
+        @include('property.agent.partials.filter_toolbars.tenants_directory', get_defined_vars())
     </x-slot>
 
     @if (isset($tenantPager))

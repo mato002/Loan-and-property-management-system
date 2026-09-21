@@ -13,6 +13,7 @@
                 <p class="mt-1 text-xs text-slate-500">Agent user #{{ $agent->id }} · Joined {{ optional($agent->created_at)->format('M j, Y') ?? '—' }}</p>
             </div>
             <div class="flex flex-wrap gap-2">
+                <a href="{{ route('superadmin.agent_workspaces.branding', $agent) }}" class="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Edit branding</a>
                 <form method="post" action="{{ route('superadmin.agent_workspaces.impersonate', $agent) }}">
                     @csrf
                     <button type="submit" class="rounded-xl bg-[#2f4f4f] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#264040]">View dashboard</button>
@@ -44,6 +45,7 @@
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 class="text-lg font-bold text-slate-900">Quick actions</h2>
             <div class="mt-4 space-y-3">
+                <a href="{{ route('superadmin.agent_workspaces.branding', $agent) }}" class="block rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-800 hover:bg-slate-100">Edit workspace branding</a>
                 @if (($summary['status']['key'] ?? '') === 'suspended')
                     <form method="post" action="{{ route('superadmin.agent_workspaces.toggle_status', $agent) }}">
                         @csrf

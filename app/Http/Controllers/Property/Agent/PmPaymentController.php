@@ -441,6 +441,16 @@ class PmPaymentController extends Controller
             $agentUserId > 0 ? $agentUserId : null,
         );
 
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) $data['pm_tenant_id'],
+            'payments',
+            'Payment recorded and allocated.'
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
         return back()->with('success', 'Payment recorded and allocated.');
     }
 
@@ -515,6 +525,16 @@ class PmPaymentController extends Controller
             return redirect()
                 ->route('property.revenue.tenant_credits')
                 ->with('success', $message);
+        }
+
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) $data['pm_tenant_id'],
+            'credit',
+            $message
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
         }
 
         return back()->with('success', $message);

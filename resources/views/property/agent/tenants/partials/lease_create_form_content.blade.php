@@ -23,6 +23,15 @@
             class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-800/80 p-5 shadow-sm space-y-3 w-full max-w-3xl"
         >
             @csrf
+            @if (request('return_to') === 'tenant_show' || old('return_to') === 'tenant_show')
+                <input type="hidden" name="return_to" value="tenant_show" />
+                <input type="hidden" name="return_tenant_id" value="{{ old('return_tenant_id', request('return_tenant_id', $leaseFormSelectedTenantId ?? '')) }}" />
+                <input type="hidden" name="return_tab" value="{{ old('return_tab', request('return_tab', 'leases')) }}" />
+            @elseif (request('return_to') === 'property_show' || old('return_to') === 'property_show')
+                <input type="hidden" name="return_to" value="property_show" />
+                <input type="hidden" name="return_property_id" value="{{ old('return_property_id', request('return_property_id', request('property_id'))) }}" />
+                <input type="hidden" name="return_tab" value="{{ old('return_tab', request('return_tab', 'occupancy')) }}" />
+            @endif
             <h3 class="text-sm font-semibold text-slate-900 dark:text-white">New lease</h3>
             <p class="text-xs text-slate-600 dark:text-slate-400">Allocate one vacant unit to a tenant to activate tenancy and unlock monthly billing.</p>
             <div class="grid gap-3 sm:grid-cols-2">

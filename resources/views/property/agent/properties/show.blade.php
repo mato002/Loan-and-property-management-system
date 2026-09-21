@@ -18,7 +18,33 @@
             'collection_q' => $filters['collection_q'] ?? null,
             'export_report' => $filters['export_report'] ?? null,
         ], static fn ($value) => $value !== null && $value !== '');
+        $hubModalDefaults = [
+            'addUnitOpen' => $errors->hasAny(['label', 'unit_type', 'bedrooms', 'rent_amount', 'status', 'unit_count'])
+                && (string) old('property_id') === (string) $property->id,
+            'showHubLinkLandlord' => $errors->hasAny(['user_id', 'ownership_percent'])
+                && old('return_to') === 'property_show',
+            'showHubMaintenanceForm' => $errors->hasAny(['property_unit_id', 'category', 'urgency', 'description'])
+                && old('return_to') === 'property_show',
+        ];
     @endphp
+
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from($hubModalDefaults) !!}"></x-slot>
+
+    <x-slot name="actions">
+        @if (auth()->user()?->hasPmPermission('properties.manage') && ! $property->isManagementReadOnly())
+            <button type="button" class="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700" data-property-modal-open="addUnitOpen" @click="addUnitOpen = true">
+                <i class="fa-solid fa-plus" aria-hidden="true"></i> Add unit
+            </button>
+            <button type="button" class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700" onclick="window.openLeaseCreateModal && window.openLeaseCreateModal()">
+                <i class="fa-solid fa-key" aria-hidden="true"></i> Assign lease
+            </button>
+        @endif
+        <a href="{{ route('property.properties.edit', $property, false) }}" data-turbo-frame="property-main" class="inline-flex items-center gap-2 rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50">Edit</a>
+    </x-slot>
+
+    <x-slot name="modals">
+        @include('property.agent.properties.partials.hub_modals')
+    </x-slot>
 
     @if ($property->isManagementReadOnly())
         <div class="mb-4 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-800">
@@ -103,7 +129,7 @@
         :alerts="$alerts ?? []"
     />
 
-    <div x-data="{ addUnitOpen: false }">
+    <div>
     @if (in_array($activeTab, ['overview', 'landlords'], true))
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         @if ($activeTab === 'overview')
@@ -128,7 +154,12 @@
         @endif
         @if ($activeTab === 'landlords')
         <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:col-span-2">
-            <h3 class="text-sm font-semibold text-slate-900">Landlord ownership & earnings</h3>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-sm font-semibold text-slate-900">Landlord ownership & earnings</h3>
+                @if (auth()->user()?->hasPmPermission('properties.manage') && ! $property->isManagementReadOnly() && count($ownerRows) === 0)
+                    <button type="button" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700" data-property-modal-open="showHubLinkLandlord" @click="showHubLinkLandlord = true">Link landlord</button>
+                @endif
+            </div>
             <div class="mt-3 overflow-x-auto">
                 <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
                     <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -556,9 +587,14 @@
 
     @if ($activeTab === 'maintenance')
     <div class="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
-        <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+        <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-sm font-semibold text-slate-900">Maintenance requests</h3>
-            <a href="{{ route('property.maintenance.requests', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-700 hover:underline">Open maintenance workspace</a>
+            <div class="flex flex-wrap gap-2">
+                @if (auth()->user()?->hasPmPermission('properties.manage') && ! $property->isManagementReadOnly())
+                    <button type="button" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700" data-property-modal-open="showHubMaintenanceForm" @click="showHubMaintenanceForm = true">New request</button>
+                @endif
+                <a href="{{ route('property.maintenance.requests', ['property_id' => $property->id], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-700 hover:underline self-center">Open maintenance workspace</a>
+            </div>
         </div>
         <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
             <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
@@ -658,6 +694,15 @@
                     <form method="post" action="{{ route('property.units.store', absolute: false) }}" class="space-y-4" data-turbo="false">
                         @csrf
                         <input type="hidden" name="property_id" value="{{ $property->id }}" />
+                        <input type="hidden" name="return_to" value="property_show" />
+                        <input type="hidden" name="return_property_id" value="{{ $property->id }}" />
+                        <input type="hidden" name="return_tab" value="units" />
+                        @if (! empty($monthValue))
+                            <input type="hidden" name="return_month" value="{{ $monthValue }}" />
+                        @endif
+                        @if (! empty($fyValue))
+                            <input type="hidden" name="return_fy" value="{{ $fyValue }}" />
+                        @endif
                         <input type="hidden" name="unit_count" value="1" />
                         <input type="hidden" name="status_mode" value="single" />
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1011,5 +1056,16 @@
     </div>
     @endif
     </div>
+
+    @include('property.agent.partials.lease_create_shell', [
+        'openLeaseCreateModal' => false,
+        'leaseCreateFormUrl' => route('property.leases.create_form', array_filter([
+            'property_id' => $property->id,
+            'unit_id' => $firstVacantUnit->id ?? null,
+            'return_to' => 'property_show',
+            'return_property_id' => $property->id,
+            'return_tab' => 'occupancy',
+        ]), false),
+    ])
 </x-property.workspace>
 

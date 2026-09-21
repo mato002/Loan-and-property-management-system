@@ -24,6 +24,7 @@
     :table-rows="$tableRows"
     :table-row-tones="$tableRowTones ?? []"
     :show-search="false"
+    :legacy-toolbar="false"
     empty-title="No units"
     empty-hint="Add units per property; vacant units can be attached when creating a lease."
 >
@@ -381,49 +382,7 @@
     </x-slot>
 
 <x-slot name="toolbar">
-        <form method="get" action="{{ route('property.properties.units') }}" class="w-full grid gap-2 sm:grid-cols-2 lg:grid-cols-9">
-            <input type="text" name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Search unit, property, type..." class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 lg:col-span-2" />
-            <select name="property_id" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="">All properties</option>
-                @foreach (($allProperties ?? []) as $p)
-                    <option value="{{ $p->id }}" @selected((string) ($filters['property_id'] ?? '') === (string) $p->id)>{{ $p->name }}</option>
-                @endforeach
-            </select>
-            <select name="status" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="">Status: All</option>
-                @foreach (\App\Models\PropertyUnit::statusOptions() as $value => $label)
-                    <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ $label }}</option>
-                @endforeach
-            </select>
-            <select name="unit_type" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                <option value="">Type: All</option>
-                @foreach (($unitTypes ?? []) as $tv => $tl)
-                    <option value="{{ $tv }}" @selected(($filters['unit_type'] ?? '') === $tv)>{{ $tl }}</option>
-                @endforeach
-            </select>
-            <input type="number" name="rent_min" value="{{ $filters['rent_min'] ?? '' }}" min="0" step="0.01" placeholder="Min rent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-            <input type="number" name="rent_max" value="{{ $filters['rent_max'] ?? '' }}" min="0" step="0.01" placeholder="Max rent" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2" />
-            <div>
-                <select name="per_page" class="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 text-sm px-3 py-2">
-                    @foreach ([10, 30, 50, 100, 200] as $size)
-                        <option value="{{ $size }}" @selected((int) ($perPage ?? request('per_page', 30)) === $size)>{{ $size }} / page</option>
-                    @endforeach
-                </select>
-            </div>
-            <label class="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-800 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
-                <input type="checkbox" name="include_archived" value="1" class="rounded border-slate-300" @checked(($filters['include_archived'] ?? '0') === '1') />
-                Include archived
-            </label>
-            <div class="flex flex-wrap items-center gap-2">
-                <button type="submit" class="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">Apply</button>
-                <a href="{{ route('property.properties.units', absolute: false) }}" class="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50">Reset</a>
-                @include('property.agent.partials.export_dropdown', [
-                    'csvUrl' => route('property.properties.units.export', array_merge($unitExportQuery, ['export' => 'csv']), false),
-                    'pdfUrl' => route('property.properties.units.export', array_merge($unitExportQuery, ['export' => 'pdf']), false),
-                    'wordUrl' => route('property.properties.units.export', array_merge($unitExportQuery, ['export' => 'word']), false),
-                ])
-            </div>
-        </form>
+        @include('property.agent.partials.filter_toolbars.units', get_defined_vars())
     </x-slot>
     <x-slot name="footer">
         @isset($paginator)

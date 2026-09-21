@@ -43,9 +43,41 @@
 
     $hubQuickActions = [];
     if (auth()->check() && auth()->user()?->hasPmPermission('properties.manage')) {
+        $hubQuickActions[] = ['label' => 'Link property', 'modal' => 'showHubLinkProperty', 'icon' => 'fa-link', 'tone' => 'primary'];
         $hubQuickActions[] = ['label' => 'Edit landlord', 'route' => 'property.landlords.edit', 'params' => ['landlord' => $landlord->id], 'icon' => 'fa-pen-to-square'];
     }
-    $hubQuickActions[] = ['label' => 'Owner balances', 'route' => 'property.financials.owner_balances', 'params' => [], 'icon' => 'fa-wallet'];
+    $hubQuickActions[] = [
+        'label' => 'Settlements',
+        'href' => route('property.landlords.show', array_merge(['landlord' => $landlord->id, 'tab' => 'settlements'], array_filter(['month' => $monthValue ?? '', 'fy' => $fyValue ?? ''])), false),
+        'icon' => 'fa-handshake',
+    ];
+    $hubQuickActions[] = [
+        'label' => 'Statement',
+        'href' => route('property.landlords.show', array_merge(['landlord' => $landlord->id, 'tab' => 'statement'], array_filter(['month' => $monthValue ?? '', 'fy' => $fyValue ?? ''])), false),
+        'icon' => 'fa-file-lines',
+    ];
+    $hubQuickActions[] = [
+        'label' => 'Print statement',
+        'route' => 'property.landlords.statement.print',
+        'params' => array_filter(['landlord' => $landlord->id, 'month' => $monthValue ?? '', 'fy' => $fyValue ?? '', 'print' => 1]),
+        'icon' => 'fa-print',
+    ];
+    $hubQuickActions[] = ['label' => 'Owner balances', 'route' => 'property.financials.owner_balances', 'params' => [], 'icon' => 'fa-wallet', 'tone' => 'muted'];
+    $hubQuickActions[] = [
+        'label' => 'Commission',
+        'route' => 'property.financials.commission',
+        'params' => ['landlord_id' => $landlord->id],
+        'icon' => 'fa-percent',
+        'tone' => 'muted',
+    ];
+    if (($portalAccess['has_portal_role'] ?? false) && auth()->user()?->hasPmPermission('properties.manage')) {
+        $hubQuickActions[] = [
+            'label' => 'Portal',
+            'href' => route('property.landlords.show', array_merge(['landlord' => $landlord->id, 'tab' => 'portal'], array_filter(['month' => $monthValue ?? '', 'fy' => $fyValue ?? ''])), false),
+            'icon' => 'fa-right-to-bracket',
+            'tone' => 'muted',
+        ];
+    }
 @endphp
 
 <x-property.workspace :compact-list="false"
@@ -60,11 +92,24 @@
     ]"
     :columns="[]"
 >
+    <x-slot name="pageModalsAttributes" x-data="{!! \Illuminate\Support\Js::from([
+        'showHubLinkProperty' => $errors->hasAny(['property_id', 'ownership_percent']) && old('return_to') === 'landlord_show',
+    ]) !!}"></x-slot>
+
     <x-slot name="actions">
+        @if (auth()->user()?->hasPmPermission('properties.manage'))
+            <button type="button" class="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-medium text-white hover:bg-blue-700" data-property-modal-open="showHubLinkProperty" @click="showHubLinkProperty = true">
+                <i class="fa-solid fa-link" aria-hidden="true"></i> Link property
+            </button>
+        @endif
         <a href="{{ route('property.landlords.index', array_filter(['month' => $monthValue ?? '', 'fy' => $fyValue ?? '']), false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-gray-900 dark:text-slate-200">Back to landlords</a>
         <a href="{{ route('property.landlords.show', array_merge(['landlord' => $landlord->id, 'tab' => 'statement'], array_filter(['month' => $monthValue ?? '', 'fy' => $fyValue ?? ''])), false) }}" data-turbo-frame="property-main" class="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Statement</a>
         <a href="{{ route('property.landlords.show', array_merge(['landlord' => $landlord->id], array_filter(['month' => $monthValue ?? '', 'fy' => $fyValue ?? '']), ['export' => 'csv']), false) }}" data-turbo="false" class="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">CSV</a>
         <a href="{{ route('property.landlords.show', array_merge(['landlord' => $landlord->id], array_filter(['month' => $monthValue ?? '', 'fy' => $fyValue ?? '']), ['export' => 'pdf']), false) }}" data-turbo="false" class="inline-flex min-h-[44px] w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">PDF</a>
+    </x-slot>
+
+    <x-slot name="modals">
+        @include('property.agent.landlords.partials.hub_modals')
     </x-slot>
 
     <x-slot name="above">

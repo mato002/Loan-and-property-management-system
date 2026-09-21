@@ -1644,8 +1644,26 @@ SQL;
 
     private function renderLeaseCreateSuccessResponse(): Response
     {
+        $returnTo = (string) request()->input('return_to', '');
+        $tenantId = (int) request()->input('return_tenant_id', request()->input('pm_tenant_id', 0));
+        $propertyId = (int) request()->input('return_property_id', request()->input('property_id', 0));
+        $tab = (string) request()->input('return_tab', 'leases');
+
+        $leasesUrl = route('property.tenants.leases', absolute: false);
+        if ($returnTo === 'tenant_show' && $tenantId > 0) {
+            $leasesUrl = route('property.tenants.show', [
+                'tenant' => $tenantId,
+                'tab' => \App\Support\Property\PropertyEntityHub::normalizeTab('tenant', $tab),
+            ], false);
+        } elseif ($returnTo === 'property_show' && $propertyId > 0) {
+            $leasesUrl = route('property.properties.show', [
+                'property' => $propertyId,
+                'tab' => \App\Support\Property\PropertyEntityHub::normalizeTab('property', $tab !== '' ? $tab : 'occupancy'),
+            ], false);
+        }
+
         return response(property_view('property.agent.tenants.lease_create_success', [
-            'leasesUrl' => route('property.tenants.leases', absolute: false),
+            'leasesUrl' => $leasesUrl,
             'message' => 'Lease saved.',
         ]));
     }
@@ -1778,6 +1796,26 @@ SQL;
 
         if ($fromCreateModal) {
             return $this->renderLeaseCreateSuccessResponse();
+        }
+
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) ($data['pm_tenant_id'] ?? 0),
+            'leases',
+            'Lease saved.'
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
+        $propertyHubRedirect = \App\Support\Property\PropertyHubRedirect::toShow(
+            $request,
+            (int) $request->input('return_property_id', $request->input('property_id', 0)),
+            'occupancy',
+            'Lease saved.'
+        );
+        if ($propertyHubRedirect) {
+            return $propertyHubRedirect;
         }
 
         return redirect()

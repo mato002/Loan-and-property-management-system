@@ -13,7 +13,7 @@
     <p id="lease-create-error" class="hidden rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"></p>
     <turbo-frame
         id="lease-create-modal"
-        data-create-url="{{ route('property.leases.create_form', absolute: false) }}"
+        data-create-url="{{ $leaseCreateFormUrl ?? route('property.leases.create_form', absolute: false) }}"
         class="block w-full max-w-3xl"
     ></turbo-frame>
 </div>

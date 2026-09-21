@@ -8,15 +8,29 @@
     :action="$directoryUrl"
     :reset-url="$directoryUrl"
     :drawer-label="$drawerLabel"
+    data-filter-cascade="property-unit"
+    data-filter-cascade-catalog="{!! \Illuminate\Support\Js::from($filterCascadeCatalog ?? ['units' => [], 'tenants' => []]) !!}"
+    data-filter-cascade-auto-apply="true"
     :chip-labels="[
         'q' => 'Search',
+        'property_id' => 'Property',
+        'unit_id' => 'Unit',
         'status' => 'Status',
         'risk' => 'Risk',
         'portal' => 'Portal login',
     ]"
+    :chip-ignore-values="[
+        'property_id' => ['0', 0, ''],
+        'unit_id' => ['0', 0, ''],
+    ]"
 >
     <x-slot name="primary">
         <x-property.filter-field type="search" name="q" placeholder="Search name, phone, email, ID…" :value="$filters['q'] ?? ''" wide />
+        @include('property.agent.partials.filter_toolbars.partials.property_unit_fields', [
+            'filters' => $filters,
+            'properties' => $properties ?? [],
+            'units' => $units ?? [],
+        ])
         <x-property.filter-field type="select"
             name="status"
             label="Status"

@@ -18,8 +18,20 @@
     @includeWhen($activeTab === 'leases', 'property.agent.tenants.partials.tab-leases')
     @includeWhen($activeTab === 'invoices', 'property.agent.tenants.partials.tab-invoices')
     @includeWhen($activeTab === 'payments', 'property.agent.tenants.partials.tab-payments')
+    @includeWhen($activeTab === 'credit', 'property.agent.tenants.partials.tab-credit')
     @includeWhen($activeTab === 'deposits', 'property.agent.tenants.partials.tab-deposits')
     @includeWhen($activeTab === 'notices', 'property.agent.tenants.partials.tab-notices')
     @includeWhen($activeTab === 'utilities', 'property.agent.tenants.partials.tab-utilities')
+    @includeWhen($activeTab === 'maintenance', 'property.agent.tenants.partials.tab-maintenance')
     @includeWhen($activeTab === 'statement', 'property.agent.tenants.partials.tab-statement')
+
+    @include('property.agent.partials.lease_create_shell', [
+        'openLeaseCreateModal' => false,
+        'leaseCreateFormUrl' => route('property.leases.create_form', [
+            'pm_tenant_id' => $tenant->id,
+            'return_to' => 'tenant_show',
+            'return_tenant_id' => $tenant->id,
+            'return_tab' => 'leases',
+        ], false),
+    ])
 </div>

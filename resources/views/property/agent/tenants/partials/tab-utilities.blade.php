@@ -1,8 +1,11 @@
 <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
-    <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
-        <h3 class="text-sm font-semibold text-slate-900">Utility readings</h3>
-        <a href="{{ route('property.revenue.utilities', [], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-blue-700 hover:underline">Utility billing workspace</a>
-    </div>
+        <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold text-slate-900">Utility readings</h3>
+            <div class="flex flex-wrap gap-2">
+                <a href="{{ route('property.tenants.utility.statement', $tenant, false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-indigo-700 hover:underline">Utility statement</a>
+                <a href="{{ route('property.revenue.utilities', [], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-blue-700 hover:underline">Utility billing</a>
+            </div>
+        </div>
     <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
         <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">
             <tr>

@@ -85,6 +85,16 @@ class PmTenantCreditController extends Controller
             return back()->withErrors(['amount' => $e->getMessage()])->withInput();
         }
 
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) $tenant->id,
+            'credit',
+            'Credit applied to invoice '.$invoice->invoice_no.'.'
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
         return back()->with('success', 'Credit applied to invoice '.$invoice->invoice_no.'.');
     }
 
@@ -108,16 +118,37 @@ class PmTenantCreditController extends Controller
             return back()->withErrors(['amount' => $e->getMessage()])->withInput();
         }
 
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) $tenant->id,
+            'credit',
+            'Refunded '.PropertyMoney::kes((float) $data['amount']).' to tenant.'
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
         return back()->with('success', 'Refunded '.PropertyMoney::kes((float) $data['amount']).' to tenant.');
     }
 
-    public function autoApply(PmTenant $tenant): RedirectResponse
+    public function autoApply(Request $request, PmTenant $tenant): RedirectResponse
     {
-        $applied = app(TenantCreditService::class)->autoApplyForTenant((int) $tenant->id, request()->user());
+        $applied = app(TenantCreditService::class)->autoApplyForTenant((int) $tenant->id, $request->user());
         $total = array_sum(array_column($applied, 'amount'));
-
-        return back()->with('success', $total > 0
+        $message = $total > 0
             ? 'Applied '.PropertyMoney::kes($total).' across '.count($applied).' invoice(s).'
-            : 'No open invoices or no credit available to apply.');
+            : 'No open invoices or no credit available to apply.';
+
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) $tenant->id,
+            'credit',
+            $message
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
+        return back()->with('success', $message);
     }
 }

@@ -546,6 +546,16 @@ class PmInvoiceController extends Controller
             )
         );
 
+        $hubRedirect = \App\Support\Property\TenantHubRedirect::toShow(
+            $request,
+            (int) ($invoice->pm_tenant_id ?? 0),
+            'invoices',
+            'Invoice '.$invoice->invoice_no.' created.'
+        );
+        if ($hubRedirect) {
+            return $hubRedirect;
+        }
+
         return redirect()
             ->route('property.revenue.invoices.show', $invoice)
             ->with('success', 'Invoice '.$invoice->invoice_no.' created.');

@@ -1,7 +1,10 @@
 <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
-    <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-2">
+    <div class="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
         <h3 class="text-sm font-semibold text-slate-900">Invoices</h3>
-        <a href="{{ route('property.revenue.invoices', ['tenant_id' => $tenant->id, 'q' => $tenant->name], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-cyan-700 hover:underline">Open invoice workspace</a>
+        <div class="flex flex-wrap gap-2">
+            <button type="button" class="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700" data-property-modal-open="showHubInvoiceForm" @click="showHubInvoiceForm = true">Create invoice</button>
+            <a href="{{ route('property.revenue.invoices', ['tenant_id' => $tenant->id, 'q' => $tenant->name], false) }}" data-turbo-frame="property-main" class="text-xs font-semibold text-slate-600 hover:underline self-center">Invoice register</a>
+        </div>
     </div>
     <table class="min-w-full border-collapse text-sm [&_th]:border [&_th]:border-slate-200 [&_td]:border [&_td]:border-slate-200">
         <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 border-b border-slate-200">

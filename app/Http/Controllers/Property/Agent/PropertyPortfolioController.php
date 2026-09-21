@@ -756,32 +756,49 @@ class PropertyPortfolioController extends Controller
         $quickActions = [];
         if ($request->user()?->hasPmPermission('properties.manage') && ! $property->isManagementReadOnly()) {
             $quickActions[] = [
+                'label' => 'Add unit',
+                'modal' => 'addUnitOpen',
+                'icon' => 'fa-plus',
+                'tone' => 'primary',
+            ];
+            $quickActions[] = [
+                'label' => 'Assign lease',
+                'js' => 'window.openLeaseCreateModal && window.openLeaseCreateModal()',
+                'icon' => 'fa-key',
+            ];
+            $quickActions[] = [
+                'label' => 'Maintenance',
+                'modal' => 'showHubMaintenanceForm',
+                'icon' => 'fa-wrench',
+            ];
+            if (($property->landlords?->count() ?? 0) === 0) {
+                $quickActions[] = [
+                    'label' => 'Link landlord',
+                    'modal' => 'showHubLinkLandlord',
+                    'icon' => 'fa-user-tie',
+                ];
+            }
+            $quickActions[] = [
                 'label' => 'Edit property',
                 'route' => 'property.properties.edit',
                 'params' => ['property' => $property->id],
                 'icon' => 'fa-pen-to-square',
+                'tone' => 'muted',
             ];
             $quickActions[] = [
-                'label' => 'Manage units',
-                'route' => 'property.properties.units',
-                'params' => ['property_id' => $property->id],
-                'icon' => 'fa-building',
+                'label' => 'Utilities billing',
+                'route' => 'property.revenue.utilities',
+                'params' => [],
+                'icon' => 'fa-droplet',
+                'tone' => 'muted',
             ];
-            if ($firstVacantUnit) {
+            if ($property->isManagementActive()) {
                 $quickActions[] = [
-                    'label' => 'Assign tenant',
-                    'route' => 'property.tenants.leases',
-                    'params' => ['property_id' => $property->id, 'unit_id' => $firstVacantUnit->id],
-                    'icon' => 'fa-key',
-                    'tone' => 'primary',
-                ];
-            }
-            if (($property->landlords?->count() ?? 0) === 0) {
-                $quickActions[] = [
-                    'label' => 'Link landlord',
-                    'route' => 'property.properties.list',
-                    'params' => ['property_id' => $property->id],
-                    'icon' => 'fa-user-tie',
+                    'label' => 'Offboarding',
+                    'route' => 'property.properties.offboarding',
+                    'params' => ['property' => $property->id],
+                    'icon' => 'fa-door-open',
+                    'tone' => 'muted',
                 ];
             }
         }
@@ -791,7 +808,15 @@ class PropertyPortfolioController extends Controller
             $alerts[] = [
                 'label' => 'No landlord linked',
                 'tone' => 'amber',
-                'href' => route('property.properties.list', ['property_id' => $property->id], false).'#link-landlord-form',
+                'href' => PropertyEntityHub::tabUrl(
+                    'property.properties.show',
+                    ['property' => $property->id],
+                    'landlords',
+                    array_filter([
+                        'month' => $month !== '' ? $month : null,
+                        'fy' => $request->has('fy') && $month === '' ? $fy : null,
+                    ])
+                ),
             ];
         }
         if ($vacantUnits > 0) {
@@ -810,7 +835,7 @@ class PropertyPortfolioController extends Controller
             ];
         }
 
-        return view('property.agent.properties.show', [
+        return property_view('property.agent.properties.show', [
             'property' => $property,
             'units' => $units,
             'unitSnapshots' => $unitSnapshots,
@@ -857,6 +882,7 @@ class PropertyPortfolioController extends Controller
             'propertyExpenseDefinitions' => $this->propertyExpenseDefinitions((int) $property->id),
             'propertyDepositDefinitions' => $this->propertyDepositDefinitions((int) $property->id),
             'unitFields' => $this->unitFieldConfig(),
+            'landlordUsers' => $this->landlordUsersQueryForActor($request->user())->orderBy('name')->get(['id', 'name', 'email', 'phone']),
             'isManagementReadOnly' => $property->isManagementReadOnly(),
             'managementStatusLabel' => $property->managementStatusLabel(),
         ]);
@@ -1823,10 +1849,17 @@ class PropertyPortfolioController extends Controller
             $periodMonth,
         );
 
-        return view('property.agent.landlords.show', [
+        $linkableProperties = Property::query()
+            ->when(AgentWorkspaceScope::shouldApply(), fn ($q) => $q->where('agent_user_id', (int) $request->user()->id))
+            ->whereDoesntHave('landlords')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return property_view('property.agent.landlords.show', [
             'landlord' => $landlord,
             'portalCredentials' => $this->resolveLandlordPortalCredentialsForShow($landlord),
             'activeTab' => $activeTab,
+            'linkableProperties' => $linkableProperties,
             ...$tabData,
             ...$snapshot,
         ]);
@@ -3159,6 +3192,24 @@ class PropertyPortfolioController extends Controller
             ? 'Units saved: '.$unitCount.'.'
             : 'Unit saved.';
 
+        $hubRedirect = \App\Support\Property\PropertyHubRedirect::toShow(
+            $request,
+            (int) $unit->property_id,
+            'units',
+            $savedMessage
+        );
+        if ($hubRedirect) {
+            return $hubRedirect->with('next_steps', [
+                'title' => 'Unit saved',
+                'message' => $unit->status === PropertyUnit::STATUS_VACANT
+                    ? ($unitCount > 1
+                        ? 'These units are vacant. You can now add photos and publish selected ones under Listings.'
+                        : 'This unit is vacant. You can now add photos and publish it under Listings.')
+                    : 'Next, add more units, link the landlord, or manage listings for vacant units.',
+                'actions' => $actions,
+            ]);
+        }
+
         return back()
             ->with('success', $savedMessage)
             ->with('next_steps', [
@@ -3871,6 +3922,26 @@ class PropertyPortfolioController extends Controller
                 $this->agreedPayPivotFromRequest($data),
             ),
         ]);
+
+        $hubPropertyRedirect = \App\Support\Property\PropertyHubRedirect::toShow(
+            $request,
+            (int) $property->id,
+            'landlords',
+            'Landlord linked to property.'
+        );
+        if ($hubPropertyRedirect) {
+            return $hubPropertyRedirect;
+        }
+
+        $hubLandlordRedirect = \App\Support\Property\LandlordHubRedirect::toShow(
+            $request,
+            (int) $data['user_id'],
+            'properties',
+            'Property linked to landlord.'
+        );
+        if ($hubLandlordRedirect) {
+            return $hubLandlordRedirect;
+        }
 
         return redirect()
             ->route('property.properties.edit', $property->id)

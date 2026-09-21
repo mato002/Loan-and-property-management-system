@@ -6,9 +6,14 @@
             <h1 class="text-2xl font-black tracking-tight text-slate-900">Agent workspaces</h1>
             <p class="mt-1 text-sm text-slate-600">Manage agent footprints, subscriptions, and workspace access from one table.</p>
         </div>
-        <a href="{{ route('superadmin.users.create') }}" class="inline-flex items-center justify-center rounded-xl bg-[#2f4f4f] px-5 py-3 text-sm font-bold text-white hover:bg-[#264040]">
-            Invite agent
-        </a>
+        <div class="flex flex-wrap gap-2">
+            <a href="{{ route('superadmin.agent_branding') }}" class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                Agent branding
+            </a>
+            <a href="{{ route('superadmin.users.create') }}" class="inline-flex items-center justify-center rounded-xl bg-[#2f4f4f] px-5 py-3 text-sm font-bold text-white hover:bg-[#264040]">
+                Invite agent
+            </a>
+        </div>
     </div>
 
     <form method="get" data-sa-auto-filter class="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
@@ -164,6 +169,7 @@
                                                 @csrf
                                                 <button type="submit" class="block w-full px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">View / impersonate dashboard</button>
                                             </form>
+                                            <a href="{{ route('superadmin.agent_workspaces.branding', $agent) }}" class="block px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Edit branding</a>
                                             <a href="{{ $detailUrl }}" class="block px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Workspace details</a>
                                             <button type="button" @click="openTransfer({{ $agent->id }}, {{ json_encode($agent->name) }}); open = false" class="block w-full px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Transfer ownership</button>
                                             <a href="{{ route('superadmin.console.subscriptions', ['q' => $agent->email]) }}" class="block px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Manage subscription</a>

@@ -162,6 +162,27 @@ final class PropertyWorkspaceBranding
         return $default;
     }
 
+    /**
+     * Read branding for a specific agent workspace (Super Admin editing without impersonation).
+     */
+    public static function getForAgent(string $key, int $agentUserId, ?string $default = ''): ?string
+    {
+        if ($agentUserId <= 0) {
+            return $default;
+        }
+
+        if (! self::isBrandingKey($key)) {
+            return PropertyPortalSetting::getGlobalValue($key, $default);
+        }
+
+        $scoped = self::readScopedValue($key, $agentUserId);
+        if ($scoped !== null && $scoped !== '') {
+            return $scoped;
+        }
+
+        return $default;
+    }
+
     public static function setForSettings(string $key, ?string $value, ?User $user = null): void
     {
         if (! self::isBrandingKey($key)) {

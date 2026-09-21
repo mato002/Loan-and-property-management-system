@@ -36,6 +36,7 @@ use App\Services\Property\PropertyPaymentAllocationRepairService;
 use App\Services\Property\TenantCreditService;
 use App\Support\Property\PropertyEntityHub;
 use App\Support\Property\LeaseStandingCharges;
+use App\Support\Property\PropertyFilterCascadeCatalog;
 use App\Support\Property\TenantCompliancePresentation;
 use App\Support\Property\TenantProfileStatus;
 use App\Http\Controllers\Property\Concerns\RespondsWithPropertyFormModal;
@@ -385,6 +386,10 @@ class PmTenantDirectoryController extends Controller
             ];
         })->all();
 
+        $cascade = app(PropertyFilterCascadeCatalog::class);
+        $propertyId = (int) $request->integer('property_id');
+        $unitId = (int) $request->integer('unit_id');
+
         return [
             'pageTitle' => $pageTitle,
             'pageSubtitle' => $pageSubtitle,
@@ -398,11 +403,16 @@ class PmTenantDirectoryController extends Controller
             'stats' => $stats,
             'filters' => [
                 'q' => (string) request()->string('q'),
+                'property_id' => $propertyId > 0 ? (string) $propertyId : '0',
+                'unit_id' => $unitId > 0 ? (string) $unitId : '0',
                 'risk' => (string) request()->string('risk'),
                 'status' => (string) request()->string('status'),
                 'portal' => (string) request()->string('portal'),
                 'per_page' => $perPage,
             ],
+            'properties' => $cascade->properties(),
+            'units' => $cascade->unitsForProperty($propertyId),
+            'filterCascadeCatalog' => $cascade->fromLeases(),
             'tenantPager' => $tenants,
             'columns' => ['Tenant', 'Ac/No', 'Phone', 'Email', 'Unit', 'A/c balance', 'Rent', 'Charges', 'Lease start', 'Lease end', 'Leases', 'Status', 'Risk', 'Actions'],
             'tableRows' => $rows,
@@ -664,6 +674,14 @@ class PmTenantDirectoryController extends Controller
         }
 
         TenantProfileStatus::applyFilter($query, trim((string) $request->string('status')));
+
+        $propertyId = (int) $request->integer('property_id');
+        $unitId = (int) $request->integer('unit_id');
+        if ($unitId > 0) {
+            $query->whereHas('leases.units', fn (Builder $unitQuery) => $unitQuery->where('property_units.id', $unitId));
+        } elseif ($propertyId > 0) {
+            $query->whereHas('leases.units', fn (Builder $unitQuery) => $unitQuery->where('property_units.property_id', $propertyId));
+        }
     }
 
     public function store(Request $request): RedirectResponse
@@ -969,7 +987,41 @@ class PmTenantDirectoryController extends Controller
             ? '—'
             : $occupancyUnits->map(fn ($u) => ($u->property->name ?? '—').' / '.$u->label)->implode(', ');
 
-        $creditBalance = app(TenantCreditService::class)->balanceForTenant((int) $tenant->id);
+        $creditService = app(TenantCreditService::class);
+        $creditBalance = $creditService->balanceForTenant((int) $tenant->id);
+        $creditTransactions = $creditService->isEnabled()
+            ? $creditService->ledgerForTenant((int) $tenant->id, 20)
+            : collect();
+
+        $hubOpenInvoices = $tenant->invoices()
+            ->whereColumn('amount_paid', '<', 'amount')
+            ->whereNotIn('status', [PmInvoice::STATUS_CANCELLED, PmInvoice::STATUS_DRAFT])
+            ->orderBy('due_date')
+            ->limit(40)
+            ->get();
+
+        $hubLeases = $tenant->leases;
+        $hubUnits = $tenant->leases
+            ->flatMap(fn ($lease) => $lease->units)
+            ->unique('id')
+            ->values();
+        $unitIds = $hubUnits->pluck('id')->filter()->values();
+
+        $maintenanceRequests = collect();
+        if (Schema::hasTable('pm_maintenance_requests') && $unitIds->isNotEmpty()) {
+            $maintenanceRequests = \App\Models\PmMaintenanceRequest::query()
+                ->with('unit.property')
+                ->where(function ($q) use ($tenant, $unitIds) {
+                    $q->whereIn('property_unit_id', $unitIds);
+                    if (Schema::hasColumn('pm_maintenance_requests', 'pm_tenant_id')) {
+                        $q->orWhere('pm_tenant_id', $tenant->id);
+                    }
+                })
+                ->orderByDesc('id')
+                ->limit(25)
+                ->get();
+        }
+
         $lastPayment = $tenant->payments()
             ->where('status', PmPayment::STATUS_COMPLETED)
             ->with('allocations')
@@ -997,7 +1049,6 @@ class PmTenantDirectoryController extends Controller
             ->limit(25)
             ->get();
 
-        $unitIds = $tenant->leases->flatMap(fn ($lease) => $lease->units->pluck('id'))->filter()->unique()->values();
         $utilityReadings = $unitIds->isEmpty() || ! Schema::hasTable('pm_water_readings')
             ? collect()
             : PmWaterReading::query()
@@ -1012,9 +1063,14 @@ class PmTenantDirectoryController extends Controller
         $activityFeed = $this->tenantActivityFeed($tenant, $lastPayment, $lastPaymentAmount, $recentInvoices, $recentNotices);
         $alerts = $this->tenantHubAlerts($tenant, $billing['total_due'] ?? [], $profileStatus);
         $quickActions = [
-            ['label' => 'Edit tenant', 'route' => 'property.tenants.edit', 'params' => ['tenant' => $tenant->id], 'icon' => 'fa-pen-to-square'],
-            ['label' => 'Record payment', 'route' => 'property.revenue.payments', 'params' => ['q' => $tenant->name], 'icon' => 'fa-money-bill'],
-            ['label' => 'Full statement', 'route' => 'property.tenants.statement', 'params' => ['tenant' => $tenant->id], 'icon' => 'fa-file-lines', 'tone' => 'primary'],
+            ['label' => 'Create invoice', 'modal' => 'showHubInvoiceForm', 'icon' => 'fa-file-invoice', 'tone' => 'primary'],
+            ['label' => 'Record payment', 'modal' => 'showHubPaymentForm', 'icon' => 'fa-money-bill'],
+            ['label' => 'Record advance', 'modal' => 'showHubAdvanceForm', 'icon' => 'fa-piggy-bank'],
+            ['label' => 'New lease', 'js' => 'window.openLeaseCreateModal && window.openLeaseCreateModal()', 'icon' => 'fa-file-signature'],
+            ['label' => 'Create notice', 'modal' => 'showHubNoticeForm', 'icon' => 'fa-file-circle-plus'],
+            ['label' => 'Maintenance', 'modal' => 'showHubMaintenanceForm', 'icon' => 'fa-wrench'],
+            ['label' => 'Edit tenant', 'route' => 'property.tenants.edit', 'params' => ['tenant' => $tenant->id], 'icon' => 'fa-pen-to-square', 'tone' => 'muted'],
+            ['label' => 'Full statement', 'route' => 'property.tenants.statement', 'params' => ['tenant' => $tenant->id], 'icon' => 'fa-file-lines'],
         ];
 
         return property_view('property.agent.tenants.show', [
@@ -1029,6 +1085,13 @@ class PmTenantDirectoryController extends Controller
             'leaseCarryForward' => $billing['lease_carry_forward'],
             'totalDue' => $billing['total_due'],
             'creditBalance' => $creditBalance,
+            'creditTransactions' => $creditTransactions,
+            'advanceCreditsEnabled' => $creditService->isEnabled(),
+            'hubOpenInvoices' => $hubOpenInvoices,
+            'hubLeases' => $hubLeases,
+            'hubUnits' => $hubUnits,
+            'maintenanceRequests' => $maintenanceRequests,
+            'noticeTemplate' => (string) PropertyPortalSetting::getValue('template_notice_text', ''),
             'lastPayment' => $lastPayment,
             'lastPaymentAmount' => $lastPaymentAmount,
             'recentInvoices' => $recentInvoices,

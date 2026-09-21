@@ -8,6 +8,8 @@ use App\Models\SubscriptionPackage;
 use App\Models\User;
 use App\Services\SuperAdmin\AgentWorkspaceAdminService;
 use App\Support\Auth\StaffModuleRedirect;
+use App\Support\Property\PropertyPortalTheme;
+use App\Support\Property\PropertyWorkspaceBranding;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -15,6 +17,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -145,6 +148,146 @@ class SuperAdminAgentWorkspaceController extends Controller
             'otherAgents' => $otherAgents,
             'packages' => $packages,
         ]);
+    }
+
+    public function brandingIndex(Request $request): View|RedirectResponse
+    {
+        $agentId = (int) $request->query('agent', 0);
+        if ($agentId > 0) {
+            $agent = User::query()
+                ->whereKey($agentId)
+                ->where('property_portal_role', 'agent')
+                ->first();
+
+            if ($agent) {
+                return redirect()->route('superadmin.agent_workspaces.branding', $agent);
+            }
+        }
+
+        $agents = User::query()
+            ->where('property_portal_role', 'agent')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        $companyNames = [];
+        if (Schema::hasColumn('property_portal_settings', 'agent_user_id') && $agents->isNotEmpty()) {
+            $companyNames = DB::table('property_portal_settings')
+                ->where('key', 'company_name')
+                ->whereIn('agent_user_id', $agents->pluck('id')->all())
+                ->whereNotNull('agent_user_id')
+                ->where('value', '!=', '')
+                ->pluck('value', 'agent_user_id')
+                ->all();
+        }
+
+        return view('superadmin.console.agent_branding_index', [
+            'agents' => $agents,
+            'companyNames' => $companyNames,
+        ]);
+    }
+
+    public function branding(User $agent): View
+    {
+        abort_unless((string) ($agent->property_portal_role ?? '') === 'agent', 404);
+
+        $agents = User::query()
+            ->where('property_portal_role', 'agent')
+            ->orderBy('name')
+            ->get(['id', 'name', 'email']);
+
+        $agentId = (int) $agent->id;
+
+        return view('superadmin.console.agent_branding', [
+            'agent' => $agent,
+            'agents' => $agents,
+            'companyName' => PropertyWorkspaceBranding::getForAgent('company_name', $agentId, ''),
+            'companyLogoUrl' => PropertyWorkspaceBranding::getForAgent('company_logo_url', $agentId, ''),
+            'siteFaviconUrl' => PropertyWorkspaceBranding::getForAgent('site_favicon_url', $agentId, ''),
+            'contactEmailPrimary' => PropertyWorkspaceBranding::getForAgent('contact_email_primary', $agentId, ''),
+            'contactEmailSupport' => PropertyWorkspaceBranding::getForAgent('contact_email_support', $agentId, ''),
+            'contactPhone' => PropertyWorkspaceBranding::getForAgent('contact_phone', $agentId, ''),
+            'contactWhatsapp' => PropertyWorkspaceBranding::getForAgent('contact_whatsapp', $agentId, ''),
+            'contactAddress' => PropertyWorkspaceBranding::getForAgent('contact_address', $agentId, ''),
+            'contactRegNo' => PropertyWorkspaceBranding::getForAgent('contact_reg_no', $agentId, ''),
+            'contactMapEmbedUrl' => PropertyWorkspaceBranding::getForAgent('contact_map_embed_url', $agentId, ''),
+            'publicWebsiteDomain' => PropertyWorkspaceBranding::getForAgent('public_website_domain', $agentId, ''),
+            'portalColorTheme' => PropertyPortalTheme::normalize(
+                PropertyWorkspaceBranding::getForAgent('portal_color_theme', $agentId, PropertyPortalTheme::LIGHT)
+            ),
+        ]);
+    }
+
+    public function storeBranding(Request $request, User $agent): RedirectResponse
+    {
+        abort_unless((string) ($agent->property_portal_role ?? '') === 'agent', 404);
+
+        $data = $request->validate([
+            'company_name' => ['nullable', 'string', 'max:255'],
+            'company_logo_url' => ['nullable', 'string', 'max:2048'],
+            'company_logo' => ['nullable', 'image', 'max:102400'],
+            'site_favicon_url' => ['nullable', 'string', 'max:2048'],
+            'site_favicon' => ['nullable', 'image', 'max:102400'],
+            'contact_email_primary' => ['nullable', 'email', 'max:255'],
+            'contact_email_support' => ['nullable', 'email', 'max:255'],
+            'contact_phone' => ['nullable', 'string', 'max:64'],
+            'contact_whatsapp' => ['nullable', 'string', 'max:64'],
+            'contact_address' => ['nullable', 'string', 'max:500'],
+            'contact_reg_no' => ['nullable', 'string', 'max:128'],
+            'contact_map_embed_url' => ['nullable', 'url', 'max:2048'],
+            'public_website_domain' => ['nullable', 'string', 'max:255'],
+            'portal_color_theme' => ['nullable', Rule::in(PropertyPortalTheme::OPTIONS)],
+            'remove_logo' => ['nullable', 'in:0,1'],
+            'remove_favicon' => ['nullable', 'in:0,1'],
+        ]);
+
+        $agentId = (int) $agent->id;
+
+        PropertyWorkspaceBranding::set('company_name', $data['company_name'] ?? '', $agentId);
+        PropertyWorkspaceBranding::set('contact_email_primary', $data['contact_email_primary'] ?? '', $agentId);
+        PropertyWorkspaceBranding::set('contact_email_support', $data['contact_email_support'] ?? '', $agentId);
+        PropertyWorkspaceBranding::set('contact_phone', $data['contact_phone'] ?? '', $agentId);
+        PropertyWorkspaceBranding::set('contact_whatsapp', $data['contact_whatsapp'] ?? '', $agentId);
+        PropertyWorkspaceBranding::set('contact_address', $data['contact_address'] ?? '', $agentId);
+        PropertyWorkspaceBranding::set('contact_reg_no', $data['contact_reg_no'] ?? '', $agentId);
+        PropertyWorkspaceBranding::set('contact_map_embed_url', $data['contact_map_embed_url'] ?? '', $agentId);
+        PropertyWorkspaceBranding::set(
+            'public_website_domain',
+            PropertyWorkspaceBranding::normalizePublicHost((string) ($data['public_website_domain'] ?? '')),
+            $agentId
+        );
+        PropertyWorkspaceBranding::set(
+            'portal_color_theme',
+            PropertyPortalTheme::normalize($data['portal_color_theme'] ?? PropertyPortalTheme::LIGHT),
+            $agentId
+        );
+
+        if (($data['remove_logo'] ?? '0') === '1') {
+            PropertyWorkspaceBranding::set('company_logo_url', '', $agentId);
+        } elseif ($request->hasFile('company_logo')) {
+            $path = $request->file('company_logo')->store('property/branding/'.$agentId, 'public');
+            PropertyWorkspaceBranding::set('company_logo_url', Storage::url($path), $agentId);
+        } elseif (array_key_exists('company_logo_url', $data)) {
+            PropertyWorkspaceBranding::set('company_logo_url', $data['company_logo_url'] ?? '', $agentId);
+        }
+
+        if (($data['remove_favicon'] ?? '0') === '1') {
+            PropertyWorkspaceBranding::set('site_favicon_url', '', $agentId);
+        } elseif ($request->hasFile('site_favicon')) {
+            $path = $request->file('site_favicon')->store('property/branding/'.$agentId, 'public');
+            PropertyWorkspaceBranding::set('site_favicon_url', Storage::url($path), $agentId);
+        } elseif (array_key_exists('site_favicon_url', $data)) {
+            PropertyWorkspaceBranding::set('site_favicon_url', $data['site_favicon_url'] ?? '', $agentId);
+        }
+
+        Log::info('superadmin_agent_branding_updated', [
+            'actor_id' => (int) $request->user()?->id,
+            'agent_user_id' => $agentId,
+            'company_name' => $data['company_name'] ?? '',
+        ]);
+
+        return redirect()
+            ->route('superadmin.agent_workspaces.branding', $agent)
+            ->with('success', 'Branding saved for '.$agent->name.'. It will appear on their invoices, receipts, and prints.');
     }
 
     public function impersonate(Request $request, User $agent): RedirectResponse
