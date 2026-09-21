@@ -314,8 +314,8 @@ final class PropertyWorkspaceBranding
 
         return [
             'company_name' => (string) (self::forPublicSite('company_name', config('app.name', 'Property Platform')) ?? config('app.name', 'Property Platform')),
-            'company_logo_url' => (string) (self::forPublicSite('company_logo_url', '') ?? ''),
-            'site_favicon_url' => (string) (self::forPublicSite('site_favicon_url', '') ?? ''),
+            'company_logo_url' => self::resolveAssetUrl((string) (self::forPublicSite('company_logo_url', '') ?? '')),
+            'site_favicon_url' => self::resolveAssetUrl((string) (self::forPublicSite('site_favicon_url', '') ?? '')),
             'contact_email_primary' => (string) (self::forPublicSite('contact_email_primary', '') ?? ''),
             'contact_email_support' => (string) (self::forPublicSite('contact_email_support', '') ?? ''),
             'contact_phone' => (string) (self::forPublicSite('contact_phone', '') ?? ''),
@@ -419,6 +419,12 @@ final class PropertyWorkspaceBranding
             return '';
         }
 
+        // Branding uploads: serve via app route so logos work without public/storage symlink.
+        $brandingPath = self::extractBrandingDiskPath($raw);
+        if ($brandingPath !== null) {
+            return url('/media/branding/'.$brandingPath);
+        }
+
         if (str_starts_with($raw, 'http://') || str_starts_with($raw, 'https://') || str_starts_with($raw, 'data:')) {
             return $raw;
         }
@@ -432,6 +438,42 @@ final class PropertyWorkspaceBranding
         }
 
         return url('/storage/'.ltrim($raw, '/'));
+    }
+
+    /**
+     * Normalize stored branding logo/favicon values to a public-disk relative path
+     * under property/branding/… (without that prefix), or null if not a branding asset.
+     */
+    public static function extractBrandingDiskPath(?string $raw): ?string
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '' || str_starts_with($raw, 'data:')) {
+            return null;
+        }
+
+        $path = $raw;
+        if (preg_match('#^https?://[^/]+(/.*)$#i', $raw, $matches) === 1) {
+            $path = (string) $matches[1];
+        }
+
+        $path = str_replace('\\', '/', $path);
+        $path = '/'.ltrim($path, '/');
+
+        foreach (['/storage/property/branding/', '/media/branding/', '/property/branding/'] as $prefix) {
+            if (str_starts_with($path, $prefix)) {
+                $relative = ltrim(substr($path, strlen($prefix)), '/');
+
+                return $relative !== '' ? $relative : null;
+            }
+        }
+
+        if (str_starts_with(ltrim($path, '/'), 'property/branding/')) {
+            $relative = substr(ltrim($path, '/'), strlen('property/branding/'));
+
+            return $relative !== '' ? $relative : null;
+        }
+
+        return null;
     }
 
     /**

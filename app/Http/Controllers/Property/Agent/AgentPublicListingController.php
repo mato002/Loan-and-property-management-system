@@ -161,6 +161,11 @@ class AgentPublicListingController extends Controller
         ]);
 
         $publish = $request->boolean('public_listing_published');
+        if ($publish && ! $property_unit->hasPublicAskingRent()) {
+            return back()->withErrors([
+                'public_listing_published' => 'Set market rent or unit rent before featuring this listing. A KES 0 asking price cannot go on the website.',
+            ])->withInput();
+        }
 
         $desc = isset($data['public_listing_description']) && trim((string) $data['public_listing_description']) !== ''
             ? $data['public_listing_description']

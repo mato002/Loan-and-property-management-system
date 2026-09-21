@@ -34,6 +34,9 @@ Route::get('/', [PublicController::class, 'home'])->name('public.home');
 Route::get('/media/unit-listings/{path}', [PublicListingMediaController::class, 'show'])
     ->where('path', '.*')
     ->name('public.unit_listing_media');
+Route::get('/media/branding/{path}', [\App\Http\Controllers\PublicBrandingMediaController::class, 'show'])
+    ->where('path', '.*')
+    ->name('public.branding_media');
 Route::get('/properties', [PublicController::class, 'properties'])->name('public.properties');
 Route::get('/properties/{id}', [PublicController::class, 'propertyDetails'])->name('public.property_details');
 Route::get('/about', [PublicController::class, 'about'])->name('public.about');

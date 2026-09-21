@@ -31,7 +31,12 @@
             <div class="col-span-2 lg:col-span-1">
                 <a href="{{ route('public.home') }}" class="inline-flex items-center gap-2 mb-4">
                     @if ($companyLogoUrl)
-                        <img src="{{ $companyLogoUrl }}" alt="{{ $companyName }}" class="h-10 w-auto max-w-[9rem] object-contain bg-white rounded-lg px-1">
+                        <img
+                            src="{{ $companyLogoUrl }}"
+                            alt="{{ $companyName }}"
+                            class="h-10 w-auto max-w-[9rem] object-contain bg-white rounded-lg px-1"
+                            onerror="this.remove()"
+                        >
                     @endif
                     <span class="text-lg font-black text-white">{{ $companyName }}</span>
                 </a>

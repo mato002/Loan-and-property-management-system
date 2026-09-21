@@ -11,7 +11,15 @@
         <div class="h-14 sm:h-16 flex items-center justify-between gap-4">
             <a href="{{ route('public.home') }}" class="flex items-center gap-2.5 min-w-0 shrink">
                 @if ($companyLogoUrl)
-                    <img src="{{ $companyLogoUrl }}" alt="{{ $companyName }} logo" class="h-9 sm:h-10 w-auto max-w-[8rem] object-contain">
+                    <img
+                        src="{{ $companyLogoUrl }}"
+                        alt="{{ $companyName }} logo"
+                        class="h-9 sm:h-10 w-auto max-w-[8rem] object-contain"
+                        onerror="this.classList.add('hidden'); this.nextElementSibling?.classList.remove('hidden');"
+                    >
+                    <span class="hidden inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white" aria-hidden="true">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                    </span>
                 @else
                     <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white">
                         <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>

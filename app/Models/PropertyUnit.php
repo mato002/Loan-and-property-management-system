@@ -89,7 +89,12 @@ class PropertyUnit extends Model
      */
     public function scopePubliclyListed(Builder $query): Builder
     {
-        return $query->where('status', self::STATUS_VACANT);
+        return $query
+            ->where('status', self::STATUS_VACANT)
+            ->where(function (Builder $inner) {
+                $inner->where('market_rent', '>', 0)
+                    ->orWhere('rent_amount', '>', 0);
+            });
     }
 
     /**
@@ -139,6 +144,11 @@ class PropertyUnit extends Model
         }
 
         return max($current, $market);
+    }
+
+    public function hasPublicAskingRent(): bool
+    {
+        return $this->listedRentAmount() > 0;
     }
 
     public function leases(): BelongsToMany

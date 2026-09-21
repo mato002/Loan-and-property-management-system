@@ -26,7 +26,7 @@
         </div>
 
         <p class="text-2xl sm:text-3xl font-black text-gray-900 mb-1">
-            KES {{ number_format((float) $unit->rent_amount, 0) }}
+            KES {{ number_format($unit->listedRentAmount(), 0) }}
             <span class="text-sm font-semibold text-gray-500">/ month</span>
         </p>
         <p class="text-xs text-gray-500 mb-5">Available for immediate viewing</p>

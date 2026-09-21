@@ -188,7 +188,7 @@ class PublicController extends Controller
         $metaBits = array_filter([
             (string) $unit->property->city,
             $unit->bedrooms ? ($unit->bedrooms.' bedroom') : null,
-            $unit->rent_amount ? ('KES '.number_format((float) $unit->rent_amount, 0).' / month') : null,
+            $unit->listedRentAmount() > 0 ? ('KES '.number_format($unit->listedRentAmount(), 0).' / month') : null,
         ]);
         $pageDescription = 'View '.$unit->label.' at '.$unit->property->name
             .(count($metaBits) ? ' in '.implode(', ', $metaBits) : '')
@@ -205,7 +205,7 @@ class PublicController extends Controller
         $offerSchema = [
             '@context' => 'https://schema.org',
             '@type' => 'Offer',
-            'price' => (float) $unit->rent_amount,
+            'price' => $unit->listedRentAmount(),
             'priceCurrency' => 'KES',
             'availability' => 'https://schema.org/InStock',
             'url' => url()->current(),

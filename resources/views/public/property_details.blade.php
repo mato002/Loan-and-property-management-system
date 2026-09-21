@@ -1,7 +1,7 @@
 @php
     $title = $pageTitle ?? $unit->property->name.' — Unit '.$unit->label;
     $addr = trim(collect([$unit->property->address_line, $unit->property->city])->filter()->implode(', '));
-    $rentDisplay = 'KES '.number_format((float) $unit->rent_amount, 0);
+    $rentDisplay = 'KES '.number_format($unit->listedRentAmount(), 0);
     $desc = $unit->public_listing_description;
     $unitTypeLabel = $unit->unitTypeLabel();
     $bedroomsLabel = $unit->bedroomsLabel();
