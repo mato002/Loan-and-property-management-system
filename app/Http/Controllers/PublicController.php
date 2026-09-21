@@ -9,6 +9,7 @@ use App\Models\Property;
 use App\Models\PropertyUnit;
 use App\Models\User;
 use App\Support\Property\PropertyWorkspaceBranding;
+use App\Support\Property\PublicApplyCatalog;
 use App\Support\Property\PublicListingPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -19,6 +20,8 @@ use Illuminate\View\View;
 class PublicController extends Controller
 {
     public const LISTING_PLACEHOLDER_IMAGE = 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=800&q=80';
+
+    public const APPLY_HERO_IMAGE = 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=2400&q=80';
 
     /**
      * Display the public home page with hero and featured items.
@@ -137,6 +140,66 @@ class PublicController extends Controller
             'publicPageTitle' => $seoTitle,
             'publicPageDescription' => $seoDescription,
         ]);
+    }
+
+    /**
+     * Apply public directory filters (location, type, budget, bedrooms).
+     *
+     * @param  Builder<PropertyUnit>  $query
+     * @return Builder<PropertyUnit>
+     */
+    private function filterPublicListings(Builder $query, Request $request): Builder
+    {
+        if ($request->filled('city')) {
+            $city = $request->string('city')->trim();
+            $query->whereHas('property', function ($propertyQuery) use ($city) {
+                $propertyQuery->where('city', $city);
+            });
+        }
+
+        if ($request->filled('property_id')) {
+            $query->where('property_id', $request->integer('property_id'));
+        } elseif ($request->filled('area')) {
+            $area = $request->string('area')->trim()->toString();
+            $query->whereHas('property', function ($propertyQuery) use ($area) {
+                $propertyQuery->where(function ($inner) use ($area) {
+                    $inner->where('address_line', 'like', '%'.$area.'%')
+                        ->orWhere('name', $area);
+                });
+            });
+        }
+
+        $unitType = strtolower(trim($request->string('unit_type')->toString()));
+        if (
+            $unitType !== ''
+            && Schema::hasColumn('property_units', 'unit_type')
+            && array_key_exists($unitType, PropertyUnit::typeOptions())
+        ) {
+            $query->where('unit_type', $unitType);
+        }
+
+        $bedrooms = $request->input('bedrooms');
+        if ($bedrooms !== null && $bedrooms !== '' && $bedrooms !== 'any') {
+            if ($bedrooms === '3plus' || $bedrooms === '3+') {
+                $query->where('bedrooms', '>=', 3);
+            } else {
+                $query->where('bedrooms', (int) $bedrooms);
+            }
+        }
+
+        $rentExpr = Schema::hasColumn('property_units', 'market_rent')
+            ? '(CASE WHEN COALESCE(property_units.market_rent, 0) > 0 THEN property_units.market_rent ELSE property_units.rent_amount END)'
+            : 'property_units.rent_amount';
+
+        if ($request->filled('min_rent') && is_numeric($request->input('min_rent'))) {
+            $query->whereRaw($rentExpr.' >= ?', [(float) $request->input('min_rent')]);
+        }
+
+        if ($request->filled('max_rent') && is_numeric($request->input('max_rent'))) {
+            $query->whereRaw($rentExpr.' <= ?', [(float) $request->input('max_rent')]);
+        }
+
+        return $query;
     }
 
     /**
@@ -338,30 +401,71 @@ class PublicController extends Controller
     }
 
     /**
-     * Display the application form wizard for a property.
+     * Display the application wizard: search first, then pick a vacant unit, then details.
      */
     public function apply(Request $request): View
     {
-        $propertyId = $request->query('property');
-        $propertyUnitId = $request->query('property_unit');
+        $propertyUnitId = $request->integer('property_unit') ?: $request->integer('property_unit_id');
+        if ($propertyUnitId <= 0 && old('property_unit_id')) {
+            $propertyUnitId = (int) old('property_unit_id');
+        }
 
         $applyUnit = null;
-        if ($propertyUnitId) {
+        if ($propertyUnitId > 0) {
             $applyUnit = $this->scopePublicPropertyUnits(
                 PropertyUnit::query()
             )
                 ->publiclyListed()
                 ->whereHas('property')
                 ->whereKey($propertyUnitId)
-                ->with('property')
+                ->with(['property', 'publicImages'])
                 ->first();
         }
 
-        return view('public.apply', array_merge(compact('propertyId', 'applyUnit'), [
+        $applyCatalog = [];
+        if ($applyUnit === null) {
+            $catalogUnits = $this->scopePublicPropertyUnits(
+                PropertyUnit::query()
+            )
+                ->publiclyListed()
+                ->whereHas('property')
+                ->with('property:id,name,city,address_line')
+                ->get();
+
+            $applyCatalog = PublicApplyCatalog::rows($catalogUnits);
+        }
+
+        $wantsResults = $request->boolean('results');
+        $hasLocation = $request->filled('city') || $request->filled('property_id');
+        $matchingUnits = collect();
+        if ($applyUnit === null && $wantsResults && $hasLocation) {
+            $matchingUnits = $this->filterPublicListings(
+                $this->scopePublicPropertyUnits(PropertyUnit::query())
+                    ->publiclyListed()
+                    ->whereHas('property')
+                    ->with(['property', 'publicImages']),
+                $request
+            )
+                ->orderByDesc('public_listing_published')
+                ->orderByDesc('updated_at')
+                ->limit(12)
+                ->get();
+        }
+
+        $applyStep = $applyUnit ? 'details' : ($wantsResults && $hasLocation ? 'matches' : 'search');
+
+        return view('public.apply', [
+            'applyUnit' => $applyUnit,
+            'matchingUnits' => $matchingUnits,
+            'applyStep' => $applyStep,
+            'applyCatalog' => $applyCatalog,
+            'listingPlaceholderImage' => self::LISTING_PLACEHOLDER_IMAGE,
+            'applyHeroImage' => self::APPLY_HERO_IMAGE,
             'publicPageTitle' => 'Apply for a Rental',
-            'publicPageDescription' => 'Submit your rental application securely through our online process.',
+            'publicPageDescription' => 'Choose a location and vacant unit first, then submit your application.',
+            'publicPageImage' => self::APPLY_HERO_IMAGE,
             'publicPageRobots' => 'noindex,nofollow',
-        ]));
+        ]);
     }
 
     /**
@@ -379,10 +483,20 @@ class PublicController extends Controller
             'occupants' => ['nullable', 'integer', 'min:1', 'max:20'],
             'viewing_slot' => ['nullable', 'string', 'max:64'],
             'move_in_date' => ['nullable', 'date'],
-            'property_unit_id' => ['nullable', 'integer', 'exists:property_units,id'],
-            // Only present when no unit id is provided
-            'property' => ['nullable', 'string', 'max:255'],
+            'property_unit_id' => ['required', 'integer'],
         ]);
+
+        $listedUnit = $this->scopePublicPropertyUnits(PropertyUnit::query())
+            ->publiclyListed()
+            ->whereHas('property')
+            ->whereKey($data['property_unit_id'])
+            ->first();
+
+        if (! $listedUnit) {
+            return redirect()
+                ->route('public.apply')
+                ->withErrors(['property_unit_id' => 'That unit is no longer available. Choose another location or listing.']);
+        }
 
         $notesParts = [];
         if (! empty($data['move_in_date'] ?? null)) {
@@ -402,9 +516,6 @@ class PublicController extends Controller
         }
         if (! empty($data['viewing_slot'] ?? null)) {
             $notesParts[] = 'Viewing: '.$data['viewing_slot'];
-        }
-        if (empty($data['property_unit_id'] ?? null) && ! empty($data['property'] ?? null)) {
-            $notesParts[] = 'Property/Unit entered: '.$data['property'];
         }
         $notesParts[] = 'Source: public.apply';
 

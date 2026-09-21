@@ -1659,6 +1659,51 @@
     );
   }
 
+  .public-hero-apply {
+    min-height: clamp(38rem, 92vh, 52rem);
+    align-items: center;
+  }
+
+  .public-hero-apply-compact {
+    min-height: clamp(14rem, 32vh, 20rem);
+  }
+
+  .public-apply-card {
+    border-radius: 1.5rem;
+    background: rgb(255 255 255 / 0.97);
+    box-shadow: 0 40px 80px -24px rgb(0 0 0 / 0.55);
+    border: 1px solid rgb(255 255 255 / 0.4);
+    backdrop-filter: blur(12px);
+  }
+
+  .public-apply-step {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: rgb(226 232 240);
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+
+  .public-apply-step-num {
+    display: inline-flex;
+    height: 1.75rem;
+    width: 1.75rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    border: 1px solid rgb(255 255 255 / 0.25);
+    background: rgb(255 255 255 / 0.08);
+    font-size: 0.75rem;
+  }
+
+  .public-apply-step.is-active .public-apply-step-num,
+  .public-apply-step.is-done .public-apply-step-num {
+    background: rgb(5 150 105);
+    border-color: rgb(52 211 153);
+    color: #fff;
+  }
+
   .public-search-panel {
     border-radius: 1.25rem;
     background: #fff;

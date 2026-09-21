@@ -95,6 +95,7 @@
     @vite(['resources/css/app.css', 'resources/js/public-site.js'])
     <script src="{{ asset('js/pwa-install.js') }}?v=2" defer></script>
     <style>
+        [x-cloak] { display: none !important; }
         .footer-portal-login .footer-login-btn {
             display: flex; width: 100%; align-items: center; justify-content: center; gap: 0.5rem;
             border-radius: 0.5rem; padding: 0.625rem 0.75rem; font-size: 0.875rem; font-weight: 700;
