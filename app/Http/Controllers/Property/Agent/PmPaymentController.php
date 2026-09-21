@@ -84,10 +84,15 @@ class PmPaymentController extends Controller
         );
 
         if (! ($result['ok'] ?? false)) {
-            return back()->withErrors(['receipt' => $result['message'] ?? 'Verification failed.'])->withInput();
+            return redirect()
+                ->route('property.revenue.mpesa_inbox', ['tab' => 'verify'])
+                ->withErrors(['receipt' => $result['message'] ?? 'Verification failed.'])
+                ->withInput();
         }
 
-        return back()->with('status', $result['message']);
+        return redirect()
+            ->route('property.revenue.mpesa_inbox', ['tab' => 'verify'])
+            ->with('status', $result['message']);
     }
 
     public function verifyPendingStk(Request $request, PmPayment $payment, MpesaReceiptVerificationService $verifier): RedirectResponse
